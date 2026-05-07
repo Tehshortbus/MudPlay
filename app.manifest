@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <!-- Windows-only manifest. Required by Avalonia for proper window
+       transparency and embedded-control behavior on Windows; ignored on
+       Linux/macOS but kept for cross-platform builds. -->
+  <assemblyIdentity version="1.0.0.0" name="FujinTerm.Desktop"/>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Declare Windows 10 compatibility so Windows uses modern behavior
+           (DPI handling, etc.) instead of legacy compatibility shims. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+</assembly>

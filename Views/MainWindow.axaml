@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:ctl="using:FujinTerm.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="FujinTerm.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="FujinTerm"
+        Background="Black"
+        SizeToContent="WidthAndHeight">
+
+    <!-- Lets the XAML previewer know what type to bind against. -->
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Top toolbar: host/port inputs + the three action buttons. -->
+        <Border DockPanel.Dock="Top" Padding="6" Background="#202020">
+            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
+                <TextBlock Grid.Column="0" Text="Host:" Foreground="White"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="200"/>
+                <TextBlock Grid.Column="2" Text="Port:" Foreground="White"
+                           VerticalAlignment="Center" Margin="12,0,6,0"/>
+                <TextBox Grid.Column="3" Text="{Binding Port}"/>
+                <Button Grid.Column="4" Margin="12,0,0,0"
+                        Command="{Binding ConnectCommand}" Content="Connect"/>
+                <Button Grid.Column="5" Margin="6,0,0,0"
+                        Command="{Binding DisconnectCommand}" Content="Disconnect"/>
+                <!-- Toggle button mirrors IsDumping; OneWay because the
+                     command is what actually flips the state. -->
+                <ToggleButton Grid.Column="6" Margin="12,0,0,0"
+                              IsChecked="{Binding IsDumping, Mode=OneWay}"
+                              Command="{Binding ToggleDumpCommand}"
+                              Content="Dump"/>
+            </Grid>
+        </Border>
+
+        <!-- Bottom status bar — connection state / errors / dump path. -->
+        <Border DockPanel.Dock="Bottom" Padding="6,2" Background="#101010">
+            <TextBlock Foreground="#AAAAAA" Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- The terminal display fills the middle. ScrollViewer kicks in if
+             the cell grid happens to be larger than the window. -->
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+            <ctl:TerminalControl x:Name="Terminal"
+                                 Emulator="{Binding Emulator}"
+                                 HorizontalAlignment="Left"
+                                 VerticalAlignment="Top"/>
+        </ScrollViewer>
+
+    </DockPanel>
+
+</Window>

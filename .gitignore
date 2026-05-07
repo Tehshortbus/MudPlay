@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+.claude/
+*.user
+*.suo
+[Tt]humbs.db
+.DS_Store
