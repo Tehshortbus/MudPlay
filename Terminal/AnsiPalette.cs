@@ -10,22 +10,21 @@ namespace FujinTerm.Terminal;
 /// </summary>
 public static class AnsiPalette
 {
-    // xterm default palette (the de-facto "VT100" colors expected by most
-    // VT100-style terminal apps). Distinct from IBM VGA: the dim entries are
-    // CD/EE/E5 instead of A8, and bright yellow is FFFF00 instead of FFFF54
-    // — much less neon, matches the amber/gold seen in BBS reference clients.
+    // Classic Windows-console / CGA palette. Dim entries are 0x80 channels, bright entries
+    // are pure 0xFF, "white" (idx 7) is 0xC0C0C0. Saturated and high-contrast,
+    // which is what BBS art was originally authored against on MS-DOS.
     public static readonly uint[] Default16 =
     {
         // Normal intensity (SGR 30–37, 40–47):
-        0xFF000000, 0xFFCD0000, 0xFF00CD00, 0xFFCDCD00,
-        0xFF0000EE, 0xFFCD00CD, 0xFF00CDCD, 0xFFE5E5E5,
+        0xFF000000, 0xFF800000, 0xFF008000, 0xFF808000,
+        0xFF000080, 0xFF800080, 0xFF008080, 0xFFC0C0C0,
         // Bright / bold (SGR 90–97, 100–107 / "bold + index"):
-        0xFF7F7F7F, 0xFFFF0000, 0xFF00FF00, 0xFFFFFF00,
-        0xFF5C5CFF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF,
+        0xFF808080, 0xFFFF0000, 0xFF00FF00, 0xFFFFFF00,
+        0xFF0000FF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF,
     };
 
     /// <summary>Color used when a cell's foreground is "default".</summary>
-    public const uint DefaultForegroundArgb = 0xFFAAAAAA;
+    public const uint DefaultForegroundArgb = 0xFFC0C0C0;
     /// <summary>Color used when a cell's background is "default".</summary>
     public const uint DefaultBackgroundArgb = 0xFF000000;
 
