@@ -48,6 +48,13 @@ public sealed class AppServices
     public FloatingPanelHost Panels { get; }
 
     /// <summary>
+    /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
+    /// connection. Feeds the Wire Inspector window and any future
+    /// "what did the server just say" diagnostic.
+    /// </summary>
+    public WireBuffer Wire { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -82,6 +89,7 @@ public sealed class AppServices
         Dialogs = new DialogService();
         Log = new LogService();
         Panels = new FloatingPanelHost();
+        Wire = new WireBuffer();
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

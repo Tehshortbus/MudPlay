@@ -156,8 +156,7 @@
                           Command="{Binding ReplayCaptureFileCommand}"/>
                 <Separator/>
                 <MenuItem Header="Wire Inspector…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 PR 0.12"/>
+                          Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
                 <MenuItem Header="Export chatlog…"
                           IsEnabled="False"
@@ -199,7 +198,7 @@
              the chrome (this band gets reshuffled into the proper
              title-bar + toolbar pair). -->
         <Border DockPanel.Dock="Top" Padding="6" Background="#202020">
-            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
                 <TextBlock Grid.Column="0" Text="Host:" Foreground="White"
                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="200"/>
@@ -214,6 +213,10 @@
                               IsChecked="{Binding IsDumping, Mode=OneWay}"
                               Command="{Binding ToggleDumpCommand}"
                               Content="Capture"/>
+                <Button Grid.Column="7" Margin="6,0,0,0"
+                        Command="{Binding OpenWireInspectorCommand}"
+                        Content="Wire"
+                        ToolTip.Tip="Wire Inspector — view the raw and stripped byte streams"/>
             </Grid>
         </Border>
 

@@ -99,6 +99,10 @@ public partial class MainWindowViewModel : ObservableObject
             // Copy out of the rented buffer because the emitter may reuse it
             // for the next read before our UI-thread post runs.
             var copy = data.ToArray();
+            // Feed the Wire Inspector buffer too — the post-IAC stream is
+            // what the parser sees, which is exactly what the debug window
+            // wants to surface.
+            AppServices.Current.Wire.Append(copy);
             Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
         };
         client.Connected += () =>
@@ -183,6 +187,33 @@ public partial class MainWindowViewModel : ObservableObject
         {
             desktop.Shutdown();
         }
+    }
+
+    /// <summary>
+    /// Tools → Wire Inspector. Singleton-ish: a second open activates the
+    /// existing window rather than spawning a duplicate.
+    /// </summary>
+    private WireInspectorWindow? _wireInspector;
+
+    [RelayCommand]
+    private void OpenWireInspector()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_wireInspector is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        WireInspectorWindow window = new()
+        {
+            DataContext = new WireInspectorViewModel(AppServices.Current.Wire),
+        };
+        window.Closed += (_, _) => _wireInspector = null;
+        _wireInspector = window;
+        window.Show(main);
     }
 
     // ----- Polish commands (Phase 0 PR 0.11) -----------------------------
