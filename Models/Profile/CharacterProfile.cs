@@ -1,0 +1,38 @@
+namespace FujinTerm.Models.Profile;
+
+/// <summary>
+/// Root DTO for <c>Data/profiles/{char-name}.json</c> — the Character tier of
+/// the settings hierarchy. Per-character workspace: auth info, settings
+/// deltas, and (in later phase PRs) macros / triggers / events / death
+/// records / equipment sets / build presets / quest state / etc.
+/// </summary>
+/// <remarks>
+/// The profile filename (sans <c>.json</c>) is the character's identifier
+/// inside FujinTerm. The in-game character name may differ — see <see cref="Name"/>.
+/// </remarks>
+public sealed class CharacterProfile
+{
+    /// <summary>JSON schema version (see <c>GlobalSettings.SchemaVersion</c> for the contract).</summary>
+    public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>
+    /// In-game character name. Usually matches the profile filename but a user
+    /// may give two profiles the same in-game name on different BBSes
+    /// ("Forged" on Paradigm vs "Forged" on another realm).
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Name of the BBS this character connects to. Matches a
+    /// <c>BbsProfile.Name</c> stored under <c>Data/BBS/</c>. <c>null</c> when
+    /// the user hasn't picked a BBS yet.
+    /// </summary>
+    public string? BbsName { get; set; }
+
+    /// <summary>
+    /// Game-data set this character expects. On profile load the
+    /// <c>GameDataCache</c> (Phase 5) switches to this set; if the user
+    /// manually switches sets later this field is rewritten and persisted.
+    /// </summary>
+    public string? ActiveGameDataSet { get; set; }
+}

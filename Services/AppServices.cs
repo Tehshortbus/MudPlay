@@ -23,6 +23,15 @@ public sealed class AppServices
         ?? throw new InvalidOperationException(
             "AppServices not initialized — call AppServices.Initialize() during app startup.");
 
+    /// <summary>Owns <c>Data/Global/global.json</c> — the Global settings tier.</summary>
+    public SettingsService Settings { get; }
+
+    /// <summary>Owns the currently loaded character profile (Character tier).</summary>
+    public ProfileService Profile { get; }
+
+    /// <summary>Owns <c>Data/BBS/*.json</c> — the BBS tier.</summary>
+    public BbsProfileStore Bbs { get; }
+
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
@@ -40,5 +49,32 @@ public sealed class AppServices
         return _current;
     }
 
-    private AppServices() { }
+    private AppServices()
+    {
+        Settings = new SettingsService();
+        Profile = new ProfileService();
+        Bbs = new BbsProfileStore();
+
+        // Auto-load the most recently used profile if one is recorded and the
+        // file still exists. First-launch (no recorded profile) leaves
+        // Profile.Current null; the user picks or creates from the menu.
+        string? last = Settings.Current.LastUsedProfileName;
+        if (!string.IsNullOrWhiteSpace(last) &&
+            File.Exists(AppPaths.CharacterProfileFile(last)))
+        {
+            Profile.Load(last);
+        }
+
+        // Track which profile was last loaded so the next launch can reopen it.
+        Profile.ProfileLoaded += OnProfileLoaded;
+    }
+
+    private void OnProfileLoaded(Models.Profile.CharacterProfile profile)
+    {
+        if (Profile.CurrentProfileName is null) return;
+        if (Settings.Current.LastUsedProfileName == Profile.CurrentProfileName) return;
+
+        Settings.Current.LastUsedProfileName = Profile.CurrentProfileName;
+        Settings.Save();
+    }
 }
