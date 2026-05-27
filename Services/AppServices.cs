@@ -41,6 +41,9 @@ public sealed class AppServices
     /// <summary>Modeless-only window spawner (no <c>ShowDialog</c> wrapper).</summary>
     public DialogService Dialogs { get; }
 
+    /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
+    public LogService Log { get; }
+
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
@@ -70,6 +73,7 @@ public sealed class AppServices
         Resolver = new SettingsResolver(Settings, Bbs, Profile);
 
         Dialogs = new DialogService();
+        Log = new LogService();
 
         // Auto-load the most recently used profile if one is recorded and the
         // file still exists. First-launch (no recorded profile) leaves
