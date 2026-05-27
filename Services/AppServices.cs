@@ -33,6 +33,12 @@ public sealed class AppServices
     public BbsProfileStore Bbs { get; }
 
     /// <summary>
+    /// Single read / write API for the 4-tier settings + game-data override
+    /// hierarchy (Defaults → Global → BBS → Character).
+    /// </summary>
+    public SettingsResolver Resolver { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -54,6 +60,11 @@ public sealed class AppServices
         Settings = new SettingsService();
         Profile = new ProfileService();
         Bbs = new BbsProfileStore();
+
+        // Resolver subscribes to Profile events for active-BBS tracking; build
+        // it before Load() below so it catches the auto-load's ProfileLoaded
+        // (it also self-syncs from Profile.Current as a defensive fallback).
+        Resolver = new SettingsResolver(Settings, Bbs, Profile);
 
         // Auto-load the most recently used profile if one is recorded and the
         // file still exists. First-launch (no recorded profile) leaves

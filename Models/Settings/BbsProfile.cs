@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FujinTerm.Models.Settings;
 
 /// <summary>
@@ -19,4 +21,17 @@ public sealed class BbsProfile
 
     /// <summary>TCP port; defaults to the Telnet well-known port.</summary>
     public int Port { get; set; } = 23;
+
+    /// <summary>
+    /// Per-tab settings deltas at the BBS tier — same shape as
+    /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned
+    /// to "only for this BBS."
+    /// </summary>
+    public Dictionary<string, JsonElement>? Settings { get; set; }
+
+    /// <summary>
+    /// Per-record game-data overrides at the BBS tier. Same shape as
+    /// <see cref="GlobalSettings.GameDataOverrides"/>.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }

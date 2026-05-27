@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FujinTerm.Models.Settings;
 
 /// <summary>
@@ -30,4 +32,19 @@ public sealed class GlobalSettings
     /// Once a profile is loaded its own <c>ActiveGameDataSet</c> takes over.
     /// </summary>
     public string? DefaultGameDataSet { get; set; }
+
+    /// <summary>
+    /// Per-tab settings deltas — keyed by tab name (Health / Combat / Talk /
+    /// etc.). Each value is a partial DTO for that tab containing only the
+    /// fields the user pinned to the Global tier. <see cref="Services.SettingsResolver"/>
+    /// merges these across all four tiers.
+    /// </summary>
+    public Dictionary<string, JsonElement>? Settings { get; set; }
+
+    /// <summary>
+    /// Per-record game-data overrides at the Global tier, keyed by
+    /// <c>table-name → record-id → partial record</c>. Empty by default;
+    /// populated when users edit a record at "for all characters" scope.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }

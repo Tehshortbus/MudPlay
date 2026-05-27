@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FujinTerm.Models.Profile;
 
 /// <summary>
@@ -35,4 +37,17 @@ public sealed class CharacterProfile
     /// manually switches sets later this field is rewritten and persisted.
     /// </summary>
     public string? ActiveGameDataSet { get; set; }
+
+    /// <summary>
+    /// Per-tab settings deltas at the Character tier — same shape as
+    /// <see cref="Settings.GlobalSettings.Settings"/>. Anything the user
+    /// pinned to "only for this character."
+    /// </summary>
+    public Dictionary<string, JsonElement>? Settings { get; set; }
+
+    /// <summary>
+    /// Per-record game-data overrides at the Character tier. Same shape as
+    /// <see cref="Settings.GlobalSettings.GameDataOverrides"/>.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }
