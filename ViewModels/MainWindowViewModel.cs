@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
+using FujinTerm.Views;
 
 namespace FujinTerm.ViewModels;
 
@@ -182,6 +183,113 @@ public partial class MainWindowViewModel : ObservableObject
         {
             desktop.Shutdown();
         }
+    }
+
+    // ----- Polish commands (Phase 0 PR 0.11) -----------------------------
+
+    /// <summary>View → Reset layout. Restores every panel to docked default.</summary>
+    [RelayCommand]
+    private void ResetLayout() => AppServices.Current.Panels.ResetToDefault();
+
+    /// <summary>Tools → Open Logs folder… and Help → Open Logs folder…</summary>
+    [RelayCommand]
+    private void OpenLogsFolder()
+    {
+        if (!ShellLaunch.OpenPath(AppPaths.LogsDir))
+            StatusText = $"Could not open {AppPaths.LogsDir}";
+    }
+
+    /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>
+    [RelayCommand]
+    private void OpenHelpTopics()
+    {
+        string? docs = AppInfo.TryFindDocsFolder();
+        if (docs is not null)
+        {
+            ShellLaunch.OpenPath(docs);
+            return;
+        }
+        // Shipped builds don't carry docs/ — fall back to the repo readme.
+        if (!ShellLaunch.OpenUrl(AppInfo.RepoUrl))
+            StatusText = "Could not open help.";
+    }
+
+    [RelayCommand]
+    private void OpenMajorMudWiki() => ShellLaunch.OpenUrl(AppInfo.MajorMudWikiUrl);
+
+    [RelayCommand]
+    private void OpenMajorMudReddit() => ShellLaunch.OpenUrl(AppInfo.MajorMudRedditUrl);
+
+    [RelayCommand]
+    private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
+
+    /// <summary>Help → Keyboard shortcuts… Opens a modeless info dialog.</summary>
+    [RelayCommand]
+    private void OpenKeyboardShortcuts()
+        => ShowInfoDialog("Keyboard shortcuts — FujinTerm",
+            """
+            Connect ......................... Ctrl+K
+            Disconnect ...................... Ctrl+D
+            Quit ............................ Ctrl+Q
+
+            View
+              Conversation .................. F2  (wired Phase 2)
+              Party ......................... F3  (wired Phase 6)
+              Player Status ................. F4  (wired Phase 3)
+              Map ........................... F5  (wired Phase 7)
+              Workshop ...................... F6  (wired Phase 9)
+              Spell Book .................... F7  (wired Phase 9)
+              Log ........................... F9  (wired Phase 1)
+              Backscroll .................... F10 (wired Phase 1)
+              Session Stats ................. F11 (wired Phase 8)
+
+            Settings ........................ Ctrl+,  (Phase 4)
+            Open Game Data browser .......... Ctrl+G  (Phase 5)
+            New / Open / Save profile ....... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
+
+            Help topics ..................... F1  (this dialog's neighbor)
+
+            More entries land as each phase wires its feature.
+            """);
+
+    /// <summary>Help → License… Project + third-party license summary.</summary>
+    [RelayCommand]
+    private void OpenLicense()
+        => ShowInfoDialog("Licenses — FujinTerm",
+            """
+            FujinTerm is open source. See the LICENSE file in the project root
+            for the full text.
+
+            Third-party components used in this build:
+
+              • Avalonia UI                — MIT
+              • CommunityToolkit.Mvvm       — MIT
+              • System.Data.OleDb           — MIT (Phase 5 MDB import)
+
+            Other dependencies arrive with their respective phases; their
+            licenses will appear here once they're added.
+            """);
+
+    /// <summary>Help → About FujinTerm.</summary>
+    [RelayCommand]
+    private void OpenAbout()
+        => ShowInfoDialog("About FujinTerm",
+            $"""
+            {AppInfo.DisplayName}
+            A modern Avalonia BBS terminal client with MajorMUD-aware features.
+
+            Source: {AppInfo.RepoUrl}
+
+            Built on .NET 10 + Avalonia 12 (CommunityToolkit.Mvvm source-gen).
+            """);
+
+    private static void ShowInfoDialog(string title, string body)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+        InfoDialog dlg = new();
+        dlg.Configure(title, body);
+        dlg.Show(main);
     }
 
     /// <summary>

@@ -22,6 +22,7 @@
         <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}"/>
         <KeyBinding Gesture="Ctrl+D" Command="{Binding DisconnectCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
+        <KeyBinding Gesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
     </Window.KeyBindings>
 
     <DockPanel LastChildFill="True">
@@ -108,8 +109,7 @@
                           ToolTip.Tip="Wired in Phase 8"/>
                 <Separator/>
                 <MenuItem Header="Reset layout"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
 
             <!-- ===== Settings ========================================= -->
@@ -163,43 +163,34 @@
                           IsEnabled="False"
                           ToolTip.Tip="Wired in Phase 2"/>
                 <MenuItem Header="Open Logs folder…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenLogsFolderCommand}"/>
             </MenuItem>
 
             <!-- ===== Help ============================================= -->
             <MenuItem Header="_Help">
                 <MenuItem Header="Help topics…"
                           InputGesture="F1"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenHelpTopicsCommand}"/>
                 <MenuItem Header="Keyboard shortcuts…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenKeyboardShortcutsCommand}"/>
                 <Separator/>
                 <MenuItem Header="MajorMUD wiki ↗"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenMajorMudWikiCommand}"/>
                 <MenuItem Header="MajorMUD subreddit ↗"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenMajorMudRedditCommand}"/>
                 <MenuItem Header="BBS site ↗"
                           IsEnabled="False"
                           ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
                 <Separator/>
                 <MenuItem Header="Open Logs folder…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenLogsFolderCommand}"/>
                 <MenuItem Header="Report an issue…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
                 <MenuItem Header="License…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenLicenseCommand}"/>
                 <MenuItem Header="About FujinTerm"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 0 polish (PR 0.11)"/>
+                          Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
         </Menu>
 

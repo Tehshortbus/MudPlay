@@ -107,6 +107,22 @@ public sealed class FloatingPanelHost
     /// <summary>Hide the panel (closes the floating window if any; clears the dock slot).</summary>
     public void Hide(string panelId) => Transition(panelId, PanelState.Hidden);
 
+    /// <summary>
+    /// Reset every registered panel to its default state (<see cref="PanelState.Docked"/>)
+    /// and forget any pending layouts. Bound to the View → Reset layout
+    /// menu entry.
+    /// </summary>
+    public void ResetToDefault()
+    {
+        _pendingLayouts.Clear();
+        foreach (Registration reg in _panels.Values)
+        {
+            reg.Layout = new PanelLayout();
+            ApplyState(reg, raiseEvent: false);
+        }
+        LayoutsChanged?.Invoke();
+    }
+
     /// <summary>Current state of <paramref name="panelId"/> (throws if not registered).</summary>
     public PanelState GetState(string panelId) => GetRegistration(panelId).Layout.State;
 

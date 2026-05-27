@@ -23,6 +23,13 @@ public sealed class BbsProfile
     public int Port { get; set; } = 23;
 
     /// <summary>
+    /// Optional URL the user wants the Help → {BBS site} ↗ menu entry to open
+    /// (the BBS's web site, wiki, Discord — whatever the operator publishes).
+    /// <c>null</c> hides the link; the menu entry stays present but disabled.
+    /// </summary>
+    public string? WebsiteUrl { get; set; }
+
+    /// <summary>
     /// Per-tab settings deltas at the BBS tier — same shape as
     /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned
     /// to "only for this BBS."
