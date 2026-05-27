@@ -25,10 +25,15 @@ public partial class App : Application
         // and a fresh view-model.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow
+            MainWindow mainWindow = new()
             {
                 DataContext = new MainWindowViewModel(),
             };
+            desktop.MainWindow = mainWindow;
+
+            // DialogService parents every modeless dialog to the main window so
+            // closing main tears down its children.
+            AppServices.Current.Dialogs.SetMainWindow(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();
