@@ -4,6 +4,8 @@ obj/
 .vscode/
 .idea/
 .claude/
+CLAUDE.md
+docs/
 *.user
 *.suo
 [Tt]humbs.db
