@@ -1,10 +1,14 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
+using FujinTerm.Services;
 using FujinTerm.Terminal;
 
 namespace FujinTerm.ViewModels;
@@ -48,11 +52,16 @@ public partial class MainWindowViewModel : ObservableObject
     private string _statusText = "Disconnected.";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CaptureMenuLabel))]
     private bool _isDumping;
 
-    // Where the "Dump" button writes session captures. Hardcoded to the
-    // project root for now; change here if you want them elsewhere.
-    private const string DumpDirectory = "/home/fujin/Desktop/Projects/FujinTerm";
+    /// <summary>Label shown on the Tools menu's capture-toggle entry.</summary>
+    public string CaptureMenuLabel => IsDumping ? "Stop capture" : "Start capture";
+
+    // Where session captures land when the user toggles capture. Stays under
+    // the user's Data/Logs folder so it's covered by the same rotation policy
+    // as DebugLogWriter output.
+    private static string CaptureDirectory => AppPaths.LogsDir;
 
     public MainWindowViewModel()
     {
@@ -151,8 +160,8 @@ public partial class MainWindowViewModel : ObservableObject
             StatusText = "Connect before starting a dump.";
             return;
         }
-        var name = $"dump-{DateTime.Now:yyyyMMdd-HHmmss}.bin";
-        var path = Path.Combine(DumpDirectory, name);
+        var name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.fjtc";
+        var path = Path.Combine(CaptureDirectory, name);
         try
         {
             t.StartDump(path);
@@ -163,5 +172,67 @@ public partial class MainWindowViewModel : ObservableObject
         {
             StatusText = $"Dump failed: {ex.Message}";
         }
+    }
+
+    /// <summary>Bound to File → Quit.</summary>
+    [RelayCommand]
+    private void Quit()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// Bound to Tools → Replay capture file… Opens a file picker, then feeds
+    /// every chunk in the chosen <c>.fjtc</c> into the live emulator at the
+    /// recorded cadence. Fire-and-forget — the playback runs on a background
+    /// task and marshals each chunk through the dispatcher.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReplayCaptureFileAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+        {
+            StatusText = "Replay unavailable — no main window.";
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> picked = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open FujinTerm capture",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("FujinTerm capture (.fjtc)") { Patterns = ["*.fjtc"] },
+                FilePickerFileTypes.All,
+            ],
+            SuggestedStartLocation = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.LogsDir),
+        });
+
+        if (picked.Count == 0) return;
+        string path = picked[0].Path.LocalPath;
+
+        ReplayPlayer player = new(path);
+        player.ChunkPlayed += chunk =>
+        {
+            byte[] copy = chunk.ToArray();
+            Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
+        };
+
+        StatusText = $"Replaying {Path.GetFileName(path)}…";
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await player.PlayAsync().ConfigureAwait(false);
+                Dispatcher.UIThread.Post(() => StatusText = "Replay complete.");
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.UIThread.Post(() => StatusText = $"Replay failed: {ex.Message}");
+            }
+        });
     }
 }
