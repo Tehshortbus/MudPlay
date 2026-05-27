@@ -32,8 +32,10 @@ public partial class App : Application
             desktop.MainWindow = mainWindow;
 
             // DialogService parents every modeless dialog to the main window so
-            // closing main tears down its children.
+            // closing main tears down its children. FloatingPanelHost owns the
+            // floating panel windows with the same parenting story.
             AppServices.Current.Dialogs.SetMainWindow(mainWindow);
+            AppServices.Current.Panels.SetOwnerWindow(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();

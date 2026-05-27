@@ -44,6 +44,9 @@ public sealed class AppServices
     /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
     public LogService Log { get; }
 
+    /// <summary>Docking / floating panel framework (single-UserControl reparented).</summary>
+    public FloatingPanelHost Panels { get; }
+
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
@@ -74,6 +77,13 @@ public sealed class AppServices
 
         Dialogs = new DialogService();
         Log = new LogService();
+        Panels = new FloatingPanelHost();
+
+        // Bridge: load persisted panel layouts on profile load; snapshot back
+        // into the profile DTO just before serialization on save.
+        Profile.ProfileLoaded += p => Panels.ApplyLayouts(p.PanelLayouts);
+        Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
+        Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
         // Auto-load the most recently used profile if one is recorded and the
         // file still exists. First-launch (no recorded profile) leaves

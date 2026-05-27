@@ -50,4 +50,12 @@ public sealed class CharacterProfile
     /// <see cref="Settings.GlobalSettings.GameDataOverrides"/>.
     /// </summary>
     public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
+
+    /// <summary>
+    /// Persisted floating-panel layouts keyed by panel id. Populated by
+    /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
+    /// profile load. <c>null</c> means "no layouts captured yet" — panels
+    /// default to <see cref="PanelState.Docked"/>.
+    /// </summary>
+    public Dictionary<string, PanelLayout>? PanelLayouts { get; set; }
 }

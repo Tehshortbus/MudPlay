@@ -37,6 +37,14 @@ public sealed class ProfileService
     public event Action? ProfileClosed;
 
     /// <summary>
+    /// Fired inside <see cref="Save"/> just before serialization. Subscribers
+    /// write their latest state into the profile DTO so it lands in the
+    /// JSON. Example: <see cref="FloatingPanelHost"/> updates
+    /// <see cref="CharacterProfile.PanelLayouts"/>.
+    /// </summary>
+    public event Action<CharacterProfile>? ProfileSaving;
+
+    /// <summary>
     /// Load the profile stored at <c>Data/profiles/{name}.json</c> and fire
     /// <see cref="ProfileLoaded"/>. If a different profile is already loaded
     /// it is closed first (<see cref="ProfileClosed"/> fires before the new
@@ -76,6 +84,7 @@ public sealed class ProfileService
     public void Save()
     {
         if (Current is null || CurrentProfileName is null) return;
+        ProfileSaving?.Invoke(Current);
         JsonStore.Save(AppPaths.CharacterProfileFile(CurrentProfileName), Current);
     }
 
