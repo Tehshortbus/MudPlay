@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.WireInspectorWindow"
+        x:DataType="vm:WireInspectorViewModel"
+        Title="Wire Inspector"
+        Width="900" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#101010">
+
+    <Design.DataContext>
+        <vm:WireInspectorViewModel/>
+    </Design.DataContext>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Control strip -->
+        <Border DockPanel.Dock="Top" Padding="8,6" Background="#202020">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto"
+                  RowDefinitions="Auto">
+                <Button Grid.Column="0"
+                        Content="{Binding PauseLabel}"
+                        Command="{Binding TogglePauseCommand}"
+                        MinWidth="80"/>
+                <Button Grid.Column="1" Margin="6,0,0,0"
+                        Content="Clear"
+                        Command="{Binding ClearCommand}"/>
+                <CheckBox Grid.Column="2" Margin="12,0,0,0"
+                          IsChecked="{Binding SyncScroll}"
+                          Content="Sync scroll"
+                          Foreground="#CCCCCC"/>
+                <TextBox Grid.Column="4" MinWidth="220"
+                         PlaceholderText="Search…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                <Button Grid.Column="5" Margin="6,0,0,0"
+                        Content="Find next"
+                        Click="OnFindNext"/>
+            </Grid>
+        </Border>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Padding="8,3" Background="#181818">
+            <TextBlock Foreground="#888888" FontSize="11"
+                       Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- Two-pane split -->
+        <Grid ColumnDefinitions="*,1,*">
+
+            <DockPanel Grid.Column="0" LastChildFill="True">
+                <Border DockPanel.Dock="Top" Padding="8,4" Background="#1A1A1A">
+                    <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Raw"/>
+                </Border>
+                <ScrollViewer x:Name="RawScroll"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Background="#0D0D0D">
+                    <SelectableTextBlock x:Name="RawBody"
+                                         FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
+                                         FontSize="12"
+                                         Foreground="#E8E8E8"
+                                         Padding="8"
+                                         TextWrapping="Wrap"
+                                         Text="{Binding RawText}"/>
+                </ScrollViewer>
+            </DockPanel>
+
+            <Border Grid.Column="1" Background="#2E2E2E"/>
+
+            <DockPanel Grid.Column="2" LastChildFill="True">
+                <Border DockPanel.Dock="Top" Padding="8,4" Background="#1A1A1A">
+                    <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Stripped"/>
+                </Border>
+                <ScrollViewer x:Name="StrippedScroll"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Background="#0D0D0D">
+                    <SelectableTextBlock x:Name="StrippedBody"
+                                         FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
+                                         FontSize="12"
+                                         Foreground="#E8E8E8"
+                                         Padding="8"
+                                         TextWrapping="Wrap"
+                                         Text="{Binding StrippedText}"/>
+                </ScrollViewer>
+            </DockPanel>
+
+        </Grid>
+
+    </DockPanel>
+
+</Window>

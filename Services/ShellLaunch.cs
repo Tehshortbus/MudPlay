@@ -1,0 +1,68 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace FujinTerm.Services;
+
+/// <summary>
+/// Cross-platform "hand this off to the OS" launcher. Used to open log
+/// folders, docs, URLs, and similar bystander targets that don't belong
+/// inside a FujinTerm window. Each method swallows launcher failures and
+/// returns <c>false</c> rather than throwing — callers usually surface a
+/// status-bar message on failure.
+/// </summary>
+public static class ShellLaunch
+{
+    /// <summary>
+    /// Open a file or folder path in the platform's default handler
+    /// (Explorer / Finder / xdg-open). Returns <c>true</c> on success.
+    /// </summary>
+    public static bool OpenPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        if (!File.Exists(path) && !Directory.Exists(path)) return false;
+        return TryLaunch(path);
+    }
+
+    /// <summary>
+    /// Open an <c>http://</c> / <c>https://</c> URL in the user's default
+    /// browser. Returns <c>true</c> on success.
+    /// </summary>
+    public static bool OpenUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)) return false;
+        if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps) return false;
+        return TryLaunch(parsed.ToString());
+    }
+
+    private static bool TryLaunch(string target)
+    {
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                Process.Start("open", target);
+            }
+            else
+            {
+                // Linux / *BSD: xdg-open. Doesn't throw on missing handlers —
+                // it returns a non-zero exit code which we don't inspect here.
+                Process.Start("xdg-open", target);
+            }
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Handler binary not found (e.g., headless Linux without xdg-utils).
+            return false;
+        }
+        catch (FileNotFoundException)
+        {
+            return false;
+        }
+    }
+}

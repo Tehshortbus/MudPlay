@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using FujinTerm.Services;
 using FujinTerm.ViewModels;
 using FujinTerm.Views;
 
@@ -15,15 +16,26 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Bring up cross-cutting services before any window or view-model
+        // exists; later code reaches them via AppServices.Current.
+        AppServices.Initialize();
+
         // On classic desktop platforms (Windows / Linux / macOS) the
         // lifetime exposes a MainWindow slot — fill it with our window
         // and a fresh view-model.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow
+            MainWindow mainWindow = new()
             {
                 DataContext = new MainWindowViewModel(),
             };
+            desktop.MainWindow = mainWindow;
+
+            // DialogService parents every modeless dialog to the main window so
+            // closing main tears down its children. FloatingPanelHost owns the
+            // floating panel windows with the same parenting story.
+            AppServices.Current.Dialogs.SetMainWindow(mainWindow);
+            AppServices.Current.Panels.SetOwnerWindow(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -16,11 +16,189 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
+    <Window.KeyBindings>
+        <!-- Accelerators wired for Phase-0 commands. The rest land as each
+             menu entry is wired in its respective phase. -->
+        <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}"/>
+        <KeyBinding Gesture="Ctrl+D" Command="{Binding DisconnectCommand}"/>
+        <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
+        <KeyBinding Gesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
+    </Window.KeyBindings>
+
     <DockPanel LastChildFill="True">
 
-        <!-- Top toolbar: host/port inputs + the three action buttons. -->
+        <!-- ============================================================
+             Main menu bar — full surface from day one. Stub entries are
+             IsEnabled=False with a "Wired in Phase N" tooltip so the
+             shape is visible up-front (per Phase 0 PR 0.10). Each later
+             phase replaces its stub binding with the real command.
+             ============================================================ -->
+        <Menu DockPanel.Dock="Top" Background="#202020">
+
+            <!-- ===== File ============================================= -->
+            <MenuItem Header="_File">
+                <MenuItem Header="_Connect"
+                          Command="{Binding ConnectCommand}"
+                          InputGesture="Ctrl+K"/>
+                <MenuItem Header="_Disconnect"
+                          Command="{Binding DisconnectCommand}"
+                          InputGesture="Ctrl+D"/>
+                <MenuItem Header="BBS list"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <Separator/>
+                <MenuItem Header="_New profile…"
+                          InputGesture="Ctrl+N"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_Open profile…"
+                          InputGesture="Ctrl+O"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_Save profile"
+                          InputGesture="Ctrl+S"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <Separator/>
+                <MenuItem Header="Recent profiles"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <Separator/>
+                <MenuItem Header="_Quit"
+                          Command="{Binding QuitCommand}"
+                          InputGesture="Ctrl+Q"/>
+            </MenuItem>
+
+            <!-- ===== View ============================================= -->
+            <MenuItem Header="_View">
+                <MenuItem Header="Conversation"
+                          InputGesture="F2"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 2"/>
+                <MenuItem Header="Party"
+                          InputGesture="F3"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 6"/>
+                <MenuItem Header="Player Status"
+                          InputGesture="F4"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 3"/>
+                <MenuItem Header="Map"
+                          InputGesture="F5"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 7"/>
+                <MenuItem Header="Workshop"
+                          InputGesture="F6"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 9"/>
+                <MenuItem Header="Spell Book"
+                          InputGesture="F7"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 9"/>
+                <MenuItem Header="Log"
+                          InputGesture="F9"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 1"/>
+                <MenuItem Header="Backscroll"
+                          InputGesture="F10"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 1"/>
+                <MenuItem Header="Session Stats"
+                          InputGesture="F11"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 8"/>
+                <Separator/>
+                <MenuItem Header="Reset layout"
+                          Command="{Binding ResetLayoutCommand}"/>
+            </MenuItem>
+
+            <!-- ===== Settings ========================================= -->
+            <MenuItem Header="_Settings">
+                <MenuItem Header="Open Settings…"
+                          InputGesture="Ctrl+,"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="Open Events…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 11"/>
+                <MenuItem Header="Open Statline Editor…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 12"/>
+            </MenuItem>
+
+            <!-- ===== Game Data ======================================== -->
+            <MenuItem Header="_Game Data">
+                <MenuItem Header="Active set"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 5"/>
+                <Separator/>
+                <MenuItem Header="Open Browser…"
+                          InputGesture="Ctrl+G"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Open Macros…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 5 / 10"/>
+                <Separator/>
+                <MenuItem Header="Import .mdb…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Import Spell Messages…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 5"/>
+            </MenuItem>
+
+            <!-- ===== Tools ============================================ -->
+            <MenuItem Header="_Tools">
+                <MenuItem Header="{Binding CaptureMenuLabel}"
+                          Command="{Binding ToggleDumpCommand}"/>
+                <MenuItem Header="Replay capture file…"
+                          Command="{Binding ReplayCaptureFileCommand}"/>
+                <Separator/>
+                <MenuItem Header="Wire Inspector…"
+                          Command="{Binding OpenWireInspectorCommand}"/>
+                <Separator/>
+                <MenuItem Header="Export chatlog…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 2"/>
+                <MenuItem Header="Open Logs folder…"
+                          Command="{Binding OpenLogsFolderCommand}"/>
+            </MenuItem>
+
+            <!-- ===== Help ============================================= -->
+            <MenuItem Header="_Help">
+                <MenuItem Header="Help topics…"
+                          InputGesture="F1"
+                          Command="{Binding OpenHelpTopicsCommand}"/>
+                <MenuItem Header="Keyboard shortcuts…"
+                          Command="{Binding OpenKeyboardShortcutsCommand}"/>
+                <Separator/>
+                <MenuItem Header="MajorMUD wiki ↗"
+                          Command="{Binding OpenMajorMudWikiCommand}"/>
+                <MenuItem Header="MajorMUD subreddit ↗"
+                          Command="{Binding OpenMajorMudRedditCommand}"/>
+                <MenuItem Header="BBS site ↗"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
+                <Separator/>
+                <MenuItem Header="Open Logs folder…"
+                          Command="{Binding OpenLogsFolderCommand}"/>
+                <MenuItem Header="Report an issue…"
+                          Command="{Binding ReportIssueCommand}"/>
+                <Separator/>
+                <MenuItem Header="License…"
+                          Command="{Binding OpenLicenseCommand}"/>
+                <MenuItem Header="About FujinTerm"
+                          Command="{Binding OpenAboutCommand}"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Top toolbar: host/port inputs + the three action buttons.
+             Survives Phase 0; the Phase 1 PR 1.1 skeleton port reworks
+             the chrome (this band gets reshuffled into the proper
+             title-bar + toolbar pair). -->
         <Border DockPanel.Dock="Top" Padding="6" Background="#202020">
-            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
                 <TextBlock Grid.Column="0" Text="Host:" Foreground="White"
                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="200"/>
@@ -31,16 +209,18 @@
                         Command="{Binding ConnectCommand}" Content="Connect"/>
                 <Button Grid.Column="5" Margin="6,0,0,0"
                         Command="{Binding DisconnectCommand}" Content="Disconnect"/>
-                <!-- Toggle button mirrors IsDumping; OneWay because the
-                     command is what actually flips the state. -->
                 <ToggleButton Grid.Column="6" Margin="12,0,0,0"
                               IsChecked="{Binding IsDumping, Mode=OneWay}"
                               Command="{Binding ToggleDumpCommand}"
-                              Content="Dump"/>
+                              Content="Capture"/>
+                <Button Grid.Column="7" Margin="6,0,0,0"
+                        Command="{Binding OpenWireInspectorCommand}"
+                        Content="Wire"
+                        ToolTip.Tip="Wire Inspector — view the raw and stripped byte streams"/>
             </Grid>
         </Border>
 
-        <!-- Bottom status bar — connection state / errors / dump path. -->
+        <!-- Bottom status bar — connection state / errors / capture path. -->
         <Border DockPanel.Dock="Bottom" Padding="6,2" Background="#101010">
             <TextBlock Foreground="#AAAAAA" Text="{Binding StatusText}"/>
         </Border>
@@ -51,7 +231,36 @@
             <ctl:TerminalControl x:Name="Terminal"
                                  Emulator="{Binding Emulator}"
                                  HorizontalAlignment="Left"
-                                 VerticalAlignment="Top"/>
+                                 VerticalAlignment="Top">
+                <ctl:TerminalControl.ContextMenu>
+                    <!-- Right-click on the terminal canvas. The plan calls
+                         for an Edit group on top plus the same six
+                         top-level groups. Phase 0 ships the Edit group
+                         only (everything in the menu bar above is one
+                         right-click away via the chrome; full mirroring
+                         lands when the chrome is reworked in Phase 1
+                         PR 1.1). -->
+                    <ContextMenu>
+                        <MenuItem Header="Copy"
+                                  InputGesture="Ctrl+Shift+C"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Wired in Phase 1"/>
+                        <MenuItem Header="Paste"
+                                  InputGesture="Ctrl+Shift+V"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Wired in Phase 1"/>
+                        <MenuItem Header="Select all"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Wired in Phase 1"/>
+                        <MenuItem Header="Find in scrollback…"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Wired in Phase 1"/>
+                        <MenuItem Header="Clear screen"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Wired in Phase 1"/>
+                    </ContextMenu>
+                </ctl:TerminalControl.ContextMenu>
+            </ctl:TerminalControl>
         </ScrollViewer>
 
     </DockPanel>

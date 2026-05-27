@@ -1,0 +1,50 @@
+using System.Text.Json;
+
+namespace FujinTerm.Models.Settings;
+
+/// <summary>
+/// Root DTO for <c>Data/Global/global.json</c> — the Global tier of the
+/// settings hierarchy. Holds app-wide deltas (the things every character
+/// shares) plus pointers the launcher needs before any profile is loaded.
+/// </summary>
+/// <remarks>
+/// Fields grow as later phase PRs land. Anything in this file must be
+/// resolvable without a character profile loaded (Global tier is the highest
+/// non-Char layer in <c>SettingsResolver</c>).
+/// </remarks>
+public sealed class GlobalSettings
+{
+    /// <summary>
+    /// JSON schema version. Bump whenever the on-disk format changes in a
+    /// non-backward-compatible way; migration logic keys off this.
+    /// </summary>
+    public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>
+    /// Filename (without path or extension) of the most recently loaded
+    /// character profile. Used at startup to auto-load the last session;
+    /// <c>null</c> on first run.
+    /// </summary>
+    public string? LastUsedProfileName { get; set; }
+
+    /// <summary>
+    /// Default game-data set name used when no character profile is loaded.
+    /// Once a profile is loaded its own <c>ActiveGameDataSet</c> takes over.
+    /// </summary>
+    public string? DefaultGameDataSet { get; set; }
+
+    /// <summary>
+    /// Per-tab settings deltas — keyed by tab name (Health / Combat / Talk /
+    /// etc.). Each value is a partial DTO for that tab containing only the
+    /// fields the user pinned to the Global tier. <see cref="Services.SettingsResolver"/>
+    /// merges these across all four tiers.
+    /// </summary>
+    public Dictionary<string, JsonElement>? Settings { get; set; }
+
+    /// <summary>
+    /// Per-record game-data overrides at the Global tier, keyed by
+    /// <c>table-name → record-id → partial record</c>. Empty by default;
+    /// populated when users edit a record at "for all characters" scope.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
+}

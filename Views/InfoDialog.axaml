@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FujinTerm.Views.InfoDialog"
+        Title="FujinTerm"
+        Width="640" Height="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True" Margin="12">
+
+        <Border DockPanel.Dock="Bottom" Padding="0,10,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Close" IsCancel="True" IsDefault="True"
+                        MinWidth="80" Click="OnClose"/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer>
+            <SelectableTextBlock x:Name="Body"
+                                 TextWrapping="Wrap"
+                                 FontSize="13"
+                                 LineHeight="20"/>
+        </ScrollViewer>
+
+    </DockPanel>
+</Window>

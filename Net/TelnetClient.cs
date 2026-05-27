@@ -17,7 +17,8 @@ namespace FujinTerm.Net;
 ///   • Auto-negotiate a small set of options (BINARY, ECHO, SUP-GA,
 ///     TERM-TYPE, NAWS) the way a typical terminal client would.
 ///   • Forward user keystrokes back to the server (with IAC byte escaping).
-///   • Optionally tee the cleaned input stream to a file (raw capture).
+///   • Optionally tee the cleaned input stream to a file (timed binary
+///     capture — see TimedCaptureWriter / ReplayPlayer).
 /// </summary>
 public sealed class TelnetClient : IAsyncDisposable
 {
@@ -47,35 +48,36 @@ public sealed class TelnetClient : IAsyncDisposable
     /// <summary>Window size advertised through NAWS (rows).</summary>
     public int Rows { get; set; } = 25;
 
-    // Optional capture file for the cleaned byte stream.
-    private FileStream? _dumpStream;
-    private readonly object _dumpLock = new();
+    // Optional capture file for the cleaned byte stream — timed binary format
+    // (see TimedCaptureFormat) so ReplayPlayer can replay at original cadence.
+    private TimedCaptureWriter? _capture;
+    private readonly object _captureLock = new();
 
     /// <summary>
-    /// Begin appending received bytes (after IAC stripping) to the given path.
-    /// Replaces any prior dump. Safe to call from the UI thread while the
-    /// read loop runs.
+    /// Begin writing received bytes (after IAC stripping) to <paramref name="path"/>
+    /// in the timed binary capture format. Replaces any prior capture. Safe to
+    /// call from the UI thread while the read loop runs.
     /// </summary>
     public void StartDump(string path)
     {
-        var fresh = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
-        FileStream? old;
-        lock (_dumpLock)
+        TimedCaptureWriter fresh = new(path);
+        TimedCaptureWriter? old;
+        lock (_captureLock)
         {
-            old = _dumpStream;
-            _dumpStream = fresh;
+            old = _capture;
+            _capture = fresh;
         }
         old?.Dispose();
     }
 
-    /// <summary>Stop and close any in-progress dump.</summary>
+    /// <summary>Stop and close any in-progress capture.</summary>
     public void StopDump()
     {
-        FileStream? old;
-        lock (_dumpLock)
+        TimedCaptureWriter? old;
+        lock (_captureLock)
         {
-            old = _dumpStream;
-            _dumpStream = null;
+            old = _capture;
+            _capture = null;
         }
         old?.Dispose();
     }
@@ -193,17 +195,14 @@ public sealed class TelnetClient : IAsyncDisposable
                 int outLen = Interpret(inBuf.AsSpan(0, n), outBuf);
                 if (outLen > 0)
                 {
-                    // If a dump is active, also write the cleaned bytes to disk.
-                    FileStream? dump;
-                    lock (_dumpLock) dump = _dumpStream;
-                    if (dump is not null)
+                    // If a capture is active, also write the cleaned bytes
+                    // (timed binary format — replayable).
+                    TimedCaptureWriter? capture;
+                    lock (_captureLock) capture = _capture;
+                    if (capture is not null)
                     {
-                        try
-                        {
-                            await dump.WriteAsync(outBuf.AsMemory(0, outLen), ct);
-                            await dump.FlushAsync(ct);
-                        }
-                        catch (ObjectDisposedException) { /* dump stopped mid-write */ }
+                        try { capture.Append(outBuf.AsSpan(0, outLen)); }
+                        catch (ObjectDisposedException) { /* capture stopped mid-write */ }
                     }
                     DataReceived?.Invoke(new ReadOnlyMemory<byte>(outBuf, 0, outLen));
                 }

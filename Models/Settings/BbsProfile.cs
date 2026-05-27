@@ -1,0 +1,44 @@
+using System.Text.Json;
+
+namespace FujinTerm.Models.Settings;
+
+/// <summary>
+/// Root DTO for <c>Data/BBS/{bbs-name}.json</c> — the BBS tier of the
+/// settings hierarchy. Connection info plus deltas the user pinned to "only
+/// for this BBS." Per-character credentials are stored separately under each
+/// <c>CharacterProfile</c>; this file describes the BBS itself.
+/// </summary>
+public sealed class BbsProfile
+{
+    /// <summary>JSON schema version (see <c>GlobalSettings.SchemaVersion</c> for the contract).</summary>
+    public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>Display name + filename key for this BBS.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Hostname or IP address the Telnet client connects to.</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>TCP port; defaults to the Telnet well-known port.</summary>
+    public int Port { get; set; } = 23;
+
+    /// <summary>
+    /// Optional URL the user wants the Help → {BBS site} ↗ menu entry to open
+    /// (the BBS's web site, wiki, Discord — whatever the operator publishes).
+    /// <c>null</c> hides the link; the menu entry stays present but disabled.
+    /// </summary>
+    public string? WebsiteUrl { get; set; }
+
+    /// <summary>
+    /// Per-tab settings deltas at the BBS tier — same shape as
+    /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned
+    /// to "only for this BBS."
+    /// </summary>
+    public Dictionary<string, JsonElement>? Settings { get; set; }
+
+    /// <summary>
+    /// Per-record game-data overrides at the BBS tier. Same shape as
+    /// <see cref="GlobalSettings.GameDataOverrides"/>.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
+}
