@@ -60,6 +60,10 @@ public sealed class AppServices
         // the Data/ tree on disk before anyone else needs it.
         _ = AppPaths.DataRoot;
 
+        // Best-effort log rotation. Default retention window; Settings.Other
+        // will surface a knob in Phase 4.
+        DebugLogWriter.PruneOldLogs();
+
         _current = new AppServices();
         return _current;
     }
