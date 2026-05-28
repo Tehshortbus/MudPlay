@@ -65,10 +65,16 @@ public sealed class LineExtractor
     public LineExtractor(TerminalEmulator emulator)
     {
         ArgumentNullException.ThrowIfNull(emulator);
-        emulator.Screen.Scrollback.RowAdded += OnScrolledOffRow;
+        // Subscribe to the canonical "this row just finished" signal — fires
+        // on every \n regardless of whether the row eventually scrolls off
+        // the visible screen. The earlier Scrollback.RowAdded subscription
+        // missed lines that completed via LF without ever leaving the
+        // visible buffer (a partial-screen of chat the user read but never
+        // scrolled past).
+        emulator.LineCompleted += OnLineCompleted;
     }
 
-    private void OnScrolledOffRow(ScrollbackBuffer.Row row)
+    private void OnLineCompleted(ScrollbackBuffer.Row row)
     {
         EmittedLine line = BuildLine(row.Cells, row.Timestamp, isPromptLine: false);
         LineEmitted?.Invoke(line);

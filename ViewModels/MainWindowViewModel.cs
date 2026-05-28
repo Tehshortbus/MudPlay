@@ -506,7 +506,7 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        BackscrollViewModel vm = new(Emulator.Screen.Scrollback)
+        BackscrollViewModel vm = new(Emulator)
         {
             FocusSearchOnOpen = focusSearch,
         };
