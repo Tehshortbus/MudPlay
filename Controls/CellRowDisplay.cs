@@ -82,11 +82,6 @@ public sealed class CellRowDisplay : Control
         // device pixels — without this, Avalonia anti-aliases the run-edges
         // and adjacent same-colour rows bleed into each other.
         UseLayoutRounding = true;
-
-        // Crisp edges on the background fills (the per-glyph FormattedText
-        // still anti-aliases, which is what we want for text). Same idea
-        // as TerminalControl's "snap to integer pixels" comment.
-        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

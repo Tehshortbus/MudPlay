@@ -35,6 +35,8 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private readonly ScrollbackBuffer _buffer;
     private int _scrollbackCount;
     private bool _disposed;
+    private int _lastMatchIndex = -1;
+    private string _lastMatchSearchText = string.Empty;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
 
@@ -165,19 +167,47 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private void FindNext()
     {
         if (string.IsNullOrEmpty(SearchText)) return;
+
+        // Reset the cursor whenever the search text changes — otherwise the
+        // user retyping a fresh query would resume from wherever the last
+        // search left off.
+        if (!string.Equals(_lastMatchSearchText, SearchText, StringComparison.Ordinal))
+        {
+            _lastMatchIndex = -1;
+            _lastMatchSearchText = SearchText;
+        }
+
+        // Tally total hits in the corpus and find the next match strictly
+        // AFTER the cursor, wrapping back to 0 if we hit the end.
         int hits = 0;
-        int firstMatch = -1;
         for (int i = 0; i < Rows.Count; i++)
         {
             if (Rows[i].PlainText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
-            {
                 hits++;
-                if (firstMatch < 0) firstMatch = i;
+        }
+
+        int startFrom = _lastMatchIndex + 1;
+        if (startFrom >= Rows.Count) startFrom = 0;
+
+        int next = -1;
+        for (int offset = 0; offset < Rows.Count; offset++)
+        {
+            int i = (startFrom + offset) % Rows.Count;
+            if (Rows[i].PlainText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+            {
+                next = i;
+                break;
             }
         }
+
         MatchCount = hits;
         OnPropertyChanged(nameof(StatusText));
-        if (firstMatch >= 0) ScrollToRowRequested?.Invoke(firstMatch);
+
+        if (next >= 0)
+        {
+            _lastMatchIndex = next;
+            ScrollToRowRequested?.Invoke(next);
+        }
     }
 
     [RelayCommand]
