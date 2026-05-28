@@ -27,14 +27,15 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     public ObservableCollection<ConversationRowViewModel> Rows { get; } = new();
 
     // Per-channel filter toggles. Default true (everything visible).
-    [ObservableProperty] private bool _showGossip            = true;
-    [ObservableProperty] private bool _showLocal             = true;
-    [ObservableProperty] private bool _showTelepathIncoming  = true;
-    [ObservableProperty] private bool _showTelepathOutgoing  = true;
-    [ObservableProperty] private bool _showGangpath          = true;
-    [ObservableProperty] private bool _showBroadcast         = true;
-    [ObservableProperty] private bool _showYell              = true;
-    [ObservableProperty] private bool _showRealmEvent        = true;
+    // Telepaths in + out share one toggle — they're conceptually the same
+    // private-message stream from the user's perspective.
+    [ObservableProperty] private bool _showGossip     = true;
+    [ObservableProperty] private bool _showLocal      = true;
+    [ObservableProperty] private bool _showTelepath   = true;
+    [ObservableProperty] private bool _showGangpath   = true;
+    [ObservableProperty] private bool _showBroadcast  = true;
+    [ObservableProperty] private bool _showYell       = true;
+    [ObservableProperty] private bool _showRealmEvent = true;
 
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _autoScroll   = true;
@@ -79,15 +80,14 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         Rebuild();
     }
 
-    partial void OnShowGossipChanged(bool value)            => Rebuild();
-    partial void OnShowLocalChanged(bool value)             => Rebuild();
-    partial void OnShowTelepathIncomingChanged(bool value)  => Rebuild();
-    partial void OnShowTelepathOutgoingChanged(bool value)  => Rebuild();
-    partial void OnShowGangpathChanged(bool value)          => Rebuild();
-    partial void OnShowBroadcastChanged(bool value)         => Rebuild();
-    partial void OnShowYellChanged(bool value)              => Rebuild();
-    partial void OnShowRealmEventChanged(bool value)        => Rebuild();
-    partial void OnSearchTextChanged(string value)          => Rebuild();
+    partial void OnShowGossipChanged(bool value)      => Rebuild();
+    partial void OnShowLocalChanged(bool value)       => Rebuild();
+    partial void OnShowTelepathChanged(bool value)    => Rebuild();
+    partial void OnShowGangpathChanged(bool value)    => Rebuild();
+    partial void OnShowBroadcastChanged(bool value)   => Rebuild();
+    partial void OnShowYellChanged(bool value)        => Rebuild();
+    partial void OnShowRealmEventChanged(bool value)  => Rebuild();
+    partial void OnSearchTextChanged(string value)    => Rebuild();
 
     private void Rebuild()
     {
@@ -123,8 +123,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     {
         ChatChannel.Gossip            => ShowGossip,
         ChatChannel.Local             => ShowLocal,
-        ChatChannel.TelepathIncoming  => ShowTelepathIncoming,
-        ChatChannel.TelepathOutgoing  => ShowTelepathOutgoing,
+        ChatChannel.TelepathIncoming  => ShowTelepath,
+        ChatChannel.TelepathOutgoing  => ShowTelepath,
         ChatChannel.Gangpath          => ShowGangpath,
         ChatChannel.Broadcast         => ShowBroadcast,
         ChatChannel.Yell              => ShowYell,
@@ -170,14 +170,13 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (file is null) return;
 
         HashSet<ChatChannel> filter = new();
-        if (ShowGossip)           filter.Add(ChatChannel.Gossip);
-        if (ShowLocal)            filter.Add(ChatChannel.Local);
-        if (ShowTelepathIncoming) filter.Add(ChatChannel.TelepathIncoming);
-        if (ShowTelepathOutgoing) filter.Add(ChatChannel.TelepathOutgoing);
-        if (ShowGangpath)         filter.Add(ChatChannel.Gangpath);
-        if (ShowBroadcast)        filter.Add(ChatChannel.Broadcast);
-        if (ShowYell)             filter.Add(ChatChannel.Yell);
-        if (ShowRealmEvent)       filter.Add(ChatChannel.RealmEvent);
+        if (ShowGossip)     filter.Add(ChatChannel.Gossip);
+        if (ShowLocal)      filter.Add(ChatChannel.Local);
+        if (ShowTelepath)   { filter.Add(ChatChannel.TelepathIncoming); filter.Add(ChatChannel.TelepathOutgoing); }
+        if (ShowGangpath)   filter.Add(ChatChannel.Gangpath);
+        if (ShowBroadcast)  filter.Add(ChatChannel.Broadcast);
+        if (ShowYell)       filter.Add(ChatChannel.Yell);
+        if (ShowRealmEvent) filter.Add(ChatChannel.RealmEvent);
 
         await using Stream stream = await file.OpenWriteAsync();
         await _history.ExportAsync(stream, filter).ConfigureAwait(false);

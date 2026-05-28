@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace FujinTerm.Terminal;
 
 /// <summary>
@@ -36,7 +38,7 @@ namespace FujinTerm.Terminal;
 /// work should <c>Task.Run</c> from their handler.
 /// </para>
 /// </remarks>
-public sealed class LineExtractor
+public sealed partial class LineExtractor
 {
     /// <summary>
     /// One completed terminal line. <see cref="Attributes"/> is aligned to
@@ -77,8 +79,49 @@ public sealed class LineExtractor
     private void OnLineCompleted(ScrollbackBuffer.Row row)
     {
         EmittedLine line = BuildLine(row.Cells, row.Timestamp, isPromptLine: false);
+
+        // Common BBS shape: the previous prompt is still sitting on the row
+        // when fresh output (chat echo, combat hit, etc.) gets appended
+        // inline. Without splitting, the chat regex never matches because
+        // the line starts with "[HP=...]:" instead of the speaker name.
+        // Slice the row at the prompt boundary and emit both halves so
+        // PromptParser (Phase 3) sees the prompt and ChatRouter / combat /
+        // triggers see the actual content.
+        Match m = PromptPrefix().Match(line.Text);
+        if (m.Success && m.Length > 0 && m.Length < line.Text.Length)
+        {
+            EmittedLine prompt = line with
+            {
+                Text = line.Text[..m.Length],
+                Attributes = line.Attributes[..m.Length],
+                IsPromptLine = true,
+            };
+            EmittedLine content = line with
+            {
+                Text = line.Text[m.Length..],
+                Attributes = line.Attributes[m.Length..],
+            };
+            LineEmitted?.Invoke(prompt);
+            LineEmitted?.Invoke(content);
+            return;
+        }
+
+        if (m.Success && m.Length == line.Text.Length)
+        {
+            // Row IS a bare prompt — flag it.
+            line = line with { IsPromptLine = true };
+        }
+
         LineEmitted?.Invoke(line);
     }
+
+    /// <summary>
+    /// Leading status-line prompt — covers <c>[HP=…]:</c> in all the
+    /// MajorMUD shapes (with or without the MA/KAI suffix, with or
+    /// without the parenthesised status). Anchored at line start.
+    /// </summary>
+    [GeneratedRegex(@"^\[HP=[^\]]*\]:", RegexOptions.CultureInvariant)]
+    private static partial Regex PromptPrefix();
 
     /// <summary>
     /// Public for testability: converts a raw cell row into the

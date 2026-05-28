@@ -26,9 +26,7 @@
                               Foreground="{StaticResource AccentCyanBrush}"   FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowLocal}"             Content="Say"
                               Foreground="{StaticResource ChromeFgBrush}"     FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowTelepathIncoming}"  Content="Telepath in"
-                              Foreground="{StaticResource AccentMagentaBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowTelepathOutgoing}"  Content="Telepath out"
+                    <CheckBox IsChecked="{Binding ShowTelepath}" Content="Telepath"
                               Foreground="{StaticResource AccentMagentaBrush}" FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowGangpath}"          Content="Gang"
                               Foreground="{StaticResource AccentGreenBrush}"  FontSize="11"/>

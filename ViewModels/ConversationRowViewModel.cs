@@ -25,9 +25,21 @@ public sealed class ConversationRowViewModel
         Entry = entry;
         TimestampText = entry.Timestamp.ToLocalTime().ToString("HH:mm:ss");
         ChannelText   = ChannelAbbrev(entry.Channel);
-        SpeakerText   = entry.Speaker ?? string.Empty;
+        SpeakerText   = FormatSpeaker(entry);
         MessageText   = entry.Message;
         ChannelBrush  = brushLookup(entry.Channel);
+    }
+
+    private static string FormatSpeaker(ChatLogEntry entry)
+    {
+        if (entry.Channel == ChatChannel.DaySeparator) return string.Empty;
+
+        // Speaker is null for self-actions whose regex didn't capture a
+        // name (e.g. "You yell ..." — the Megamind regex matches the verb
+        // shape literally). Surface those as "You:" so every chat row has
+        // a consistent "<who>:" prefix in front of the message.
+        string speaker = string.IsNullOrEmpty(entry.Speaker) ? "You" : entry.Speaker!;
+        return speaker + ":";
     }
 
     private static string ChannelAbbrev(ChatChannel c) => c switch
