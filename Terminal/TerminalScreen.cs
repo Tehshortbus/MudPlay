@@ -77,14 +77,30 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Clear the entire screen to a blank cell with the given attributes.</summary>
+    /// <remarks>
+    /// Non-blank rows are captured into <see cref="Scrollback"/> before the
+    /// clear so screen redraws (CSI 2J / BBS welcome banners / paged "Who's
+    /// Online" lists / room re-renders) survive in the backscroll export.
+    /// Without this, anything painted via absolute cursor positioning and
+    /// wiped by ED 2 is gone forever — natural LF-at-bottom scrolling is
+    /// the only other path into scrollback.
+    /// </remarks>
     public void ClearAll(CellAttributes attr)
     {
+        CaptureNonBlankRows(0, Rows - 1);
         var blank = new Cell(' ', attr);
         Array.Fill(_cells, blank);
         Bump();
     }
 
     /// <summary>Clear part of a single row [fromCol, toColInclusive].</summary>
+    /// <remarks>
+    /// Intentionally does NOT capture into <see cref="Scrollback"/> — single-row
+    /// clears are dominated by cursor-positioning artefacts (user echo,
+    /// statline rewrites, backspace overstrike) that would over-capture noise.
+    /// Multi-row clears via <see cref="ClearRowsInclusive"/> and <see cref="ClearAll"/>
+    /// do capture, since those are the redraw-related paths.
+    /// </remarks>
     public void ClearRow(int y, int fromCol, int toColInclusive, CellAttributes attr)
     {
         if ((uint)y >= (uint)Rows) return;
@@ -96,14 +112,33 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Clear a contiguous block of rows [fromRow, toRow] inclusive.</summary>
+    /// <remarks>Captures non-blank rows into <see cref="Scrollback"/> first — see <see cref="ClearAll"/>.</remarks>
     public void ClearRowsInclusive(int fromRow, int toRow, CellAttributes attr)
     {
         fromRow = Math.Clamp(fromRow, 0, Rows - 1);
         toRow = Math.Clamp(toRow, 0, Rows - 1);
+        CaptureNonBlankRows(fromRow, toRow);
         var blank = new Cell(' ', attr);
         for (int y = fromRow; y <= toRow; y++)
             for (int x = 0; x < Cols; x++)
                 _cells[y * Cols + x] = blank;
+    }
+
+    private void CaptureNonBlankRows(int fromRow, int toRow)
+    {
+        for (int y = fromRow; y <= toRow; y++)
+        {
+            if (!IsRowBlank(y))
+                Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+        }
+    }
+
+    private bool IsRowBlank(int y)
+    {
+        int start = y * Cols;
+        for (int x = 0; x < Cols; x++)
+            if (_cells[start + x].Char != ' ') return false;
+        return true;
     }
 
     /// <summary>

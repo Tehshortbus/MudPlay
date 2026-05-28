@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -88,6 +89,32 @@ public partial class WireInspectorWindow : Window
         _syncingScroll = true;
         _rawScroll.Offset = new Vector(_rawScroll.Offset.X, _strippedScroll.Offset.Y);
         _syncingScroll = false;
+    }
+
+    private async void OnExportRaw(object? sender, RoutedEventArgs e)
+        => await ExportPaneAsync("raw", () => (DataContext as WireInspectorViewModel)?.RawText);
+
+    private async void OnExportStripped(object? sender, RoutedEventArgs e)
+        => await ExportPaneAsync("stripped", () => (DataContext as WireInspectorViewModel)?.StrippedText);
+
+    private async System.Threading.Tasks.Task ExportPaneAsync(string kind, Func<string?> body)
+    {
+        string? text = body();
+        if (string.IsNullOrEmpty(text)) return;
+
+        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = $"Export {kind} wire output",
+            SuggestedFileName = $"wire-{kind}-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            DefaultExtension = "txt",
+            FileTypeChoices = [new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] }],
+        });
+
+        if (file is null) return;
+
+        await using var stream = await file.OpenWriteAsync();
+        await using var writer = new System.IO.StreamWriter(stream);
+        await writer.WriteAsync(text);
     }
 
     private void OnFindNext(object? sender, RoutedEventArgs e)

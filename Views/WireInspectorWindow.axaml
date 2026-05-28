@@ -20,7 +20,7 @@
 
         <!-- Control strip -->
         <Border DockPanel.Dock="Top" Padding="8,6" Background="#202020">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto"
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto"
                   RowDefinitions="Auto">
                 <Button Grid.Column="0"
                         Content="{Binding PauseLabel}"
@@ -29,18 +29,24 @@
                 <Button Grid.Column="1" Margin="6,0,0,0"
                         Content="Clear"
                         Command="{Binding ClearCommand}"/>
-                <CheckBox Grid.Column="2" Margin="12,0,0,0"
+                <Button Grid.Column="2" Margin="12,0,0,0"
+                        Content="Export raw…"
+                        Click="OnExportRaw"/>
+                <Button Grid.Column="3" Margin="6,0,0,0"
+                        Content="Export stripped…"
+                        Click="OnExportStripped"/>
+                <CheckBox Grid.Column="4" Margin="12,0,0,0"
                           IsChecked="{Binding AutoScroll}"
                           Content="Auto-scroll"
                           Foreground="#CCCCCC"/>
-                <CheckBox Grid.Column="3" Margin="8,0,0,0"
+                <CheckBox Grid.Column="5" Margin="8,0,0,0"
                           IsChecked="{Binding SyncScroll}"
                           Content="Sync scroll"
                           Foreground="#CCCCCC"/>
-                <TextBox Grid.Column="5" MinWidth="220"
+                <TextBox Grid.Column="7" MinWidth="220"
                          PlaceholderText="Search…"
                          Text="{Binding SearchText, Mode=TwoWay}"/>
-                <Button Grid.Column="6" Margin="6,0,0,0"
+                <Button Grid.Column="8" Margin="6,0,0,0"
                         Content="Find next"
                         Click="OnFindNext"/>
             </Grid>
