@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Threading;
+using FujinTerm.Services;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -11,6 +13,8 @@ namespace FujinTerm.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private TextBlock? _combatTickLabel;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -31,6 +35,33 @@ public partial class MainWindow : Window
             if (DataContext is INotifyPropertyChanged pc)
                 pc.PropertyChanged += OnVmPropertyChanged;
         };
+
+        Opened += (_, _) =>
+        {
+            _combatTickLabel = this.FindControl<TextBlock>("CombatTickLabel");
+            AppServices.Current.Tick.CombatTickElapsed += OnCombatTickElapsed;
+        };
+        Closed += (_, _) =>
+        {
+            AppServices.Current.Tick.CombatTickElapsed -= OnCombatTickElapsed;
+        };
+    }
+
+    /// <summary>
+    /// Pulse the Tick status-bar label amber for a brief beat each time
+    /// TickEngine fires. Class is added immediately, removed after a 200 ms
+    /// dispatcher delay so the user gets a visual heartbeat.
+    /// </summary>
+    private void OnCombatTickElapsed()
+    {
+        if (_combatTickLabel is null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _combatTickLabel.Classes.Add("Pulsing");
+            DispatcherTimer.RunOnce(
+                () => _combatTickLabel.Classes.Remove("Pulsing"),
+                TimeSpan.FromMilliseconds(200));
+        });
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

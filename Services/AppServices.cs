@@ -77,6 +77,43 @@ public sealed class AppServices
     public Game.ChatHistoryStore ChatHistory { get; }
 
     /// <summary>
+    /// Live player state — HP / mana / position / mana type. Updated by
+    /// <see cref="Player"/> from every prompt line; bound by the status
+    /// bar, the Phase 9 Workshop STATS section, and Phase 13 automation
+    /// engines that gate on HP / MP thresholds.
+    /// </summary>
+    public Game.PlayerState PlayerState { get; }
+
+    /// <summary>
+    /// Parses MajorMUD status-line prompts into <see cref="PlayerState"/>.
+    /// Sole writer of the state's HP / MA / position / mana-type fields
+    /// (Phase 3 PR 3.5 enforces this via the single-writer IL scan).
+    /// </summary>
+    public Game.PromptParser Player { get; }
+
+    /// <summary>
+    /// Scans the post-IAC wire stream for status-line prompts. Feeds
+    /// <see cref="Player"/> directly so prompts overwritten in place on
+    /// a single row (server CR + erase-line + rewrite) don't get lost
+    /// the way they would going through <see cref="Terminal.LineExtractor"/>.
+    /// </summary>
+    public WirePromptScanner PromptScanner { get; }
+
+    /// <summary>
+    /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
+    /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
+    /// the regen ticks.
+    /// </summary>
+    public Game.TickEngine Tick { get; }
+
+    /// <summary>
+    /// Observation-based regen tracker. Folds upward HP / MA deltas into
+    /// per-position running averages; subscribed to by the status bar and
+    /// Phase 13 HealthManager for tick-aware automation.
+    /// </summary>
+    public Game.RegenTracker Regen { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -125,6 +162,11 @@ public sealed class AppServices
         // (Phase 2 PR 2.4 / 2.5) subscribe to its EntryClassified event.
         Chat = new Game.ChatRouter(Router);
         ChatHistory = new Game.ChatHistoryStore(Chat);
+        PlayerState = new Game.PlayerState();
+        PromptScanner = new WirePromptScanner();
+        Player = new Game.PromptParser(PromptScanner, PlayerState);
+        Tick = new Game.TickEngine(Router);
+        Regen = new Game.RegenTracker(PlayerState);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

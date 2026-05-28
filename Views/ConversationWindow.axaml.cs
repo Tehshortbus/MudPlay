@@ -17,6 +17,7 @@ public partial class ConversationWindow : Window
     public ConversationWindow()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
         Opened += OnOpened;
         Closed += OnClosed;
     }

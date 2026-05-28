@@ -108,6 +108,13 @@
         <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
     </Style>
 
+    <!-- Tick-fired pulse: each combat tick flashes the Tick slot amber
+         for a quick visual heartbeat. Phase 4 Settings.Display will
+         surface an on/off toggle for the indicator. -->
+    <Style Selector="TextBlock.StatusSlot.Pulsing">
+        <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+    </Style>
+
     <!-- ============ Secondary connection strip (transitional) ============ -->
     <!-- Hosts the Host / Port editor inputs until Phase 4 PR 4.5 absorbs them
          into the BBS profile dialog. Visually distinct from the toolbar so

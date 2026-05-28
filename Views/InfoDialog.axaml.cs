@@ -15,6 +15,7 @@ public partial class InfoDialog : Window
     public InfoDialog()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

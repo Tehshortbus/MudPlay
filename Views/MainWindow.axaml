@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="580"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="960" Height="640">
+        Width="820" Height="580">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -274,11 +274,11 @@
             </Grid>
         </Border>
 
-        <!-- ============ Status bar (three slots) ============ -->
+        <!-- ============ Status bar (two slots) ============ -->
         <!-- Left  : room + confidence dot (Phase 7 wires the live values).
-             Mid   : tick countdowns (Phase 3 wires HP / MA / combat tick).
-             Right : latest LogService line + exp rate + clock (Phase 1 PR 1.5 wires log;
-                     exp rate / clock are Phase 8 / polish wirings). -->
+             Mid   : tick countdowns — combat tick + HP (natural / rest) +
+                     MA (natural / medi). Source-of-truth: TickEngine +
+                     RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
             <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
 
@@ -289,15 +289,12 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="Tick —"/>
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="HP —"/>
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="MA —"/>
+                    <TextBlock x:Name="CombatTickLabel"
+                               Classes="StatusSlot StatusMono"
+                               Text="{Binding CombatTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding HpTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
-
-                <TextBlock Grid.Column="2" Classes="StatusSlot"
-                           HorizontalAlignment="Right"
-                           Text="{Binding LatestLogText}"
-                           ToolTip.Tip="{Binding LatestLogText}"/>
             </Grid>
         </Border>
 
@@ -321,8 +318,9 @@
                              sense from a right-click on the canvas. The full
                              six-group mirror of the menu bar can land later
                              alongside selection support. -->
-                        <MenuItem Header="Open Log pane"  InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
-                        <MenuItem Header="Open Backscroll" InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
+                        <MenuItem Header="Open Player Workshop" InputGesture="F4"  Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Log pane"        InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
+                        <MenuItem Header="Open Backscroll"      InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>

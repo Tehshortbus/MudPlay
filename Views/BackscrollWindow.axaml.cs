@@ -17,6 +17,7 @@ public partial class BackscrollWindow : Window
     public BackscrollWindow()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
         Opened += OnOpened;
         Closed += OnClosed;
     }

@@ -15,6 +15,7 @@ public partial class PlaceholderShellWindow : Window
     public PlaceholderShellWindow()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

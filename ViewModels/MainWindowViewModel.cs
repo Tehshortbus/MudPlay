@@ -106,13 +106,19 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>Formatted "Tick mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _combatTickText = "Tick —";
+    /// <summary>Formatted "HP mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _hpTickText = "HP —";
+    /// <summary>Formatted "MA mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _maTickText = "MA —";
+
     /// <summary>
-    /// Most recent message in <see cref="AppServices.Log"/> — drives the
-    /// status bar's right slot. The MainWindow surface gives "latest log
-    /// line" preview here; the full filterable view lives in the Log
-    /// pane (F9).
+    /// 500 ms repaint cadence for the three status-bar tick countdowns —
+    /// fast enough to look live without burning cycles. State sourced from
+    /// AppServices.Tick (combat) + AppServices.Regen (HP / MA).
     /// </summary>
-    public string LatestLogText => AppServices.Current.Log.Latest?.Message ?? string.Empty;
+    private readonly DispatcherTimer _statusTickRefresh;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CaptureMenuLabel))]
@@ -140,6 +146,17 @@ public partial class MainWindowViewModel : ObservableObject
         Lines = new LineExtractor(Emulator);
         Capture = new CaptureSession(Emulator.Screen.Scrollback);
 
+        // 100 ms refresh — matches TickEngine's internal cadence so the
+        // countdown ticks down by 0.1 s each repaint instead of jumping
+        // in 0.5 s chunks.
+        _statusTickRefresh = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
+        _statusTickRefresh.Start();
+        RefreshStatusBarTicks();
+
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
@@ -152,15 +169,39 @@ public partial class MainWindowViewModel : ObservableObject
             if (t is not null) _ = t.SendAsync(bytes);
         };
 
-        // Status bar's right slot follows LogService.Latest. Posting through
-        // the dispatcher because EntryAdded fires on the producer's thread
-        // (Telnet read loop, automation engines, etc.) and the bound UI
-        // property must change on the UI thread.
-        AppServices.Current.Log.EntryAdded += OnLogEntryAdded;
     }
 
-    private void OnLogEntryAdded(Services.LogEntry _)
-        => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(LatestLogText)));
+    /// <summary>
+    /// Repaint the status-bar tick countdowns. Source-of-truth:
+    /// <see cref="AppServices.Tick.TimeToNextCombatTick"/> for combat;
+    /// <see cref="AppServices.Regen"/> for HP / MA. HP and MA show the
+    /// natural cycle by default and add a second number (the bonus cycle)
+    /// when the player is resting or meditating — they can be desynced
+    /// because their anchors are independent.
+    /// </summary>
+    private void RefreshStatusBarTicks()
+    {
+        Game.RegenTracker regen = AppServices.Current.Regen;
+
+        CombatTickText = FormatCountdown("Tick", AppServices.Current.Tick.TimeToNextCombatTick);
+        HpTickText     = FormatPair("HP", regen.GetTimeToNextHpNaturalTick(),
+                                          regen.GetTimeToNextHpRestTick());
+        MaTickText     = FormatPair("MA", regen.GetTimeToNextMpNaturalTick(),
+                                          regen.GetTimeToNextMpMediTick());
+    }
+
+    private static string FormatCountdown(string label, TimeSpan? remaining)
+        => remaining is null
+            ? $"{label} —"
+            : $"{label} {remaining.Value.TotalSeconds:0.0}";
+
+    private static string FormatPair(string label, TimeSpan? natural, TimeSpan? bonus)
+    {
+        string naturalText = natural is null ? "—" : $"{natural.Value.TotalSeconds:0.0}";
+        return bonus is null
+            ? $"{label} {naturalText}"
+            : $"{label} {naturalText} / {bonus.Value.TotalSeconds:0.0}";
+    }
 
     /// <summary>
     /// Single Connect ↔ Disconnect action. Click while idle starts a
@@ -307,11 +348,18 @@ public partial class MainWindowViewModel : ObservableObject
             // Copy out of the rented buffer because the emitter may reuse it
             // for the next read before our UI-thread post runs.
             byte[] copy = data.ToArray();
-            // Feed the Wire Inspector buffer too — the post-IAC stream is
-            // what the parser sees, which is exactly what the debug window
-            // wants to surface.
+            // Feed the Wire Inspector buffer — the post-IAC stream is what
+            // the parser sees, which is exactly what the debug window wants
+            // to surface. Thread-safe (its own internal lock).
             AppServices.Current.Wire.Append(copy);
-            Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
+            // PromptScanner + Emulator both write through observable state
+            // bound by the UI, so they must run on the UI thread. Same post
+            // keeps them aligned within one dispatch tick.
+            Dispatcher.UIThread.Post(() =>
+            {
+                AppServices.Current.PromptScanner.Append(copy);
+                Emulator.Feed(copy);
+            });
         };
         client.Connected += () =>
         {
@@ -368,13 +416,52 @@ public partial class MainWindowViewModel : ObservableObject
     /// Convenience: encode a text line (Latin-1 + CRLF) and send it to the
     /// server. Used by the Conversation window's input field — typing in
     /// the chat panel feeds the game the same way as typing in the
-    /// terminal does.
+    /// terminal does. Also scans the typed verb for heal-shaped commands
+    /// so the regen tracker can gate any HP / MA upticks during the
+    /// artifact grace window.
     /// </summary>
     public void SendUserText(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
+
+        if (LooksLikeHealShapedCommand(text))
+        {
+            AppServices.Current.Regen.RecordArtifact();
+        }
+
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes(text + "\r\n");
         SendUserInput(bytes);
+    }
+
+    /// <summary>
+    /// Heuristic: does <paramref name="line"/> start with a verb that
+    /// usually moves HP or MA upward? Conservative — false positives just
+    /// waste a few seconds of regen samples; false negatives let a heal
+    /// pollute the running average, so be generous on the verb list.
+    /// Refined by Phase 5 spell-event patterns (issue #8).
+    /// </summary>
+    private static bool LooksLikeHealShapedCommand(string line)
+    {
+        ReadOnlySpan<char> verb = FirstWord(line);
+        if (verb.IsEmpty) return false;
+        return verb.Equals("cast",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("drink", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("quaff", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("eat",   StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("apply", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("use",   StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("read",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("brew",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("bandage", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ReadOnlySpan<char> FirstWord(string line)
+    {
+        int start = 0;
+        while (start < line.Length && char.IsWhiteSpace(line[start])) start++;
+        int end = start;
+        while (end < line.Length && !char.IsWhiteSpace(line[end])) end++;
+        return line.AsSpan(start, end - start);
     }
 
     /// <summary>
