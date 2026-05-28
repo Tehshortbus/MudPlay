@@ -26,6 +26,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
 {
     private readonly ProfileService _profile;
     private readonly LogService _log;
+    private bool _suppressSelectionSideEffects;
 
     /// <summary>Raised when the shell wants the host window to close.</summary>
     public event Action? CloseRequested;
@@ -114,27 +115,50 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     /// filter doesn't persist after the click that resolved it. Setting
     /// <see cref="SearchText"/> here triggers
     /// <see cref="OnSearchTextChanged"/> which rebuilds the sidebar back
-    /// to the full list.
+    /// to the full list. Suppressed during <see cref="RebuildVisibleSections"/>
+    /// because the Clear / Add cycle briefly empties the ListBox, which
+    /// nulls the bound SelectedItem and would otherwise wipe the filter
+    /// the user just typed.
     /// </summary>
     partial void OnSelectedSectionChanged(SettingsSectionViewModel? value)
     {
+        if (_suppressSelectionSideEffects) return;
         if (!string.IsNullOrEmpty(SearchText)) SearchText = string.Empty;
     }
 
     private void RebuildVisibleSections()
     {
-        VisibleSections.Clear();
-        string needle = SearchText.Trim();
+        SettingsSectionViewModel? previouslySelected = SelectedSection;
 
-        foreach (SettingsSectionViewModel s in Sections)
+        // Suppress the OnSelectedSectionChanged side-effect for the duration
+        // of the rebuild — the ListBox nulls its bound SelectedItem the
+        // moment we Clear() the ItemsSource, which would otherwise wipe
+        // SearchText (and the filter the user just typed) before we get
+        // a chance to restore the selection at the end.
+        _suppressSelectionSideEffects = true;
+        try
         {
-            // Always include the active section even when the filter would
-            // hide it — otherwise the ListBox's selection vanishes and the
-            // content pane outlives an entry the user can no longer see in
-            // the sidebar.
-            bool keepBecauseSelected = ReferenceEquals(s, SelectedSection);
-            if (!string.IsNullOrEmpty(needle) && !MatchesSearch(s, needle) && !keepBecauseSelected) continue;
-            VisibleSections.Add(s);
+            VisibleSections.Clear();
+            string needle = SearchText.Trim();
+
+            foreach (SettingsSectionViewModel s in Sections)
+            {
+                // Always include the active section even when the filter
+                // would hide it — otherwise the sidebar selection vanishes
+                // while the content pane keeps rendering the same tab.
+                bool keepBecauseSelected = ReferenceEquals(s, previouslySelected);
+                if (!string.IsNullOrEmpty(needle) && !MatchesSearch(s, needle) && !keepBecauseSelected) continue;
+                VisibleSections.Add(s);
+            }
+
+            if (previouslySelected is not null && VisibleSections.Contains(previouslySelected))
+            {
+                SelectedSection = previouslySelected;
+            }
+        }
+        finally
+        {
+            _suppressSelectionSideEffects = false;
         }
     }
 
