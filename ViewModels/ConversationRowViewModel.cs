@@ -36,10 +36,14 @@ public sealed class ConversationRowViewModel
 
         // Speaker is null for self-actions whose regex didn't capture a
         // name (e.g. "You yell ..." — the Megamind regex matches the verb
-        // shape literally). Surface those as "You:" so every chat row has
-        // a consistent "<who>:" prefix in front of the message.
+        // shape literally). Surface those as "You" so every chat row has
+        // a consistent "<who>" prefix.
         string speaker = string.IsNullOrEmpty(entry.Speaker) ? "You" : entry.Speaker!;
-        return speaker + ":";
+
+        // RealmEvent rows read as a sentence ("Raijin entered the Realm")
+        // so the trailing colon would feel wrong. Every other channel
+        // pairs "<who>" with the message body and gets the colon.
+        return entry.Channel == ChatChannel.RealmEvent ? speaker : speaker + ":";
     }
 
     private static string ChannelAbbrev(ChatChannel c) => c switch
