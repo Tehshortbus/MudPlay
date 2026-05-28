@@ -20,7 +20,7 @@ public sealed class CharacterProfile
     /// <summary>
     /// In-game character name. Usually matches the profile filename but a user
     /// may give two profiles the same in-game name on different BBSes
-    /// ("Forged" on Paradigm vs "Forged" on another realm).
+    /// (same character name across two unrelated realms).
     /// </summary>
     public string Name { get; set; } = string.Empty;
 

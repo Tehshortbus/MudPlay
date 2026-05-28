@@ -101,9 +101,9 @@ public static class DefaultPatterns
         // Telepath: incoming + outgoing have different shapes — split into two ids.
         yield return new RegexPattern(KnownPatterns.ConversationTelepathIn,
             @"^(?<player>\w+) telepaths: (?<message>.+)");
-        // Real Paradigm BBS output prints "Sent" with a capital S even
-        // though Megamind's literal is lowercase — be case-insensitive on
-        // the verb so both spellings classify.
+        // The verb's capitalization varies between BBSes — Megamind's
+        // literal is lowercase "sent" but some realms emit "Sent". Use
+        // IgnoreCase so both spellings classify; we don't assume a realm.
         yield return new RegexPattern(KnownPatterns.ConversationTelepathOut,
             @"^--- Telepath sent to (?<player>\w+) ---$",
             options: System.Text.RegularExpressions.RegexOptions.IgnoreCase);
