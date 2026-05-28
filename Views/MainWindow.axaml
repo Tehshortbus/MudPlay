@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="720"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="580"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="700" Height="720">
+        Width="700" Height="580">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -302,9 +302,8 @@
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource ChromeFgMutedBrush}"/>
                     <TextBlock Classes="StatusSlot StatusMuted"
-                               Text="No room"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTip.Tip="RoomTracker wires in Phase 7."/>
+                               Text="Unknown location"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
                 <!-- Cycle countdowns. Labels (Tick / HP / MA) sit at fixed
