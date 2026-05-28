@@ -301,7 +301,10 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBlock Classes="StatusSlot StatusMuted" Text="No room — RoomTracker wires in Phase 7"/>
+                    <TextBlock Classes="StatusSlot StatusMuted"
+                               Text="No room"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="RoomTracker wires in Phase 7."/>
                 </StackPanel>
 
                 <!-- Cycle countdowns. Labels (Tick / HP / MA) sit at fixed
