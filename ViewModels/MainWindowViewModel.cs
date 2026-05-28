@@ -109,12 +109,26 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>Formatted "Tick mm:ss" countdown shown in the status bar's middle slot.</summary>
-    [ObservableProperty] private string _combatTickText = "Tick —";
-    /// <summary>Formatted "HP mm:ss" countdown shown in the status bar's middle slot.</summary>
-    [ObservableProperty] private string _hpTickText = "HP —";
-    /// <summary>Formatted "MA mm:ss" countdown shown in the status bar's middle slot.</summary>
-    [ObservableProperty] private string _maTickText = "MA —";
+    // ----- Status-bar tick countdowns + progress bars --------------------
+    // Each cycle has a text overlay (seconds remaining, 0.0 precision) and
+    // a percentage (0–100) feeding the underlying progress bar. Bars fill
+    // when the cycle anchors at a real observation and drain toward 0 as
+    // the next firing approaches.
+
+    [ObservableProperty] private string _combatTickText = "—";
+    [ObservableProperty] private double _combatTickPercent;
+
+    [ObservableProperty] private string _hpNaturalText = "—";
+    [ObservableProperty] private double _hpNaturalPercent;
+    [ObservableProperty] private string _hpRestText = "—";
+    [ObservableProperty] private double _hpRestPercent;
+    [ObservableProperty] private bool _isHpRestActive;
+
+    [ObservableProperty] private string _maNaturalText = "—";
+    [ObservableProperty] private double _maNaturalPercent;
+    [ObservableProperty] private string _maMediText = "—";
+    [ObservableProperty] private double _maMediPercent;
+    [ObservableProperty] private bool _isMaMediActive;
 
     /// <summary>
     /// 500 ms repaint cadence for the three status-bar tick countdowns —
@@ -175,35 +189,49 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Repaint the status-bar tick countdowns. Source-of-truth:
-    /// <see cref="AppServices.Tick.TimeToNextCombatTick"/> for combat;
-    /// <see cref="AppServices.Regen"/> for HP / MA. HP and MA show the
-    /// natural cycle by default and add a second number (the bonus cycle)
-    /// when the player is resting or meditating — they can be desynced
-    /// because their anchors are independent.
+    /// Repaint the status-bar tick countdowns + progress bars.
+    /// Source-of-truth: <see cref="Game.TickEngine.TimeToNextCombatTick"/>
+    /// for combat; <see cref="Game.RegenTracker"/> for HP / MA. The rest
+    /// + medi bars are only visible while their cycles are active —
+    /// they're independent of the natural cycles by design.
     /// </summary>
     private void RefreshStatusBarTicks()
     {
         Game.RegenTracker regen = AppServices.Current.Regen;
+        Game.TickEngine tick = AppServices.Current.Tick;
 
-        CombatTickText = FormatCountdown("Tick", AppServices.Current.Tick.TimeToNextCombatTick);
-        HpTickText     = FormatPair("HP", regen.GetTimeToNextHpNaturalTick(),
-                                          regen.GetTimeToNextHpRestTick());
-        MaTickText     = FormatPair("MA", regen.GetTimeToNextMpNaturalTick(),
-                                          regen.GetTimeToNextMpMediTick());
+        TimeSpan? combat = tick.TimeToNextCombatTick;
+        CombatTickText    = FormatSeconds(combat);
+        CombatTickPercent = Percent(combat, Game.TickEngine.CombatTickInterval);
+
+        TimeSpan? hpNat = regen.GetTimeToNextHpNaturalTick();
+        HpNaturalText    = FormatSeconds(hpNat);
+        HpNaturalPercent = Percent(hpNat, regen.HpNatural.Interval);
+
+        TimeSpan? hpRest = regen.GetTimeToNextHpRestTick();
+        IsHpRestActive = hpRest is not null;
+        HpRestText    = FormatSeconds(hpRest);
+        HpRestPercent = Percent(hpRest, regen.HpRest.Interval);
+
+        TimeSpan? maNat = regen.GetTimeToNextMpNaturalTick();
+        MaNaturalText    = FormatSeconds(maNat);
+        MaNaturalPercent = Percent(maNat, regen.MpNatural.Interval);
+
+        TimeSpan? maMedi = regen.GetTimeToNextMpMediTick();
+        IsMaMediActive = maMedi is not null;
+        MaMediText    = FormatSeconds(maMedi);
+        MaMediPercent = Percent(maMedi, regen.MpMedi.Interval);
     }
 
-    private static string FormatCountdown(string label, TimeSpan? remaining)
-        => remaining is null
-            ? $"{label} —"
-            : $"{label} {remaining.Value.TotalSeconds:0.0}";
+    private static string FormatSeconds(TimeSpan? remaining)
+        => remaining is null ? "—" : $"{remaining.Value.TotalSeconds:0.0}";
 
-    private static string FormatPair(string label, TimeSpan? natural, TimeSpan? bonus)
+    private static double Percent(TimeSpan? remaining, TimeSpan interval)
     {
-        string naturalText = natural is null ? "—" : $"{natural.Value.TotalSeconds:0.0}";
-        return bonus is null
-            ? $"{label} {naturalText}"
-            : $"{label} {naturalText} / {bonus.Value.TotalSeconds:0.0}";
+        if (remaining is not { } r) return 0;
+        if (interval <= TimeSpan.Zero) return 0;
+        double pct = r.TotalSeconds / interval.TotalSeconds * 100;
+        return Math.Clamp(pct, 0, 100);
     }
 
     /// <summary>
