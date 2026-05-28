@@ -64,10 +64,17 @@ public sealed class AppServices
 
     /// <summary>
     /// Classifies chat / realm-event lines into <see cref="Game.ChatLogEntry"/>
-    /// events. ChatHistoryStore (PR 2.4) and the Conversation window
-    /// (PR 2.5) subscribe to <c>EntryClassified</c>.
+    /// events. ChatHistoryStore and the Conversation window (PR 2.5)
+    /// subscribe to <c>EntryClassified</c>.
     /// </summary>
     public Game.ChatRouter Chat { get; }
+
+    /// <summary>
+    /// App-singleton chat history. Survives profile swap / connect /
+    /// disconnect; cleared only on app exit or explicit
+    /// <see cref="Game.ChatHistoryStore.Clear"/>.
+    /// </summary>
+    public Game.ChatHistoryStore ChatHistory { get; }
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -117,6 +124,7 @@ public sealed class AppServices
         // realm-event patterns. ChatHistoryStore + ConversationWindow
         // (Phase 2 PR 2.4 / 2.5) subscribe to its EntryClassified event.
         Chat = new Game.ChatRouter(Router);
+        ChatHistory = new Game.ChatHistoryStore(Chat);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

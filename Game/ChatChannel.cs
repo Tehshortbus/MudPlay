@@ -30,4 +30,13 @@ public enum ChatChannel
 
     /// <summary>Player entrance / exit / disconnect notices.</summary>
     RealmEvent,
+
+    /// <summary>
+    /// Synthetic separator inserted by <see cref="ChatHistoryStore"/> when
+    /// the wall-clock date rolls over mid-session. Not produced by
+    /// <see cref="ChatRouter"/>; the Conversation window renders these as a
+    /// horizontal rule. <see cref="ChatLogEntry.Message"/> carries the ISO
+    /// date string ("2026-05-08").
+    /// </summary>
+    DaySeparator,
 }
