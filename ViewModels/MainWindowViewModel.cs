@@ -154,9 +154,12 @@ public partial class MainWindowViewModel : ObservableObject
         Lines = new LineExtractor(Emulator);
         Capture = new CaptureSession(Emulator.Screen.Scrollback);
 
+        // 100 ms refresh — matches TickEngine's internal cadence so the
+        // countdown ticks down by 0.1 s each repaint instead of jumping
+        // in 0.5 s chunks.
         _statusTickRefresh = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(500),
+            Interval = TimeSpan.FromMilliseconds(100),
         };
         _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
         _statusTickRefresh.Start();
@@ -199,7 +202,7 @@ public partial class MainWindowViewModel : ObservableObject
     private static string FormatCountdown(string label, TimeSpan? remaining)
         => remaining is null
             ? $"{label} —"
-            : $"{label} {(int)remaining.Value.TotalSeconds:00}s";
+            : $"{label} {remaining.Value.TotalSeconds:0.0}";
 
     /// <summary>
     /// Single Connect ↔ Disconnect action. Click while idle starts a
