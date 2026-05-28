@@ -46,7 +46,7 @@ public sealed class ConversationRowViewModel
     {
         ChatChannel.Gossip            => "GOSS",
         ChatChannel.Local             => "SAY",
-        ChatChannel.TelepathIncoming  => "TELE",
+        ChatChannel.TelepathIncoming  => "←TEL",
         ChatChannel.TelepathOutgoing  => "→TEL",
         ChatChannel.Gangpath          => "GANG",
         ChatChannel.Broadcast         => "BCAST",
