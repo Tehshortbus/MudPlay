@@ -352,6 +352,115 @@ public partial class MainWindowViewModel : ObservableObject
                 "Status panel into STATS → Status; View → Player Status (F4) opens " +
                 "Workshop on that section.");
 
+    // ----- Edit-dialog placeholders --------------------------------------
+    // Each later-phase window opens its own row-editor when the user clicks
+    // into a list. Until those windows ship real rows, the editor placeholders
+    // are reachable only via Tools → Preview placeholder dialogs ▶.
+
+    [RelayCommand]
+    private void PreviewSpellEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-spell-edit",
+            panelName: "Spell — Edit",
+            phaseTag: "Phase 5",
+            headline: "Spell + linked Spell-Messages editor",
+            description:
+                "Inline two-pane layout (key UX improvement over MegaMUD): spell " +
+                "fields on the left, list of linked match-message patterns on the " +
+                "right with Add / Edit / Remove. Tier picker on every editable " +
+                "field — installed defaults / for all characters / only for this " +
+                "BBS / only for this character.");
+
+    [RelayCommand]
+    private void PreviewTriggerEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-trigger-edit",
+            panelName: "Trigger — Edit",
+            phaseTag: "Phase 5",
+            headline: "User-defined pattern → action",
+            description:
+                "Match-type picker (Literal / Wildcard / Regex), pattern field, " +
+                "scope (any line / chat-only / system-only), named capture groups → " +
+                "session variables, multi-action list (Send command / Show " +
+                "notification / Play sound / Set variable).");
+
+    [RelayCommand]
+    private void PreviewAliasEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-alias-edit",
+            panelName: "Alias — Edit",
+            phaseTag: "Phase 5",
+            headline: "Command-substitution alias",
+            description:
+                "Short-form to full command-string expansion. Per UI-design-spec " +
+                "§9b. Lives alongside Triggers in the Game Data browser; tier-aware " +
+                "via the standard 4-tier hierarchy.");
+
+    [RelayCommand]
+    private void PreviewConditionEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-condition-edit",
+            panelName: "Condition — Edit",
+            phaseTag: "Phase 5",
+            headline: "Non-spell condition pattern + effect flags",
+            description:
+                "Blinded / poisoned / paralyzed / confused / diseased / regenerating " +
+                "/ etc. Pattern + bitfield of which behaviours the condition flips on " +
+                "(ignore / recheck / wait / rest-hp / rest-mana / don't-rest-run / " +
+                "hangup). Consumed by Phase 13 automation engines.");
+
+    [RelayCommand]
+    private void PreviewMacroEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-macro-edit",
+            panelName: "Macro — Edit",
+            phaseTag: "Phase 10",
+            headline: "Keybind → command string",
+            description:
+                "Capture-key button, command field with $variable substitution " +
+                "(shares the Trigger user-variable system), conflict warning row " +
+                "when the gesture collides with a built-in. Excluded keys (Enter, " +
+                "Esc, Tab, Backspace, Alt+F4) are blocked.");
+
+    [RelayCommand]
+    private void PreviewEventEditDialog()
+        => OpenPlaceholder(
+            id: "dialog-event-edit",
+            panelName: "Event — Edit",
+            phaseTag: "Phase 11",
+            headline: "Scheduled / lifecycle event",
+            description:
+                "Trigger types: AtTime (HH:MM) / Every (s/m/h) / Logon / Logoff / " +
+                "Re-log. Action types: Send command / Run macro / Play sound / " +
+                "Show notification / Walk to / Change-or-start loop. AFK-only flag, " +
+                "enabled flag, name.");
+
+    [RelayCommand]
+    private void PreviewAmbiguousLocationDialog()
+        => OpenPlaceholder(
+            id: "dialog-ambiguous-location",
+            panelName: "Ambiguous Location",
+            phaseTag: "Phase 7",
+            headline: "Reconciliation prompt for the room tracker",
+            description:
+                "Surfaces when footprint matching finds more than one candidate " +
+                "room of equal score. Lists the candidates; user clicks the right " +
+                "one. Modeless — the walker pauses but the terminal keeps taking " +
+                "input while the user decides.");
+
+    [RelayCommand]
+    private void PreviewImportConflictDialog()
+        => OpenPlaceholder(
+            id: "dialog-import-conflict",
+            panelName: "Import Conflict",
+            phaseTag: "Phase 5",
+            headline: "Single reusable importer-conflict resolver",
+            description:
+                "Row-level diff for any importer (MDB tables, Spell Messages, " +
+                "MegaMUD .mp paths, favorites). Per-row actions: skip / overwrite " +
+                "/ merge / rename. Replaces MudProxy's four variant dialogs with " +
+                "one component.");
+
     /// <summary>
     /// Tools → Wire Inspector. Singleton-ish: a second open activates the
     /// existing window rather than spawning a duplicate.
