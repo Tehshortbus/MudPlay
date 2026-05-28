@@ -75,17 +75,6 @@
         <Setter Property="TextElement.Foreground" Value="{StaticResource AccentRedBrush}"/>
     </Style>
 
-    <!-- ============ Char picker + BBS badge ============ -->
-    <Style Selector="Button.CharPicker">
-        <Setter Property="Height" Value="{StaticResource CharPickerHeight}"/>
-        <Setter Property="Padding" Value="8,0"/>
-        <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="{StaticResource CornerMd}"/>
-        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
-        <Setter Property="FontSize" Value="12"/>
-    </Style>
 
     <!-- ============ Status bar ============ -->
     <Style Selector="Border.StatusBar">

@@ -25,7 +25,6 @@
     <sys:Double x:Key="ToolbarButtonSize">32</sys:Double>
     <sys:Double x:Key="ButtonHeight">32</sys:Double>
     <sys:Double x:Key="RowHeight">28</sys:Double>
-    <sys:Double x:Key="CharPickerHeight">28</sys:Double>
     <sys:Double x:Key="BbsBadgeHeight">24</sys:Double>
 
     <!-- ============ Layout gaps ============ -->
