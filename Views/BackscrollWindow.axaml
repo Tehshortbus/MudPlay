@@ -1,0 +1,77 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:ctl="using:FujinTerm.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="580"
+        x:Class="FujinTerm.Views.BackscrollWindow"
+        x:DataType="vm:BackscrollViewModel"
+        Title="Backscroll"
+        Width="920" Height="580"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Control strip ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+                <Button Grid.Column="0"
+                        Content="Go to live"
+                        Command="{Binding GoToLiveCommand}"/>
+                <TextBox Grid.Column="2" MinWidth="240"
+                         PlaceholderText="Search…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                <Button Grid.Column="3" Margin="6,0,0,0"
+                        Content="Find next"
+                        Command="{Binding FindNextCommand}"/>
+                <Button Grid.Column="4" Margin="6,0,0,0"
+                        Content="Export…"
+                        Command="{Binding ExportCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Status footer ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,3">
+            <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- ============ Scrollback rows ============ -->
+        <ListBox x:Name="RowsList"
+                 ItemsSource="{Binding Rows}"
+                 Background="Black"
+                 BorderThickness="0"
+                 Padding="4"
+                 SelectionMode="Multiple">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:BackscrollRowViewModel">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding TimestampText}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <ctl:CellRowDisplay Grid.Column="1"
+                                            Row="{Binding Cells}"
+                                            FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                            FontSize="14"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>

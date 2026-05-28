@@ -260,18 +260,28 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    private BackscrollWindow? _backscroll;
+
     [RelayCommand]
     private void OpenBackscroll()
-        => OpenPlaceholder(
-            id: "backscroll",
-            panelName: "Backscroll",
-            phaseTag: "Phase 1 · PR 1.4",
-            headline: "Terminal backscroll",
-            description:
-                "10 000-line ring of the terminal's prior lines, each row stored as " +
-                "(timestamp, Cell[]). ANSI colors preserved via the TerminalControl " +
-                "render path; per-line timestamp prefix always shown. Search, " +
-                "go-to-live, export-to-file.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_backscroll is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        BackscrollWindow window = new()
+        {
+            DataContext = new BackscrollViewModel(Emulator.Screen.Scrollback),
+        };
+        window.Closed += (_, _) => _backscroll = null;
+        _backscroll = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenConversation()
