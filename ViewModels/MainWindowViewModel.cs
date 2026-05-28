@@ -170,8 +170,18 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
-        // font live.
+        // font live. Also resize the live scrollback when ScrollbackLines
+        // moves.
         AppServices.Current.Display.PropertyChanged += OnDisplayChanged;
+
+        // Apply the loaded profile's persisted scrollback size now — the
+        // buffer was constructed with the default; AppServices already
+        // populated DisplayConfig from the profile by the time we got here.
+        int initialScrollback = AppServices.Current.Display.ScrollbackLines;
+        if (initialScrollback > 0 && initialScrollback != Emulator.Screen.Scrollback.Capacity)
+        {
+            Emulator.Screen.Scrollback.SetCapacity(initialScrollback);
+        }
 
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
@@ -190,7 +200,14 @@ public partial class MainWindowViewModel : ObservableObject
     private void OnDisplayChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Services.DisplayConfig.FontSize))
+        {
             OnPropertyChanged(nameof(TerminalFontSize));
+        }
+        else if (e.PropertyName == nameof(Services.DisplayConfig.ScrollbackLines))
+        {
+            int newCapacity = AppServices.Current.Display.ScrollbackLines;
+            if (newCapacity > 0) Emulator.Screen.Scrollback.SetCapacity(newCapacity);
+        }
     }
 
     /// <summary>
