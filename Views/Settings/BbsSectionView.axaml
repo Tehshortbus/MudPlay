@@ -1,0 +1,173 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="420"
+             x:Class="FujinTerm.Views.Settings.BbsSectionView"
+             x:DataType="vm:BbsSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.GroupHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="220,1,*">
+
+        <!-- ============ Left rail: BBS list ============ -->
+        <DockPanel Grid.Column="0" Margin="12,12,8,12" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Top" Spacing="6">
+                <TextBlock Text="Saved BBSes"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" FontWeight="SemiBold"/>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                    <Button Grid.Column="0" Content="Add" Command="{Binding AddBbsCommand}"/>
+                    <Button Grid.Column="1" Content="Delete"
+                            Command="{Binding DeleteBbsCommand}"
+                            IsEnabled="{Binding HasSelection}"/>
+                </Grid>
+            </StackPanel>
+
+            <ListBox ItemsSource="{Binding AvailableBbsNames}"
+                     SelectedItem="{Binding SelectedBbsName, Mode=TwoWay}"
+                     Margin="0,8,0,0"
+                     Background="{StaticResource ChromeBgSunkenBrush}"
+                     BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                     BorderThickness="1"/>
+        </DockPanel>
+
+        <Border Grid.Column="1" Background="{StaticResource ChromeBorderSoftBrush}"/>
+
+        <!-- ============ Right pane: field editor ============ -->
+        <ScrollViewer Grid.Column="2"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <!-- "Select or add a BBS" banner. -->
+                <Border IsVisible="{Binding !HasSelection}" Padding="22"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                    <StackPanel Spacing="10" MaxWidth="420" HorizontalAlignment="Left">
+                        <TextBlock Text="BBS"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="{StaticResource FontSizeLg}"
+                                   FontWeight="SemiBold"/>
+                        <TextBlock Text="Add a BBS entry on the left to start filling in connection details."
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontSize="{StaticResource FontSizeMd}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel IsVisible="{Binding HasSelection}"
+                            Margin="22" Spacing="4"
+                            MaxWidth="620" HorizontalAlignment="Left">
+
+                    <TextBlock Classes="GroupHeader" Text="Connection"/>
+
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Host:"/>
+                        <TextBox   Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding Host, Mode=TwoWay}"
+                                   PlaceholderText="bbs.example.com" Width="280"
+                                   HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Port:"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                       Value="{Binding Port, Mode=TwoWay}"
+                                       Minimum="1" Maximum="65535" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Website:"/>
+                        <TextBox   Grid.Row="2" Grid.Column="1"
+                                   Text="{Binding WebsiteUrl, Mode=TwoWay}"
+                                   PlaceholderText="https://… (optional)" Width="280"
+                                   HorizontalAlignment="Left"/>
+                    </Grid>
+
+                    <TextBlock Classes="GroupHeader" Text="Retry behaviour"/>
+
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max redials:"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                       Value="{Binding MaxRedials, Mode=TwoWay}"
+                                       Minimum="1" Maximum="20" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Redial pause (s):"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                       Value="{Binding RedialPauseSeconds, Mode=TwoWay}"
+                                       Minimum="1" Maximum="300" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Cleanup period (m):"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                       Value="{Binding CleanupPeriodMinutes, Mode=TwoWay}"
+                                       Minimum="0" Maximum="600" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"
+                                       ToolTip.Tip="Minutes the BBS allows the session to idle before kicking. 0 disables the timer."/>
+                    </Grid>
+
+                    <TextBlock Classes="GroupHeader" Text="Reconnect when"/>
+
+                    <StackPanel Spacing="2" Margin="0,0,0,4">
+                        <CheckBox IsChecked="{Binding ReconnectOnFailedConnect, Mode=TwoWay}" Content="Connect attempt fails"/>
+                        <CheckBox IsChecked="{Binding ReconnectOnCarrierLost,   Mode=TwoWay}" Content="Carrier is lost mid-session"/>
+                        <CheckBox IsChecked="{Binding ReconnectOnNoResponse,    Mode=TwoWay}" Content="Server stops responding"/>
+                        <CheckBox IsChecked="{Binding ReconnectAfterCleanup,    Mode=TwoWay}" Content="BBS kicks the session for cleanup"/>
+                    </StackPanel>
+
+                    <TextBlock Classes="GroupHeader" Text="Permissions"/>
+
+                    <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
+                              Content="I have sysop / goto powers on this BBS"
+                              ToolTip.Tip="Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
+
+                    <TextBlock Classes="GroupHeader" Text="Terminal size (NAWS)"/>
+
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Columns:"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                       Value="{Binding TerminalCols, Mode=TwoWay}"
+                                       Minimum="40" Maximum="200" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Rows:"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                       Value="{Binding TerminalRows, Mode=TwoWay}"
+                                       Minimum="20" Maximum="100" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"/>
+                    </Grid>
+
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="{StaticResource FontSizeSm}"
+                               TextWrapping="Wrap"
+                               Text="MajorMUD renders against a fixed 80×25 grid and won't reflow if you push higher. Non-game BBS doors usually do reflow — feel free to crank if a particular BBS supports it."/>
+
+                    <TextBlock Classes="GroupHeader" Text="Credentials"/>
+                    <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="{StaticResource FontSizeSm}"
+                               TextWrapping="Wrap"
+                               Text="Per-character username / password and the menu-navigation sequence are wired by Phase 4 PRs 4.5b (CredentialStore) + 4.5c (LoginAutomator)."/>
+
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+    </Grid>
+</UserControl>

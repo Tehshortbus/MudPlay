@@ -29,6 +29,55 @@ public sealed class BbsProfile
     /// </summary>
     public string? WebsiteUrl { get; set; }
 
+    // ----- Connection / retry behaviour (Phase 4 PR 4.5) -----
+
+    /// <summary>How many connect attempts (initial + retries) before giving up.</summary>
+    public int MaxRedials { get; set; } = 3;
+
+    /// <summary>Seconds to wait between connect attempts.</summary>
+    public int RedialPauseSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Minutes the BBS allows a session to idle before kicking. Drives the
+    /// optional <see cref="ReconnectAfterCleanup"/> auto-reconnect; <c>0</c>
+    /// disables the timer.
+    /// </summary>
+    public int CleanupPeriodMinutes { get; set; }
+
+    /// <summary>Reconnect automatically when the previous connect attempt failed.</summary>
+    public bool ReconnectOnFailedConnect { get; set; }
+
+    /// <summary>Reconnect automatically after the carrier signal drops mid-session.</summary>
+    public bool ReconnectOnCarrierLost { get; set; }
+
+    /// <summary>Reconnect automatically when the server stops responding to keep-alives.</summary>
+    public bool ReconnectOnNoResponse { get; set; }
+
+    /// <summary>
+    /// Reconnect automatically after the BBS kicks the session for cleanup
+    /// (see <see cref="CleanupPeriodMinutes"/>).
+    /// </summary>
+    public bool ReconnectAfterCleanup { get; set; }
+
+    /// <summary>
+    /// User has sysop / goto powers on this BBS — flips a few UI affordances
+    /// (e.g., the Phase 13 RemoteCommandManager assumes commands like
+    /// <c>@goto &lt;player&gt;</c> are allowed without further gating).
+    /// </summary>
+    public bool HasSysopPowers { get; set; }
+
+    // ----- Terminal dimensions (NAWS, RFC 1073) -----
+
+    /// <summary>
+    /// Terminal columns to advertise via Telnet NAWS at connect-time. Defaults
+    /// to 80 — MajorMUD's hard-coded rendering grid; non-game BBS doors that
+    /// reflow can push higher.
+    /// </summary>
+    public int TerminalCols { get; set; } = 80;
+
+    /// <summary>Terminal rows to advertise via Telnet NAWS. Defaults to 25.</summary>
+    public int TerminalRows { get; set; } = 25;
+
     /// <summary>
     /// Per-tab settings deltas at the BBS tier — same shape as
     /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned

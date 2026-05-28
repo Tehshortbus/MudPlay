@@ -182,11 +182,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new DisplaySectionViewModel(_profile, AppServices.Current.Display));
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
 
-        Add("bbs",       "BBS",       "Phase 4 PR 4.5",
-            "Pick which BBS entry to connect to; username + password; max redials, " +
-            "redial pause, cleanup period length; reconnect-on (failed connect / " +
-            "carrier lost / no response / after cleanup); sysop-powers marker; " +
-            "menu-nav sequence to reach the in-game prompt.");
+        Sections.Add(new BbsSectionViewModel(AppServices.Current.Bbs));
 
         Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
         Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");
