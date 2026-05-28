@@ -11,18 +11,24 @@ namespace FujinTerm.Services;
 public sealed class ProfileService
 {
     /// <summary>
-    /// The currently loaded character profile, or <c>null</c> when no profile
-    /// is active (first launch, or user explicitly closed it).
+    /// The currently loaded character profile. Set on startup so settings
+    /// edits always have a target — either the auto-loaded last-used
+    /// profile, or a fresh in-memory blank one (see <see cref="LoadBlank"/>).
+    /// Goes <c>null</c> only after an explicit <see cref="Close"/>.
     /// </summary>
     public CharacterProfile? Current { get; private set; }
 
     /// <summary>
     /// Profile-name identifier (filename without extension) of the loaded
-    /// profile, or <c>null</c> when none is loaded. Distinct from
-    /// <c>Current.Name</c> because the in-game name may differ from the
-    /// profile filename when two characters share a name across BBSes.
+    /// profile, or <c>null</c> when the loaded profile is a blank in-memory
+    /// draft that hasn't been saved yet. Distinct from <c>Current.Name</c>
+    /// because the in-game name may differ from the profile filename when
+    /// two characters share a name across BBSes.
     /// </summary>
     public string? CurrentProfileName { get; private set; }
+
+    /// <summary>True when <see cref="Current"/> is an unsaved blank draft (no name on disk yet).</summary>
+    public bool IsBlankDraft => Current is not null && CurrentProfileName is null;
 
     /// <summary>
     /// Fired after a profile becomes <see cref="Current"/>. Per-character
@@ -78,8 +84,38 @@ public sealed class ProfileService
     }
 
     /// <summary>
+    /// Replace <see cref="Current"/> with a fresh in-memory draft profile and
+    /// fire <see cref="ProfileLoaded"/>. Used on app start when no last-used
+    /// profile exists — every settings tab still has a target to read / write,
+    /// and the user can keep editing freely until they explicitly save the
+    /// draft under a name (File → Save profile, Phase 4 PR 4.5).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CurrentProfileName"/> stays <c>null</c> for a draft, so
+    /// <see cref="Save"/> is a no-op until the user names it. In-memory edits
+    /// are lost if the user closes the app without naming + saving.
+    /// </remarks>
+    public CharacterProfile LoadBlank()
+    {
+        if (Current is not null)
+        {
+            Current = null;
+            CurrentProfileName = null;
+            ProfileClosed?.Invoke();
+        }
+
+        CharacterProfile draft = new();
+        Current = draft;
+        CurrentProfileName = null;
+        ProfileLoaded?.Invoke(draft);
+        return draft;
+    }
+
+    /// <summary>
     /// Persist the currently loaded profile back to disk. No-op when no
-    /// profile is loaded.
+    /// profile is loaded or the loaded profile is a blank draft
+    /// (<see cref="IsBlankDraft"/>) — drafts must be named via the
+    /// File → Save profile flow before they can be saved.
     /// </summary>
     public void Save()
     {
