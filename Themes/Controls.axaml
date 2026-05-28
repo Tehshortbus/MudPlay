@@ -104,6 +104,22 @@
         <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
     </Style>
 
+    <!-- Status-bar countdown bars repaint every 100 ms; Avalonia's default
+         ProgressBar value-change transition smears each repaint over ~150 ms
+         which makes the bar visually trail the seconds-remaining label.
+         StatusBar class snaps the indicator instantly so the bar drains in
+         lockstep with the number it overlays. -->
+    <Style Selector="ProgressBar.StatusBar /template/ Border">
+        <Setter Property="Transitions">
+            <Transitions/>
+        </Setter>
+    </Style>
+    <Style Selector="ProgressBar.StatusBar">
+        <Setter Property="Transitions">
+            <Transitions/>
+        </Setter>
+    </Style>
+
     <!-- ============ Secondary connection strip (transitional) ============ -->
     <!-- Hosts the Host / Port editor inputs until Phase 4 PR 4.5 absorbs them
          into the BBS profile dialog. Visually distinct from the toolbar so

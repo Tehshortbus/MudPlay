@@ -304,29 +304,30 @@
                     <TextBlock Classes="StatusSlot StatusMuted" Text="No room — RoomTracker wires in Phase 7"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                <!-- Cycle countdowns. Labels (Tick / HP / MA) sit at fixed
+                     positions; bars fill the space between consecutive labels.
+                     HP and MA bar slots are deliberately the same width so the
+                     two natural / bonus pairs read as a matched set. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 
-                    <!-- Combat tick — green bar, single cycle. -->
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Classes="StatusSlot" Text="Tick"/>
-                        <Grid Width="60" Height="14">
-                            <ProgressBar Minimum="0" Maximum="100"
-                                         Value="{Binding CombatTickPercent}"
-                                         Foreground="{StaticResource AccentGreenBrush}"
-                                         Background="{StaticResource ChromeBgSunkenBrush}"/>
-                            <TextBlock x:Name="CombatTickLabel"
-                                       Classes="StatusSlot StatusMono"
-                                       Text="{Binding CombatTickText}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
-                        </Grid>
-                    </StackPanel>
+                    <TextBlock Classes="StatusSlot" Text="Tick"/>
+                    <Grid Width="80" Height="14">
+                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
+                                     Value="{Binding CombatTickPercent}"
+                                     Foreground="{StaticResource AccentGreenBrush}"
+                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
+                        <TextBlock x:Name="CombatTickLabel"
+                                   Classes="StatusSlot StatusMono"
+                                   Text="{Binding CombatTickText}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
 
-                    <!-- HP natural + rest (rest only visible while resting). Red. -->
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Classes="StatusSlot" Text="HP"/>
-                        <Grid Width="60" Height="14">
-                            <ProgressBar Minimum="0" Maximum="100"
+                    <TextBlock Classes="StatusSlot" Text="HP" Margin="14,0,0,0"/>
+                    <Grid Width="160" Height="14">
+                        <!-- Single bar fills the whole HP slot when only the natural cycle is active. -->
+                        <Grid IsVisible="{Binding !IsHpRestActive}">
+                            <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                          Value="{Binding HpNaturalPercent}"
                                          Foreground="{StaticResource AccentRedBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
@@ -335,23 +336,36 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Width="60" Height="14" IsVisible="{Binding IsHpRestActive}">
-                            <ProgressBar Minimum="0" Maximum="100"
-                                         Value="{Binding HpRestPercent}"
-                                         Foreground="{StaticResource AccentRedBrush}"
-                                         Background="{StaticResource ChromeBgSunkenBrush}"/>
-                            <TextBlock Classes="StatusSlot StatusMono"
-                                       Text="{Binding HpRestText}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
+                        <!-- Two equal-width bars + a "/" separator while resting. -->
+                        <Grid IsVisible="{Binding IsHpRestActive}" ColumnDefinitions="*,Auto,*">
+                            <Grid Grid.Column="0">
+                                <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
+                                             Value="{Binding HpNaturalPercent}"
+                                             Foreground="{StaticResource AccentRedBrush}"
+                                             Background="{StaticResource ChromeBgSunkenBrush}"/>
+                                <TextBlock Classes="StatusSlot StatusMono"
+                                           Text="{Binding HpNaturalText}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBlock Grid.Column="1" Classes="StatusSlot" Text="/" Margin="3,0"/>
+                            <Grid Grid.Column="2">
+                                <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
+                                             Value="{Binding HpRestPercent}"
+                                             Foreground="{StaticResource AccentRedBrush}"
+                                             Background="{StaticResource ChromeBgSunkenBrush}"/>
+                                <TextBlock Classes="StatusSlot StatusMono"
+                                           Text="{Binding HpRestText}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
                         </Grid>
-                    </StackPanel>
+                    </Grid>
 
-                    <!-- MA natural + medi (medi only visible while meditating). Cyan (mana-blue). -->
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Classes="StatusSlot" Text="MA"/>
-                        <Grid Width="60" Height="14">
-                            <ProgressBar Minimum="0" Maximum="100"
+                    <TextBlock Classes="StatusSlot" Text="MA" Margin="14,0,0,0"/>
+                    <Grid Width="160" Height="14">
+                        <Grid IsVisible="{Binding !IsMaMediActive}">
+                            <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                          Value="{Binding MaNaturalPercent}"
                                          Foreground="{StaticResource AccentCyanBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
@@ -360,17 +374,30 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Width="60" Height="14" IsVisible="{Binding IsMaMediActive}">
-                            <ProgressBar Minimum="0" Maximum="100"
-                                         Value="{Binding MaMediPercent}"
-                                         Foreground="{StaticResource AccentCyanBrush}"
-                                         Background="{StaticResource ChromeBgSunkenBrush}"/>
-                            <TextBlock Classes="StatusSlot StatusMono"
-                                       Text="{Binding MaMediText}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
+                        <Grid IsVisible="{Binding IsMaMediActive}" ColumnDefinitions="*,Auto,*">
+                            <Grid Grid.Column="0">
+                                <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
+                                             Value="{Binding MaNaturalPercent}"
+                                             Foreground="{StaticResource AccentCyanBrush}"
+                                             Background="{StaticResource ChromeBgSunkenBrush}"/>
+                                <TextBlock Classes="StatusSlot StatusMono"
+                                           Text="{Binding MaNaturalText}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBlock Grid.Column="1" Classes="StatusSlot" Text="/" Margin="3,0"/>
+                            <Grid Grid.Column="2">
+                                <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
+                                             Value="{Binding MaMediPercent}"
+                                             Foreground="{StaticResource AccentCyanBrush}"
+                                             Background="{StaticResource ChromeBgSunkenBrush}"/>
+                                <TextBlock Classes="StatusSlot StatusMono"
+                                           Text="{Binding MaMediText}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
                         </Grid>
-                    </StackPanel>
+                    </Grid>
 
                 </StackPanel>
 

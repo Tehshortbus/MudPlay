@@ -57,42 +57,62 @@
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeMd}"
                                VerticalAlignment="Top" Margin="0,2,0,0"/>
-                    <StackPanel Grid.Column="1" Spacing="4">
-                        <RadioButton GroupName="DefaultTask"
+
+                    <!-- Shared-column inner Grid so the two pickers line up at the
+                         same X regardless of radio-label width. Column 0 sizes to
+                         the widest radio + label across all three rows. -->
+                    <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto"
+                                          ColumnDefinitions="Auto,*">
+                        <RadioButton Grid.Row="0" Grid.Column="0"
+                                     GroupName="DefaultTask"
                                      IsChecked="{Binding IsTaskDoNothing, Mode=TwoWay}"
-                                     Content="Do nothing"/>
+                                     Content="Do nothing"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Startup task action lands with Phase 7."
+                                     Margin="0,0,8,4"/>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <RadioButton GroupName="DefaultTask"
-                                         IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
-                                         Content="Begin looping"
-                                         VerticalAlignment="Center"/>
-                            <ComboBox MinWidth="200"
-                                      ItemsSource="{Binding LoopNames}"
-                                      SelectedItem="{Binding DefaultLoopName, Mode=TwoWay}"
-                                      PlaceholderText="Pick a saved loop — wired in Phase 7"
-                                      IsEnabled="False"
-                                      ToolTip.Tip="Lists saved loop files from this character profile (Phase 7)."/>
-                        </StackPanel>
+                        <RadioButton Grid.Row="1" Grid.Column="0"
+                                     GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
+                                     Content="Begin looping"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Loop start lands with Phase 7."
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,8,4"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  ItemsSource="{Binding LoopNames}"
+                                  SelectedItem="{Binding DefaultLoopName, Mode=TwoWay}"
+                                  PlaceholderText="Pick a saved loop"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Lists saved loop files from this character profile (Phase 7)."
+                                  Margin="0,0,0,4"/>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <RadioButton GroupName="DefaultTask"
-                                         IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
-                                         Content="Begin Auto-Lair"
-                                         VerticalAlignment="Center"/>
-                            <ComboBox MinWidth="200"
-                                      ItemsSource="{Binding AutoLairNames}"
-                                      SelectedItem="{Binding DefaultAutoLairName, Mode=TwoWay}"
-                                      PlaceholderText="Pick a saved Auto-Lair — wired in Phase 7"
-                                      IsEnabled="False"
-                                      ToolTip.Tip="Lists saved Auto-Lair files from this character profile (Phase 7)."/>
-                        </StackPanel>
-                    </StackPanel>
+                        <RadioButton Grid.Row="2" Grid.Column="0"
+                                     GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
+                                     Content="Begin Auto-Lair"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Auto-Lair scheduler lands with Phase 7."
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,8,0"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  ItemsSource="{Binding AutoLairNames}"
+                                  SelectedItem="{Binding DefaultAutoLairName, Mode=TwoWay}"
+                                  PlaceholderText="Pick a saved Auto-Lair"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Lists saved Auto-Lair files from this character profile (Phase 7)."/>
+                    </Grid>
                 </Grid>
 
                 <CheckBox Margin="0,8,0,0"
                           IsChecked="{Binding AutoConnect, Mode=TwoWay}"
-                          Content="Auto-connect when profile loads"/>
+                          Content="Auto-connect when profile loads"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4 PR 4.5 (BBS connection settings)."/>
 
                 <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
                           Content="Backup profile when making changes"
