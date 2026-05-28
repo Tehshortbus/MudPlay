@@ -368,13 +368,52 @@ public partial class MainWindowViewModel : ObservableObject
     /// Convenience: encode a text line (Latin-1 + CRLF) and send it to the
     /// server. Used by the Conversation window's input field — typing in
     /// the chat panel feeds the game the same way as typing in the
-    /// terminal does.
+    /// terminal does. Also scans the typed verb for heal-shaped commands
+    /// so the regen tracker can gate any HP / MA upticks during the
+    /// artifact grace window.
     /// </summary>
     public void SendUserText(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
+
+        if (LooksLikeHealShapedCommand(text))
+        {
+            AppServices.Current.Regen.RecordArtifact();
+        }
+
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes(text + "\r\n");
         SendUserInput(bytes);
+    }
+
+    /// <summary>
+    /// Heuristic: does <paramref name="line"/> start with a verb that
+    /// usually moves HP or MA upward? Conservative — false positives just
+    /// waste a few seconds of regen samples; false negatives let a heal
+    /// pollute the running average, so be generous on the verb list.
+    /// Refined by Phase 5 spell-event patterns (issue #8).
+    /// </summary>
+    private static bool LooksLikeHealShapedCommand(string line)
+    {
+        ReadOnlySpan<char> verb = FirstWord(line);
+        if (verb.IsEmpty) return false;
+        return verb.Equals("cast",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("drink", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("quaff", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("eat",   StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("apply", StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("use",   StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("read",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("brew",  StringComparison.OrdinalIgnoreCase)
+            || verb.Equals("bandage", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ReadOnlySpan<char> FirstWord(string line)
+    {
+        int start = 0;
+        while (start < line.Length && char.IsWhiteSpace(line[start])) start++;
+        int end = start;
+        while (end < line.Length && !char.IsWhiteSpace(line[end])) end++;
+        return line.AsSpan(start, end - start);
     }
 
     /// <summary>

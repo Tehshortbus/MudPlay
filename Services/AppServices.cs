@@ -99,6 +99,13 @@ public sealed class AppServices
     public Game.TickEngine Tick { get; }
 
     /// <summary>
+    /// Observation-based regen tracker. Folds upward HP / MA deltas into
+    /// per-position running averages; subscribed to by the status bar and
+    /// Phase 13 HealthManager for tick-aware automation.
+    /// </summary>
+    public Game.RegenTracker Regen { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -150,6 +157,7 @@ public sealed class AppServices
         PlayerState = new Game.PlayerState();
         Player = new Game.PromptParser(Router, PlayerState);
         Tick = new Game.TickEngine(Router);
+        Regen = new Game.RegenTracker(PlayerState);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
