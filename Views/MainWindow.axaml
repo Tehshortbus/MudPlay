@@ -22,7 +22,6 @@
         <KeyBinding Gesture="F3"     Command="{Binding OpenPartyCommand}"/>
         <KeyBinding Gesture="F4"     Command="{Binding OpenWorkshopCommand}"/>
         <KeyBinding Gesture="F5"     Command="{Binding OpenNavigationCommand}"/>
-        <KeyBinding Gesture="F6"     Command="{Binding OpenWorkshopCommand}"/>
         <KeyBinding Gesture="F7"     Command="{Binding OpenSpellBookCommand}"/>
         <KeyBinding Gesture="F9"     Command="{Binding OpenLogPaneCommand}"/>
         <KeyBinding Gesture="F10"    Command="{Binding OpenBackscrollCommand}"/>
@@ -54,44 +53,34 @@
             <MenuItem Header="_View">
                 <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
-                <MenuItem Header="Player Status" InputGesture="F4"  Command="{Binding OpenWorkshopCommand}"/>
-                <MenuItem Header="Map"           InputGesture="F5"  Command="{Binding OpenNavigationCommand}"/>
-                <MenuItem Header="Workshop"      InputGesture="F6"  Command="{Binding OpenWorkshopCommand}"/>
+                <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
+                <MenuItem Header="Map"             InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
                 <MenuItem Header="Spell Book"    InputGesture="F7"  Command="{Binding OpenSpellBookCommand}"/>
-                <MenuItem Header="Log"           InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
                 <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
+                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
-            </MenuItem>
-
-            <MenuItem Header="_Settings">
-                <MenuItem Header="Open Settings…"        InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
-                <MenuItem Header="Open Events…"          Command="{Binding OpenSettingsCommand}"
-                          ToolTip.Tip="Opens Settings on the Events tab when wired in Phase 11"/>
-                <MenuItem Header="Open Statline Editor…" Command="{Binding OpenSettingsCommand}"
-                          ToolTip.Tip="Opens Settings on the Statline tab when wired in Phase 12"/>
             </MenuItem>
 
             <MenuItem Header="_Game Data">
                 <MenuItem Header="Active set"             IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
                 <Separator/>
                 <MenuItem Header="Open Browser…"          InputGesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
-                <MenuItem Header="Open Macros…"           Command="{Binding OpenGameDataBrowserCommand}"
-                          ToolTip.Tip="Opens Browser on the Macros tab when wired in Phase 5 / 10"/>
                 <Separator/>
                 <MenuItem Header="Import .mdb…"           IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
                 <MenuItem Header="Import Spell Messages…" IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Import loops (MegaMUD .mp)…" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (MpFileImporter)"/>
             </MenuItem>
 
             <MenuItem Header="_Tools">
-                <MenuItem Header="{Binding CaptureMenuLabel}" Command="{Binding ToggleDumpCommand}"/>
-                <MenuItem Header="Replay capture file…"       Command="{Binding ReplayCaptureFileCommand}"/>
+                <MenuItem Header="{Binding CaptureMenuLabel}"  Command="{Binding ToggleDumpCommand}"/>
                 <Separator/>
-                <MenuItem Header="Wire Inspector…"            Command="{Binding OpenWireInspectorCommand}"/>
+                <MenuItem Header="Program Log…" InputGesture="F9" Command="{Binding OpenLogPaneCommand}"/>
+                <MenuItem Header="Wire Inspector…"             Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
-                <MenuItem Header="Export chatlog…"            IsEnabled="False" ToolTip.Tip="Wired in Phase 2"/>
-                <MenuItem Header="Open Logs folder…"          Command="{Binding OpenLogsFolderCommand}"/>
+                <MenuItem Header="Export chatlog…"             IsEnabled="False" ToolTip.Tip="Wired in Phase 2"/>
+                <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
                 <Separator/>
                 <!-- Dev-facing entrypoint to inspect every edit-dialog
                      placeholder. Once each owning phase ships a real list
@@ -116,7 +105,6 @@
                 <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
                 <MenuItem Header="BBS site ↗" IsEnabled="False" ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
                 <Separator/>
-                <MenuItem Header="Open Logs folder…"   Command="{Binding OpenLogsFolderCommand}"/>
                 <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
                 <MenuItem Header="License…"            Command="{Binding OpenLicenseCommand}"/>
@@ -177,12 +165,6 @@
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Loops — opens Navigation; the loops pane wires in Phase 7">
-                        <Path Data="{StaticResource IconLoop}"
-                              Stroke="{Binding $parent[Button].Foreground}"
-                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
-                              Width="16" Height="16" Stretch="Uniform"/>
-                    </Button>
                     <Button Classes="ToolbarBtn" Command="{Binding OpenBackscrollCommand}" ToolTip.Tip="Backscroll (F10)">
                         <Path Data="{StaticResource IconHistory}"
                               Stroke="{Binding $parent[Button].Foreground}"
@@ -219,7 +201,7 @@
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenWorkshopCommand}" ToolTip.Tip="Player Status / Workshop (F4 / F6)">
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenWorkshopCommand}" ToolTip.Tip="Player Workshop (F4)">
                         <Path Data="{StaticResource IconUser}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"

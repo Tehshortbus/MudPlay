@@ -17,8 +17,6 @@ namespace FujinTerm.Net;
 ///   • Auto-negotiate a small set of options (BINARY, ECHO, SUP-GA,
 ///     TERM-TYPE, NAWS) the way a typical terminal client would.
 ///   • Forward user keystrokes back to the server (with IAC byte escaping).
-///   • Optionally tee the cleaned input stream to a file (timed binary
-///     capture — see TimedCaptureWriter / ReplayPlayer).
 /// </summary>
 public sealed class TelnetClient : IAsyncDisposable
 {
@@ -48,39 +46,6 @@ public sealed class TelnetClient : IAsyncDisposable
     /// <summary>Window size advertised through NAWS (rows).</summary>
     public int Rows { get; set; } = 25;
 
-    // Optional capture file for the cleaned byte stream — timed binary format
-    // (see TimedCaptureFormat) so ReplayPlayer can replay at original cadence.
-    private TimedCaptureWriter? _capture;
-    private readonly object _captureLock = new();
-
-    /// <summary>
-    /// Begin writing received bytes (after IAC stripping) to <paramref name="path"/>
-    /// in the timed binary capture format. Replaces any prior capture. Safe to
-    /// call from the UI thread while the read loop runs.
-    /// </summary>
-    public void StartDump(string path)
-    {
-        TimedCaptureWriter fresh = new(path);
-        TimedCaptureWriter? old;
-        lock (_captureLock)
-        {
-            old = _capture;
-            _capture = fresh;
-        }
-        old?.Dispose();
-    }
-
-    /// <summary>Stop and close any in-progress capture.</summary>
-    public void StopDump()
-    {
-        TimedCaptureWriter? old;
-        lock (_captureLock)
-        {
-            old = _capture;
-            _capture = null;
-        }
-        old?.Dispose();
-    }
 
     public bool IsConnected => _tcp.Connected && _stream is not null;
 
@@ -130,7 +95,7 @@ public sealed class TelnetClient : IAsyncDisposable
     public Task SendTextAsync(string text, CancellationToken ct = default)
         => SendAsync(Encoding.Latin1.GetBytes(text), ct);
 
-    /// <summary>Cancel the read loop, close the socket and stop any dump.</summary>
+    /// <summary>Cancel the read loop, close the socket.</summary>
     public async Task DisconnectAsync()
     {
         try { _cts?.Cancel(); } catch { }
@@ -139,7 +104,6 @@ public sealed class TelnetClient : IAsyncDisposable
         {
             try { await _readLoop.ConfigureAwait(false); } catch { }
         }
-        StopDump();
     }
 
     public async ValueTask DisposeAsync()
@@ -195,15 +159,6 @@ public sealed class TelnetClient : IAsyncDisposable
                 int outLen = Interpret(inBuf.AsSpan(0, n), outBuf);
                 if (outLen > 0)
                 {
-                    // If a capture is active, also write the cleaned bytes
-                    // (timed binary format — replayable).
-                    TimedCaptureWriter? capture;
-                    lock (_captureLock) capture = _capture;
-                    if (capture is not null)
-                    {
-                        try { capture.Append(outBuf.AsSpan(0, outLen)); }
-                        catch (ObjectDisposedException) { /* capture stopped mid-write */ }
-                    }
                     DataReceived?.Invoke(new ReadOnlyMemory<byte>(outBuf, 0, outLen));
                 }
             }

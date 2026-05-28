@@ -3,7 +3,6 @@ using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -126,9 +125,20 @@ public partial class MainWindowViewModel : ObservableObject
     // as DebugLogWriter output.
     private static string CaptureDirectory => AppPaths.LogsDir;
 
+    /// <summary>
+    /// Tees the live transcript to a .log file when the user clicks the
+    /// Capture toolbar button / menu entry. Subscribes to the same
+    /// ScrollbackBuffer the Backscroll window consumes, so the file is a
+    /// 1:1 record of what the user saw — with colours preserved via inline
+    /// ANSI SGR escapes.
+    /// </summary>
+    public CaptureSession Capture { get; }
+
     public MainWindowViewModel()
     {
         Lines = new LineExtractor(Emulator);
+        Capture = new CaptureSession(Emulator.Screen.Scrollback);
+
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
@@ -354,30 +364,31 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Toggle session capture. When enabled, every cleaned byte from the
-    /// host is appended to a timestamped .bin file in <see cref="DumpDirectory"/>.
+    /// Toggle session capture. The file lives at
+    /// <c>Data/Logs/capture-yyyyMMdd-HHmmss.log</c> and receives one line
+    /// per completed terminal row, prefixed with <c>[HH:mm:ss]</c> and
+    /// encoded with inline ANSI SGR escapes so colour is preserved when
+    /// the file is viewed through any ANSI-aware tool (<c>less -R</c>,
+    /// modern terminals, web log viewers).
     /// </summary>
     [RelayCommand]
     private void ToggleDump()
     {
-        var t = _telnet;
         if (IsDumping)
         {
-            t?.StopDump();
+            string? path = Capture.FilePath;
+            Capture.Stop();
             IsDumping = false;
-            AppServices.Current.Log.Info("Capture", "Capture stopped.");
+            AppServices.Current.Log.Info("Capture",
+                path is null ? "Capture stopped." : $"Capture stopped — {Path.GetFileName(path)}");
             return;
         }
-        if (t is null)
-        {
-            AppServices.Current.Log.Warn("Capture", "Connect before starting a capture.");
-            return;
-        }
-        var name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.fjtc";
-        var path = Path.Combine(CaptureDirectory, name);
+
+        string name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+        string fullPath = Path.Combine(CaptureDirectory, name);
         try
         {
-            t.StartDump(path);
+            Capture.Start(fullPath);
             IsDumping = true;
             AppServices.Current.Log.Info("Capture", $"Capturing to {name}");
         }
@@ -781,17 +792,22 @@ public partial class MainWindowViewModel : ObservableObject
             View
               Conversation .................. F2  (wired Phase 2)
               Party ......................... F3  (wired Phase 6)
-              Player Status ................. F4  (wired Phase 3)
+              Player Workshop ............... F4  (wired Phase 9)
               Map ........................... F5  (wired Phase 7)
-              Workshop ...................... F6  (wired Phase 9)
               Spell Book .................... F7  (wired Phase 9)
-              Log ........................... F9  (wired Phase 1)
               Backscroll .................... F10 (wired Phase 1)
               Session Stats ................. F11 (wired Phase 8)
+              Settings ...................... Ctrl+,  (Phase 4)
 
-            Settings ........................ Ctrl+,  (Phase 4)
-            Open Game Data browser .......... Ctrl+G  (Phase 5)
-            New / Open / Save profile ....... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
+            Tools
+              Program Log ................... F9  (wired Phase 1)
+              Wire Inspector ................ (no shortcut — toolbar / menu)
+
+            Game Data
+              Browser ....................... Ctrl+G  (Phase 5)
+
+            File
+              New / Open / Save profile ..... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
 
             Help topics ..................... F1  (this dialog's neighbor)
 
@@ -838,55 +854,4 @@ public partial class MainWindowViewModel : ObservableObject
         dlg.Show(main);
     }
 
-    /// <summary>
-    /// Bound to Tools → Replay capture file… Opens a file picker, then feeds
-    /// every chunk in the chosen <c>.fjtc</c> into the live emulator at the
-    /// recorded cadence. Fire-and-forget — the playback runs on a background
-    /// task and marshals each chunk through the dispatcher.
-    /// </summary>
-    [RelayCommand]
-    private async Task ReplayCaptureFileAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-        {
-            AppServices.Current.Log.Error("Replay", "Replay unavailable — no main window.");
-            return;
-        }
-
-        IReadOnlyList<IStorageFile> picked = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open FujinTerm capture",
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("FujinTerm capture (.fjtc)") { Patterns = ["*.fjtc"] },
-                FilePickerFileTypes.All,
-            ],
-            SuggestedStartLocation = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.LogsDir),
-        });
-
-        if (picked.Count == 0) return;
-        string path = picked[0].Path.LocalPath;
-
-        ReplayPlayer player = new(path);
-        player.ChunkPlayed += chunk =>
-        {
-            byte[] copy = chunk.ToArray();
-            Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
-        };
-
-        AppServices.Current.Log.Info("Replay", $"Replaying {Path.GetFileName(path)}…");
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await player.PlayAsync().ConfigureAwait(false);
-                AppServices.Current.Log.Info("Replay", "Replay complete.");
-            }
-            catch (Exception ex)
-            {
-                AppServices.Current.Log.Error("Replay", $"Replay failed: {ex.Message}");
-            }
-        });
-    }
 }
