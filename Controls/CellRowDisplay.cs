@@ -122,11 +122,10 @@ public sealed class CellRowDisplay : Control
         // Paint to the full allocated row height — Bounds.Height is what the
         // ListBox actually gave us, which may exceed _cellH if a sibling
         // control in the row template (the timestamp TextBlock) reports a
-        // taller natural height. Without this, coloured-space art leaves a
-        // few pixels of black between rows and BBS balloons / banners show
-        // as horizontal bars instead of solid shapes. Rounded up so adjacent
-        // rows meet exactly with no anti-aliased gap.
-        double paintH = Bounds.Height > 0 ? Math.Ceiling(Bounds.Height) : _cellH;
+        // taller natural height. UseLayoutRounding=true makes Bounds.Height
+        // an integer, so painting to it directly fills exactly the allocated
+        // row with no gap and no overlap into the next row.
+        double paintH = Bounds.Height > 0 ? Bounds.Height : _cellH;
 
         int i = 0;
         while (i < cells.Length)
