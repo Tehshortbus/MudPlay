@@ -35,6 +35,8 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private readonly ScrollbackBuffer _buffer;
     private int _scrollbackCount;
     private bool _disposed;
+    private int _lastMatchIndex = -1;
+    private string _lastMatchSearchText = string.Empty;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
 
@@ -98,41 +100,64 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with
-    /// fresh snapshots of every screen row. Adjusts the live-tail size if
-    /// the screen was resized.
+    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with a
+    /// fresh snapshot of every screen row up to the last non-blank row.
+    /// Trailing blank rows below the content are dropped — they're just
+    /// unused screen padding (a freshly-launched terminal has 25 of them).
+    /// Mid-content blank rows are kept since the server may have intentionally
+    /// written them for spacing.
     /// </summary>
     private void RefreshLiveTail()
     {
         TerminalScreen screen = _emulator.Screen;
-        int desired = screen.Rows;
         DateTimeOffset now = DateTimeOffset.Now;
+
+        List<BackscrollRowViewModel> liveRows = new();
+        int lastNonBlank = -1;
+        for (int y = 0; y < screen.Rows; y++)
+        {
+            if (!IsScreenRowBlank(screen, y))
+            {
+                lastNonBlank = y;
+            }
+        }
+        for (int y = 0; y <= lastNonBlank; y++)
+        {
+            Cell[] cells = screen.Row(y).ToArray();
+            liveRows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
+        }
 
         int currentLive = Rows.Count - _scrollbackCount;
 
         // Replace existing live rows in-place; cheaper than clear + re-add.
-        int common = Math.Min(currentLive, desired);
+        int common = Math.Min(currentLive, liveRows.Count);
         for (int y = 0; y < common; y++)
         {
-            Cell[] cells = screen.Row(y).ToArray();
-            Rows[_scrollbackCount + y] = new BackscrollRowViewModel(
-                new ScrollbackBuffer.Row(now, cells));
+            Rows[_scrollbackCount + y] = liveRows[y];
         }
 
-        // Add any extra rows the screen grew into.
-        for (int y = common; y < desired; y++)
+        // Add any extra rows beyond what was already there.
+        for (int y = common; y < liveRows.Count; y++)
         {
-            Cell[] cells = screen.Row(y).ToArray();
-            Rows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
+            Rows.Add(liveRows[y]);
         }
 
-        // Remove tail if the screen shrank.
-        while (Rows.Count - _scrollbackCount > desired)
+        // Remove tail if the new snapshot is shorter than the previous one.
+        while (Rows.Count - _scrollbackCount > liveRows.Count)
         {
             Rows.RemoveAt(Rows.Count - 1);
         }
 
         OnPropertyChanged(nameof(StatusText));
+    }
+
+    private static bool IsScreenRowBlank(TerminalScreen screen, int y)
+    {
+        for (int x = 0; x < screen.Cols; x++)
+        {
+            if (screen[x, y].Char != ' ') return false;
+        }
+        return true;
     }
 
     [RelayCommand]
@@ -142,19 +167,47 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private void FindNext()
     {
         if (string.IsNullOrEmpty(SearchText)) return;
+
+        // Reset the cursor whenever the search text changes — otherwise the
+        // user retyping a fresh query would resume from wherever the last
+        // search left off.
+        if (!string.Equals(_lastMatchSearchText, SearchText, StringComparison.Ordinal))
+        {
+            _lastMatchIndex = -1;
+            _lastMatchSearchText = SearchText;
+        }
+
+        // Tally total hits in the corpus and find the next match strictly
+        // AFTER the cursor, wrapping back to 0 if we hit the end.
         int hits = 0;
-        int firstMatch = -1;
         for (int i = 0; i < Rows.Count; i++)
         {
             if (Rows[i].PlainText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
-            {
                 hits++;
-                if (firstMatch < 0) firstMatch = i;
+        }
+
+        int startFrom = _lastMatchIndex + 1;
+        if (startFrom >= Rows.Count) startFrom = 0;
+
+        int next = -1;
+        for (int offset = 0; offset < Rows.Count; offset++)
+        {
+            int i = (startFrom + offset) % Rows.Count;
+            if (Rows[i].PlainText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+            {
+                next = i;
+                break;
             }
         }
+
         MatchCount = hits;
         OnPropertyChanged(nameof(StatusText));
-        if (firstMatch >= 0) ScrollToRowRequested?.Invoke(firstMatch);
+
+        if (next >= 0)
+        {
+            _lastMatchIndex = next;
+            ScrollToRowRequested?.Invoke(next);
+        }
     }
 
     [RelayCommand]

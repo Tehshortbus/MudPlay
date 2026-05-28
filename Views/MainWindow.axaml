@@ -340,6 +340,7 @@
                       Background="{StaticResource ChromeBgSunkenBrush}">
             <ctl:TerminalControl x:Name="Terminal"
                                  Emulator="{Binding Emulator}"
+                                 FontSize="{Binding TerminalFontSize}"
                                  HorizontalAlignment="Center"
                                  VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>

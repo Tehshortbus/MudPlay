@@ -4,13 +4,14 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="580"
+        mc:Ignorable="d" d:DesignWidth="725" d:DesignHeight="580"
         x:Class="FujinTerm.Views.BackscrollWindow"
         x:DataType="vm:BackscrollViewModel"
         Title="Backscroll"
-        Width="920" Height="580"
+        Width="725" Height="580"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        UseLayoutRounding="True">
 
     <DockPanel LastChildFill="True">
 
@@ -26,7 +27,11 @@
                         Command="{Binding GoToLiveCommand}"/>
                 <TextBox Grid.Column="2" x:Name="SearchBox" MinWidth="240"
                          PlaceholderText="Search…"
-                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                         Text="{Binding SearchText, Mode=TwoWay}">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" Command="{Binding FindNextCommand}"/>
+                    </TextBox.KeyBindings>
+                </TextBox>
                 <Button Grid.Column="3" Margin="6,0,0,0"
                         Content="Find next"
                         Command="{Binding FindNextCommand}"/>
@@ -58,14 +63,17 @@
                  Background="Black"
                  BorderThickness="0"
                  Padding="4"
+                 UseLayoutRounding="True"
                  SelectionMode="Multiple">
             <ListBox.Styles>
                 <Style Selector="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="UseLayoutRounding" Value="True"/>
                 </Style>
                 <Style Selector="ListBoxItem /template/ ContentPresenter">
                     <Setter Property="Padding" Value="0"/>
+                    <Setter Property="UseLayoutRounding" Value="True"/>
                 </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>
@@ -81,9 +89,7 @@
                         <ctl:CellRowDisplay Grid.Column="1"
                                             Row="{Binding Cells}"
                                             FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                            FontSize="14"
-                                            LineHeight="16"
-                                            Padding="0"/>
+                                            FontSize="16"/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

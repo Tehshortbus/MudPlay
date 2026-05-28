@@ -77,14 +77,31 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Clear the entire screen to a blank cell with the given attributes.</summary>
+    /// <remarks>
+    /// Rows are captured into <see cref="Scrollback"/> before the clear so
+    /// screen redraws (CSI 2J / BBS welcome banners / paged "Who's Online"
+    /// lists / room re-renders) survive in the backscroll export. Without
+    /// this, anything painted via absolute cursor positioning and wiped by
+    /// ED 2 is gone forever — natural LF-at-bottom scrolling is the only
+    /// other path into scrollback. Trailing rows below the last row of
+    /// content are dropped (they're unused screen, not server output).
+    /// </remarks>
     public void ClearAll(CellAttributes attr)
     {
+        CaptureUpToLastNonBlank(0, Rows - 1);
         var blank = new Cell(' ', attr);
         Array.Fill(_cells, blank);
         Bump();
     }
 
     /// <summary>Clear part of a single row [fromCol, toColInclusive].</summary>
+    /// <remarks>
+    /// Intentionally does NOT capture into <see cref="Scrollback"/> — single-row
+    /// clears are dominated by cursor-positioning artefacts (user echo,
+    /// statline rewrites, backspace overstrike) that would over-capture noise.
+    /// Multi-row clears via <see cref="ClearRowsInclusive"/> and <see cref="ClearAll"/>
+    /// do capture, since those are the redraw-related paths.
+    /// </remarks>
     public void ClearRow(int y, int fromCol, int toColInclusive, CellAttributes attr)
     {
         if ((uint)y >= (uint)Rows) return;
@@ -96,14 +113,40 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Clear a contiguous block of rows [fromRow, toRow] inclusive.</summary>
+    /// <remarks>Captures rows up to the last non-blank row into <see cref="Scrollback"/> first — see <see cref="ClearAll"/>.</remarks>
     public void ClearRowsInclusive(int fromRow, int toRow, CellAttributes attr)
     {
         fromRow = Math.Clamp(fromRow, 0, Rows - 1);
         toRow = Math.Clamp(toRow, 0, Rows - 1);
+        CaptureUpToLastNonBlank(fromRow, toRow);
         var blank = new Cell(' ', attr);
         for (int y = fromRow; y <= toRow; y++)
             for (int x = 0; x < Cols; x++)
                 _cells[y * Cols + x] = blank;
+    }
+
+    private void CaptureUpToLastNonBlank(int fromRow, int toRow)
+    {
+        // Find the last non-blank row in the range; rows beyond it are
+        // unused screen padding the server never touched, so they don't
+        // belong in history. Blank rows mid-content (intentional spacing
+        // from server output) ARE captured.
+        int lastNonBlank = fromRow - 1;
+        for (int y = fromRow; y <= toRow; y++)
+            if (!IsRowBlank(y)) lastNonBlank = y;
+
+        for (int y = fromRow; y <= lastNonBlank; y++)
+        {
+            Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+        }
+    }
+
+    private bool IsRowBlank(int y)
+    {
+        int start = y * Cols;
+        for (int x = 0; x < Cols; x++)
+            if (_cells[start + x].Char != ' ') return false;
+        return true;
     }
 
     /// <summary>
@@ -123,6 +166,9 @@ public sealed class TerminalScreen
         // to disappear — capture them in the scrollback ring before the
         // copy overwrites them. Partial-region scrolls (top > 0) don't
         // discard anything visible above the region, so they don't capture.
+        // No blank-row filter: every row that scrolled off the terminal is
+        // a row the user saw, so it belongs in scrollback regardless of
+        // whether the server happened to write content into it.
         if (top == 0)
         {
             for (int y = 0; y < n; y++)

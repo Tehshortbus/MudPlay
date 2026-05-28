@@ -179,7 +179,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
-        Add("display",   "Display",   "Phase 4 PR 4.3", "Rows / columns, palette, scrollback size, confirmation prompts.");
+        Sections.Add(new DisplaySectionViewModel(_profile, AppServices.Current.Display));
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
 
         Add("bbs",       "BBS",       "Phase 4 PR 4.5",

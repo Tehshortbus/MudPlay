@@ -1,7 +1,7 @@
 namespace FujinTerm.Terminal;
 
 /// <summary>
-/// Fixed-capacity ring of rows that have scrolled off the top of the
+/// Capacity-tunable ring of rows that have scrolled off the top of the
 /// <see cref="TerminalScreen"/>. Each row preserves both its cells (so
 /// ANSI colours survive) and the timestamp it was captured at (so the
 /// Backscroll window can render per-line timestamps without inventing
@@ -14,9 +14,10 @@ namespace FujinTerm.Terminal;
 /// the UI thread, so no lock is needed.
 /// </para>
 /// <para>
-/// Size: defaults to 10 000 rows. Phase 4 Settings.Display will surface
-/// the knob; the size is constructor-injected so a future swap just
-/// constructs a fresh buffer and copies the live rows across.
+/// Capacity is the maximum number of scrolled-off rows the user can see
+/// and export. Settable at runtime via <see cref="SetCapacity"/> —
+/// shrinking drops the oldest rows first, growing reserves space without
+/// touching live rows.
 /// </para>
 /// <para>
 /// Memory: at 80 columns and 24 bytes per <see cref="Cell"/> (rough
@@ -35,18 +36,26 @@ public sealed class ScrollbackBuffer
     /// </summary>
     public readonly record struct Row(DateTimeOffset Timestamp, Cell[] Cells);
 
-    private readonly Row[] _ring;
+    private Row[] _ring;
     private int _head;       // next write slot
     private int _count;      // live rows in the ring (≤ Capacity)
 
     /// <summary>Capacity in rows.</summary>
-    public int Capacity { get; }
+    public int Capacity { get; private set; }
 
     /// <summary>Number of rows currently held (grows up to Capacity, then plateaus).</summary>
     public int Count => _count;
 
     /// <summary>Fired after each <see cref="Append"/>. Used by the Backscroll window's tail follower.</summary>
     public event Action<Row>? RowAdded;
+
+    /// <summary>
+    /// Fired after <see cref="SetCapacity"/> changes <see cref="Capacity"/>.
+    /// Backscroll consumers re-bind their views since cached indices may
+    /// now reference different rows (or rows that no longer exist after
+    /// a shrink).
+    /// </summary>
+    public event Action? CapacityChanged;
 
     public ScrollbackBuffer(int capacity = DefaultCapacity)
     {
@@ -101,5 +110,39 @@ public sealed class ScrollbackBuffer
         Array.Clear(_ring);
         _head = 0;
         _count = 0;
+    }
+
+    /// <summary>
+    /// Resize the ring to <paramref name="newCapacity"/> in place.
+    /// Shrinking discards the oldest rows first (newest <paramref name="newCapacity"/>
+    /// rows survive). Growing leaves the existing rows intact and
+    /// reserves empty space for future appends. No-op if the capacity
+    /// is unchanged. Fires <see cref="CapacityChanged"/> on success.
+    /// </summary>
+    public void SetCapacity(int newCapacity)
+    {
+        if (newCapacity <= 0) throw new ArgumentOutOfRangeException(nameof(newCapacity));
+        if (newCapacity == Capacity) return;
+
+        int keep = Math.Min(_count, newCapacity);
+        Row[] next = new Row[newCapacity];
+
+        if (keep > 0)
+        {
+            // Copy the newest `keep` rows oldest → newest into the front of
+            // the new array. Older rows beyond `keep` are dropped.
+            int srcStart = (_head - keep + Capacity) % Capacity;
+            for (int i = 0; i < keep; i++)
+            {
+                next[i] = _ring[(srcStart + i) % Capacity];
+            }
+        }
+
+        _ring = next;
+        Capacity = newCapacity;
+        _count = keep;
+        _head = keep % newCapacity;
+
+        CapacityChanged?.Invoke();
     }
 }
