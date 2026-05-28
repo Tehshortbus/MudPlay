@@ -34,10 +34,18 @@ namespace FujinTerm.Game;
 ///   </item>
 /// </list>
 /// <remarks>
+/// <para>
 /// The natural cycle and the bonus cycle can be (and usually are)
 /// desynchronised — the natural anchors at first observation; the
 /// bonus anchors when the user types <c>rest</c> / <c>meditate</c>.
 /// The status bar shows them as parallel countdowns.
+/// </para>
+/// <para>
+/// The two natural cycles (HP + MA) fire on the same server pulse,
+/// however — empirically verified. Any observation that anchors one
+/// mirrors the anchor onto the other so a max-HP / max-MA character
+/// still has a live countdown driven by whichever stream is moving.
+/// </para>
 /// </remarks>
 public sealed class RegenTracker : IDisposable
 {
@@ -126,13 +134,18 @@ public sealed class RegenTracker : IDisposable
         // both rest + natural look due, both get advanced (a 60 s mark
         // while resting fires both simultaneously).
         bool restClaimed = ClaimIfDue(HpRest, now, delta);
-        bool natClaimed  = ClaimIfDue(HpNatural, now, delta - (restClaimed ? 0 : 0));
+        bool natClaimed  = ClaimIfDue(HpNatural, now, delta);
         if (!restClaimed && !natClaimed)
         {
             // No active cycle was due — anchor HpNatural so it starts the
             // 30 s cadence from this observation. First-time path.
             HpNatural.RecordObservation(now, delta);
+            natClaimed = true;
         }
+        // Natural HP and natural MA fire on the same server pulse —
+        // empirically verified. Sync MpNatural so its countdown stays
+        // valid even when MA sits at max and never upticks.
+        if (natClaimed) MpNatural.Start(now);
 
         HpTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
     }
@@ -160,7 +173,11 @@ public sealed class RegenTracker : IDisposable
         if (!mediClaimed && !natClaimed)
         {
             MpNatural.RecordObservation(now, delta);
+            natClaimed = true;
         }
+        // Mirror onto HpNatural — same pulse. Lets a max-HP character
+        // still see a live HP countdown driven by observed MA ticks.
+        if (natClaimed) HpNatural.Start(now);
 
         MaTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
     }
@@ -180,7 +197,13 @@ public sealed class RegenTracker : IDisposable
         return true;
     }
 
-    /// <summary>Start / stop the rest + medi bonus cycles on position transitions.</summary>
+    /// <summary>
+    /// Start / stop the rest + medi bonus cycles on position transitions.
+    /// Leaving the position before the cycle's interval elapses cancels the
+    /// pending tick outright (no partial credit) — the server only fires
+    /// the rest / medi tick if the player stayed in the position for the
+    /// full interval. Re-entering re-anchors from the new transition.
+    /// </summary>
     private void ApplyPositionChange()
     {
         DateTimeOffset now = _clock();

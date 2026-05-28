@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="580"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="960" Height="640">
+        Width="820" Height="580">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>

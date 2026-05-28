@@ -83,6 +83,26 @@ public sealed class RegenTrackerTests
     }
 
     [Fact]
+    public void StandingUpBeforeRestInterval_GrantsNoRestTick()
+    {
+        // Server rule: rest only credits a tick if the player stayed for the
+        // full 20 s interval. Standing up at 15 s cancels outright; the next
+        // HP uptick gets claimed by HpNatural instead.
+        var (state, tracker, clock) = Setup();
+        state.Hp = 100;                            // baseline.
+        state.Position = PlayerPosition.Resting;   // anchors HpRest at T0.
+        clock.Advance(TimeSpan.FromSeconds(15));
+        state.Position = PlayerPosition.Standing;  // bailed before 20 s.
+        clock.Advance(TimeSpan.FromSeconds(15));   // T0 + 30 s total.
+        state.Hp = 102;                            // uptick lands.
+
+        Assert.Equal(0, tracker.HpRest.Stat.SampleCount);
+        Assert.False(tracker.HpRest.IsActive);
+        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);   // natural claimed it.
+        tracker.Dispose();
+    }
+
+    [Fact]
     public void HpDecrease_NotASample()
     {
         var (state, tracker, clock) = Setup();
@@ -170,6 +190,36 @@ public sealed class RegenTrackerTests
         var (state, tracker, _) = Setup();
         state.Position = PlayerPosition.Resting;
         Assert.NotNull(tracker.GetTimeToNextHpRestTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void HpUptick_AnchorsMpNaturalToSameInstant()
+    {
+        // Natural HP + natural MA fire on the same server pulse — a max-MA
+        // character still gets a live MA countdown from observed HP ticks.
+        var (state, tracker, _) = Setup();
+        state.Hp = 100;
+        state.Hp = 105;
+
+        Assert.True(tracker.HpNatural.IsActive);
+        Assert.True(tracker.MpNatural.IsActive);
+        Assert.Equal(tracker.HpNatural.Anchor, tracker.MpNatural.Anchor);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void MaUptick_AnchorsHpNaturalToSameInstant()
+    {
+        // Symmetric: a max-HP character still gets a live HP countdown from
+        // observed MA ticks.
+        var (state, tracker, _) = Setup();
+        state.Ma = 50;
+        state.Ma = 51;
+
+        Assert.True(tracker.MpNatural.IsActive);
+        Assert.True(tracker.HpNatural.IsActive);
+        Assert.Equal(tracker.MpNatural.Anchor, tracker.HpNatural.Anchor);
         tracker.Dispose();
     }
 
