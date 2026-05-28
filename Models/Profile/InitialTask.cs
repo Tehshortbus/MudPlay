@@ -3,7 +3,7 @@ namespace FujinTerm.Models.Profile;
 /// <summary>
 /// What FujinTerm does when a profile loads and the connection comes up.
 /// User-configurable on the Settings → General tab. Consumed by the
-/// loop / auto-roam engines as they ship (Phase 7 + Phase 13).
+/// loop / Auto-Lair engines as they ship (Phase 7).
 /// </summary>
 public enum InitialTask
 {
@@ -13,6 +13,6 @@ public enum InitialTask
     /// <summary>Start the configured loop on logon (see <see cref="GeneralSettings.DefaultLoopName"/>).</summary>
     BeginLoop = 1,
 
-    /// <summary>Start the Auto-Lair / auto-roam scheduler on logon.</summary>
-    BeginAutoRoam = 2,
+    /// <summary>Start the Auto-Lair scheduler on logon.</summary>
+    BeginAutoLair = 2,
 }

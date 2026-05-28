@@ -35,7 +35,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "General", "Auto-connect", "Default task", "Do nothing",
-        "Begin loop", "Begin auto-roam", "Manual-Mode Defaults",
+        "Begin loop", "Begin Auto-Lair", "Manual-Mode Defaults",
         "Auto-Mode Defaults", "Auto-Combat", "Auto-Nuke",
         "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
     };
@@ -48,7 +48,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     // ----- Initial task (three radios — mutual exclusion handled by GroupName) -----
     [ObservableProperty] private bool _isTaskDoNothing = true;
     [ObservableProperty] private bool _isTaskBeginLoop;
-    [ObservableProperty] private bool _isTaskBeginAutoRoam;
+    [ObservableProperty] private bool _isTaskBeginAutoLair;
 
     [ObservableProperty] private string? _defaultLoopName;
     [ObservableProperty] private bool _autoConnect;
@@ -85,7 +85,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         GeneralSettings dto = new()
         {
             DefaultTask = IsTaskBeginLoop      ? InitialTask.BeginLoop
-                        : IsTaskBeginAutoRoam  ? InitialTask.BeginAutoRoam
+                        : IsTaskBeginAutoLair  ? InitialTask.BeginAutoLair
                         : InitialTask.DoNothing,
             DefaultLoopName = string.IsNullOrWhiteSpace(DefaultLoopName) ? null : DefaultLoopName,
             AutoConnect = AutoConnect,
@@ -126,7 +126,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
         IsTaskDoNothing      = dto.DefaultTask == InitialTask.DoNothing;
         IsTaskBeginLoop      = dto.DefaultTask == InitialTask.BeginLoop;
-        IsTaskBeginAutoRoam  = dto.DefaultTask == InitialTask.BeginAutoRoam;
+        IsTaskBeginAutoLair  = dto.DefaultTask == InitialTask.BeginAutoLair;
         DefaultLoopName      = dto.DefaultLoopName;
         AutoConnect          = dto.AutoConnect;
 
@@ -185,7 +185,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     // wants to mark dirty. Wired manually to keep Dirty() centralised.
     partial void OnIsTaskDoNothingChanged(bool value)     { if (value) UncheckOtherTasks(0); Dirty(); }
     partial void OnIsTaskBeginLoopChanged(bool value)     { if (value) UncheckOtherTasks(1); Dirty(); }
-    partial void OnIsTaskBeginAutoRoamChanged(bool value) { if (value) UncheckOtherTasks(2); Dirty(); }
+    partial void OnIsTaskBeginAutoLairChanged(bool value) { if (value) UncheckOtherTasks(2); Dirty(); }
     partial void OnDefaultLoopNameChanged(string? value)  => Dirty();
     partial void OnAutoConnectChanged(bool value)         => Dirty();
     partial void OnMmAutoCombatChanged(bool value)        => Dirty();
@@ -209,6 +209,6 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     {
         if (keep != 0 && IsTaskDoNothing)     IsTaskDoNothing = false;
         if (keep != 1 && IsTaskBeginLoop)     IsTaskBeginLoop = false;
-        if (keep != 2 && IsTaskBeginAutoRoam) IsTaskBeginAutoRoam = false;
+        if (keep != 2 && IsTaskBeginAutoLair) IsTaskBeginAutoLair = false;
     }
 }

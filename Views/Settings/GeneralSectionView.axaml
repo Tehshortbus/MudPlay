@@ -66,8 +66,9 @@
                                      Content="Begin looping"
                                      ToolTip.Tip="Loop picker lands with Phase 7 LoopManager."/>
                         <RadioButton GroupName="DefaultTask"
-                                     IsChecked="{Binding IsTaskBeginAutoRoam, Mode=TwoWay}"
-                                     Content="Begin auto-roaming"/>
+                                     IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
+                                     Content="Begin Auto-Lair"
+                                     ToolTip.Tip="Auto-Lair scheduler lands with Phase 7."/>
                     </StackPanel>
                 </Grid>
 

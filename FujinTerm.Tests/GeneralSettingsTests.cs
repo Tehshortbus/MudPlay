@@ -64,7 +64,7 @@ public sealed class GeneralSettingsTests
         GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(partial);
 
         Assert.NotNull(dto);
-        Assert.Equal(InitialTask.BeginAutoRoam, dto!.DefaultTask);
+        Assert.Equal(InitialTask.BeginAutoLair, dto!.DefaultTask);
         Assert.True(dto.AutoConnect);
         AssertAllOn(dto.ManualMode);     // sub-DTO defaulted from its own type defaults.
         AssertAllOn(dto.AutoMode);
