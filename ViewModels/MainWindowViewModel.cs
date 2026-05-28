@@ -32,6 +32,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
 
+    /// <summary>
+    /// Extracts completed lines from the emulator's screen stream. Foundation
+    /// for every later-phase "what did the server say" subsystem
+    /// (MessageRouter, ChatRouter, Triggers, prompt parser).
+    /// </summary>
+    public LineExtractor Lines { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
     private string _host = "playpenbbs.com";
@@ -121,6 +128,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel()
     {
+        Lines = new LineExtractor(Emulator);
+
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
         Emulator.ResponseReady += bytes =>

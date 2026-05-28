@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="FujinTerm.csproj" />
+  <Project Path="FujinTerm.Tests/FujinTerm.Tests.csproj" />
+</Solution>

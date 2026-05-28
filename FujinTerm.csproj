@@ -26,6 +26,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- FujinTerm.Tests lives at the repo root as a sibling project. Without
+         these exclusions the SDK's default Compile glob would pull every
+         test file into the app assembly. -->
+    <Compile Remove="FujinTerm.Tests\**" />
+    <None Remove="FujinTerm.Tests\**" />
+    <EmbeddedResource Remove="FujinTerm.Tests\**" />
+    <AvaloniaResource Remove="FujinTerm.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
