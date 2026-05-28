@@ -98,18 +98,18 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with
-    /// fresh snapshots of every <em>non-blank</em> screen row. Blank rows
-    /// are skipped: a freshly-launched terminal has 25 blank rows that
-    /// would otherwise show up as a wall of timestamped emptiness above
-    /// any real content.
+    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with a
+    /// fresh snapshot of every screen row up to the last non-blank row.
+    /// Trailing blank rows below the content are dropped — they're just
+    /// unused screen padding (a freshly-launched terminal has 25 of them).
+    /// Mid-content blank rows are kept since the server may have intentionally
+    /// written them for spacing.
     /// </summary>
     private void RefreshLiveTail()
     {
         TerminalScreen screen = _emulator.Screen;
         DateTimeOffset now = DateTimeOffset.Now;
 
-        // Build the live snapshot non-blank rows only.
         List<BackscrollRowViewModel> liveRows = new();
         int lastNonBlank = -1;
         for (int y = 0; y < screen.Rows; y++)
@@ -121,7 +121,6 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         }
         for (int y = 0; y <= lastNonBlank; y++)
         {
-            if (IsScreenRowBlank(screen, y)) continue;
             Cell[] cells = screen.Row(y).ToArray();
             liveRows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
         }

@@ -114,19 +114,25 @@ public sealed class CellRowDisplay : Control
 
         EnsureMetrics();
 
-        // Walk same-attribute runs; each run paints one background rect
-        // covering its full cell-height extent, then glyphs individually.
+        // Paint to the full allocated row height — Bounds.Height is what the
+        // ListBox actually gave us, which may exceed _cellH if a sibling
+        // control in the row template (the timestamp TextBlock) reports a
+        // taller natural height. Without this, coloured-space art leaves a
+        // few pixels of black between rows and BBS balloons / banners show
+        // as horizontal bars instead of solid shapes.
+        double paintH = Bounds.Height > 0 ? Bounds.Height : _cellH;
+
         int i = 0;
         while (i < cells.Length)
         {
             CellAttributes attr = cells[i].Attr;
             int runStart = i;
             do { i++; } while (i < cells.Length && cells[i].Attr.Equals(attr));
-            DrawRun(context, cells, runStart, i, attr);
+            DrawRun(context, cells, runStart, i, attr, paintH);
         }
     }
 
-    private void DrawRun(DrawingContext context, Cell[] cells, int x0, int x1, CellAttributes attr)
+    private void DrawRun(DrawingContext context, Cell[] cells, int x0, int x1, CellAttributes attr, double paintH)
     {
         bool reverse  = (attr.Flags & CellFlags.Reverse)  != 0;
         bool bold     = (attr.Flags & CellFlags.Bold)     != 0;
@@ -153,7 +159,7 @@ public sealed class CellRowDisplay : Control
         if (bgArgb != AnsiPalette.DefaultBackgroundArgb)
         {
             IBrush bg = new SolidColorBrush(ToColor(bgArgb));
-            context.FillRectangle(bg, new Rect(left, 0, width, _cellH));
+            context.FillRectangle(bg, new Rect(left, 0, width, paintH));
         }
 
         if (concealed) return;
@@ -170,7 +176,7 @@ public sealed class CellRowDisplay : Control
 
         if (underline)
         {
-            double y = _cellH - 1;
+            double y = paintH - 1;
             context.DrawLine(new Pen(fg, 1), new Point(left, y), new Point(left + width, y));
         }
     }

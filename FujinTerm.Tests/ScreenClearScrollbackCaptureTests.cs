@@ -19,22 +19,24 @@ public sealed class ScreenClearScrollbackCaptureTests
     }
 
     [Fact]
-    public void ClearAll_CapturesNonBlankRowsToScrollback()
+    public void ClearAll_CapturesUpToLastNonBlankRow()
     {
         TerminalScreen screen = new(80, 25);
         WriteRow(screen, 0, "Welcome to PlayPen BBS");
         WriteRow(screen, 5, "Lines in Use: 86");
-        // Row 10 stays blank.
+        // Rows 6-24 stay blank (trailing — dropped).
 
         screen.ClearAll(default);
 
-        // Two rows had content; both should be in scrollback.
-        Assert.Equal(2, screen.Scrollback.Count);
+        // Rows 0-5 captured: 2 content rows + 4 mid-content blanks (rows
+        // 1-4) which the server may have written intentionally for spacing.
+        // Trailing rows 6-24 are unused screen padding and don't count.
+        Assert.Equal(6, screen.Scrollback.Count);
 
         string first = new(screen.Scrollback[0].Cells.Select(c => c.Char).ToArray());
-        string second = new(screen.Scrollback[1].Cells.Select(c => c.Char).ToArray());
+        string last  = new(screen.Scrollback[5].Cells.Select(c => c.Char).ToArray());
         Assert.StartsWith("Welcome to PlayPen BBS", first.TrimEnd());
-        Assert.StartsWith("Lines in Use: 86",        second.TrimEnd());
+        Assert.StartsWith("Lines in Use: 86",        last.TrimEnd());
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public sealed class ScreenClearScrollbackCaptureTests
     }
 
     [Fact]
-    public void ClearRowsInclusive_CapturesOnlyTheGivenRange()
+    public void ClearRowsInclusive_CapturesOnlyTheGivenRange_UpToLastNonBlank()
     {
         TerminalScreen screen = new(80, 25);
         WriteRow(screen, 1, "above the range");
@@ -56,10 +58,12 @@ public sealed class ScreenClearScrollbackCaptureTests
 
         screen.ClearRowsInclusive(3, 6, default);
 
-        // Only row 4 fell in the range.
-        Assert.Equal(1, screen.Scrollback.Count);
-        string captured = new(screen.Scrollback[0].Cells.Select(c => c.Char).ToArray());
-        Assert.StartsWith("in the range", captured.TrimEnd());
+        // In the [3..6] range, row 3 is blank, row 4 has content, rows 5-6
+        // are blank. Last non-blank in range is row 4 → capture rows 3-4
+        // (blank + content). The trailing rows 5-6 are dropped.
+        Assert.Equal(2, screen.Scrollback.Count);
+        string row1 = new(screen.Scrollback[1].Cells.Select(c => c.Char).ToArray());
+        Assert.StartsWith("in the range", row1.TrimEnd());
     }
 
     [Fact]

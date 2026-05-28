@@ -78,16 +78,17 @@ public sealed class TerminalScreen
 
     /// <summary>Clear the entire screen to a blank cell with the given attributes.</summary>
     /// <remarks>
-    /// Non-blank rows are captured into <see cref="Scrollback"/> before the
-    /// clear so screen redraws (CSI 2J / BBS welcome banners / paged "Who's
-    /// Online" lists / room re-renders) survive in the backscroll export.
-    /// Without this, anything painted via absolute cursor positioning and
-    /// wiped by ED 2 is gone forever — natural LF-at-bottom scrolling is
-    /// the only other path into scrollback.
+    /// Rows are captured into <see cref="Scrollback"/> before the clear so
+    /// screen redraws (CSI 2J / BBS welcome banners / paged "Who's Online"
+    /// lists / room re-renders) survive in the backscroll export. Without
+    /// this, anything painted via absolute cursor positioning and wiped by
+    /// ED 2 is gone forever — natural LF-at-bottom scrolling is the only
+    /// other path into scrollback. Trailing rows below the last row of
+    /// content are dropped (they're unused screen, not server output).
     /// </remarks>
     public void ClearAll(CellAttributes attr)
     {
-        CaptureNonBlankRows(0, Rows - 1);
+        CaptureUpToLastNonBlank(0, Rows - 1);
         var blank = new Cell(' ', attr);
         Array.Fill(_cells, blank);
         Bump();
@@ -112,24 +113,31 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Clear a contiguous block of rows [fromRow, toRow] inclusive.</summary>
-    /// <remarks>Captures non-blank rows into <see cref="Scrollback"/> first — see <see cref="ClearAll"/>.</remarks>
+    /// <remarks>Captures rows up to the last non-blank row into <see cref="Scrollback"/> first — see <see cref="ClearAll"/>.</remarks>
     public void ClearRowsInclusive(int fromRow, int toRow, CellAttributes attr)
     {
         fromRow = Math.Clamp(fromRow, 0, Rows - 1);
         toRow = Math.Clamp(toRow, 0, Rows - 1);
-        CaptureNonBlankRows(fromRow, toRow);
+        CaptureUpToLastNonBlank(fromRow, toRow);
         var blank = new Cell(' ', attr);
         for (int y = fromRow; y <= toRow; y++)
             for (int x = 0; x < Cols; x++)
                 _cells[y * Cols + x] = blank;
     }
 
-    private void CaptureNonBlankRows(int fromRow, int toRow)
+    private void CaptureUpToLastNonBlank(int fromRow, int toRow)
     {
+        // Find the last non-blank row in the range; rows beyond it are
+        // unused screen padding the server never touched, so they don't
+        // belong in history. Blank rows mid-content (intentional spacing
+        // from server output) ARE captured.
+        int lastNonBlank = fromRow - 1;
         for (int y = fromRow; y <= toRow; y++)
+            if (!IsRowBlank(y)) lastNonBlank = y;
+
+        for (int y = fromRow; y <= lastNonBlank; y++)
         {
-            if (!IsRowBlank(y))
-                Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+            Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
         }
     }
 
@@ -158,16 +166,14 @@ public sealed class TerminalScreen
         // to disappear — capture them in the scrollback ring before the
         // copy overwrites them. Partial-region scrolls (top > 0) don't
         // discard anything visible above the region, so they don't capture.
-        // Blank rows are filtered: BBS scroll-out of empty padding (eg the
-        // post-Connect status line scrolling six unused rows off the top)
-        // would otherwise show as a handful of timestamped blank rows in
-        // the backscroll export.
+        // No blank-row filter: every row that scrolled off the terminal is
+        // a row the user saw, so it belongs in scrollback regardless of
+        // whether the server happened to write content into it.
         if (top == 0)
         {
             for (int y = 0; y < n; y++)
             {
-                if (!IsRowBlank(y))
-                    Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+                Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
             }
         }
         // Move surviving rows up.
