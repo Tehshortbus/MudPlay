@@ -55,6 +55,14 @@ public sealed class AppServices
     public WireBuffer Wire { get; }
 
     /// <summary>
+    /// Central pattern bus. Every line-aware subsystem (ChatRouter,
+    /// Triggers, automation engines) registers patterns + handlers here;
+    /// <see cref="LineExtractor.LineEmitted"/> is forwarded into
+    /// <see cref="MessageRouter.Dispatch"/>.
+    /// </summary>
+    public MessageRouter Router { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -90,6 +98,7 @@ public sealed class AppServices
         Log = new LogService();
         Panels = new FloatingPanelHost();
         Wire = new WireBuffer();
+        Router = new MessageRouter();
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

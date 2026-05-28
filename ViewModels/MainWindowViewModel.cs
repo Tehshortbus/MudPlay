@@ -129,6 +129,9 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel()
     {
         Lines = new LineExtractor(Emulator);
+        // Every emitted line fans out through the central MessageRouter so
+        // chat / combat / triggers / etc. all share one dispatch path.
+        Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
