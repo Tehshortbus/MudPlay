@@ -7,15 +7,6 @@
              x:Class="FujinTerm.Views.Settings.DisplaySectionView"
              x:DataType="vm:DisplaySectionViewModel">
 
-    <UserControl.Styles>
-        <Style Selector="TextBlock.SectionHeader">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,12,0,6"/>
-        </Style>
-    </UserControl.Styles>
-
     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
         <Grid>
@@ -39,10 +30,8 @@
                         Margin="22" Spacing="6" MaxWidth="640"
                         HorizontalAlignment="Left">
 
-                <TextBlock Classes="SectionHeader" Text="Font"/>
-
-                <Grid ColumnDefinitions="140,*">
-                    <TextBlock Grid.Column="0" Text="Size:"
+                <Grid ColumnDefinitions="180,*" Margin="0,8,0,0">
+                    <TextBlock Grid.Column="0" Text="Font Size:"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeMd}"
                                VerticalAlignment="Center"/>
@@ -54,10 +43,8 @@
                                    ToolTip.Tip="Changes apply to the terminal canvas live."/>
                 </Grid>
 
-                <TextBlock Classes="SectionHeader" Text="Scrollback"/>
-
-                <Grid ColumnDefinitions="140,*">
-                    <TextBlock Grid.Column="0" Text="Buffer (lines):"
+                <Grid ColumnDefinitions="180,*" Margin="0,8,0,0">
+                    <TextBlock Grid.Column="0" Text="Scrollback Buffer (lines):"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeMd}"
                                VerticalAlignment="Center"/>
