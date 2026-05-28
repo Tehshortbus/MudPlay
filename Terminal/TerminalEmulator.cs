@@ -173,9 +173,22 @@ public sealed class TerminalEmulator
     private void LineFeed()
     {
         if (Screen.CursorY == _scrollBottom)
+        {
+            // ScrollUp captures the top row into Scrollback before
+            // overwriting it.
             Screen.ScrollUp(_scrollTop, _scrollBottom, 1, _attr);
+        }
         else if (Screen.CursorY + 1 < Screen.Rows)
+        {
+            // Capture the row we're leaving behind so the Backscroll window
+            // is a true chronological transcript — without this, only rows
+            // that scroll off the top of the screen ever land in history,
+            // and a partial screen of output the user just read wouldn't
+            // show up there. LF is the canonical "this line is done"
+            // signal in the protocol; capture matches it 1:1.
+            Screen.Scrollback.Append(Screen.Row(Screen.CursorY));
             Screen.CursorY++;
+        }
     }
 
     private void BeginEsc()
