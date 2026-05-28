@@ -117,11 +117,22 @@ public sealed class ProfileService
     /// (<see cref="IsBlankDraft"/>) — drafts must be named via the
     /// File → Save profile flow before they can be saved.
     /// </summary>
-    public void Save()
+    /// <param name="backup">When <c>true</c> and a previously-saved file
+    /// exists, copy it to <c>{name}.json.bak</c> (overwriting any prior
+    /// backup) before the new content is written. Called with <c>true</c>
+    /// by the General-settings Apply path when the user opts in via the
+    /// "Backup profile when making changes" toggle.</param>
+    public void Save(bool backup = false)
     {
         if (Current is null || CurrentProfileName is null) return;
         ProfileSaving?.Invoke(Current);
-        JsonStore.Save(AppPaths.CharacterProfileFile(CurrentProfileName), Current);
+
+        string path = AppPaths.CharacterProfileFile(CurrentProfileName);
+        if (backup && File.Exists(path))
+        {
+            File.Copy(path, path + ".bak", overwrite: true);
+        }
+        JsonStore.Save(path, Current);
     }
 
     /// <summary>Clear <see cref="Current"/> and fire <see cref="ProfileClosed"/>.</summary>

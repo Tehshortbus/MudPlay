@@ -35,8 +35,9 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "General", "Auto-connect", "Default task", "Do nothing",
-        "Begin loop", "Begin Auto-Lair", "Manual-Mode Defaults",
-        "Auto-Mode Defaults", "Auto-Combat", "Auto-Nuke",
+        "Begin loop", "Begin Auto-Lair", "Backup profile",
+        "Manual-Mode Defaults", "Auto-Mode Defaults",
+        "Auto-Combat", "Auto-Nuke",
         "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
     };
 
@@ -51,7 +52,22 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _isTaskBeginAutoLair;
 
     [ObservableProperty] private string? _defaultLoopName;
+    [ObservableProperty] private string? _defaultAutoLairName;
     [ObservableProperty] private bool _autoConnect;
+    [ObservableProperty] private bool _backupOnSave;
+
+    /// <summary>
+    /// Names of saved loop files available for the "Begin looping" picker.
+    /// Empty until Phase 7 LoopManager publishes the list; the dropdown
+    /// stays disabled while empty.
+    /// </summary>
+    public IReadOnlyList<string> LoopNames { get; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Names of saved Auto-Lair files available for the "Begin Auto-Lair"
+    /// picker. Empty until Phase 7 publishes the list.
+    /// </summary>
+    public IReadOnlyList<string> AutoLairNames { get; } = Array.Empty<string>();
 
     // ----- Manual-Mode defaults -----
     [ObservableProperty] private bool _mmAutoCombat;
@@ -59,6 +75,11 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _mmAutoHealRest;
     [ObservableProperty] private bool _mmAutoBless;
     [ObservableProperty] private bool _mmAutoLight;
+    [ObservableProperty] private bool _mmAutoGetItems;
+    [ObservableProperty] private bool _mmAutoGetCash;
+    [ObservableProperty] private bool _mmAutoSneak;
+    [ObservableProperty] private bool _mmAutoHide;
+    [ObservableProperty] private bool _mmAutoSearch;
 
     // ----- Auto-Mode defaults -----
     [ObservableProperty] private bool _amAutoCombat;
@@ -66,6 +87,11 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _amAutoHealRest;
     [ObservableProperty] private bool _amAutoBless;
     [ObservableProperty] private bool _amAutoLight;
+    [ObservableProperty] private bool _amAutoGetItems;
+    [ObservableProperty] private bool _amAutoGetCash;
+    [ObservableProperty] private bool _amAutoSneak;
+    [ObservableProperty] private bool _amAutoHide;
+    [ObservableProperty] private bool _amAutoSearch;
 
     public GeneralSectionViewModel(ProfileService profile)
     {
@@ -87,15 +113,17 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             DefaultTask = IsTaskBeginLoop      ? InitialTask.BeginLoop
                         : IsTaskBeginAutoLair  ? InitialTask.BeginAutoLair
                         : InitialTask.DoNothing,
-            DefaultLoopName = string.IsNullOrWhiteSpace(DefaultLoopName) ? null : DefaultLoopName,
+            DefaultLoopName     = string.IsNullOrWhiteSpace(DefaultLoopName)     ? null : DefaultLoopName,
+            DefaultAutoLairName = string.IsNullOrWhiteSpace(DefaultAutoLairName) ? null : DefaultAutoLairName,
             AutoConnect = AutoConnect,
+            BackupOnSave = BackupOnSave,
             ManualMode = SnapshotManual(),
             AutoMode   = SnapshotAuto(),
         };
 
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
-        _profile.Save();
+        _profile.Save(backup: BackupOnSave);
 
         ClearDirty();
     }
@@ -128,21 +156,33 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         IsTaskBeginLoop      = dto.DefaultTask == InitialTask.BeginLoop;
         IsTaskBeginAutoLair  = dto.DefaultTask == InitialTask.BeginAutoLair;
         DefaultLoopName      = dto.DefaultLoopName;
+        DefaultAutoLairName  = dto.DefaultAutoLairName;
         AutoConnect          = dto.AutoConnect;
+        BackupOnSave         = dto.BackupOnSave;
 
         AutoActionDefaults m = dto.ManualMode;
-        MmAutoCombat = m.AutoCombat;
-        MmAutoNuke = m.AutoNuke;
+        MmAutoCombat   = m.AutoCombat;
+        MmAutoNuke     = m.AutoNuke;
         MmAutoHealRest = m.AutoHealRest;
-        MmAutoBless = m.AutoBless;
-        MmAutoLight = m.AutoLight;
+        MmAutoBless    = m.AutoBless;
+        MmAutoLight    = m.AutoLight;
+        MmAutoGetItems = m.AutoGetItems;
+        MmAutoGetCash  = m.AutoGetCash;
+        MmAutoSneak    = m.AutoSneak;
+        MmAutoHide     = m.AutoHide;
+        MmAutoSearch   = m.AutoSearch;
 
         AutoActionDefaults a = dto.AutoMode;
-        AmAutoCombat = a.AutoCombat;
-        AmAutoNuke = a.AutoNuke;
+        AmAutoCombat   = a.AutoCombat;
+        AmAutoNuke     = a.AutoNuke;
         AmAutoHealRest = a.AutoHealRest;
-        AmAutoBless = a.AutoBless;
-        AmAutoLight = a.AutoLight;
+        AmAutoBless    = a.AutoBless;
+        AmAutoLight    = a.AutoLight;
+        AmAutoGetItems = a.AutoGetItems;
+        AmAutoGetCash  = a.AutoGetCash;
+        AmAutoSneak    = a.AutoSneak;
+        AmAutoHide     = a.AutoHide;
+        AmAutoSearch   = a.AutoSearch;
     }
 
     private GeneralSettings ReadOrDefault()
@@ -157,14 +197,30 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     private AutoActionDefaults SnapshotManual() => new()
     {
-        AutoCombat = MmAutoCombat, AutoNuke = MmAutoNuke, AutoHealRest = MmAutoHealRest,
-        AutoBless = MmAutoBless, AutoLight = MmAutoLight,
+        AutoCombat   = MmAutoCombat,
+        AutoNuke     = MmAutoNuke,
+        AutoHealRest = MmAutoHealRest,
+        AutoBless    = MmAutoBless,
+        AutoLight    = MmAutoLight,
+        AutoGetItems = MmAutoGetItems,
+        AutoGetCash  = MmAutoGetCash,
+        AutoSneak    = MmAutoSneak,
+        AutoHide     = MmAutoHide,
+        AutoSearch   = MmAutoSearch,
     };
 
     private AutoActionDefaults SnapshotAuto() => new()
     {
-        AutoCombat = AmAutoCombat, AutoNuke = AmAutoNuke, AutoHealRest = AmAutoHealRest,
-        AutoBless = AmAutoBless, AutoLight = AmAutoLight,
+        AutoCombat   = AmAutoCombat,
+        AutoNuke     = AmAutoNuke,
+        AutoHealRest = AmAutoHealRest,
+        AutoBless    = AmAutoBless,
+        AutoLight    = AmAutoLight,
+        AutoGetItems = AmAutoGetItems,
+        AutoGetCash  = AmAutoGetCash,
+        AutoSneak    = AmAutoSneak,
+        AutoHide     = AmAutoHide,
+        AutoSearch   = AmAutoSearch,
     };
 
     private void Dirty()
@@ -186,18 +242,30 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnIsTaskDoNothingChanged(bool value)     { if (value) UncheckOtherTasks(0); Dirty(); }
     partial void OnIsTaskBeginLoopChanged(bool value)     { if (value) UncheckOtherTasks(1); Dirty(); }
     partial void OnIsTaskBeginAutoLairChanged(bool value) { if (value) UncheckOtherTasks(2); Dirty(); }
-    partial void OnDefaultLoopNameChanged(string? value)  => Dirty();
-    partial void OnAutoConnectChanged(bool value)         => Dirty();
-    partial void OnMmAutoCombatChanged(bool value)        => Dirty();
-    partial void OnMmAutoNukeChanged(bool value)          => Dirty();
-    partial void OnMmAutoHealRestChanged(bool value)      => Dirty();
-    partial void OnMmAutoBlessChanged(bool value)         => Dirty();
-    partial void OnMmAutoLightChanged(bool value)         => Dirty();
-    partial void OnAmAutoCombatChanged(bool value)        => Dirty();
-    partial void OnAmAutoNukeChanged(bool value)          => Dirty();
-    partial void OnAmAutoHealRestChanged(bool value)      => Dirty();
-    partial void OnAmAutoBlessChanged(bool value)         => Dirty();
-    partial void OnAmAutoLightChanged(bool value)         => Dirty();
+    partial void OnDefaultLoopNameChanged(string? value)     => Dirty();
+    partial void OnDefaultAutoLairNameChanged(string? value) => Dirty();
+    partial void OnAutoConnectChanged(bool value)            => Dirty();
+    partial void OnBackupOnSaveChanged(bool value)           => Dirty();
+    partial void OnMmAutoCombatChanged(bool value)           => Dirty();
+    partial void OnMmAutoNukeChanged(bool value)             => Dirty();
+    partial void OnMmAutoHealRestChanged(bool value)         => Dirty();
+    partial void OnMmAutoBlessChanged(bool value)            => Dirty();
+    partial void OnMmAutoLightChanged(bool value)            => Dirty();
+    partial void OnMmAutoGetItemsChanged(bool value)         => Dirty();
+    partial void OnMmAutoGetCashChanged(bool value)          => Dirty();
+    partial void OnMmAutoSneakChanged(bool value)            => Dirty();
+    partial void OnMmAutoHideChanged(bool value)             => Dirty();
+    partial void OnMmAutoSearchChanged(bool value)           => Dirty();
+    partial void OnAmAutoCombatChanged(bool value)           => Dirty();
+    partial void OnAmAutoNukeChanged(bool value)             => Dirty();
+    partial void OnAmAutoHealRestChanged(bool value)         => Dirty();
+    partial void OnAmAutoBlessChanged(bool value)            => Dirty();
+    partial void OnAmAutoLightChanged(bool value)            => Dirty();
+    partial void OnAmAutoGetItemsChanged(bool value)         => Dirty();
+    partial void OnAmAutoGetCashChanged(bool value)          => Dirty();
+    partial void OnAmAutoSneakChanged(bool value)            => Dirty();
+    partial void OnAmAutoHideChanged(bool value)             => Dirty();
+    partial void OnAmAutoSearchChanged(bool value)           => Dirty();
 
     /// <summary>
     /// Belt + braces on top of RadioButton.GroupName — the View's

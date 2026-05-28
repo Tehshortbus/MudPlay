@@ -61,14 +61,32 @@
                         <RadioButton GroupName="DefaultTask"
                                      IsChecked="{Binding IsTaskDoNothing, Mode=TwoWay}"
                                      Content="Do nothing"/>
-                        <RadioButton GroupName="DefaultTask"
-                                     IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
-                                     Content="Begin looping"
-                                     ToolTip.Tip="Loop picker lands with Phase 7 LoopManager."/>
-                        <RadioButton GroupName="DefaultTask"
-                                     IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
-                                     Content="Begin Auto-Lair"
-                                     ToolTip.Tip="Auto-Lair scheduler lands with Phase 7."/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <RadioButton GroupName="DefaultTask"
+                                         IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
+                                         Content="Begin looping"
+                                         VerticalAlignment="Center"/>
+                            <ComboBox MinWidth="200"
+                                      ItemsSource="{Binding LoopNames}"
+                                      SelectedItem="{Binding DefaultLoopName, Mode=TwoWay}"
+                                      PlaceholderText="Pick a saved loop — wired in Phase 7"
+                                      IsEnabled="False"
+                                      ToolTip.Tip="Lists saved loop files from this character profile (Phase 7)."/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <RadioButton GroupName="DefaultTask"
+                                         IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
+                                         Content="Begin Auto-Lair"
+                                         VerticalAlignment="Center"/>
+                            <ComboBox MinWidth="200"
+                                      ItemsSource="{Binding AutoLairNames}"
+                                      SelectedItem="{Binding DefaultAutoLairName, Mode=TwoWay}"
+                                      PlaceholderText="Pick a saved Auto-Lair — wired in Phase 7"
+                                      IsEnabled="False"
+                                      ToolTip.Tip="Lists saved Auto-Lair files from this character profile (Phase 7)."/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
@@ -76,23 +94,37 @@
                           IsChecked="{Binding AutoConnect, Mode=TwoWay}"
                           Content="Auto-connect when profile loads"/>
 
+                <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
+                          Content="Backup profile when making changes"
+                          ToolTip.Tip="Copy the existing profile JSON to {name}.json.bak before each save."/>
+
                 <!-- Two-column defaults grid. -->
                 <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">
                     <StackPanel Grid.Column="0" Spacing="2">
                         <TextBlock Classes="ColumnHeader" Text="Manual-Mode Defaults"/>
-                        <CheckBox IsChecked="{Binding MmAutoCombat,  Mode=TwoWay}" Content="Auto-Combat"/>
-                        <CheckBox IsChecked="{Binding MmAutoNuke,    Mode=TwoWay}" Content="Auto-Nuke"/>
-                        <CheckBox IsChecked="{Binding MmAutoHealRest,Mode=TwoWay}" Content="Auto-Heal / Rest"/>
-                        <CheckBox IsChecked="{Binding MmAutoBless,   Mode=TwoWay}" Content="Auto-Bless"/>
-                        <CheckBox IsChecked="{Binding MmAutoLight,   Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding MmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding MmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding MmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding MmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding MmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding MmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
+                        <CheckBox IsChecked="{Binding MmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
+                        <CheckBox IsChecked="{Binding MmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
+                        <CheckBox IsChecked="{Binding MmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
+                        <CheckBox IsChecked="{Binding MmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Spacing="2">
                         <TextBlock Classes="ColumnHeader" Text="Auto-Mode Defaults"/>
-                        <CheckBox IsChecked="{Binding AmAutoCombat,  Mode=TwoWay}" Content="Auto-Combat"/>
-                        <CheckBox IsChecked="{Binding AmAutoNuke,    Mode=TwoWay}" Content="Auto-Nuke"/>
-                        <CheckBox IsChecked="{Binding AmAutoHealRest,Mode=TwoWay}" Content="Auto-Heal / Rest"/>
-                        <CheckBox IsChecked="{Binding AmAutoBless,   Mode=TwoWay}" Content="Auto-Bless"/>
-                        <CheckBox IsChecked="{Binding AmAutoLight,   Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding AmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding AmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding AmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding AmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding AmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding AmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
+                        <CheckBox IsChecked="{Binding AmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
+                        <CheckBox IsChecked="{Binding AmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
+                        <CheckBox IsChecked="{Binding AmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
+                        <CheckBox IsChecked="{Binding AmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
                     </StackPanel>
                 </Grid>
 

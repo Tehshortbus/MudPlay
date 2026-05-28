@@ -7,15 +7,17 @@ namespace FujinTerm.Tests;
 public sealed class GeneralSettingsTests
 {
     [Fact]
-    public void Defaults_AllAutoTogglesOn()
+    public void Defaults_SafeBootState()
     {
         GeneralSettings dto = new();
 
         Assert.Equal(InitialTask.DoNothing, dto.DefaultTask);
         Assert.Null(dto.DefaultLoopName);
+        Assert.Null(dto.DefaultAutoLairName);
         Assert.False(dto.AutoConnect);
-        AssertAllOn(dto.ManualMode);
-        AssertAllOn(dto.AutoMode);
+        Assert.False(dto.BackupOnSave);
+        AssertDefaultColumn(dto.ManualMode);
+        AssertDefaultColumn(dto.AutoMode);
     }
 
     [Fact]
@@ -25,28 +27,24 @@ public sealed class GeneralSettingsTests
         {
             DefaultTask = InitialTask.BeginLoop,
             DefaultLoopName = "Sewer farm",
+            DefaultAutoLairName = "City lairs",
             AutoConnect = true,
-            ManualMode = new() { AutoCombat = true,  AutoNuke = false, AutoHealRest = true,  AutoBless = false, AutoLight = true  },
-            AutoMode   = new() { AutoCombat = false, AutoNuke = true,  AutoHealRest = false, AutoBless = true,  AutoLight = false },
+            BackupOnSave = true,
+            ManualMode = AllToggles(true),
+            AutoMode   = AllToggles(false),
         };
 
         string json = JsonSerializer.Serialize(original);
         GeneralSettings? round = JsonSerializer.Deserialize<GeneralSettings>(json);
 
         Assert.NotNull(round);
-        Assert.Equal(original.DefaultTask, round!.DefaultTask);
-        Assert.Equal(original.DefaultLoopName, round.DefaultLoopName);
-        Assert.Equal(original.AutoConnect, round.AutoConnect);
-        Assert.Equal(original.ManualMode.AutoCombat,   round.ManualMode.AutoCombat);
-        Assert.Equal(original.ManualMode.AutoNuke,     round.ManualMode.AutoNuke);
-        Assert.Equal(original.ManualMode.AutoHealRest, round.ManualMode.AutoHealRest);
-        Assert.Equal(original.ManualMode.AutoBless,    round.ManualMode.AutoBless);
-        Assert.Equal(original.ManualMode.AutoLight,    round.ManualMode.AutoLight);
-        Assert.Equal(original.AutoMode.AutoCombat,     round.AutoMode.AutoCombat);
-        Assert.Equal(original.AutoMode.AutoNuke,       round.AutoMode.AutoNuke);
-        Assert.Equal(original.AutoMode.AutoHealRest,   round.AutoMode.AutoHealRest);
-        Assert.Equal(original.AutoMode.AutoBless,      round.AutoMode.AutoBless);
-        Assert.Equal(original.AutoMode.AutoLight,      round.AutoMode.AutoLight);
+        Assert.Equal(original.DefaultTask,         round!.DefaultTask);
+        Assert.Equal(original.DefaultLoopName,     round.DefaultLoopName);
+        Assert.Equal(original.DefaultAutoLairName, round.DefaultAutoLairName);
+        Assert.Equal(original.AutoConnect,         round.AutoConnect);
+        Assert.Equal(original.BackupOnSave,        round.BackupOnSave);
+        AssertColumnsEqual(original.ManualMode, round.ManualMode);
+        AssertColumnsEqual(original.AutoMode,   round.AutoMode);
     }
 
     [Fact]
@@ -66,16 +64,47 @@ public sealed class GeneralSettingsTests
         Assert.NotNull(dto);
         Assert.Equal(InitialTask.BeginAutoLair, dto!.DefaultTask);
         Assert.True(dto.AutoConnect);
-        AssertAllOn(dto.ManualMode);     // sub-DTO defaulted from its own type defaults.
-        AssertAllOn(dto.AutoMode);
+        Assert.False(dto.BackupOnSave);
+        AssertDefaultColumn(dto.ManualMode);
+        AssertDefaultColumn(dto.AutoMode);
     }
 
-    private static void AssertAllOn(AutoActionDefaults d)
+    private static AutoActionDefaults AllToggles(bool value) => new()
     {
+        AutoCombat = value, AutoNuke = value, AutoHealRest = value,
+        AutoBless = value, AutoLight = value, AutoGetItems = value,
+        AutoGetCash = value, AutoSneak = value, AutoHide = value,
+        AutoSearch = value,
+    };
+
+    private static void AssertDefaultColumn(AutoActionDefaults d)
+    {
+        // Combat / Nuke / Heal-Rest / Bless / Light / Get-Items / Get-Cash
+        // default on; Sneak / Hide / Search default off (they're class-skill
+        // dependent — a non-stealth class boot-engaging Auto-Sneak is noise).
         Assert.True(d.AutoCombat);
         Assert.True(d.AutoNuke);
         Assert.True(d.AutoHealRest);
         Assert.True(d.AutoBless);
         Assert.True(d.AutoLight);
+        Assert.True(d.AutoGetItems);
+        Assert.True(d.AutoGetCash);
+        Assert.False(d.AutoSneak);
+        Assert.False(d.AutoHide);
+        Assert.False(d.AutoSearch);
+    }
+
+    private static void AssertColumnsEqual(AutoActionDefaults a, AutoActionDefaults b)
+    {
+        Assert.Equal(a.AutoCombat,   b.AutoCombat);
+        Assert.Equal(a.AutoNuke,     b.AutoNuke);
+        Assert.Equal(a.AutoHealRest, b.AutoHealRest);
+        Assert.Equal(a.AutoBless,    b.AutoBless);
+        Assert.Equal(a.AutoLight,    b.AutoLight);
+        Assert.Equal(a.AutoGetItems, b.AutoGetItems);
+        Assert.Equal(a.AutoGetCash,  b.AutoGetCash);
+        Assert.Equal(a.AutoSneak,    b.AutoSneak);
+        Assert.Equal(a.AutoHide,     b.AutoHide);
+        Assert.Equal(a.AutoSearch,   b.AutoSearch);
     }
 }

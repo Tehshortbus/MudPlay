@@ -24,8 +24,23 @@ public sealed class GeneralSettings
     /// </summary>
     public string? DefaultLoopName { get; set; }
 
+    /// <summary>
+    /// Named Auto-Lair configuration to start when <see cref="DefaultTask"/>
+    /// is <see cref="InitialTask.BeginAutoLair"/>. Picker UI lands in
+    /// Phase 7 with the Auto-Lair scheduler; persisted as a string here
+    /// so the value survives until then.
+    /// </summary>
+    public string? DefaultAutoLairName { get; set; }
+
     /// <summary>Connect to the configured BBS as soon as the profile loads.</summary>
     public bool AutoConnect { get; set; }
+
+    /// <summary>
+    /// Before persisting changes, copy the existing profile JSON to
+    /// <c>{name}.json.bak</c>. Off by default; users who want a safety
+    /// net for hand-edits or settings churn can flip it on.
+    /// </summary>
+    public bool BackupOnSave { get; set; }
 
     /// <summary>Auto-engine boot state for Manual-Mode play.</summary>
     public AutoActionDefaults ManualMode { get; set; } = new();
