@@ -147,12 +147,6 @@
                         <CheckBox IsChecked="{Binding AmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
                     </StackPanel>
                 </Grid>
-
-                <TextBlock Margin="0,18,0,0"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           FontSize="{StaticResource FontSizeSm}"
-                           TextWrapping="Wrap"
-                           Text="Manual / Auto-Mode defaults set the boot-up state of the Action menu's auto-engines when this character logs in. Engines themselves wire in Phase 13."/>
             </StackPanel>
 
         </Grid>
