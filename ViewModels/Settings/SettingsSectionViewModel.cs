@@ -27,9 +27,6 @@ public abstract partial class SettingsSectionViewModel : ObservableObject
     /// <summary>Title shown in the sidebar.</summary>
     public abstract string Title { get; }
 
-    /// <summary>Group header this section belongs under in the sidebar (e.g., "General", "Character").</summary>
-    public abstract string GroupName { get; }
-
     /// <summary>True when this section has unapplied edits.</summary>
     public virtual bool IsDirty => false;
 

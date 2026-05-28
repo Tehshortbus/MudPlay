@@ -14,7 +14,6 @@ public sealed class PlaceholderSectionViewModel : SettingsSectionViewModel
 
     public override string Id { get; }
     public override string Title { get; }
-    public override string GroupName { get; }
 
     /// <summary>Phase tag for the placeholder body ("Phase 4 PR 4.2", "Phase 12", etc.).</summary>
     public string PhaseTag { get; }
@@ -22,16 +21,10 @@ public sealed class PlaceholderSectionViewModel : SettingsSectionViewModel
     /// <summary>One-line summary of what the real editor will host.</summary>
     public string Description { get; }
 
-    public PlaceholderSectionViewModel(
-        string id,
-        string title,
-        string groupName,
-        string phaseTag,
-        string description)
+    public PlaceholderSectionViewModel(string id, string title, string phaseTag, string description)
     {
         Id = id;
         Title = title;
-        GroupName = groupName;
         PhaseTag = phaseTag;
         Description = description;
     }

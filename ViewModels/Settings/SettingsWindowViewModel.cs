@@ -38,11 +38,11 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     /// <summary>Raised when the shell wants the host window to close.</summary>
     public event Action? CloseRequested;
 
-    /// <summary>Flat catalog — drives the search filter; the sidebar reads <see cref="VisibleGroups"/>.</summary>
+    /// <summary>Full section catalog — drives the search filter and the sidebar order.</summary>
     public ObservableCollection<SettingsSectionViewModel> Sections { get; } = new();
 
-    /// <summary>Grouped, filtered view the sidebar binds against.</summary>
-    public ObservableCollection<SettingsSectionGroup> VisibleGroups { get; } = new();
+    /// <summary>Filtered view the sidebar binds against. Recomputed on search-text change.</summary>
+    public ObservableCollection<SettingsSectionViewModel> VisibleSections { get; } = new();
 
     /// <summary>Scope picker options. Defaults entry is always present (read-only).</summary>
     public ObservableCollection<ScopeOption> ScopeOptions { get; } = new();
@@ -80,7 +80,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
 
         SeedScopeOptions();
         SeedSections();
-        RebuildVisibleGroups();
+        RebuildVisibleSections();
 
         SelectedSection = Sections.FirstOrDefault();
     }
@@ -129,20 +129,17 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         if (wrote > 0) _log.Info("Settings", $"Applied {wrote} section(s) at {Scope.Label}.");
     }
 
-    partial void OnSearchTextChanged(string value) => RebuildVisibleGroups();
+    partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
-    private void RebuildVisibleGroups()
+    private void RebuildVisibleSections()
     {
-        VisibleGroups.Clear();
+        VisibleSections.Clear();
         string needle = SearchText.Trim();
 
-        IEnumerable<SettingsSectionViewModel> filtered = string.IsNullOrEmpty(needle)
-            ? Sections
-            : Sections.Where(s => MatchesSearch(s, needle));
-
-        foreach (IGrouping<string, SettingsSectionViewModel> g in filtered.GroupBy(s => s.GroupName))
+        foreach (SettingsSectionViewModel s in Sections)
         {
-            VisibleGroups.Add(new SettingsSectionGroup(g.Key, g));
+            if (!string.IsNullOrEmpty(needle) && !MatchesSearch(s, needle)) continue;
+            VisibleSections.Add(s);
         }
     }
 
@@ -174,38 +171,33 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     /// <summary>
     /// Populate the sidebar with placeholders for every tab. Real section VMs
     /// land in subsequent PRs — for now each placeholder advertises the phase
-    /// that will wire it. Same order as the UI design spec.
+    /// that will wire it. Order follows the UI design spec.
     /// </summary>
     private void SeedSections()
     {
-        const string General = "General";
-        const string Connection = "Connection";
-        const string Character = "Character";
-        const string Automation = "Automation";
+        Add("general",   "General",   "Phase 4 PR 4.2", "Data folder, auto-connect, manual / auto-mode defaults.");
+        Add("display",   "Display",   "Phase 4 PR 4.3", "Rows / columns, palette, scrollback size, confirmation prompts.");
+        Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
+        Add("comms",     "Comms",     "Phase 4 PR 4.4", "NAWS, terminal type, line-end handling.");
 
-        Add("general",   "General",   General,    "Phase 4 PR 4.2", "Data folder, auto-connect, manual / auto-mode defaults.");
-        Add("display",   "Display",   General,    "Phase 4 PR 4.3", "Rows / columns, palette, scrollback size, confirmation prompts.");
-        Add("toolbar",   "Toolbar",   General,    "Phase 4 PR 4.6", "Which toolbar icons are visible.");
-        Add("comms",     "Comms",     General,    "Phase 4 PR 4.4", "NAWS, terminal type, line-end handling.");
+        Add("bbs",       "BBS",       "Phase 4 PR 4.5", "Host / port / account, reconnect rules, login automation sequence.");
 
-        Add("bbs",       "BBS",       Connection, "Phase 4 PR 4.5", "Host / port / account, reconnect rules, login automation sequence.");
+        Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
+        Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");
+        Add("combat",    "Combat",    "Phase 4 PR 4.8", "Weapon swap matrix, target order, multi-attack room spells.");
+        Add("party",     "Party",     "Phase 4 PR 4.8", "Party-cast decisions, par frequency, request-heal-at, party rank.");
+        Add("cash",      "Cash",      "Phase 4 PR 4.8", "Per-coin Discard / Ignore / Collect, encumbrance gates, auto-deposit.");
+        Add("statline",  "Statline",  "Phase 4 PR 4.7", "Current server-side statline + wildcard preview. Token editor lands in Phase 12.");
+        Add("talk",      "Talk",      "Phase 4 PR 4.8", "Per-channel filter toggles consumed by the Conversation window.");
+        Add("auto-lair", "Auto-Lair", "Phase 4 PR 4.8", "Marked-lair list + scheduler heuristic + idle-penalty weight.");
+        Add("pvp",       "PvP",       "Phase 4 PR 4.8", "Flee / hangup / attack / chase rules and reconnect timer.");
+        Add("other",     "Other",     "Phase 4 PR 4.8", "Auto-action toggles, scrollback size, log retention, etc.");
 
-        Add("health",    "Health",    Character,  "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
-        Add("spells",    "Spells",    Character,  "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");
-        Add("combat",    "Combat",    Character,  "Phase 4 PR 4.8", "Weapon swap matrix, target order, multi-attack room spells.");
-        Add("party",     "Party",     Character,  "Phase 4 PR 4.8", "Party-cast decisions, par frequency, request-heal-at, party rank.");
-        Add("cash",      "Cash",      Character,  "Phase 4 PR 4.8", "Per-coin Discard / Ignore / Collect, encumbrance gates, auto-deposit.");
-        Add("statline",  "Statline",  Character,  "Phase 4 PR 4.7", "Current server-side statline + wildcard preview. Token editor lands in Phase 12.");
-        Add("talk",      "Talk",      Character,  "Phase 4 PR 4.8", "Per-channel filter toggles consumed by the Conversation window.");
-        Add("auto-lair", "Auto-Lair", Character,  "Phase 4 PR 4.8", "Marked-lair list + scheduler heuristic + idle-penalty weight.");
-        Add("pvp",       "PvP",       Character,  "Phase 4 PR 4.8", "Flee / hangup / attack / chase rules and reconnect timer.");
-        Add("other",     "Other",     Character,  "Phase 4 PR 4.8", "Auto-action toggles, scrollback size, log retention, etc.");
+        Add("events",    "Events",    "Phase 4 PR 4.8", "Scheduled / lifecycle events: AtTime, Every, Logon / Logoff / Re-log.");
+        Add("sounds",    "Sounds",    "Phase 4 PR 4.8", "Sound cues for triggers, events, party state changes.");
 
-        Add("events",    "Events",    Automation, "Phase 4 PR 4.8", "Scheduled / lifecycle events: AtTime, Every, Logon / Logoff / Re-log.");
-        Add("sounds",    "Sounds",    Automation, "Phase 4 PR 4.8", "Sound cues for triggers, events, party state changes.");
-
-        void Add(string id, string title, string group, string phase, string description)
-            => Sections.Add(new PlaceholderSectionViewModel(id, title, group, phase, description));
+        void Add(string id, string title, string phase, string description)
+            => Sections.Add(new PlaceholderSectionViewModel(id, title, phase, description));
     }
 }
 

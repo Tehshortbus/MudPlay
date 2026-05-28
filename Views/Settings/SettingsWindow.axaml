@@ -13,22 +13,13 @@
         ShowInTaskbar="False">
 
     <Window.Styles>
-        <!-- Sidebar group header — small caps treatment, muted. -->
-        <Style Selector="TextBlock.GroupHeader">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="10,8,10,4"/>
-        </Style>
-
-        <!-- Sidebar section row — full-width clickable button. -->
         <Style Selector="ListBox.SidebarSections">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
         </Style>
         <Style Selector="ListBox.SidebarSections ListBoxItem">
-            <Setter Property="Padding" Value="18,5"/>
+            <Setter Property="Padding" Value="14,6"/>
             <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
         </Style>
@@ -95,27 +86,15 @@
                     Background="{StaticResource ChromeBgBrush}"
                     BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                     BorderThickness="0,0,1,0">
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding VisibleGroups}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="vm:SettingsSectionGroup">
-                                <StackPanel>
-                                    <TextBlock Classes="GroupHeader" Text="{Binding Header}"/>
-                                    <ListBox Classes="SidebarSections"
-                                             ItemsSource="{Binding Sections}"
-                                             SelectedItem="{Binding $parent[Window].((vm:SettingsWindowViewModel)DataContext).SelectedSection, Mode=TwoWay}">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate DataType="vm:SettingsSectionViewModel">
-                                                <TextBlock Text="{Binding Title}"/>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <ListBox Classes="SidebarSections"
+                         ItemsSource="{Binding VisibleSections}"
+                         SelectedItem="{Binding SelectedSection, Mode=TwoWay}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:SettingsSectionViewModel">
+                            <TextBlock Text="{Binding Title}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </Border>
 
             <!-- Content pane -->
