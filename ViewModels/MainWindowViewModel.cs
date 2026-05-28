@@ -272,6 +272,86 @@ public partial class MainWindowViewModel : ObservableObject
                 "Driven by PartyManager (par-poller + follows-you / stops-following " +
                 "pattern matchers). Compact and detail modes.");
 
+    [RelayCommand]
+    private void OpenSettings()
+        => OpenPlaceholder(
+            id: "settings",
+            panelName: "Settings",
+            phaseTag: "Phase 4",
+            headline: "Settings hub — sixteen tabs",
+            description:
+                "Sidebar-tree navigation (General / Display / Comms / BBS / Toolbar / " +
+                "Statline / Auto-Lair / Talk / Health / Spells / Combat / PvP / Party / " +
+                "Cash / Sounds / Other / Events). Scope selector + per-setting tier " +
+                "picker (installed defaults / for all characters / only for this BBS / " +
+                "only for this character). Apply / OK / Cancel commit model.");
+
+    [RelayCommand]
+    private void OpenGameDataBrowser()
+        => OpenPlaceholder(
+            id: "game-data",
+            panelName: "Game Data Browser",
+            phaseTag: "Phase 5",
+            headline: "MDB-imported tables + user overrides",
+            description:
+                "Tabs for Monsters / Items / Spells / Spell Messages / Conditions / " +
+                "Triggers / Rooms / Paths / Lairs / Shops / Races / Classes / " +
+                "TextBlocks / Players / Favorites / Macros. Per-record tier picker. " +
+                "Unified inline Spell + Spell-Messages editor.");
+
+    [RelayCommand]
+    private void OpenNavigation()
+        => OpenPlaceholder(
+            id: "navigation",
+            panelName: "Navigation",
+            phaseTag: "Phase 7",
+            headline: "Map + walk + loops + Auto-Lair",
+            description:
+                "Single unified window. Always-visible map (BFS planar layout from " +
+                "MDB Rooms+Paths). Left rail: room tree, favorites, saved loops. " +
+                "Trust-by-default RoomTracker; walk-from-anywhere; Auto-Lair " +
+                "scheduler with entry-triggered respawn + wait-room logic.");
+
+    [RelayCommand]
+    private void OpenSpellBook()
+        => OpenPlaceholder(
+            id: "spell-book",
+            panelName: "Spell Book",
+            phaseTag: "Phase 9",
+            headline: "Click-to-cast spell list",
+            description:
+                "MegaMUD-parity columns: level / mana / code / name / abilities. " +
+                "Re-Check button to re-fetch from the server. Filterable. Driven by " +
+                "the active game-data set's Spells table merged with character " +
+                "overrides.");
+
+    [RelayCommand]
+    private void OpenSessionStats()
+        => OpenPlaceholder(
+            id: "session-stats",
+            panelName: "Session Stats",
+            phaseTag: "Phase 8",
+            headline: "Observed combat / time / session counters",
+            description:
+                "Player Statistics (observed Miss / Hit / Crit / BS / sneak / dodge " +
+                "rates), Time Analysis (moving / attacking / resting), Session " +
+                "Statistics (online time, monsters killed, exp earned). Plus kills/hr " +
+                "sparkline. Counters reset on connect.");
+
+    [RelayCommand]
+    private void OpenWorkshop()
+        => OpenPlaceholder(
+            id: "workshop",
+            panelName: "Character Workshop",
+            phaseTag: "Phase 9",
+            headline: "Unified character hub — six section groups",
+            description:
+                "STATS (Sheet / CP Alloc / Builds / Character Planner) — PROGRESS " +
+                "(Levels / EXP-CP / Spells) — EQUIP (Slots / Sets+Triggers / Find " +
+                "Items) — COMBAT (Preview) — QUESTS — DEATH. Absorbs the old Player " +
+                "Status panel into STATS → Status; View → Player Status (F4) opens " +
+                "Workshop on that section.");
+
     /// <summary>
     /// Tools → Wire Inspector. Singleton-ish: a second open activates the
     /// existing window rather than spawning a duplicate.
