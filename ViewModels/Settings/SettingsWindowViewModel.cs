@@ -109,6 +109,18 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
+    /// <summary>
+    /// Clear the search box whenever the user lands on a section so the
+    /// filter doesn't persist after the click that resolved it. Setting
+    /// <see cref="SearchText"/> here triggers
+    /// <see cref="OnSearchTextChanged"/> which rebuilds the sidebar back
+    /// to the full list.
+    /// </summary>
+    partial void OnSelectedSectionChanged(SettingsSectionViewModel? value)
+    {
+        if (!string.IsNullOrEmpty(SearchText)) SearchText = string.Empty;
+    }
+
     private void RebuildVisibleSections()
     {
         VisibleSections.Clear();
