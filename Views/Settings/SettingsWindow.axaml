@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Settings"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="600"
+        x:Class="FujinTerm.Views.Settings.SettingsWindow"
+        x:DataType="vm:SettingsWindowViewModel"
+        Title="Settings"
+        Width="820" Height="600"
+        MinWidth="700" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <Style Selector="ListBox.SidebarSections">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+        <Style Selector="ListBox.SidebarSections ListBoxItem">
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="ListBox.SidebarSections ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+        </Style>
+        <Style Selector="ListBox.SidebarSections ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentAmberSoftBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Top strip: search ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBox Grid.Column="1" MinWidth="240"
+                         PlaceholderText="Search settings…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Bottom strip: action bar ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,8">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusText}"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Apply"  Command="{Binding ApplyCommand}"/>
+                    <Button Content="OK"     Command="{Binding OkCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============ Sidebar + content split ============ -->
+        <Grid ColumnDefinitions="200,*">
+
+            <!-- Sidebar -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource ChromeBgBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="0,0,1,0">
+                <ListBox Classes="SidebarSections"
+                         ItemsSource="{Binding VisibleSections}"
+                         SelectedItem="{Binding SelectedSection, Mode=TwoWay}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:SettingsSectionViewModel">
+                            <TextBlock Text="{Binding Title}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Content pane -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource ChromeBgSunkenBrush}">
+                <ContentControl Content="{Binding SelectedSection.View}"/>
+            </Border>
+        </Grid>
+
+    </DockPanel>
+</Window>

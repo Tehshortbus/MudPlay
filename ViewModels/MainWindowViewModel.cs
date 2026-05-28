@@ -10,7 +10,9 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
+using FujinTerm.ViewModels.Settings;
 using FujinTerm.Views;
+using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels;
 
@@ -39,30 +41,25 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public LineExtractor Lines { get; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
-    private string _host = "playpenbbs.com";
+    [ObservableProperty] private string _host = "playpenbbs.com";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
-    private int _port = 23;
-
-    /// <summary>Label shown in the toolbar's BBS badge ("host:port" by skeleton design).</summary>
-    public string BbsBadgeText => $"{Host}:{Port}";
+    [ObservableProperty] private int _port = 23;
 
     // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
     // The single ToggleConnectionCommand drives every transition; everything
-    // else (button visuals, menu label, status badge) reads off IsConnected
-    // + IsConnecting.
+    // else (button visuals, menu label, status-bar stoplight) reads off
+    // IsConnected + IsConnecting.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnected;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
 
     public bool IsDisconnected => !IsConnected;
@@ -79,6 +76,12 @@ public partial class MainWindowViewModel : ObservableObject
         => IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
          : "Connect";
+
+    /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
+    public string ConnectionStatusText
+        => IsConnected ? "Connected"
+         : IsConnecting ? "Connecting…"
+         : "Disconnected";
 
     /// <summary>
     /// Cancels an in-flight connect attempt — covers both the socket-level
@@ -641,19 +644,34 @@ public partial class MainWindowViewModel : ObservableObject
                 "Driven by PartyManager (par-poller + follows-you / stops-following " +
                 "pattern matchers). Compact and detail modes.");
 
+    private SettingsWindow? _settings;
+
     [RelayCommand]
     private void OpenSettings()
-        => OpenPlaceholder(
-            id: "settings",
-            panelName: "Settings",
-            phaseTag: "Phase 4",
-            headline: "Settings hub — sixteen tabs",
-            description:
-                "Sidebar-tree navigation (General / Display / Comms / BBS / Toolbar / " +
-                "Statline / Auto-Lair / Talk / Health / Spells / Combat / PvP / Party / " +
-                "Cash / Sounds / Other / Events). Scope selector + per-setting tier " +
-                "picker (installed defaults / for all characters / only for this BBS / " +
-                "only for this character). Apply / OK / Cancel commit model.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        // Toggle convention with edit-window save-on-toggle policy:
+        // re-press of the same hotkey / menu while the window is open
+        // routes through ApplyAndClose (Save path). Title-bar X / Cancel
+        // button discards. See CLAUDE.md "Architecture rules".
+        if (_settings is { } existing)
+        {
+            if (existing.DataContext is SettingsWindowViewModel vm) vm.ApplyAndClose();
+            else existing.Close();
+            return;
+        }
+
+        AppServices svc = AppServices.Current;
+        SettingsWindow window = new()
+        {
+            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log),
+        };
+        window.Closed += (_, _) => _settings = null;
+        _settings = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenGameDataBrowser()
@@ -947,7 +965,7 @@ public partial class MainWindowViewModel : ObservableObject
               Conversation .................. F2  (wired Phase 2)
               Party ......................... F3  (wired Phase 6)
               Player Workshop ............... F4  (wired Phase 9)
-              Map ........................... F5  (wired Phase 7)
+              Navigation .................... F5  (wired Phase 7)
               Spell Book .................... F7  (wired Phase 9)
               Backscroll .................... F10 (wired Phase 1)
               Session Stats ................. F11 (wired Phase 8)

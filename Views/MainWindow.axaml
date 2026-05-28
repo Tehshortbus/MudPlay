@@ -54,13 +54,45 @@
                 <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
                 <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
-                <MenuItem Header="Map"             InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
+                <MenuItem Header="Navigation"      InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
                 <MenuItem Header="Spell Book"    InputGesture="F7"  Command="{Binding OpenSpellBookCommand}"/>
                 <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
                 <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="_Action">
+                <!-- Bulk one-shot commands. Wired progressively as the
+                     owning phases ship; Action menu's job is the surface,
+                     not the engines. -->
+                <MenuItem Header="Get All"     IsEnabled="False" ToolTip.Tip="Wired in Phase 12 PR 12.4 (Quick Tools)"/>
+                <MenuItem Header="Drop All"    IsEnabled="False" ToolTip.Tip="Wired in Phase 12 PR 12.4 (Quick Tools)"/>
+                <MenuItem Header="Equip All"   IsEnabled="False" ToolTip.Tip="Wired in Phase 9 PR 9.11 (Workshop EQUIP → apply active set)"/>
+                <MenuItem Header="Deposit All" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
+                <Separator/>
+
+                <MenuItem Header="All Auto-Responses Off"
+                          IsEnabled="False"
+                          ToolTip.Tip="Master kill-switch — wired in Phase 13 (clears every auto-toggle below)"/>
+                <Separator/>
+
+                <!-- Master auto-engine toggles. Per-item / per-spell tuning
+                     for these lives in the matching Settings tab; the menu
+                     is the on / off surface during play. -->
+                <MenuItem Header="Auto Combat"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.A (CombatManager)"/>
+                <MenuItem Header="Auto Nuke"        ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.A (multi-attack room spells)"/>
+                <MenuItem Header="Auto Rest / Heal" ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PRs 13.B + 13.D"/>
+                <MenuItem Header="Auto Bless"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.D (CastingDirector)"/>
+                <MenuItem Header="Auto Light"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 — dark-room detection + light-source use"/>
+                <MenuItem Header="Auto Get Items"   ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 — uses Phase 5 Items.auto-collect + max-to-get flags"/>
+                <MenuItem Header="Auto Get Cash"    ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
+                <MenuItem Header="Auto Sneak"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.F (StealthManager)"/>
+                <MenuItem Header="Auto Hide"        ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.F (StealthManager)"/>
+                <MenuItem Header="Auto Search"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (AutoWalkManager) — search rooms while running"/>
+
+                <!-- Corpse-recovery actions land here when Phase 9 DEATH ships. -->
             </MenuItem>
 
             <MenuItem Header="_Game Data">
@@ -160,7 +192,7 @@
                     <Border Classes="ToolbarSeparator"/>
 
                     <!-- Group 3: navigation / capture / wire -->
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Map (F5)">
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Navigation (F5)">
                         <Path Data="{StaticResource IconMap}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
@@ -214,6 +246,18 @@
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenSessionStatsCommand}" ToolTip.Tip="Session Stats (F11)">
+                        <Path Data="{StaticResource IconStats}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenGameDataBrowserCommand}" ToolTip.Tip="Game Data Browser (Ctrl+G)">
+                        <Path Data="{StaticResource IconDatabase}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
                     <Button Classes="ToolbarBtn" Command="{Binding OpenLogPaneCommand}" ToolTip.Tip="Log (F9)">
                         <Path Data="{StaticResource IconLog}"
                               Stroke="{Binding $parent[Button].Foreground}"
@@ -222,34 +266,6 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Char picker + BBS badge — pushed right by the spacer column. -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Classes="CharPicker" IsEnabled="False" ToolTip.Tip="Character picker — wired in Phase 4">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="Char" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                            <TextBlock Text="—" Foreground="{StaticResource ChromeFgBrush}"/>
-                            <Path Data="{StaticResource IconChevronDown}"
-                                  Stroke="{StaticResource ChromeFgMutedBrush}"
-                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
-                                  Width="12" Height="12" Stretch="Uniform"/>
-                        </StackPanel>
-                    </Button>
-
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                Height="{StaticResource BbsBadgeHeight}">
-                        <Ellipse Width="6" Height="6" Fill="{StaticResource AccentGreenBrush}"
-                                 VerticalAlignment="Center"
-                                 IsVisible="{Binding IsConnected}"/>
-                        <Ellipse Width="6" Height="6" Fill="{StaticResource ChromeFgMutedBrush}"
-                                 VerticalAlignment="Center"
-                                 IsVisible="{Binding IsDisconnected}"/>
-                        <TextBlock Text="{Binding BbsBadgeText}"
-                                   Foreground="{StaticResource ChromeFgSecBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="{StaticResource FontSizeSm}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </StackPanel>
             </Grid>
         </Border>
 
@@ -294,6 +310,21 @@
                                Text="{Binding CombatTickText}"/>
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding HpTickText}"/>
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
+                </StackPanel>
+
+                <!-- Connection stoplight: red disconnected · yellow connecting · green connected. -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{StaticResource AccentRedBrush}"
+                             IsVisible="{Binding IsIdle}"/>
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{StaticResource AccentYellowBrush}"
+                             IsVisible="{Binding IsConnecting}"/>
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{StaticResource AccentGreenBrush}"
+                             IsVisible="{Binding IsConnected}"/>
+                    <TextBlock Classes="StatusSlot" Text="{Binding ConnectionStatusText}"/>
                 </StackPanel>
             </Grid>
         </Border>
