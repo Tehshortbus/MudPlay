@@ -48,7 +48,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         ? "Pick a section from the sidebar."
         : SelectedSection.Title;
 
-    public SettingsWindowViewModel(ProfileService profile, LogService log)
+    public SettingsWindowViewModel(ProfileService profile, LogService log, string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(log);
@@ -58,7 +58,10 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         SeedSections();
         RebuildVisibleSections();
 
-        SelectedSection = Sections.FirstOrDefault();
+        SelectedSection = initialSectionId is not null
+            ? Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase))
+              ?? Sections.FirstOrDefault()
+            : Sections.FirstOrDefault();
     }
 
     /// <summary>

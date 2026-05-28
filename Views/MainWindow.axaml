@@ -39,7 +39,7 @@
                 <MenuItem Header="{Binding ConnectionLabel}"
                           Command="{Binding ToggleConnectionCommand}"
                           InputGesture="Ctrl+K"/>
-                <MenuItem Header="BBS list"      IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
                 <Separator/>
                 <MenuItem Header="_New profile…"  InputGesture="Ctrl+N" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
                 <MenuItem Header="_Open profile…" InputGesture="Ctrl+O" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>

@@ -52,6 +52,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     public bool HasSelection => SelectedBbsName is not null;
 
     // ----- Editable fields, populated from the selected BbsProfile -----
+    [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string _host = string.Empty;
     [ObservableProperty] private int _port = 23;
     [ObservableProperty] private string? _websiteUrl;
@@ -73,16 +74,55 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         ReloadBbsList();
         SelectedBbsName = AvailableBbsNames.FirstOrDefault();
+        // OnSelectedBbsNameChanged short-circuits while _suppressDirty is
+        // true (so the initial property assignment doesn't mark dirty), so
+        // we have to call ReloadSelected ourselves here. Without this, the
+        // editor stays blank until the user clicks a different BBS — even
+        // when there's only one in the list and it's already selected.
+        if (SelectedBbsName is not null) ReloadSelected();
         _suppressDirty = false;
     }
 
     public override void Apply()
     {
+        // Rename pass: if the Name field differs from the selected key, the
+        // user retitled this BBS. Move the on-disk file + cache entry and
+        // refresh the selection so the list shows the new name.
+        if (SelectedBbsName is { } oldName
+            && !string.IsNullOrWhiteSpace(Name)
+            && !string.Equals(oldName, Name, StringComparison.OrdinalIgnoreCase))
+        {
+            RenameSelected(oldName, Name);
+        }
+
         foreach (BbsProfile profile in _loaded.Values)
         {
             _bbsStore.Save(profile);
         }
         ClearDirty();
+    }
+
+    private void RenameSelected(string oldName, string newName)
+    {
+        if (!_loaded.TryGetValue(oldName, out BbsProfile? profile))
+        {
+            profile = _bbsStore.Get(oldName);
+            if (profile is null) return;
+        }
+
+        // Don't trample an existing BBS with the new name.
+        if (_loaded.ContainsKey(newName) || _bbsStore.Get(newName) is not null) return;
+
+        profile.Name = newName;
+        _bbsStore.Delete(oldName);
+        _bbsStore.Save(profile);
+        _loaded.Remove(oldName);
+        _loaded[newName] = profile;
+
+        _suppressDirty = true;
+        ReloadBbsList();
+        SelectedBbsName = newName;
+        _suppressDirty = false;
     }
 
     public override void Discard()
@@ -157,6 +197,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             _loaded[name] = profile;
         }
 
+        Name = profile.Name;
         Host = profile.Host;
         Port = profile.Port;
         WebsiteUrl = profile.WebsiteUrl;
@@ -175,6 +216,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private void ResetFields()
     {
         BbsProfile defaults = new();
+        Name = defaults.Name;
         Host = defaults.Host;
         Port = defaults.Port;
         WebsiteUrl = defaults.WebsiteUrl;
@@ -227,6 +269,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.TerminalRows = TerminalRows;
     }
 
+    partial void OnNameChanged(string value)                    { Dirty(); }
     partial void OnHostChanged(string value)                    { PushToCache(); Dirty(); }
     partial void OnPortChanged(int value)                       { PushToCache(); Dirty(); }
     partial void OnWebsiteUrlChanged(string? value)             { PushToCache(); Dirty(); }

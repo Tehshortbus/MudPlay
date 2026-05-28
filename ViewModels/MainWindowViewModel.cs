@@ -686,7 +686,12 @@ public partial class MainWindowViewModel : ObservableObject
     private SettingsWindow? _settings;
 
     [RelayCommand]
-    private void OpenSettings()
+    private void OpenSettings() => OpenSettingsAt(null);
+
+    [RelayCommand]
+    private void OpenBbsSettings() => OpenSettingsAt("bbs");
+
+    private void OpenSettingsAt(string? sectionId)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
@@ -694,18 +699,34 @@ public partial class MainWindowViewModel : ObservableObject
         // Toggle convention with edit-window save-on-toggle policy:
         // re-press of the same hotkey / menu while the window is open
         // routes through ApplyAndClose (Save path). Title-bar X / Cancel
-        // button discards. See CLAUDE.md "Architecture rules".
+        // button discards. See CLAUDE.md "Architecture rules". For a
+        // deep-link (BBS list etc.) on a window that's already open, jump
+        // to the requested section instead of saving + closing.
         if (_settings is { } existing)
         {
-            if (existing.DataContext is SettingsWindowViewModel vm) vm.ApplyAndClose();
-            else existing.Close();
+            if (existing.DataContext is SettingsWindowViewModel vm)
+            {
+                if (sectionId is not null)
+                {
+                    SettingsSectionViewModel? section = vm.Sections
+                        .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+                    if (section is not null) vm.SelectedSection = section;
+                    existing.Activate();
+                    return;
+                }
+                vm.ApplyAndClose();
+            }
+            else
+            {
+                existing.Close();
+            }
             return;
         }
 
         AppServices svc = AppServices.Current;
         SettingsWindow window = new()
         {
-            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log),
+            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log, sectionId),
         };
         window.Closed += (_, _) => _settings = null;
         _settings = window;
