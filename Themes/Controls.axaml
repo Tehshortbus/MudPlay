@@ -104,6 +104,14 @@
         <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
     </Style>
 
+    <!-- Seconds-remaining number that sits on top of each status-bar bar.
+         Brighter than the surrounding muted secondary fg + ZIndex 10 so it
+         reliably wins over the ProgressBar template's indicator border. -->
+    <Style Selector="TextBlock.StatusBarOverlay">
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        <Setter Property="ZIndex" Value="10"/>
+    </Style>
+
     <!-- Status-bar countdown bars repaint every 100 ms; Avalonia's default
          ProgressBar value-change transition smears each repaint over ~150 ms
          which makes the bar visually trail the seconds-remaining label.

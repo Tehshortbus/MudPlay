@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="580"
+        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="540"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="700" Height="580">
+        Width="660" Height="540">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -313,28 +313,27 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 
                     <TextBlock Classes="StatusSlot" Text="Tick"/>
-                    <Grid Width="80" Height="16">
+                    <Grid Width="60" Height="16">
                         <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                      Value="{Binding CombatTickPercent}"
                                      Foreground="{StaticResource AccentGreenBrush}"
                                      Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock x:Name="CombatTickLabel" ZIndex="1"
-                                   Classes="StatusSlot StatusMono"
+                        <TextBlock x:Name="CombatTickLabel"
+                                   Classes="StatusSlot StatusMono StatusBarOverlay"
                                    Text="{Binding CombatTickText}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Grid>
 
-                    <TextBlock Classes="StatusSlot" Text="HP" Margin="14,0,0,0"/>
-                    <Grid Width="160" Height="16">
+                    <TextBlock Classes="StatusSlot" Text="HP" Margin="10,0,0,0"/>
+                    <Grid Width="100" Height="16">
                         <!-- Single bar fills the whole HP slot when only the natural cycle is active. -->
                         <Grid IsVisible="{Binding !IsHpRestActive}">
                             <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                          Value="{Binding HpNaturalPercent}"
                                          Foreground="{StaticResource AccentRedBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
-                            <TextBlock Classes="StatusSlot StatusMono"
-                                       ZIndex="1"
+                            <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                        Text="{Binding HpNaturalText}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
@@ -346,8 +345,7 @@
                                              Value="{Binding HpNaturalPercent}"
                                              Foreground="{StaticResource AccentRedBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
-                                <TextBlock Classes="StatusSlot StatusMono"
-                                           ZIndex="1"
+                                <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                            Text="{Binding HpNaturalText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -358,8 +356,7 @@
                                              Value="{Binding HpRestPercent}"
                                              Foreground="{StaticResource AccentRedBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
-                                <TextBlock Classes="StatusSlot StatusMono"
-                                           ZIndex="1"
+                                <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                            Text="{Binding HpRestText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -367,15 +364,14 @@
                         </Grid>
                     </Grid>
 
-                    <TextBlock Classes="StatusSlot" Text="MA" Margin="14,0,0,0"/>
-                    <Grid Width="160" Height="16">
+                    <TextBlock Classes="StatusSlot" Text="MA" Margin="10,0,0,0"/>
+                    <Grid Width="100" Height="16">
                         <Grid IsVisible="{Binding !IsMaMediActive}">
                             <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                          Value="{Binding MaNaturalPercent}"
                                          Foreground="{StaticResource AccentCyanBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
-                            <TextBlock Classes="StatusSlot StatusMono"
-                                       ZIndex="1"
+                            <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                        Text="{Binding MaNaturalText}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
@@ -386,8 +382,7 @@
                                              Value="{Binding MaNaturalPercent}"
                                              Foreground="{StaticResource AccentCyanBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
-                                <TextBlock Classes="StatusSlot StatusMono"
-                                           ZIndex="1"
+                                <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                            Text="{Binding MaNaturalText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -398,8 +393,7 @@
                                              Value="{Binding MaMediPercent}"
                                              Foreground="{StaticResource AccentCyanBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
-                                <TextBlock Classes="StatusSlot StatusMono"
-                                           ZIndex="1"
+                                <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
                                            Text="{Binding MaMediText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
