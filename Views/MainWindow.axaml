@@ -306,75 +306,15 @@
                                TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
-                <!-- Cycle countdowns. Labels (Tick / HP / MA) sit at fixed
-                     positions; bars fill the space between consecutive labels.
-                     HP and MA bar slots are deliberately the same width so the
-                     two natural / bonus pairs read as a matched set. -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-
-                    <TextBlock Classes="StatusSlot" Text="Tick"/>
-                    <Grid Width="40" Height="16">
-                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
-                                     Value="{Binding CombatTickPercent}"
-                                     Foreground="{StaticResource AccentGreenBrush}"
-                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock x:Name="CombatTickLabel"
-                                   Classes="StatusSlot StatusMono StatusBarOverlay"
-                                   Text="{Binding CombatTickText}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-
-                    <TextBlock Classes="StatusSlot" Text="HP" Margin="10,0,0,0"/>
-                    <Grid Width="40" Height="16">
-                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
-                                     Value="{Binding HpNaturalPercent}"
-                                     Foreground="{StaticResource AccentRedBrush}"
-                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
-                                   Text="{Binding HpNaturalText}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                    <!-- Rest bar appears alongside the natural one while Position=Resting. -->
-                    <TextBlock Classes="StatusSlot" Text="/" Margin="3,0"
-                               IsVisible="{Binding IsHpRestActive}"/>
-                    <Grid Width="40" Height="16" IsVisible="{Binding IsHpRestActive}">
-                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
-                                     Value="{Binding HpRestPercent}"
-                                     Foreground="{StaticResource AccentRedBrush}"
-                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
-                                   Text="{Binding HpRestText}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-
-                    <TextBlock Classes="StatusSlot" Text="MA" Margin="10,0,0,0"/>
-                    <Grid Width="40" Height="16">
-                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
-                                     Value="{Binding MaNaturalPercent}"
-                                     Foreground="{StaticResource AccentCyanBrush}"
-                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
-                                   Text="{Binding MaNaturalText}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                    <!-- Medi bar appears alongside the natural one while Position=Meditating. -->
-                    <TextBlock Classes="StatusSlot" Text="/" Margin="3,0"
-                               IsVisible="{Binding IsMaMediActive}"/>
-                    <Grid Width="40" Height="16" IsVisible="{Binding IsMaMediActive}">
-                        <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
-                                     Value="{Binding MaMediPercent}"
-                                     Foreground="{StaticResource AccentCyanBrush}"
-                                     Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock Classes="StatusSlot StatusMono StatusBarOverlay"
-                                   Text="{Binding MaMediText}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-
+                <!-- Cycle countdowns as plain text. Natural HP / MA are always
+                     visible once observed; rest / medi are appended only while
+                     Position=Resting / Position=Meditating. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <TextBlock x:Name="CombatTickLabel"
+                               Classes="StatusSlot StatusMono"
+                               Text="{Binding CombatTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding HpTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
 
                 <!-- Connection stoplight: red disconnected · yellow connecting · green connected. -->

@@ -104,33 +104,6 @@
         <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
     </Style>
 
-    <!-- Seconds-remaining number that sits on top of each status-bar bar.
-         Brighter than the surrounding muted secondary fg + ZIndex 10 so it
-         reliably wins over the ProgressBar template's indicator border. -->
-    <Style Selector="TextBlock.StatusBarOverlay">
-        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
-        <Setter Property="ZIndex" Value="10"/>
-    </Style>
-
-    <!-- Status-bar countdown bars repaint every 100 ms; Avalonia's default
-         ProgressBar value-change transition smears each repaint over ~150 ms
-         which makes the bar visually trail the seconds-remaining label.
-         StatusBar class snaps the indicator instantly so the bar drains in
-         lockstep with the number it overlays. Subtle border so an empty
-         (pre-observation) bar still reads as a bar, not as background. -->
-    <Style Selector="ProgressBar.StatusBar /template/ Border">
-        <Setter Property="Transitions">
-            <Transitions/>
-        </Setter>
-    </Style>
-    <Style Selector="ProgressBar.StatusBar">
-        <Setter Property="Transitions">
-            <Transitions/>
-        </Setter>
-        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderSoftBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="MinHeight" Value="0"/>
-    </Style>
 
     <!-- ============ Secondary connection strip (transitional) ============ -->
     <!-- Hosts the Host / Port editor inputs until Phase 4 PR 4.5 absorbs them
