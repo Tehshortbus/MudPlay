@@ -10,7 +10,8 @@
         Title="Backscroll"
         Width="860" Height="580"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        UseLayoutRounding="True">
 
     <DockPanel LastChildFill="True">
 
