@@ -13,6 +13,7 @@
                 <ResourceInclude Source="avares://FujinTerm/Themes/Palette.axaml"/>
                 <ResourceInclude Source="avares://FujinTerm/Themes/Typography.axaml"/>
                 <ResourceInclude Source="avares://FujinTerm/Themes/Density.axaml"/>
+                <ResourceInclude Source="avares://FujinTerm/Themes/Icons.axaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
@@ -20,8 +21,11 @@
     <Application.Styles>
         <!-- Fluent theme styles the standard chrome (buttons, text boxes,
              scrollbars). The terminal area itself is rendered manually and
-             ignores these styles. PR 1.1.b layers FujinTerm-specific style
-             overrides on top of Fluent. -->
+             ignores these styles. The FujinTerm overrides in Controls.axaml
+             layer on top — they only touch chrome surfaces tagged with style
+             classes (Menu.Chrome, Border.Toolbar, Button.ToolbarBtn, etc.) so
+             unscoped controls keep the Fluent baseline. -->
         <FluentTheme />
+        <StyleInclude Source="avares://FujinTerm/Themes/Controls.axaml"/>
     </Application.Styles>
 </Application>

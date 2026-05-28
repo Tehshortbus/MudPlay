@@ -33,10 +33,15 @@ public partial class MainWindowViewModel : ObservableObject
     public TerminalEmulator Emulator { get; } = new(80, 25);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
     private string _host = "playpenbbs.com";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
     private int _port = 23;
+
+    /// <summary>Label shown in the toolbar's BBS badge ("host:port" by skeleton design).</summary>
+    public string BbsBadgeText => $"{Host}:{Port}";
 
     // IsConnected is the canonical state. The other two attributes here keep
     // the inverse "IsDisconnected" property and the two commands' CanExecute
