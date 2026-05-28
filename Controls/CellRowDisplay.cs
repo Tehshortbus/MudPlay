@@ -82,15 +82,6 @@ public sealed class CellRowDisplay : Control
         // device pixels — without this, Avalonia anti-aliases the run-edges
         // and adjacent same-colour rows bleed into each other.
         UseLayoutRounding = true;
-
-        // Pin text rendering to plain anti-aliasing. The Avalonia default is
-        // SubpixelAntialias which places colour fringes along glyph edges
-        // (the LCD-RGB trick that looks fine for prose but bleeds into
-        // adjacent cell backgrounds for bitmap fonts on a coloured grid).
-        // Antialias keeps the glyph smooth without the colour fringe — which
-        // is what the live TerminalControl effectively gets because it's
-        // rendered on a black-only surface where the fringe is invisible.
-        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

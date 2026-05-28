@@ -63,14 +63,17 @@
                  Background="Black"
                  BorderThickness="0"
                  Padding="4"
+                 UseLayoutRounding="True"
                  SelectionMode="Multiple">
             <ListBox.Styles>
                 <Style Selector="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
+                    <Setter Property="UseLayoutRounding" Value="True"/>
                 </Style>
                 <Style Selector="ListBoxItem /template/ ContentPresenter">
                     <Setter Property="Padding" Value="0"/>
+                    <Setter Property="UseLayoutRounding" Value="True"/>
                 </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>
