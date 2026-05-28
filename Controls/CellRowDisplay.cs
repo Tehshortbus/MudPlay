@@ -77,6 +77,16 @@ public sealed class CellRowDisplay : Control
     public CellRowDisplay()
     {
         _typeface = new Typeface(FontFamily);
+
+        // Pixel-snap our bounds so the FillRectangles below land on integer
+        // device pixels — without this, Avalonia anti-aliases the run-edges
+        // and adjacent same-colour rows bleed into each other.
+        UseLayoutRounding = true;
+
+        // Crisp edges on the background fills (the per-glyph FormattedText
+        // still anti-aliases, which is what we want for text). Same idea
+        // as TerminalControl's "snap to integer pixels" comment.
+        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -119,8 +129,9 @@ public sealed class CellRowDisplay : Control
         // control in the row template (the timestamp TextBlock) reports a
         // taller natural height. Without this, coloured-space art leaves a
         // few pixels of black between rows and BBS balloons / banners show
-        // as horizontal bars instead of solid shapes.
-        double paintH = Bounds.Height > 0 ? Bounds.Height : _cellH;
+        // as horizontal bars instead of solid shapes. Rounded up so adjacent
+        // rows meet exactly with no anti-aliased gap.
+        double paintH = Bounds.Height > 0 ? Math.Ceiling(Bounds.Height) : _cellH;
 
         int i = 0;
         while (i < cells.Length)
