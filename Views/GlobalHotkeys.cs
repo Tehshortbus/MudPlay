@@ -2,45 +2,58 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
 /// <summary>
-/// Attaches the MainWindow's <c>KeyBindings</c> to a child window so the
-/// app-wide hotkeys (F2 / F4 / F9 / F10 / F11 / Ctrl+, / Ctrl+G / Ctrl+Q
-/// / Ctrl+K / F1) still fire when the focus is in a child window
-/// (Conversation, Backscroll, Wire Inspector, etc.). Without this, only
-/// MainWindow's own focus surface honoured the hotkeys — the toggle
-/// behaviour was unreachable once a panel had focus.
+/// Adds the app-wide window-toggle hotkeys (F2 / F3 / F4 / F5 / F7 /
+/// F9 / F10 / F11 / Ctrl+, / Ctrl+G / Ctrl+K / Ctrl+Q / F1) to a child
+/// window so re-pressing the hotkey closes the open window — the
+/// Phase 2 toggle convention. Avalonia's window-level KeyBindings only
+/// fire when that window has focus, so without this every panel had its
+/// own focus surface and the hotkey toggle was unreachable.
 /// </summary>
 /// <remarks>
-/// Implementation: copies <see cref="Window.KeyBindings"/> from
-/// <c>desktop.MainWindow</c> into the target. New KeyBinding instances
-/// wrap the same <see cref="KeyBinding.Command"/> and <see cref="KeyBinding.Gesture"/>
-/// — so re-pressing F2 from inside Conversation routes to the same
-/// <c>OpenConversationCommand</c> that opens it, and the existing toggle
-/// logic in <c>MainWindowViewModel</c> handles the close path.
+/// Earlier this helper tried to mirror MainWindow's <c>KeyBindings</c>
+/// collection by value. That fails for XAML-defined bindings: the
+/// <c>kb.Command</c> property is the binding expression and may not have
+/// resolved to an <see cref="ICommand"/> at the moment a child window is
+/// being constructed. Reaching into <see cref="MainWindowViewModel"/>
+/// directly and wiring KeyBindings against the relay-command instances
+/// sidesteps the indirection entirely.
 /// </remarks>
 public static class GlobalHotkeys
 {
-    /// <summary>
-    /// Call from each child window's constructor (or <c>Opened</c>) to
-    /// mirror MainWindow's hotkeys into <paramref name="window"/>.
-    /// </summary>
     public static void Attach(Window window)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-        if (ReferenceEquals(window, main)) return;
-
-        foreach (KeyBinding kb in main.KeyBindings)
-        {
-            window.KeyBindings.Add(new KeyBinding
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime
             {
-                Gesture = kb.Gesture,
-                Command = kb.Command,
-                CommandParameter = kb.CommandParameter,
-            });
-        }
+                MainWindow.DataContext: MainWindowViewModel vm
+            } desktop) return;
+        if (ReferenceEquals(window, desktop.MainWindow)) return;
+
+        Add(window, "F1",            vm.OpenHelpTopicsCommand);
+        Add(window, "F2",            vm.OpenConversationCommand);
+        Add(window, "F3",            vm.OpenPartyCommand);
+        Add(window, "F4",            vm.OpenWorkshopCommand);
+        Add(window, "F5",            vm.OpenNavigationCommand);
+        Add(window, "F7",            vm.OpenSpellBookCommand);
+        Add(window, "F9",            vm.OpenLogPaneCommand);
+        Add(window, "F10",           vm.OpenBackscrollCommand);
+        Add(window, "F11",           vm.OpenSessionStatsCommand);
+        Add(window, "Ctrl+OemComma", vm.OpenSettingsCommand);
+        Add(window, "Ctrl+G",        vm.OpenGameDataBrowserCommand);
+        Add(window, "Ctrl+K",        vm.ToggleConnectionCommand);
+        Add(window, "Ctrl+Q",        vm.QuitCommand);
+    }
+
+    private static void Add(Window window, string gesture, System.Windows.Input.ICommand command)
+    {
+        window.KeyBindings.Add(new KeyBinding
+        {
+            Gesture = KeyGesture.Parse(gesture),
+            Command = command,
+        });
     }
 }

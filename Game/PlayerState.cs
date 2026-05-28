@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
@@ -26,12 +27,12 @@ namespace FujinTerm.Game;
 /// </remarks>
 public sealed partial class PlayerState : ObservableObject
 {
-    [ObservableProperty] private int _hp;
-    [ObservableProperty] private int _maxHp;
-    [ObservableProperty] private int _ma;
-    [ObservableProperty] private int _maxMa;
-    [ObservableProperty] private ManaType _manaType;
-    [ObservableProperty] private PlayerPosition _position;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private int _hp;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private int _maxHp;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private int _ma;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private int _maxMa;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private ManaType _manaType;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private PlayerPosition _position;
 
     /// <summary>
     /// True once <see cref="PromptParser"/> has observed at least one
@@ -39,5 +40,5 @@ public sealed partial class PlayerState : ObservableObject
     /// <c>false</c> so the first-launch / pre-connect state doesn't
     /// render as <c>HP 0/0</c>.
     /// </summary>
-    [ObservableProperty] private bool _hasPromptData;
+    [ObservableProperty] [field: Owner(typeof(PromptParser))] private bool _hasPromptData;
 }
