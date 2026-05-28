@@ -152,7 +152,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (t is not null) await t.DisposeAsync();
         IsConnected = false;
 
-        WriteTerminalStatus($"[DISCONNECTED FROM: {Host} {Port}.]", TerminalStatusKind.Notice);
+        WriteTerminalStatus($"[DISCONNECTED FROM: {Host} {Port}]", TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Telnet", $"Disconnected from {Host}:{Port}");
     }
 
@@ -174,7 +174,7 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 if (_connectCts.IsCancellationRequested) break;
 
-                WriteTerminalStatus($"[CONNECTING TO: {Host} {Port}....]", TerminalStatusKind.Notice);
+                WriteTerminalStatus($"[CONNECTING TO: {Host} {Port}]", TerminalStatusKind.Notice);
                 AppServices.Current.Log.Info("Connect",
                     $"Connecting to {Host}:{Port} (attempt {attempt}/{MaxConnectAttempts})…");
 
