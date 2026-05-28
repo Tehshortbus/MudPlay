@@ -108,7 +108,8 @@
          ProgressBar value-change transition smears each repaint over ~150 ms
          which makes the bar visually trail the seconds-remaining label.
          StatusBar class snaps the indicator instantly so the bar drains in
-         lockstep with the number it overlays. -->
+         lockstep with the number it overlays. Subtle border so an empty
+         (pre-observation) bar still reads as a bar, not as background. -->
     <Style Selector="ProgressBar.StatusBar /template/ Border">
         <Setter Property="Transitions">
             <Transitions/>
@@ -118,6 +119,9 @@
         <Setter Property="Transitions">
             <Transitions/>
         </Setter>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderSoftBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MinHeight" Value="0"/>
     </Style>
 
     <!-- ============ Secondary connection strip (transitional) ============ -->

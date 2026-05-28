@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="580"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="720"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="820" Height="580">
+        Width="700" Height="720">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -311,12 +311,12 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 
                     <TextBlock Classes="StatusSlot" Text="Tick"/>
-                    <Grid Width="80" Height="14">
+                    <Grid Width="80" Height="16">
                         <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                      Value="{Binding CombatTickPercent}"
                                      Foreground="{StaticResource AccentGreenBrush}"
                                      Background="{StaticResource ChromeBgSunkenBrush}"/>
-                        <TextBlock x:Name="CombatTickLabel"
+                        <TextBlock x:Name="CombatTickLabel" ZIndex="1"
                                    Classes="StatusSlot StatusMono"
                                    Text="{Binding CombatTickText}"
                                    HorizontalAlignment="Center"
@@ -324,7 +324,7 @@
                     </Grid>
 
                     <TextBlock Classes="StatusSlot" Text="HP" Margin="14,0,0,0"/>
-                    <Grid Width="160" Height="14">
+                    <Grid Width="160" Height="16">
                         <!-- Single bar fills the whole HP slot when only the natural cycle is active. -->
                         <Grid IsVisible="{Binding !IsHpRestActive}">
                             <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
@@ -332,6 +332,7 @@
                                          Foreground="{StaticResource AccentRedBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
                             <TextBlock Classes="StatusSlot StatusMono"
+                                       ZIndex="1"
                                        Text="{Binding HpNaturalText}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
@@ -344,6 +345,7 @@
                                              Foreground="{StaticResource AccentRedBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
                                 <TextBlock Classes="StatusSlot StatusMono"
+                                           ZIndex="1"
                                            Text="{Binding HpNaturalText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -355,6 +357,7 @@
                                              Foreground="{StaticResource AccentRedBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
                                 <TextBlock Classes="StatusSlot StatusMono"
+                                           ZIndex="1"
                                            Text="{Binding HpRestText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -363,13 +366,14 @@
                     </Grid>
 
                     <TextBlock Classes="StatusSlot" Text="MA" Margin="14,0,0,0"/>
-                    <Grid Width="160" Height="14">
+                    <Grid Width="160" Height="16">
                         <Grid IsVisible="{Binding !IsMaMediActive}">
                             <ProgressBar Classes="StatusBar" Minimum="0" Maximum="100"
                                          Value="{Binding MaNaturalPercent}"
                                          Foreground="{StaticResource AccentCyanBrush}"
                                          Background="{StaticResource ChromeBgSunkenBrush}"/>
                             <TextBlock Classes="StatusSlot StatusMono"
+                                       ZIndex="1"
                                        Text="{Binding MaNaturalText}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
@@ -381,6 +385,7 @@
                                              Foreground="{StaticResource AccentCyanBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
                                 <TextBlock Classes="StatusSlot StatusMono"
+                                           ZIndex="1"
                                            Text="{Binding MaNaturalText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
@@ -392,6 +397,7 @@
                                              Foreground="{StaticResource AccentCyanBrush}"
                                              Background="{StaticResource ChromeBgSunkenBrush}"/>
                                 <TextBlock Classes="StatusSlot StatusMono"
+                                           ZIndex="1"
                                            Text="{Binding MaMediText}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"/>
