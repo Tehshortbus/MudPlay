@@ -158,11 +158,16 @@ public sealed class TerminalScreen
         // to disappear — capture them in the scrollback ring before the
         // copy overwrites them. Partial-region scrolls (top > 0) don't
         // discard anything visible above the region, so they don't capture.
+        // Blank rows are filtered: BBS scroll-out of empty padding (eg the
+        // post-Connect status line scrolling six unused rows off the top)
+        // would otherwise show as a handful of timestamped blank rows in
+        // the backscroll export.
         if (top == 0)
         {
             for (int y = 0; y < n; y++)
             {
-                Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+                if (!IsRowBlank(y))
+                    Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
             }
         }
         // Move surviving rows up.

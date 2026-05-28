@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -31,7 +32,12 @@ public partial class BackscrollWindow : Window
         {
             vm.ScrollToRowRequested += OnScrollToRow;
             vm.GoToLiveRequested    += OnGoToLive;
-            OnGoToLive();   // open on the freshest content.
+
+            // ScrollIntoView no-ops if the ListBox hasn't been measured /
+            // realised yet — Opened fires before the first arrange pass.
+            // Dispatch on a Background-priority post so layout completes
+            // first; user lands on the freshest row instead of row 0.
+            Dispatcher.UIThread.Post(OnGoToLive, DispatcherPriority.Background);
 
             if (vm.FocusSearchOnOpen)
             {

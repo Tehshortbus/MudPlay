@@ -99,40 +99,64 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with
-    /// fresh snapshots of every screen row. Adjusts the live-tail size if
-    /// the screen was resized.
+    /// fresh snapshots of every <em>non-blank</em> screen row. Blank rows
+    /// are skipped: a freshly-launched terminal has 25 blank rows that
+    /// would otherwise show up as a wall of timestamped emptiness above
+    /// any real content.
     /// </summary>
     private void RefreshLiveTail()
     {
         TerminalScreen screen = _emulator.Screen;
-        int desired = screen.Rows;
         DateTimeOffset now = DateTimeOffset.Now;
+
+        // Build the live snapshot non-blank rows only.
+        List<BackscrollRowViewModel> liveRows = new();
+        int lastNonBlank = -1;
+        for (int y = 0; y < screen.Rows; y++)
+        {
+            if (!IsScreenRowBlank(screen, y))
+            {
+                lastNonBlank = y;
+            }
+        }
+        for (int y = 0; y <= lastNonBlank; y++)
+        {
+            if (IsScreenRowBlank(screen, y)) continue;
+            Cell[] cells = screen.Row(y).ToArray();
+            liveRows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
+        }
 
         int currentLive = Rows.Count - _scrollbackCount;
 
         // Replace existing live rows in-place; cheaper than clear + re-add.
-        int common = Math.Min(currentLive, desired);
+        int common = Math.Min(currentLive, liveRows.Count);
         for (int y = 0; y < common; y++)
         {
-            Cell[] cells = screen.Row(y).ToArray();
-            Rows[_scrollbackCount + y] = new BackscrollRowViewModel(
-                new ScrollbackBuffer.Row(now, cells));
+            Rows[_scrollbackCount + y] = liveRows[y];
         }
 
-        // Add any extra rows the screen grew into.
-        for (int y = common; y < desired; y++)
+        // Add any extra rows beyond what was already there.
+        for (int y = common; y < liveRows.Count; y++)
         {
-            Cell[] cells = screen.Row(y).ToArray();
-            Rows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
+            Rows.Add(liveRows[y]);
         }
 
-        // Remove tail if the screen shrank.
-        while (Rows.Count - _scrollbackCount > desired)
+        // Remove tail if the new snapshot is shorter than the previous one.
+        while (Rows.Count - _scrollbackCount > liveRows.Count)
         {
             Rows.RemoveAt(Rows.Count - 1);
         }
 
         OnPropertyChanged(nameof(StatusText));
+    }
+
+    private static bool IsScreenRowBlank(TerminalScreen screen, int y)
+    {
+        for (int x = 0; x < screen.Cols; x++)
+        {
+            if (screen[x, y].Char != ' ') return false;
+        }
+        return true;
     }
 
     [RelayCommand]
