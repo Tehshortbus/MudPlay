@@ -18,6 +18,7 @@ public partial class LogPaneWindow : Window
     public LogPaneWindow()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
         Opened += OnOpened;
         Closed += OnClosed;
     }

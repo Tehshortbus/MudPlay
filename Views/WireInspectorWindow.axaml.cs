@@ -22,6 +22,7 @@ public partial class WireInspectorWindow : Window
     public WireInspectorWindow()
     {
         InitializeComponent();
+        GlobalHotkeys.Attach(this);
         Opened += OnOpened;
         Closed += OnClosed;
     }

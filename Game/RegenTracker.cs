@@ -47,6 +47,29 @@ public sealed class RegenTracker : IDisposable
     public RegenStat MaResting    { get; } = new(RegenConstants.SeedRestingInterval);
     public RegenStat MaMeditating { get; } = new(RegenConstants.SeedMeditatingInterval);
 
+    /// <summary>
+    /// Time remaining until the next expected HP regen tick, or <c>null</c>
+    /// before the first sample arrives (we don't have a baseline timestamp
+    /// to project from yet). Status-bar consumers poll this every tick of
+    /// their own refresh timer.
+    /// </summary>
+    public TimeSpan? GetTimeToNextHpTick()
+    {
+        if (!_hpBaselineSet) return null;
+        RegenStat stat = HpStatFor(_state.Position);
+        TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastHpSampleAt);
+        return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
+    }
+
+    /// <summary>Same as <see cref="GetTimeToNextHpTick"/>, MA edition.</summary>
+    public TimeSpan? GetTimeToNextMaTick()
+    {
+        if (!_maBaselineSet) return null;
+        RegenStat stat = MaStatFor(_state.Position);
+        TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastMaSampleAt);
+        return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
+    }
+
     /// <summary>Fired after an observed HP increase passes the artifact filter.</summary>
     public event Action<RegenSample>? HpTickObserved;
 

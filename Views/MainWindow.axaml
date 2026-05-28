@@ -289,9 +289,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="Tick —"/>
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="HP —"/>
-                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="MA —"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding CombatTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding HpTickText}"/>
+                    <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
 
                 <TextBlock Grid.Column="2" Classes="StatusSlot"

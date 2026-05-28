@@ -114,6 +114,20 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public string LatestLogText => AppServices.Current.Log.Latest?.Message ?? string.Empty;
 
+    /// <summary>Formatted "Tick mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _combatTickText = "Tick —";
+    /// <summary>Formatted "HP mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _hpTickText = "HP —";
+    /// <summary>Formatted "MA mm:ss" countdown shown in the status bar's middle slot.</summary>
+    [ObservableProperty] private string _maTickText = "MA —";
+
+    /// <summary>
+    /// 500 ms repaint cadence for the three status-bar tick countdowns —
+    /// fast enough to look live without burning cycles. State sourced from
+    /// AppServices.Tick (combat) + AppServices.Regen (HP / MA).
+    /// </summary>
+    private readonly DispatcherTimer _statusTickRefresh;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CaptureMenuLabel))]
     private bool _isDumping;
@@ -140,6 +154,14 @@ public partial class MainWindowViewModel : ObservableObject
         Lines = new LineExtractor(Emulator);
         Capture = new CaptureSession(Emulator.Screen.Scrollback);
 
+        _statusTickRefresh = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(500),
+        };
+        _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
+        _statusTickRefresh.Start();
+        RefreshStatusBarTicks();
+
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
@@ -161,6 +183,23 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void OnLogEntryAdded(Services.LogEntry _)
         => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(LatestLogText)));
+
+    /// <summary>
+    /// Repaint the status-bar tick countdowns. Source-of-truth:
+    /// <see cref="AppServices.Tick.TimeToNextCombatTick"/> for combat;
+    /// <see cref="AppServices.Regen"/> for HP / MA.
+    /// </summary>
+    private void RefreshStatusBarTicks()
+    {
+        CombatTickText = FormatCountdown("Tick", AppServices.Current.Tick.TimeToNextCombatTick);
+        HpTickText     = FormatCountdown("HP",   AppServices.Current.Regen.GetTimeToNextHpTick());
+        MaTickText     = FormatCountdown("MA",   AppServices.Current.Regen.GetTimeToNextMaTick());
+    }
+
+    private static string FormatCountdown(string label, TimeSpan? remaining)
+        => remaining is null
+            ? $"{label} —"
+            : $"{label} {(int)remaining.Value.TotalSeconds:00}s";
 
     /// <summary>
     /// Single Connect ↔ Disconnect action. Click while idle starts a
