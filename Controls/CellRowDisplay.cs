@@ -82,6 +82,16 @@ public sealed class CellRowDisplay : Control
         // device pixels — without this, Avalonia anti-aliases the run-edges
         // and adjacent same-colour rows bleed into each other.
         UseLayoutRounding = true;
+
+        // Aliased rendering: with the Mx437 IBM VGA 8x16 bitmap font at its
+        // native 16-pt size, every glyph is already pixel-perfect. The
+        // default anti-aliasing softens those crisp bitmap edges and creates
+        // the colour-bleed-into-adjacent-cell-bg artefact the user sees vs
+        // the live TerminalControl. (An earlier attempt at this looked
+        // "jagged" — that was because the font was at 14 pt, getting scaled
+        // 14/16 *and* aliased; at native 16 pt aliased mode is the right
+        // call.)
+        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
