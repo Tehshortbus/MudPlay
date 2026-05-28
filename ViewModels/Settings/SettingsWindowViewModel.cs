@@ -128,7 +128,12 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
 
         foreach (SettingsSectionViewModel s in Sections)
         {
-            if (!string.IsNullOrEmpty(needle) && !MatchesSearch(s, needle)) continue;
+            // Always include the active section even when the filter would
+            // hide it — otherwise the ListBox's selection vanishes and the
+            // content pane outlives an entry the user can no longer see in
+            // the sidebar.
+            bool keepBecauseSelected = ReferenceEquals(s, SelectedSection);
+            if (!string.IsNullOrEmpty(needle) && !MatchesSearch(s, needle) && !keepBecauseSelected) continue;
             VisibleSections.Add(s);
         }
     }
