@@ -41,30 +41,25 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public LineExtractor Lines { get; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
-    private string _host = "playpenbbs.com";
+    [ObservableProperty] private string _host = "playpenbbs.com";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
-    private int _port = 23;
-
-    /// <summary>Label shown in the toolbar's BBS badge ("host:port" by skeleton design).</summary>
-    public string BbsBadgeText => $"{Host}:{Port}";
+    [ObservableProperty] private int _port = 23;
 
     // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
     // The single ToggleConnectionCommand drives every transition; everything
-    // else (button visuals, menu label, status badge) reads off IsConnected
-    // + IsConnecting.
+    // else (button visuals, menu label, status-bar stoplight) reads off
+    // IsConnected + IsConnecting.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnected;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
 
     public bool IsDisconnected => !IsConnected;
@@ -81,6 +76,12 @@ public partial class MainWindowViewModel : ObservableObject
         => IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
          : "Connect";
+
+    /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
+    public string ConnectionStatusText
+        => IsConnected ? "Connected"
+         : IsConnecting ? "Connecting…"
+         : "Disconnected";
 
     /// <summary>
     /// Cancels an in-flight connect attempt — covers both the socket-level
