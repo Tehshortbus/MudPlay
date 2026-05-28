@@ -140,9 +140,12 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Add("general",   "General",   "Phase 4 PR 4.2", "Data folder, auto-connect, manual / auto-mode defaults.");
         Add("display",   "Display",   "Phase 4 PR 4.3", "Rows / columns, palette, scrollback size, confirmation prompts.");
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
-        Add("comms",     "Comms",     "Phase 4 PR 4.4", "NAWS, terminal type, line-end handling.");
 
-        Add("bbs",       "BBS",       "Phase 4 PR 4.5", "Connection list (host / port / retries) + per-character credentials and menu-nav sequence.");
+        Add("bbs",       "BBS",       "Phase 4 PR 4.5",
+            "Pick which BBS entry to connect to; username + password; max redials, " +
+            "redial pause, cleanup period length; reconnect-on (failed connect / " +
+            "carrier lost / no response / after cleanup); sysop-powers marker; " +
+            "menu-nav sequence to reach the in-game prompt.");
 
         Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
         Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");
