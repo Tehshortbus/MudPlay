@@ -15,8 +15,7 @@
     </Design.DataContext>
 
     <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}"/>
-        <KeyBinding Gesture="Ctrl+D" Command="{Binding DisconnectCommand}"/>
+        <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
         <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
         <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
@@ -38,8 +37,9 @@
         <Menu DockPanel.Dock="Top" Classes="Chrome">
 
             <MenuItem Header="_File">
-                <MenuItem Header="_Connect"      Command="{Binding ConnectCommand}"     InputGesture="Ctrl+K"/>
-                <MenuItem Header="_Disconnect"   Command="{Binding DisconnectCommand}"  InputGesture="Ctrl+D"/>
+                <MenuItem Header="{Binding ConnectionLabel}"
+                          Command="{Binding ToggleConnectionCommand}"
+                          InputGesture="Ctrl+K"/>
                 <MenuItem Header="BBS list"      IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
                 <Separator/>
                 <MenuItem Header="_New profile…"  InputGesture="Ctrl+N" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
@@ -131,18 +131,31 @@
                 <!-- Icon button groups -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
 
-                    <!-- Group 1: connection -->
-                    <Button Classes="ToolbarBtn" Command="{Binding ConnectCommand}" ToolTip.Tip="Connect (Ctrl+K)">
-                        <Path Data="{StaticResource IconPlug}"
-                              Stroke="{Binding $parent[Button].Foreground}"
-                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
-                              Width="16" Height="16" Stretch="Uniform"/>
-                    </Button>
-                    <Button Classes="ToolbarBtn Danger" Command="{Binding DisconnectCommand}" ToolTip.Tip="Disconnect (Ctrl+D)">
-                        <Path Data="{StaticResource IconUnplug}"
-                              Stroke="{Binding $parent[Button].Foreground}"
-                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
-                              Width="16" Height="16" Stretch="Uniform"/>
+                    <!-- Group 1: connection toggle. One button, three states
+                         (Idle / Connecting / Connected) — the icon swap is
+                         done via two stacked Paths with IsVisible bindings
+                         because StaticResource bindings can't switch at
+                         runtime. The Active style class lights the button
+                         in amber while a connect attempt is in flight; the
+                         Danger style class colours the hover state red when
+                         the next click would disconnect. -->
+                    <Button Classes="ToolbarBtn"
+                            Classes.Active="{Binding IsConnecting}"
+                            Classes.Danger="{Binding IsConnected}"
+                            Command="{Binding ToggleConnectionCommand}"
+                            ToolTip.Tip="{Binding ConnectionLabel}">
+                        <Panel>
+                            <Path Data="{StaticResource IconPlug}"
+                                  IsVisible="{Binding !IsConnected}"
+                                  Stroke="{Binding $parent[Button].Foreground}"
+                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                  Width="16" Height="16" Stretch="Uniform"/>
+                            <Path Data="{StaticResource IconUnplug}"
+                                  IsVisible="{Binding IsConnected}"
+                                  Stroke="{Binding $parent[Button].Foreground}"
+                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                  Width="16" Height="16" Stretch="Uniform"/>
+                        </Panel>
                     </Button>
 
                     <Border Classes="ToolbarSeparator"/>

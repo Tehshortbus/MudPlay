@@ -43,16 +43,41 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Label shown in the toolbar's BBS badge ("host:port" by skeleton design).</summary>
     public string BbsBadgeText => $"{Host}:{Port}";
 
-    // IsConnected is the canonical state. The other two attributes here keep
-    // the inverse "IsDisconnected" property and the two commands' CanExecute
-    // in lockstep — the toolkit re-evaluates them on every change.
+    // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
+    // The single ToggleConnectionCommand drives every transition; everything
+    // else (button visuals, menu label, status badge) reads off IsConnected
+    // + IsConnecting.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
-    [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
-    [NotifyCanExecuteChangedFor(nameof(DisconnectCommand))]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     private bool _isConnected;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    private bool _isConnecting;
+
     public bool IsDisconnected => !IsConnected;
+
+    /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
+    public bool IsIdle => !IsConnected && !IsConnecting;
+
+    /// <summary>
+    /// Header text for the single Connect ↔ Disconnect menu entry / button
+    /// tooltip. Three-state cycle: Idle → "Connect" → Connecting → "Cancel
+    /// connect" → Connected → "Disconnect".
+    /// </summary>
+    public string ConnectionLabel
+        => IsConnected ? "Disconnect"
+         : IsConnecting ? "Cancel connect"
+         : "Connect";
+
+    /// <summary>
+    /// Cancels an in-flight <see cref="ConnectAsync"/>. Cleared in the
+    /// finally block of the connect path.
+    /// </summary>
+    private CancellationTokenSource? _connectCts;
 
     /// <summary>
     /// Most recent message in <see cref="AppServices.Log"/> — drives the
@@ -94,17 +119,36 @@ public partial class MainWindowViewModel : ObservableObject
     private void OnLogEntryAdded(Services.LogEntry _)
         => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(LatestLogText)));
 
-    /// <summary>Bound to the Connect button.</summary>
-    [RelayCommand(CanExecute = nameof(IsDisconnected))]
-    private async Task ConnectAsync()
+    /// <summary>
+    /// Single Connect ↔ Disconnect action. Click while idle starts a
+    /// connect; click while a connect is in flight cancels it; click while
+    /// connected disconnects.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleConnectionAsync()
     {
+        if (IsConnected)
+        {
+            TelnetClient? t = _telnet;
+            _telnet = null;
+            if (t is not null) await t.DisposeAsync();
+            IsConnected = false;
+            return;
+        }
+
+        if (IsConnecting)
+        {
+            _connectCts?.Cancel();
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(Host) || Port <= 0)
         {
             AppServices.Current.Log.Warn("Connect", "Enter host and port.");
             return;
         }
 
-        var client = new TelnetClient
+        TelnetClient client = new()
         {
             Cols = Emulator.Screen.Cols,
             Rows = Emulator.Screen.Rows,
@@ -117,7 +161,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             // Copy out of the rented buffer because the emitter may reuse it
             // for the next read before our UI-thread post runs.
-            var copy = data.ToArray();
+            byte[] copy = data.ToArray();
             // Feed the Wire Inspector buffer too — the post-IAC stream is
             // what the parser sees, which is exactly what the debug window
             // wants to surface.
@@ -134,33 +178,36 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Log.Info("Telnet", "Disconnected");
             Dispatcher.UIThread.Post(() => IsConnected = false);
         };
-        // TelnetClient's Log event carries IAC negotiation trace lines; route
-        // them into LogService at Debug severity so the Log pane can surface
-        // them when DBG is checked, and the status bar gets the latest via
-        // LatestLogText.
+        // TelnetClient's Log event carries IAC negotiation trace lines;
+        // route them into LogService at Debug severity so the Log pane can
+        // surface them when DBG is checked and the status bar gets the
+        // latest via LatestLogText.
         client.Log += msg => AppServices.Current.Log.Debug("Telnet", msg);
 
+        _connectCts = new CancellationTokenSource();
+        IsConnecting = true;
         try
         {
             AppServices.Current.Log.Info("Connect", $"Connecting to {Host}:{Port}…");
-            await client.ConnectAsync(Host, Port);
+            await client.ConnectAsync(Host, Port, _connectCts.Token);
             _telnet = client;
+        }
+        catch (OperationCanceledException)
+        {
+            AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+            await client.DisposeAsync();
         }
         catch (Exception ex)
         {
             AppServices.Current.Log.Error("Connect", $"Connect failed: {ex.Message}");
             await client.DisposeAsync();
         }
-    }
-
-    /// <summary>Bound to the Disconnect button.</summary>
-    [RelayCommand(CanExecute = nameof(IsConnected))]
-    private async Task DisconnectAsync()
-    {
-        var t = _telnet;
-        _telnet = null;
-        if (t is not null) await t.DisposeAsync();
-        IsConnected = false;
+        finally
+        {
+            IsConnecting = false;
+            _connectCts?.Dispose();
+            _connectCts = null;
+        }
     }
 
     /// <summary>
@@ -595,8 +642,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void OpenKeyboardShortcuts()
         => ShowInfoDialog("Keyboard shortcuts — FujinTerm",
             """
-            Connect ......................... Ctrl+K
-            Disconnect ...................... Ctrl+D
+            Connect / Disconnect (toggle) ... Ctrl+K
             Quit ............................ Ctrl+Q
 
             View
