@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="580"
+        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="560"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Width="820" Height="580">
+        Width="660" Height="560">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -51,6 +51,8 @@
             </MenuItem>
 
             <MenuItem Header="_View">
+                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
+                <Separator/>
                 <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
                 <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
@@ -59,7 +61,6 @@
                 <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
-                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
 
@@ -301,9 +302,14 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBlock Classes="StatusSlot StatusMuted" Text="No room — RoomTracker wires in Phase 7"/>
+                    <TextBlock Classes="StatusSlot StatusMuted"
+                               Text="Unknown location"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
+                <!-- Cycle countdowns as plain text. Natural HP / MA are always
+                     visible once observed; rest / medi are appended only while
+                     Position=Resting / Position=Meditating. -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
                     <TextBlock x:Name="CombatTickLabel"
                                Classes="StatusSlot StatusMono"

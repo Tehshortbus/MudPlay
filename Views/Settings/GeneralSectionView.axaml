@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="440"
+             x:Class="FujinTerm.Views.Settings.GeneralSectionView"
+             x:DataType="vm:GeneralSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.ColumnHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid>
+
+            <!-- "No profile loaded" banner — shows when HasProfile is false. -->
+            <Border IsVisible="{Binding !HasProfile}"
+                    Padding="22"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="General"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit General settings — every settings tab lives on the active character."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Editor — visible when a profile is loaded. -->
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22"
+                        Spacing="6"
+                        MaxWidth="640"
+                        HorizontalAlignment="Left">
+
+                <TextBlock Classes="SectionHeader" Text="Initial"/>
+
+                <Grid ColumnDefinitions="120,*">
+                    <TextBlock Grid.Column="0" Text="Default task:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Top" Margin="0,2,0,0"/>
+
+                    <!-- Shared-column inner Grid so the two pickers line up at the
+                         same X regardless of radio-label width. Column 0 sizes to
+                         the widest radio + label across all three rows. -->
+                    <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto"
+                                          ColumnDefinitions="Auto,*">
+                        <RadioButton Grid.Row="0" Grid.Column="0"
+                                     GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskDoNothing, Mode=TwoWay}"
+                                     Content="Do nothing"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Startup task action lands with Phase 7."
+                                     Margin="0,0,8,4"/>
+
+                        <RadioButton Grid.Row="1" Grid.Column="0"
+                                     GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
+                                     Content="Begin looping"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Loop start lands with Phase 7."
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,8,4"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  ItemsSource="{Binding LoopNames}"
+                                  SelectedItem="{Binding DefaultLoopName, Mode=TwoWay}"
+                                  PlaceholderText="Pick a saved loop"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Lists saved loop files from this character profile (Phase 7)."
+                                  Margin="0,0,0,4"/>
+
+                        <RadioButton Grid.Row="2" Grid.Column="0"
+                                     GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginAutoLair, Mode=TwoWay}"
+                                     Content="Begin Auto-Lair"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Auto-Lair scheduler lands with Phase 7."
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,8,0"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  ItemsSource="{Binding AutoLairNames}"
+                                  SelectedItem="{Binding DefaultAutoLairName, Mode=TwoWay}"
+                                  PlaceholderText="Pick a saved Auto-Lair"
+                                  IsEnabled="False"
+                                  ToolTip.Tip="Lists saved Auto-Lair files from this character profile (Phase 7)."/>
+                    </Grid>
+                </Grid>
+
+                <CheckBox Margin="0,8,0,0"
+                          IsChecked="{Binding AutoConnect, Mode=TwoWay}"
+                          Content="Auto-connect when profile loads"
+                          IsEnabled="False"
+                          ToolTip.Tip="Wired in Phase 4 PR 4.5 (BBS connection settings)."/>
+
+                <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
+                          Content="Backup profile when making changes"
+                          ToolTip.Tip="Copy the existing profile JSON to {name}.json.bak before each save."/>
+
+                <!-- Two-column defaults grid. -->
+                <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="ColumnHeader" Text="Manual-Mode Defaults"/>
+                        <CheckBox IsChecked="{Binding MmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding MmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding MmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding MmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding MmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding MmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
+                        <CheckBox IsChecked="{Binding MmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
+                        <CheckBox IsChecked="{Binding MmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
+                        <CheckBox IsChecked="{Binding MmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
+                        <CheckBox IsChecked="{Binding MmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="ColumnHeader" Text="Auto-Mode Defaults"/>
+                        <CheckBox IsChecked="{Binding AmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding AmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding AmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding AmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding AmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
+                        <CheckBox IsChecked="{Binding AmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
+                        <CheckBox IsChecked="{Binding AmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
+                        <CheckBox IsChecked="{Binding AmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
+                        <CheckBox IsChecked="{Binding AmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
+                        <CheckBox IsChecked="{Binding AmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+        </Grid>
+    </ScrollViewer>
+</UserControl>

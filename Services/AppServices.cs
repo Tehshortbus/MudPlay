@@ -175,13 +175,19 @@ public sealed class AppServices
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
         // Auto-load the most recently used profile if one is recorded and the
-        // file still exists. First-launch (no recorded profile) leaves
-        // Profile.Current null; the user picks or creates from the menu.
+        // file still exists; otherwise stand up an in-memory blank draft so
+        // every settings tab has a target the user can read / edit without
+        // having to manually create a profile first. The draft persists in
+        // memory only until the user names + saves it via the File menu.
         string? last = Settings.Current.LastUsedProfileName;
         if (!string.IsNullOrWhiteSpace(last) &&
             File.Exists(AppPaths.CharacterProfileFile(last)))
         {
             Profile.Load(last);
+        }
+        else
+        {
+            Profile.LoadBlank();
         }
 
         // Track which profile was last loaded so the next launch can reopen it.

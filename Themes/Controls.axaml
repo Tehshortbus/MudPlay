@@ -104,6 +104,7 @@
         <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
     </Style>
 
+
     <!-- ============ Secondary connection strip (transitional) ============ -->
     <!-- Hosts the Host / Port editor inputs until Phase 4 PR 4.5 absorbs them
          into the BBS profile dialog. Visually distinct from the toolbar so
