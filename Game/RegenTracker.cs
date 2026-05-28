@@ -53,9 +53,18 @@ public sealed class RegenTracker : IDisposable
     /// to project from yet). Status-bar consumers poll this every tick of
     /// their own refresh timer.
     /// </summary>
+    /// <remarks>
+    /// Server cycles are locked from the first observed tick — every N
+    /// seconds like clockwork until BBS cleanup / reset. We advance the
+    /// anchor lazily in exact EstimatedInterval steps so the countdown
+    /// stays in phase with the real cycle even when no fresh observation
+    /// has come in (e.g. the user is at max HP and ticks land silently).
+    /// Real observations re-anchor via <see cref="ConsiderHp"/>.
+    /// </remarks>
     public TimeSpan? GetTimeToNextHpTick()
     {
         if (!_hpBaselineSet) return null;
+        AdvanceHpAnchorIfDue();
         RegenStat stat = HpStatFor(_state.Position);
         TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastHpSampleAt);
         return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
@@ -65,9 +74,38 @@ public sealed class RegenTracker : IDisposable
     public TimeSpan? GetTimeToNextMaTick()
     {
         if (!_maBaselineSet) return null;
+        AdvanceMaAnchorIfDue();
         RegenStat stat = MaStatFor(_state.Position);
         TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastMaSampleAt);
         return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
+    }
+
+    /// <summary>
+    /// Lazily roll the HP anchor forward by exact EstimatedInterval
+    /// boundaries when the polling consumer asks for the countdown. The
+    /// while loop also covers multi-cycle gaps (system sleep, long AFK,
+    /// silent ticks while at max HP).
+    /// </summary>
+    private void AdvanceHpAnchorIfDue()
+    {
+        DateTimeOffset now = _clock();
+        while (true)
+        {
+            TimeSpan interval = HpStatFor(_state.Position).EstimatedInterval;
+            if (now - _lastHpSampleAt < interval) break;
+            _lastHpSampleAt += interval;
+        }
+    }
+
+    private void AdvanceMaAnchorIfDue()
+    {
+        DateTimeOffset now = _clock();
+        while (true)
+        {
+            TimeSpan interval = MaStatFor(_state.Position).EstimatedInterval;
+            if (now - _lastMaSampleAt < interval) break;
+            _lastMaSampleAt += interval;
+        }
     }
 
     /// <summary>Fired after an observed HP increase passes the artifact filter.</summary>

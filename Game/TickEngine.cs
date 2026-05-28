@@ -89,10 +89,17 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(router);
 
-        // Damage-driven combat tick stamping. Either UserHits or MobHits
-        // tells us a tick just elapsed; refresh the timestamp + fire.
-        _patternSubs.Add(router.Subscribe(KnownPatterns.UserHits, _ => RecordCombatTick()));
-        _patternSubs.Add(router.Subscribe(KnownPatterns.MobHits,  _ => RecordCombatTick()));
+        // Damage-driven combat tick stamping. Any combat-round line —
+        // hit, miss, or otherwise — anchors the cycle; the server beats
+        // out one round every CombatTickInterval regardless of whether
+        // the swing connected. 250 ms debounce in RecordCombatTick
+        // collapses the duplicates a single round produces (UserHits's
+        // broad regex matches mob-on-player lines too, plus we'll see
+        // separate Hit and Miss lines in the same round if you're
+        // fighting multiple mobs).
+        _patternSubs.Add(router.Subscribe(KnownPatterns.UserHits,  _ => RecordCombatTick()));
+        _patternSubs.Add(router.Subscribe(KnownPatterns.MobHits,   _ => RecordCombatTick()));
+        _patternSubs.Add(router.Subscribe(KnownPatterns.MobMisses, _ => RecordCombatTick()));
 
         _timer = new DispatcherTimer(DispatcherPriority.Background)
         {

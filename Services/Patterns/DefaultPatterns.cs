@@ -84,8 +84,13 @@ public static class DefaultPatterns
             @"^\*Combat (?<status>Engaged|Off)\*");
         yield return new RegexPattern(KnownPatterns.UserHits,
             @"^(?<source>[\w]+) (?:critically )?(?:\w+) (?<target>[\w- ]+) for (?<damage>\d+) damage!");
+        // Trailing punctuation varies per realm — Megamind's literal had
+        // \. but real output uses ".", "!", ",", and ";" depending on
+        // whether the miss line continues with a dodge / parry / "but
+        // misses!" follow-up. Use a word boundary after "you" so any
+        // non-letter delimiter classifies.
         yield return new RegexPattern(KnownPatterns.MobMisses,
-            @"^The (?<target>[\w -]+) \w+ at you\.");
+            @"^The (?<target>[\w -]+) \w+ at you\b");
         yield return new RegexPattern(KnownPatterns.MobHits,
             @"^The (?<target>[\w -]+) \w+ you for (?<damage>\d+) damage!");
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
