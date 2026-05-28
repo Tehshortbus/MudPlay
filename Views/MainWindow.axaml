@@ -274,11 +274,11 @@
             </Grid>
         </Border>
 
-        <!-- ============ Status bar (three slots) ============ -->
+        <!-- ============ Status bar (two slots) ============ -->
         <!-- Left  : room + confidence dot (Phase 7 wires the live values).
-             Mid   : tick countdowns (Phase 3 wires HP / MA / combat tick).
-             Right : latest LogService line + exp rate + clock (Phase 1 PR 1.5 wires log;
-                     exp rate / clock are Phase 8 / polish wirings). -->
+             Mid   : tick countdowns — combat tick + HP (natural / rest) +
+                     MA (natural / medi). Source-of-truth: TickEngine +
+                     RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
             <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
 
@@ -295,11 +295,6 @@
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding HpTickText}"/>
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
-
-                <TextBlock Grid.Column="2" Classes="StatusSlot"
-                           HorizontalAlignment="Right"
-                           Text="{Binding LatestLogText}"
-                           ToolTip.Tip="{Binding LatestLogText}"/>
             </Grid>
         </Border>
 

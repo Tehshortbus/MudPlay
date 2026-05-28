@@ -106,14 +106,6 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    /// Most recent message in <see cref="AppServices.Log"/> — drives the
-    /// status bar's right slot. The MainWindow surface gives "latest log
-    /// line" preview here; the full filterable view lives in the Log
-    /// pane (F9).
-    /// </summary>
-    public string LatestLogText => AppServices.Current.Log.Latest?.Message ?? string.Empty;
-
     /// <summary>Formatted "Tick mm:ss" countdown shown in the status bar's middle slot.</summary>
     [ObservableProperty] private string _combatTickText = "Tick —";
     /// <summary>Formatted "HP mm:ss" countdown shown in the status bar's middle slot.</summary>
@@ -177,32 +169,39 @@ public partial class MainWindowViewModel : ObservableObject
             if (t is not null) _ = t.SendAsync(bytes);
         };
 
-        // Status bar's right slot follows LogService.Latest. Posting through
-        // the dispatcher because EntryAdded fires on the producer's thread
-        // (Telnet read loop, automation engines, etc.) and the bound UI
-        // property must change on the UI thread.
-        AppServices.Current.Log.EntryAdded += OnLogEntryAdded;
     }
-
-    private void OnLogEntryAdded(Services.LogEntry _)
-        => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(LatestLogText)));
 
     /// <summary>
     /// Repaint the status-bar tick countdowns. Source-of-truth:
     /// <see cref="AppServices.Tick.TimeToNextCombatTick"/> for combat;
-    /// <see cref="AppServices.Regen"/> for HP / MA.
+    /// <see cref="AppServices.Regen"/> for HP / MA. HP and MA show the
+    /// natural cycle by default and add a second number (the bonus cycle)
+    /// when the player is resting or meditating — they can be desynced
+    /// because their anchors are independent.
     /// </summary>
     private void RefreshStatusBarTicks()
     {
+        Game.RegenTracker regen = AppServices.Current.Regen;
+
         CombatTickText = FormatCountdown("Tick", AppServices.Current.Tick.TimeToNextCombatTick);
-        HpTickText     = FormatCountdown("HP",   AppServices.Current.Regen.GetTimeToNextHpTick());
-        MaTickText     = FormatCountdown("MA",   AppServices.Current.Regen.GetTimeToNextMaTick());
+        HpTickText     = FormatPair("HP", regen.GetTimeToNextHpNaturalTick(),
+                                          regen.GetTimeToNextHpRestTick());
+        MaTickText     = FormatPair("MA", regen.GetTimeToNextMpNaturalTick(),
+                                          regen.GetTimeToNextMpMediTick());
     }
 
     private static string FormatCountdown(string label, TimeSpan? remaining)
         => remaining is null
             ? $"{label} —"
             : $"{label} {remaining.Value.TotalSeconds:0.0}";
+
+    private static string FormatPair(string label, TimeSpan? natural, TimeSpan? bonus)
+    {
+        string naturalText = natural is null ? "—" : $"{natural.Value.TotalSeconds:0.0}";
+        return bonus is null
+            ? $"{label} {naturalText}"
+            : $"{label} {naturalText} / {bonus.Value.TotalSeconds:0.0}";
+    }
 
     /// <summary>
     /// Single Connect ↔ Disconnect action. Click while idle starts a

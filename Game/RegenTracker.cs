@@ -3,122 +3,65 @@ using System.ComponentModel;
 namespace FujinTerm.Game;
 
 /// <summary>
-/// Observes HP and MA changes on <see cref="PlayerState"/> and folds
-/// upward deltas into per-position running averages of the regen-tick
-/// interval and per-tick amount. Bootstrap values come from
-/// <see cref="RegenConstants"/> (seeded from syntax53's MMUD-Explorer
-/// research); live observation refines them over time.
+/// Watches <see cref="PlayerState"/> and runs four independent regen
+/// cycles whose anchors and intervals reflect what the MajorMUD server
+/// actually does (per syntax53/MMUD-Explorer's <c>modExpPerHour.bas</c>):
 /// </summary>
+/// <list type="table">
+///   <listheader><term>Cycle</term><description>Behaviour</description></listheader>
+///   <item>
+///     <term><see cref="HpNatural"/></term>
+///     <description>30 s. Always running once anchored on the first
+///     observed HP uptick. Per-tick amount = <c>HPRegen / 3</c>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="HpRest"/></term>
+///     <description>20 s. Starts the moment the user enters
+///     <see cref="PlayerPosition.Resting"/>, stops when they leave.
+///     Anchor is independent of the natural cycle. Per-tick amount =
+///     <c>HPRegen</c>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="MpNatural"/></term>
+///     <description>30 s. Always running once anchored. Per-tick amount
+///     = <c>MPRegen</c>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="MpMedi"/></term>
+///     <description>10 s. Starts on entering
+///     <see cref="PlayerPosition.Meditating"/>, stops on leaving.
+///     Per-tick amount = <c>MeditateRate</c>.</description>
+///   </item>
+/// </list>
 /// <remarks>
-/// <para>
-/// Position-aware: when <see cref="PlayerState.Position"/> is Standing,
-/// HP samples accumulate into <see cref="HpStanding"/>; resting samples
-/// land in <see cref="HpResting"/>; etc. MA samples branch the same way.
-/// Each position has its own running average so a rest tick doesn't
-/// pollute the standing estimate.
-/// </para>
-/// <para>
-/// Artifact filter (conservative — issue #8 tracks the upgrade path):
-/// callers invoke <see cref="RecordArtifact"/> when the user performs a
-/// heal-shaped action (cast / drink / quaff / etc.). Any upward HP / MA
-/// change inside the <see cref="RegenConstants.ArtifactGraceWindow"/>
-/// after that event is dropped as a sample — but the baseline is still
-/// updated so the next genuine tick measures from the right anchor.
-/// </para>
+/// The natural cycle and the bonus cycle can be (and usually are)
+/// desynchronised — the natural anchors at first observation; the
+/// bonus anchors when the user types <c>rest</c> / <c>meditate</c>.
+/// The status bar shows them as parallel countdowns.
 /// </remarks>
 public sealed class RegenTracker : IDisposable
 {
     private readonly PlayerState _state;
     private readonly Func<DateTimeOffset> _clock;
+
     private DateTimeOffset? _lastArtifactAt;
     private int _lastHp;
     private int _lastMa;
-    private DateTimeOffset _lastHpSampleAt = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastMaSampleAt = DateTimeOffset.MinValue;
     private bool _hpBaselineSet;
     private bool _maBaselineSet;
     private bool _disposed;
 
-    public RegenStat HpStanding   { get; } = new(RegenConstants.SeedStandingInterval);
-    public RegenStat HpResting    { get; } = new(RegenConstants.SeedRestingInterval);
-    public RegenStat HpMeditating { get; } = new(RegenConstants.SeedMeditatingInterval);
+    public RegenCycle HpNatural { get; } = new("HP natural", RegenConstants.SeedStandingInterval);
+    public RegenCycle HpRest    { get; } = new("HP rest",    RegenConstants.SeedRestingInterval);
+    public RegenCycle MpNatural { get; } = new("MP natural", RegenConstants.SeedStandingInterval);
+    public RegenCycle MpMedi    { get; } = new("MP medi",    RegenConstants.SeedMeditatingInterval);
 
-    public RegenStat MaStanding   { get; } = new(RegenConstants.SeedStandingInterval);
-    public RegenStat MaResting    { get; } = new(RegenConstants.SeedRestingInterval);
-    public RegenStat MaMeditating { get; } = new(RegenConstants.SeedMeditatingInterval);
-
-    /// <summary>
-    /// Time remaining until the next expected HP regen tick, or <c>null</c>
-    /// before the first sample arrives (we don't have a baseline timestamp
-    /// to project from yet). Status-bar consumers poll this every tick of
-    /// their own refresh timer.
-    /// </summary>
-    /// <remarks>
-    /// Server cycles are locked from the first observed tick — every N
-    /// seconds like clockwork until BBS cleanup / reset. We advance the
-    /// anchor lazily in exact EstimatedInterval steps so the countdown
-    /// stays in phase with the real cycle even when no fresh observation
-    /// has come in (e.g. the user is at max HP and ticks land silently).
-    /// Real observations re-anchor via <see cref="ConsiderHp"/>.
-    /// </remarks>
-    public TimeSpan? GetTimeToNextHpTick()
-    {
-        if (!_hpBaselineSet) return null;
-        AdvanceHpAnchorIfDue();
-        RegenStat stat = HpStatFor(_state.Position);
-        TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastHpSampleAt);
-        return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
-    }
-
-    /// <summary>Same as <see cref="GetTimeToNextHpTick"/>, MA edition.</summary>
-    public TimeSpan? GetTimeToNextMaTick()
-    {
-        if (!_maBaselineSet) return null;
-        AdvanceMaAnchorIfDue();
-        RegenStat stat = MaStatFor(_state.Position);
-        TimeSpan rem = stat.EstimatedInterval - (_clock() - _lastMaSampleAt);
-        return rem < TimeSpan.Zero ? TimeSpan.Zero : rem;
-    }
-
-    /// <summary>
-    /// Lazily roll the HP anchor forward by exact EstimatedInterval
-    /// boundaries when the polling consumer asks for the countdown. The
-    /// while loop also covers multi-cycle gaps (system sleep, long AFK,
-    /// silent ticks while at max HP).
-    /// </summary>
-    private void AdvanceHpAnchorIfDue()
-    {
-        DateTimeOffset now = _clock();
-        while (true)
-        {
-            TimeSpan interval = HpStatFor(_state.Position).EstimatedInterval;
-            if (now - _lastHpSampleAt < interval) break;
-            _lastHpSampleAt += interval;
-        }
-    }
-
-    private void AdvanceMaAnchorIfDue()
-    {
-        DateTimeOffset now = _clock();
-        while (true)
-        {
-            TimeSpan interval = MaStatFor(_state.Position).EstimatedInterval;
-            if (now - _lastMaSampleAt < interval) break;
-            _lastMaSampleAt += interval;
-        }
-    }
-
-    /// <summary>Fired after an observed HP increase passes the artifact filter.</summary>
+    /// <summary>Fired after an observed HP uptick that passes the artifact filter.</summary>
     public event Action<RegenSample>? HpTickObserved;
 
-    /// <summary>Fired after an observed MA increase passes the artifact filter.</summary>
+    /// <summary>Fired after an observed MA uptick that passes the artifact filter.</summary>
     public event Action<RegenSample>? MaTickObserved;
 
-    /// <summary>
-    /// Construct with the <paramref name="state"/> to watch and an
-    /// optional <paramref name="clock"/> for test-controllable timestamps.
-    /// Production code omits the clock — defaults to <see cref="DateTimeOffset.Now"/>.
-    /// </summary>
     public RegenTracker(PlayerState state, Func<DateTimeOffset>? clock = null)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -127,38 +70,37 @@ public sealed class RegenTracker : IDisposable
         _state.PropertyChanged += OnPlayerStateChanged;
     }
 
-    /// <summary>
-    /// Mark the current moment as inside the artifact grace window — any
-    /// HP / MA increase observed in the next
-    /// <see cref="RegenConstants.ArtifactGraceWindow"/> won't be folded
-    /// into the running averages. Called by
-    /// <c>MainWindowViewModel.SendUserText</c> when it spots a heal-shaped
-    /// command verb in the user's typed input.
-    /// </summary>
-    public void RecordArtifact()
-    {
-        _lastArtifactAt = _clock();
-    }
+    /// <summary>Time-to-next HP natural tick, or <c>null</c> before first observation.</summary>
+    public TimeSpan? GetTimeToNextHpNaturalTick() => HpNatural.GetTimeToNext(_clock());
 
-    /// <summary>Wipe every running average back to seed + zero samples.</summary>
+    /// <summary>Time-to-next HP rest tick, or <c>null</c> when not resting.</summary>
+    public TimeSpan? GetTimeToNextHpRestTick() => HpRest.GetTimeToNext(_clock());
+
+    /// <summary>Time-to-next MP natural tick, or <c>null</c> before first observation.</summary>
+    public TimeSpan? GetTimeToNextMpNaturalTick() => MpNatural.GetTimeToNext(_clock());
+
+    /// <summary>Time-to-next MP meditate tick, or <c>null</c> when not meditating.</summary>
+    public TimeSpan? GetTimeToNextMpMediTick() => MpMedi.GetTimeToNext(_clock());
+
+    /// <summary>Mark the moment as an artifact (heal / drink / etc.) so subsequent up-deltas drop.</summary>
+    public void RecordArtifact() => _lastArtifactAt = _clock();
+
+    /// <summary>Reset every cycle's amount stat + stop bonus cycles. Natural cycles keep their anchor.</summary>
     public void ResetAll()
     {
-        HpStanding.Reset();
-        HpResting.Reset();
-        HpMeditating.Reset();
-        MaStanding.Reset();
-        MaResting.Reset();
-        MaMeditating.Reset();
-        _hpBaselineSet = false;
-        _maBaselineSet = false;
+        HpNatural.Stat.Reset();
+        HpRest.Stat.Reset();
+        MpNatural.Stat.Reset();
+        MpMedi.Stat.Reset();
     }
 
     private void OnPlayerStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
-            case nameof(PlayerState.Hp):  ConsiderHp();  break;
-            case nameof(PlayerState.Ma):  ConsiderMa();  break;
+            case nameof(PlayerState.Hp):       ConsiderHp();        break;
+            case nameof(PlayerState.Ma):       ConsiderMa();        break;
+            case nameof(PlayerState.Position): ApplyPositionChange(); break;
         }
     }
 
@@ -170,24 +112,29 @@ public sealed class RegenTracker : IDisposable
         if (!_hpBaselineSet)
         {
             _lastHp = current;
-            _lastHpSampleAt = now;
             _hpBaselineSet = true;
             return;
         }
 
         int delta = current - _lastHp;
-        // Always update the baseline so the next sample measures from the
-        // freshest value.
-        TimeSpan interval = now - _lastHpSampleAt;
         _lastHp = current;
-        _lastHpSampleAt = now;
 
-        if (delta <= 0) return;                              // downward = damage, not a regen tick.
-        if (IsInArtifactWindow(now)) return;                 // heal / potion / etc. recently — drop.
+        if (delta <= 0) return;                  // damage / no change.
+        if (IsInArtifactWindow(now)) return;     // heal-shaped event recently.
 
-        RegenStat target = HpStatFor(_state.Position);
-        target.AddSample(interval, delta);
-        HpTickObserved?.Invoke(new RegenSample(now, delta, interval, _state.Position));
+        // Credit whichever active HP cycle is closer to its boundary. If
+        // both rest + natural look due, both get advanced (a 60 s mark
+        // while resting fires both simultaneously).
+        bool restClaimed = ClaimIfDue(HpRest, now, delta);
+        bool natClaimed  = ClaimIfDue(HpNatural, now, delta - (restClaimed ? 0 : 0));
+        if (!restClaimed && !natClaimed)
+        {
+            // No active cycle was due — anchor HpNatural so it starts the
+            // 30 s cadence from this observation. First-time path.
+            HpNatural.RecordObservation(now, delta);
+        }
+
+        HpTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
     }
 
     private void ConsiderMa()
@@ -198,40 +145,66 @@ public sealed class RegenTracker : IDisposable
         if (!_maBaselineSet)
         {
             _lastMa = current;
-            _lastMaSampleAt = now;
             _maBaselineSet = true;
             return;
         }
 
         int delta = current - _lastMa;
-        TimeSpan interval = now - _lastMaSampleAt;
         _lastMa = current;
-        _lastMaSampleAt = now;
 
         if (delta <= 0) return;
         if (IsInArtifactWindow(now)) return;
 
-        RegenStat target = MaStatFor(_state.Position);
-        target.AddSample(interval, delta);
-        MaTickObserved?.Invoke(new RegenSample(now, delta, interval, _state.Position));
+        bool mediClaimed = ClaimIfDue(MpMedi, now, delta);
+        bool natClaimed  = ClaimIfDue(MpNatural, now, delta);
+        if (!mediClaimed && !natClaimed)
+        {
+            MpNatural.RecordObservation(now, delta);
+        }
+
+        MaTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
+    }
+
+    /// <summary>
+    /// If <paramref name="cycle"/> is active and the now-instant is at
+    /// or past its next-tick boundary (with a small grace), record the
+    /// observation and return true.
+    /// </summary>
+    private static bool ClaimIfDue(RegenCycle cycle, DateTimeOffset now, double delta)
+    {
+        if (cycle.Anchor is not { } anchor) return false;
+        TimeSpan elapsed = now - anchor;
+        TimeSpan grace = TimeSpan.FromMilliseconds(750);
+        if (elapsed + grace < cycle.Interval) return false;
+        cycle.RecordObservation(now, delta);
+        return true;
+    }
+
+    /// <summary>Start / stop the rest + medi bonus cycles on position transitions.</summary>
+    private void ApplyPositionChange()
+    {
+        DateTimeOffset now = _clock();
+        if (_state.Position == PlayerPosition.Resting && !HpRest.IsActive)
+        {
+            HpRest.Start(now);
+        }
+        else if (_state.Position != PlayerPosition.Resting && HpRest.IsActive)
+        {
+            HpRest.Stop();
+        }
+
+        if (_state.Position == PlayerPosition.Meditating && !MpMedi.IsActive)
+        {
+            MpMedi.Start(now);
+        }
+        else if (_state.Position != PlayerPosition.Meditating && MpMedi.IsActive)
+        {
+            MpMedi.Stop();
+        }
     }
 
     private bool IsInArtifactWindow(DateTimeOffset now)
         => _lastArtifactAt is { } at && now - at <= RegenConstants.ArtifactGraceWindow;
-
-    private RegenStat HpStatFor(PlayerPosition position) => position switch
-    {
-        PlayerPosition.Resting    => HpResting,
-        PlayerPosition.Meditating => HpMeditating,
-        _                         => HpStanding,
-    };
-
-    private RegenStat MaStatFor(PlayerPosition position) => position switch
-    {
-        PlayerPosition.Resting    => MaResting,
-        PlayerPosition.Meditating => MaMeditating,
-        _                         => MaStanding,
-    };
 
     public void Dispose()
     {

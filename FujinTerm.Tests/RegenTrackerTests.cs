@@ -9,7 +9,7 @@ public sealed class RegenTrackerTests
     /// Test-controllable clock that the tracker reads via the
     /// <see cref="RegenTracker(PlayerState, Func{DateTimeOffset}?)"/>
     /// constructor's clock hook. Tests advance it manually so the
-    /// per-position outlier filter sees realistic intervals.
+    /// cycle's interval-vs-elapsed comparison sees realistic gaps.
     /// </summary>
     private sealed class FakeClock
     {
@@ -36,36 +36,49 @@ public sealed class RegenTrackerTests
         state.Hp = 100;
 
         Assert.Equal(0, fires);
-        Assert.Equal(0, tracker.HpStanding.SampleCount);
+        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        Assert.False(tracker.HpNatural.IsActive);   // not anchored until first uptick.
         tracker.Dispose();
     }
 
     [Fact]
-    public void HpIncrease_WhileStanding_AccumulatesIntoStandingStat()
+    public void HpUptick_AnchorsAndSamplesHpNatural()
     {
         var (state, tracker, clock) = Setup();
-        state.Position = PlayerPosition.Standing;
         state.Hp = 100;                            // baseline
-        clock.Advance(TimeSpan.FromSeconds(30));   // a tick later…
+        clock.Advance(TimeSpan.FromSeconds(30));   // a natural tick later…
         state.Hp = 105;                            // …+5 HP
 
-        Assert.Equal(1, tracker.HpStanding.SampleCount);
-        Assert.Equal(0, tracker.HpResting.SampleCount);
-        Assert.True(tracker.HpStanding.EstimatedAmount > 0);
+        Assert.True(tracker.HpNatural.IsActive);
+        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
+        Assert.True(tracker.HpNatural.Stat.EstimatedAmount > 0);
+        Assert.False(tracker.HpRest.IsActive);     // not resting → bonus cycle stays off.
         tracker.Dispose();
     }
 
     [Fact]
-    public void HpIncrease_WhileResting_AccumulatesIntoRestingStat()
+    public void HpUptick_WhileResting_ClaimsHpRest()
     {
         var (state, tracker, clock) = Setup();
-        state.Position = PlayerPosition.Resting;
         state.Hp = 100;
-        clock.Advance(TimeSpan.FromSeconds(20));
+        state.Position = PlayerPosition.Resting;   // anchors HpRest at now.
+        clock.Advance(TimeSpan.FromSeconds(20));   // one rest cycle later.
         state.Hp = 108;
 
-        Assert.Equal(1, tracker.HpResting.SampleCount);
-        Assert.Equal(0, tracker.HpStanding.SampleCount);
+        Assert.Equal(1, tracker.HpRest.Stat.SampleCount);
+        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void LeavingResting_StopsHpRestCycle()
+    {
+        var (state, tracker, _) = Setup();
+        state.Position = PlayerPosition.Resting;
+        Assert.True(tracker.HpRest.IsActive);
+
+        state.Position = PlayerPosition.Standing;
+        Assert.False(tracker.HpRest.IsActive);
         tracker.Dispose();
     }
 
@@ -75,9 +88,9 @@ public sealed class RegenTrackerTests
         var (state, tracker, clock) = Setup();
         state.Hp = 100;
         clock.Advance(TimeSpan.FromSeconds(30));
-        state.Hp = 80;                             // took damage
+        state.Hp = 80;                             // took damage.
 
-        Assert.Equal(0, tracker.HpStanding.SampleCount);
+        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
         tracker.Dispose();
     }
 
@@ -91,7 +104,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(1));    // still inside the 3 s grace window.
         state.Hp = 130;                            // looks like a heal — should be dropped.
 
-        Assert.Equal(0, tracker.HpStanding.SampleCount);
+        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
         tracker.Dispose();
     }
 
@@ -105,20 +118,58 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(10));   // well past the 3 s window.
         state.Hp = 103;
 
-        Assert.Equal(1, tracker.HpStanding.SampleCount);
+        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
         tracker.Dispose();
     }
 
     [Fact]
-    public void MaIncrease_WhileMeditating_AccumulatesIntoMaMeditating()
+    public void MaUptick_WhileMeditating_ClaimsMpMedi()
     {
         var (state, tracker, clock) = Setup();
-        state.Position = PlayerPosition.Meditating;
         state.Ma = 50;
-        clock.Advance(TimeSpan.FromSeconds(10));
+        state.Position = PlayerPosition.Meditating;
+        clock.Advance(TimeSpan.FromSeconds(10));   // one medi cycle.
         state.Ma = 55;
 
-        Assert.Equal(1, tracker.MaMeditating.SampleCount);
+        Assert.Equal(1, tracker.MpMedi.Stat.SampleCount);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void MaUptick_StandingIdling_ClaimsMpNatural()
+    {
+        var (state, tracker, clock) = Setup();
+        state.Ma = 50;
+        clock.Advance(TimeSpan.FromSeconds(30));
+        state.Ma = 51;
+
+        Assert.Equal(1, tracker.MpNatural.Stat.SampleCount);
+        Assert.Equal(0, tracker.MpMedi.Stat.SampleCount);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void TimeToNextHpNaturalTick_NullBeforeFirstObservation()
+    {
+        var (_, tracker, _) = Setup();
+        Assert.Null(tracker.GetTimeToNextHpNaturalTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void TimeToNextHpRestTick_NullWhenNotResting()
+    {
+        var (_, tracker, _) = Setup();
+        Assert.Null(tracker.GetTimeToNextHpRestTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void TimeToNextHpRestTick_NonNullOncePositionEntersResting()
+    {
+        var (state, tracker, _) = Setup();
+        state.Position = PlayerPosition.Resting;
+        Assert.NotNull(tracker.GetTimeToNextHpRestTick());
         tracker.Dispose();
     }
 
@@ -139,16 +190,16 @@ public sealed class RegenTrackerTests
     public void OutlierInterval_IsDropped()
     {
         RegenStat stat = new(TimeSpan.FromSeconds(30));
-        stat.AddSample(TimeSpan.FromSeconds(5), 4);    // too fast → drop
-        stat.AddSample(TimeSpan.FromSeconds(180), 4);  // too slow → drop
+        stat.AddSample(TimeSpan.FromSeconds(5), 4);    // round(5/30) = 0 cycles → drop.
+        stat.AddSample(TimeSpan.FromSeconds(180), 4);  // round(180/30) = 6 cycles → drop.
         Assert.Equal(0, stat.SampleCount);
 
-        stat.AddSample(TimeSpan.FromSeconds(30), 4);   // in band → accept
+        stat.AddSample(TimeSpan.FromSeconds(30), 4);   // 1 cycle → accept.
         Assert.Equal(1, stat.SampleCount);
     }
 
     [Fact]
-    public void Reset_ReturnsToSeed()
+    public void Reset_ClearsSampleCountAndAmount_KeepsSeedInterval()
     {
         RegenStat stat = new(TimeSpan.FromSeconds(20));
         stat.AddSample(TimeSpan.FromSeconds(22), 6);
