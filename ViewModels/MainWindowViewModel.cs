@@ -82,15 +82,22 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Maximum number of connect attempts (initial + retries). Phase 4
-    /// Settings.BBS will surface the knob; until then it's a constant.
+    /// Settings.BBS will surface the knob (issue #6); until then it's a constant.
     /// </summary>
     private const int MaxConnectAttempts = 3;
 
     /// <summary>
     /// Wait time between connect attempts. Phase 4 Settings.BBS will surface
-    /// the knob.
+    /// the knob (issue #6).
     /// </summary>
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Per-attempt socket timeout. The OS default (~75s on Linux for
+    /// unreachable hosts) is far too long for a BBS client. Phase 4
+    /// Settings.BBS will surface the knob (issue #6).
+    /// </summary>
+    private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Most recent message in <see cref="AppServices.Log"/> — drives the
@@ -137,7 +144,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// connect attempt (with auto-retry on failure); click while a connect
     /// is in flight cancels it; click while connected disconnects.
     /// </summary>
-    [RelayCommand]
+    /// <remarks>
+    /// <c>AllowConcurrentExecutions = true</c> matters: CommunityToolkit.Mvvm's
+    /// default <c>AsyncRelayCommand</c> behaviour is to disable the command
+    /// while the task is running, which would mean a second click during a
+    /// long-running connect attempt does nothing — the cancel path would be
+    /// unreachable. With concurrent executions allowed, the second click
+    /// re-enters this method and hits the <c>IsConnecting</c> branch, which
+    /// cancels the in-flight attempt.
+    /// </remarks>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
         if (IsConnected)        { await DisconnectInternalAsync();   return; }
@@ -179,40 +195,62 @@ public partial class MainWindowViewModel : ObservableObject
                     $"Connecting to {Host}:{Port} (attempt {attempt}/{MaxConnectAttempts})…");
 
                 TelnetClient client = BuildTelnetClient();
+
+                // Per-attempt CTS: linked to the user-cancel token AND a
+                // ConnectAttemptTimeout so a dead host doesn't make us wait
+                // ~75 seconds for the OS to give up.
+                using CancellationTokenSource attemptCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(_connectCts.Token);
+                attemptCts.CancelAfter(ConnectAttemptTimeout);
+
+                bool attemptFailed = false;
                 try
                 {
-                    await client.ConnectAsync(Host, Port, _connectCts.Token);
+                    await client.ConnectAsync(Host, Port, attemptCts.Token);
                     _telnet = client;
                     return;  // success — IsConnected flips via Connected event handler.
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (_connectCts.IsCancellationRequested)
                 {
+                    // User clicked the toolbar / menu again — propagate as cancel.
                     await client.DisposeAsync();
                     WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
                     AppServices.Current.Log.Info("Connect", "Connect cancelled.");
                     return;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Timeout fired (attemptCts but not _connectCts).
+                    await client.DisposeAsync();
+                    int seconds = (int)ConnectAttemptTimeout.TotalSeconds;
+                    WriteTerminalStatus($"[CONNECTION FAILED: timed out after {seconds}s]",
+                                        TerminalStatusKind.Error);
+                    AppServices.Current.Log.Error("Connect",
+                        $"Attempt {attempt} timed out after {seconds}s.");
+                    attemptFailed = true;
                 }
                 catch (Exception ex)
                 {
                     await client.DisposeAsync();
                     WriteTerminalStatus($"[CONNECTION FAILED: {ex.Message}]", TerminalStatusKind.Error);
                     AppServices.Current.Log.Error("Connect", $"Attempt {attempt} failed: {ex.Message}");
+                    attemptFailed = true;
+                }
 
-                    if (attempt < MaxConnectAttempts)
+                if (attemptFailed && attempt < MaxConnectAttempts)
+                {
+                    int seconds = (int)RetryDelay.TotalSeconds;
+                    WriteTerminalStatus($"[RETRYING IN: {seconds} SECONDS...]",
+                                        TerminalStatusKind.Notice);
+                    try
                     {
-                        int seconds = (int)RetryDelay.TotalSeconds;
-                        WriteTerminalStatus($"[RETRYING IN: {seconds} SECONDS...]",
-                                            TerminalStatusKind.Notice);
-                        try
-                        {
-                            await Task.Delay(RetryDelay, _connectCts.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
-                            AppServices.Current.Log.Info("Connect", "Connect cancelled.");
-                            return;
-                        }
+                        await Task.Delay(RetryDelay, _connectCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
+                        AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+                        return;
                     }
                 }
             }
