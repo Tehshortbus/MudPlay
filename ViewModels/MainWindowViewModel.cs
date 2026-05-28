@@ -964,7 +964,7 @@ public partial class MainWindowViewModel : ObservableObject
               Conversation .................. F2  (wired Phase 2)
               Party ......................... F3  (wired Phase 6)
               Player Workshop ............... F4  (wired Phase 9)
-              Map ........................... F5  (wired Phase 7)
+              Navigation .................... F5  (wired Phase 7)
               Spell Book .................... F7  (wired Phase 9)
               Backscroll .................... F10 (wired Phase 1)
               Session Stats ................. F11 (wired Phase 8)

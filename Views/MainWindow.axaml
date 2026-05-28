@@ -54,7 +54,7 @@
                 <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
                 <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
-                <MenuItem Header="Map"             InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
+                <MenuItem Header="Navigation"      InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
                 <MenuItem Header="Spell Book"    InputGesture="F7"  Command="{Binding OpenSpellBookCommand}"/>
                 <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
@@ -160,7 +160,7 @@
                     <Border Classes="ToolbarSeparator"/>
 
                     <!-- Group 3: navigation / capture / wire -->
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Map (F5)">
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Navigation (F5)">
                         <Path Data="{StaticResource IconMap}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
