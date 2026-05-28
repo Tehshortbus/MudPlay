@@ -63,6 +63,13 @@ public sealed class AppServices
     public MessageRouter Router { get; }
 
     /// <summary>
+    /// Classifies chat / realm-event lines into <see cref="Game.ChatLogEntry"/>
+    /// events. ChatHistoryStore (PR 2.4) and the Conversation window
+    /// (PR 2.5) subscribe to <c>EntryClassified</c>.
+    /// </summary>
+    public Game.ChatRouter Chat { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -101,10 +108,15 @@ public sealed class AppServices
         Router = new MessageRouter();
 
         // Populate the default pattern registry now so later subsystems
-        // (ChatRouter in PR 2.3, automation engines in Phase 13, the
-        // Phase 5 Trigger UI's "pick a built-in pattern" picker) can
-        // subscribe by KnownPatterns.Whatever id.
+        // (ChatRouter, automation engines in Phase 13, the Phase 5 Trigger
+        // UI's "pick a built-in pattern" picker) can subscribe by
+        // KnownPatterns.Whatever id.
         Patterns.DefaultPatterns.Seed(Router);
+
+        // First MessageRouter consumer — subscribes to the conversation +
+        // realm-event patterns. ChatHistoryStore + ConversationWindow
+        // (Phase 2 PR 2.4 / 2.5) subscribe to its EntryClassified event.
+        Chat = new Game.ChatRouter(Router);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

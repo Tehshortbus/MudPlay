@@ -29,6 +29,43 @@ public sealed class MessageRouter
     private readonly List<Subscription> _subs = new();
 
     /// <summary>
+    /// Known patterns indexed by id. Populated by callers via
+    /// <see cref="RegisterPattern"/> (typically the
+    /// <see cref="Patterns.DefaultPatterns.Seed"/> bootstrap). Consumers
+    /// query this catalog through <see cref="TryGetPattern"/> or subscribe
+    /// to a known id via <see cref="Subscribe(string, Action{MatchResult})"/>.
+    /// </summary>
+    private readonly Dictionary<string, IMessagePattern> _catalog = new();
+
+    /// <summary>
+    /// Add <paramref name="pattern"/> to the known-patterns catalog so
+    /// later subscribers can find it by id via <see cref="Subscribe(string, Action{MatchResult})"/>
+    /// or <see cref="TryGetPattern"/>. Does NOT register a subscription —
+    /// no handler fires until something calls <c>Subscribe</c>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a pattern with the same id is already in the catalog.
+    /// </exception>
+    public void RegisterPattern(IMessagePattern pattern)
+    {
+        ArgumentNullException.ThrowIfNull(pattern);
+        if (_catalog.ContainsKey(pattern.Id))
+            throw new InvalidOperationException($"Pattern id '{pattern.Id}' is already in the catalog.");
+        _catalog.Add(pattern.Id, pattern);
+    }
+
+    /// <summary>Look up a previously-registered pattern by id.</summary>
+    public bool TryGetPattern(string id, out IMessagePattern pattern)
+    {
+        bool ok = _catalog.TryGetValue(id, out IMessagePattern? p);
+        pattern = p!;
+        return ok;
+    }
+
+    /// <summary>Diagnostic: how many patterns are in the known-patterns catalog.</summary>
+    public int PatternCount => _catalog.Count;
+
+    /// <summary>
     /// Register <paramref name="handler"/> to be invoked whenever
     /// <paramref name="pattern"/> matches a dispatched line. Disposing the
     /// returned token un-subscribes.
@@ -41,6 +78,22 @@ public sealed class MessageRouter
         Subscription sub = new(pattern, handler);
         _subs.Add(sub);
         return new SubscriptionToken(this, sub);
+    }
+
+    /// <summary>
+    /// Convenience: subscribe by the id of a pattern already in the
+    /// catalog (via <see cref="RegisterPattern"/>). Equivalent to
+    /// <see cref="Register"/> with the looked-up pattern.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// No pattern with the given id is in the catalog.
+    /// </exception>
+    public IDisposable Subscribe(string id, Action<MatchResult> handler)
+    {
+        if (!TryGetPattern(id, out IMessagePattern pattern))
+            throw new InvalidOperationException(
+                $"No catalog pattern with id '{id}' — has DefaultPatterns.Seed run?");
+        return Register(pattern, handler);
     }
 
     /// <summary>

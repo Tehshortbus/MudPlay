@@ -32,17 +32,17 @@ namespace FujinTerm.Services.Patterns;
 public static class DefaultPatterns
 {
     /// <summary>
-    /// Register every default pattern against <paramref name="router"/>. No
-    /// handlers are attached here — each subsystem (ChatRouter, combat
-    /// tracker, etc.) registers its own handlers against the same pattern
-    /// ids via <see cref="MessageRouter.Register"/>.
+    /// Populate <paramref name="router"/>'s known-patterns catalog. No
+    /// handlers are attached — each subsystem (ChatRouter, combat tracker,
+    /// etc.) registers its own handlers by id via
+    /// <see cref="MessageRouter.Subscribe(string, Action{MatchResult})"/>.
     /// </summary>
     public static void Seed(MessageRouter router)
     {
         ArgumentNullException.ThrowIfNull(router);
         foreach (IMessagePattern pattern in BuildDefaultPatterns())
         {
-            router.Register(pattern, NoopHandler);
+            router.RegisterPattern(pattern);
         }
     }
 
@@ -160,5 +160,4 @@ public static class DefaultPatterns
             @"^(?<player>\w+) just entered the Realm\.");
     }
 
-    private static void NoopHandler(MatchResult _) { /* fan-out semantics — real subsystems attach by id */ }
 }
