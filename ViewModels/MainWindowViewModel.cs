@@ -214,7 +214,7 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     // User clicked the toolbar / menu again — propagate as cancel.
                     await client.DisposeAsync();
-                    WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
+                    WriteTerminalStatus("[CONNECT CANCELLED]", TerminalStatusKind.Notice);
                     AppServices.Current.Log.Info("Connect", "Connect cancelled.");
                     return;
                 }
@@ -248,7 +248,7 @@ public partial class MainWindowViewModel : ObservableObject
                     }
                     catch (OperationCanceledException)
                     {
-                        WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
+                        WriteTerminalStatus("[CONNECT CANCELLED]", TerminalStatusKind.Notice);
                         AppServices.Current.Log.Info("Connect", "Connect cancelled.");
                         return;
                     }
