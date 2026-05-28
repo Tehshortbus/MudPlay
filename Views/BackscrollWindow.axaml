@@ -4,11 +4,11 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="890" d:DesignHeight="580"
+        mc:Ignorable="d" d:DesignWidth="860" d:DesignHeight="580"
         x:Class="FujinTerm.Views.BackscrollWindow"
         x:DataType="vm:BackscrollViewModel"
         Title="Backscroll"
-        Width="890" Height="580"
+        Width="860" Height="580"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
