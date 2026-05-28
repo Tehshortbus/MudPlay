@@ -48,12 +48,26 @@
         </Border>
 
         <!-- ============ Scrollback rows ============ -->
+        <!-- Terminal-tight row spacing: ListBoxItem padding 0, no per-row
+             margin, fixed line-height set on the cell renderer to match
+             the Mx437 font's cell height (16 px). The default Fluent
+             ListBoxItem ships with ~6 px vertical padding which reads as
+             "double-spaced" against terminal output. -->
         <ListBox x:Name="RowsList"
                  ItemsSource="{Binding Rows}"
                  Background="Black"
                  BorderThickness="0"
                  Padding="4"
                  SelectionMode="Multiple">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                </Style>
+                <Style Selector="ListBoxItem /template/ ContentPresenter">
+                    <Setter Property="Padding" Value="0"/>
+                </Style>
+            </ListBox.Styles>
             <ListBox.ItemTemplate>
                 <DataTemplate DataType="vm:BackscrollRowViewModel">
                     <Grid ColumnDefinitions="Auto,*">
@@ -67,7 +81,9 @@
                         <ctl:CellRowDisplay Grid.Column="1"
                                             Row="{Binding Cells}"
                                             FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                            FontSize="14"/>
+                                            FontSize="14"
+                                            LineHeight="16"
+                                            Padding="0"/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

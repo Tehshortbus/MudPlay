@@ -32,6 +32,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
 
+    /// <summary>
+    /// Extracts completed lines from the emulator's screen stream. Foundation
+    /// for every later-phase "what did the server say" subsystem
+    /// (MessageRouter, ChatRouter, Triggers, prompt parser).
+    /// </summary>
+    public LineExtractor Lines { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BbsBadgeText))]
     private string _host = "playpenbbs.com";
@@ -119,8 +126,24 @@ public partial class MainWindowViewModel : ObservableObject
     // as DebugLogWriter output.
     private static string CaptureDirectory => AppPaths.LogsDir;
 
+    /// <summary>
+    /// Tees the live transcript to a .log file when the user clicks the
+    /// Capture toolbar button / menu entry. Subscribes to the same
+    /// ScrollbackBuffer the Backscroll window consumes, so the file is a
+    /// 1:1 record of what the user saw — with colours preserved via inline
+    /// ANSI SGR escapes.
+    /// </summary>
+    public CaptureSession Capture { get; }
+
     public MainWindowViewModel()
     {
+        Lines = new LineExtractor(Emulator);
+        Capture = new CaptureSession(Emulator.Screen.Scrollback);
+
+        // Every emitted line fans out through the central MessageRouter so
+        // chat / combat / triggers / etc. all share one dispatch path.
+        Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
+
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
         Emulator.ResponseReady += bytes =>
@@ -342,30 +365,44 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Toggle session capture. When enabled, every cleaned byte from the
-    /// host is appended to a timestamped .bin file in <see cref="DumpDirectory"/>.
+    /// Convenience: encode a text line (Latin-1 + CRLF) and send it to the
+    /// server. Used by the Conversation window's input field — typing in
+    /// the chat panel feeds the game the same way as typing in the
+    /// terminal does.
+    /// </summary>
+    public void SendUserText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes(text + "\r\n");
+        SendUserInput(bytes);
+    }
+
+    /// <summary>
+    /// Toggle session capture. The file lives at
+    /// <c>Data/Logs/capture-yyyyMMdd-HHmmss.log</c> and receives one line
+    /// per completed terminal row, prefixed with <c>[HH:mm:ss]</c> and
+    /// encoded with inline ANSI SGR escapes so colour is preserved when
+    /// the file is viewed through any ANSI-aware tool (<c>less -R</c>,
+    /// modern terminals, web log viewers).
     /// </summary>
     [RelayCommand]
     private void ToggleDump()
     {
-        var t = _telnet;
         if (IsDumping)
         {
-            t?.StopDump();
+            string? path = Capture.FilePath;
+            Capture.Stop();
             IsDumping = false;
-            AppServices.Current.Log.Info("Capture", "Capture stopped.");
+            AppServices.Current.Log.Info("Capture",
+                path is null ? "Capture stopped." : $"Capture stopped — {Path.GetFileName(path)}");
             return;
         }
-        if (t is null)
-        {
-            AppServices.Current.Log.Warn("Capture", "Connect before starting a capture.");
-            return;
-        }
-        var name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.fjtc";
-        var path = Path.Combine(CaptureDirectory, name);
+
+        string name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+        string fullPath = Path.Combine(CaptureDirectory, name);
         try
         {
-            t.StartDump(path);
+            Capture.Start(fullPath);
             IsDumping = true;
             AppServices.Current.Log.Info("Capture", $"Capturing to {name}");
         }
@@ -399,9 +436,11 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention: clicking the same menu / hotkey / toolbar entry
+        // a second time closes the window instead of activating it.
         if (_placeholders.TryGetValue(id, out PlaceholderShellWindow? existing))
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -422,9 +461,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder.
         if (_logPane is { } existing)
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -455,21 +495,17 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder. Find-in-scrollback is
+        // the same toggle: hitting it while Backscroll is already open
+        // closes the window. Opening freshly with focusSearch=true lands
+        // focus on the search box.
         if (_backscroll is { } existing)
         {
-            existing.Activate();
-            if (focusSearch && existing.DataContext is BackscrollViewModel existingVm)
-            {
-                existingVm.FocusSearchOnOpen = true;
-                // Already-opened window: nudge focus via the same hook the
-                // first-open path uses, by toggling activation. Simpler than
-                // exposing yet another event.
-                existing.Focus();
-            }
+            existing.Close();
             return;
         }
 
-        BackscrollViewModel vm = new(Emulator.Screen.Scrollback)
+        BackscrollViewModel vm = new(Emulator)
         {
             FocusSearchOnOpen = focusSearch,
         };
@@ -479,18 +515,32 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    private ConversationWindow? _conversation;
+
     [RelayCommand]
     private void OpenConversation()
-        => OpenPlaceholder(
-            id: "conversation",
-            panelName: "Conversation",
-            phaseTag: "Phase 2",
-            headline: "Chat / telepath / gossip view",
-            description:
-                "Single window with per-message-type filter toggles (Gossip / " +
-                "Telepath / Gang / Say / Broadcast / System / Realm-events) and its " +
-                "own input field that routes to the live game. Backed by ChatRouter + " +
-                "the app-scoped ChatHistoryStore.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        // Toggle convention — see OpenPlaceholder.
+        if (_conversation is { } existing)
+        {
+            existing.Close();
+            return;
+        }
+
+        ConversationWindow window = new()
+        {
+            DataContext = new ConversationViewModel(
+                AppServices.Current.ChatHistory,
+                SendUserText,
+                Application.Current),
+        };
+        window.Closed += (_, _) => _conversation = null;
+        _conversation = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenParty()
@@ -705,9 +755,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder.
         if (_wireInspector is { } existing)
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -732,6 +783,45 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!ShellLaunch.OpenPath(AppPaths.LogsDir))
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.LogsDir}");
+    }
+
+    /// <summary>
+    /// Tools → Clear chatlog. Wipes every entry from the app-singleton
+    /// ChatHistoryStore — the Conversation window's contents go with it
+    /// (it binds to the same store) and a fresh open shows an empty list.
+    /// Destructive; the spec doesn't ask for a confirm dialog yet.
+    /// </summary>
+    [RelayCommand]
+    private void ClearChatlog()
+    {
+        AppServices.Current.ChatHistory.Clear();
+        AppServices.Current.Log.Info("Chatlog", "Cleared chat history.");
+    }
+
+    /// <summary>
+    /// Tools → Export chatlog… Saves the entire ChatHistoryStore (no
+    /// channel filter, no day-separator filter) to a plain-text file the
+    /// user picks.
+    /// </summary>
+    [RelayCommand]
+    private async Task ExportChatlogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export chatlog",
+            SuggestedFileName = $"chatlog-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            DefaultExtension = "txt",
+            FileTypeChoices = [new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] }],
+        });
+
+        if (file is null) return;
+
+        await using Stream stream = await file.OpenWriteAsync();
+        await AppServices.Current.ChatHistory.ExportAsync(stream).ConfigureAwait(false);
+        AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
     /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>
@@ -769,17 +859,22 @@ public partial class MainWindowViewModel : ObservableObject
             View
               Conversation .................. F2  (wired Phase 2)
               Party ......................... F3  (wired Phase 6)
-              Player Status ................. F4  (wired Phase 3)
+              Player Workshop ............... F4  (wired Phase 9)
               Map ........................... F5  (wired Phase 7)
-              Workshop ...................... F6  (wired Phase 9)
               Spell Book .................... F7  (wired Phase 9)
-              Log ........................... F9  (wired Phase 1)
               Backscroll .................... F10 (wired Phase 1)
               Session Stats ................. F11 (wired Phase 8)
+              Settings ...................... Ctrl+,  (Phase 4)
 
-            Settings ........................ Ctrl+,  (Phase 4)
-            Open Game Data browser .......... Ctrl+G  (Phase 5)
-            New / Open / Save profile ....... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
+            Tools
+              Program Log ................... F9  (wired Phase 1)
+              Wire Inspector ................ (no shortcut — toolbar / menu)
+
+            Game Data
+              Browser ....................... Ctrl+G  (Phase 5)
+
+            File
+              New / Open / Save profile ..... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
 
             Help topics ..................... F1  (this dialog's neighbor)
 
@@ -817,64 +912,27 @@ public partial class MainWindowViewModel : ObservableObject
             Built on .NET 10 + Avalonia 12 (CommunityToolkit.Mvvm source-gen).
             """);
 
-    private static void ShowInfoDialog(string title, string body)
+    /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>
+    private readonly Dictionary<string, InfoDialog> _infoDialogs = new(StringComparer.Ordinal);
+
+    private void ShowInfoDialog(string title, string body)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
-        InfoDialog dlg = new();
-        dlg.Configure(title, body);
-        dlg.Show(main);
-    }
 
-    /// <summary>
-    /// Bound to Tools → Replay capture file… Opens a file picker, then feeds
-    /// every chunk in the chosen <c>.fjtc</c> into the live emulator at the
-    /// recorded cadence. Fire-and-forget — the playback runs on a background
-    /// task and marshals each chunk through the dispatcher.
-    /// </summary>
-    [RelayCommand]
-    private async Task ReplayCaptureFileAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+        // Toggle convention — see OpenPlaceholder. About / License /
+        // Keyboard shortcuts each get their own tracker by title.
+        if (_infoDialogs.TryGetValue(title, out InfoDialog? existing))
         {
-            AppServices.Current.Log.Error("Replay", "Replay unavailable — no main window.");
+            existing.Close();
             return;
         }
 
-        IReadOnlyList<IStorageFile> picked = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open FujinTerm capture",
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("FujinTerm capture (.fjtc)") { Patterns = ["*.fjtc"] },
-                FilePickerFileTypes.All,
-            ],
-            SuggestedStartLocation = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.LogsDir),
-        });
-
-        if (picked.Count == 0) return;
-        string path = picked[0].Path.LocalPath;
-
-        ReplayPlayer player = new(path);
-        player.ChunkPlayed += chunk =>
-        {
-            byte[] copy = chunk.ToArray();
-            Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
-        };
-
-        AppServices.Current.Log.Info("Replay", $"Replaying {Path.GetFileName(path)}…");
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await player.PlayAsync().ConfigureAwait(false);
-                AppServices.Current.Log.Info("Replay", "Replay complete.");
-            }
-            catch (Exception ex)
-            {
-                AppServices.Current.Log.Error("Replay", $"Replay failed: {ex.Message}");
-            }
-        });
+        InfoDialog dlg = new();
+        dlg.Configure(title, body);
+        dlg.Closed += (_, _) => _infoDialogs.Remove(title);
+        _infoDialogs[title] = dlg;
+        dlg.Show(main);
     }
+
 }

@@ -25,6 +25,16 @@ public sealed class TerminalEmulator
     /// <summary>Fires once per Feed() call after all bytes are processed.</summary>
     public event Action? ScreenUpdated;
 
+    /// <summary>
+    /// Fires every time <see cref="LineFeed"/> moves the cursor off a row —
+    /// the canonical "this line just finished" signal. Used by
+    /// <see cref="LineExtractor"/> so chat / automation see every completed
+    /// line, regardless of whether the row eventually scrolls off-screen.
+    /// <see cref="ScrollbackBuffer.RowAdded"/> remains the "row left the
+    /// visible screen" signal (only ScrollUp fires it).
+    /// </summary>
+    public event Action<ScrollbackBuffer.Row>? LineCompleted;
+
     // Current SGR state (foreground/background/flags) used for new writes.
     private CellAttributes _attr = CellAttributes.Default;
 
@@ -172,10 +182,25 @@ public sealed class TerminalEmulator
     /// <summary>Index-y down a row, scrolling the region if at the bottom.</summary>
     private void LineFeed()
     {
+        // LF is the canonical "this row is done" signal. Fire LineCompleted
+        // before the cursor moves so subscribers see the row that just
+        // finished — independent of whether it's about to scroll off or
+        // stay on the visible screen. Scrollback capture is handled by
+        // ScrollUp (when scrolling) or by the Backscroll view's live-tail
+        // path (when not).
+        ReadOnlySpan<Cell> cells = Screen.Row(Screen.CursorY);
+        LineCompleted?.Invoke(new ScrollbackBuffer.Row(DateTimeOffset.Now, cells.ToArray()));
+
         if (Screen.CursorY == _scrollBottom)
+        {
+            // ScrollUp captures the top row into Scrollback before
+            // overwriting it.
             Screen.ScrollUp(_scrollTop, _scrollBottom, 1, _attr);
+        }
         else if (Screen.CursorY + 1 < Screen.Rows)
+        {
             Screen.CursorY++;
+        }
     }
 
     private void BeginEsc()

@@ -41,6 +41,18 @@ public sealed partial class WireInspectorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _syncScroll = true;
 
+    /// <summary>
+    /// When true (default), each refresh tick scrolls both panes to the
+    /// bottom so the freshest bytes are always visible. The window's
+    /// code-behind does the actual <c>ScrollToEnd</c> call in response to
+    /// <see cref="RefreshCompleted"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoScroll = true;
+
+    /// <summary>Fires after each non-paused <see cref="Refresh"/> on the UI thread.</summary>
+    public event Action? RefreshCompleted;
+
     [ObservableProperty]
     private string _searchText = string.Empty;
 
@@ -70,6 +82,8 @@ public sealed partial class WireInspectorViewModel : ObservableObject, IDisposab
         RawText = WireFormatter.RenderRaw(snapshot);
         StrippedText = WireFormatter.RenderStripped(snapshot);
         StatusText = $"{snapshot.Length:N0} / {_buffer.Capacity:N0} bytes  •  {_buffer.TotalBytes:N0} total";
+
+        RefreshCompleted?.Invoke();
     }
 
     /// <summary>Toggle the live refresh. When paused the buffer keeps growing.</summary>

@@ -35,12 +35,38 @@ public partial class WireInspectorWindow : Window
 
         if (_rawScroll is not null)      _rawScroll.ScrollChanged      += OnRawScrolled;
         if (_strippedScroll is not null) _strippedScroll.ScrollChanged += OnStrippedScrolled;
+
+        if (DataContext is WireInspectorViewModel vm)
+        {
+            vm.RefreshCompleted += OnRefreshCompleted;
+            // Initial scroll-to-end so the open lands on the live tail.
+            OnRefreshCompleted();
+        }
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        // VM owns a DispatcherTimer; stop it so we don't leak ticks.
-        (DataContext as WireInspectorViewModel)?.Dispose();
+        if (DataContext is WireInspectorViewModel vm)
+        {
+            vm.RefreshCompleted -= OnRefreshCompleted;
+            // VM owns a DispatcherTimer; stop it so we don't leak ticks.
+            vm.Dispose();
+        }
+    }
+
+    private void OnRefreshCompleted()
+    {
+        if (DataContext is not WireInspectorViewModel { AutoScroll: true }) return;
+        _syncingScroll = true;   // suppress the sync-scroll handlers below
+        try
+        {
+            _rawScroll?.ScrollToEnd();
+            _strippedScroll?.ScrollToEnd();
+        }
+        finally
+        {
+            _syncingScroll = false;
+        }
     }
 
     private void OnRawScrolled(object? sender, ScrollChangedEventArgs e)

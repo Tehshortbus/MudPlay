@@ -12,19 +12,28 @@ using FujinTerm.Terminal;
 namespace FujinTerm.ViewModels;
 
 /// <summary>
-/// View-model behind <see cref="Views.BackscrollWindow"/>. Subscribes to the
-/// active terminal's <see cref="ScrollbackBuffer.RowAdded"/> event and
-/// maintains an <see cref="ObservableCollection{T}"/> of row VMs the
-/// virtualizing list binds to.
+/// View-model behind <see cref="Views.BackscrollWindow"/>. Shows the
+/// <see cref="ScrollbackBuffer"/> contents (rows that physically scrolled
+/// off the top of the screen) followed by a live mirror of the
+/// currently-visible terminal screen — so the Backscroll is a true
+/// chronological transcript of everything the user has ever seen,
+/// including the active prompt row.
 /// </summary>
 /// <remarks>
-/// Sized at the buffer's capacity — 10 000 rows by default. The
-/// ListBox virtualizes so the on-screen cost is bounded; off-screen rows
-/// are pure data.
+/// Rows are laid out as:
+/// <code>
+/// [ 0 .. _scrollbackCount )           historical rows (ScrollbackBuffer)
+/// [ _scrollbackCount .. end )         live mirror of current screen
+/// </code>
+/// On <see cref="ScrollbackBuffer.RowAdded"/> we insert at the boundary.
+/// On <see cref="TerminalEmulator.ScreenUpdated"/> we replace the tail with
+/// the current screen rows.
 /// </remarks>
 public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 {
+    private readonly TerminalEmulator _emulator;
     private readonly ScrollbackBuffer _buffer;
+    private int _scrollbackCount;
     private bool _disposed;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
@@ -36,7 +45,8 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private int _matchCount;
 
-    public string StatusText => $"{Rows.Count:N0} rows  •  {MatchCount:N0} matches";
+    public string StatusText
+        => $"{_scrollbackCount:N0} scrollback  •  {Rows.Count - _scrollbackCount:N0} live  •  {MatchCount:N0} matches";
 
     /// <summary>Fired when the user requests Find Next. The window scrolls.</summary>
     public event Action<int>? ScrollToRowRequested;
@@ -44,18 +54,17 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
     public event Action? GoToLiveRequested;
 
-    /// <summary>
-    /// True when the window should land focus on the search box at open
-    /// time — set by callers that opened the window specifically to search
-    /// (e.g. terminal context menu → Find in scrollback).
-    /// </summary>
     public bool FocusSearchOnOpen { get; set; }
 
-    public BackscrollViewModel(ScrollbackBuffer buffer)
+    public BackscrollViewModel(TerminalEmulator emulator)
     {
-        _buffer = buffer;
+        _emulator = emulator;
+        _buffer = emulator.Screen.Scrollback;
+
         Hydrate();
-        _buffer.RowAdded += OnRowAdded;
+
+        _buffer.RowAdded += OnScrollbackRowAdded;
+        _emulator.ScreenUpdated += OnScreenUpdated;
     }
 
     private void Hydrate()
@@ -65,18 +74,65 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         {
             Rows.Add(new BackscrollRowViewModel(row));
         }
+        _scrollbackCount = Rows.Count;
+        RefreshLiveTail();
         OnPropertyChanged(nameof(StatusText));
     }
 
-    private void OnRowAdded(ScrollbackBuffer.Row row)
+    private void OnScrollbackRowAdded(ScrollbackBuffer.Row row)
     {
-        // Producer is the emulator on the UI thread already, but Post anyway
-        // for robustness against future off-UI captures (replay, paste, etc.).
+        // Producer thread is the emulator's UI-thread Feed path in
+        // production; Post-to-UI defensively in case a future off-UI
+        // capture (replay tooling, future paste-snapshot, etc.) appears.
         Dispatcher.UIThread.Post(() =>
         {
-            Rows.Add(new BackscrollRowViewModel(row));
+            Rows.Insert(_scrollbackCount, new BackscrollRowViewModel(row));
+            _scrollbackCount++;
             OnPropertyChanged(nameof(StatusText));
         });
+    }
+
+    private void OnScreenUpdated()
+    {
+        Dispatcher.UIThread.Post(RefreshLiveTail);
+    }
+
+    /// <summary>
+    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with
+    /// fresh snapshots of every screen row. Adjusts the live-tail size if
+    /// the screen was resized.
+    /// </summary>
+    private void RefreshLiveTail()
+    {
+        TerminalScreen screen = _emulator.Screen;
+        int desired = screen.Rows;
+        DateTimeOffset now = DateTimeOffset.Now;
+
+        int currentLive = Rows.Count - _scrollbackCount;
+
+        // Replace existing live rows in-place; cheaper than clear + re-add.
+        int common = Math.Min(currentLive, desired);
+        for (int y = 0; y < common; y++)
+        {
+            Cell[] cells = screen.Row(y).ToArray();
+            Rows[_scrollbackCount + y] = new BackscrollRowViewModel(
+                new ScrollbackBuffer.Row(now, cells));
+        }
+
+        // Add any extra rows the screen grew into.
+        for (int y = common; y < desired; y++)
+        {
+            Cell[] cells = screen.Row(y).ToArray();
+            Rows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
+        }
+
+        // Remove tail if the screen shrank.
+        while (Rows.Count - _scrollbackCount > desired)
+        {
+            Rows.RemoveAt(Rows.Count - 1);
+        }
+
+        OnPropertyChanged(nameof(StatusText));
     }
 
     [RelayCommand]
@@ -135,6 +191,7 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _buffer.RowAdded -= OnRowAdded;
+        _buffer.RowAdded -= OnScrollbackRowAdded;
+        _emulator.ScreenUpdated -= OnScreenUpdated;
     }
 }
