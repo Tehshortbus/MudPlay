@@ -323,8 +323,9 @@
                              sense from a right-click on the canvas. The full
                              six-group mirror of the menu bar can land later
                              alongside selection support. -->
-                        <MenuItem Header="Open Log pane"  InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
-                        <MenuItem Header="Open Backscroll" InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
+                        <MenuItem Header="Open Player Workshop" InputGesture="F4"  Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Log pane"        InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
+                        <MenuItem Header="Open Backscroll"      InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>
