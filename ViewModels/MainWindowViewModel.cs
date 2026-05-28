@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -364,6 +365,19 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Convenience: encode a text line (Latin-1 + CRLF) and send it to the
+    /// server. Used by the Conversation window's input field — typing in
+    /// the chat panel feeds the game the same way as typing in the
+    /// terminal does.
+    /// </summary>
+    public void SendUserText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes(text + "\r\n");
+        SendUserInput(bytes);
+    }
+
+    /// <summary>
     /// Toggle session capture. The file lives at
     /// <c>Data/Logs/capture-yyyyMMdd-HHmmss.log</c> and receives one line
     /// per completed terminal row, prefixed with <c>[HH:mm:ss]</c> and
@@ -502,18 +516,31 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    private ConversationWindow? _conversation;
+
     [RelayCommand]
     private void OpenConversation()
-        => OpenPlaceholder(
-            id: "conversation",
-            panelName: "Conversation",
-            phaseTag: "Phase 2",
-            headline: "Chat / telepath / gossip view",
-            description:
-                "Single window with per-message-type filter toggles (Gossip / " +
-                "Telepath / Gang / Say / Broadcast / System / Realm-events) and its " +
-                "own input field that routes to the live game. Backed by ChatRouter + " +
-                "the app-scoped ChatHistoryStore.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_conversation is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        ConversationWindow window = new()
+        {
+            DataContext = new ConversationViewModel(
+                AppServices.Current.ChatHistory,
+                SendUserText,
+                Application.Current),
+        };
+        window.Closed += (_, _) => _conversation = null;
+        _conversation = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenParty()
@@ -755,6 +782,34 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!ShellLaunch.OpenPath(AppPaths.LogsDir))
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.LogsDir}");
+    }
+
+    /// <summary>
+    /// Tools → Export chatlog… Saves the entire ChatHistoryStore (no
+    /// channel filter, no day-separator filter) to a plain-text file the
+    /// user picks. The Conversation window has its own Export… button that
+    /// honours the active filter; this menu entry is the
+    /// "give me everything" path.
+    /// </summary>
+    [RelayCommand]
+    private async Task ExportChatlogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export chatlog",
+            SuggestedFileName = $"chatlog-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            DefaultExtension = "txt",
+            FileTypeChoices = [new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] }],
+        });
+
+        if (file is null) return;
+
+        await using Stream stream = await file.OpenWriteAsync();
+        await AppServices.Current.ChatHistory.ExportAsync(stream).ConfigureAwait(false);
+        AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
     /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>

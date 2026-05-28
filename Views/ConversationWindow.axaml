@@ -1,0 +1,147 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.ConversationWindow"
+        x:DataType="vm:ConversationViewModel"
+        Title="Conversation"
+        Width="780" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Filter toolbar ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" VerticalAlignment="Center">
+
+                <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
+                    <CheckBox IsChecked="{Binding ShowGossip}"            Content="Gossip"
+                              Foreground="{StaticResource AccentCyanBrush}"   FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowLocal}"             Content="Say"
+                              Foreground="{StaticResource ChromeFgBrush}"     FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowTelepathIncoming}"  Content="Telepath in"
+                              Foreground="{StaticResource AccentMagentaBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowTelepathOutgoing}"  Content="Telepath out"
+                              Foreground="{StaticResource AccentMagentaBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowGangpath}"          Content="Gang"
+                              Foreground="{StaticResource AccentGreenBrush}"  FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowBroadcast}"         Content="Broadcast"
+                              Foreground="{StaticResource AccentYellowBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowYell}"              Content="Yell"
+                              Foreground="{StaticResource AccentAmberBrush}"  FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowRealmEvent}"        Content="Realm"
+                              Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                </WrapPanel>
+
+                <CheckBox Grid.Column="1" Margin="12,0,0,0"
+                          IsChecked="{Binding AutoScroll}"
+                          Content="Auto-scroll"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"/>
+                <TextBox Grid.Column="2" Margin="10,0,0,0" MinWidth="200"
+                         PlaceholderText="Search speaker / message…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                <Button Grid.Column="3" Margin="6,0,0,0"
+                        Content="Clear" Command="{Binding ClearCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Input + Export row ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+                <TextBox Grid.Column="0" x:Name="InputBox"
+                         PlaceholderText="Type a command or chat line, press Enter to send"
+                         Text="{Binding InputText, Mode=TwoWay}"
+                         KeyDown="OnInputKeyDown"/>
+                <Button Grid.Column="1" Margin="6,0,0,0"
+                        Content="Send" Command="{Binding SendInputCommand}"/>
+                <Button Grid.Column="2" Margin="6,0,0,0"
+                        Content="Export…" Command="{Binding ExportCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Rows list ============ -->
+        <ListBox x:Name="RowsList"
+                 ItemsSource="{Binding Rows}"
+                 Background="{StaticResource ChromeBgSunkenBrush}"
+                 BorderThickness="0"
+                 Padding="4"
+                 SelectionMode="Multiple">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:ConversationRowViewModel">
+                    <Grid Margin="4,2">
+                        <!-- Day separator: horizontal rule with the date
+                             centered. Other rows: timestamp + tag + speaker
+                             + message in a single line. -->
+                        <Border IsVisible="{Binding IsDaySeparator}"
+                                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="0,8,0,4">
+                            <TextBlock HorizontalAlignment="Center"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       Text="{Binding MessageText, StringFormat='─── {0} ───'}"/>
+                        </Border>
+                        <Grid IsVisible="{Binding !IsDaySeparator}"
+                              ColumnDefinitions="Auto,Auto,Auto,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding TimestampText}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+                            <Border Grid.Column="1"
+                                    Background="#0DFFFFFF"
+                                    BorderBrush="{Binding ChannelBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource CornerSm}"
+                                    Padding="4,1"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,8,0">
+                                <TextBlock Text="{Binding ChannelText}"
+                                           Foreground="{Binding ChannelBrush}"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="11"/>
+                            </Border>
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding SpeakerText}"
+                                       Foreground="{Binding ChannelBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       FontWeight="Medium"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+                            <SelectableTextBlock Grid.Column="3"
+                                                 Text="{Binding MessageText}"
+                                                 Foreground="{StaticResource ChromeFgBrush}"
+                                                 FontFamily="{StaticResource FontMono}"
+                                                 FontSize="12"
+                                                 TextWrapping="Wrap"
+                                                 VerticalAlignment="Center"/>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>

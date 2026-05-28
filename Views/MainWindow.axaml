@@ -79,7 +79,7 @@
                 <MenuItem Header="Program Log…" InputGesture="F9" Command="{Binding OpenLogPaneCommand}"/>
                 <MenuItem Header="Wire Inspector…"             Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
-                <MenuItem Header="Export chatlog…"             IsEnabled="False" ToolTip.Tip="Wired in Phase 2"/>
+                <MenuItem Header="Export chatlog…"             Command="{Binding ExportChatlogCommand}"/>
                 <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
                 <Separator/>
                 <!-- Dev-facing entrypoint to inspect every edit-dialog
