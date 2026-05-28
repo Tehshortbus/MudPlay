@@ -1,23 +1,19 @@
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
-using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
 /// Base for one section in the <see cref="SettingsWindowViewModel"/>'s
-/// sidebar. Concrete subclasses (one per tab — General, Display, Comms,
-/// Health, etc.) land in their own PR per the Phase 4 plan; until they
-/// arrive the shell renders a <see cref="PlaceholderSectionViewModel"/>
-/// for every section so the sidebar shows the full surface area from
-/// day one.
+/// sidebar. Every settings tab — including app-wide ones like Display
+/// and Toolbar — lives on the loaded character profile, so sections
+/// don't take a runtime scope; each one knows where its data lives.
 /// </summary>
 /// <remarks>
-/// Pending changes live in the section — the shell only knows
-/// "is anything dirty?" via <see cref="IsDirty"/> and routes Apply /
-/// Discard through the virtuals. Settings get persisted through
-/// <see cref="SettingsResolver.WriteAt{T}"/> at the scope the shell
-/// is currently editing (Char / BBS / Global).
+/// Game-data record overrides use the four-tier (Defaults / Global /
+/// BBS / Char) hierarchy via <see cref="Services.SettingsResolver"/>;
+/// that lives in the Phase 5 Game Data Browser, not here. Settings-tab
+/// data has no tier picker.
 /// </remarks>
 public abstract partial class SettingsSectionViewModel : ObservableObject
 {
@@ -43,12 +39,9 @@ public abstract partial class SettingsSectionViewModel : ObservableObject
     /// </summary>
     public abstract Control View { get; }
 
-    /// <summary>
-    /// Persist this section's pending edits at <paramref name="scope"/>.
-    /// Default no-op for placeholder / read-only sections.
-    /// </summary>
-    public virtual void Apply(SettingsTier scope, SettingsResolver resolver) { }
+    /// <summary>Persist this section's pending edits. Default no-op for placeholders.</summary>
+    public virtual void Apply() { }
 
-    /// <summary>Drop pending edits and re-read from the resolver.</summary>
+    /// <summary>Drop pending edits and re-read from the underlying store.</summary>
     public virtual void Discard() { }
 }

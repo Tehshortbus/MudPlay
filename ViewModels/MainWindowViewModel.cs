@@ -665,7 +665,7 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices svc = AppServices.Current;
         SettingsWindow window = new()
         {
-            DataContext = new SettingsWindowViewModel(svc.Resolver, svc.Profile, svc.Log),
+            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log),
         };
         window.Closed += (_, _) => _settings = null;
         _settings = window;
