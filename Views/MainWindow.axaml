@@ -51,6 +51,8 @@
             </MenuItem>
 
             <MenuItem Header="_View">
+                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
+                <Separator/>
                 <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
                 <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
@@ -59,7 +61,6 @@
                 <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
-                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
 
