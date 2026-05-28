@@ -300,7 +300,8 @@
 
                 <TextBlock Grid.Column="2" Classes="StatusSlot"
                            HorizontalAlignment="Right"
-                           Text="{Binding StatusText}"/>
+                           Text="{Binding LatestLogText}"
+                           ToolTip.Tip="{Binding LatestLogText}"/>
             </Grid>
         </Border>
 

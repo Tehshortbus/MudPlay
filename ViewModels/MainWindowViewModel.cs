@@ -54,8 +54,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool IsDisconnected => !IsConnected;
 
-    [ObservableProperty]
-    private string _statusText = "Disconnected.";
+    /// <summary>
+    /// Most recent message in <see cref="AppServices.Log"/> — drives the
+    /// status bar's right slot. The MainWindow surface gives "latest log
+    /// line" preview here; the full filterable view lives in the Log
+    /// pane (F9).
+    /// </summary>
+    public string LatestLogText => AppServices.Current.Log.Latest?.Message ?? string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CaptureMenuLabel))]
@@ -78,7 +83,16 @@ public partial class MainWindowViewModel : ObservableObject
             var t = _telnet;
             if (t is not null) _ = t.SendAsync(bytes);
         };
+
+        // Status bar's right slot follows LogService.Latest. Posting through
+        // the dispatcher because EntryAdded fires on the producer's thread
+        // (Telnet read loop, automation engines, etc.) and the bound UI
+        // property must change on the UI thread.
+        AppServices.Current.Log.EntryAdded += OnLogEntryAdded;
     }
+
+    private void OnLogEntryAdded(Services.LogEntry _)
+        => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(LatestLogText)));
 
     /// <summary>Bound to the Connect button.</summary>
     [RelayCommand(CanExecute = nameof(IsDisconnected))]
@@ -86,7 +100,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Host) || Port <= 0)
         {
-            StatusText = "Enter host and port.";
+            AppServices.Current.Log.Warn("Connect", "Enter host and port.");
             return;
         }
 
@@ -113,32 +127,28 @@ public partial class MainWindowViewModel : ObservableObject
         client.Connected += () =>
         {
             AppServices.Current.Log.Info("Telnet", $"Connected to {Host}:{Port}");
-            Dispatcher.UIThread.Post(() => { IsConnected = true; StatusText = $"Connected to {Host}:{Port}"; });
+            Dispatcher.UIThread.Post(() => IsConnected = true);
         };
         client.Disconnected += () =>
         {
             AppServices.Current.Log.Info("Telnet", "Disconnected");
-            Dispatcher.UIThread.Post(() => { IsConnected = false; StatusText = "Disconnected."; });
+            Dispatcher.UIThread.Post(() => IsConnected = false);
         };
-        // TelnetClient's Log event carries negotiation / IAC trace lines —
-        // pipe them into the LogService at Debug severity so the Log pane
-        // can surface them when DBG is checked. Status bar still shows the
-        // latest line; Phase 1 PR 1.5 swaps that to LogService.Latest.
-        client.Log += msg =>
-        {
-            AppServices.Current.Log.Debug("Telnet", msg);
-            Dispatcher.UIThread.Post(() => StatusText = msg);
-        };
+        // TelnetClient's Log event carries IAC negotiation trace lines; route
+        // them into LogService at Debug severity so the Log pane can surface
+        // them when DBG is checked, and the status bar gets the latest via
+        // LatestLogText.
+        client.Log += msg => AppServices.Current.Log.Debug("Telnet", msg);
 
         try
         {
-            StatusText = $"Connecting to {Host}:{Port}…";
+            AppServices.Current.Log.Info("Connect", $"Connecting to {Host}:{Port}…");
             await client.ConnectAsync(Host, Port);
             _telnet = client;
         }
         catch (Exception ex)
         {
-            StatusText = $"Connect failed: {ex.Message}";
+            AppServices.Current.Log.Error("Connect", $"Connect failed: {ex.Message}");
             await client.DisposeAsync();
         }
     }
@@ -151,7 +161,6 @@ public partial class MainWindowViewModel : ObservableObject
         _telnet = null;
         if (t is not null) await t.DisposeAsync();
         IsConnected = false;
-        StatusText = "Disconnected.";
     }
 
     /// <summary>
@@ -176,12 +185,12 @@ public partial class MainWindowViewModel : ObservableObject
         {
             t?.StopDump();
             IsDumping = false;
-            StatusText = "Dump stopped.";
+            AppServices.Current.Log.Info("Capture", "Capture stopped.");
             return;
         }
         if (t is null)
         {
-            StatusText = "Connect before starting a dump.";
+            AppServices.Current.Log.Warn("Capture", "Connect before starting a capture.");
             return;
         }
         var name = $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.fjtc";
@@ -190,11 +199,11 @@ public partial class MainWindowViewModel : ObservableObject
         {
             t.StartDump(path);
             IsDumping = true;
-            StatusText = $"Dumping to {name}";
+            AppServices.Current.Log.Info("Capture", $"Capturing to {name}");
         }
         catch (Exception ex)
         {
-            StatusText = $"Dump failed: {ex.Message}";
+            AppServices.Current.Log.Error("Capture", $"Capture failed: {ex.Message}");
         }
     }
 
@@ -535,7 +544,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void OpenLogsFolder()
     {
         if (!ShellLaunch.OpenPath(AppPaths.LogsDir))
-            StatusText = $"Could not open {AppPaths.LogsDir}";
+            AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.LogsDir}");
     }
 
     /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>
@@ -550,7 +559,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         // Shipped builds don't carry docs/ — fall back to the repo readme.
         if (!ShellLaunch.OpenUrl(AppInfo.RepoUrl))
-            StatusText = "Could not open help.";
+            AppServices.Current.Log.Warn("Help", "Could not open help.");
     }
 
     [RelayCommand]
@@ -642,7 +651,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
         {
-            StatusText = "Replay unavailable — no main window.";
+            AppServices.Current.Log.Error("Replay", "Replay unavailable — no main window.");
             return;
         }
 
@@ -668,17 +677,17 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
         };
 
-        StatusText = $"Replaying {Path.GetFileName(path)}…";
+        AppServices.Current.Log.Info("Replay", $"Replaying {Path.GetFileName(path)}…");
         _ = Task.Run(async () =>
         {
             try
             {
                 await player.PlayAsync().ConfigureAwait(false);
-                Dispatcher.UIThread.Post(() => StatusText = "Replay complete.");
+                AppServices.Current.Log.Info("Replay", "Replay complete.");
             }
             catch (Exception ex)
             {
-                Dispatcher.UIThread.Post(() => StatusText = $"Replay failed: {ex.Message}");
+                AppServices.Current.Log.Error("Replay", $"Replay failed: {ex.Message}");
             }
         });
     }
