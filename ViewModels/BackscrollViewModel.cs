@@ -44,6 +44,13 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
     public event Action? GoToLiveRequested;
 
+    /// <summary>
+    /// True when the window should land focus on the search box at open
+    /// time — set by callers that opened the window specifically to search
+    /// (e.g. terminal context menu → Find in scrollback).
+    /// </summary>
+    public bool FocusSearchOnOpen { get; set; }
+
     public BackscrollViewModel(ScrollbackBuffer buffer)
     {
         _buffer = buffer;

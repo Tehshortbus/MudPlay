@@ -31,6 +31,11 @@ public partial class BackscrollWindow : Window
             vm.ScrollToRowRequested += OnScrollToRow;
             vm.GoToLiveRequested    += OnGoToLive;
             OnGoToLive();   // open on the freshest content.
+
+            if (vm.FocusSearchOnOpen)
+            {
+                this.FindControl<TextBox>("SearchBox")?.Focus();
+            }
         }
     }
 

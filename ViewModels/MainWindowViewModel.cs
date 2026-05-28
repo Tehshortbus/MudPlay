@@ -272,7 +272,17 @@ public partial class MainWindowViewModel : ObservableObject
     private BackscrollWindow? _backscroll;
 
     [RelayCommand]
-    private void OpenBackscroll()
+    private void OpenBackscroll() => OpenBackscrollInternal(focusSearch: false);
+
+    /// <summary>
+    /// Terminal context menu → Edit → Find in scrollback. Opens the backscroll
+    /// window (or activates it if already open) and lands focus on the search
+    /// box so the user can type immediately.
+    /// </summary>
+    [RelayCommand]
+    private void FindInScrollback() => OpenBackscrollInternal(focusSearch: true);
+
+    private void OpenBackscrollInternal(bool focusSearch)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
@@ -280,13 +290,22 @@ public partial class MainWindowViewModel : ObservableObject
         if (_backscroll is { } existing)
         {
             existing.Activate();
+            if (focusSearch && existing.DataContext is BackscrollViewModel existingVm)
+            {
+                existingVm.FocusSearchOnOpen = true;
+                // Already-opened window: nudge focus via the same hook the
+                // first-open path uses, by toggling activation. Simpler than
+                // exposing yet another event.
+                existing.Focus();
+            }
             return;
         }
 
-        BackscrollWindow window = new()
+        BackscrollViewModel vm = new(Emulator.Screen.Scrollback)
         {
-            DataContext = new BackscrollViewModel(Emulator.Screen.Scrollback),
+            FocusSearchOnOpen = focusSearch,
         };
+        BackscrollWindow window = new() { DataContext = vm };
         window.Closed += (_, _) => _backscroll = null;
         _backscroll = window;
         window.Show(main);

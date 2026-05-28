@@ -314,11 +314,19 @@
                                  VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="Copy"                 InputGesture="Ctrl+Shift+C" IsEnabled="False" ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Paste"                InputGesture="Ctrl+Shift+V" IsEnabled="False" ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Select all"           IsEnabled="False" ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Find in scrollback…"  IsEnabled="False" ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Clear screen"         IsEnabled="False" ToolTip.Tip="Wired in Phase 1"/>
+                        <!-- Edit group — terminal-specific selection operations. -->
+                        <MenuItem Header="Copy"                 InputGesture="Ctrl+Shift+C" IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
+                        <MenuItem Header="Paste"                InputGesture="Ctrl+Shift+V" IsEnabled="False" ToolTip.Tip="Paste lands with the chrome polish"/>
+                        <MenuItem Header="Select all"           IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
+                        <MenuItem Header="Find in scrollback…"  Command="{Binding FindInScrollbackCommand}"/>
+                        <MenuItem Header="Clear screen"         IsEnabled="False" ToolTip.Tip="Screen-clear command lands with the chrome polish"/>
+                        <Separator/>
+                        <!-- View group — the panel quick-opens that make
+                             sense from a right-click on the canvas. The full
+                             six-group mirror of the menu bar can land later
+                             alongside selection support. -->
+                        <MenuItem Header="Open Log pane"  InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
+                        <MenuItem Header="Open Backscroll" InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>
