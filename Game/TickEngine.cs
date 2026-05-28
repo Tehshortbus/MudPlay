@@ -123,10 +123,16 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     {
         DateTimeOffset now = DateTimeOffset.Now;
 
-        // Combat tick fallback — fire if we're past due.
-        if (LastCombatTick is { } combat && now - combat >= CombatTickInterval)
+        // Combat tick fallback. The server's cycle is "like clockwork"
+        // — every 5 s from the observed anchor — so we project forward
+        // in exact CombatTickInterval steps rather than re-anchoring at
+        // `now`. Re-anchoring at `now` would drift the predicted ticks
+        // ~100 ms later per cycle (the timer's own period), which after
+        // an hour would be seconds off the real server-side cycle.
+        // The while loop catches multi-cycle gaps (e.g. system sleep).
+        while (LastCombatTick is { } combat && now - combat >= CombatTickInterval)
         {
-            LastCombatTick = now;
+            LastCombatTick = combat + CombatTickInterval;
             CombatTickElapsed?.Invoke();
         }
 
