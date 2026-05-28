@@ -100,6 +100,12 @@ public sealed class AppServices
         Wire = new WireBuffer();
         Router = new MessageRouter();
 
+        // Populate the default pattern registry now so later subsystems
+        // (ChatRouter in PR 2.3, automation engines in Phase 13, the
+        // Phase 5 Trigger UI's "pick a built-in pattern" picker) can
+        // subscribe by KnownPatterns.Whatever id.
+        Patterns.DefaultPatterns.Seed(Router);
+
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
         Profile.ProfileLoaded += p => Panels.ApplyLayouts(p.PanelLayouts);
