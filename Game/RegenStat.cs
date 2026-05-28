@@ -42,30 +42,38 @@ public sealed partial class RegenStat : ObservableObject
     }
 
     /// <summary>
-    /// Fold a fresh observation into the EWMA. Interval is clamped to
-    /// reasonable bounds — wildly long gaps (e.g. user was AFK across
-    /// many ticks) are dropped rather than poisoning the running average.
+    /// Fold a fresh observation into the running average. Only the
+    /// per-tick AMOUNT gets refined — the cycle interval is a realm
+    /// constant (the user said: "once observed, the server cycle keeps
+    /// firing every N seconds like clockwork"), so we keep
+    /// <see cref="EstimatedInterval"/> locked to <see cref="SeedInterval"/>.
     /// </summary>
+    /// <remarks>
+    /// Cycle detection: a sample's <paramref name="interval"/> might
+    /// cover multiple ticks (e.g. one tick landed silently while HP was
+    /// at max). We divide the observed amount by the rounded cycle count
+    /// to get an estimated per-tick amount. Samples that don't look like
+    /// 1–3 cycles are dropped — too much could be a position change /
+    /// AFK / activity artefact rather than a normal tick.
+    /// </remarks>
     public void AddSample(TimeSpan interval, double amount)
     {
-        // Drop samples that don't look like a single tick. The seed
-        // interval gives us a "reasonable" zone — accept 0.3×–2.5× of it,
-        // dropping outliers from AFK gaps or multi-tick coalesced samples.
         double seedSeconds = SeedInterval.TotalSeconds;
         double observedSeconds = interval.TotalSeconds;
-        if (observedSeconds < seedSeconds * 0.3 || observedSeconds > seedSeconds * 2.5) return;
+        if (seedSeconds <= 0) return;
 
+        int cycles = (int)Math.Round(observedSeconds / seedSeconds);
+        if (cycles < 1 || cycles > 3) return;
+
+        double perTickAmount = amount / cycles;
         double alpha = RegenConstants.EwmaAlpha;
-        EstimatedInterval = TimeSpan.FromSeconds(
-            alpha * observedSeconds + (1 - alpha) * EstimatedInterval.TotalSeconds);
-        EstimatedAmount = alpha * amount + (1 - alpha) * EstimatedAmount;
+        EstimatedAmount = alpha * perTickAmount + (1 - alpha) * EstimatedAmount;
         SampleCount++;
     }
 
-    /// <summary>Reset everything back to the seed values + zero samples.</summary>
+    /// <summary>Reset the amount estimate + sample count back to seed.</summary>
     public void Reset()
     {
-        EstimatedInterval = SeedInterval;
         EstimatedAmount = 0;
         SampleCount = 0;
     }
