@@ -214,6 +214,18 @@
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenSessionStatsCommand}" ToolTip.Tip="Session Stats (F11)">
+                        <Path Data="{StaticResource IconStats}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenGameDataBrowserCommand}" ToolTip.Tip="Game Data Browser (Ctrl+G)">
+                        <Path Data="{StaticResource IconDatabase}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
                     <Button Classes="ToolbarBtn" Command="{Binding OpenLogPaneCommand}" ToolTip.Tip="Log (F9)">
                         <Path Data="{StaticResource IconLog}"
                               Stroke="{Binding $parent[Button].Foreground}"
