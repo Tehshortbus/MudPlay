@@ -26,7 +26,11 @@
                         Command="{Binding GoToLiveCommand}"/>
                 <TextBox Grid.Column="2" x:Name="SearchBox" MinWidth="240"
                          PlaceholderText="Search…"
-                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                         Text="{Binding SearchText, Mode=TwoWay}">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" Command="{Binding FindNextCommand}"/>
+                    </TextBox.KeyBindings>
+                </TextBox>
                 <Button Grid.Column="3" Margin="6,0,0,0"
                         Content="Find next"
                         Command="{Binding FindNextCommand}"/>

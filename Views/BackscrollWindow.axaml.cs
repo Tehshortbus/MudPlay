@@ -61,7 +61,13 @@ public partial class BackscrollWindow : Window
         if (_rowsList is null) return;
         if (DataContext is not BackscrollViewModel vm) return;
         if ((uint)index >= (uint)vm.Rows.Count) return;
-        _rowsList.ScrollIntoView(vm.Rows[index]);
+        BackscrollRowViewModel row = vm.Rows[index];
+        _rowsList.ScrollIntoView(row);
+        // Mirror what clicking the row would do — select it so the user has
+        // a visible highlight on the match instead of guessing which row
+        // the scroll landed on.
+        _rowsList.SelectedItems?.Clear();
+        _rowsList.SelectedItem = row;
     }
 
     private void OnGoToLive()
