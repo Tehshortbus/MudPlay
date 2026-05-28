@@ -1,0 +1,75 @@
+<!--
+  Palette tokens — ported verbatim from docs/skeleton/main-shell.jsx (the `C`
+  object). Chrome-only colours; terminal canvas CGA palette is owned by
+  Terminal/Palette.cs and is not part of this dictionary.
+
+  Per-color tokens live as two keys: the raw `Color` (for transparency math
+  or programmatic blending) and a matching `SolidColorBrush` keyed
+  `<token>Brush`. XAML that binds Background / Foreground reaches for the
+  brush form; styles that need alpha-blending use the color form.
+
+  Issue #4 tracks moving these values into a user-editable palette JSON
+  loaded at startup. Until then the values here are authoritative.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ Chrome backgrounds ============ -->
+    <Color x:Key="ChromeBgColor">#FF1A1A1A</Color>
+    <Color x:Key="ChromeBgElevColor">#FF242424</Color>
+    <Color x:Key="ChromeBgSunkenColor">#FF141414</Color>
+    <Color x:Key="ChromeBgHoverColor">#FF2A2A2A</Color>
+
+    <SolidColorBrush x:Key="ChromeBgBrush"        Color="{StaticResource ChromeBgColor}"/>
+    <SolidColorBrush x:Key="ChromeBgElevBrush"    Color="{StaticResource ChromeBgElevColor}"/>
+    <SolidColorBrush x:Key="ChromeBgSunkenBrush"  Color="{StaticResource ChromeBgSunkenColor}"/>
+    <SolidColorBrush x:Key="ChromeBgHoverBrush"   Color="{StaticResource ChromeBgHoverColor}"/>
+
+    <!-- ============ Chrome borders ============ -->
+    <Color x:Key="ChromeBorderColor">#FF3A3A3A</Color>
+    <Color x:Key="ChromeBorderSoftColor">#FF2E2E2E</Color>
+
+    <SolidColorBrush x:Key="ChromeBorderBrush"      Color="{StaticResource ChromeBorderColor}"/>
+    <SolidColorBrush x:Key="ChromeBorderSoftBrush"  Color="{StaticResource ChromeBorderSoftColor}"/>
+
+    <!-- ============ Chrome foregrounds ============ -->
+    <Color x:Key="ChromeFgColor">#FFE8E8E8</Color>
+    <Color x:Key="ChromeFgSecColor">#FFA0A0A0</Color>
+    <Color x:Key="ChromeFgMutedColor">#FF6E6E6E</Color>
+
+    <SolidColorBrush x:Key="ChromeFgBrush"       Color="{StaticResource ChromeFgColor}"/>
+    <SolidColorBrush x:Key="ChromeFgSecBrush"    Color="{StaticResource ChromeFgSecColor}"/>
+    <SolidColorBrush x:Key="ChromeFgMutedBrush"  Color="{StaticResource ChromeFgMutedColor}"/>
+
+    <!-- ============ Accents ============ -->
+    <!-- Amber is the primary brand accent (logo, active toolbar buttons,
+         CMD-severity badge). AmberSoft is amber at ~18% opacity for
+         "active" backgrounds. -->
+    <Color x:Key="AccentAmberColor">#FFD4A24C</Color>
+    <Color x:Key="AccentAmberSoftColor">#2ED4A24C</Color>
+    <Color x:Key="AccentCyanColor">#FF5FB3D9</Color>
+    <Color x:Key="AccentRedColor">#FFE06060</Color>
+    <Color x:Key="AccentYellowColor">#FFE0B040</Color>
+    <Color x:Key="AccentGreenColor">#FF7AB870</Color>
+    <Color x:Key="AccentMagentaColor">#FFB868B8</Color>
+
+    <SolidColorBrush x:Key="AccentAmberBrush"      Color="{StaticResource AccentAmberColor}"/>
+    <SolidColorBrush x:Key="AccentAmberSoftBrush"  Color="{StaticResource AccentAmberSoftColor}"/>
+    <SolidColorBrush x:Key="AccentCyanBrush"       Color="{StaticResource AccentCyanColor}"/>
+    <SolidColorBrush x:Key="AccentRedBrush"        Color="{StaticResource AccentRedColor}"/>
+    <SolidColorBrush x:Key="AccentYellowBrush"     Color="{StaticResource AccentYellowColor}"/>
+    <SolidColorBrush x:Key="AccentGreenBrush"      Color="{StaticResource AccentGreenColor}"/>
+    <SolidColorBrush x:Key="AccentMagentaBrush"    Color="{StaticResource AccentMagentaColor}"/>
+
+    <!-- ============ Severity mapping ============ -->
+    <!-- Used by LogService consumers (Phase 1 LogPane, status-bar latest).
+         Mirrors WireFormatter's caret-rendered output and the skeleton's
+         SeverityBadge component. -->
+    <SolidColorBrush x:Key="SeverityDebugBrush"    Color="{StaticResource ChromeFgMutedColor}"/>
+    <SolidColorBrush x:Key="SeverityInfoBrush"     Color="{StaticResource AccentCyanColor}"/>
+    <SolidColorBrush x:Key="SeverityWarnBrush"     Color="{StaticResource AccentYellowColor}"/>
+    <SolidColorBrush x:Key="SeverityErrorBrush"    Color="{StaticResource AccentRedColor}"/>
+    <SolidColorBrush x:Key="SeverityGameMsgBrush"  Color="{StaticResource AccentGreenColor}"/>
+    <SolidColorBrush x:Key="SeverityCmdBrush"      Color="{StaticResource AccentAmberColor}"/>
+
+</ResourceDictionary>

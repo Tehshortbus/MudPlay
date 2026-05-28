@@ -1,0 +1,43 @@
+<!--
+  Chrome density tokens. Two recognised modes per the skeleton:
+    compact     — 28 / 24 / 36 (button / row / toolbar)
+    comfortable — 32 / 28 / 42
+
+  Phase 1 PR 1.1.a ships ONE active set — comfortable — as the dictionary's
+  values. Phase 4 Settings.Display wires a runtime swap; at that point this
+  file moves to two side-by-side dictionaries with a merged-dictionary
+  switch driven by the user setting.
+
+  Title-bar height is fixed at 32 regardless of density (the buttons inside
+  reflow but the bar itself doesn't).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- ============ Chrome heights ============ -->
+    <sys:Double x:Key="TitleBarHeight">32</sys:Double>
+    <sys:Double x:Key="MenuBarHeight">32</sys:Double>
+    <sys:Double x:Key="ToolbarHeight">42</sys:Double>
+    <sys:Double x:Key="StatusBarHeight">26</sys:Double>
+
+    <!-- ============ Interactive element sizes ============ -->
+    <sys:Double x:Key="ToolbarButtonSize">32</sys:Double>
+    <sys:Double x:Key="ButtonHeight">32</sys:Double>
+    <sys:Double x:Key="RowHeight">28</sys:Double>
+    <sys:Double x:Key="CharPickerHeight">28</sys:Double>
+    <sys:Double x:Key="BbsBadgeHeight">24</sys:Double>
+
+    <!-- ============ Layout gaps ============ -->
+    <sys:Double x:Key="GapXs">4</sys:Double>
+    <sys:Double x:Key="GapSm">6</sys:Double>
+    <sys:Double x:Key="GapMd">8</sys:Double>
+    <sys:Double x:Key="GapLg">12</sys:Double>
+    <sys:Double x:Key="GapXL">16</sys:Double>
+
+    <!-- ============ Corner radii ============ -->
+    <CornerRadius x:Key="CornerSm">3</CornerRadius>
+    <CornerRadius x:Key="CornerMd">4</CornerRadius>
+    <CornerRadius x:Key="CornerLg">6</CornerRadius>
+
+</ResourceDictionary>
