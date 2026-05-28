@@ -4,260 +4,342 @@
         xmlns:ctl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="FujinTerm"
-        Background="Black"
-        SizeToContent="WidthAndHeight">
+        Width="960" Height="640">
 
-    <!-- Lets the XAML previewer know what type to bind against. -->
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
     <Window.KeyBindings>
-        <!-- Accelerators wired for Phase-0 commands. The rest land as each
-             menu entry is wired in its respective phase. -->
-        <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}"/>
-        <KeyBinding Gesture="Ctrl+D" Command="{Binding DisconnectCommand}"/>
+        <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
-        <KeyBinding Gesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
+        <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
+        <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
+        <KeyBinding Gesture="F3"     Command="{Binding OpenPartyCommand}"/>
+        <KeyBinding Gesture="F4"     Command="{Binding OpenWorkshopCommand}"/>
+        <KeyBinding Gesture="F5"     Command="{Binding OpenNavigationCommand}"/>
+        <KeyBinding Gesture="F6"     Command="{Binding OpenWorkshopCommand}"/>
+        <KeyBinding Gesture="F7"     Command="{Binding OpenSpellBookCommand}"/>
+        <KeyBinding Gesture="F9"     Command="{Binding OpenLogPaneCommand}"/>
+        <KeyBinding Gesture="F10"    Command="{Binding OpenBackscrollCommand}"/>
+        <KeyBinding Gesture="F11"    Command="{Binding OpenSessionStatsCommand}"/>
+        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
+        <KeyBinding Gesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
     </Window.KeyBindings>
 
     <DockPanel LastChildFill="True">
 
-        <!-- ============================================================
-             Main menu bar — full surface from day one. Stub entries are
-             IsEnabled=False with a "Wired in Phase N" tooltip so the
-             shape is visible up-front (per Phase 0 PR 0.10). Each later
-             phase replaces its stub binding with the real command.
-             ============================================================ -->
-        <Menu DockPanel.Dock="Top" Background="#202020">
+        <!-- ============ Menu bar (chrome-styled, unchanged surface) ============ -->
+        <Menu DockPanel.Dock="Top" Classes="Chrome">
 
-            <!-- ===== File ============================================= -->
             <MenuItem Header="_File">
-                <MenuItem Header="_Connect"
-                          Command="{Binding ConnectCommand}"
+                <MenuItem Header="{Binding ConnectionLabel}"
+                          Command="{Binding ToggleConnectionCommand}"
                           InputGesture="Ctrl+K"/>
-                <MenuItem Header="_Disconnect"
-                          Command="{Binding DisconnectCommand}"
-                          InputGesture="Ctrl+D"/>
-                <MenuItem Header="BBS list"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="BBS list"      IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
                 <Separator/>
-                <MenuItem Header="_New profile…"
-                          InputGesture="Ctrl+N"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Open profile…"
-                          InputGesture="Ctrl+O"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Save profile"
-                          InputGesture="Ctrl+S"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_Save profile"  InputGesture="Ctrl+S" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
                 <Separator/>
-                <MenuItem Header="Recent profiles"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="Recent profiles" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
                 <Separator/>
-                <MenuItem Header="_Quit"
-                          Command="{Binding QuitCommand}"
-                          InputGesture="Ctrl+Q"/>
+                <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="Ctrl+Q"/>
             </MenuItem>
 
-            <!-- ===== View ============================================= -->
             <MenuItem Header="_View">
-                <MenuItem Header="Conversation"
-                          InputGesture="F2"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 2"/>
-                <MenuItem Header="Party"
-                          InputGesture="F3"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 6"/>
-                <MenuItem Header="Player Status"
-                          InputGesture="F4"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 3"/>
-                <MenuItem Header="Map"
-                          InputGesture="F5"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 7"/>
-                <MenuItem Header="Workshop"
-                          InputGesture="F6"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 9"/>
-                <MenuItem Header="Spell Book"
-                          InputGesture="F7"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 9"/>
-                <MenuItem Header="Log"
-                          InputGesture="F9"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 1"/>
-                <MenuItem Header="Backscroll"
-                          InputGesture="F10"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 1"/>
-                <MenuItem Header="Session Stats"
-                          InputGesture="F11"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 8"/>
+                <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
+                <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
+                <MenuItem Header="Player Status" InputGesture="F4"  Command="{Binding OpenWorkshopCommand}"/>
+                <MenuItem Header="Map"           InputGesture="F5"  Command="{Binding OpenNavigationCommand}"/>
+                <MenuItem Header="Workshop"      InputGesture="F6"  Command="{Binding OpenWorkshopCommand}"/>
+                <MenuItem Header="Spell Book"    InputGesture="F7"  Command="{Binding OpenSpellBookCommand}"/>
+                <MenuItem Header="Log"           InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
+                <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
+                <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
-                <MenuItem Header="Reset layout"
-                          Command="{Binding ResetLayoutCommand}"/>
+                <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
 
-            <!-- ===== Settings ========================================= -->
             <MenuItem Header="_Settings">
-                <MenuItem Header="Open Settings…"
-                          InputGesture="Ctrl+,"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="Open Events…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 11"/>
-                <MenuItem Header="Open Statline Editor…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 12"/>
+                <MenuItem Header="Open Settings…"        InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
+                <MenuItem Header="Open Events…"          Command="{Binding OpenSettingsCommand}"
+                          ToolTip.Tip="Opens Settings on the Events tab when wired in Phase 11"/>
+                <MenuItem Header="Open Statline Editor…" Command="{Binding OpenSettingsCommand}"
+                          ToolTip.Tip="Opens Settings on the Statline tab when wired in Phase 12"/>
             </MenuItem>
 
-            <!-- ===== Game Data ======================================== -->
             <MenuItem Header="_Game Data">
-                <MenuItem Header="Active set"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Active set"             IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
                 <Separator/>
-                <MenuItem Header="Open Browser…"
-                          InputGesture="Ctrl+G"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 5"/>
-                <MenuItem Header="Open Macros…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 5 / 10"/>
+                <MenuItem Header="Open Browser…"          InputGesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
+                <MenuItem Header="Open Macros…"           Command="{Binding OpenGameDataBrowserCommand}"
+                          ToolTip.Tip="Opens Browser on the Macros tab when wired in Phase 5 / 10"/>
                 <Separator/>
-                <MenuItem Header="Import .mdb…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 5"/>
-                <MenuItem Header="Import Spell Messages…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Import .mdb…"           IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Import Spell Messages…" IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
             </MenuItem>
 
-            <!-- ===== Tools ============================================ -->
             <MenuItem Header="_Tools">
-                <MenuItem Header="{Binding CaptureMenuLabel}"
-                          Command="{Binding ToggleDumpCommand}"/>
-                <MenuItem Header="Replay capture file…"
-                          Command="{Binding ReplayCaptureFileCommand}"/>
+                <MenuItem Header="{Binding CaptureMenuLabel}" Command="{Binding ToggleDumpCommand}"/>
+                <MenuItem Header="Replay capture file…"       Command="{Binding ReplayCaptureFileCommand}"/>
                 <Separator/>
-                <MenuItem Header="Wire Inspector…"
-                          Command="{Binding OpenWireInspectorCommand}"/>
+                <MenuItem Header="Wire Inspector…"            Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
-                <MenuItem Header="Export chatlog…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 2"/>
-                <MenuItem Header="Open Logs folder…"
-                          Command="{Binding OpenLogsFolderCommand}"/>
+                <MenuItem Header="Export chatlog…"            IsEnabled="False" ToolTip.Tip="Wired in Phase 2"/>
+                <MenuItem Header="Open Logs folder…"          Command="{Binding OpenLogsFolderCommand}"/>
+                <Separator/>
+                <!-- Dev-facing entrypoint to inspect every edit-dialog
+                     placeholder. Once each owning phase ships a real list
+                     row that opens its editor, this submenu can go away. -->
+                <MenuItem Header="Preview placeholder dialogs">
+                    <MenuItem Header="Spell — Edit…"              Command="{Binding PreviewSpellEditDialogCommand}"/>
+                    <MenuItem Header="Trigger — Edit…"            Command="{Binding PreviewTriggerEditDialogCommand}"/>
+                    <MenuItem Header="Alias — Edit…"              Command="{Binding PreviewAliasEditDialogCommand}"/>
+                    <MenuItem Header="Condition — Edit…"          Command="{Binding PreviewConditionEditDialogCommand}"/>
+                    <MenuItem Header="Macro — Edit…"              Command="{Binding PreviewMacroEditDialogCommand}"/>
+                    <MenuItem Header="Event — Edit…"              Command="{Binding PreviewEventEditDialogCommand}"/>
+                    <MenuItem Header="Ambiguous Location…"        Command="{Binding PreviewAmbiguousLocationDialogCommand}"/>
+                    <MenuItem Header="Import Conflict…"           Command="{Binding PreviewImportConflictDialogCommand}"/>
+                </MenuItem>
             </MenuItem>
 
-            <!-- ===== Help ============================================= -->
             <MenuItem Header="_Help">
-                <MenuItem Header="Help topics…"
-                          InputGesture="F1"
-                          Command="{Binding OpenHelpTopicsCommand}"/>
-                <MenuItem Header="Keyboard shortcuts…"
-                          Command="{Binding OpenKeyboardShortcutsCommand}"/>
+                <MenuItem Header="Help topics…"        InputGesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
+                <MenuItem Header="Keyboard shortcuts…" Command="{Binding OpenKeyboardShortcutsCommand}"/>
                 <Separator/>
-                <MenuItem Header="MajorMUD wiki ↗"
-                          Command="{Binding OpenMajorMudWikiCommand}"/>
-                <MenuItem Header="MajorMUD subreddit ↗"
-                          Command="{Binding OpenMajorMudRedditCommand}"/>
-                <MenuItem Header="BBS site ↗"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
+                <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
+                <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
+                <MenuItem Header="BBS site ↗" IsEnabled="False" ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
                 <Separator/>
-                <MenuItem Header="Open Logs folder…"
-                          Command="{Binding OpenLogsFolderCommand}"/>
-                <MenuItem Header="Report an issue…"
-                          Command="{Binding ReportIssueCommand}"/>
+                <MenuItem Header="Open Logs folder…"   Command="{Binding OpenLogsFolderCommand}"/>
+                <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
-                <MenuItem Header="License…"
-                          Command="{Binding OpenLicenseCommand}"/>
-                <MenuItem Header="About FujinTerm"
-                          Command="{Binding OpenAboutCommand}"/>
+                <MenuItem Header="License…"            Command="{Binding OpenLicenseCommand}"/>
+                <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
         </Menu>
 
-        <!-- Top toolbar: host/port inputs + the three action buttons.
-             Survives Phase 0; the Phase 1 PR 1.1 skeleton port reworks
-             the chrome (this band gets reshuffled into the proper
-             title-bar + toolbar pair). -->
-        <Border DockPanel.Dock="Top" Padding="6" Background="#202020">
-            <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto,Auto,Auto,Auto" RowDefinitions="Auto">
-                <TextBlock Grid.Column="0" Text="Host:" Foreground="White"
-                           VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="200"/>
-                <TextBlock Grid.Column="2" Text="Port:" Foreground="White"
-                           VerticalAlignment="Center" Margin="12,0,6,0"/>
-                <TextBox Grid.Column="3" Text="{Binding Port}"/>
-                <Button Grid.Column="4" Margin="12,0,0,0"
-                        Command="{Binding ConnectCommand}" Content="Connect"/>
-                <Button Grid.Column="5" Margin="6,0,0,0"
-                        Command="{Binding DisconnectCommand}" Content="Disconnect"/>
-                <ToggleButton Grid.Column="6" Margin="12,0,0,0"
-                              IsChecked="{Binding IsDumping, Mode=OneWay}"
-                              Command="{Binding ToggleDumpCommand}"
-                              Content="Capture"/>
-                <Button Grid.Column="7" Margin="6,0,0,0"
-                        Command="{Binding OpenWireInspectorCommand}"
-                        Content="Wire"
-                        ToolTip.Tip="Wire Inspector — view the raw and stripped byte streams"/>
+        <!-- ============ Toolbar (icon groups + char picker + BBS badge) ============ -->
+        <Border DockPanel.Dock="Top" Classes="Toolbar">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+
+                <!-- Icon button groups -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+
+                    <!-- Group 1: connection toggle. One button, three states
+                         (Idle / Connecting / Connected) — the icon swap is
+                         done via two stacked Paths with IsVisible bindings
+                         because StaticResource bindings can't switch at
+                         runtime. The Active style class lights the button
+                         in amber while a connect attempt is in flight; the
+                         Danger style class colours the hover state red when
+                         the next click would disconnect. -->
+                    <Button Classes="ToolbarBtn"
+                            Classes.Active="{Binding IsConnecting}"
+                            Classes.Danger="{Binding IsConnected}"
+                            Command="{Binding ToggleConnectionCommand}"
+                            ToolTip.Tip="{Binding ConnectionLabel}">
+                        <Panel>
+                            <Path Data="{StaticResource IconPlug}"
+                                  IsVisible="{Binding !IsConnected}"
+                                  Stroke="{Binding $parent[Button].Foreground}"
+                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                  Width="16" Height="16" Stretch="Uniform"/>
+                            <Path Data="{StaticResource IconUnplug}"
+                                  IsVisible="{Binding IsConnected}"
+                                  Stroke="{Binding $parent[Button].Foreground}"
+                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                  Width="16" Height="16" Stretch="Uniform"/>
+                        </Panel>
+                    </Button>
+
+                    <Border Classes="ToolbarSeparator"/>
+
+                    <!-- Group 2: settings -->
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)">
+                        <Path Data="{StaticResource IconGear}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+
+                    <Border Classes="ToolbarSeparator"/>
+
+                    <!-- Group 3: navigation / capture / wire -->
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Map (F5)">
+                        <Path Data="{StaticResource IconMap}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Loops — opens Navigation; the loops pane wires in Phase 7">
+                        <Path Data="{StaticResource IconLoop}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenBackscrollCommand}" ToolTip.Tip="Backscroll (F10)">
+                        <Path Data="{StaticResource IconHistory}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding ToggleDumpCommand}"
+                            Classes.Active="{Binding IsDumping}" ToolTip.Tip="Capture — toggle session capture">
+                        <Path Data="{StaticResource IconRecord}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenWireInspectorCommand}"
+                            ToolTip.Tip="Wire Inspector — view raw + stripped byte streams">
+                        <Path Data="{StaticResource IconSearch}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+
+                    <Border Classes="ToolbarSeparator"/>
+
+                    <!-- Group 4: panel toggles (stubbed) -->
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenConversationCommand}" ToolTip.Tip="Conversation (F2)">
+                        <Path Data="{StaticResource IconChat}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenPartyCommand}" ToolTip.Tip="Party (F3)">
+                        <Path Data="{StaticResource IconParty}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenWorkshopCommand}" ToolTip.Tip="Player Status / Workshop (F4 / F6)">
+                        <Path Data="{StaticResource IconUser}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenSpellBookCommand}" ToolTip.Tip="Spell Book (F7)">
+                        <Path Data="{StaticResource IconBook}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="ToolbarBtn" Command="{Binding OpenLogPaneCommand}" ToolTip.Tip="Log (F9)">
+                        <Path Data="{StaticResource IconLog}"
+                              Stroke="{Binding $parent[Button].Foreground}"
+                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                              Width="16" Height="16" Stretch="Uniform"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Char picker + BBS badge — pushed right by the spacer column. -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="CharPicker" IsEnabled="False" ToolTip.Tip="Character picker — wired in Phase 4">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Char" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                            <TextBlock Text="—" Foreground="{StaticResource ChromeFgBrush}"/>
+                            <Path Data="{StaticResource IconChevronDown}"
+                                  Stroke="{StaticResource ChromeFgMutedBrush}"
+                                  StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                  Width="12" Height="12" Stretch="Uniform"/>
+                        </StackPanel>
+                    </Button>
+
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                Height="{StaticResource BbsBadgeHeight}">
+                        <Ellipse Width="6" Height="6" Fill="{StaticResource AccentGreenBrush}"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsConnected}"/>
+                        <Ellipse Width="6" Height="6" Fill="{StaticResource ChromeFgMutedBrush}"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsDisconnected}"/>
+                        <TextBlock Text="{Binding BbsBadgeText}"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="{StaticResource FontSizeSm}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Bottom status bar — connection state / errors / capture path. -->
-        <Border DockPanel.Dock="Bottom" Padding="6,2" Background="#101010">
-            <TextBlock Foreground="#AAAAAA" Text="{Binding StatusText}"/>
+        <!-- ============ Secondary strip (transitional Host / Port editor) ============ -->
+        <!-- Phase 4 PR 4.5 BBS-profile editor will absorb these; until then the
+             toolbar BBS badge displays the values and this strip lets the user
+             edit them. -->
+        <Border DockPanel.Dock="Top" Classes="SecondaryStrip">
+            <Grid ColumnDefinitions="Auto,*,Auto,80" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Host" VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}" Margin="0,0,8,0"/>
+                <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="220"
+                         Background="{StaticResource ChromeBgBrush}"
+                         Foreground="{StaticResource ChromeFgBrush}"/>
+                <TextBlock Grid.Column="2" Text="Port" VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}" Margin="12,0,8,0"/>
+                <TextBox Grid.Column="3" Text="{Binding Port}"
+                         Background="{StaticResource ChromeBgBrush}"
+                         Foreground="{StaticResource ChromeFgBrush}"/>
+            </Grid>
         </Border>
 
-        <!-- The terminal display fills the middle. ScrollViewer kicks in if
-             the cell grid happens to be larger than the window. -->
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <!-- ============ Status bar (three slots) ============ -->
+        <!-- Left  : room + confidence dot (Phase 7 wires the live values).
+             Mid   : tick countdowns (Phase 3 wires HP / MA / combat tick).
+             Right : latest LogService line + exp rate + clock (Phase 1 PR 1.5 wires log;
+                     exp rate / clock are Phase 8 / polish wirings). -->
+        <Border DockPanel.Dock="Bottom" Classes="StatusBar">
+            <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{StaticResource ChromeFgMutedBrush}"/>
+                    <TextBlock Classes="StatusSlot StatusMuted" Text="No room — RoomTracker wires in Phase 7"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="Tick —"/>
+                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="HP —"/>
+                    <TextBlock Classes="StatusSlot StatusMono StatusMuted" Text="MA —"/>
+                </StackPanel>
+
+                <TextBlock Grid.Column="2" Classes="StatusSlot"
+                           HorizontalAlignment="Right"
+                           Text="{Binding LatestLogText}"
+                           ToolTip.Tip="{Binding LatestLogText}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Terminal canvas ============ -->
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      Background="{StaticResource ChromeBgSunkenBrush}">
             <ctl:TerminalControl x:Name="Terminal"
                                  Emulator="{Binding Emulator}"
-                                 HorizontalAlignment="Left"
-                                 VerticalAlignment="Top">
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>
-                    <!-- Right-click on the terminal canvas. The plan calls
-                         for an Edit group on top plus the same six
-                         top-level groups. Phase 0 ships the Edit group
-                         only (everything in the menu bar above is one
-                         right-click away via the chrome; full mirroring
-                         lands when the chrome is reworked in Phase 1
-                         PR 1.1). -->
                     <ContextMenu>
-                        <MenuItem Header="Copy"
-                                  InputGesture="Ctrl+Shift+C"
-                                  IsEnabled="False"
-                                  ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Paste"
-                                  InputGesture="Ctrl+Shift+V"
-                                  IsEnabled="False"
-                                  ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Select all"
-                                  IsEnabled="False"
-                                  ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Find in scrollback…"
-                                  IsEnabled="False"
-                                  ToolTip.Tip="Wired in Phase 1"/>
-                        <MenuItem Header="Clear screen"
-                                  IsEnabled="False"
-                                  ToolTip.Tip="Wired in Phase 1"/>
+                        <!-- Edit group — terminal-specific selection operations. -->
+                        <MenuItem Header="Copy"                 InputGesture="Ctrl+Shift+C" IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
+                        <MenuItem Header="Paste"                InputGesture="Ctrl+Shift+V" IsEnabled="False" ToolTip.Tip="Paste lands with the chrome polish"/>
+                        <MenuItem Header="Select all"           IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
+                        <MenuItem Header="Find in scrollback…"  Command="{Binding FindInScrollbackCommand}"/>
+                        <MenuItem Header="Clear screen"         IsEnabled="False" ToolTip.Tip="Screen-clear command lands with the chrome polish"/>
+                        <Separator/>
+                        <!-- View group — the panel quick-opens that make
+                             sense from a right-click on the canvas. The full
+                             six-group mirror of the menu bar can land later
+                             alongside selection support. -->
+                        <MenuItem Header="Open Log pane"  InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
+                        <MenuItem Header="Open Backscroll" InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>

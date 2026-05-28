@@ -14,6 +14,16 @@ public sealed class TerminalScreen
     public int Cols { get; private set; }
     public int Rows { get; private set; }
 
+    /// <summary>
+    /// Fixed-capacity ring of rows that have scrolled off the top. Rows are
+    /// pushed in <see cref="ScrollUp"/> whenever the scroll region starts at
+    /// the top of the screen (the BBS-typical case — partial-region scrolls
+    /// from vi-style apps don't lose anything to history). Default capacity
+    /// is <see cref="ScrollbackBuffer.DefaultCapacity"/>; Phase 4
+    /// Settings.Display will surface the knob.
+    /// </summary>
+    public ScrollbackBuffer Scrollback { get; } = new();
+
     /// <summary>Current cursor column (0-based).</summary>
     public int CursorX { get; set; }
     /// <summary>Current cursor row (0-based).</summary>
@@ -109,6 +119,17 @@ public sealed class TerminalScreen
         int region = bottom - top + 1;
         n = Math.Clamp(n, 0, region);
         if (n == 0) return;
+        // When the scroll region starts at row 0, the top n rows are about
+        // to disappear — capture them in the scrollback ring before the
+        // copy overwrites them. Partial-region scrolls (top > 0) don't
+        // discard anything visible above the region, so they don't capture.
+        if (top == 0)
+        {
+            for (int y = 0; y < n; y++)
+            {
+                Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+            }
+        }
         // Move surviving rows up.
         for (int y = top; y + n <= bottom; y++)
             Array.Copy(_cells, (y + n) * Cols, _cells, y * Cols, Cols);

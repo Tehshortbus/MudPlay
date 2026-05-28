@@ -1,0 +1,36 @@
+<!--
+  Typography tokens — IBM Plex Sans for chrome, JetBrains Mono for any
+  monospace surface that isn't the CP437 terminal canvas (which still uses
+  the bundled Mx437 bitmap font from Assets/Fonts/).
+
+  Fonts are bundled under Assets/Fonts/ and pulled in via avares://. The
+  trailing #Family-Name segment must match the font's internal family name
+  exactly; Avalonia uses it to disambiguate when multiple weights live in
+  separate .ttf files.
+
+  Issue #4 tracks moving font choices into user preferences. The values
+  here are authoritative until then.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- ============ Font families ============ -->
+    <FontFamily x:Key="FontChrome">avares://FujinTerm/Assets/Fonts/IBMPlexSans-Regular.ttf#IBM Plex Sans</FontFamily>
+    <FontFamily x:Key="FontMono">avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono</FontFamily>
+
+    <!-- ============ Font sizes ============ -->
+    <!-- 13 px is the skeleton default for chrome text; 11 px is the
+         "small / muted" tier used on shortcuts and badges; 16 / 20 are
+         section headers + the rare H1 surface. -->
+    <sys:Double x:Key="FontSizeSm">11</sys:Double>
+    <sys:Double x:Key="FontSizeMd">13</sys:Double>
+    <sys:Double x:Key="FontSizeLg">16</sys:Double>
+    <sys:Double x:Key="FontSizeXL">20</sys:Double>
+
+    <!-- ============ Line heights ============ -->
+    <sys:Double x:Key="LineHeightSm">16</sys:Double>
+    <sys:Double x:Key="LineHeightMd">20</sys:Double>
+    <sys:Double x:Key="LineHeightLg">24</sys:Double>
+
+</ResourceDictionary>

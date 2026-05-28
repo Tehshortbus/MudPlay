@@ -1,13 +1,31 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="FujinTerm.App"
-             RequestedThemeVariant="Default">
-    <!-- "Default" follows the OS light/dark setting. -->
+             RequestedThemeVariant="Dark">
+    <!-- Dark variant matches the skeleton's chrome palette. -->
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Skeleton-derived design tokens. See docs/UI-design-spec.md
+                     and docs/skeleton/main-shell.jsx for the source values.
+                     Issue #4 tracks moving these into user preferences. -->
+                <ResourceInclude Source="avares://FujinTerm/Themes/Palette.axaml"/>
+                <ResourceInclude Source="avares://FujinTerm/Themes/Typography.axaml"/>
+                <ResourceInclude Source="avares://FujinTerm/Themes/Density.axaml"/>
+                <ResourceInclude Source="avares://FujinTerm/Themes/Icons.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 
     <Application.Styles>
         <!-- Fluent theme styles the standard chrome (buttons, text boxes,
              scrollbars). The terminal area itself is rendered manually and
-             ignores these styles. -->
+             ignores these styles. The FujinTerm overrides in Controls.axaml
+             layer on top — they only touch chrome surfaces tagged with style
+             classes (Menu.Chrome, Border.Toolbar, Button.ToolbarBtn, etc.) so
+             unscoped controls keep the Fluent baseline. -->
         <FluentTheme />
+        <StyleInclude Source="avares://FujinTerm/Themes/Controls.axaml"/>
     </Application.Styles>
 </Application>

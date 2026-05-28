@@ -1,0 +1,116 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.LogPaneWindow"
+        x:DataType="vm:LogPaneViewModel"
+        Title="Log"
+        Width="820" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Control strip ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+
+                <!-- Severity filter checkboxes -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <CheckBox IsChecked="{Binding ShowDebug}"   Content="DBG"
+                              Foreground="{StaticResource SeverityDebugBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowInfo}"    Content="INF"
+                              Foreground="{StaticResource SeverityInfoBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowWarn}"    Content="WRN"
+                              Foreground="{StaticResource SeverityWarnBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowError}"   Content="ERR"
+                              Foreground="{StaticResource SeverityErrorBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowGameMsg}" Content="GAM"
+                              Foreground="{StaticResource SeverityGameMsgBrush}" FontSize="11"/>
+                    <CheckBox IsChecked="{Binding ShowCmd}"     Content="CMD"
+                              Foreground="{StaticResource SeverityCmdBrush}" FontSize="11"/>
+                </StackPanel>
+
+                <CheckBox Grid.Column="1" Margin="14,0,0,0"
+                          IsChecked="{Binding AutoScroll}"
+                          Content="Auto-scroll"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"/>
+
+                <TextBox Grid.Column="3" MinWidth="220"
+                         PlaceholderText="Search source / message…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+
+                <Button Grid.Column="4" Margin="8,0,0,0"
+                        Content="Clear" Command="{Binding ClearCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Status footer ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,3">
+            <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- ============ Entries list ============ -->
+        <ListBox x:Name="RowsList"
+                 ItemsSource="{Binding Rows}"
+                 Background="{StaticResource ChromeBgSunkenBrush}"
+                 BorderThickness="0"
+                 SelectionMode="Multiple">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:LogPaneRowViewModel">
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="4,2">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding TimestampText}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <Border Grid.Column="1"
+                                Background="#0DFFFFFF"
+                                BorderBrush="{Binding SeverityBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CornerSm}"
+                                Padding="4,1"
+                                VerticalAlignment="Center"
+                                Margin="0,0,8,0">
+                            <TextBlock Text="{Binding SeverityText}"
+                                       Foreground="{Binding SeverityBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"/>
+                        </Border>
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding Source}"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   MinWidth="64"
+                                   Margin="0,0,8,0"/>
+                        <SelectableTextBlock Grid.Column="3"
+                                             Text="{Binding Message}"
+                                             Foreground="{StaticResource ChromeFgBrush}"
+                                             FontFamily="{StaticResource FontMono}"
+                                             FontSize="12"
+                                             TextWrapping="Wrap"
+                                             VerticalAlignment="Center"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>

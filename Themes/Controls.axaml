@@ -1,0 +1,122 @@
+<!--
+  Chrome control styles. Each rule layers on top of the FluentTheme defaults
+  loaded from App.Styles; selectors are scoped tightly so nothing leaks into
+  app-content controls (e.g. settings TextBoxes don't inherit toolbar
+  rules).
+
+  Naming: anything visual lives here. Anything behavioural (KeyBindings,
+  Commands) lives at the call site.
+
+  Issue #4 tracks the runtime theme switch; until then keys here reference
+  StaticResource, which Avalonia resolves at load time.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ Window root ============ -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource FontChrome}"/>
+        <Setter Property="FontSize"   Value="{StaticResource FontSizeMd}"/>
+    </Style>
+
+    <!-- ============ Menu bar ============ -->
+    <Style Selector="Menu.Chrome">
+        <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        <Setter Property="Height"     Value="{StaticResource MenuBarHeight}"/>
+        <Setter Property="Padding"    Value="4,0,0,0"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderSoftBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    </Style>
+
+    <Style Selector="Menu.Chrome > MenuItem">
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+    </Style>
+
+    <!-- ============ Toolbar ============ -->
+    <Style Selector="Border.Toolbar">
+        <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="Height" Value="{StaticResource ToolbarHeight}"/>
+        <Setter Property="Padding" Value="8,0"/>
+    </Style>
+
+    <Style Selector="Border.ToolbarSeparator">
+        <Setter Property="Background" Value="{StaticResource ChromeBorderBrush}"/>
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="Margin" Value="4,0"/>
+    </Style>
+
+    <Style Selector="Button.ToolbarBtn">
+        <Setter Property="Width"  Value="{StaticResource ToolbarButtonSize}"/>
+        <Setter Property="Height" Value="{StaticResource ToolbarButtonSize}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CornerMd}"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.ToolbarBtn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource ChromeBgHoverBrush}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource ChromeFgBrush}"/>
+    </Style>
+    <Style Selector="Button.ToolbarBtn.Active /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource AccentAmberSoftBrush}"/>
+        <Setter Property="TextElement.Foreground" Value="{StaticResource AccentAmberBrush}"/>
+    </Style>
+    <Style Selector="Button.ToolbarBtn.Danger:pointerover /template/ ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{StaticResource AccentRedBrush}"/>
+    </Style>
+
+    <!-- ============ Char picker + BBS badge ============ -->
+    <Style Selector="Button.CharPicker">
+        <Setter Property="Height" Value="{StaticResource CharPickerHeight}"/>
+        <Setter Property="Padding" Value="8,0"/>
+        <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CornerMd}"/>
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+
+    <!-- ============ Status bar ============ -->
+    <Style Selector="Border.StatusBar">
+        <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderSoftBrush}"/>
+        <Setter Property="BorderThickness" Value="0,1,0,0"/>
+        <Setter Property="Height" Value="{StaticResource StatusBarHeight}"/>
+        <Setter Property="Padding" Value="10,0"/>
+    </Style>
+
+    <Style Selector="TextBlock.StatusSlot">
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.StatusMono">
+        <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+    </Style>
+    <Style Selector="TextBlock.StatusMuted">
+        <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+    </Style>
+
+    <!-- ============ Secondary connection strip (transitional) ============ -->
+    <!-- Hosts the Host / Port editor inputs until Phase 4 PR 4.5 absorbs them
+         into the BBS profile dialog. Visually distinct from the toolbar so
+         it's obvious this is "settings overflow", not chrome. -->
+    <Style Selector="Border.SecondaryStrip">
+        <Setter Property="Background" Value="{StaticResource ChromeBgSunkenBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderSoftBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="Padding" Value="10,6"/>
+    </Style>
+
+</Styles>
