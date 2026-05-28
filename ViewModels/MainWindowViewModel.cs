@@ -111,10 +111,24 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
         };
         client.Connected += () =>
+        {
+            AppServices.Current.Log.Info("Telnet", $"Connected to {Host}:{Port}");
             Dispatcher.UIThread.Post(() => { IsConnected = true; StatusText = $"Connected to {Host}:{Port}"; });
+        };
         client.Disconnected += () =>
+        {
+            AppServices.Current.Log.Info("Telnet", "Disconnected");
             Dispatcher.UIThread.Post(() => { IsConnected = false; StatusText = "Disconnected."; });
-        client.Log += msg => Dispatcher.UIThread.Post(() => StatusText = msg);
+        };
+        // TelnetClient's Log event carries negotiation / IAC trace lines —
+        // pipe them into the LogService at Debug severity so the Log pane
+        // can surface them when DBG is checked. Status bar still shows the
+        // latest line; Phase 1 PR 1.5 swaps that to LogService.Latest.
+        client.Log += msg =>
+        {
+            AppServices.Current.Log.Debug("Telnet", msg);
+            Dispatcher.UIThread.Post(() => StatusText = msg);
+        };
 
         try
         {
@@ -221,18 +235,30 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    // Singleton handle for the live LogPaneWindow — re-opening from menu or
+    // toolbar activates the existing window instead of stacking duplicates.
+    private LogPaneWindow? _logPane;
+
     [RelayCommand]
     private void OpenLogPane()
-        => OpenPlaceholder(
-            id: "log",
-            panelName: "Log",
-            phaseTag: "Phase 1 · PR 1.3",
-            headline: "System log pane",
-            description:
-                "Severity-filterable view of app-level events — connection, parser " +
-                "warnings, automation triggers, debug. Color-coded per LogSeverity; " +
-                "search, auto-scroll lock, copy-to-clipboard. Bound to the existing " +
-                "LogService ring buffer (Phase 0 PR 0.6).");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_logPane is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        LogPaneWindow window = new()
+        {
+            DataContext = new LogPaneViewModel(AppServices.Current.Log, Application.Current),
+        };
+        window.Closed += (_, _) => _logPane = null;
+        _logPane = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenBackscroll()
