@@ -81,9 +81,7 @@
                         <ctl:CellRowDisplay Grid.Column="1"
                                             Row="{Binding Cells}"
                                             FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                            FontSize="14"
-                                            LineHeight="16"
-                                            Padding="0"/>
+                                            FontSize="14"/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
