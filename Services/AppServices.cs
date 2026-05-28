@@ -114,6 +114,13 @@ public sealed class AppServices
     public Game.RegenTracker Regen { get; }
 
     /// <summary>
+    /// Live mirror of the loaded character profile's Display settings.
+    /// The Settings → Display section writes through to this so changes
+    /// (font size in particular) apply without restarting the app.
+    /// </summary>
+    public DisplayConfig Display { get; } = new();
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -174,6 +181,11 @@ public sealed class AppServices
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
+        // Bridge: re-apply Display settings (font size, scrollback target) to
+        // the live singleton on every profile load.
+        Profile.ProfileLoaded += ApplyDisplayFromProfile;
+        Profile.ProfileClosed += ResetDisplayToDefaults;
+
         // Auto-load the most recently used profile if one is recorded and the
         // file still exists; otherwise stand up an in-memory blank draft so
         // every settings tab has a target the user can read / edit without
@@ -192,6 +204,28 @@ public sealed class AppServices
 
         // Track which profile was last loaded so the next launch can reopen it.
         Profile.ProfileLoaded += OnProfileLoaded;
+    }
+
+    private void ApplyDisplayFromProfile(Models.Profile.CharacterProfile profile)
+    {
+        Models.Profile.DisplaySettings dto = ReadDisplay(profile);
+        Display.FontSize = dto.FontSize;
+        Display.ScrollbackLines = dto.ScrollbackLines;
+    }
+
+    private void ResetDisplayToDefaults()
+    {
+        Models.Profile.DisplaySettings defaults = new();
+        Display.FontSize = defaults.FontSize;
+        Display.ScrollbackLines = defaults.ScrollbackLines;
+    }
+
+    private static Models.Profile.DisplaySettings ReadDisplay(Models.Profile.CharacterProfile profile)
+    {
+        if (profile.Settings is null) return new();
+        if (!profile.Settings.TryGetValue("Display", out System.Text.Json.JsonElement json)) return new();
+        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.DisplaySettings>(json.GetRawText())
+               ?? new();
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

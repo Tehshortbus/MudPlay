@@ -41,6 +41,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public LineExtractor Lines { get; }
 
+    /// <summary>
+    /// Terminal-canvas font size — forwarded from
+    /// <see cref="AppServices.Display"/> so the Settings → Display tab's
+    /// edits reach the live canvas without bouncing through a save cycle.
+    /// </summary>
+    public double TerminalFontSize => AppServices.Current.Display.FontSize;
+
     [ObservableProperty] private string _host = "playpenbbs.com";
 
     [ObservableProperty] private int _port = 23;
@@ -161,6 +168,11 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
 
+        // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
+        // bound TerminalControl re-renders when the Display tab changes the
+        // font live.
+        AppServices.Current.Display.PropertyChanged += OnDisplayChanged;
+
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
@@ -173,6 +185,12 @@ public partial class MainWindowViewModel : ObservableObject
             if (t is not null) _ = t.SendAsync(bytes);
         };
 
+    }
+
+    private void OnDisplayChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Services.DisplayConfig.FontSize))
+            OnPropertyChanged(nameof(TerminalFontSize));
     }
 
     /// <summary>
