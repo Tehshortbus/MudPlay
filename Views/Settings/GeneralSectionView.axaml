@@ -1,0 +1,107 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="440"
+             x:Class="FujinTerm.Views.Settings.GeneralSectionView"
+             x:DataType="vm:GeneralSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.ColumnHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid>
+
+            <!-- "No profile loaded" banner — shows when HasProfile is false. -->
+            <Border IsVisible="{Binding !HasProfile}"
+                    Padding="22"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="General"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit General settings — every settings tab lives on the active character."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Editor — visible when a profile is loaded. -->
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22"
+                        Spacing="6"
+                        MaxWidth="640"
+                        HorizontalAlignment="Left">
+
+                <TextBlock Classes="SectionHeader" Text="Initial"/>
+
+                <Grid ColumnDefinitions="120,*">
+                    <TextBlock Grid.Column="0" Text="Default task:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Top" Margin="0,2,0,0"/>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <RadioButton GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskDoNothing, Mode=TwoWay}"
+                                     Content="Do nothing"/>
+                        <RadioButton GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginLoop, Mode=TwoWay}"
+                                     Content="Begin looping"
+                                     ToolTip.Tip="Loop picker lands with Phase 7 LoopManager."/>
+                        <RadioButton GroupName="DefaultTask"
+                                     IsChecked="{Binding IsTaskBeginAutoRoam, Mode=TwoWay}"
+                                     Content="Begin auto-roaming"/>
+                    </StackPanel>
+                </Grid>
+
+                <CheckBox Margin="0,8,0,0"
+                          IsChecked="{Binding AutoConnect, Mode=TwoWay}"
+                          Content="Auto-connect when profile loads"/>
+
+                <!-- Two-column defaults grid. -->
+                <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="ColumnHeader" Text="Manual-Mode Defaults"/>
+                        <CheckBox IsChecked="{Binding MmAutoCombat,  Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding MmAutoNuke,    Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding MmAutoHealRest,Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding MmAutoBless,   Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding MmAutoLight,   Mode=TwoWay}" Content="Auto-Light"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Classes="ColumnHeader" Text="Auto-Mode Defaults"/>
+                        <CheckBox IsChecked="{Binding AmAutoCombat,  Mode=TwoWay}" Content="Auto-Combat"/>
+                        <CheckBox IsChecked="{Binding AmAutoNuke,    Mode=TwoWay}" Content="Auto-Nuke"/>
+                        <CheckBox IsChecked="{Binding AmAutoHealRest,Mode=TwoWay}" Content="Auto-Heal / Rest"/>
+                        <CheckBox IsChecked="{Binding AmAutoBless,   Mode=TwoWay}" Content="Auto-Bless"/>
+                        <CheckBox IsChecked="{Binding AmAutoLight,   Mode=TwoWay}" Content="Auto-Light"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Margin="0,18,0,0"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           TextWrapping="Wrap"
+                           Text="Manual / Auto-Mode defaults set the boot-up state of the Action menu's auto-engines when this character logs in. Engines themselves wire in Phase 13."/>
+            </StackPanel>
+
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -137,7 +137,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     /// </summary>
     private void SeedSections()
     {
-        Add("general",   "General",   "Phase 4 PR 4.2", "Data folder, auto-connect, manual / auto-mode defaults.");
+        Sections.Add(new GeneralSectionViewModel(_profile));
         Add("display",   "Display",   "Phase 4 PR 4.3", "Rows / columns, palette, scrollback size, confirmation prompts.");
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
 
