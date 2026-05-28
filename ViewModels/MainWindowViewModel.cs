@@ -348,11 +348,18 @@ public partial class MainWindowViewModel : ObservableObject
             // Copy out of the rented buffer because the emitter may reuse it
             // for the next read before our UI-thread post runs.
             byte[] copy = data.ToArray();
-            // Feed the Wire Inspector buffer too — the post-IAC stream is
-            // what the parser sees, which is exactly what the debug window
-            // wants to surface.
+            // Feed the Wire Inspector buffer — the post-IAC stream is what
+            // the parser sees, which is exactly what the debug window wants
+            // to surface. Thread-safe (its own internal lock).
             AppServices.Current.Wire.Append(copy);
-            Dispatcher.UIThread.Post(() => Emulator.Feed(copy));
+            // PromptScanner + Emulator both write through observable state
+            // bound by the UI, so they must run on the UI thread. Same post
+            // keeps them aligned within one dispatch tick.
+            Dispatcher.UIThread.Post(() =>
+            {
+                AppServices.Current.PromptScanner.Append(copy);
+                Emulator.Feed(copy);
+            });
         };
         client.Connected += () =>
         {

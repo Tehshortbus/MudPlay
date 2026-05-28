@@ -1,100 +1,69 @@
 using FujinTerm.Services;
-using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
 /// <summary>
-/// Reads the status-line prompt and writes the captured values into
-/// <see cref="PlayerState"/>. Subscribes to
-/// <see cref="KnownPatterns.StatusLine"/> via <see cref="MessageRouter"/>;
-/// fan-out semantics let other consumers (the Phase 1 LineExtractor's
-/// prompt detector, future statline editor preview) match the same line.
+/// Writes observed status-line values from <see cref="WirePromptScanner"/>
+/// into <see cref="PlayerState"/>. Sole writer of HP / MA / mana-type /
+/// position fields (Phase 3 PR 3.5 enforces this via the IL-scan test).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Capture groups (from the default registry's port of Megamind's regex):
+/// Subscribes to the wire stream rather than <see cref="MessageRouter"/>'s
+/// <see cref="Services.Patterns.KnownPatterns.StatusLine"/> id because the
+/// server overwrites the statline in place (CR + erase-line + new content
+/// on the same row). By the time <see cref="Terminal.LineExtractor"/>
+/// emits a row, only the last statline survives and intermediate HP / MA /
+/// position changes are lost. Scanning the wire catches every update.
 /// </para>
-/// <list type="bullet">
-///   <item><description><c>hp</c> — current HP (1–4 digits).</description></item>
-///   <item><description><c>type</c> — <c>MA</c> or <c>KAI</c>. Absent for classes with no mana pool.</description></item>
-///   <item><description><c>mana</c> — current MA / KAI value (1–3 digits).</description></item>
-///   <item><description><c>statea</c> — <c>Resting</c> or <c>Meditating</c> when the parens come before the closing bracket.</description></item>
-///   <item><description><c>stateb</c> — same set, when the parens come after.</description></item>
-/// </list>
 /// <para>
-/// <see cref="PlayerState.MaxHp"/> / <see cref="PlayerState.MaxMa"/> ratchet
-/// upward on every observed value. Phase 12 statline gains <c>%H</c>/<c>%M</c>
-/// wildcards that emit explicit denominators; the parser will pick those up
-/// when the regex carries the new captures.
+/// <see cref="PlayerState.MaxHp"/> / <see cref="PlayerState.MaxMa"/>
+/// ratchet upward on every observation. Phase 12 statline gains
+/// <c>%H</c>/<c>%M</c> wildcards that emit explicit denominators; the
+/// scanner regex picks those up when the wildcard string carries them.
 /// </para>
 /// </remarks>
 public sealed class PromptParser : IDisposable
 {
-    private readonly IDisposable _statusLineSub;
+    private readonly WirePromptScanner _scanner;
     private bool _disposed;
 
     public PlayerState State { get; }
 
-    public PromptParser(MessageRouter router, PlayerState state)
+    public PromptParser(WirePromptScanner scanner, PlayerState state)
     {
-        ArgumentNullException.ThrowIfNull(router);
+        ArgumentNullException.ThrowIfNull(scanner);
         ArgumentNullException.ThrowIfNull(state);
         State = state;
-        _statusLineSub = router.Subscribe(KnownPatterns.StatusLine, OnStatusLine);
+        _scanner = scanner;
+        _scanner.PromptObserved += OnPromptObserved;
     }
 
-    private void OnStatusLine(MatchResult result)
+    private void OnPromptObserved(PromptObservation obs)
     {
-        IReadOnlyList<string> g = result.Groups;
-        // Group order from the StatusLine regex: hp / type / mana / statea / stateb.
-        if (g.Count < 1) return;
+        State.Hp = obs.Hp;
+        if (obs.Hp > State.MaxHp) State.MaxHp = obs.Hp;
 
-        if (int.TryParse(g[0], out int hp))
-        {
-            State.Hp = hp;
-            if (hp > State.MaxHp) State.MaxHp = hp;
-        }
-
-        string typeRaw = SafeGroup(g, 1);
-        State.ManaType = typeRaw switch
-        {
-            "MA"  => ManaType.Mana,
-            "KAI" => ManaType.Kai,
-            _      => ManaType.None,
-        };
-
-        if (State.ManaType == ManaType.None)
+        State.ManaType = obs.ManaType;
+        if (obs.ManaType == ManaType.None)
         {
             State.Ma = 0;
             State.MaxMa = 0;
         }
-        else if (int.TryParse(SafeGroup(g, 2), out int mana))
+        else
         {
-            State.Ma = mana;
-            if (mana > State.MaxMa) State.MaxMa = mana;
+            State.Ma = obs.Mana;
+            if (obs.Mana > State.MaxMa) State.MaxMa = obs.Mana;
         }
 
-        string state = !string.IsNullOrEmpty(SafeGroup(g, 3))
-            ? g[3]
-            : SafeGroup(g, 4);
-
-        State.Position = state switch
-        {
-            "Resting"    => PlayerPosition.Resting,
-            "Meditating" => PlayerPosition.Meditating,
-            _            => PlayerPosition.Standing,
-        };
-
+        State.Position = obs.Position;
         State.HasPromptData = true;
     }
-
-    private static string SafeGroup(IReadOnlyList<string> groups, int index)
-        => (uint)index < (uint)groups.Count ? groups[index] : string.Empty;
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _statusLineSub.Dispose();
+        _scanner.PromptObserved -= OnPromptObserved;
     }
 }

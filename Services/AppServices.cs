@@ -92,6 +92,14 @@ public sealed class AppServices
     public Game.PromptParser Player { get; }
 
     /// <summary>
+    /// Scans the post-IAC wire stream for status-line prompts. Feeds
+    /// <see cref="Player"/> directly so prompts overwritten in place on
+    /// a single row (server CR + erase-line + rewrite) don't get lost
+    /// the way they would going through <see cref="Terminal.LineExtractor"/>.
+    /// </summary>
+    public WirePromptScanner PromptScanner { get; }
+
+    /// <summary>
     /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
     /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
     /// the regen ticks.
@@ -155,7 +163,8 @@ public sealed class AppServices
         Chat = new Game.ChatRouter(Router);
         ChatHistory = new Game.ChatHistoryStore(Chat);
         PlayerState = new Game.PlayerState();
-        Player = new Game.PromptParser(Router, PlayerState);
+        PromptScanner = new WirePromptScanner();
+        Player = new Game.PromptParser(PromptScanner, PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
 

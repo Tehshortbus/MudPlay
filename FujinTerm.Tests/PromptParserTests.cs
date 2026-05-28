@@ -1,30 +1,28 @@
+using System.Text;
 using FujinTerm.Game;
 using FujinTerm.Services;
-using FujinTerm.Services.Patterns;
-using FujinTerm.Terminal;
 using Xunit;
 
 namespace FujinTerm.Tests;
 
 public sealed class PromptParserTests
 {
-    private static LineExtractor.EmittedLine Line(string text) =>
-        new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: true);
-
-    private static (MessageRouter router, PlayerState state, PromptParser parser) Setup()
+    private static (WirePromptScanner scanner, PlayerState state, PromptParser parser) Setup()
     {
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
+        WirePromptScanner scanner = new();
         PlayerState state = new();
-        PromptParser parser = new(router, state);
-        return (router, state, parser);
+        PromptParser parser = new(scanner, state);
+        return (scanner, state, parser);
     }
+
+    private static void Feed(WirePromptScanner scanner, string text)
+        => scanner.Append(Encoding.Latin1.GetBytes(text));
 
     [Fact]
     public void BasicHpMaPrompt_PopulatesHpAndMa()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=779/MA=571]:"));
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=779/MA=571]:");
 
         Assert.Equal(779,            state.Hp);
         Assert.Equal(571,            state.Ma);
@@ -36,8 +34,8 @@ public sealed class PromptParserTests
     [Fact]
     public void KaiPrompt_FlagsManaTypeKai()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=44/KAI=2]:"));
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=44/KAI=2]:");
 
         Assert.Equal(44, state.Hp);
         Assert.Equal(2,  state.Ma);
@@ -47,8 +45,8 @@ public sealed class PromptParserTests
     [Fact]
     public void HpOnlyPrompt_LeavesManaZeroAndManaTypeNone()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=120]:"));
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=120]:");
 
         Assert.Equal(120, state.Hp);
         Assert.Equal(0,   state.Ma);
@@ -58,26 +56,26 @@ public sealed class PromptParserTests
     [Fact]
     public void RestingTrailingParens_SetsPosition()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=779/MA=571]: (Resting)"));
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=779/MA=571]: (Resting)");
         Assert.Equal(PlayerPosition.Resting, state.Position);
     }
 
     [Fact]
     public void MeditatingLeadingParens_SetsPosition()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=44/KAI=2 (Meditating) ]:"));
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=44/KAI=2 (Meditating) ]:");
         Assert.Equal(PlayerPosition.Meditating, state.Position);
     }
 
     [Fact]
     public void MaxHpMaxMa_RatchetWithLargestObserved()
     {
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("[HP=400/MA=100]:"));
-        router.Dispatch(Line("[HP=500/MA=120]:"));
-        router.Dispatch(Line("[HP=300/MA=80]:"));   // dropped lower; max stays put.
+        var (scanner, state, _) = Setup();
+        Feed(scanner, "[HP=400/MA=100]:");
+        Feed(scanner, "[HP=500/MA=120]:");
+        Feed(scanner, "[HP=300/MA=80]:");   // dropped lower; max stays put.
 
         Assert.Equal(500, state.MaxHp);
         Assert.Equal(120, state.MaxMa);
@@ -96,12 +94,12 @@ public sealed class PromptParserTests
     [Fact]
     public void Dispose_UnsubscribesAndStopsUpdates()
     {
-        var (router, state, parser) = Setup();
-        router.Dispatch(Line("[HP=100/MA=50]:"));
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=100/MA=50]:");
         Assert.Equal(100, state.Hp);
 
         parser.Dispose();
-        router.Dispatch(Line("[HP=999/MA=999]:"));
+        Feed(scanner, "[HP=999/MA=999]:");
         Assert.Equal(100, state.Hp);                // no further updates after dispose.
         Assert.Equal(50,  state.Ma);
     }
