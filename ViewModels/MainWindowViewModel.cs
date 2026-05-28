@@ -74,10 +74,23 @@ public partial class MainWindowViewModel : ObservableObject
          : "Connect";
 
     /// <summary>
-    /// Cancels an in-flight <see cref="ConnectAsync"/>. Cleared in the
-    /// finally block of the connect path.
+    /// Cancels an in-flight connect attempt — covers both the socket-level
+    /// <see cref="TelnetClient.ConnectAsync"/> and the inter-attempt
+    /// <see cref="Task.Delay"/>. Cleared in the finally block.
     /// </summary>
     private CancellationTokenSource? _connectCts;
+
+    /// <summary>
+    /// Maximum number of connect attempts (initial + retries). Phase 4
+    /// Settings.BBS will surface the knob; until then it's a constant.
+    /// </summary>
+    private const int MaxConnectAttempts = 3;
+
+    /// <summary>
+    /// Wait time between connect attempts. Phase 4 Settings.BBS will surface
+    /// the knob.
+    /// </summary>
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Most recent message in <see cref="AppServices.Log"/> — drives the
@@ -121,33 +134,104 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Single Connect ↔ Disconnect action. Click while idle starts a
-    /// connect; click while a connect is in flight cancels it; click while
-    /// connected disconnects.
+    /// connect attempt (with auto-retry on failure); click while a connect
+    /// is in flight cancels it; click while connected disconnects.
     /// </summary>
     [RelayCommand]
     private async Task ToggleConnectionAsync()
     {
-        if (IsConnected)
-        {
-            TelnetClient? t = _telnet;
-            _telnet = null;
-            if (t is not null) await t.DisposeAsync();
-            IsConnected = false;
-            return;
-        }
+        if (IsConnected)        { await DisconnectInternalAsync();   return; }
+        if (IsConnecting)       { _connectCts?.Cancel();             return; }
+        await ConnectWithRetriesAsync();
+    }
 
-        if (IsConnecting)
-        {
-            _connectCts?.Cancel();
-            return;
-        }
+    private async Task DisconnectInternalAsync()
+    {
+        TelnetClient? t = _telnet;
+        _telnet = null;
+        if (t is not null) await t.DisposeAsync();
+        IsConnected = false;
 
+        WriteTerminalStatus($"[DISCONNECTED FROM: {Host} {Port}.]", TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Telnet", $"Disconnected from {Host}:{Port}");
+    }
+
+    private async Task ConnectWithRetriesAsync()
+    {
         if (string.IsNullOrWhiteSpace(Host) || Port <= 0)
         {
+            WriteTerminalStatus("[NO HOST / PORT SET — EDIT THE FIELDS BELOW THE TOOLBAR.]",
+                                TerminalStatusKind.Error);
             AppServices.Current.Log.Warn("Connect", "Enter host and port.");
             return;
         }
 
+        _connectCts = new CancellationTokenSource();
+        IsConnecting = true;
+        try
+        {
+            for (int attempt = 1; attempt <= MaxConnectAttempts; attempt++)
+            {
+                if (_connectCts.IsCancellationRequested) break;
+
+                WriteTerminalStatus($"[CONNECTING TO: {Host} {Port}....]", TerminalStatusKind.Notice);
+                AppServices.Current.Log.Info("Connect",
+                    $"Connecting to {Host}:{Port} (attempt {attempt}/{MaxConnectAttempts})…");
+
+                TelnetClient client = BuildTelnetClient();
+                try
+                {
+                    await client.ConnectAsync(Host, Port, _connectCts.Token);
+                    _telnet = client;
+                    return;  // success — IsConnected flips via Connected event handler.
+                }
+                catch (OperationCanceledException)
+                {
+                    await client.DisposeAsync();
+                    WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
+                    AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    await client.DisposeAsync();
+                    WriteTerminalStatus($"[CONNECTION FAILED: {ex.Message}]", TerminalStatusKind.Error);
+                    AppServices.Current.Log.Error("Connect", $"Attempt {attempt} failed: {ex.Message}");
+
+                    if (attempt < MaxConnectAttempts)
+                    {
+                        int seconds = (int)RetryDelay.TotalSeconds;
+                        WriteTerminalStatus($"[RETRYING IN: {seconds} SECONDS...]",
+                                            TerminalStatusKind.Notice);
+                        try
+                        {
+                            await Task.Delay(RetryDelay, _connectCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            WriteTerminalStatus("[CONNECT CANCELLED.]", TerminalStatusKind.Notice);
+                            AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            WriteTerminalStatus($"[GIVING UP AFTER {MaxConnectAttempts} ATTEMPTS.]",
+                                TerminalStatusKind.Error);
+            AppServices.Current.Log.Error("Connect",
+                $"Gave up after {MaxConnectAttempts} attempts.");
+        }
+        finally
+        {
+            IsConnecting = false;
+            _connectCts?.Dispose();
+            _connectCts = null;
+        }
+    }
+
+    private TelnetClient BuildTelnetClient()
+    {
         TelnetClient client = new()
         {
             Cols = Emulator.Screen.Cols,
@@ -175,7 +259,8 @@ public partial class MainWindowViewModel : ObservableObject
         };
         client.Disconnected += () =>
         {
-            AppServices.Current.Log.Info("Telnet", "Disconnected");
+            // Don't log here; DisconnectInternalAsync already did, and a
+            // server-initiated drop will fire this too.
             Dispatcher.UIThread.Post(() => IsConnected = false);
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;
@@ -184,30 +269,28 @@ public partial class MainWindowViewModel : ObservableObject
         // latest via LatestLogText.
         client.Log += msg => AppServices.Current.Log.Debug("Telnet", msg);
 
-        _connectCts = new CancellationTokenSource();
-        IsConnecting = true;
-        try
+        return client;
+    }
+
+    private enum TerminalStatusKind { Notice, Error }
+
+    /// <summary>
+    /// Write a single bracketed status line into the terminal canvas itself
+    /// (in addition to LogService). Mirrors the classic-BBS-client cadence
+    /// the user expects: "[CONNECTING TO: …]" / "[DISCONNECTED FROM: …]" /
+    /// etc. Coloured via inline ANSI SGR so the emulator does the painting.
+    /// </summary>
+    private void WriteTerminalStatus(string text, TerminalStatusKind kind)
+    {
+        string sgr = kind switch
         {
-            AppServices.Current.Log.Info("Connect", $"Connecting to {Host}:{Port}…");
-            await client.ConnectAsync(Host, Port, _connectCts.Token);
-            _telnet = client;
-        }
-        catch (OperationCanceledException)
-        {
-            AppServices.Current.Log.Info("Connect", "Connect cancelled.");
-            await client.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            AppServices.Current.Log.Error("Connect", $"Connect failed: {ex.Message}");
-            await client.DisposeAsync();
-        }
-        finally
-        {
-            IsConnecting = false;
-            _connectCts?.Dispose();
-            _connectCts = null;
-        }
+            TerminalStatusKind.Notice => "\x1b[33;1m",   // bright yellow
+            TerminalStatusKind.Error  => "\x1b[31;1m",   // bright red
+            _ => string.Empty,
+        };
+        string line = $"\r\n{sgr}{text}\x1b[0m\r\n";
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes(line);
+        Emulator.Feed(bytes);
     }
 
     /// <summary>
