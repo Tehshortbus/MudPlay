@@ -194,6 +194,84 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // ----- Placeholder shell-window plumbing -----------------------------
+
+    /// <summary>
+    /// Tracks one open placeholder per panel id so re-opening a panel from
+    /// the menu / toolbar activates the existing window instead of stacking
+    /// duplicates. Cleared by each window's <c>Closed</c> handler.
+    /// </summary>
+    private readonly Dictionary<string, PlaceholderShellWindow> _placeholders = new();
+
+    private void OpenPlaceholder(string id, string panelName, string phaseTag, string headline, string description)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_placeholders.TryGetValue(id, out PlaceholderShellWindow? existing))
+        {
+            existing.Activate();
+            return;
+        }
+
+        PlaceholderShellWindow window = new();
+        window.Configure(panelName, phaseTag, headline, description);
+        window.Closed += (_, _) => _placeholders.Remove(id);
+        _placeholders[id] = window;
+        window.Show(main);
+    }
+
+    [RelayCommand]
+    private void OpenLogPane()
+        => OpenPlaceholder(
+            id: "log",
+            panelName: "Log",
+            phaseTag: "Phase 1 · PR 1.3",
+            headline: "System log pane",
+            description:
+                "Severity-filterable view of app-level events — connection, parser " +
+                "warnings, automation triggers, debug. Color-coded per LogSeverity; " +
+                "search, auto-scroll lock, copy-to-clipboard. Bound to the existing " +
+                "LogService ring buffer (Phase 0 PR 0.6).");
+
+    [RelayCommand]
+    private void OpenBackscroll()
+        => OpenPlaceholder(
+            id: "backscroll",
+            panelName: "Backscroll",
+            phaseTag: "Phase 1 · PR 1.4",
+            headline: "Terminal backscroll",
+            description:
+                "10 000-line ring of the terminal's prior lines, each row stored as " +
+                "(timestamp, Cell[]). ANSI colors preserved via the TerminalControl " +
+                "render path; per-line timestamp prefix always shown. Search, " +
+                "go-to-live, export-to-file.");
+
+    [RelayCommand]
+    private void OpenConversation()
+        => OpenPlaceholder(
+            id: "conversation",
+            panelName: "Conversation",
+            phaseTag: "Phase 2",
+            headline: "Chat / telepath / gossip view",
+            description:
+                "Single window with per-message-type filter toggles (Gossip / " +
+                "Telepath / Gang / Say / Broadcast / System / Realm-events) and its " +
+                "own input field that routes to the live game. Backed by ChatRouter + " +
+                "the app-scoped ChatHistoryStore.");
+
+    [RelayCommand]
+    private void OpenParty()
+        => OpenPlaceholder(
+            id: "party",
+            panelName: "Party",
+            phaseTag: "Phase 6",
+            headline: "Party tracker",
+            description:
+                "Leader at top, HP / MA bars per member, leader-star highlight. " +
+                "Driven by PartyManager (par-poller + follows-you / stops-following " +
+                "pattern matchers). Compact and detail modes.");
+
     /// <summary>
     /// Tools → Wire Inspector. Singleton-ish: a second open activates the
     /// existing window rather than spawning a duplicate.

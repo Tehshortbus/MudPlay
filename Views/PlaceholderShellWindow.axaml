@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FujinTerm.Views.PlaceholderShellWindow"
+        Width="640" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <!-- Reusable placeholder used by every later-phase window's first
+         appearance: the menu / toolbar / context-menu entry already opens
+         something, but the body is intentionally empty until the phase that
+         owns the panel ships its skeleton-faithful layout. -->
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Header strip — names the panel + the phase that will fill it in. -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="14,8">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock x:Name="PanelLabel"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center"/>
+                <Border Background="{StaticResource AccentAmberSoftBrush}"
+                        CornerRadius="{StaticResource CornerSm}"
+                        Padding="6,2"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="PhaseTagLabel"
+                               Foreground="{StaticResource AccentAmberBrush}"
+                               FontFamily="{StaticResource FontMono}"
+                               FontSize="11"/>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Body — center-aligned explanatory copy. -->
+        <Border Background="{StaticResource ChromeBgSunkenBrush}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="10"
+                        MaxWidth="480">
+                <TextBlock Text="Placeholder shell"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           HorizontalAlignment="Center"/>
+                <TextBlock x:Name="HeadlineLabel"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="{StaticResource FontSizeLg}"
+                           FontWeight="Medium"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"/>
+                <TextBlock x:Name="DescriptionLabel"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           LineHeight="20"/>
+            </StackPanel>
+        </Border>
+
+    </DockPanel>
+</Window>
