@@ -436,9 +436,11 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention: clicking the same menu / hotkey / toolbar entry
+        // a second time closes the window instead of activating it.
         if (_placeholders.TryGetValue(id, out PlaceholderShellWindow? existing))
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -459,9 +461,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder.
         if (_logPane is { } existing)
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -492,17 +495,13 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder. Find-in-scrollback is
+        // the same toggle: hitting it while Backscroll is already open
+        // closes the window. Opening freshly with focusSearch=true lands
+        // focus on the search box.
         if (_backscroll is { } existing)
         {
-            existing.Activate();
-            if (focusSearch && existing.DataContext is BackscrollViewModel existingVm)
-            {
-                existingVm.FocusSearchOnOpen = true;
-                // Already-opened window: nudge focus via the same hook the
-                // first-open path uses, by toggling activation. Simpler than
-                // exposing yet another event.
-                existing.Focus();
-            }
+            existing.Close();
             return;
         }
 
@@ -524,9 +523,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder.
         if (_conversation is { } existing)
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -755,9 +755,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
+        // Toggle convention — see OpenPlaceholder.
         if (_wireInspector is { } existing)
         {
-            existing.Activate();
+            existing.Close();
             return;
         }
 
@@ -911,12 +912,26 @@ public partial class MainWindowViewModel : ObservableObject
             Built on .NET 10 + Avalonia 12 (CommunityToolkit.Mvvm source-gen).
             """);
 
-    private static void ShowInfoDialog(string title, string body)
+    /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>
+    private readonly Dictionary<string, InfoDialog> _infoDialogs = new(StringComparer.Ordinal);
+
+    private void ShowInfoDialog(string title, string body)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
+
+        // Toggle convention — see OpenPlaceholder. About / License /
+        // Keyboard shortcuts each get their own tracker by title.
+        if (_infoDialogs.TryGetValue(title, out InfoDialog? existing))
+        {
+            existing.Close();
+            return;
+        }
+
         InfoDialog dlg = new();
         dlg.Configure(title, body);
+        dlg.Closed += (_, _) => _infoDialogs.Remove(title);
+        _infoDialogs[title] = dlg;
         dlg.Show(main);
     }
 

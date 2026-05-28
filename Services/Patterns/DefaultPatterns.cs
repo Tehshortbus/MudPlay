@@ -92,8 +92,12 @@ public static class DefaultPatterns
             @"^You gain (?<exp>\d+) experience\.");
 
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
+        // Auction lines share gossip's shape ("X auctions: ...") and the
+        // user wants them filtered under the same Gossip toggle in the
+        // Conversation window, so we classify both under one id via
+        // alternation on the verb. Megamind's classifier does the same.
         yield return new RegexPattern(KnownPatterns.ConversationGossip,
-            @"^(?<player>\w+) gossips: (?<message>.+)");
+            @"^(?<player>\w+) (?:gossips|auctions): (?<message>.+)");
         yield return new RegexPattern(KnownPatterns.ConversationBroadcast,
             @"^Broadcast from (?<player>\w+) ""(?<message>.+)""");
         yield return new RegexPattern(KnownPatterns.ConversationGangpath,
