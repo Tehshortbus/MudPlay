@@ -92,6 +92,13 @@ public sealed class AppServices
     public Game.PromptParser Player { get; }
 
     /// <summary>
+    /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
+    /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
+    /// the regen ticks.
+    /// </summary>
+    public Game.TickEngine Tick { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -142,6 +149,7 @@ public sealed class AppServices
         ChatHistory = new Game.ChatHistoryStore(Chat);
         PlayerState = new Game.PlayerState();
         Player = new Game.PromptParser(Router, PlayerState);
+        Tick = new Game.TickEngine(Router);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
