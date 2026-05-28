@@ -1,10 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.IO;
 using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
-using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
@@ -142,44 +139,6 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (string.IsNullOrEmpty(InputText)) return;
         _sendUserText(InputText);
         InputText = string.Empty;
-    }
-
-    /// <summary>Drop every entry from the underlying ChatHistoryStore.</summary>
-    [RelayCommand]
-    private void Clear() => _history.Clear();
-
-    /// <summary>
-    /// Open the save-file picker and export the filtered view to plain
-    /// text. The export honours the currently-active channel toggles; pass
-    /// the search filter through too so the file matches what's on screen.
-    /// </summary>
-    [RelayCommand]
-    private async Task ExportAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-
-        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Export chatlog",
-            SuggestedFileName = $"chatlog-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
-            DefaultExtension = "txt",
-            FileTypeChoices = [new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] }],
-        });
-
-        if (file is null) return;
-
-        HashSet<ChatChannel> filter = new();
-        if (ShowGossip)     filter.Add(ChatChannel.Gossip);
-        if (ShowLocal)      filter.Add(ChatChannel.Local);
-        if (ShowTelepath)   { filter.Add(ChatChannel.TelepathIncoming); filter.Add(ChatChannel.TelepathOutgoing); }
-        if (ShowGangpath)   filter.Add(ChatChannel.Gangpath);
-        if (ShowBroadcast)  filter.Add(ChatChannel.Broadcast);
-        if (ShowYell)       filter.Add(ChatChannel.Yell);
-        if (ShowRealmEvent) filter.Add(ChatChannel.RealmEvent);
-
-        await using Stream stream = await file.OpenWriteAsync();
-        await _history.ExportAsync(stream, filter).ConfigureAwait(false);
     }
 
     private static Dictionary<ChatChannel, IBrush> BuildChannelBrushMap(Application app)

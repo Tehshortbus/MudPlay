@@ -785,11 +785,22 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Tools → Clear chatlog. Wipes every entry from the app-singleton
+    /// ChatHistoryStore — the Conversation window's contents go with it
+    /// (it binds to the same store) and a fresh open shows an empty list.
+    /// Destructive; the spec doesn't ask for a confirm dialog yet.
+    /// </summary>
+    [RelayCommand]
+    private void ClearChatlog()
+    {
+        AppServices.Current.ChatHistory.Clear();
+        AppServices.Current.Log.Info("Chatlog", "Cleared chat history.");
+    }
+
+    /// <summary>
     /// Tools → Export chatlog… Saves the entire ChatHistoryStore (no
     /// channel filter, no day-separator filter) to a plain-text file the
-    /// user picks. The Conversation window has its own Export… button that
-    /// honours the active filter; this menu entry is the
-    /// "give me everything" path.
+    /// user picks.
     /// </summary>
     [RelayCommand]
     private async Task ExportChatlogAsync()

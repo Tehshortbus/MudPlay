@@ -80,6 +80,7 @@
                 <MenuItem Header="Wire Inspector…"             Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
                 <MenuItem Header="Export chatlog…"             Command="{Binding ExportChatlogCommand}"/>
+                <MenuItem Header="Clear chatlog"               Command="{Binding ClearChatlogCommand}"/>
                 <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
                 <Separator/>
                 <!-- Dev-facing entrypoint to inspect every edit-dialog

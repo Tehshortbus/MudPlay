@@ -29,6 +29,16 @@ public sealed class MessageRouter
     private readonly List<Subscription> _subs = new();
 
     /// <summary>
+    /// Fires once per <see cref="Dispatch"/> with the line being routed,
+    /// <i>before</i> pattern matching. Subscribers that need to track
+    /// recent lines as raw text (e.g. <c>ChatRouter</c> correlating a
+    /// telepath-sent confirmation with the user's preceding <c>/X
+    /// message</c> command) hook here instead of registering a catch-all
+    /// pattern.
+    /// </summary>
+    public event Action<Terminal.LineExtractor.EmittedLine>? LineDispatched;
+
+    /// <summary>
     /// Known patterns indexed by id. Populated by callers via
     /// <see cref="RegisterPattern"/> (typically the
     /// <see cref="Patterns.DefaultPatterns.Seed"/> bootstrap). Consumers
@@ -104,6 +114,8 @@ public sealed class MessageRouter
     /// </summary>
     public void Dispatch(LineExtractor.EmittedLine line)
     {
+        LineDispatched?.Invoke(line);
+
         // Snapshot the matching set first so a handler that calls Register
         // (or disposes its own token) during dispatch doesn't mutate the
         // list we're iterating.
