@@ -10,7 +10,9 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
+using FujinTerm.ViewModels.Settings;
 using FujinTerm.Views;
+using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels;
 
@@ -641,19 +643,34 @@ public partial class MainWindowViewModel : ObservableObject
                 "Driven by PartyManager (par-poller + follows-you / stops-following " +
                 "pattern matchers). Compact and detail modes.");
 
+    private SettingsWindow? _settings;
+
     [RelayCommand]
     private void OpenSettings()
-        => OpenPlaceholder(
-            id: "settings",
-            panelName: "Settings",
-            phaseTag: "Phase 4",
-            headline: "Settings hub — sixteen tabs",
-            description:
-                "Sidebar-tree navigation (General / Display / Comms / BBS / Toolbar / " +
-                "Statline / Auto-Lair / Talk / Health / Spells / Combat / PvP / Party / " +
-                "Cash / Sounds / Other / Events). Scope selector + per-setting tier " +
-                "picker (installed defaults / for all characters / only for this BBS / " +
-                "only for this character). Apply / OK / Cancel commit model.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        // Toggle convention with edit-window save-on-toggle policy:
+        // re-press of the same hotkey / menu while the window is open
+        // routes through ApplyAndClose (Save path). Title-bar X / Cancel
+        // button discards. See CLAUDE.md "Architecture rules".
+        if (_settings is { } existing)
+        {
+            if (existing.DataContext is SettingsWindowViewModel vm) vm.ApplyAndClose();
+            else existing.Close();
+            return;
+        }
+
+        AppServices svc = AppServices.Current;
+        SettingsWindow window = new()
+        {
+            DataContext = new SettingsWindowViewModel(svc.Resolver, svc.Profile, svc.Log),
+        };
+        window.Closed += (_, _) => _settings = null;
+        _settings = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenGameDataBrowser()
