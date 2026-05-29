@@ -264,6 +264,54 @@
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
                     </StackPanel>
 
+                    <!-- ===== Display options (Phase 4 PR 4.8 stubs) =====
+                         Persistence + behaviour wire in their owning phases:
+                         Confirm dialogs in Phase 0 polish; Show-* in the
+                         relevant subsystems; combat round totals in Phase 8.  -->
+                    <TextBlock Classes="GroupHeader" Text="Display"
+                               Margin="0,18,0,4"/>
+
+                    <Border Padding="4,2"
+                            Background="{StaticResource ChromeBgElevBrush}"
+                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CornerSm}"
+                            HorizontalAlignment="Left">
+                        <TextBlock Text="Phase 4 PR 4.8 stub — controls disabled until owning phase"
+                                   Foreground="{StaticResource AccentAmberBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"/>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,16,*" Margin="0,8,0,0">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="Show confirmations"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox Content="Confirm exit"          IsEnabled="False"
+                                      ToolTip.Tip="Phase 0 polish — confirm prompt before File → Quit."/>
+                            <CheckBox Content="Confirm hangup"        IsEnabled="False"
+                                      ToolTip.Tip="Phase 0 polish — confirm prompt before disconnect."/>
+                            <CheckBox Content="Confirm save settings" IsEnabled="False"
+                                      ToolTip.Tip="Phase 0 polish — confirm prompt before Settings → OK / Apply."/>
+                            <CheckBox Content="Confirm deletes"       IsEnabled="False"
+                                      ToolTip.Tip="Phase 0 polish — confirm prompt before destructive list-row removes."/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="2">
+                            <TextBlock Text="Show on canvas"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox Content="Show information messages" IsEnabled="False"
+                                      ToolTip.Tip="Phase 1 — surface app-side info banners inline on the terminal canvas."/>
+                            <CheckBox Content="Show reason for running"   IsEnabled="False"
+                                      ToolTip.Tip="Phase 13 — annotate the flee with what triggered it."/>
+                            <CheckBox Content="Show data being sent"      IsEnabled="False"
+                                      ToolTip.Tip="Phase 0 PR 0.11 — echoes outgoing bytes inline (overlap with Wire Inspector)."/>
+                            <CheckBox Content="Show combat round totals"  IsEnabled="False"
+                                      ToolTip.Tip="Phase 8 — append the per-round damage roll-up to the canvas."/>
+                        </StackPanel>
+                    </Grid>
+
                 </StackPanel>
             </Grid>
         </ScrollViewer>

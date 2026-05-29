@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
@@ -34,7 +35,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "General", "Auto-connect", "Default task", "Do nothing",
+        "General", "Data files", "Open Data folder",
+        "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Combat", "Auto-Nuke",
@@ -45,6 +47,22 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>
+    /// Resolved absolute path to the platform Data root (XDG on Linux,
+    /// %AppData% on Windows, ~/Library/Application Support on macOS).
+    /// Read-only display so the user can copy the path or open it in
+    /// the system file browser via the adjacent button.
+    /// </summary>
+    public string DataFilesPath => AppPaths.DataRoot;
+
+    /// <summary>Opens the Data root in the OS file browser.</summary>
+    [RelayCommand]
+    private void OpenDataFolder()
+    {
+        if (!ShellLaunch.OpenPath(AppPaths.DataRoot))
+            AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.DataRoot}");
+    }
 
     // ----- Initial task (three radios — mutual exclusion handled by GroupName) -----
     [ObservableProperty] private bool _isTaskDoNothing = true;

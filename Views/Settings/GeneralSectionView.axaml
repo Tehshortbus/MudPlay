@@ -50,6 +50,26 @@
                         MaxWidth="640"
                         HorizontalAlignment="Left">
 
+                <TextBlock Classes="SectionHeader" Text="Directories"/>
+
+                <Grid ColumnDefinitions="120,*,Auto">
+                    <TextBlock Grid.Column="0" Text="Data files:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding DataFilesPath, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontFamily="{StaticResource FontMono}"
+                             FontSize="{StaticResource FontSizeSm}"
+                             VerticalAlignment="Center"
+                             ToolTip.Tip="Resolved per platform (XDG on Linux, %AppData% on Windows, Application Support on macOS). Not user-editable — set FUJINTERM_DATA to override."/>
+                    <Button Grid.Column="2"
+                            Content="Open Data folder…"
+                            Command="{Binding OpenDataFolderCommand}"
+                            Margin="8,0,0,0"/>
+                </Grid>
+
                 <TextBlock Classes="SectionHeader" Text="Initial"/>
 
                 <Grid ColumnDefinitions="120,*">

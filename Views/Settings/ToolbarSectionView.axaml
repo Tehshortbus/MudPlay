@@ -62,15 +62,36 @@
         <!-- Editor — visible when a profile is loaded. -->
         <Grid IsVisible="{Binding HasProfile}"
               Margin="22"
-              RowDefinitions="Auto,*,Auto"
+              RowDefinitions="Auto,Auto,*,Auto"
               ColumnDefinitions="*,180">
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+            <!-- Global toolbar options (Phase 4 PR 4.8 stubs).
+                 Show / Vertical / per-item custom command land in a later
+                 PR; surface visible here so the eventual knobs are
+                 advertised on day one. -->
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                        Spacing="2" Margin="0,0,0,10">
+                <TextBlock Classes="SectionHeader" Text="Toolbar options"/>
+                <CheckBox Content="Show toolbar" IsEnabled="False"
+                          ToolTip.Tip="Stub (Phase 4 PR 4.8). Wires to MainWindow toolbar visibility in a later PR."/>
+                <CheckBox Content="Vertical toolbar" IsEnabled="False"
+                          ToolTip.Tip="Stub (Phase 4 PR 4.8). Rotates the toolbar to the left edge — needs MainWindow layout work."/>
+                <Grid ColumnDefinitions="180,*" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Text="Custom command (per item):"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" IsEnabled="False"
+                             PlaceholderText="e.g. peer^M"
+                             ToolTip.Tip="Stub (Phase 4 PR 4.8). Future — selected toolbar row gets an arbitrary command override here."/>
+                </Grid>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                        Classes="SectionHeader"
                        Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
             <!-- Row list. SelectionMode=Single drives the Move/Delete commands. -->
-            <Border Grid.Row="1" Grid.Column="0"
+            <Border Grid.Row="2" Grid.Column="0"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
@@ -107,7 +128,7 @@
             </Border>
 
             <!-- Right rail: row actions + add controls + reset. -->
-            <StackPanel Grid.Row="1" Grid.Column="1"
+            <StackPanel Grid.Row="2" Grid.Column="1"
                         Margin="12,0,0,0"
                         Spacing="6">
 
