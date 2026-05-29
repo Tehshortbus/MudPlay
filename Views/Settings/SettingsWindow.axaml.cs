@@ -11,6 +11,10 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        // The Window has to be Focusable for ClearFocusGlobal()'s Focus()
+        // call to actually take effect — otherwise it's a silent no-op
+        // and the TextBox keeps its caret.
+        Focusable = true;
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "settings");
         // Re-subscribe whenever the view-model is swapped; first attach happens
         // after construction when the host assigns DataContext.
@@ -28,14 +32,16 @@ public partial class SettingsWindow : Window
             }
         };
 
-        // Click-outside-to-unfocus: when the user clicks anywhere that
-        // isn't an interactive control, drop focus off the current
-        // TextBox / NumericUpDown / etc. so they don't have to navigate
-        // to another control just to commit a half-typed value or stop
-        // capturing keystrokes. Bubble routing — by the time we run,
-        // any input ancestor along the route has already had a chance
-        // to handle / claim focus.
-        AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Bubble);
+        // Click-outside-to-unfocus + Enter-to-commit: when the user
+        // clicks anywhere that isn't an interactive control, or presses
+        // Enter inside a single-line TextBox / NumericUpDown, drop
+        // focus off the current input. handledEventsToo on the pointer
+        // route catches the case where TextBox's own PointerPressed
+        // logic marks the event handled before we see it.
+        AddHandler(PointerPressedEvent, OnAnyPointerPressed,
+                   RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(KeyDownEvent, OnAnyKeyDown,
+                   RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     private void OnAnyPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -44,9 +50,9 @@ public partial class SettingsWindow : Window
 
         // Walk from the click target up to this window. If any ancestor
         // is an input control, the click landed on something that wants
-        // focus — leave it alone. Otherwise the click was on a chrome
-        // background / label / panel, so push focus off the current
-        // element and onto the window root.
+        // focus — leave it alone. Otherwise the click was on chrome /
+        // label / panel: clear focus globally so the active TextBox
+        // releases its caret.
         Control? walk = source;
         while (walk is not null && walk != this)
         {
@@ -54,6 +60,41 @@ public partial class SettingsWindow : Window
             walk = walk.Parent as Control;
         }
 
+        ClearFocusGlobal();
+    }
+
+    private void OnAnyKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter && e.Key != Key.Return) return;
+        if (e.Source is not Control source) return;
+
+        // Find the nearest TextBox ancestor (TextBox can be wrapped by
+        // NumericUpDown / ComboBox / AutoCompleteBox so the raw source
+        // may be the inner TextBox, but the user-visible control is the
+        // wrapper). Multi-line TextBoxes (AcceptsReturn=true) own
+        // Enter for newline insertion — leave them alone.
+        Control? walk = source;
+        TextBox? textBox = null;
+        while (walk is not null && walk != this)
+        {
+            if (walk is TextBox tb) { textBox = tb; break; }
+            walk = walk.Parent as Control;
+        }
+        if (textBox is null) return;
+        if (textBox.AcceptsReturn) return;
+
+        ClearFocusGlobal();
+        e.Handled = true;
+    }
+
+    private void ClearFocusGlobal()
+    {
+        // Avalonia 12 doesn't expose a ClearFocus() on IFocusManager —
+        // the documented way to release the active element is to focus
+        // something else. The window itself works as long as we set
+        // Focusable = true on it (done in the ctor). Calling Focus()
+        // here transfers keyboard focus away from whatever TextBox /
+        // NumericUpDown currently holds the caret.
         Focus();
     }
 
