@@ -1,6 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -13,7 +15,8 @@ namespace FujinTerm.Views;
 /// </summary>
 public partial class BackscrollWindow : Window
 {
-    private ListBox? _rowsList;
+    private ScrollViewer? _scroll;
+    private ItemsControl? _rowsList;
 
     public BackscrollWindow()
     {
@@ -27,16 +30,16 @@ public partial class BackscrollWindow : Window
 
     private void OnOpened(object? sender, EventArgs e)
     {
-        _rowsList = this.FindControl<ListBox>("RowsList");
+        _scroll = this.FindControl<ScrollViewer>("RowsScroll");
+        _rowsList = this.FindControl<ItemsControl>("RowsList");
         if (DataContext is BackscrollViewModel vm)
         {
             vm.ScrollToRowRequested += OnScrollToRow;
             vm.GoToLiveRequested    += OnGoToLive;
 
-            // ScrollIntoView no-ops if the ListBox hasn't been measured /
-            // realised yet — Opened fires before the first arrange pass.
-            // Dispatch on a Background-priority post so layout completes
-            // first; user lands on the freshest row instead of row 0.
+            // Wait for the first arrange pass before we scroll to the live
+            // tail — otherwise the container heights are still zero and the
+            // ScrollViewer would no-op.
             Dispatcher.UIThread.Post(OnGoToLive, DispatcherPriority.Background);
 
             if (vm.FocusSearchOnOpen)
@@ -61,20 +64,15 @@ public partial class BackscrollWindow : Window
         if (_rowsList is null) return;
         if (DataContext is not BackscrollViewModel vm) return;
         if ((uint)index >= (uint)vm.Rows.Count) return;
-        BackscrollRowViewModel row = vm.Rows[index];
-        _rowsList.ScrollIntoView(row);
-        // Mirror what clicking the row would do — select it so the user has
-        // a visible highlight on the match instead of guessing which row
-        // the scroll landed on.
-        _rowsList.SelectedItems?.Clear();
-        _rowsList.SelectedItem = row;
+
+        Control? container = _rowsList.ContainerFromIndex(index) as Control;
+        container?.BringIntoView();
     }
 
     private void OnGoToLive()
     {
-        if (_rowsList is null) return;
-        if (DataContext is not BackscrollViewModel vm) return;
-        if (vm.Rows.Count == 0) return;
-        _rowsList.ScrollIntoView(vm.Rows[^1]);
+        if (_scroll is null) return;
+        _scroll.Offset = new Avalonia.Vector(_scroll.Offset.X,
+            Math.Max(0, _scroll.Extent.Height - _scroll.Viewport.Height));
     }
 }

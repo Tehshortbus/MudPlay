@@ -58,42 +58,42 @@
              the Mx437 font's cell height (16 px). The default Fluent
              ListBoxItem ships with ~6 px vertical padding which reads as
              "double-spaced" against terminal output. -->
-        <ListBox x:Name="RowsList"
-                 ItemsSource="{Binding Rows}"
-                 Background="Black"
-                 BorderThickness="0"
-                 Padding="4"
-                 UseLayoutRounding="True"
-                 SelectionMode="Multiple">
-            <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                    <Setter Property="Padding" Value="0"/>
-                    <Setter Property="MinHeight" Value="0"/>
-                    <Setter Property="UseLayoutRounding" Value="True"/>
-                </Style>
-                <Style Selector="ListBoxItem /template/ ContentPresenter">
-                    <Setter Property="Padding" Value="0"/>
-                    <Setter Property="UseLayoutRounding" Value="True"/>
-                </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="vm:BackscrollRowViewModel">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding TimestampText}"
-                                   Foreground="{StaticResource ChromeFgMutedBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="11"
-                                   VerticalAlignment="Center"
-                                   Margin="0,0,8,0"/>
-                        <ctl:CellRowDisplay Grid.Column="1"
-                                            Row="{Binding Cells}"
-                                            FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                            FontSize="16"/>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <!-- Rows host: an ItemsControl (no built-in selection / focus eating)
+             wrapped in a ScrollViewer. SelectableTextBlock per row handles
+             text selection + Ctrl+C natively; switching off the ListBox
+             keeps row clicks from stealing focus mid-drag. -->
+        <ScrollViewer x:Name="RowsScroll"
+                      Background="Black"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      UseLayoutRounding="True">
+            <ItemsControl x:Name="RowsList"
+                          ItemsSource="{Binding Rows}"
+                          Padding="4"
+                          UseLayoutRounding="True">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:BackscrollRowViewModel">
+                        <Border Background="{Binding IsFindMatch, Converter={x:Static vm:FindMatchBackgroundConverter.Instance}}">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding TimestampText}"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"/>
+                                <ctl:CellSelectableText Grid.Column="1"
+                                                        Cells="{Binding Cells}"
+                                                        FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                                        FontSize="16"
+                                                        Foreground="White"
+                                                        TextWrapping="NoWrap"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
 
     </DockPanel>
 </Window>

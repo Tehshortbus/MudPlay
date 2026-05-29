@@ -203,12 +203,21 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         MatchCount = hits;
         OnPropertyChanged(nameof(StatusText));
 
+        // Clear the previous find-match tint before applying the new one so
+        // only one row at a time shows the "current hit" highlight.
+        if (_previousMatchRow is not null) _previousMatchRow.IsFindMatch = false;
+        _previousMatchRow = null;
+
         if (next >= 0)
         {
             _lastMatchIndex = next;
+            Rows[next].IsFindMatch = true;
+            _previousMatchRow = Rows[next];
             ScrollToRowRequested?.Invoke(next);
         }
     }
+
+    private BackscrollRowViewModel? _previousMatchRow;
 
     [RelayCommand]
     private async Task ExportAsync()
