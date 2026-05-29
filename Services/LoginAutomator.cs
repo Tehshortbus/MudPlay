@@ -14,7 +14,7 @@ namespace FujinTerm.Services;
 /// <see cref="LoggedIntoGame"/> fires. The reply text supports two
 /// case-insensitive placeholders: <c>{username}</c> / <c>{userid}</c> for
 /// the configured username and <c>{password}</c> / <c>{passwd}</c> for
-/// the password decrypted from <see cref="ICredentialStore"/>.
+/// the password decrypted from <see cref="PasswordProtector"/>.
 /// </summary>
 /// <remarks>
 /// <para>

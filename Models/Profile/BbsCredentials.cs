@@ -6,11 +6,11 @@ namespace FujinTerm.Models.Profile;
 /// one entry per BBS the character has ever logged into.
 /// </summary>
 /// <remarks>
-/// Only the credential <em>id</em> is persisted in the profile JSON.
-/// The password itself lives in the <see cref="Services.ICredentialStore"/>
-/// (Phase 4 PR 4.5b ships an encrypted-file store; later PRs may swap to
-/// OS keychains). Plaintext passwords never appear in any user-readable
-/// file written by the app.
+/// The password is stored inline as
+/// <see cref="EncryptedPassword"/> — an AES-GCM blob produced by
+/// <see cref="Services.PasswordProtector"/> with the per-user
+/// <c>Data/.credkey</c> file. Plaintext passwords never land in any
+/// user-readable file written by the app.
 /// </remarks>
 public sealed class BbsCredentials
 {
