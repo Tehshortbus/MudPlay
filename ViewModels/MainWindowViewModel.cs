@@ -198,7 +198,16 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
 
-        // Seed File → Recent profiles + Save profile label from persisted state.
+        // Seed File → Recent profile slots + Save profile label.
+        RecentProfiles.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Recent0));
+            OnPropertyChanged(nameof(Recent1));
+            OnPropertyChanged(nameof(Recent2));
+            OnPropertyChanged(nameof(Recent3));
+            OnPropertyChanged(nameof(Recent4));
+            OnPropertyChanged(nameof(HasRecents));
+        };
         RebuildRecentProfiles();
         SyncProfileMenuState();
         AppServices.Current.Profile.ProfileLoaded += _ => { SyncProfileMenuState(); RefreshBbsBindings(); };
@@ -825,11 +834,27 @@ public partial class MainWindowViewModel : ObservableObject
     // ----- Profile file management (Phase 4 PR 4.5a) ----------------------
 
     /// <summary>
-    /// Most-recent-first list of saved profile names. Drives the
-    /// File → Recent profiles submenu. Rebuilt from <c>GlobalSettings</c>
-    /// on startup and after every profile save.
+    /// Most-recent-first list of saved profile names. Drives the inline
+    /// File-menu recent entries (<see cref="Recent0"/>..<see cref="Recent4"/>).
+    /// Rebuilt from <c>GlobalSettings</c> on startup and after every
+    /// profile save.
     /// </summary>
     public ObservableCollection<string> RecentProfiles { get; } = new();
+
+    // Indexed accessors so the File menu can lay out five fixed MenuItems
+    // instead of a flyout submenu. Avalonia ItemsSource inside MenuItem
+    // wraps each item in its own MenuItem, which loses the parent VM as
+    // the DataContext (the command resolution via $parent[Window] is
+    // fragile across popup ownership). Binding to the parent VM directly
+    // sidesteps that entirely.
+    public string? Recent0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public string? Recent1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public string? Recent2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public string? Recent3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public string? Recent4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+
+    /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
+    public bool HasRecents => RecentProfiles.Count > 0;
 
     /// <summary>True when a named profile is loaded — gates File → Save profile.</summary>
     [ObservableProperty]

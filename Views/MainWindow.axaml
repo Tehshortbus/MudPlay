@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels"
         xmlns:ctl="using:FujinTerm.Controls"
+        xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="560"
@@ -51,18 +52,27 @@
                           Command="{Binding SaveProfileCommand}"/>
                 <MenuItem Header="Save profile as…" InputGesture="Ctrl+Shift+S"
                           Command="{Binding SaveProfileAsCommand}"/>
-                <Separator/>
-                <MenuItem Header="Recent profiles"
-                          ItemsSource="{Binding RecentProfiles}"
-                          IsEnabled="{Binding RecentProfiles.Count}">
-                    <MenuItem.ItemTemplate>
-                        <DataTemplate>
-                            <MenuItem Header="{Binding}"
-                                      Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenRecentProfileCommand}"
-                                      CommandParameter="{Binding}"/>
-                        </DataTemplate>
-                    </MenuItem.ItemTemplate>
-                </MenuItem>
+                <Separator IsVisible="{Binding HasRecents}"/>
+                <MenuItem Header="{Binding Recent0, StringFormat='_1  {0}'}"
+                          IsVisible="{Binding Recent0, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent0}"/>
+                <MenuItem Header="{Binding Recent1, StringFormat='_2  {0}'}"
+                          IsVisible="{Binding Recent1, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent1}"/>
+                <MenuItem Header="{Binding Recent2, StringFormat='_3  {0}'}"
+                          IsVisible="{Binding Recent2, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent2}"/>
+                <MenuItem Header="{Binding Recent3, StringFormat='_4  {0}'}"
+                          IsVisible="{Binding Recent3, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent3}"/>
+                <MenuItem Header="{Binding Recent4, StringFormat='_5  {0}'}"
+                          IsVisible="{Binding Recent4, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent4}"/>
                 <Separator/>
                 <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="Ctrl+Q"/>
             </MenuItem>
