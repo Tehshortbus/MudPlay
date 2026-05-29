@@ -78,6 +78,22 @@ public sealed class BbsProfile
     /// <summary>Terminal rows to advertise via Telnet NAWS. Defaults to 25.</summary>
     public int TerminalRows { get; set; } = 25;
 
+    // ----- Login automation (Phase 4 PR 4.5c) -----
+
+    /// <summary>
+    /// Substring (case-insensitive) the BBS prints when it wants the username.
+    /// <see cref="Services.LoginAutomator"/> watches the incoming byte stream
+    /// for this pattern and replies with the per-character username.
+    /// </summary>
+    public string LoginPromptPattern { get; set; } = "Login:";
+
+    /// <summary>
+    /// Substring (case-insensitive) the BBS prints when it wants the password.
+    /// <see cref="Services.LoginAutomator"/> watches for this pattern and
+    /// replies with the password decrypted from <see cref="Services.ICredentialStore"/>.
+    /// </summary>
+    public string PasswordPromptPattern { get; set; } = "Password:";
+
     /// <summary>
     /// Per-tab settings deltas at the BBS tier — same shape as
     /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned

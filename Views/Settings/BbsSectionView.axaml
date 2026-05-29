@@ -101,6 +101,24 @@
                                    HorizontalAlignment="Left"/>
                     </Grid>
 
+                    <TextBlock Classes="GroupHeader" Text="Login prompts"/>
+
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Login prompt:"/>
+                        <TextBox   Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding LoginPromptPattern, Mode=TwoWay}"
+                                   PlaceholderText="Login:" Width="280"
+                                   HorizontalAlignment="Left"
+                                   ToolTip.Tip="Substring (case-insensitive) the BBS prints when it wants the username."/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Password prompt:"/>
+                        <TextBox   Grid.Row="1" Grid.Column="1"
+                                   Text="{Binding PasswordPromptPattern, Mode=TwoWay}"
+                                   PlaceholderText="Password:" Width="280"
+                                   HorizontalAlignment="Left"
+                                   ToolTip.Tip="Substring (case-insensitive) the BBS prints when it wants the password."/>
+                    </Grid>
+
                     <TextBlock Classes="GroupHeader" Text="Retry behaviour"/>
 
                     <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
@@ -193,6 +211,59 @@
                                           MinWidth="60"/>
                         </Grid>
                     </Grid>
+
+                    <TextBlock Classes="GroupHeader" Text="Menu nav after login"/>
+
+                    <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="{StaticResource FontSizeSm}"
+                               TextWrapping="Wrap"
+                               Text="Steps the client walks after the password is accepted — wait for the pattern, send the reply. Use \r for Enter."/>
+
+                    <StackPanel IsEnabled="{Binding HasNamedProfile}" Spacing="4" Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,90,140,80,Auto,Auto,Auto" Margin="0,0,0,2">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Wait for pattern"/>
+                            <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Match"     Margin="6,0,0,0"/>
+                            <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Send"      Margin="6,0,0,0"/>
+                            <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Timeout s" Margin="6,0,0,0"/>
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding MenuNavSteps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MenuStepEditorViewModel">
+                                    <Grid ColumnDefinitions="*,90,140,80,Auto,Auto,Auto" Margin="0,0,0,4">
+                                        <TextBox Grid.Column="0"
+                                                 Text="{Binding WaitForPattern, Mode=TwoWay}"
+                                                 PlaceholderText="Main Menu:"/>
+                                        <ComboBox Grid.Column="1" Margin="6,0,0,0"
+                                                  ItemsSource="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MatchTypes}"
+                                                  SelectedItem="{Binding MatchType, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch"/>
+                                        <TextBox Grid.Column="2" Margin="6,0,0,0"
+                                                 Text="{Binding Send, Mode=TwoWay}"
+                                                 PlaceholderText="G\r"/>
+                                        <NumericUpDown Grid.Column="3" Margin="6,0,0,0"
+                                                       Value="{Binding TimeoutSeconds, Mode=TwoWay}"
+                                                       Minimum="1" Maximum="600" Increment="1"
+                                                       FormatString="0"/>
+                                        <Button Grid.Column="4" Margin="6,0,0,0" Content="↑"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepUpCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Move step up"/>
+                                        <Button Grid.Column="5" Margin="2,0,0,0" Content="↓"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepDownCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Move step down"/>
+                                        <Button Grid.Column="6" Margin="6,0,0,0" Content="Remove"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).RemoveMenuStepCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Content="Add step" Command="{Binding AddMenuStepCommand}"
+                                HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                    </StackPanel>
 
                 </StackPanel>
             </Grid>

@@ -70,6 +70,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _hasSysopPowers;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
+    [ObservableProperty] private string _loginPromptPattern = "Login:";
+    [ObservableProperty] private string _passwordPromptPattern = "Password:";
 
     // ----- Per-character credentials (PR 4.5b) -----
     /// <summary>True when a named character profile is loaded — gates the credentials section.</summary>
@@ -80,6 +82,12 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _username = string.Empty;
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty] private bool _showPassword;
+
+    /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
+    public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
+
+    /// <summary>Drives the per-row MatchType ComboBox.</summary>
+    public Array MatchTypes { get; } = Enum.GetValues(typeof(MenuStepMatchType));
 
     /// <summary>Helper text under the credentials section ("for character: …" or warning).</summary>
     public string CredentialsHint => HasNamedProfile
@@ -146,6 +154,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             character.BbsCredentials[bbs] = cred;
         }
         cred.Username = Username;
+        cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
 
         if (_pendingPassword is not null)
         {
@@ -280,11 +289,14 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         HasSysopPowers = profile.HasSysopPowers;
         TerminalCols = profile.TerminalCols;
         TerminalRows = profile.TerminalRows;
+        LoginPromptPattern = profile.LoginPromptPattern;
+        PasswordPromptPattern = profile.PasswordPromptPattern;
     }
 
     private void LoadCredentialsFor(string bbsName)
     {
         _pendingPassword = null;
+        MenuNavSteps.Clear();
         if (!HasNamedProfile)
         {
             Username = string.Empty;
@@ -301,6 +313,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             // the user clicks around. Show empty + a placeholder; typing a
             // new one replaces, leaving it empty preserves the existing.
             Password = string.Empty;
+            foreach (MenuStep step in cred.MenuNavSteps)
+            {
+                MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, Dirty));
+            }
         }
         else
         {
@@ -338,6 +354,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         HasSysopPowers = defaults.HasSysopPowers;
         TerminalCols = defaults.TerminalCols;
         TerminalRows = defaults.TerminalRows;
+        LoginPromptPattern = defaults.LoginPromptPattern;
+        PasswordPromptPattern = defaults.PasswordPromptPattern;
     }
 
     private void Dirty()
@@ -375,6 +393,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.HasSysopPowers = HasSysopPowers;
         profile.TerminalCols = TerminalCols;
         profile.TerminalRows = TerminalRows;
+        profile.LoginPromptPattern = LoginPromptPattern;
+        profile.PasswordPromptPattern = PasswordPromptPattern;
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -398,4 +418,42 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnHasSysopPowersChanged(bool value)            { PushToCache(); Dirty(); }
     partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
     partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
+    partial void OnLoginPromptPatternChanged(string value)      { PushToCache(); Dirty(); }
+    partial void OnPasswordPromptPatternChanged(string value)   { PushToCache(); Dirty(); }
+
+    [RelayCommand]
+    private void AddMenuStep()
+    {
+        if (_suppressDirty) return;
+        MenuNavSteps.Add(new MenuStepEditorViewModel(Dirty));
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void RemoveMenuStep(MenuStepEditorViewModel? step)
+    {
+        if (step is null) return;
+        if (!MenuNavSteps.Remove(step)) return;
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void MoveMenuStepUp(MenuStepEditorViewModel? step)
+    {
+        if (step is null) return;
+        int i = MenuNavSteps.IndexOf(step);
+        if (i <= 0) return;
+        MenuNavSteps.Move(i, i - 1);
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void MoveMenuStepDown(MenuStepEditorViewModel? step)
+    {
+        if (step is null) return;
+        int i = MenuNavSteps.IndexOf(step);
+        if (i < 0 || i >= MenuNavSteps.Count - 1) return;
+        MenuNavSteps.Move(i, i + 1);
+        Dirty();
+    }
 }

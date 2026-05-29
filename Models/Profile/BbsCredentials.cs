@@ -23,4 +23,13 @@ public sealed class BbsCredentials
     /// <c>null</c> when no password has been set yet.
     /// </summary>
     public string? PasswordCredentialId { get; set; }
+
+    /// <summary>
+    /// Menu-navigation steps the <see cref="Services.LoginAutomator"/> walks
+    /// after the BBS login/password handshake completes. Each step waits for
+    /// a server pattern and sends a reply — used to flow through "Press any
+    /// key", main-menu picks, and the door-game entry prompt before the
+    /// MajorMUD session is live.
+    /// </summary>
+    public List<MenuStep> MenuNavSteps { get; set; } = new();
 }

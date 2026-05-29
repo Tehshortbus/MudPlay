@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
 using System.Collections.ObjectModel;
+using FujinTerm.Models.Profile;
 using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
@@ -32,6 +33,7 @@ namespace FujinTerm.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     private TelnetClient? _telnet;
+    private LoginAutomator? _automator;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -279,6 +281,8 @@ public partial class MainWindowViewModel : ObservableObject
     {
         TelnetClient? t = _telnet;
         _telnet = null;
+        _automator?.Dispose();
+        _automator = null;
         if (t is not null) await t.DisposeAsync();
         IsConnected = false;
 
@@ -322,6 +326,7 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     await client.ConnectAsync(Host, Port, attemptCts.Token);
                     _telnet = client;
+                    ArmLoginAutomator(client);
                     return;  // success — IsConnected flips via Connected event handler.
                 }
                 catch (OperationCanceledException) when (_connectCts.IsCancellationRequested)
@@ -382,6 +387,67 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Looks up the matching <see cref="BbsProfile"/> by host, pulls the
+    /// loaded character's credentials for that BBS, and arms a
+    /// <see cref="LoginAutomator"/> against the live socket. No-op when no
+    /// BBS record matches, no profile is loaded, or the credentials are
+    /// missing — the user just gets the raw login prompt.
+    /// </summary>
+    private void ArmLoginAutomator(TelnetClient client)
+    {
+        _automator?.Dispose();
+        _automator = null;
+
+        BbsProfile? bbs = ResolveBbsForHost(Host);
+        if (bbs is null)
+        {
+            AppServices.Current.Log.Debug("LoginAuto",
+                $"No saved BBS matches host '{Host}' — manual login.");
+            return;
+        }
+
+        CharacterProfile? character = AppServices.Current.Profile.Current;
+        BbsCredentials? creds = null;
+        character?.BbsCredentials?.TryGetValue(bbs.Name, out creds);
+
+        IReadOnlyList<AutomationStep>? steps = LoginAutomator.BuildSteps(
+            bbs, creds, AppServices.Current.Credentials);
+        if (steps is null)
+        {
+            AppServices.Current.Log.Debug("LoginAuto",
+                $"No credentials on '{AppServices.Current.Profile.CurrentProfileName ?? "(no profile)"}' for BBS '{bbs.Name}' — manual login.");
+            return;
+        }
+
+        LoginAutomator automator = new(
+            steps,
+            (text, ct) => client.SendTextAsync(text, ct),
+            msg => AppServices.Current.Log.Debug("LoginAuto", msg));
+        string bbsName = bbs.Name;
+        automator.LoggedIntoGame += () =>
+            AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
+        automator.Aborted += reason =>
+            AppServices.Current.Log.Warn("LoginAuto", $"'{bbsName}': {reason}");
+        _automator = automator;
+        automator.Start();
+    }
+
+    private static BbsProfile? ResolveBbsForHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return null;
+        BbsProfileStore store = AppServices.Current.Bbs;
+        foreach (string name in store.ListNames())
+        {
+            BbsProfile? p = store.Get(name);
+            if (p is not null && string.Equals(p.Host, host, StringComparison.OrdinalIgnoreCase))
+            {
+                return p;
+            }
+        }
+        return null;
+    }
+
     private TelnetClient BuildTelnetClient()
     {
         TelnetClient client = new()
@@ -408,6 +474,7 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 AppServices.Current.PromptScanner.Append(copy);
+                _automator?.Feed(copy);
                 Emulator.Feed(copy);
             });
         };
