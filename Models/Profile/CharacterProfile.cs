@@ -62,6 +62,15 @@ public sealed class CharacterProfile
     public List<GameData.Trigger>? Triggers { get; set; }
 
     /// <summary>
+    /// User-defined outgoing-text aliases. Per-character; loaded into
+    /// the Phase 5 PR 5.11 <see cref="Services.AliasEngine"/> on
+    /// profile load. Variables substitution inside an alias's
+    /// expansion reads from the shared session-scoped variable store
+    /// the trigger engine maintains.
+    /// </summary>
+    public List<GameData.Alias>? Aliases { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels

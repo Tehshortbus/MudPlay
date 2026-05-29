@@ -179,6 +179,14 @@ public sealed class AppServices
     public TriggerEngine Triggers { get; }
 
     /// <summary>
+    /// In-memory cache of the active character's
+    /// <see cref="Models.GameData.Alias"/> entries. Outgoing-text
+    /// mirror of <see cref="Triggers"/>; matches on the first token
+    /// of typed input land alongside the editor in a follow-up.
+    /// </summary>
+    public AliasEngine Aliases { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -234,6 +242,7 @@ public sealed class AppServices
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
         Triggers = new TriggerEngine(Profile);
+        Aliases = new AliasEngine(Profile);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

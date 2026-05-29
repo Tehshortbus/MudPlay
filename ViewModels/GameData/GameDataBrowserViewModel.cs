@@ -53,15 +53,21 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     }
 
     private readonly TriggerEngine? _triggers;
+    private readonly AliasEngine? _aliases;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, initialSectionId) { }
 
-    public GameDataBrowserViewModel(GameDataCache gameData, TriggerEngine? triggers, string? initialSectionId = null)
+    public GameDataBrowserViewModel(
+        GameDataCache gameData,
+        TriggerEngine? triggers,
+        AliasEngine? aliases = null,
+        string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         _gameData = gameData;
         _triggers = triggers;
+        _aliases = aliases;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -108,7 +114,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         else
             Add("triggers", "Triggers", "Phase 5 PR 5.10",
                 "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
-        Add("aliases",       "Aliases",        "Phase 5 PR 5.11", "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
+        if (_aliases is not null)
+            Sections.Add(new AliasesSectionViewModel(_aliases));
+        else
+            Add("aliases", "Aliases", "Phase 5 PR 5.11",
+                "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
         Add("rooms",         "Rooms",          "Phase 5 PR 5.12", "Static MDB table — id / name / description / shop refs / remote-action prerequisites (Phase 7 walker).");
         Add("paths",         "Paths",          "Phase 5 PR 5.13", "Static MDB table — directed edges between rooms.");
         Add("lairs",         "Lairs",          "Phase 5 PR 5.14", "Static MDB table — referenced by Auto-Lair scheduler UI.");
