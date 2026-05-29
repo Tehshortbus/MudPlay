@@ -60,7 +60,7 @@
 
             <!-- ============ Party behavior ============ -->
             <TextBlock Classes="SectionHeader" Text="Party behavior"/>
-            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
 
                 <!-- Rank: Front / Mid / Back. -->
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rank"/>
@@ -73,30 +73,40 @@
                 <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"  IsEnabled="False"
                              ToolTip.Tip="Back rank — caster / healer position."/>
 
-                <!-- Attack priority: who do we target? -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Attack priority" Margin="0,8,0,0"/>
+                <!-- Monster target order: which monster do we swing at first? -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Target order" Margin="0,8,0,0"/>
                 <ComboBox  Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Normal — front-of-room first. Reverse — back-of-room first. Random — pick a hostile at random each engagement.">
+                    <ComboBoxItem Content="Normal"/>
+                    <ComboBoxItem Content="Reverse"/>
+                    <ComboBoxItem Content="Random"/>
+                </ComboBox>
+
+                <!-- Attack priority: who do we target? -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Attack priority" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
                            Margin="0,8,8,0"
                            ToolTip.Tip="Default — target what we'd pick on our own. Party leader — mirror the leader's target. Party member — mirror a named member's target.">
                     <ComboBoxItem Content="Default"/>
                     <ComboBoxItem Content="Party leader"/>
                     <ComboBoxItem Content="Party member"/>
                 </ComboBox>
-                <AutoCompleteBox Grid.Row="1" Grid.Column="3" IsEnabled="False" Width="180"
+                <AutoCompleteBox Grid.Row="2" Grid.Column="3" IsEnabled="False" Width="180"
                                  Margin="0,8,0,0"
                                  PlaceholderText="Member name" FilterMode="Contains"
                                  ToolTip.Tip="Active when Attack priority is set to Party member — names autocomplete from PartyState.Members once Phase 6 lands."/>
 
                 <!-- Attack order: when in the round do we swing? -->
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Attack order" Margin="0,8,0,0"/>
-                <ComboBox  Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack order" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
                            Margin="0,8,8,0"
                            ToolTip.Tip="Default — fire in our usual slot. Attack last — be the last attacker in the party, re-announce if needed. Attack after member — re-announce after the named member's attack on the same target. Non-party attack announces are filtered out at the engine level so other groups in the room don't affect ordering.">
                     <ComboBoxItem Content="Default"/>
                     <ComboBoxItem Content="Attack last"/>
                     <ComboBoxItem Content="Attack after member"/>
                 </ComboBox>
-                <AutoCompleteBox Grid.Row="2" Grid.Column="3" IsEnabled="False" Width="180"
+                <AutoCompleteBox Grid.Row="3" Grid.Column="3" IsEnabled="False" Width="180"
                                  Margin="0,8,0,0"
                                  PlaceholderText="Member name" FilterMode="Contains"
                                  ToolTip.Tip="Active when Attack order is set to Attack after member."/>
@@ -212,85 +222,54 @@
             <TextBlock Classes="SectionHeader" Text="Options"/>
             <Grid ColumnDefinitions="*,16,*">
                 <StackPanel Grid.Column="0" Spacing="2">
-                    <CheckBox Content="Attack last in party" IsEnabled="False"
-                              ToolTip.Tip="Match the party's current attack target."/>
-                    <CheckBox Content="Attack in reverse order" IsEnabled="False"
-                              ToolTip.Tip="Reverse the normal target order (Back-first)."/>
-                    <CheckBox Content="Attack what other members attack" IsEnabled="False"
-                              ToolTip.Tip="Mirror live combat selection across the party."/>
                     <CheckBox Content="Request party health" IsEnabled="False"
                               ToolTip.Tip="Periodic @health probe to track party state."/>
                     <CheckBox Content="Auto-share collected cash" IsEnabled="False"
                               ToolTip.Tip="Split loot evenly via the party-share command."/>
-                    <CheckBox Content="Help leader bash doors" IsEnabled="False"
-                              ToolTip.Tip="Join in on bash attempts when the leader is forcing a door."/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Spacing="2">
+                    <CheckBox Content="Help leader bash doors" IsEnabled="False"
+                              ToolTip.Tip="Join in on bash attempts when the leader is forcing a door."/>
                     <CheckBox Content="Ignore party when following" IsEnabled="False"
                               ToolTip.Tip="Don't fire party-coordination commands while in `follow` mode."/>
                     <CheckBox Content="Auto-collect when following" IsEnabled="False"
                               ToolTip.Tip="Pick up items even while following another player."/>
-                    <CheckBox Content="Go @panic when injured" IsEnabled="False"
-                              ToolTip.Tip="Broadcast @panic when HP drops past the run threshold."/>
-                    <Grid ColumnDefinitions="160,*" Margin="0,4,0,0">
-                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Say emote when leading"/>
-                        <TextBox  Grid.Column="1" IsEnabled="False" Width="220" HorizontalAlignment="Left"
-                                  PlaceholderText="e.g. let's go"
-                                  ToolTip.Tip="Sent on party-formation transition to leader."/>
-                    </Grid>
-                    <Grid ColumnDefinitions="160,*">
-                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Say emote when joining"/>
-                        <TextBox  Grid.Column="1" IsEnabled="False" Width="220" HorizontalAlignment="Left"
-                                  PlaceholderText="e.g. following"
-                                  ToolTip.Tip="Sent on party-join."/>
-                    </Grid>
                 </StackPanel>
             </Grid>
 
             <!-- ============ Capacity + cadence ============ -->
             <TextBlock Classes="SectionHeader" Text="Capacity + cadence"/>
-            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters when partying"/>
                 <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="20" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Cap on hostiles to engage as a party (overrides Combat-tab cap)."/>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max. monster experience"/>
-                <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="9999999" Width="160" HorizontalAlignment="Left"
-                               ToolTip.Tip="Skip mobs worth more than this — avoids party-only rares."/>
-
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
-                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
                                    ToolTip.Tip="Pause the party action loop while any member is below this HP %."/>
                     <TextBlock Classes="FieldLabel" Text="%"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
-                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
+                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown IsEnabled="False" Value="2" Minimum="0" Maximum="60" Width="80"
                                    ToolTip.Tip="Cap the wait window when this character is the leader."/>
                     <TextBlock Classes="FieldLabel" Text="min"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
-                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
+                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown IsEnabled="False" Value="5" Minimum="1" Maximum="60" Width="80"
                                    ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
                     <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Wait-for-members grace"/>
-                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="60" Minimum="0" Maximum="600" Width="80"
-                                   ToolTip.Tip="How long to hold the group together while a member reconnects."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
-                </StackPanel>
+                <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                          Content="Reset statistics on loop start" IsEnabled="False"
+                          ToolTip.Tip="Sends `@Reset` so the party EXP / kill counters zero at the start of every loop run."/>
 
-                <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-                          Content="Auto-Exp-Reset on loop / Auto-Lair start" IsEnabled="False"
-                          ToolTip.Tip="Sends `@Reset` so the party EXP counter zeroes at the run boundary."/>
-
-                <CheckBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
                           Content="Auto-invite reconnecting member" IsEnabled="False"
                           ToolTip.Tip="Leader-only — auto-invite a member who returns inside the wait window."/>
             </Grid>
