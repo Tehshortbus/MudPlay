@@ -173,7 +173,14 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         if (SelectedRow is null) return;
         int i = Rows.IndexOf(SelectedRow);
         if (i <= 0) return;
+        ToolbarRowViewModel moved = SelectedRow;
         Rows.Move(i, i - 1);
+        // Keep the row selected so the user can press Move up / down again
+        // without re-clicking. The index changed but the value didn't, so
+        // we have to nudge the CanExecute observers manually.
+        SelectedRow = moved;
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
         Dirty();
     }
 
@@ -185,7 +192,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         if (SelectedRow is null) return;
         int i = Rows.IndexOf(SelectedRow);
         if (i < 0 || i >= Rows.Count - 1) return;
+        ToolbarRowViewModel moved = SelectedRow;
         Rows.Move(i, i + 1);
+        SelectedRow = moved;
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
         Dirty();
     }
 
