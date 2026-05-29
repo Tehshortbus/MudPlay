@@ -121,6 +121,13 @@ public sealed class AppServices
     public DisplayConfig Display { get; } = new();
 
     /// <summary>
+    /// Cross-platform secret storage for things like per-character BBS
+    /// passwords. Phase 4 PR 4.5b ships an AES-GCM file-backed store;
+    /// later PRs can swap in real OS keychains behind the same interface.
+    /// </summary>
+    public ICredentialStore Credentials { get; } = new EncryptedFileCredentialStore();
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.

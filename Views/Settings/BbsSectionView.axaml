@@ -167,10 +167,32 @@
                                Text="MajorMUD renders against a fixed 80×25 grid and won't reflow if you push higher. Non-game BBS doors usually do reflow — feel free to crank if a particular BBS supports it."/>
 
                     <TextBlock Classes="GroupHeader" Text="Credentials"/>
+
                     <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
-                               Text="Per-character username / password and the menu-navigation sequence are wired by Phase 4 PRs 4.5b (CredentialStore) + 4.5c (LoginAutomator)."/>
+                               Text="{Binding CredentialsHint}"/>
+
+                    <Grid Margin="0,6,0,0" IsEnabled="{Binding HasNamedProfile}"
+                          ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Username:"/>
+                        <TextBox   Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding Username, Mode=TwoWay}"
+                                   Width="280" HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Password:"/>
+                        <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="280,6,Auto"
+                              HorizontalAlignment="Left">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding Password, Mode=TwoWay}"
+                                     PasswordChar="{Binding ShowPassword, Converter={x:Static vm:PasswordCharConverter.Instance}}"
+                                     PlaceholderText="(leave empty to keep the existing password)"/>
+                            <ToggleButton Grid.Column="2"
+                                          IsChecked="{Binding ShowPassword, Mode=TwoWay}"
+                                          Content="Show"
+                                          MinWidth="60"/>
+                        </Grid>
+                    </Grid>
 
                 </StackPanel>
             </Grid>

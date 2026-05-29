@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Models.Profile;
 using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
@@ -25,7 +26,10 @@ namespace FujinTerm.ViewModels.Settings;
 public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 {
     private readonly BbsProfileStore _bbsStore;
+    private readonly ProfileService _profile;
+    private readonly ICredentialStore _credentials;
     private readonly Dictionary<string, BbsProfile> _loaded = new(StringComparer.OrdinalIgnoreCase);
+    private string? _pendingPassword;          // null = unchanged; "" = clear; else write
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -67,10 +71,33 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
 
-    public BbsSectionViewModel(BbsProfileStore bbsStore)
+    // ----- Per-character credentials (PR 4.5b) -----
+    /// <summary>True when a named character profile is loaded — gates the credentials section.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CredentialsHint))]
+    private bool _hasNamedProfile;
+
+    [ObservableProperty] private string _username = string.Empty;
+    [ObservableProperty] private string _password = string.Empty;
+    [ObservableProperty] private bool _showPassword;
+
+    /// <summary>Helper text under the credentials section ("for character: …" or warning).</summary>
+    public string CredentialsHint => HasNamedProfile
+        ? $"For character: {_profile.CurrentProfileName}"
+        : "Load or create a named character profile (File → New profile) to attach credentials to a BBS.";
+
+    public BbsSectionViewModel(BbsProfileStore bbsStore, ProfileService profile, ICredentialStore credentials)
     {
         ArgumentNullException.ThrowIfNull(bbsStore);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(credentials);
         _bbsStore = bbsStore;
+        _profile = profile;
+        _credentials = credentials;
+
+        _profile.ProfileLoaded += _ => RefreshProfileState();
+        _profile.ProfileClosed += RefreshProfileState;
+        RefreshProfileState();
 
         ReloadBbsList();
         SelectedBbsName = AvailableBbsNames.FirstOrDefault();
@@ -99,8 +126,48 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         {
             _bbsStore.Save(profile);
         }
+
+        ApplyCredentials();
+
         ClearDirty();
     }
+
+    private void ApplyCredentials()
+    {
+        if (!HasNamedProfile) return;
+        if (SelectedBbsName is not { } bbs) return;
+        CharacterProfile? character = _profile.Current;
+        if (character is null || _profile.CurrentProfileName is null) return;
+
+        character.BbsCredentials ??= new();
+        if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
+        {
+            cred = new BbsCredentials();
+            character.BbsCredentials[bbs] = cred;
+        }
+        cred.Username = Username;
+
+        if (_pendingPassword is not null)
+        {
+            string credId = BuildCredentialId(bbs, _profile.CurrentProfileName);
+            if (_pendingPassword.Length == 0)
+            {
+                _ = _credentials.DeleteAsync(credId);
+                cred.PasswordCredentialId = null;
+            }
+            else
+            {
+                _ = _credentials.SetAsync(credId, _pendingPassword);
+                cred.PasswordCredentialId = credId;
+            }
+            _pendingPassword = null;
+        }
+
+        _profile.Save();
+    }
+
+    private static string BuildCredentialId(string bbsName, string charName)
+        => $"bbs:{bbsName}:{charName}:password";
 
     private void RenameSelected(string oldName, string newName)
     {
@@ -199,6 +266,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         Name = profile.Name;
         Host = profile.Host;
+
+        LoadCredentialsFor(name);
         Port = profile.Port;
         WebsiteUrl = profile.WebsiteUrl;
         MaxRedials = profile.MaxRedials;
@@ -211,6 +280,45 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         HasSysopPowers = profile.HasSysopPowers;
         TerminalCols = profile.TerminalCols;
         TerminalRows = profile.TerminalRows;
+    }
+
+    private void LoadCredentialsFor(string bbsName)
+    {
+        _pendingPassword = null;
+        if (!HasNamedProfile)
+        {
+            Username = string.Empty;
+            Password = string.Empty;
+            return;
+        }
+        CharacterProfile? character = _profile.Current;
+        if (character?.BbsCredentials is not null
+            && character.BbsCredentials.TryGetValue(bbsName, out BbsCredentials? cred))
+        {
+            Username = cred.Username;
+            // Password isn't pulled from the credential store eagerly — that
+            // would surface the plaintext over a logging boundary every time
+            // the user clicks around. Show empty + a placeholder; typing a
+            // new one replaces, leaving it empty preserves the existing.
+            Password = string.Empty;
+        }
+        else
+        {
+            Username = string.Empty;
+            Password = string.Empty;
+        }
+    }
+
+    private void RefreshProfileState()
+    {
+        HasNamedProfile = !_profile.IsBlankDraft && _profile.Current is not null;
+        OnPropertyChanged(nameof(CredentialsHint));
+        if (SelectedBbsName is not null)
+        {
+            _suppressDirty = true;
+            LoadCredentialsFor(SelectedBbsName);
+            _suppressDirty = false;
+        }
     }
 
     private void ResetFields()
@@ -270,6 +378,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
+    partial void OnUsernameChanged(string value)                { Dirty(); }
+    partial void OnPasswordChanged(string value)
+    {
+        if (_suppressDirty) return;
+        _pendingPassword = value;
+        Dirty();
+    }
     partial void OnHostChanged(string value)                    { PushToCache(); Dirty(); }
     partial void OnPortChanged(int value)                       { PushToCache(); Dirty(); }
     partial void OnWebsiteUrlChanged(string? value)             { PushToCache(); Dirty(); }

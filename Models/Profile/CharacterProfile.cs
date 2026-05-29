@@ -58,4 +58,12 @@ public sealed class CharacterProfile
     /// default to <see cref="PanelState.Docked"/>.
     /// </summary>
     public Dictionary<string, PanelLayout>? PanelLayouts { get; set; }
+
+    /// <summary>
+    /// Per-BBS login credentials for this character. Keyed by BBS name
+    /// (matches <see cref="Settings.BbsProfile.Name"/>). Username is plaintext;
+    /// password lives in the <see cref="Services.ICredentialStore"/> under
+    /// the id stored on <see cref="BbsCredentials.PasswordCredentialId"/>.
+    /// </summary>
+    public Dictionary<string, BbsCredentials>? BbsCredentials { get; set; }
 }
