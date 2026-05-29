@@ -62,8 +62,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Port the active BBS resolves to. <c>0</c> when no BBS is configured.</summary>
     public int Port => ResolveActiveBbs()?.Port ?? 0;
 
-    /// <summary>The BBS name pinned to the loaded character profile, if any.</summary>
-    public string? ActiveBbsName => AppServices.Current.Profile.Current?.BbsName;
+    /// <summary>
+    /// Name of the BBS the connect button will dial. Follows the same
+    /// preference order as <see cref="ResolveActiveBbs"/> — the loaded
+    /// character's pin first, then a fallback to the first BBS in the
+    /// global list.
+    /// </summary>
+    public string? ActiveBbsName => ResolveActiveBbs()?.Name;
 
     /// <summary>Window title — "FujinTerm — {profile} — {bbs}", trimmed when bits are missing.</summary>
     public string WindowTitle
@@ -499,15 +504,30 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Look up the BBS the loaded character is configured to dial. Returns
-    /// <c>null</c> when no profile is loaded, the profile has no
-    /// <c>BbsName</c>, or the named BBS file isn't on disk.
+    /// Resolve which BBS the connect target reads off of. Preference order:
+    /// <list type="number">
+    ///   <item><description>The pin on the loaded character profile
+    ///     (<c>CharacterProfile.BbsName</c>).</description></item>
+    ///   <item><description>The first BBS in the global list (alphabetical),
+    ///     so a user on a blank draft can still click Connect without
+    ///     opening Settings first.</description></item>
+    /// </list>
+    /// Returns <c>null</c> only when there's no profile, no pin AND zero
+    /// BBSes saved on disk.
     /// </summary>
     private static BbsProfile? ResolveActiveBbs()
     {
         string? name = AppServices.Current.Profile.Current?.BbsName;
-        if (string.IsNullOrEmpty(name)) return null;
-        return AppServices.Current.Bbs.Get(name);
+        if (!string.IsNullOrEmpty(name))
+        {
+            BbsProfile? pinned = AppServices.Current.Bbs.Get(name);
+            if (pinned is not null) return pinned;
+        }
+
+        string? first = AppServices.Current.Bbs.ListNames()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        return first is null ? null : AppServices.Current.Bbs.Get(first);
     }
 
     private void RefreshBbsBindings()
