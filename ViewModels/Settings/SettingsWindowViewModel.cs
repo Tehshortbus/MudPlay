@@ -202,7 +202,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
-        Sections.Add(new ToolbarSectionViewModel(AppServices.Current.Settings));
+        Sections.Add(new ToolbarSectionViewModel(_profile));
 
         Sections.Add(new BbsSectionViewModel(
             AppServices.Current.Bbs,

@@ -1,14 +1,17 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using FujinTerm.Models.Settings;
+using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
 /// <summary>
-/// Live observable mirror of the Global-tier <see cref="ToolbarSettings"/>.
-/// The main window's toolbar buttons bind their <c>IsVisible</c> here so
-/// edits in Settings → Toolbar apply without a relaunch.
-/// <see cref="AppServices"/> hydrates this on startup and re-hydrates on
-/// every <see cref="SettingsService.GlobalSettingsChanged"/> tick.
+/// Live observable mirror of the active character profile's
+/// <see cref="ToolbarSettings"/>. The main window's toolbar buttons bind
+/// their <c>IsVisible</c> here so loading a profile or saving a Settings
+/// → Toolbar edit applies without a relaunch.
+/// <see cref="AppServices"/> hydrates this on every
+/// <see cref="ProfileService.ProfileLoaded"/> /
+/// <see cref="ProfileService.ProfileMutated"/> tick and resets to
+/// defaults on <see cref="ProfileService.ProfileClosed"/>.
 /// </summary>
 public sealed partial class ToolbarConfig : ObservableObject
 {

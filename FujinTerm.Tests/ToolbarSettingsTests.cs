@@ -1,5 +1,5 @@
 using System.Text.Json;
-using FujinTerm.Models.Settings;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using Xunit;
 

@@ -227,11 +227,14 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetDisplayToDefaults;
         Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
-        // Bridge: keep the live ToolbarConfig in sync with the Global tier.
-        // Hydrate once now from whatever was loaded on disk, then re-hydrate
-        // every time the Settings → Toolbar section saves.
-        ApplyToolbarFromGlobal();
-        Settings.GlobalSettingsChanged += _ => ApplyToolbarFromGlobal();
+        // Bridge: keep the live ToolbarConfig in sync with the loaded
+        // character profile (Char-tier — each character can have its own
+        // toolbar layout). Re-hydrates on every profile load AND on every
+        // ProfileMutated tick (which fires from the Settings → Toolbar
+        // Apply path).
+        Profile.ProfileLoaded += _ => ApplyToolbarFromActiveProfile();
+        Profile.ProfileClosed += ResetToolbarToDefaults;
+        Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
@@ -244,18 +247,23 @@ public sealed class AppServices
         Profile.ProfileLoaded += OnProfileLoaded;
     }
 
-    private void ApplyToolbarFromGlobal()
+    private void ApplyToolbarFromActiveProfile()
     {
-        Models.Settings.ToolbarSettings dto = ReadToolbar(Settings.Current);
+        Models.Profile.ToolbarSettings dto = ReadToolbar(Profile.Current);
         Toolbar.ApplyFrom(dto);
     }
 
-    private static Models.Settings.ToolbarSettings ReadToolbar(Models.Settings.GlobalSettings g)
+    private void ResetToolbarToDefaults()
     {
-        if (g.Settings is null) return new();
-        if (!g.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
-        return System.Text.Json.JsonSerializer.Deserialize<Models.Settings.ToolbarSettings>(json.GetRawText())
-               ?? new Models.Settings.ToolbarSettings();
+        Toolbar.ApplyFrom(new Models.Profile.ToolbarSettings());
+    }
+
+    private static Models.Profile.ToolbarSettings ReadToolbar(Models.Profile.CharacterProfile? profile)
+    {
+        if (profile?.Settings is null) return new();
+        if (!profile.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
+        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.ToolbarSettings>(json.GetRawText())
+               ?? new Models.Profile.ToolbarSettings();
     }
 
     private void ApplyDisplayFromActiveBbs()

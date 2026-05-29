@@ -1,23 +1,25 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
-using FujinTerm.Models.Settings;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Toolbar" tab. Global-tier — controls which icons appear on the
-/// main window's toolbar. Bound directly against the live
-/// <see cref="ToolbarConfig"/> mirror; Apply also persists to disk
-/// via <see cref="SettingsService"/>, Discard re-reads from disk.
+/// "Toolbar" tab. Char-tier — each character profile owns its own
+/// toolbar layout. Apply writes to <see cref="CharacterProfile.Settings"/>
+/// under the <c>"Toolbar"</c> key + <see cref="ProfileService.Save"/>;
+/// <see cref="AppServices"/> mirrors that back onto the live
+/// <see cref="ToolbarConfig"/> via the <see cref="ProfileService.ProfileMutated"/>
+/// hook so the live toolbar updates without a relaunch.
 /// </summary>
 public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Toolbar";
 
-    private readonly SettingsService _settings;
+    private readonly ProfileService _profile;
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -35,7 +37,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new ToolbarSectionView { DataContext = this };
 
-    // ----- Edit-time mirror of the toolbar config -----
+    /// <summary>True when any character profile is loaded (including unsaved drafts).</summary>
+    public bool HasProfile => _profile.Current is not null;
+
+    // ----- Edit-time mirror of the toolbar settings -----
     [ObservableProperty] private bool _showConnect;
     [ObservableProperty] private bool _showSettings;
     [ObservableProperty] private bool _showNavigation;
@@ -50,16 +55,21 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _showGameDataBrowser;
     [ObservableProperty] private bool _showLog;
 
-    public ToolbarSectionViewModel(SettingsService settings)
+    public ToolbarSectionViewModel(ProfileService profile)
     {
-        ArgumentNullException.ThrowIfNull(settings);
-        _settings = settings;
-        LoadFromDisk();
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+
+        LoadFromProfile();
         _suppressDirty = false;
     }
 
     public override void Apply()
     {
+        if (_profile.Current is not { } profile) return;
+
         ToolbarSettings dto = new()
         {
             ShowConnect = ShowConnect,
@@ -77,22 +87,37 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             ShowLog = ShowLog,
         };
 
-        GlobalSettings g = _settings.Current;
-        g.Settings ??= new();
-        g.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
-        _settings.Save();  // fires GlobalSettingsChanged → AppServices rehydrates the live mirror.
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        // Save() no-ops on drafts (no name yet to write to); NotifyMutated
+        // always fires so AppServices re-hydrates the live ToolbarConfig
+        // either way. Drafts carry the edit in memory until first Save.
+        _profile.Save();
+        _profile.NotifyMutated();
         ClearDirty();
     }
 
     public override void Discard()
     {
         _suppressDirty = true;
-        LoadFromDisk();
+        LoadFromProfile();
         _suppressDirty = false;
         ClearDirty();
     }
 
-    private void LoadFromDisk()
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
+    private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void ReloadAfterProfileSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
     {
         ToolbarSettings dto = ReadOrDefault();
         ShowConnect = dto.ShowConnect;
@@ -112,9 +137,9 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private ToolbarSettings ReadOrDefault()
     {
-        GlobalSettings g = _settings.Current;
-        if (g.Settings is null) return new();
-        if (!g.Settings.TryGetValue(TabKey, out JsonElement json)) return new();
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new();
         return JsonSerializer.Deserialize<ToolbarSettings>(json.GetRawText()) ?? new();
     }
 
