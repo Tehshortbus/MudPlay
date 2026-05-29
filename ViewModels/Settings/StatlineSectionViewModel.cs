@@ -251,9 +251,9 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     private string DefaultTemplateForClass() => _playerState.ManaType switch
     {
-        ManaType.Kai  => "[HP=%h,KAI=%m]: %r",
+        ManaType.Kai  => "[HP=%h/KAI=%m]: %r",
         ManaType.None => "[HP=%h]: %r",
-        _             => "[HP=%h,MA=%m]: %r",
+        _             => "[HP=%h/MA=%m]: %r",
     };
 
     private string ApplyWildcards(string template)
