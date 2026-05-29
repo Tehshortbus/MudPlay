@@ -203,10 +203,11 @@ public partial class MainWindowViewModel : ObservableObject
         SyncProfileMenuState();
         AppServices.Current.Profile.ProfileLoaded += _ => { SyncProfileMenuState(); RefreshBbsBindings(); };
         AppServices.Current.Profile.ProfileClosed += () => { SyncProfileMenuState(); RefreshBbsBindings(); };
-        // ProfileSaving fires after the BBS section's Apply has stamped the
-        // new BbsName onto the profile DTO — perfect hook to refresh the
-        // window title and connect-target bindings.
-        AppServices.Current.Profile.ProfileSaving += _ => RefreshBbsBindings();
+        // ProfileMutated fires from BbsSectionViewModel.Apply after the
+        // BBS pin has been stamped onto the profile — works for both
+        // named profiles and unsaved drafts (Save no-ops on drafts but
+        // the mutation signal still fires).
+        AppServices.Current.Profile.ProfileMutated += _ => RefreshBbsBindings();
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the

@@ -139,48 +139,65 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             _bbsStore.Save(profile);
         }
 
-        ApplyCredentials();
+        ApplyToCurrentProfile();
 
         ClearDirty();
     }
 
-    private void ApplyCredentials()
+    /// <summary>
+    /// Push the BBS section's character-side decisions onto the loaded
+    /// profile. Two slices that fire independently:
+    ///   • BbsName — pins the active BBS for the loaded character; works
+    ///     even on the blank draft so the main window's connect target
+    ///     resolves before the user has named their profile.
+    ///   • Credentials — username, password, menu-nav. Needs a named
+    ///     profile because the credential-store key embeds the char name.
+    /// Both slices end with a <see cref="ProfileService.NotifyMutated"/>
+    /// so the main window's title / Host / Port re-resolve.
+    /// </summary>
+    private void ApplyToCurrentProfile()
     {
-        if (!HasNamedProfile) return;
         if (SelectedBbsName is not { } bbs) return;
         CharacterProfile? character = _profile.Current;
-        if (character is null || _profile.CurrentProfileName is null) return;
+        if (character is null) return;
 
-        // Selecting a BBS + clicking OK pins this character to that BBS —
-        // the main UI's connect target reads from CharacterProfile.BbsName.
+        // Slice 1 — always: pin the active BBS.
         character.BbsName = bbs;
 
-        character.BbsCredentials ??= new();
-        if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
+        // Slice 2 — only when the profile is named (credentials need a
+        // stable per-character key in the credential store).
+        if (HasNamedProfile && _profile.CurrentProfileName is { } profileName)
         {
-            cred = new BbsCredentials();
-            character.BbsCredentials[bbs] = cred;
-        }
-        cred.Username = Username;
-        cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
-
-        if (_pendingPassword is not null)
-        {
-            string credId = BuildCredentialId(bbs, _profile.CurrentProfileName);
-            if (_pendingPassword.Length == 0)
+            character.BbsCredentials ??= new();
+            if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
             {
-                _ = _credentials.DeleteAsync(credId);
-                cred.PasswordCredentialId = null;
+                cred = new BbsCredentials();
+                character.BbsCredentials[bbs] = cred;
             }
-            else
+            cred.Username = Username;
+            cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
+
+            if (_pendingPassword is not null)
             {
-                _ = _credentials.SetAsync(credId, _pendingPassword);
-                cred.PasswordCredentialId = credId;
+                string credId = BuildCredentialId(bbs, profileName);
+                if (_pendingPassword.Length == 0)
+                {
+                    _ = _credentials.DeleteAsync(credId);
+                    cred.PasswordCredentialId = null;
+                }
+                else
+                {
+                    _ = _credentials.SetAsync(credId, _pendingPassword);
+                    cred.PasswordCredentialId = credId;
+                }
+                _pendingPassword = null;
             }
-            _pendingPassword = null;
         }
 
+        // Save() no-ops on drafts (no name to write to). NotifyMutated
+        // always fires so observers refresh either way.
         _profile.Save();
+        _profile.NotifyMutated();
     }
 
     private static string BuildCredentialId(string bbsName, string charName)

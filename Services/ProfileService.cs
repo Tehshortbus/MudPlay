@@ -51,6 +51,21 @@ public sealed class ProfileService
     public event Action<CharacterProfile>? ProfileSaving;
 
     /// <summary>
+    /// Fired whenever in-memory state on <see cref="Current"/> changes via
+    /// the settings UI (BBS pin, credential edit, etc.) — i.e. anywhere a
+    /// disk save isn't guaranteed (blank drafts no-op the save path but
+    /// observers still need to refresh). Bindings like the main window's
+    /// title + active-BBS-derived Host / Port listen here.
+    /// </summary>
+    public event Action<CharacterProfile>? ProfileMutated;
+
+    /// <summary>Fire <see cref="ProfileMutated"/> for the current profile, if any.</summary>
+    public void NotifyMutated()
+    {
+        if (Current is not null) ProfileMutated?.Invoke(Current);
+    }
+
+    /// <summary>
     /// Load the profile stored at <c>Data/profiles/{name}.json</c> and fire
     /// <see cref="ProfileLoaded"/>. If a different profile is already loaded
     /// it is closed first (<see cref="ProfileClosed"/> fires before the new
