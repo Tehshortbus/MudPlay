@@ -56,4 +56,42 @@
     <StreamGeometry x:Key="IconClose">M6 6 L18 18 M6 18 L18 6</StreamGeometry>
     <StreamGeometry x:Key="IconSearch">M17 11 A6 6 0 1 1 5 11 A6 6 0 1 1 17 11 Z M16 16 L20 20</StreamGeometry>
 
+    <!-- Action menu glyphs (Phase 4 PR 4.6b). Same 24x24 grid + 1.5px round-stroke
+         style as the originals above. Used by the toolbar catalogue for the
+         bulk-action and auto-engine entries; commands wire in their owning
+         phases (9 EQUIP / 12 Quick Tools / 13 automation engines). -->
+
+    <!-- Bulk actions -->
+    <!-- Down-arrow into open-top box. -->
+    <StreamGeometry x:Key="IconGetAll">M12 3 V13 M8 9 L12 13 L16 9 M4 16 V20 H20 V16</StreamGeometry>
+    <!-- Up-arrow out of bottom box. -->
+    <StreamGeometry x:Key="IconDropAll">M12 21 V11 M8 15 L12 11 L16 15 M4 4 V8 H20 V4</StreamGeometry>
+    <!-- Classic heraldic shield. -->
+    <StreamGeometry x:Key="IconEquipAll">M12 3 L20 6 V12 A8 8 0 0 1 12 21 A8 8 0 0 1 4 12 V6 Z</StreamGeometry>
+    <!-- Coin descending into bank slot. -->
+    <StreamGeometry x:Key="IconDepositAll">M12 3 A4 4 0 1 1 12 11 A4 4 0 1 1 12 3 Z M8 14 H16 V20 H8 Z M10 14 V20 M14 14 V20</StreamGeometry>
+
+    <!-- Master kill-switch — power symbol. -->
+    <StreamGeometry x:Key="IconKillSwitch">M12 4 V12 M6 8 A7.5 7.5 0 1 0 18 8</StreamGeometry>
+
+    <!-- Auto-* engines -->
+    <!-- Diagonal sword: blade TL→BR, crossguard near hilt, small pommel. -->
+    <StreamGeometry x:Key="IconAutoCombat">M6 18 L18 6 M4 16 L8 20 M16 4 L20 8 M14 6 L18 10</StreamGeometry>
+    <!-- 8-point starburst — area-effect / nuke. -->
+    <StreamGeometry x:Key="IconAutoNuke">M12 3 V8 M12 16 V21 M3 12 H8 M16 12 H21 M6 6 L9 9 M15 15 L18 18 M6 18 L9 15 M15 9 L18 6</StreamGeometry>
+    <!-- Medical cross inside a circle — heal / rest. -->
+    <StreamGeometry x:Key="IconAutoHeal">M12 5 A7 7 0 1 1 12 19 A7 7 0 1 1 12 5 Z M12 9 V15 M9 12 H15</StreamGeometry>
+    <!-- Sparkle/asterisk — buffs & bless. -->
+    <StreamGeometry x:Key="IconAutoBless">M12 4 V20 M4 12 H20 M6 6 L18 18 M6 18 L18 6</StreamGeometry>
+    <!-- Lightbulb with base + filament. -->
+    <StreamGeometry x:Key="IconAutoLight">M9 14 A4 4 0 1 1 15 14 V17 H9 V14 Z M10 20 H14 M12 3 V5 M5 7 L6.5 8.5 M19 7 L17.5 8.5</StreamGeometry>
+    <!-- Drawstring bag — auto-get items. -->
+    <StreamGeometry x:Key="IconAutoGetItems">M6 8 H18 L19 20 H5 Z M9 8 V6 A3 3 0 0 1 15 6 V8</StreamGeometry>
+    <!-- Coin with $ — auto-get cash. -->
+    <StreamGeometry x:Key="IconAutoGetCash">M12 4 A8 8 0 1 1 12 20 A8 8 0 1 1 12 4 Z M12 7 V17 M10 10 H13 A1.5 1.5 0 1 1 13 13 H11 A1.5 1.5 0 1 0 11 16 H14</StreamGeometry>
+    <!-- Single footprint — sneak. -->
+    <StreamGeometry x:Key="IconAutoSneak">M10 3 C7 3 6 6 6 9 C6 11 8 13 10 13 C12 13 13 11 13 8 C13 5 12 3 10 3 Z M12 15 L12 20 H7 V15 Z</StreamGeometry>
+    <!-- Closed eye (lash arc + lashes + slash). -->
+    <StreamGeometry x:Key="IconAutoHide">M3 13 C7 9 17 9 21 13 M7 15 L8 17 M17 15 L16 17 M11 16 V18 M13 16 V18 M5 5 L19 19</StreamGeometry>
+
 </ResourceDictionary>
