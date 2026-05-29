@@ -67,7 +67,7 @@
 
             <!-- ============ Weapon Combat ============ -->
             <TextBlock Classes="SectionHeader" Text="Weapon combat"/>
-            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Normal attack command"/>
                 <TextBox Grid.Row="0" Grid.Column="1" IsEnabled="False" Width="220" HorizontalAlignment="Left"
                          PlaceholderText="a"
@@ -102,9 +102,6 @@
                 <AutoCompleteBox Grid.Row="6" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
                                  ToolTip.Tip="Off-hand worn alongside the BS weapon (often a shield, but any off-hand works)."/>
-
-                <CheckBox Grid.Row="7" Grid.Column="1" Content="Use normal weapon for attack spells" IsEnabled="False"
-                          ToolTip.Tip="Don't bother swapping to a caster off-hand for spell rounds."/>
             </Grid>
 
             <!-- ============ Options ============ -->
