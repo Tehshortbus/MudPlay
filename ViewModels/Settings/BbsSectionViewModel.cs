@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
@@ -468,6 +469,47 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         if (_suppressDirty) return;
         _pendingPassword = value;
         Dirty();
+    }
+
+    /// <summary>
+    /// Toggling Show ON pulls the stored password out of the credential store
+    /// on demand — so users can verify what's saved without leaking the
+    /// plaintext through the UI on every Settings open. Toggling OFF
+    /// leaves the box as-is (the user may have started editing); if they
+    /// haven't touched it, <see cref="_pendingPassword"/> stays null and
+    /// the Apply path no-ops the credential store.
+    /// </summary>
+    partial void OnShowPasswordChanged(bool value)
+    {
+        if (!value) return;
+        if (!HasNamedProfile) return;
+        if (!string.IsNullOrEmpty(Password)) return;
+        if (_pendingPassword is not null) return;
+        if (SelectedBbsName is not { } bbs) return;
+
+        CharacterProfile? character = _profile.Current;
+        if (character?.BbsCredentials is null) return;
+        if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred)) return;
+        if (cred.PasswordCredentialId is not { } credId) return;
+
+        _ = RevealStoredPasswordAsync(credId);
+    }
+
+    private async Task RevealStoredPasswordAsync(string credId)
+    {
+        string? pw = await _credentials.GetAsync(credId).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(pw)) return;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            // Suppress the OnPasswordChanged side-effect: this assignment is
+            // a reveal, not a user edit. Without the gate, _pendingPassword
+            // would get stamped with the same value and Apply would re-encrypt
+            // it back to the store as if the user had retyped it.
+            _suppressDirty = true;
+            try { Password = pw; }
+            finally { _suppressDirty = false; }
+        });
     }
     partial void OnHostChanged(string value)                    { PushToCache(); Dirty(); }
     partial void OnPortChanged(int value)                       { PushToCache(); Dirty(); }
