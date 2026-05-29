@@ -127,8 +127,8 @@
                     <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="1" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
                                    ToolTip.Tip="Skip the room if more than this many hostiles are present. Range 1–20 (rooms cap at 20 NPCs; 0 would mean always-run)."/>
                     <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run distance"/>
-                    <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="120" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Rooms to flee before re-evaluating."/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="3" Minimum="1" Maximum="100" Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Rooms to flee before re-evaluating. Range 1–100; most users keep this at 3 or 4."/>
                 </Grid>
             </Grid>
 
