@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:svc="using:FujinTerm.Services"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="500"
@@ -8,8 +9,6 @@
              x:DataType="vm:ToolbarSectionViewModel">
 
     <UserControl.Styles>
-        <!-- Icon glyph next to each checkbox content. Strokes the cell with
-             ChromeFgBrush so visibility matches the surrounding text. -->
         <Style Selector="Path.ToolbarRowIcon">
             <Setter Property="Stroke" Value="{StaticResource ChromeFgBrush}"/>
             <Setter Property="StrokeThickness" Value="1.5"/>
@@ -20,110 +19,146 @@
             <Setter Property="Stretch" Value="Uniform"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,6"/>
+        </Style>
+
+        <Style Selector="TextBlock.RowShortcut">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="TextBlock.SeparatorRow">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </UserControl.Styles>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="22" Spacing="6"
-                    MaxWidth="540" HorizontalAlignment="Left">
+    <Grid>
 
-            <TextBlock Text="Toolbar"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,12"/>
+        <!-- "No profile loaded" banner — shows when HasProfile is false. -->
+        <Border IsVisible="{Binding !HasProfile}"
+                Padding="22"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top">
+            <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                <TextBlock Text="Toolbar"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="{StaticResource FontSizeLg}"
+                           FontWeight="SemiBold"/>
+                <TextBlock Text="Load or create a character profile to edit Toolbar settings — every settings tab lives on the active character."
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
 
-            <CheckBox IsChecked="{Binding ShowConnect, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconPlug}"/>
-                    <TextBlock Text="Connect / Disconnect (Ctrl+K)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+        <!-- Editor — visible when a profile is loaded. -->
+        <Grid IsVisible="{Binding HasProfile}"
+              Margin="22"
+              RowDefinitions="Auto,*,Auto"
+              ColumnDefinitions="*,180">
 
-            <CheckBox IsChecked="{Binding ShowSettings, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconGear}"/>
-                    <TextBlock Text="Settings (Ctrl+,)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                       Classes="SectionHeader"
+                       Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
-            <CheckBox IsChecked="{Binding ShowNavigation, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconMap}"/>
-                    <TextBlock Text="Navigation (F5)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+            <!-- Row list. SelectionMode=Single drives the Move/Delete commands. -->
+            <Border Grid.Row="1" Grid.Column="0"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    Background="{StaticResource ChromeBgSunkenBrush}">
+                <ListBox ItemsSource="{Binding Rows}"
+                         SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ToolbarRowViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="2">
+                                <!-- Button row: icon -->
+                                <Path Grid.Column="0"
+                                      Classes="ToolbarRowIcon"
+                                      Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                      IsVisible="{Binding IsButton}"
+                                      Margin="2,0,8,0"/>
 
-            <CheckBox IsChecked="{Binding ShowBackscroll, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconHistory}"/>
-                    <TextBlock Text="Backscroll (F10)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                                <!-- Button row: label / separator row: dashed text -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding DisplayLabel}"
+                                           VerticalAlignment="Center"
+                                           Classes.SeparatorRow="{Binding IsSeparator}"/>
 
-            <CheckBox IsChecked="{Binding ShowCapture, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconRecord}"/>
-                    <TextBlock Text="Capture" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                                <!-- Button row: shortcut hint -->
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding ShortcutHint}"
+                                           Classes="RowShortcut"
+                                           IsVisible="{Binding IsButton}"
+                                           Margin="8,0,2,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
 
-            <CheckBox IsChecked="{Binding ShowWireInspector, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconSearch}"/>
-                    <TextBlock Text="Wire Inspector" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+            <!-- Right rail: row actions + add controls + reset. -->
+            <StackPanel Grid.Row="1" Grid.Column="1"
+                        Margin="12,0,0,0"
+                        Spacing="6">
 
-            <CheckBox IsChecked="{Binding ShowConversation, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconChat}"/>
-                    <TextBlock Text="Conversation (F2)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Button Content="Move up"
+                        Command="{Binding MoveUpCommand}"
+                        HorizontalAlignment="Stretch"/>
+                <Button Content="Move down"
+                        Command="{Binding MoveDownCommand}"
+                        HorizontalAlignment="Stretch"/>
+                <Button Content="Delete"
+                        Command="{Binding DeleteSelectedCommand}"
+                        HorizontalAlignment="Stretch"/>
 
-            <CheckBox IsChecked="{Binding ShowParty, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconParty}"/>
-                    <TextBlock Text="Party (F3)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Border Height="1"
+                        Background="{StaticResource ChromeBorderBrush}"
+                        Margin="0,8"/>
 
-            <CheckBox IsChecked="{Binding ShowWorkshop, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconUser}"/>
-                    <TextBlock Text="Player Workshop (F4)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <TextBlock Text="Add button"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeSm}"/>
+                <ComboBox ItemsSource="{Binding AvailableActions}"
+                          SelectedItem="{Binding SelectedAvailable, Mode=TwoWay}"
+                          PlaceholderText="Pick an action"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="svc:ToolbarItemCatalogue+Entry">
+                            <TextBlock Text="{Binding Label}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Content="Add"
+                        Command="{Binding AddButtonCommand}"
+                        HorizontalAlignment="Stretch"/>
 
-            <CheckBox IsChecked="{Binding ShowSpellBook, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconBook}"/>
-                    <TextBlock Text="Spell Book (F7)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Border Height="1"
+                        Background="{StaticResource ChromeBorderBrush}"
+                        Margin="0,8"/>
 
-            <CheckBox IsChecked="{Binding ShowSessionStats, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconStats}"/>
-                    <TextBlock Text="Session Stats (F11)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Button Content="Add separator"
+                        Command="{Binding AddSeparatorCommand}"
+                        HorizontalAlignment="Stretch"/>
 
-            <CheckBox IsChecked="{Binding ShowGameDataBrowser, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconDatabase}"/>
-                    <TextBlock Text="Game Data Browser (Ctrl+G)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Border Height="1"
+                        Background="{StaticResource ChromeBorderBrush}"
+                        Margin="0,8"/>
 
-            <CheckBox IsChecked="{Binding ShowLog, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Path Classes="ToolbarRowIcon" Data="{StaticResource IconLog}"/>
-                    <TextBlock Text="Log (F9)" VerticalAlignment="Center"/>
-                </StackPanel>
-            </CheckBox>
+                <Button Content="Reset to defaults"
+                        Command="{Binding ResetToDefaultsCommand}"
+                        HorizontalAlignment="Stretch"/>
+            </StackPanel>
+        </Grid>
 
-        </StackPanel>
-    </ScrollViewer>
+    </Grid>
 </UserControl>

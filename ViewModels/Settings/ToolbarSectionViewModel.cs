@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
@@ -8,12 +10,12 @@ using FujinTerm.Views.Settings;
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Toolbar" tab. Char-tier — each character profile owns its own
-/// toolbar layout. Apply writes to <see cref="CharacterProfile.Settings"/>
-/// under the <c>"Toolbar"</c> key + <see cref="ProfileService.Save"/>;
-/// <see cref="AppServices"/> mirrors that back onto the live
-/// <see cref="ToolbarConfig"/> via the <see cref="ProfileService.ProfileMutated"/>
-/// hook so the live toolbar updates without a relaunch.
+/// "Toolbar" tab — list editor for the per-character toolbar layout.
+/// Top-to-bottom here ≡ left-to-right on the live toolbar. Each row is
+/// either a button (resolved through <see cref="ToolbarItemCatalogue"/>)
+/// or a separator. Apply persists the layout to the loaded profile and
+/// re-hydrates the live <see cref="ToolbarConfig"/> through the standard
+/// <see cref="ProfileService.NotifyMutated"/> path.
 /// </summary>
 public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 {
@@ -28,32 +30,37 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     public override string Title => "Toolbar";
     public override bool IsDirty => _dirty;
 
-    public override IEnumerable<string> SearchableLabels => new[]
-    {
-        "Toolbar", "Connect", "Settings", "Navigation", "Backscroll",
-        "Capture", "Wire Inspector", "Conversation", "Party", "Workshop",
-        "Spell Book", "Session Stats", "Game Data Browser", "Log",
-    };
+    public override IEnumerable<string> SearchableLabels =>
+        ToolbarItemCatalogue.AllEntries.Select(e => e.Label).Prepend("Toolbar");
 
     public override Control View => _view ??= new ToolbarSectionView { DataContext = this };
 
-    /// <summary>True when any character profile is loaded (including unsaved drafts).</summary>
+    /// <summary>True when any character profile is loaded.</summary>
     public bool HasProfile => _profile.Current is not null;
 
-    // ----- Edit-time mirror of the toolbar settings -----
-    [ObservableProperty] private bool _showConnect;
-    [ObservableProperty] private bool _showSettings;
-    [ObservableProperty] private bool _showNavigation;
-    [ObservableProperty] private bool _showBackscroll;
-    [ObservableProperty] private bool _showCapture;
-    [ObservableProperty] private bool _showWireInspector;
-    [ObservableProperty] private bool _showConversation;
-    [ObservableProperty] private bool _showParty;
-    [ObservableProperty] private bool _showWorkshop;
-    [ObservableProperty] private bool _showSpellBook;
-    [ObservableProperty] private bool _showSessionStats;
-    [ObservableProperty] private bool _showGameDataBrowser;
-    [ObservableProperty] private bool _showLog;
+    /// <summary>Editable per-row view-models for the layout.</summary>
+    public ObservableCollection<ToolbarRowViewModel> Rows { get; } = new();
+
+    /// <summary>
+    /// Currently-selected row in the editor — the Up / Down / Delete
+    /// commands act on this one.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand))]
+    private ToolbarRowViewModel? _selectedRow;
+
+    /// <summary>
+    /// Catalogue entries the user has not already placed on the toolbar.
+    /// Drives the "Add Button" dropdown picker.
+    /// </summary>
+    public ObservableCollection<ToolbarItemCatalogue.Entry> AvailableActions { get; } = new();
+
+    /// <summary>Selected entry in the Add-button dropdown.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddButtonCommand))]
+    private ToolbarItemCatalogue.Entry? _selectedAvailable;
 
     public ToolbarSectionViewModel(ProfileService profile)
     {
@@ -72,26 +79,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
         ToolbarSettings dto = new()
         {
-            ShowConnect = ShowConnect,
-            ShowSettings = ShowSettings,
-            ShowNavigation = ShowNavigation,
-            ShowBackscroll = ShowBackscroll,
-            ShowCapture = ShowCapture,
-            ShowWireInspector = ShowWireInspector,
-            ShowConversation = ShowConversation,
-            ShowParty = ShowParty,
-            ShowWorkshop = ShowWorkshop,
-            ShowSpellBook = ShowSpellBook,
-            ShowSessionStats = ShowSessionStats,
-            ShowGameDataBrowser = ShowGameDataBrowser,
-            ShowLog = ShowLog,
+            Layout = Rows.Select(r => r.ToModel()).ToList(),
         };
 
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
-        // Save() no-ops on drafts (no name yet to write to); NotifyMutated
-        // always fires so AppServices re-hydrates the live ToolbarConfig
-        // either way. Drafts carry the edit in memory until first Save.
         _profile.Save();
         _profile.NotifyMutated();
         ClearDirty();
@@ -119,28 +111,109 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private void LoadFromProfile()
     {
-        ToolbarSettings dto = ReadOrDefault();
-        ShowConnect = dto.ShowConnect;
-        ShowSettings = dto.ShowSettings;
-        ShowNavigation = dto.ShowNavigation;
-        ShowBackscroll = dto.ShowBackscroll;
-        ShowCapture = dto.ShowCapture;
-        ShowWireInspector = dto.ShowWireInspector;
-        ShowConversation = dto.ShowConversation;
-        ShowParty = dto.ShowParty;
-        ShowWorkshop = dto.ShowWorkshop;
-        ShowSpellBook = dto.ShowSpellBook;
-        ShowSessionStats = dto.ShowSessionStats;
-        ShowGameDataBrowser = dto.ShowGameDataBrowser;
-        ShowLog = dto.ShowLog;
+        List<ToolbarItem> items = ReadOrDefault();
+        Rows.Clear();
+        foreach (ToolbarItem item in items)
+        {
+            Rows.Add(new ToolbarRowViewModel(item.Kind, item.ActionId));
+        }
+        RefreshAvailableActions();
     }
 
-    private ToolbarSettings ReadOrDefault()
+    private List<ToolbarItem> ReadOrDefault()
     {
         CharacterProfile? profile = _profile.Current;
-        if (profile?.Settings is null) return new();
-        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new();
-        return JsonSerializer.Deserialize<ToolbarSettings>(json.GetRawText()) ?? new();
+        if (profile?.Settings is null) return ToolbarDefaults.Build();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return ToolbarDefaults.Build();
+        ToolbarSettings? dto = JsonSerializer.Deserialize<ToolbarSettings>(json.GetRawText());
+        return dto?.Layout is { Count: > 0 } layout ? layout : ToolbarDefaults.Build();
+    }
+
+    private void RefreshAvailableActions()
+    {
+        HashSet<string> placed = new(
+            Rows.Where(r => r.Kind == ToolbarItemKind.Button && r.ActionId is not null)
+                .Select(r => r.ActionId!),
+            StringComparer.OrdinalIgnoreCase);
+
+        AvailableActions.Clear();
+        foreach (ToolbarItemCatalogue.Entry e in ToolbarItemCatalogue.AllEntries)
+        {
+            if (placed.Contains(e.ActionId)) continue;
+            AvailableActions.Add(e);
+        }
+        if (AvailableActions.Count == 0) SelectedAvailable = null;
+    }
+
+    // ----- Commands -----
+
+    [RelayCommand(CanExecute = nameof(CanAddButton))]
+    private void AddButton()
+    {
+        if (SelectedAvailable is null) return;
+        Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Button, SelectedAvailable.ActionId));
+        SelectedRow = Rows[^1];
+        RefreshAvailableActions();
+        Dirty();
+    }
+
+    private bool CanAddButton() => SelectedAvailable is not null;
+
+    [RelayCommand]
+    private void AddSeparator()
+    {
+        Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Separator, null));
+        SelectedRow = Rows[^1];
+        Dirty();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMoveUp))]
+    private void MoveUp()
+    {
+        if (SelectedRow is null) return;
+        int i = Rows.IndexOf(SelectedRow);
+        if (i <= 0) return;
+        Rows.Move(i, i - 1);
+        Dirty();
+    }
+
+    private bool CanMoveUp() => SelectedRow is not null && Rows.IndexOf(SelectedRow) > 0;
+
+    [RelayCommand(CanExecute = nameof(CanMoveDown))]
+    private void MoveDown()
+    {
+        if (SelectedRow is null) return;
+        int i = Rows.IndexOf(SelectedRow);
+        if (i < 0 || i >= Rows.Count - 1) return;
+        Rows.Move(i, i + 1);
+        Dirty();
+    }
+
+    private bool CanMoveDown() => SelectedRow is not null && Rows.IndexOf(SelectedRow) < Rows.Count - 1;
+
+    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
+    private void DeleteSelected()
+    {
+        if (SelectedRow is null) return;
+        Rows.Remove(SelectedRow);
+        SelectedRow = null;
+        RefreshAvailableActions();
+        Dirty();
+    }
+
+    private bool CanDeleteSelected() => SelectedRow is not null;
+
+    [RelayCommand]
+    private void ResetToDefaults()
+    {
+        Rows.Clear();
+        foreach (ToolbarItem item in ToolbarDefaults.Build())
+        {
+            Rows.Add(new ToolbarRowViewModel(item.Kind, item.ActionId));
+        }
+        SelectedRow = null;
+        RefreshAvailableActions();
+        Dirty();
     }
 
     private void Dirty()
@@ -156,18 +229,44 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         _dirty = false;
         OnPropertyChanged(nameof(IsDirty));
     }
+}
 
-    partial void OnShowConnectChanged(bool value)           => Dirty();
-    partial void OnShowSettingsChanged(bool value)          => Dirty();
-    partial void OnShowNavigationChanged(bool value)        => Dirty();
-    partial void OnShowBackscrollChanged(bool value)        => Dirty();
-    partial void OnShowCaptureChanged(bool value)           => Dirty();
-    partial void OnShowWireInspectorChanged(bool value)     => Dirty();
-    partial void OnShowConversationChanged(bool value)      => Dirty();
-    partial void OnShowPartyChanged(bool value)             => Dirty();
-    partial void OnShowWorkshopChanged(bool value)          => Dirty();
-    partial void OnShowSpellBookChanged(bool value)         => Dirty();
-    partial void OnShowSessionStatsChanged(bool value)      => Dirty();
-    partial void OnShowGameDataBrowserChanged(bool value)   => Dirty();
-    partial void OnShowLogChanged(bool value)               => Dirty();
+/// <summary>
+/// One row in <see cref="ToolbarSectionViewModel.Rows"/>. Exposes the
+/// catalogue-resolved label + icon resource key + shortcut so the
+/// editor row template can render <c>[icon] [label] [(shortcut)]</c>
+/// without doing the lookup in XAML.
+/// </summary>
+public sealed class ToolbarRowViewModel
+{
+    public ToolbarItemKind Kind { get; }
+    public string? ActionId { get; }
+
+    public bool IsButton => Kind == ToolbarItemKind.Button;
+    public bool IsSeparator => Kind == ToolbarItemKind.Separator;
+
+    public string DisplayLabel { get; }
+    public string? IconResourceKey { get; }
+    public string? ShortcutHint { get; }
+
+    public ToolbarRowViewModel(ToolbarItemKind kind, string? actionId)
+    {
+        Kind = kind;
+        ActionId = actionId;
+
+        if (kind == ToolbarItemKind.Separator)
+        {
+            DisplayLabel = "──── Separator ────";
+            IconResourceKey = null;
+            ShortcutHint = null;
+            return;
+        }
+
+        ToolbarItemCatalogue.Entry? entry = ToolbarItemCatalogue.Find(actionId);
+        DisplayLabel = entry?.Label ?? $"(unknown action: {actionId})";
+        IconResourceKey = entry?.IconResourceKey;
+        ShortcutHint = entry?.ShortcutHint is { } s ? $"({s})" : null;
+    }
+
+    public ToolbarItem ToModel() => new() { Kind = Kind, ActionId = ActionId };
 }
