@@ -1,8 +1,7 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Presenters;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
+using FujinTerm.Controls;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -16,7 +15,7 @@ namespace FujinTerm.Views;
 public partial class BackscrollWindow : Window
 {
     private ScrollViewer? _scroll;
-    private ItemsControl? _rowsList;
+    private SelectableTranscript? _transcript;
 
     public BackscrollWindow()
     {
@@ -32,15 +31,15 @@ public partial class BackscrollWindow : Window
     private void OnOpened(object? sender, EventArgs e)
     {
         _scroll = this.FindControl<ScrollViewer>("RowsScroll");
-        _rowsList = this.FindControl<ItemsControl>("RowsList");
+        _transcript = this.FindControl<SelectableTranscript>("Transcript");
         if (DataContext is BackscrollViewModel vm)
         {
-            vm.ScrollToRowRequested += OnScrollToRow;
-            vm.GoToLiveRequested    += OnGoToLive;
+            vm.FindMatchRequested += OnFindMatch;
+            vm.GoToLiveRequested  += OnGoToLive;
 
             // Wait for the first arrange pass before we scroll to the live
-            // tail — otherwise the container heights are still zero and the
-            // ScrollViewer would no-op.
+            // tail — otherwise heights are still zero and the ScrollViewer
+            // would no-op.
             Dispatcher.UIThread.Post(OnGoToLive, DispatcherPriority.Background);
 
             if (vm.FocusSearchOnOpen)
@@ -54,20 +53,35 @@ public partial class BackscrollWindow : Window
     {
         if (DataContext is BackscrollViewModel vm)
         {
-            vm.ScrollToRowRequested -= OnScrollToRow;
-            vm.GoToLiveRequested    -= OnGoToLive;
+            vm.FindMatchRequested -= OnFindMatch;
+            vm.GoToLiveRequested  -= OnGoToLive;
             vm.Dispose();
         }
     }
 
-    private void OnScrollToRow(int index)
+    /// <summary>
+    /// Highlight a Find-next hit by setting the SelectableTextBlock's
+    /// selection at the matched span and scrolling to the row.
+    /// </summary>
+    private void OnFindMatch(int rowIndex, int columnOffset, int length)
     {
-        if (_rowsList is null) return;
+        if (_transcript is null || _scroll is null) return;
         if (DataContext is not BackscrollViewModel vm) return;
-        if ((uint)index >= (uint)vm.Rows.Count) return;
+        if ((uint)rowIndex >= (uint)vm.Rows.Count) return;
+        if (rowIndex >= _transcript.RowCharOffsets.Count) return;
 
-        Control? container = _rowsList.ContainerFromIndex(index) as Control;
-        container?.BringIntoView();
+        // Each row's text is laid out as: "HH:mm:ss" + 2 spaces + cell text.
+        int prefixLen = vm.Rows[rowIndex].TimestampText.Length + 2;
+        int abs = _transcript.RowCharOffsets[rowIndex] + prefixLen + columnOffset;
+        _transcript.SelectionStart = abs;
+        _transcript.SelectionEnd = abs + length;
+
+        // No per-row container to BringIntoView — approximate the y offset
+        // by row index × cell height. Mx437 16pt cells = 16px line height.
+        const double rowHeight = 16;
+        double target = rowIndex * rowHeight - _scroll.Viewport.Height / 2;
+        target = Math.Max(0, Math.Min(target, _scroll.Extent.Height - _scroll.Viewport.Height));
+        _scroll.Offset = new Avalonia.Vector(_scroll.Offset.X, target);
     }
 
     private void OnGoToLive()

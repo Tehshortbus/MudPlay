@@ -50,8 +50,12 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     public string StatusText
         => $"{_scrollbackCount:N0} scrollback  •  {Rows.Count - _scrollbackCount:N0} live  •  {MatchCount:N0} matches";
 
-    /// <summary>Fired when the user requests Find Next. The window scrolls.</summary>
-    public event Action<int>? ScrollToRowRequested;
+    /// <summary>
+    /// Fired when Find Next lands on a match. Payload: (rowIndex,
+    /// columnOffsetWithinRowText, matchLength). The window translates
+    /// this into a selection + scroll on the SelectableTranscript.
+    /// </summary>
+    public event Action<int, int, int>? FindMatchRequested;
 
     /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
     public event Action? GoToLiveRequested;
@@ -203,21 +207,15 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         MatchCount = hits;
         OnPropertyChanged(nameof(StatusText));
 
-        // Clear the previous find-match tint before applying the new one so
-        // only one row at a time shows the "current hit" highlight.
-        if (_previousMatchRow is not null) _previousMatchRow.IsFindMatch = false;
-        _previousMatchRow = null;
-
         if (next >= 0)
         {
             _lastMatchIndex = next;
-            Rows[next].IsFindMatch = true;
-            _previousMatchRow = Rows[next];
-            ScrollToRowRequested?.Invoke(next);
+            string text = Rows[next].PlainText;
+            int col = text.IndexOf(SearchText, StringComparison.OrdinalIgnoreCase);
+            if (col < 0) col = 0;
+            FindMatchRequested?.Invoke(next, col, SearchText.Length);
         }
     }
-
-    private BackscrollRowViewModel? _previousMatchRow;
 
     [RelayCommand]
     private async Task ExportAsync()

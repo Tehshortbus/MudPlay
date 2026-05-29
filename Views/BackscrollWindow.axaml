@@ -58,41 +58,20 @@
              the Mx437 font's cell height (16 px). The default Fluent
              ListBoxItem ships with ~6 px vertical padding which reads as
              "double-spaced" against terminal output. -->
-        <!-- Rows host: an ItemsControl (no built-in selection / focus eating)
-             wrapped in a ScrollViewer. SelectableTextBlock per row handles
-             text selection + Ctrl+C natively; switching off the ListBox
-             keeps row clicks from stealing focus mid-drag. -->
+        <!-- Single SelectableTextBlock for the whole transcript so drag-select
+             naturally spans rows and Ctrl+C copies the multi-line range.
+             Timestamps inline at the start of each line, muted colour. -->
         <ScrollViewer x:Name="RowsScroll"
                       Background="Black"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       UseLayoutRounding="True">
-            <ItemsControl x:Name="RowsList"
-                          ItemsSource="{Binding Rows}"
-                          Padding="4"
-                          UseLayoutRounding="True">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:BackscrollRowViewModel">
-                        <Border Background="{Binding IsFindMatch, Converter={x:Static vm:FindMatchBackgroundConverter.Instance}}">
-                            <Grid ColumnDefinitions="Auto,*">
-                                <TextBlock Grid.Column="0"
-                                           Text="{Binding TimestampText}"
-                                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           FontFamily="{StaticResource FontMono}"
-                                           FontSize="11"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,8,0"/>
-                                <ctl:CellSelectableText Grid.Column="1"
-                                                        Cells="{Binding Cells}"
-                                                        FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                                        FontSize="16"
-                                                        Foreground="White"
-                                                        TextWrapping="NoWrap"/>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <ctl:SelectableTranscript x:Name="Transcript"
+                                      Rows="{Binding Rows}"
+                                      Margin="4"
+                                      Foreground="White"
+                                      FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                      FontSize="16"/>
         </ScrollViewer>
 
     </DockPanel>
