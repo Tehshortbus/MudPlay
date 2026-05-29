@@ -101,24 +101,6 @@
                                    HorizontalAlignment="Left"/>
                     </Grid>
 
-                    <TextBlock Classes="GroupHeader" Text="Login prompts"/>
-
-                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Login prompt:"/>
-                        <TextBox   Grid.Row="0" Grid.Column="1"
-                                   Text="{Binding LoginPromptPattern, Mode=TwoWay}"
-                                   PlaceholderText="Login:" Width="280"
-                                   HorizontalAlignment="Left"
-                                   ToolTip.Tip="Substring (case-insensitive) the BBS prints when it wants the username."/>
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Password prompt:"/>
-                        <TextBox   Grid.Row="1" Grid.Column="1"
-                                   Text="{Binding PasswordPromptPattern, Mode=TwoWay}"
-                                   PlaceholderText="Password:" Width="280"
-                                   HorizontalAlignment="Left"
-                                   ToolTip.Tip="Substring (case-insensitive) the BBS prints when it wants the password."/>
-                    </Grid>
-
                     <TextBlock Classes="GroupHeader" Text="Retry behaviour"/>
 
                     <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
@@ -153,12 +135,6 @@
                         <CheckBox IsChecked="{Binding ReconnectOnNoResponse,    Mode=TwoWay}" Content="Server stops responding"/>
                         <CheckBox IsChecked="{Binding ReconnectAfterCleanup,    Mode=TwoWay}" Content="BBS kicks the session for cleanup"/>
                     </StackPanel>
-
-                    <TextBlock Classes="GroupHeader" Text="Permissions"/>
-
-                    <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
-                              Content="I have sysop / goto powers on this BBS"
-                              ToolTip.Tip="Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
 
                     <TextBlock Classes="GroupHeader" Text="Terminal size (NAWS)"/>
 
@@ -212,12 +188,18 @@
                         </Grid>
                     </Grid>
 
+                    <TextBlock Classes="GroupHeader" Text="Permissions"/>
+
+                    <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
+                              Content="I have sysop / goto powers on this BBS"
+                              ToolTip.Tip="Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
+
                     <TextBlock Classes="GroupHeader" Text="Menu nav after login"/>
 
                     <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
-                               Text="Steps the client walks after the password is accepted — wait for the pattern, send the reply. Use \r for Enter."/>
+                               Text="Steps the client walks from connect through into the game — wait for the pattern, send the reply. Use \r for Enter. In Send: {username} / {userid} drops the configured username, {password} / {passwd} drops the decrypted password. Each credential placeholder fires once per session — re-prompts after acceptance are refused so a malicious server can't echo your secrets back."/>
 
                     <StackPanel IsEnabled="{Binding HasNamedProfile}" Spacing="4" Margin="0,6,0,0">
                         <Grid ColumnDefinitions="*,90,140,80,Auto,Auto,Auto" Margin="0,0,0,2">
@@ -240,7 +222,7 @@
                                                   HorizontalAlignment="Stretch"/>
                                         <TextBox Grid.Column="2" Margin="6,0,0,0"
                                                  Text="{Binding Send, Mode=TwoWay}"
-                                                 PlaceholderText="G\r"/>
+                                                 PlaceholderText="{}{username}\r"/>
                                         <NumericUpDown Grid.Column="3" Margin="6,0,0,0"
                                                        Value="{Binding TimeoutSeconds, Mode=TwoWay}"
                                                        Minimum="1" Maximum="600" Increment="1"

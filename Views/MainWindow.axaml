@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="560"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="FujinTerm"
+        Title="{Binding WindowTitle, FallbackValue=FujinTerm}"
         Width="660" Height="560">
 
     <Design.DataContext>
@@ -284,27 +284,6 @@
                     </Button>
                 </StackPanel>
 
-            </Grid>
-        </Border>
-
-        <!-- ============ Secondary strip (transitional Host / Port editor) ============ -->
-        <!-- Phase 4 PR 4.5 BBS-profile editor will absorb these; until then the
-             toolbar BBS badge displays the values and this strip lets the user
-             edit them. -->
-        <Border DockPanel.Dock="Top" Classes="SecondaryStrip">
-            <Grid ColumnDefinitions="Auto,*,Auto,80" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Host" VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           FontSize="{StaticResource FontSizeSm}" Margin="0,0,8,0"/>
-                <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="220"
-                         Background="{StaticResource ChromeBgBrush}"
-                         Foreground="{StaticResource ChromeFgBrush}"/>
-                <TextBlock Grid.Column="2" Text="Port" VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           FontSize="{StaticResource FontSizeSm}" Margin="12,0,8,0"/>
-                <TextBox Grid.Column="3" Text="{Binding Port}"
-                         Background="{StaticResource ChromeBgBrush}"
-                         Foreground="{StaticResource ChromeFgBrush}"/>
             </Grid>
         </Border>
 

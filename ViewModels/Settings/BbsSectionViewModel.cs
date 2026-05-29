@@ -70,8 +70,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _hasSysopPowers;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
-    [ObservableProperty] private string _loginPromptPattern = "Login:";
-    [ObservableProperty] private string _passwordPromptPattern = "Password:";
 
     // ----- Per-character credentials (PR 4.5b) -----
     /// <summary>True when a named character profile is loaded — gates the credentials section.</summary>
@@ -108,7 +106,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         RefreshProfileState();
 
         ReloadBbsList();
-        SelectedBbsName = AvailableBbsNames.FirstOrDefault();
+        // Default selection to the loaded character's active BBS when it's
+        // in the list — re-entering settings should land on the BBS the
+        // user is currently dialed at.
+        string? preferred = _profile.Current?.BbsName;
+        SelectedBbsName = preferred is not null && AvailableBbsNames.Contains(preferred)
+            ? preferred
+            : AvailableBbsNames.FirstOrDefault();
         // OnSelectedBbsNameChanged short-circuits while _suppressDirty is
         // true (so the initial property assignment doesn't mark dirty), so
         // we have to call ReloadSelected ourselves here. Without this, the
@@ -146,6 +150,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         if (SelectedBbsName is not { } bbs) return;
         CharacterProfile? character = _profile.Current;
         if (character is null || _profile.CurrentProfileName is null) return;
+
+        // Selecting a BBS + clicking OK pins this character to that BBS —
+        // the main UI's connect target reads from CharacterProfile.BbsName.
+        character.BbsName = bbs;
 
         character.BbsCredentials ??= new();
         if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
@@ -289,8 +297,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         HasSysopPowers = profile.HasSysopPowers;
         TerminalCols = profile.TerminalCols;
         TerminalRows = profile.TerminalRows;
-        LoginPromptPattern = profile.LoginPromptPattern;
-        PasswordPromptPattern = profile.PasswordPromptPattern;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -354,8 +360,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         HasSysopPowers = defaults.HasSysopPowers;
         TerminalCols = defaults.TerminalCols;
         TerminalRows = defaults.TerminalRows;
-        LoginPromptPattern = defaults.LoginPromptPattern;
-        PasswordPromptPattern = defaults.PasswordPromptPattern;
     }
 
     private void Dirty()
@@ -393,8 +397,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.HasSysopPowers = HasSysopPowers;
         profile.TerminalCols = TerminalCols;
         profile.TerminalRows = TerminalRows;
-        profile.LoginPromptPattern = LoginPromptPattern;
-        profile.PasswordPromptPattern = PasswordPromptPattern;
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -418,8 +420,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnHasSysopPowersChanged(bool value)            { PushToCache(); Dirty(); }
     partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
     partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
-    partial void OnLoginPromptPatternChanged(string value)      { PushToCache(); Dirty(); }
-    partial void OnPasswordPromptPatternChanged(string value)   { PushToCache(); Dirty(); }
 
     [RelayCommand]
     private void AddMenuStep()

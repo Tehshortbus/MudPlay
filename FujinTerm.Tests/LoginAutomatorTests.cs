@@ -11,11 +11,15 @@ public sealed class LoginAutomatorTests
     private static byte[] Ascii(string s) => Encoding.ASCII.GetBytes(s);
 
     private static (LoginAutomator a, ConcurrentQueue<string> sent) Build(
+        string? username = null,
+        Func<Task<string?>>? resolvePassword = null,
         params AutomationStep[] steps)
     {
         ConcurrentQueue<string> sent = new();
         LoginAutomator a = new(
             steps,
+            username,
+            resolvePassword,
             (text, _) => { sent.Enqueue(text); return Task.CompletedTask; });
         return (a, sent);
     }
@@ -31,30 +35,52 @@ public sealed class LoginAutomatorTests
     }
 
     [Fact]
-    public async Task LiteralPattern_MatchesAndSends()
+    public async Task LiteralPattern_MatchesAndSendsLiteral()
     {
-        AutomationStep s = new(
-            "Login:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("alice\r"), 30);
-        (LoginAutomator a, var sent) = Build(s);
+        AutomationStep s = new("Press any key", MenuStepMatchType.Literal, "\\r", 30);
+        (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
-        a.Feed(Ascii("Welcome\r\nLogin:"));
+        a.Feed(Ascii("[Press any key to continue]"));
 
-        // Async send hop — let the continuation drain.
+        await Task.Delay(20);
+        Assert.True(sent.TryDequeue(out string? sentVal));
+        Assert.Equal("\r", sentVal);
+    }
+
+    [Fact]
+    public async Task UsernamePlaceholder_Substitutes()
+    {
+        AutomationStep s = new("Login:", MenuStepMatchType.Literal, "{username}\\r", 30);
+        (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
+        a.Start();
+        a.Feed(Ascii("Login:"));
+
         await Task.Delay(20);
         Assert.True(sent.TryDequeue(out string? sentVal));
         Assert.Equal("alice\r", sentVal);
     }
 
     [Fact]
-    public async Task LiteralPattern_IsCaseInsensitive()
+    public async Task UseridPlaceholder_AlsoSubstitutes()
     {
-        AutomationStep s = new(
-            "PASSWORD:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("hunter2\r"), 30);
-        (LoginAutomator a, var sent) = Build(s);
+        AutomationStep s = new("Login:", MenuStepMatchType.Literal, "{userid}\\r", 30);
+        (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
         a.Start();
-        a.Feed(Ascii("password:"));
+        a.Feed(Ascii("Login:"));
+
+        await Task.Delay(20);
+        Assert.True(sent.TryDequeue(out string? sentVal));
+        Assert.Equal("alice\r", sentVal);
+    }
+
+    [Fact]
+    public async Task PasswordPlaceholder_Substitutes()
+    {
+        AutomationStep s = new("Password:", MenuStepMatchType.Literal, "{password}\\r", 30);
+        (LoginAutomator a, var sent) = Build(
+            resolvePassword: () => Task.FromResult<string?>("hunter2"), steps: s);
+        a.Start();
+        a.Feed(Ascii("Password:"));
 
         await Task.Delay(20);
         Assert.True(sent.TryDequeue(out string? sentVal));
@@ -62,14 +88,24 @@ public sealed class LoginAutomatorTests
     }
 
     [Fact]
+    public async Task Placeholder_IsCaseInsensitive()
+    {
+        AutomationStep s = new("Login:", MenuStepMatchType.Literal, "{USERNAME}\\r", 30);
+        (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
+        a.Start();
+        a.Feed(Ascii("Login:"));
+
+        await Task.Delay(20);
+        Assert.True(sent.TryDequeue(out string? sentVal));
+        Assert.Equal("alice\r", sentVal);
+    }
+
+    [Fact]
     public async Task CsiSequences_StrippedBeforeMatching()
     {
-        AutomationStep s = new(
-            "Main Menu:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("G\r"), 30);
-        (LoginAutomator a, var sent) = Build(s);
+        AutomationStep s = new("Main Menu:", MenuStepMatchType.Literal, "G\\r", 30);
+        (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
-        // ANSI-coloured prompt — the CSI escape must not block the match.
         a.Feed(Ascii("\x1b[1;33mMain Menu:\x1b[0m "));
 
         await Task.Delay(20);
@@ -80,10 +116,8 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task WildcardPattern_StarMatchesAnyRun()
     {
-        AutomationStep s = new(
-            "Press*continue", MenuStepMatchType.Wildcard,
-            () => Task.FromResult<string?>("\r"), 30);
-        (LoginAutomator a, var sent) = Build(s);
+        AutomationStep s = new("Press*continue", MenuStepMatchType.Wildcard, "\\r", 30);
+        (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
         a.Feed(Ascii("[Press any key to continue]"));
 
@@ -95,10 +129,8 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task RegexPattern_Captures()
     {
-        AutomationStep s = new(
-            @"Enter\s+choice\s*:", MenuStepMatchType.Regex,
-            () => Task.FromResult<string?>("3\r"), 30);
-        (LoginAutomator a, var sent) = Build(s);
+        AutomationStep s = new(@"Enter\s+choice\s*:", MenuStepMatchType.Regex, "3\\r", 30);
+        (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
         a.Feed(Ascii("\r\nEnter choice : "));
 
@@ -108,24 +140,19 @@ public sealed class LoginAutomatorTests
     }
 
     [Fact]
-    public async Task MultipleSteps_RunInOrder_WithinOneFeed()
+    public async Task FullLoginFlow_RunsInOrder()
     {
-        AutomationStep s1 = new(
-            "Login:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("alice\r"), 30);
-        AutomationStep s2 = new(
-            "Password:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("hunter2\r"), 30);
-        AutomationStep s3 = new(
-            "Menu:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("G\r"), 30);
+        AutomationStep s1 = new("Login:",    MenuStepMatchType.Literal, "{username}\\r", 30);
+        AutomationStep s2 = new("Password:", MenuStepMatchType.Literal, "{password}\\r", 30);
+        AutomationStep s3 = new("Main Menu:", MenuStepMatchType.Literal, "G\\r", 30);
 
-        (LoginAutomator a, var sent) = Build(s1, s2, s3);
+        (LoginAutomator a, var sent) = Build(
+            username: "alice",
+            resolvePassword: () => Task.FromResult<string?>("hunter2"),
+            steps: new[] { s1, s2, s3 });
         bool done = false;
         a.LoggedIntoGame += () => done = true;
         a.Start();
-
-        // All three patterns arrive in one buffer.
         a.Feed(Ascii("Login: alice\r\nPassword: ********\r\nMain Menu:\r\n"));
 
         await Task.Delay(60);
@@ -137,30 +164,73 @@ public sealed class LoginAutomatorTests
     }
 
     [Fact]
-    public async Task StepTimeout_FiresAborted()
+    public async Task UsernameLock_RefusesSecondSendAfterAcceptance()
     {
-        AutomationStep s = new(
-            "NeverArrives", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>("x"), 1);
-        (LoginAutomator a, _) = Build(s);
+        // 3 steps: login, ack-of-login, then a step that tries {username} again.
+        AutomationStep s1 = new("Login:",    MenuStepMatchType.Literal, "{username}\\r", 30);
+        AutomationStep s2 = new("Password:", MenuStepMatchType.Literal, "secret\\r",     30);
+        AutomationStep s3 = new("Trick:",    MenuStepMatchType.Literal, "{username}\\r", 30);
+
+        (LoginAutomator a, var sent) = Build(
+            username: "alice",
+            steps: new[] { s1, s2, s3 });
         string? abortReason = null;
         a.Aborted += r => abortReason = r;
         a.Start();
-        a.Feed(Ascii("Some unrelated banner text\r\n"));
+        a.Feed(Ascii("Login:Password:Trick:"));
 
-        // Step timeout is 1s; allow some slack.
-        await Task.Delay(1500);
+        await Task.Delay(60);
+        // s1 and s2 send; s3 must abort because username is locked.
+        Assert.True(sent.TryDequeue(out string? first));   Assert.Equal("alice\r",  first);
+        Assert.True(sent.TryDequeue(out string? second));  Assert.Equal("secret\r", second);
+        Assert.False(sent.TryDequeue(out _));
         Assert.NotNull(abortReason);
-        Assert.Contains("timed out", abortReason);
+        Assert.Contains("username already accepted", abortReason);
     }
 
     [Fact]
-    public async Task MissingPassword_AbortsStep()
+    public async Task PasswordLock_RefusesSecondSendAfterAcceptance()
     {
-        AutomationStep s = new(
-            "Password:", MenuStepMatchType.Literal,
-            () => Task.FromResult<string?>(null), 30);
-        (LoginAutomator a, _) = Build(s);
+        AutomationStep s1 = new("Password:", MenuStepMatchType.Literal, "{password}\\r", 30);
+        AutomationStep s2 = new("Welcome:",  MenuStepMatchType.Literal, "\\r",            30);
+        AutomationStep s3 = new("Repeat:",   MenuStepMatchType.Literal, "{password}\\r", 30);
+
+        (LoginAutomator a, var sent) = Build(
+            resolvePassword: () => Task.FromResult<string?>("hunter2"),
+            steps: new[] { s1, s2, s3 });
+        string? abortReason = null;
+        a.Aborted += r => abortReason = r;
+        a.Start();
+        a.Feed(Ascii("Password:Welcome:Repeat:"));
+
+        await Task.Delay(60);
+        Assert.True(sent.TryDequeue(out string? first));   Assert.Equal("hunter2\r", first);
+        Assert.True(sent.TryDequeue(out string? second));  Assert.Equal("\r",        second);
+        Assert.False(sent.TryDequeue(out _));
+        Assert.NotNull(abortReason);
+        Assert.Contains("password already accepted", abortReason);
+    }
+
+    [Fact]
+    public async Task UsernamePlaceholder_NoUsernameConfigured_Aborts()
+    {
+        AutomationStep s = new("Login:", MenuStepMatchType.Literal, "{username}\\r", 30);
+        (LoginAutomator a, _) = Build(username: null, steps: s);
+        string? abortReason = null;
+        a.Aborted += r => abortReason = r;
+        a.Start();
+        a.Feed(Ascii("Login:"));
+
+        await Task.Delay(20);
+        Assert.NotNull(abortReason);
+        Assert.Contains("{username}", abortReason);
+    }
+
+    [Fact]
+    public async Task PasswordPlaceholder_NoResolverConfigured_Aborts()
+    {
+        AutomationStep s = new("Password:", MenuStepMatchType.Literal, "{password}\\r", 30);
+        (LoginAutomator a, _) = Build(resolvePassword: null, steps: s);
         string? abortReason = null;
         a.Aborted += r => abortReason = r;
         a.Start();
@@ -168,35 +238,65 @@ public sealed class LoginAutomatorTests
 
         await Task.Delay(20);
         Assert.NotNull(abortReason);
+        Assert.Contains("{password}", abortReason);
     }
 
     [Fact]
-    public async Task BuildSteps_NullCredentials_ReturnsNull()
+    public async Task PasswordPlaceholder_ResolverReturnsNull_Aborts()
     {
-        await Task.CompletedTask;
-        Models.Settings.BbsProfile bbs = new() { Name = "BBS", Host = "example.com" };
+        AutomationStep s = new("Password:", MenuStepMatchType.Literal, "{password}\\r", 30);
+        (LoginAutomator a, _) = Build(
+            resolvePassword: () => Task.FromResult<string?>(null), steps: s);
+        string? abortReason = null;
+        a.Aborted += r => abortReason = r;
+        a.Start();
+        a.Feed(Ascii("Password:"));
+
+        await Task.Delay(20);
+        Assert.NotNull(abortReason);
+        Assert.Contains("not found", abortReason);
+    }
+
+    [Fact]
+    public async Task StepTimeout_FiresAborted()
+    {
+        AutomationStep s = new("NeverArrives", MenuStepMatchType.Literal, "x", 1);
+        (LoginAutomator a, _) = Build(steps: s);
+        string? abortReason = null;
+        a.Aborted += r => abortReason = r;
+        a.Start();
+        a.Feed(Ascii("unrelated banner\r\n"));
+
+        await Task.Delay(1500);
+        Assert.NotNull(abortReason);
+        Assert.Contains("timed out", abortReason);
+    }
+
+    [Fact]
+    public void TryBuild_NullCredentials_ReturnsNull()
+    {
         EncryptedFileCredentialStore store = new(
             Path.Combine(Path.GetTempPath(), $"FT-key-{Guid.NewGuid():N}"),
             Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}"));
-        IReadOnlyList<AutomationStep>? steps = LoginAutomator.BuildSteps(bbs, null, store);
-        Assert.Null(steps);
+        LoginAutomator? a = LoginAutomator.TryBuild(
+            null, store, (_, _) => Task.CompletedTask);
+        Assert.Null(a);
     }
 
     [Fact]
-    public async Task BuildSteps_BlankUsername_ReturnsNull()
+    public void TryBuild_NoMenuNavSteps_ReturnsNull()
     {
-        await Task.CompletedTask;
-        Models.Settings.BbsProfile bbs = new() { Name = "BBS", Host = "example.com" };
-        BbsCredentials creds = new() { Username = "  " };
         EncryptedFileCredentialStore store = new(
             Path.Combine(Path.GetTempPath(), $"FT-key-{Guid.NewGuid():N}"),
             Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}"));
-        IReadOnlyList<AutomationStep>? steps = LoginAutomator.BuildSteps(bbs, creds, store);
-        Assert.Null(steps);
+        BbsCredentials creds = new() { Username = "alice" };
+        LoginAutomator? a = LoginAutomator.TryBuild(
+            creds, store, (_, _) => Task.CompletedTask);
+        Assert.Null(a);
     }
 
     [Fact]
-    public async Task BuildSteps_WithUsernameAndMenuSteps_ReturnsLoginPasswordPlusMenuSteps()
+    public async Task TryBuild_FullFlow_ResolvesPasswordFromStore()
     {
         string scratchDir = Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}");
         Directory.CreateDirectory(scratchDir);
@@ -207,40 +307,34 @@ public sealed class LoginAutomatorTests
                 Path.Combine(scratchDir, "creds.dat"));
             await store.SetAsync("bbs:foo:char:password", "hunter2");
 
-            Models.Settings.BbsProfile bbs = new()
-            {
-                Name = "Foo",
-                Host = "foo.example.com",
-                LoginPromptPattern = "Login:",
-                PasswordPromptPattern = "Password:",
-            };
             BbsCredentials creds = new()
             {
                 Username = "alice",
                 PasswordCredentialId = "bbs:foo:char:password",
                 MenuNavSteps =
                 {
-                    new MenuStep { WaitForPattern = "Main Menu:", Send = "G\\r", TimeoutSeconds = 20 },
-                    new MenuStep { WaitForPattern = "Enter Realm:", Send = "\\r", TimeoutSeconds = 10 },
+                    new MenuStep { WaitForPattern = "Login:",    Send = "{username}\\r", TimeoutSeconds = 30 },
+                    new MenuStep { WaitForPattern = "Password:", Send = "{password}\\r", TimeoutSeconds = 30 },
+                    new MenuStep { WaitForPattern = "Main Menu:", Send = "G\\r",         TimeoutSeconds = 30 },
                 },
             };
 
-            IReadOnlyList<AutomationStep>? steps = LoginAutomator.BuildSteps(bbs, creds, store);
-            Assert.NotNull(steps);
-            Assert.Equal(4, steps!.Count);
-            Assert.Equal("Login:", steps[0].WaitForPattern);
-            Assert.Equal("Password:", steps[1].WaitForPattern);
-            Assert.Equal("Main Menu:", steps[2].WaitForPattern);
-            Assert.Equal("Enter Realm:", steps[3].WaitForPattern);
+            ConcurrentQueue<string> sent = new();
+            LoginAutomator? a = LoginAutomator.TryBuild(
+                creds, store,
+                (text, _) => { sent.Enqueue(text); return Task.CompletedTask; });
+            Assert.NotNull(a);
+            bool done = false;
+            a!.LoggedIntoGame += () => done = true;
+            a.Start();
+            a.Feed(Ascii("Login:Password:Main Menu:"));
 
-            string? loginSend = await steps[0].ResolveSend();
-            Assert.Equal("alice\r", loginSend);
-
-            string? passwordSend = await steps[1].ResolveSend();
-            Assert.Equal("hunter2\r", passwordSend);
-
-            string? menu1Send = await steps[2].ResolveSend();
-            Assert.Equal("G\r", menu1Send);
+            await Task.Delay(60);
+            Assert.Equal(3, sent.Count);
+            Assert.True(sent.TryDequeue(out string? first));  Assert.Equal("alice\r",   first);
+            Assert.True(sent.TryDequeue(out string? second)); Assert.Equal("hunter2\r", second);
+            Assert.True(sent.TryDequeue(out string? third));  Assert.Equal("G\r",       third);
+            Assert.True(done);
         }
         finally
         {

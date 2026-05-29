@@ -52,9 +52,35 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public double TerminalFontSize => AppServices.Current.Display.FontSize;
 
-    [ObservableProperty] private string _host = "playpenbbs.com";
+    /// <summary>
+    /// Host the active BBS resolves to. Read-only from the UI — the user
+    /// picks the active BBS in Settings → BBS, and that selection's Host /
+    /// Port drives the connect button.
+    /// </summary>
+    public string Host => ResolveActiveBbs()?.Host ?? string.Empty;
 
-    [ObservableProperty] private int _port = 23;
+    /// <summary>Port the active BBS resolves to. <c>0</c> when no BBS is configured.</summary>
+    public int Port => ResolveActiveBbs()?.Port ?? 0;
+
+    /// <summary>The BBS name pinned to the loaded character profile, if any.</summary>
+    public string? ActiveBbsName => AppServices.Current.Profile.Current?.BbsName;
+
+    /// <summary>Window title — "FujinTerm — {profile} — {bbs}", trimmed when bits are missing.</summary>
+    public string WindowTitle
+    {
+        get
+        {
+            string? profile = AppServices.Current.Profile.CurrentProfileName;
+            string? bbs = ActiveBbsName;
+            if (profile is null && bbs is null) return "FujinTerm";
+            if (profile is null) return $"FujinTerm — {bbs}";
+            if (bbs is null)     return $"FujinTerm — {profile}";
+            return $"FujinTerm — {profile} — {bbs}";
+        }
+    }
+
+    /// <summary>True when the connect button has somewhere to dial.</summary>
+    public bool CanConnect => !string.IsNullOrWhiteSpace(Host) && Port > 0;
 
     // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
     // The single ToggleConnectionCommand drives every transition; everything
@@ -175,8 +201,12 @@ public partial class MainWindowViewModel : ObservableObject
         // Seed File → Recent profiles + Save profile label from persisted state.
         RebuildRecentProfiles();
         SyncProfileMenuState();
-        AppServices.Current.Profile.ProfileLoaded += _ => SyncProfileMenuState();
-        AppServices.Current.Profile.ProfileClosed += () => SyncProfileMenuState();
+        AppServices.Current.Profile.ProfileLoaded += _ => { SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileClosed += () => { SyncProfileMenuState(); RefreshBbsBindings(); };
+        // ProfileSaving fires after the BBS section's Apply has stamped the
+        // new BbsName onto the profile DTO — perfect hook to refresh the
+        // window title and connect-target bindings.
+        AppServices.Current.Profile.ProfileSaving += _ => RefreshBbsBindings();
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
@@ -294,9 +324,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Host) || Port <= 0)
         {
-            WriteTerminalStatus("[NO HOST / PORT SET — EDIT THE FIELDS BELOW THE TOOLBAR.]",
+            WriteTerminalStatus("[NO BBS SELECTED — OPEN SETTINGS → BBS, PICK ONE, AND SAVE.]",
                                 TerminalStatusKind.Error);
-            AppServices.Current.Log.Warn("Connect", "Enter host and port.");
+            AppServices.Current.Log.Warn("Connect", "No active BBS — open Settings → BBS first.");
             return;
         }
 
@@ -399,31 +429,25 @@ public partial class MainWindowViewModel : ObservableObject
         _automator?.Dispose();
         _automator = null;
 
-        BbsProfile? bbs = ResolveBbsForHost(Host);
-        if (bbs is null)
-        {
-            AppServices.Current.Log.Debug("LoginAuto",
-                $"No saved BBS matches host '{Host}' — manual login.");
-            return;
-        }
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is null) return;  // no active BBS — caller already aborted the connect.
 
         CharacterProfile? character = AppServices.Current.Profile.Current;
         BbsCredentials? creds = null;
         character?.BbsCredentials?.TryGetValue(bbs.Name, out creds);
 
-        IReadOnlyList<AutomationStep>? steps = LoginAutomator.BuildSteps(
-            bbs, creds, AppServices.Current.Credentials);
-        if (steps is null)
+        LoginAutomator? automator = LoginAutomator.TryBuild(
+            creds,
+            AppServices.Current.Credentials,
+            (text, ct) => client.SendTextAsync(text, ct),
+            msg => AppServices.Current.Log.Debug("LoginAuto", msg));
+        if (automator is null)
         {
             AppServices.Current.Log.Debug("LoginAuto",
-                $"No credentials on '{AppServices.Current.Profile.CurrentProfileName ?? "(no profile)"}' for BBS '{bbs.Name}' — manual login.");
+                $"No menu-nav configured on '{AppServices.Current.Profile.CurrentProfileName ?? "(no profile)"}' for BBS '{bbs.Name}' — manual login.");
             return;
         }
 
-        LoginAutomator automator = new(
-            steps,
-            (text, ct) => client.SendTextAsync(text, ct),
-            msg => AppServices.Current.Log.Debug("LoginAuto", msg));
         string bbsName = bbs.Name;
         automator.LoggedIntoGame += () =>
             AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
@@ -433,19 +457,25 @@ public partial class MainWindowViewModel : ObservableObject
         automator.Start();
     }
 
-    private static BbsProfile? ResolveBbsForHost(string host)
+    /// <summary>
+    /// Look up the BBS the loaded character is configured to dial. Returns
+    /// <c>null</c> when no profile is loaded, the profile has no
+    /// <c>BbsName</c>, or the named BBS file isn't on disk.
+    /// </summary>
+    private static BbsProfile? ResolveActiveBbs()
     {
-        if (string.IsNullOrWhiteSpace(host)) return null;
-        BbsProfileStore store = AppServices.Current.Bbs;
-        foreach (string name in store.ListNames())
-        {
-            BbsProfile? p = store.Get(name);
-            if (p is not null && string.Equals(p.Host, host, StringComparison.OrdinalIgnoreCase))
-            {
-                return p;
-            }
-        }
-        return null;
+        string? name = AppServices.Current.Profile.Current?.BbsName;
+        if (string.IsNullOrEmpty(name)) return null;
+        return AppServices.Current.Bbs.Get(name);
+    }
+
+    private void RefreshBbsBindings()
+    {
+        OnPropertyChanged(nameof(Host));
+        OnPropertyChanged(nameof(Port));
+        OnPropertyChanged(nameof(ActiveBbsName));
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(CanConnect));
     }
 
     private TelnetClient BuildTelnetClient()
