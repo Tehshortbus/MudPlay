@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData;
 
@@ -92,7 +93,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     /// </summary>
     private void SeedSections()
     {
-        Add("monsters",      "Monsters",       "Phase 5 PR 5.5",  "Static MDB table — name, level, HP, attacks, ability effects via AbilityNames helper.");
+        Sections.Add(new MonstersSectionViewModel(_gameData));
         Add("items",         "Items",          "Phase 5 PR 5.6",  "Static MDB table — slot, weight, ability effects (via AbilityNames), shop price.");
         Add("spells",        "Spells",         "Phase 5 PR 5.7",  "Static MDB table + inline linked Spell Messages editor (key UX improvement over MegaMUD).");
         Add("conditions",    "Conditions",     "Phase 5 PR 5.9",  "Non-spell condition messages (blinded / poisoned / paralyzed / etc.) with effect-flag bitfield + action enum.");
