@@ -32,4 +32,13 @@ public sealed class BbsCredentials
     /// MajorMUD session is live.
     /// </summary>
     public List<MenuStep> MenuNavSteps { get; set; } = new();
+
+    /// <summary>
+    /// This character has sysop / goto powers on the BBS — flips a few UI
+    /// affordances (e.g., the Phase 13 RemoteCommandManager assumes commands
+    /// like <c>@goto &lt;player&gt;</c> are allowed without further gating).
+    /// Per-character per-BBS because different characters on the same BBS
+    /// can have different powers.
+    /// </summary>
+    public bool HasSysopPowers { get; set; }
 }

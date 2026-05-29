@@ -59,13 +59,6 @@ public sealed class BbsProfile
     /// </summary>
     public bool ReconnectAfterCleanup { get; set; }
 
-    /// <summary>
-    /// User has sysop / goto powers on this BBS — flips a few UI affordances
-    /// (e.g., the Phase 13 RemoteCommandManager assumes commands like
-    /// <c>@goto &lt;player&gt;</c> are allowed without further gating).
-    /// </summary>
-    public bool HasSysopPowers { get; set; }
-
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
     /// <summary>
@@ -77,6 +70,19 @@ public sealed class BbsProfile
 
     /// <summary>Terminal rows to advertise via Telnet NAWS. Defaults to 25.</summary>
     public int TerminalRows { get; set; } = 25;
+
+    /// <summary>
+    /// Terminal canvas font size in points. Per-BBS so a high-density door
+    /// game and a chatty BBS can each get their own legibility tuning.
+    /// </summary>
+    public double FontSize { get; set; } = 16.0;
+
+    /// <summary>
+    /// How many scrolled-off rows the backscroll ring retains.
+    /// Applies on next launch — in-place ring resize would need to copy /
+    /// drop rows and is intentionally deferred.
+    /// </summary>
+    public int ScrollbackLines { get; set; } = 10_000;
 
     /// <summary>
     /// Per-tab settings deltas at the BBS tier — same shape as

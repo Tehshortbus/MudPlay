@@ -136,9 +136,9 @@
                         <CheckBox IsChecked="{Binding ReconnectAfterCleanup,    Mode=TwoWay}" Content="BBS kicks the session for cleanup"/>
                     </StackPanel>
 
-                    <TextBlock Classes="GroupHeader" Text="Terminal size (NAWS)"/>
+                    <TextBlock Classes="GroupHeader" Text="Display"/>
 
-                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Columns:"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1"
                                        Value="{Binding TerminalCols, Mode=TwoWay}"
@@ -152,13 +152,29 @@
                                        Minimum="20" Maximum="100" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Font size:"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                       Value="{Binding FontSize, Mode=TwoWay}"
+                                       Minimum="8" Maximum="32" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"
+                                       ToolTip.Tip="Live-previews on the terminal canvas while you tweak."/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Scrollback (lines):"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                       Value="{Binding ScrollbackLines, Mode=TwoWay}"
+                                       Minimum="100" Maximum="100000" Increment="500"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"
+                                       ToolTip.Tip="Applies on next launch — the live ring stays its current size."/>
                     </Grid>
 
                     <TextBlock Margin="0,4,0,0"
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
-                               Text="MajorMUD renders against a fixed 80×25 grid and won't reflow if you push higher. Non-game BBS doors usually do reflow — feel free to crank if a particular BBS supports it."/>
+                               Text="Columns / rows are advertised via Telnet NAWS. MajorMUD renders against a fixed 80×25 grid and won't reflow if you push higher; non-game BBS doors usually do reflow."/>
 
                     <TextBlock Classes="GroupHeader" Text="Credentials"/>
 
@@ -191,8 +207,9 @@
                     <TextBlock Classes="GroupHeader" Text="Permissions"/>
 
                     <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
+                              IsEnabled="{Binding HasNamedProfile}"
                               Content="I have sysop / goto powers on this BBS"
-                              ToolTip.Tip="Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
+                              ToolTip.Tip="Per-character. Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
 
                     <TextBlock Classes="GroupHeader" Text="Menu nav after login"/>
 

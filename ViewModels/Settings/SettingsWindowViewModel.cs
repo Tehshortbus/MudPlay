@@ -182,13 +182,13 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
-        Sections.Add(new DisplaySectionViewModel(_profile, AppServices.Current.Display));
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
 
         Sections.Add(new BbsSectionViewModel(
             AppServices.Current.Bbs,
             _profile,
-            AppServices.Current.Credentials));
+            AppServices.Current.Credentials,
+            AppServices.Current.Display));
 
         Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
         Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");

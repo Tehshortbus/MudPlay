@@ -886,19 +886,26 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
             return;
         }
-
-        string? name = await PromptForProfileNameAsync(
-            "Save profile as",
-            "Pick a name. Saves to Data/profiles/<name>.json.",
-            initial: profile.CurrentProfileName ?? string.Empty);
-        if (string.IsNullOrWhiteSpace(name)) return;
-        name = name.Trim();
-        if (!string.Equals(name, profile.CurrentProfileName, StringComparison.Ordinal) && profile.Exists(name))
-        {
-            AppServices.Current.Log.Warn("Profile",
-                $"A profile named '{name}' already exists — pick a different name.");
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
-        }
+
+        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
+        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save profile as",
+            SuggestedStartLocation = profilesFolder,
+            SuggestedFileName = profile.CurrentProfileName ?? "character",
+            DefaultExtension = "json",
+            FileTypeChoices = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
+            ShowOverwritePrompt = true,
+        });
+        if (file is null) return;
+
+        // Profile names map to files under Data/profiles/{name}.json. If the
+        // picker landed somewhere else we still pull just the basename and
+        // write into Data/profiles — keeps ProfileService's layout invariant.
+        string name = Path.GetFileNameWithoutExtension(file.Name);
+        if (string.IsNullOrWhiteSpace(name)) return;
         profile.SaveAs(name);
         PromoteRecent(name);
         SyncProfileMenuState();

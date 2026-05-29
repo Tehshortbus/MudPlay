@@ -188,10 +188,14 @@ public sealed class AppServices
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
-        // Bridge: re-apply Display settings (font size, scrollback target) to
-        // the live singleton on every profile load.
-        Profile.ProfileLoaded += ApplyDisplayFromProfile;
+        // Bridge: keep the live DisplayConfig in sync with the active BBS.
+        // Font size + scrollback are BBS-tier (different BBSes warrant
+        // different legibility tuning) so we re-resolve on every profile
+        // load AND on every ProfileMutated tick (which fires from the BBS
+        // section's Apply path after a save).
+        Profile.ProfileLoaded += _ => ApplyDisplayFromActiveBbs();
         Profile.ProfileClosed += ResetDisplayToDefaults;
+        Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
@@ -204,26 +208,24 @@ public sealed class AppServices
         Profile.ProfileLoaded += OnProfileLoaded;
     }
 
-    private void ApplyDisplayFromProfile(Models.Profile.CharacterProfile profile)
+    private void ApplyDisplayFromActiveBbs()
     {
-        Models.Profile.DisplaySettings dto = ReadDisplay(profile);
-        Display.FontSize = dto.FontSize;
-        Display.ScrollbackLines = dto.ScrollbackLines;
+        string? bbsName = Profile.Current?.BbsName;
+        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
+        if (bbs is null)
+        {
+            ResetDisplayToDefaults();
+            return;
+        }
+        Display.FontSize = bbs.FontSize;
+        Display.ScrollbackLines = bbs.ScrollbackLines;
     }
 
     private void ResetDisplayToDefaults()
     {
-        Models.Profile.DisplaySettings defaults = new();
+        Models.Settings.BbsProfile defaults = new();
         Display.FontSize = defaults.FontSize;
         Display.ScrollbackLines = defaults.ScrollbackLines;
-    }
-
-    private static Models.Profile.DisplaySettings ReadDisplay(Models.Profile.CharacterProfile profile)
-    {
-        if (profile.Settings is null) return new();
-        if (!profile.Settings.TryGetValue("Display", out System.Text.Json.JsonElement json)) return new();
-        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.DisplaySettings>(json.GetRawText())
-               ?? new();
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

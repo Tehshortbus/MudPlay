@@ -28,6 +28,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private readonly BbsProfileStore _bbsStore;
     private readonly ProfileService _profile;
     private readonly ICredentialStore _credentials;
+    private readonly DisplayConfig _display;
     private readonly Dictionary<string, BbsProfile> _loaded = new(StringComparer.OrdinalIgnoreCase);
     private string? _pendingPassword;          // null = unchanged; "" = clear; else write
     private bool _suppressDirty = true;
@@ -42,6 +43,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         "BBS", "Host", "Port", "Telnet", "Redial", "Cleanup", "Reconnect",
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
+        "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
     };
 
     public override Control View => _view ??= new BbsSectionView { DataContext = this };
@@ -70,6 +72,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _hasSysopPowers;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
+    [ObservableProperty] private double _fontSize = 16.0;
+    [ObservableProperty] private int _scrollbackLines = 10_000;
 
     // ----- Per-character credentials (PR 4.5b) -----
     /// <summary>True when a named character profile is loaded — gates the credentials section.</summary>
@@ -92,14 +96,20 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ? $"For character: {_profile.CurrentProfileName}"
         : "Load or create a named character profile (File → New profile) to attach credentials to a BBS.";
 
-    public BbsSectionViewModel(BbsProfileStore bbsStore, ProfileService profile, ICredentialStore credentials)
+    public BbsSectionViewModel(
+        BbsProfileStore bbsStore,
+        ProfileService profile,
+        ICredentialStore credentials,
+        DisplayConfig display)
     {
         ArgumentNullException.ThrowIfNull(bbsStore);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(display);
         _bbsStore = bbsStore;
         _profile = profile;
         _credentials = credentials;
+        _display = display;
 
         _profile.ProfileLoaded += _ => RefreshProfileState();
         _profile.ProfileClosed += RefreshProfileState;
@@ -185,6 +195,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             }
             cred.Username = Username;
             cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
+            cred.HasSysopPowers = HasSysopPowers;
 
             if (_pendingPassword is not null)
             {
@@ -246,7 +257,29 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             ReloadSelected();
             _suppressDirty = false;
         }
+
+        // Roll the live DisplayConfig back to the *active* BBS, not the
+        // BBS that happened to be selected in the editor. Otherwise the
+        // terminal canvas keeps the discarded preview font.
+        SyncDisplayToActiveBbs();
         ClearDirty();
+    }
+
+    private void SyncDisplayToActiveBbs()
+    {
+        string? activeName = _profile.Current?.BbsName;
+        BbsProfile? active = string.IsNullOrEmpty(activeName) ? null : _bbsStore.Get(activeName);
+        if (active is null)
+        {
+            BbsProfile defaults = new();
+            _display.FontSize = defaults.FontSize;
+            _display.ScrollbackLines = defaults.ScrollbackLines;
+        }
+        else
+        {
+            _display.FontSize = active.FontSize;
+            _display.ScrollbackLines = active.ScrollbackLines;
+        }
     }
 
     [RelayCommand]
@@ -320,9 +353,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ReconnectOnCarrierLost = profile.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = profile.ReconnectOnNoResponse;
         ReconnectAfterCleanup = profile.ReconnectAfterCleanup;
-        HasSysopPowers = profile.HasSysopPowers;
         TerminalCols = profile.TerminalCols;
         TerminalRows = profile.TerminalRows;
+        FontSize = profile.FontSize;
+        ScrollbackLines = profile.ScrollbackLines;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -333,6 +367,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         {
             Username = string.Empty;
             Password = string.Empty;
+            HasSysopPowers = false;
             return;
         }
         CharacterProfile? character = _profile.Current;
@@ -345,6 +380,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             // the user clicks around. Show empty + a placeholder; typing a
             // new one replaces, leaving it empty preserves the existing.
             Password = string.Empty;
+            HasSysopPowers = cred.HasSysopPowers;
             foreach (MenuStep step in cred.MenuNavSteps)
             {
                 MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, Dirty));
@@ -354,6 +390,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         {
             Username = string.Empty;
             Password = string.Empty;
+            HasSysopPowers = false;
         }
     }
 
@@ -383,9 +420,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ReconnectOnCarrierLost = defaults.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = defaults.ReconnectOnNoResponse;
         ReconnectAfterCleanup = defaults.ReconnectAfterCleanup;
-        HasSysopPowers = defaults.HasSysopPowers;
         TerminalCols = defaults.TerminalCols;
         TerminalRows = defaults.TerminalRows;
+        FontSize = defaults.FontSize;
+        ScrollbackLines = defaults.ScrollbackLines;
     }
 
     private void Dirty()
@@ -420,9 +458,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.ReconnectOnCarrierLost = ReconnectOnCarrierLost;
         profile.ReconnectOnNoResponse = ReconnectOnNoResponse;
         profile.ReconnectAfterCleanup = ReconnectAfterCleanup;
-        profile.HasSysopPowers = HasSysopPowers;
         profile.TerminalCols = TerminalCols;
         profile.TerminalRows = TerminalRows;
+        profile.FontSize = FontSize;
+        profile.ScrollbackLines = ScrollbackLines;
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -443,9 +482,21 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnReconnectOnCarrierLostChanged(bool value)    { PushToCache(); Dirty(); }
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnReconnectAfterCleanupChanged(bool value)     { PushToCache(); Dirty(); }
-    partial void OnHasSysopPowersChanged(bool value)            { PushToCache(); Dirty(); }
+    partial void OnHasSysopPowersChanged(bool value)            { Dirty(); }
     partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
     partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
+
+    // Live-preview the font on the terminal canvas as the user types. Push
+    // happens whether the change came from typing or from re-selecting a
+    // BBS in the list, so switching list items also previews the new BBS's
+    // font. Scrollback only persists — the live ring is sized at startup.
+    partial void OnFontSizeChanged(double value)
+    {
+        _display.FontSize = value;
+        PushToCache();
+        Dirty();
+    }
+    partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
 
     [RelayCommand]
     private void AddMenuStep()

@@ -23,10 +23,11 @@ public sealed class BbsProfileFieldsTests
         Assert.False(dto.ReconnectOnCarrierLost);
         Assert.False(dto.ReconnectOnNoResponse);
         Assert.False(dto.ReconnectAfterCleanup);
-        Assert.False(dto.HasSysopPowers);
 
         Assert.Equal(80, dto.TerminalCols);
         Assert.Equal(25, dto.TerminalRows);
+        Assert.Equal(16.0, dto.FontSize);
+        Assert.Equal(10_000, dto.ScrollbackLines);
     }
 
     [Fact]
@@ -45,9 +46,10 @@ public sealed class BbsProfileFieldsTests
             ReconnectOnCarrierLost = true,
             ReconnectOnNoResponse = false,
             ReconnectAfterCleanup = true,
-            HasSysopPowers = true,
             TerminalCols = 132,
             TerminalRows = 50,
+            FontSize = 20.0,
+            ScrollbackLines = 50_000,
         };
 
         string json = JsonSerializer.Serialize(original);
@@ -65,9 +67,10 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(original.ReconnectOnCarrierLost,   round.ReconnectOnCarrierLost);
         Assert.Equal(original.ReconnectOnNoResponse,    round.ReconnectOnNoResponse);
         Assert.Equal(original.ReconnectAfterCleanup,    round.ReconnectAfterCleanup);
-        Assert.Equal(original.HasSysopPowers,           round.HasSysopPowers);
         Assert.Equal(original.TerminalCols,             round.TerminalCols);
         Assert.Equal(original.TerminalRows,             round.TerminalRows);
+        Assert.Equal(original.FontSize,                 round.FontSize);
+        Assert.Equal(original.ScrollbackLines,          round.ScrollbackLines);
     }
 
     [Fact]
@@ -82,6 +85,5 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(23,              dto.Port);
         Assert.Equal(3,               dto.MaxRedials);            // default
         Assert.Equal(80,              dto.TerminalCols);          // default
-        Assert.False(dto.HasSysopPowers);                         // default
     }
 }
