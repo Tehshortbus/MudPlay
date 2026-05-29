@@ -95,7 +95,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     {
         Sections.Add(new MonstersSectionViewModel(_gameData));
         Sections.Add(new ItemsSectionViewModel(_gameData));
-        Add("spells",        "Spells",         "Phase 5 PR 5.7",  "Static MDB table + inline linked Spell Messages editor (key UX improvement over MegaMUD).");
+        Sections.Add(new SpellsSectionViewModel(_gameData));
         Add("conditions",    "Conditions",     "Phase 5 PR 5.9",  "Non-spell condition messages (blinded / poisoned / paralyzed / etc.) with effect-flag bitfield + action enum.");
         Add("triggers",      "Triggers",       "Phase 5 PR 5.10", "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
         Add("aliases",       "Aliases",        "Phase 5 PR 5.11", "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
