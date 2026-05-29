@@ -146,7 +146,7 @@
             </StackPanel>
 
             <!-- Spell-row column headers. -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,4,0,0">
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,4,0,0">
                 <TextBlock Grid.Column="0"/>
                 <TextBlock Grid.Column="1" Classes="ColumnHeader" Text="Spell"/>
                 <TextBlock Grid.Column="2" Classes="ColumnHeader" Text="Min enemies"/>
@@ -155,9 +155,9 @@
             </Grid>
 
             <!-- Multi-attack (room spell). -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Multi-attack"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="170" PlaceholderText="—" FilterMode="Contains"
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Multi-target room spell to fire."/>
                 <NumericUpDown Grid.Column="2" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
                                ToolTip.Tip="Only cast when at least this many hostiles are present."/>
@@ -167,23 +167,10 @@
                                ToolTip.Tip="Minimum mana required to cast this spell — % or absolute per the toggle above."/>
             </Grid>
 
-            <!-- Debuff (single target). -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (single target)"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="170" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Single-target debuff (e.g. weakness, slow)."/>
-                <NumericUpDown Grid.Column="2" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Skip debuffing if the room is below this count (not worth the round)."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Re-cast cap for the active fight."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell."/>
-            </Grid>
-
             <!-- Debuff (AOE). -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (AOE)"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="170" PlaceholderText="—" FilterMode="Contains"
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Area-effect debuff (e.g. blind-room, curse-room)."/>
                 <NumericUpDown Grid.Column="2" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
                                ToolTip.Tip="Only cast when at least this many hostiles are present."/>
@@ -193,10 +180,24 @@
                                ToolTip.Tip="Minimum mana required to cast this spell."/>
             </Grid>
 
+            <!-- Debuff (single target — no Min enemies). -->
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (single target)"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Single-target debuff (e.g. weakness, slow)."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                               ToolTip.Tip="Re-cast cap for the active fight."/>
+                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
+                               ToolTip.Tip="Minimum mana required to cast this spell."/>
+            </Grid>
+
             <!-- Normal attack spell (single-target — no Min enemies). -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal attack spell"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="170" PlaceholderText="—" FilterMode="Contains"
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Primary single-target damage spell."/>
                 <!-- Min enemies intentionally omitted for single-target spells. -->
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
@@ -209,9 +210,9 @@
             </Grid>
 
             <!-- Alternate attack spell (single-target — no Min enemies). -->
-            <Grid ColumnDefinitions="160,180,110,110,140" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Alternate attack spell"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="170" PlaceholderText="—" FilterMode="Contains"
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Fallback / second-choice damage spell — used when the normal pick can't fire."/>
                 <!-- Min enemies intentionally omitted for single-target spells. -->
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
