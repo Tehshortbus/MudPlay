@@ -94,14 +94,31 @@ public sealed class TerminalControl : Control
     {
         // Detach from the previous emulator before subscribing to the new
         // one to avoid leaking handler references.
-        if (oldEm is not null) oldEm.ScreenUpdated -= OnScreenUpdated;
-        if (newEm is not null) newEm.ScreenUpdated += OnScreenUpdated;
+        if (oldEm is not null)
+        {
+            oldEm.ScreenUpdated -= OnScreenUpdated;
+            oldEm.ScreenResized -= OnScreenResized;
+        }
+        if (newEm is not null)
+        {
+            newEm.ScreenUpdated += OnScreenUpdated;
+            newEm.ScreenResized += OnScreenResized;
+        }
+        InvalidateMeasure();
         InvalidateVisual();
     }
 
     // ScreenUpdated may fire on any thread; invalidation must happen on the
     // UI thread.
     private void OnScreenUpdated() => Dispatcher.UIThread.Post(InvalidateVisual);
+
+    // ScreenResized only fires on Emulator.Resize. Re-measure so the
+    // canvas grows / shrinks to match the new cell grid.
+    private void OnScreenResized() => Dispatcher.UIThread.Post(() =>
+    {
+        InvalidateMeasure();
+        InvalidateVisual();
+    });
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

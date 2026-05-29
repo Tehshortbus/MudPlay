@@ -49,23 +49,40 @@ public sealed class TerminalScreen
     public ReadOnlySpan<Cell> Row(int y) => _cells.AsSpan(y * Cols, Cols);
 
     /// <summary>
-    /// Resize the buffer, preserving the top-left overlap and clamping the
-    /// cursor inside the new dimensions.
+    /// Resize the buffer. Growing rows adds blank lines at the bottom;
+    /// shrinking rows drops the top-most lines (so the newest server
+    /// content stays visible) and pushes them into <see cref="Scrollback"/>
+    /// so the user can still find them via the Backscroll window.
+    /// Columns always preserve the left edge.
     /// </summary>
     public void Resize(int cols, int rows)
     {
         if (cols == Cols && rows == Rows) return;
         var fresh = new Cell[cols * rows];
         Array.Fill(fresh, Cell.Blank);
+
         int copyCols = Math.Min(cols, Cols);
         int copyRows = Math.Min(rows, Rows);
+        // When shrinking row count, drop the top-most (oldest) rows so the
+        // bottom (most-recent) content stays anchored. When growing, this
+        // is zero and the existing rows stay at y=0 with blank rows below.
+        int dropFromTop = Math.Max(0, Rows - rows);
+
+        // Push the rows we're about to lose into scrollback so the user
+        // can still scrub them in the Backscroll window.
+        for (int y = 0; y < dropFromTop; y++)
+            Scrollback.Append(_cells.AsSpan(y * Cols, Cols));
+
         for (int y = 0; y < copyRows; y++)
-            Array.Copy(_cells, y * Cols, fresh, y * cols, copyCols);
+            Array.Copy(_cells, (y + dropFromTop) * Cols, fresh, y * cols, copyCols);
+
         _cells = fresh;
         Cols = cols;
         Rows = rows;
         CursorX = Math.Min(CursorX, cols - 1);
-        CursorY = Math.Min(CursorY, rows - 1);
+        // Shift cursor up by the number of dropped rows so it tracks the
+        // content; clamp to the new viewport.
+        CursorY = Math.Max(0, Math.Min(CursorY - dropFromTop, rows - 1));
         Bump();
     }
 

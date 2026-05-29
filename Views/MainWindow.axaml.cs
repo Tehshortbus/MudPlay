@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AppServices.Current.WindowLayouts.AttachWindow(this, "main");
 
         // Forward keystrokes captured by the terminal control to whatever
         // view-model is currently set as DataContext.
@@ -44,6 +45,23 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             AppServices.Current.Tick.CombatTickElapsed -= OnCombatTickElapsed;
+        };
+
+        // Auto-save the loaded profile before exit. ProfileService.Save
+        // no-ops on blank drafts (no name on disk to write to) and when
+        // nothing is loaded, so the only path that hits disk is the
+        // common case: a named profile is open. Saves the current
+        // in-memory state so any per-session edits (BBS pin, settings
+        // tab changes, etc.) survive a relaunch without requiring the
+        // user to remember Ctrl+S.
+        Closing += (_, _) =>
+        {
+            try { AppServices.Current.Profile.Save(); }
+            catch (Exception ex)
+            {
+                AppServices.Current.Log.Error("Profile",
+                    $"Auto-save on exit failed: {ex.Message}");
+            }
         };
     }
 

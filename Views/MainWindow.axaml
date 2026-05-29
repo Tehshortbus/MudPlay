@@ -2,12 +2,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels"
         xmlns:ctl="using:FujinTerm.Controls"
+        xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="560"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="FujinTerm"
+        Title="{Binding WindowTitle, FallbackValue=FujinTerm}"
         Width="660" Height="560">
 
     <Design.DataContext>
@@ -16,6 +17,10 @@
 
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProfileAsCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
         <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
         <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
@@ -39,13 +44,35 @@
                 <MenuItem Header="{Binding ConnectionLabel}"
                           Command="{Binding ToggleConnectionCommand}"
                           InputGesture="Ctrl+K"/>
-                <MenuItem Header="BBS list"      IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
                 <Separator/>
-                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Save profile"  InputGesture="Ctrl+S" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
-                <Separator/>
-                <MenuItem Header="Recent profiles" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N"       Command="{Binding NewProfileCommand}"/>
+                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O"       Command="{Binding OpenProfileCommand}"/>
+                <MenuItem Header="{Binding SaveProfileLabel}"  InputGesture="Ctrl+S"
+                          Command="{Binding SaveProfileCommand}"/>
+                <MenuItem Header="Save profile as…" InputGesture="Ctrl+Shift+S"
+                          Command="{Binding SaveProfileAsCommand}"/>
+                <Separator IsVisible="{Binding HasRecents}"/>
+                <MenuItem Header="{Binding Recent0, StringFormat='_1)  {0}'}"
+                          IsVisible="{Binding Recent0, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent0}"/>
+                <MenuItem Header="{Binding Recent1, StringFormat='_2)  {0}'}"
+                          IsVisible="{Binding Recent1, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent1}"/>
+                <MenuItem Header="{Binding Recent2, StringFormat='_3)  {0}'}"
+                          IsVisible="{Binding Recent2, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent2}"/>
+                <MenuItem Header="{Binding Recent3, StringFormat='_4)  {0}'}"
+                          IsVisible="{Binding Recent3, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent3}"/>
+                <MenuItem Header="{Binding Recent4, StringFormat='_5)  {0}'}"
+                          IsVisible="{Binding Recent4, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                          Command="{Binding OpenRecentProfileCommand}"
+                          CommandParameter="{Binding Recent4}"/>
                 <Separator/>
                 <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="Ctrl+Q"/>
             </MenuItem>
@@ -267,27 +294,6 @@
                     </Button>
                 </StackPanel>
 
-            </Grid>
-        </Border>
-
-        <!-- ============ Secondary strip (transitional Host / Port editor) ============ -->
-        <!-- Phase 4 PR 4.5 BBS-profile editor will absorb these; until then the
-             toolbar BBS badge displays the values and this strip lets the user
-             edit them. -->
-        <Border DockPanel.Dock="Top" Classes="SecondaryStrip">
-            <Grid ColumnDefinitions="Auto,*,Auto,80" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Host" VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           FontSize="{StaticResource FontSizeSm}" Margin="0,0,8,0"/>
-                <TextBox Grid.Column="1" Text="{Binding Host}" MinWidth="220"
-                         Background="{StaticResource ChromeBgBrush}"
-                         Foreground="{StaticResource ChromeFgBrush}"/>
-                <TextBlock Grid.Column="2" Text="Port" VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           FontSize="{StaticResource FontSizeSm}" Margin="12,0,8,0"/>
-                <TextBox Grid.Column="3" Text="{Binding Port}"
-                         Background="{StaticResource ChromeBgBrush}"
-                         Foreground="{StaticResource ChromeFgBrush}"/>
             </Grid>
         </Border>
 

@@ -48,6 +48,16 @@ public sealed class AppServices
     public FloatingPanelHost Panels { get; }
 
     /// <summary>
+    /// Per-character top-level window position + size memory. Each
+    /// window calls <see cref="WindowLayoutStore.AttachWindow"/> once
+    /// during construction with a stable id; the store handles
+    /// restore-on-open and capture-on-close, hydrating from
+    /// <see cref="CharacterProfile.WindowBounds"/> on profile load and
+    /// snapshotting back on save.
+    /// </summary>
+    public WindowLayoutStore WindowLayouts { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -100,6 +110,14 @@ public sealed class AppServices
     public WirePromptScanner PromptScanner { get; }
 
     /// <summary>
+    /// Sniffs the post-IAC wire stream for "BBS shutting down in N minutes"
+    /// announcements. The connect lifecycle in MainWindowViewModel reads
+    /// <see cref="CleanupWarningWatcher.Latest"/> on disconnect to decide
+    /// whether to arm an auto-reconnect.
+    /// </summary>
+    public CleanupWarningWatcher Cleanup { get; } = new();
+
+    /// <summary>
     /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
     /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
     /// the regen ticks.
@@ -119,6 +137,15 @@ public sealed class AppServices
     /// (font size in particular) apply without restarting the app.
     /// </summary>
     public DisplayConfig Display { get; } = new();
+
+    /// <summary>
+    /// AES-GCM encrypt / decrypt for short secrets (BBS passwords).
+    /// Ciphertext is stored inline on the owning record (e.g.
+    /// <see cref="Models.Profile.BbsCredentials.EncryptedPassword"/>),
+    /// so profile JSON stays fully self-contained for backup. The
+    /// per-user key lives at <c>Data/.credkey</c>.
+    /// </summary>
+    public PasswordProtector Passwords { get; } = new();
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -155,6 +182,7 @@ public sealed class AppServices
         Dialogs = new DialogService();
         Log = new LogService();
         Panels = new FloatingPanelHost();
+        WindowLayouts = new WindowLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 
@@ -181,51 +209,44 @@ public sealed class AppServices
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
-        // Bridge: re-apply Display settings (font size, scrollback target) to
-        // the live singleton on every profile load.
-        Profile.ProfileLoaded += ApplyDisplayFromProfile;
+        // Bridge: keep the live DisplayConfig in sync with the active BBS.
+        // Font size + scrollback are BBS-tier (different BBSes warrant
+        // different legibility tuning) so we re-resolve on every profile
+        // load AND on every ProfileMutated tick (which fires from the BBS
+        // section's Apply path after a save).
+        Profile.ProfileLoaded += _ => ApplyDisplayFromActiveBbs();
         Profile.ProfileClosed += ResetDisplayToDefaults;
+        Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
-        // Auto-load the most recently used profile if one is recorded and the
-        // file still exists; otherwise stand up an in-memory blank draft so
-        // every settings tab has a target the user can read / edit without
-        // having to manually create a profile first. The draft persists in
-        // memory only until the user names + saves it via the File menu.
-        string? last = Settings.Current.LastUsedProfileName;
-        if (!string.IsNullOrWhiteSpace(last) &&
-            File.Exists(AppPaths.CharacterProfileFile(last)))
-        {
-            Profile.Load(last);
-        }
-        else
-        {
-            Profile.LoadBlank();
-        }
+        // Always start with a blank draft. Auto-loading the most recently used
+        // profile is a deliberate opt-in feature that ships in a later PR
+        // (Settings → General toggle); until then the user picks the profile
+        // they want via File → Open profile / Recent profiles.
+        Profile.LoadBlank();
 
-        // Track which profile was last loaded so the next launch can reopen it.
+        // Track which profile was last loaded so the future "auto-load last"
+        // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
     }
 
-    private void ApplyDisplayFromProfile(Models.Profile.CharacterProfile profile)
+    private void ApplyDisplayFromActiveBbs()
     {
-        Models.Profile.DisplaySettings dto = ReadDisplay(profile);
-        Display.FontSize = dto.FontSize;
-        Display.ScrollbackLines = dto.ScrollbackLines;
+        string? bbsName = Profile.Current?.BbsName;
+        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
+        Models.Settings.BbsProfile values = bbs ?? new Models.Settings.BbsProfile();
+        Display.FontSize = values.FontSize;
+        Display.ScrollbackLines = values.ScrollbackLines;
+        Display.TerminalCols = values.TerminalCols;
+        Display.TerminalRows = values.TerminalRows;
     }
 
     private void ResetDisplayToDefaults()
     {
-        Models.Profile.DisplaySettings defaults = new();
+        Models.Settings.BbsProfile defaults = new();
         Display.FontSize = defaults.FontSize;
         Display.ScrollbackLines = defaults.ScrollbackLines;
-    }
-
-    private static Models.Profile.DisplaySettings ReadDisplay(Models.Profile.CharacterProfile profile)
-    {
-        if (profile.Settings is null) return new();
-        if (!profile.Settings.TryGetValue("Display", out System.Text.Json.JsonElement json)) return new();
-        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.DisplaySettings>(json.GetRawText())
-               ?? new();
+        Display.TerminalCols = defaults.TerminalCols;
+        Display.TerminalRows = defaults.TerminalRows;
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

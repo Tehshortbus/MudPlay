@@ -8,6 +8,9 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
+using System.Collections.ObjectModel;
+using FujinTerm.Models.Profile;
+using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
 using FujinTerm.ViewModels.Settings;
@@ -30,6 +33,9 @@ namespace FujinTerm.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     private TelnetClient? _telnet;
+    private LoginAutomator? _automator;
+    private Action<PromptObservation>? _loginKillSwitch;
+    private CancellationTokenSource? _cleanupReconnectCts;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -48,9 +54,40 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public double TerminalFontSize => AppServices.Current.Display.FontSize;
 
-    [ObservableProperty] private string _host = "playpenbbs.com";
+    /// <summary>
+    /// Host the active BBS resolves to. Read-only from the UI — the user
+    /// picks the active BBS in Settings → BBS, and that selection's Host /
+    /// Port drives the connect button.
+    /// </summary>
+    public string Host => ResolveActiveBbs()?.Host ?? string.Empty;
 
-    [ObservableProperty] private int _port = 23;
+    /// <summary>Port the active BBS resolves to. <c>0</c> when no BBS is configured.</summary>
+    public int Port => ResolveActiveBbs()?.Port ?? 0;
+
+    /// <summary>
+    /// Name of the BBS the connect button will dial. Follows the same
+    /// preference order as <see cref="ResolveActiveBbs"/> — the loaded
+    /// character's pin first, then a fallback to the first BBS in the
+    /// global list.
+    /// </summary>
+    public string? ActiveBbsName => ResolveActiveBbs()?.Name;
+
+    /// <summary>Window title — "FujinTerm — {profile} — {bbs}", trimmed when bits are missing.</summary>
+    public string WindowTitle
+    {
+        get
+        {
+            string? profile = AppServices.Current.Profile.CurrentProfileName;
+            string? bbs = ActiveBbsName;
+            if (profile is null && bbs is null) return "FujinTerm";
+            if (profile is null) return $"FujinTerm — {bbs}";
+            if (bbs is null)     return $"FujinTerm — {profile}";
+            return $"FujinTerm — {profile} — {bbs}";
+        }
+    }
+
+    /// <summary>True when the connect button has somewhere to dial.</summary>
+    public bool CanConnect => !string.IsNullOrWhiteSpace(Host) && Port > 0;
 
     // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
     // The single ToggleConnectionCommand drives every transition; everything
@@ -168,6 +205,32 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
 
+        // Seed File → Recent profile slots + Save profile label.
+        RecentProfiles.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Recent0));
+            OnPropertyChanged(nameof(Recent1));
+            OnPropertyChanged(nameof(Recent2));
+            OnPropertyChanged(nameof(Recent3));
+            OnPropertyChanged(nameof(Recent4));
+            OnPropertyChanged(nameof(HasRecents));
+        };
+        RebuildRecentProfiles();
+        SyncProfileMenuState();
+        AppServices.Current.Profile.ProfileLoaded += _ => { SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileClosed += () => { SyncProfileMenuState(); RefreshBbsBindings(); };
+        // ProfileMutated fires from BbsSectionViewModel.Apply after the
+        // BBS pin has been stamped onto the profile — works for both
+        // named profiles and unsaved drafts (Save no-ops on drafts but
+        // the mutation signal still fires).
+        AppServices.Current.Profile.ProfileMutated += _ => RefreshBbsBindings();
+
+        // Cleanup-warning banner: when the BBS announces nightly shutdown
+        // on the wire, drop a yellow banner into the terminal canvas so
+        // the user knows to type `quit` at a safe room. The auto-reconnect
+        // schedule is armed later, on the Disconnected event.
+        AppServices.Current.Cleanup.WarningObserved += OnCleanupWarningObserved;
+
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
         // font live. Also resize the live scrollback when ScrollbackLines
@@ -182,6 +245,11 @@ public partial class MainWindowViewModel : ObservableObject
         {
             Emulator.Screen.Scrollback.SetCapacity(initialScrollback);
         }
+
+        // Apply the active BBS's terminal-grid size to the live emulator.
+        // Without this the emulator stays at the 80×25 ctor default even
+        // when the BBS file says otherwise.
+        ApplyTerminalSize();
 
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
@@ -208,6 +276,32 @@ public partial class MainWindowViewModel : ObservableObject
             int newCapacity = AppServices.Current.Display.ScrollbackLines;
             if (newCapacity > 0) Emulator.Screen.Scrollback.SetCapacity(newCapacity);
         }
+        else if (e.PropertyName == nameof(Services.DisplayConfig.TerminalCols)
+              || e.PropertyName == nameof(Services.DisplayConfig.TerminalRows))
+        {
+            ApplyTerminalSize();
+        }
+    }
+
+    /// <summary>
+    /// Resize the live emulator screen and (if connected) re-advertise the
+    /// new dimensions to the BBS via Telnet NAWS. Reads from
+    /// <see cref="DisplayConfig"/> so any caller that wrote into it picks
+    /// up the same source of truth.
+    /// </summary>
+    private void ApplyTerminalSize()
+    {
+        int cols = AppServices.Current.Display.TerminalCols;
+        int rows = AppServices.Current.Display.TerminalRows;
+        if (cols <= 0 || rows <= 0) return;
+        if (cols == Emulator.Screen.Cols && rows == Emulator.Screen.Rows)
+        {
+            // Same size — still re-send NAWS in case the server lost state.
+            _ = _telnet?.SendWindowSizeAsync(cols, rows);
+            return;
+        }
+        Emulator.Resize(cols, rows);
+        _ = _telnet?.SendWindowSizeAsync(cols, rows);
     }
 
     /// <summary>
@@ -264,6 +358,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (IsConnected)        { await DisconnectInternalAsync();   return; }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
+        // User clicking Connect overrides any pending cleanup-reconnect
+        // schedule — they explicitly want to dial now.
+        CancelCleanupReconnect("user clicked Connect");
         await ConnectWithRetriesAsync();
     }
 
@@ -271,6 +368,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         TelnetClient? t = _telnet;
         _telnet = null;
+        DetachLoginKillSwitch();
+        _automator?.Dispose();
+        _automator = null;
         if (t is not null) await t.DisposeAsync();
         IsConnected = false;
 
@@ -282,9 +382,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Host) || Port <= 0)
         {
-            WriteTerminalStatus("[NO HOST / PORT SET — EDIT THE FIELDS BELOW THE TOOLBAR.]",
+            WriteTerminalStatus("[NO BBS SELECTED — OPEN SETTINGS → BBS, PICK ONE, AND SAVE.]",
                                 TerminalStatusKind.Error);
-            AppServices.Current.Log.Warn("Connect", "Enter host and port.");
+            AppServices.Current.Log.Warn("Connect", "No active BBS — open Settings → BBS first.");
             return;
         }
 
@@ -314,6 +414,7 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     await client.ConnectAsync(Host, Port, attemptCts.Token);
                     _telnet = client;
+                    ArmLoginAutomator(client);
                     return;  // success — IsConnected flips via Connected event handler.
                 }
                 catch (OperationCanceledException) when (_connectCts.IsCancellationRequested)
@@ -374,6 +475,216 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Looks up the matching <see cref="BbsProfile"/> by host, pulls the
+    /// loaded character's credentials for that BBS, and arms a
+    /// <see cref="LoginAutomator"/> against the live socket. No-op when no
+    /// BBS record matches, no profile is loaded, or the credentials are
+    /// missing — the user just gets the raw login prompt.
+    /// </summary>
+    private void ArmLoginAutomator(TelnetClient client)
+    {
+        DetachLoginKillSwitch();
+        _automator?.Dispose();
+        _automator = null;
+
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is null) return;  // no active BBS — caller already aborted the connect.
+
+        CharacterProfile? character = AppServices.Current.Profile.Current;
+        BbsCredentials? creds = null;
+        character?.BbsCredentials?.TryGetValue(bbs.Name, out creds);
+
+        LoginAutomator? automator = LoginAutomator.TryBuild(
+            creds,
+            AppServices.Current.Passwords,
+            (text, ct) => client.SendTextAsync(text, ct),
+            msg => AppServices.Current.Log.Debug("LoginAuto", msg));
+        if (automator is null)
+        {
+            AppServices.Current.Log.Debug("LoginAuto",
+                $"No menu-nav configured on '{AppServices.Current.Profile.CurrentProfileName ?? "(no profile)"}' for BBS '{bbs.Name}' — manual login.");
+            return;
+        }
+
+        string bbsName = bbs.Name;
+        automator.LoggedIntoGame += () =>
+        {
+            AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
+            DetachLoginKillSwitch();
+        };
+        automator.Aborted += reason =>
+        {
+            AppServices.Current.Log.Warn("LoginAuto", $"'{bbsName}': {reason}");
+            DetachLoginKillSwitch();
+        };
+        _automator = automator;
+
+        // Hard kill-switch: the moment WirePromptScanner observes any
+        // MajorMUD status line (`[HP=...]` on the wire), we know we're
+        // inside the game. Dispose the automator immediately regardless
+        // of where it sits in its step queue — no later step the user
+        // may have authored can run, even if it references {username}
+        // or {password}. Belt-and-braces on top of the auto-dispose at
+        // FireDone: if the user's menu-nav doesn't structurally end at
+        // "we're now in game" (extra trailing steps, a step that never
+        // matches, etc.), this is the final defence that stops any of
+        // them from firing in-game.
+        WirePromptScanner scanner = AppServices.Current.PromptScanner;
+        Action<PromptObservation>? handler = null;
+        handler = _ =>
+        {
+            LoginAutomator? a = _automator;
+            if (a is null) { DetachLoginKillSwitch(); return; }
+            int stepsRun = a.CurrentStepIndex;
+            int stepsTotal = a.StepCount;
+            a.Dispose();
+            _automator = null;
+            DetachLoginKillSwitch();
+            AppServices.Current.Log.Info("LoginAuto",
+                $"In-game prompt observed — force-disposed automator for '{bbsName}' after {stepsRun}/{stepsTotal} step(s).");
+        };
+        scanner.PromptObserved += handler;
+        _loginKillSwitch = handler;
+
+        automator.Start();
+    }
+
+    private void DetachLoginKillSwitch()
+    {
+        if (_loginKillSwitch is null) return;
+        AppServices.Current.PromptScanner.PromptObserved -= _loginKillSwitch;
+        _loginKillSwitch = null;
+    }
+
+    // ----- Cleanup-warning auto-reconnect ------------------------------
+
+    private void OnCleanupWarningObserved(CleanupWarning warning)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            WriteTerminalStatus(
+                $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]",
+                TerminalStatusKind.Notice);
+            AppServices.Current.Log.Warn("Cleanup",
+                $"Server announced shutdown in {warning.MinutesRemaining} minute(s) at {warning.ObservedAt.LocalDateTime:HH:mm:ss}.");
+        });
+    }
+
+    /// <summary>
+    /// On disconnect, if a cleanup warning was observed during this
+    /// session AND the active BBS has <see cref="BbsProfile.ReconnectAfterCleanup"/>
+    /// enabled, arm a one-shot reconnect at the moment we think the BBS
+    /// is back online. Formula:
+    /// <code>
+    /// shutdown_at = warning_observed_at + warning_minutes_remaining
+    /// reconnect_at = max(now, shutdown_at) + BBS.CleanupPeriodMinutes
+    /// </code>
+    /// Handles both the clean-quit-before-shutdown case (we take the
+    /// long path: full warning countdown + user-set cleanup duration)
+    /// and the dirty-shutdown case (the <c>max</c> collapses to
+    /// <c>now + cleanup</c>, since shutdown_at has already passed).
+    /// </summary>
+    private void TryScheduleCleanupReconnect()
+    {
+        CleanupWarning? maybeWarning = AppServices.Current.Cleanup.Latest;
+        if (maybeWarning is not { } warning) return;
+
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is null || !bbs.ReconnectAfterCleanup)
+        {
+            AppServices.Current.Log.Debug("Cleanup",
+                "Warning observed but ReconnectAfterCleanup is off — not scheduling.");
+            return;
+        }
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset shutdownAt = warning.EstimatedShutdownAt;
+        DateTimeOffset reconnectAt =
+            (shutdownAt > now ? shutdownAt : now) +
+            TimeSpan.FromMinutes(Math.Max(0, bbs.CleanupPeriodMinutes));
+
+        TimeSpan delay = reconnectAt - now;
+        if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
+
+        CancelCleanupReconnect(reason: null);
+        _cleanupReconnectCts = new CancellationTokenSource();
+        CancellationToken token = _cleanupReconnectCts.Token;
+
+        string when = reconnectAt.LocalDateTime.ToString("HH:mm:ss");
+        int minutes = (int)delay.TotalMinutes;
+        int seconds = delay.Seconds;
+        WriteTerminalStatus(
+            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s).]",
+            TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Cleanup",
+            $"Reconnect scheduled at {when} — warning observed at " +
+            $"{warning.ObservedAt.LocalDateTime:HH:mm:ss} with {warning.MinutesRemaining}m remaining " +
+            $"+ {bbs.CleanupPeriodMinutes}m cleanup period.");
+
+        _ = Task.Delay(delay, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConnected || IsConnecting) return;
+                _cleanupReconnectCts?.Dispose();
+                _cleanupReconnectCts = null;
+                AppServices.Current.Cleanup.Reset();
+                _ = ConnectWithRetriesAsync();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void CancelCleanupReconnect(string? reason)
+    {
+        if (_cleanupReconnectCts is null) return;
+        try { _cleanupReconnectCts.Cancel(); } catch { }
+        _cleanupReconnectCts.Dispose();
+        _cleanupReconnectCts = null;
+        if (reason is not null)
+        {
+            AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
+            WriteTerminalStatus("[AUTO-RECONNECT CANCELLED.]", TerminalStatusKind.Notice);
+        }
+    }
+
+    /// <summary>
+    /// Resolve which BBS the connect target reads off of. Preference order:
+    /// <list type="number">
+    ///   <item><description>The pin on the loaded character profile
+    ///     (<c>CharacterProfile.BbsName</c>).</description></item>
+    ///   <item><description>The first BBS in the global list (alphabetical),
+    ///     so a user on a blank draft can still click Connect without
+    ///     opening Settings first.</description></item>
+    /// </list>
+    /// Returns <c>null</c> only when there's no profile, no pin AND zero
+    /// BBSes saved on disk.
+    /// </summary>
+    private static BbsProfile? ResolveActiveBbs()
+    {
+        string? name = AppServices.Current.Profile.Current?.BbsName;
+        if (!string.IsNullOrEmpty(name))
+        {
+            BbsProfile? pinned = AppServices.Current.Bbs.Get(name);
+            if (pinned is not null) return pinned;
+        }
+
+        string? first = AppServices.Current.Bbs.ListNames()
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        return first is null ? null : AppServices.Current.Bbs.Get(first);
+    }
+
+    private void RefreshBbsBindings()
+    {
+        OnPropertyChanged(nameof(Host));
+        OnPropertyChanged(nameof(Port));
+        OnPropertyChanged(nameof(ActiveBbsName));
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(CanConnect));
+    }
+
     private TelnetClient BuildTelnetClient()
     {
         TelnetClient client = new()
@@ -400,19 +711,33 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 AppServices.Current.PromptScanner.Append(copy);
+                AppServices.Current.Cleanup.Append(copy);
+                _automator?.Feed(copy);
                 Emulator.Feed(copy);
             });
         };
         client.Connected += () =>
         {
             AppServices.Current.Log.Info("Telnet", $"Connected to {Host}:{Port}");
-            Dispatcher.UIThread.Post(() => IsConnected = true);
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsConnected = true;
+                // Fresh session — drop any cleanup warning carried over
+                // and clear any pending auto-reconnect schedule (which
+                // would be redundant now that we're connected anyway).
+                AppServices.Current.Cleanup.Reset();
+                CancelCleanupReconnect("connected");
+            });
         };
         client.Disconnected += () =>
         {
             // Don't log here; DisconnectInternalAsync already did, and a
             // server-initiated drop will fire this too.
-            Dispatcher.UIThread.Post(() => IsConnected = false);
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsConnected = false;
+                TryScheduleCleanupReconnect();
+            });
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;
         // route them into LogService at Debug severity so the Log pane can
@@ -685,8 +1010,190 @@ public partial class MainWindowViewModel : ObservableObject
 
     private SettingsWindow? _settings;
 
+    // ----- Profile file management (Phase 4 PR 4.5a) ----------------------
+
+    /// <summary>
+    /// Most-recent-first list of saved profile names. Drives the inline
+    /// File-menu recent entries (<see cref="Recent0"/>..<see cref="Recent4"/>).
+    /// Rebuilt from <c>GlobalSettings</c> on startup and after every
+    /// profile save.
+    /// </summary>
+    public ObservableCollection<string> RecentProfiles { get; } = new();
+
+    // Indexed accessors so the File menu can lay out five fixed MenuItems
+    // instead of a flyout submenu. Avalonia ItemsSource inside MenuItem
+    // wraps each item in its own MenuItem, which loses the parent VM as
+    // the DataContext (the command resolution via $parent[Window] is
+    // fragile across popup ownership). Binding to the parent VM directly
+    // sidesteps that entirely.
+    public string? Recent0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public string? Recent1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public string? Recent2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public string? Recent3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public string? Recent4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+
+    /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
+    public bool HasRecents => RecentProfiles.Count > 0;
+
+    /// <summary>True when a named profile is loaded — gates File → Save profile.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveProfileLabel))]
+    private bool _hasNamedProfile;
+
+    public string SaveProfileLabel => HasNamedProfile
+        ? $"_Save profile  ·  {AppServices.Current.Profile.CurrentProfileName}"
+        : "_Save profile…";
+
+    /// <summary>
+    /// Blank-slate the running profile. The outgoing profile is auto-saved
+    /// first (handled inside ProfileService.LoadBlank), then Current is
+    /// replaced with a fresh in-memory draft. The user names + persists
+    /// it later via File → Save profile (which routes to Save As since
+    /// the draft has no name yet).
+    /// </summary>
     [RelayCommand]
-    private void OpenSettings()
+    private void NewProfile()
+    {
+        AppServices.Current.Profile.LoadBlank();
+        SyncProfileMenuState();
+    }
+
+    [RelayCommand]
+    private async Task OpenProfileAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
+        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open profile",
+            AllowMultiple = false,
+            SuggestedStartLocation = profilesFolder,
+            FileTypeFilter = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
+        });
+        if (files.Count == 0) return;
+
+        string name = Path.GetFileNameWithoutExtension(files[0].Name);
+        try
+        {
+            AppServices.Current.Profile.Load(name);
+            PromoteRecent(name);
+            SyncProfileMenuState();
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveProfileAsync()
+    {
+        ProfileService profile = AppServices.Current.Profile;
+        if (profile.Current is null)
+        {
+            AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
+            return;
+        }
+        if (profile.IsBlankDraft)
+        {
+            await SaveProfileAsAsync();
+            return;
+        }
+        profile.Save();
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{profile.CurrentProfileName}'.");
+    }
+
+    [RelayCommand]
+    private async Task SaveProfileAsAsync()
+    {
+        ProfileService profile = AppServices.Current.Profile;
+        if (profile.Current is null)
+        {
+            AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
+            return;
+        }
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
+        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save profile as",
+            SuggestedStartLocation = profilesFolder,
+            SuggestedFileName = profile.CurrentProfileName ?? "character",
+            DefaultExtension = "json",
+            FileTypeChoices = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
+            ShowOverwritePrompt = true,
+        });
+        if (file is null) return;
+
+        // Profile names map to files under Data/profiles/{name}.json. If the
+        // picker landed somewhere else we still pull just the basename and
+        // write into Data/profiles — keeps ProfileService's layout invariant.
+        string name = Path.GetFileNameWithoutExtension(file.Name);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        profile.SaveAs(name);
+        PromoteRecent(name);
+        SyncProfileMenuState();
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}'.");
+    }
+
+    [RelayCommand]
+    private void OpenRecentProfile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (!AppServices.Current.Profile.Exists(name))
+        {
+            AppServices.Current.Log.Warn("Profile", $"Recent profile '{name}' no longer exists.");
+            RecentProfiles.Remove(name);
+            return;
+        }
+        try
+        {
+            AppServices.Current.Profile.Load(name);
+            PromoteRecent(name);
+            SyncProfileMenuState();
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+        }
+    }
+
+    private void PromoteRecent(string profileName)
+    {
+        SettingsService settingsSvc = AppServices.Current.Settings;
+        GlobalSettings settings = settingsSvc.Current;
+        settings.RecentProfiles ??= new();
+        settings.RecentProfiles.Remove(profileName);
+        settings.RecentProfiles.Insert(0, profileName);
+        while (settings.RecentProfiles.Count > GlobalSettings.RecentProfilesLimit)
+            settings.RecentProfiles.RemoveAt(settings.RecentProfiles.Count - 1);
+        settings.LastUsedProfileName = profileName;
+        settingsSvc.Save();
+        RebuildRecentProfiles();
+    }
+
+    private void RebuildRecentProfiles()
+    {
+        RecentProfiles.Clear();
+        IList<string>? source = AppServices.Current.Settings.Current.RecentProfiles;
+        if (source is null) return;
+        foreach (string name in source) RecentProfiles.Add(name);
+    }
+
+    private void SyncProfileMenuState()
+        => HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
+
+    [RelayCommand]
+    private void OpenSettings() => OpenSettingsAt(null);
+
+    [RelayCommand]
+    private void OpenBbsSettings() => OpenSettingsAt("bbs");
+
+    private void OpenSettingsAt(string? sectionId)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
@@ -694,18 +1201,34 @@ public partial class MainWindowViewModel : ObservableObject
         // Toggle convention with edit-window save-on-toggle policy:
         // re-press of the same hotkey / menu while the window is open
         // routes through ApplyAndClose (Save path). Title-bar X / Cancel
-        // button discards. See CLAUDE.md "Architecture rules".
+        // button discards. See CLAUDE.md "Architecture rules". For a
+        // deep-link (BBS list etc.) on a window that's already open, jump
+        // to the requested section instead of saving + closing.
         if (_settings is { } existing)
         {
-            if (existing.DataContext is SettingsWindowViewModel vm) vm.ApplyAndClose();
-            else existing.Close();
+            if (existing.DataContext is SettingsWindowViewModel vm)
+            {
+                if (sectionId is not null)
+                {
+                    SettingsSectionViewModel? section = vm.Sections
+                        .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+                    if (section is not null) vm.SelectedSection = section;
+                    existing.Activate();
+                    return;
+                }
+                vm.ApplyAndClose();
+            }
+            else
+            {
+                existing.Close();
+            }
             return;
         }
 
         AppServices svc = AppServices.Current;
         SettingsWindow window = new()
         {
-            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log),
+            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log, sectionId),
         };
         window.Closed += (_, _) => _settings = null;
         _settings = window;

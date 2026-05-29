@@ -48,7 +48,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         ? "Pick a section from the sidebar."
         : SelectedSection.Title;
 
-    public SettingsWindowViewModel(ProfileService profile, LogService log)
+    public SettingsWindowViewModel(ProfileService profile, LogService log, string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(log);
@@ -58,8 +58,19 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         SeedSections();
         RebuildVisibleSections();
 
-        SelectedSection = Sections.FirstOrDefault();
+        SelectedSection = initialSectionId is not null
+            ? Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase))
+              ?? Sections.FirstOrDefault()
+            : Sections.FirstOrDefault();
     }
+
+    /// <summary>
+    /// True once the user has chosen a commit path (OK / Apply-and-close
+    /// or Cancel). Lets the host window's Closing handler distinguish
+    /// "X / Alt-F4 with no explicit decision" from "we already discarded
+    /// / saved" and route the no-decision close through <see cref="DiscardChanges"/>.
+    /// </summary>
+    public bool IsCommitted { get; private set; }
 
     /// <summary>
     /// Save path — apply every dirty section, then ask the host window to
@@ -69,18 +80,30 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     public void ApplyAndClose()
     {
         ApplyAll();
+        IsCommitted = true;
         CloseRequested?.Invoke();
     }
 
     /// <summary>
     /// Discard path — drop pending edits without writing, then close.
-    /// Called by the Cancel button. (The title-bar X also drops without
-    /// writing since pending edits live in unflushed VM state.)
+    /// Called by the Cancel button.
     /// </summary>
     public void DiscardAndClose()
     {
-        foreach (SettingsSectionViewModel s in Sections) s.Discard();
+        DiscardChanges();
+        IsCommitted = true;
         CloseRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Drop pending edits but don't close the window. Used by the host
+    /// window's Closing handler to route X / Alt-F4 through the same
+    /// rollback logic as Cancel without re-entering Close.
+    /// </summary>
+    public void DiscardChanges()
+    {
+        foreach (SettingsSectionViewModel s in Sections) s.Discard();
+        IsCommitted = true;
     }
 
     [RelayCommand]
@@ -179,14 +202,13 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
-        Sections.Add(new DisplaySectionViewModel(_profile, AppServices.Current.Display));
         Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
 
-        Add("bbs",       "BBS",       "Phase 4 PR 4.5",
-            "Pick which BBS entry to connect to; username + password; max redials, " +
-            "redial pause, cleanup period length; reconnect-on (failed connect / " +
-            "carrier lost / no response / after cleanup); sysop-powers marker; " +
-            "menu-nav sequence to reach the in-game prompt.");
+        Sections.Add(new BbsSectionViewModel(
+            AppServices.Current.Bbs,
+            _profile,
+            AppServices.Current.Passwords,
+            AppServices.Current.Display));
 
         Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
         Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");

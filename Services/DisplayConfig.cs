@@ -3,16 +3,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace FujinTerm.Services;
 
 /// <summary>
-/// Live, observable mirror of the currently-loaded
-/// <see cref="Models.Profile.DisplaySettings"/>. The Settings → Display
-/// section writes into this; the main terminal binds its
-/// <c>FontSize</c> to it so font changes apply without reopening
-/// Settings. <see cref="ScrollbackLines"/> is persisted here but the
-/// underlying <see cref="Terminal.ScrollbackBuffer"/> is sized at
-/// startup — runtime changes take effect on next launch.
+/// Live, observable mirror of the BBS-tier display settings (FontSize,
+/// ScrollbackLines, TerminalCols, TerminalRows). The Settings → BBS
+/// section writes into this for live-preview; the main window subscribes
+/// to PropertyChanged and re-applies side effects: font rebind on
+/// FontSize, scrollback ring resize on ScrollbackLines, emulator screen
+/// resize + Telnet NAWS re-advertise on TerminalCols / TerminalRows.
+/// AppServices re-resolves these from the active BBS on ProfileLoaded /
+/// ProfileMutated.
 /// </summary>
 public sealed partial class DisplayConfig : ObservableObject
 {
     [ObservableProperty] private double _fontSize = 16.0;
     [ObservableProperty] private int _scrollbackLines = 10_000;
+    [ObservableProperty] private int _terminalCols = 80;
+    [ObservableProperty] private int _terminalRows = 25;
 }

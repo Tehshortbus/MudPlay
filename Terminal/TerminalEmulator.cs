@@ -77,10 +77,20 @@ public sealed class TerminalEmulator
     /// <summary>Resize the underlying screen and reset the scroll region.</summary>
     public void Resize(int cols, int rows)
     {
+        if (cols == Screen.Cols && rows == Screen.Rows) return;
         Screen.Resize(cols, rows);
         _scrollTop = 0;
         _scrollBottom = rows - 1;
+        ScreenResized?.Invoke();
+        ScreenUpdated?.Invoke();
     }
+
+    /// <summary>
+    /// Fires after a successful <see cref="Resize"/>. Subscribers (the
+    /// terminal canvas) invalidate their measure so the layout re-runs
+    /// against the new cell grid.
+    /// </summary>
+    public event Action? ScreenResized;
 
     /// <summary>Process a chunk of incoming bytes from the host.</summary>
     public void Feed(ReadOnlySpan<byte> bytes)

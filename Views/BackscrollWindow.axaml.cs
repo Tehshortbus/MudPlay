@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using FujinTerm.Controls;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -13,12 +14,14 @@ namespace FujinTerm.Views;
 /// </summary>
 public partial class BackscrollWindow : Window
 {
-    private ListBox? _rowsList;
+    private ScrollViewer? _scroll;
+    private SelectableTranscript? _transcript;
 
     public BackscrollWindow()
     {
         InitializeComponent();
         GlobalHotkeys.Attach(this);
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "backscroll");
         Opened += OnOpened;
         Closed += OnClosed;
     }
@@ -27,16 +30,16 @@ public partial class BackscrollWindow : Window
 
     private void OnOpened(object? sender, EventArgs e)
     {
-        _rowsList = this.FindControl<ListBox>("RowsList");
+        _scroll = this.FindControl<ScrollViewer>("RowsScroll");
+        _transcript = this.FindControl<SelectableTranscript>("Transcript");
         if (DataContext is BackscrollViewModel vm)
         {
-            vm.ScrollToRowRequested += OnScrollToRow;
-            vm.GoToLiveRequested    += OnGoToLive;
+            vm.FindMatchRequested += OnFindMatch;
+            vm.GoToLiveRequested  += OnGoToLive;
 
-            // ScrollIntoView no-ops if the ListBox hasn't been measured /
-            // realised yet — Opened fires before the first arrange pass.
-            // Dispatch on a Background-priority post so layout completes
-            // first; user lands on the freshest row instead of row 0.
+            // Wait for the first arrange pass before we scroll to the live
+            // tail — otherwise heights are still zero and the ScrollViewer
+            // would no-op.
             Dispatcher.UIThread.Post(OnGoToLive, DispatcherPriority.Background);
 
             if (vm.FocusSearchOnOpen)
@@ -50,31 +53,42 @@ public partial class BackscrollWindow : Window
     {
         if (DataContext is BackscrollViewModel vm)
         {
-            vm.ScrollToRowRequested -= OnScrollToRow;
-            vm.GoToLiveRequested    -= OnGoToLive;
+            vm.FindMatchRequested -= OnFindMatch;
+            vm.GoToLiveRequested  -= OnGoToLive;
             vm.Dispose();
         }
     }
 
-    private void OnScrollToRow(int index)
+    /// <summary>
+    /// Highlight a Find-next hit by setting the SelectableTextBlock's
+    /// selection at the matched span and scrolling to the row.
+    /// </summary>
+    private void OnFindMatch(int rowIndex, int columnOffset, int length)
     {
-        if (_rowsList is null) return;
+        if (_transcript is null || _scroll is null) return;
         if (DataContext is not BackscrollViewModel vm) return;
-        if ((uint)index >= (uint)vm.Rows.Count) return;
-        BackscrollRowViewModel row = vm.Rows[index];
-        _rowsList.ScrollIntoView(row);
-        // Mirror what clicking the row would do — select it so the user has
-        // a visible highlight on the match instead of guessing which row
-        // the scroll landed on.
-        _rowsList.SelectedItems?.Clear();
-        _rowsList.SelectedItem = row;
+        if ((uint)rowIndex >= (uint)vm.Rows.Count) return;
+        if (rowIndex >= _transcript.RowCharOffsets.Count) return;
+
+        // Transcript text is cell content only (timestamps live in the
+        // sibling TimestampGutter), so the column offset within the row
+        // maps directly to the absolute position.
+        int abs = _transcript.RowCharOffsets[rowIndex] + columnOffset;
+        _transcript.SelectionStart = abs;
+        _transcript.SelectionEnd = abs + length;
+
+        // No per-row container to BringIntoView — approximate the y offset
+        // by row index × cell height. Mx437 16pt cells = 16px line height.
+        const double rowHeight = 16;
+        double target = rowIndex * rowHeight - _scroll.Viewport.Height / 2;
+        target = Math.Max(0, Math.Min(target, _scroll.Extent.Height - _scroll.Viewport.Height));
+        _scroll.Offset = new Avalonia.Vector(_scroll.Offset.X, target);
     }
 
     private void OnGoToLive()
     {
-        if (_rowsList is null) return;
-        if (DataContext is not BackscrollViewModel vm) return;
-        if (vm.Rows.Count == 0) return;
-        _rowsList.ScrollIntoView(vm.Rows[^1]);
+        if (_scroll is null) return;
+        _scroll.Offset = new Avalonia.Vector(_scroll.Offset.X,
+            Math.Max(0, _scroll.Extent.Height - _scroll.Viewport.Height));
     }
 }

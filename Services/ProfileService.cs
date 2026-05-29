@@ -51,6 +51,21 @@ public sealed class ProfileService
     public event Action<CharacterProfile>? ProfileSaving;
 
     /// <summary>
+    /// Fired whenever in-memory state on <see cref="Current"/> changes via
+    /// the settings UI (BBS pin, credential edit, etc.) — i.e. anywhere a
+    /// disk save isn't guaranteed (blank drafts no-op the save path but
+    /// observers still need to refresh). Bindings like the main window's
+    /// title + active-BBS-derived Host / Port listen here.
+    /// </summary>
+    public event Action<CharacterProfile>? ProfileMutated;
+
+    /// <summary>Fire <see cref="ProfileMutated"/> for the current profile, if any.</summary>
+    public void NotifyMutated()
+    {
+        if (Current is not null) ProfileMutated?.Invoke(Current);
+    }
+
+    /// <summary>
     /// Load the profile stored at <c>Data/profiles/{name}.json</c> and fire
     /// <see cref="ProfileLoaded"/>. If a different profile is already loaded
     /// it is closed first (<see cref="ProfileClosed"/> fires before the new
@@ -72,6 +87,13 @@ public sealed class ProfileService
 
         if (Current is not null)
         {
+            // Auto-save the outgoing profile so per-session edits don't
+            // bleed into / get lost behind the incoming profile. Save()
+            // already no-ops on blank drafts (no name to write to), so
+            // this is only consequential for the common "swap from one
+            // named profile to another" path.
+            try { Save(); }
+            catch { /* swallow — Load shouldn't fail because the outgoing save did */ }
             Current = null;
             CurrentProfileName = null;
             ProfileClosed?.Invoke();
@@ -99,6 +121,10 @@ public sealed class ProfileService
     {
         if (Current is not null)
         {
+            // Auto-save the outgoing profile (no-op on drafts) so per-session
+            // edits aren't dropped by File → New.
+            try { Save(); }
+            catch { /* swallow — LoadBlank shouldn't fail because the outgoing save did */ }
             Current = null;
             CurrentProfileName = null;
             ProfileClosed?.Invoke();
@@ -143,4 +169,39 @@ public sealed class ProfileService
         CurrentProfileName = null;
         ProfileClosed?.Invoke();
     }
+
+    /// <summary>
+    /// Save the in-memory profile under <paramref name="profileName"/>. Used
+    /// by File → New profile (to name a fresh blank), File → Save As, and the
+    /// "name your draft" path of File → Save when the loaded profile doesn't
+    /// have a name yet. Replaces an existing file at that name without
+    /// asking — the caller is responsible for the confirm-overwrite UX.
+    /// </summary>
+    public void SaveAs(string profileName)
+    {
+        if (string.IsNullOrWhiteSpace(profileName))
+            throw new ArgumentException("Profile name is required.", nameof(profileName));
+        if (Current is null)
+            throw new InvalidOperationException("No profile loaded to save.");
+
+        Current.Name = profileName;
+        CurrentProfileName = profileName;
+        ProfileSaving?.Invoke(Current);
+        JsonStore.Save(AppPaths.CharacterProfileFile(profileName), Current);
+    }
+
+    /// <summary>Enumerate every saved profile filename (without <c>.json</c>).</summary>
+    public IEnumerable<string> ListNames()
+    {
+        if (!Directory.Exists(AppPaths.ProfilesDir)) yield break;
+        foreach (string file in Directory.EnumerateFiles(AppPaths.ProfilesDir, "*.json"))
+        {
+            yield return Path.GetFileNameWithoutExtension(file);
+        }
+    }
+
+    /// <summary>True if a saved profile with the given name already exists.</summary>
+    public bool Exists(string profileName)
+        => !string.IsNullOrWhiteSpace(profileName)
+           && File.Exists(AppPaths.CharacterProfileFile(profileName));
 }

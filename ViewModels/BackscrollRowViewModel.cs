@@ -3,9 +3,10 @@ using FujinTerm.Terminal;
 namespace FujinTerm.ViewModels;
 
 /// <summary>
-/// One row in the <see cref="BackscrollViewModel"/>'s displayed list. Carries
-/// the timestamp prefix string and the raw <c>Cell[]</c> the row was
-/// captured at (rendered live by <see cref="Controls.CellRowDisplay"/>).
+/// One row in the <see cref="BackscrollViewModel"/>'s displayed list.
+/// Carries the timestamp prefix string and the raw <c>Cell[]</c> the row
+/// was captured at; <see cref="Controls.SelectableTranscript"/> reads
+/// both to compose the inline transcript display.
 /// </summary>
 public sealed class BackscrollRowViewModel
 {
