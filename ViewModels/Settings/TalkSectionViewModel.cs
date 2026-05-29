@@ -45,7 +45,9 @@ public sealed class TalkSectionViewModel : StubSectionViewModel
         }),
         new StubGroup("AFK Mode", new[]
         {
-            new StubField("Auto-AFK in N minutes",      StubFieldKind.Numeric, "Phase 11 — auto-flip into AFK after this much input idle.", "min"),
+            new StubField("Disable all AFK settings", StubFieldKind.Check,
+                          "Phase 11 — master kill-switch above every AFK behaviour below. When on, the engine never auto-flips AFK regardless of the other rows."),
+            new StubField("Auto-AFK in",                StubFieldKind.Numeric, "Phase 11 — auto-flip into AFK after this many minutes of input idle. Set to 0 to disable the timer specifically.", "minutes"),
             new StubField("Auto-AFK when minimized",    StubFieldKind.Check,   "Phase 11 — flip AFK as soon as the window minimises."),
             new StubField("User input cancels AFK mode", StubFieldKind.Check,  "Phase 11 — any key in the terminal restores active state."),
             new StubField("AFK response message",          StubFieldKind.Text, "Phase 11 — reply text for incoming tells while AFK (default `{AFK}`)."),
