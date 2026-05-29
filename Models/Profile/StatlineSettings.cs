@@ -1,23 +1,34 @@
 namespace FujinTerm.Models.Profile;
 
 /// <summary>
-/// Per-character statline configuration. Wraps the wildcard string the
-/// app sends to the BBS via <c>set statline &lt;wildcard&gt;</c> so the
-/// game prints prompts in the format the client knows how to parse.
-/// Persisted as the <c>"Statline"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
+/// Per-character statline configuration. Wraps the argument we send
+/// after <c>set statline</c> so the game prints prompts in the format
+/// the client knows how to parse. Persisted as the <c>"Statline"</c>
+/// entry in <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
-/// Phase 4 PR 4.7 ships only the raw wildcard text; Phase 12 PR 12.1
-/// replaces the editor with a drag-token builder + live preview, but
-/// the on-disk shape (one string) stays the same.
+/// <para>
+/// MegaMUD's two canonical commands:
+/// <c>set statline full</c> uses the class-default format
+/// (mana: <c>[HP=%h,MA=%m]: %r</c>; kai: <c>[HP=%h,KAI=%m]: %r</c>;
+/// hp-only: <c>[HP=%h]: %r</c>). <c>set statline full custom &lt;...&gt;</c>
+/// renders a user-authored wildcard string. Anything else is passed
+/// through verbatim — the game accepts a raw wildcard string after
+/// <c>set statline</c> too.
+/// </para>
+/// <para>
+/// Phase 4 PR 4.7 ships the text-editor surface; Phase 12 PR 12.1
+/// replaces it with a token-builder dialog. The on-disk shape (one
+/// string) stays the same so the upgrade is transparent.
+/// </para>
 /// </remarks>
 public sealed class StatlineSettings
 {
     /// <summary>
-    /// MajorMUD wildcard string — e.g. <c>"[HP=%h/MA=%m]: (%p) "</c>.
-    /// <c>null</c> / empty means "use whatever the server already has
-    /// configured" — no command is sent on logon.
+    /// The argument that follows <c>set statline</c> on the wire. Common
+    /// values: <c>"full"</c>, <c>"full custom [HP=%h]: %r"</c>, or a raw
+    /// wildcard string. <c>null</c> / empty means "use full" — the
+    /// editor displays this as the default.
     /// </summary>
-    public string? Wildcard { get; set; }
+    public string? Command { get; set; }
 }

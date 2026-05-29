@@ -7,29 +7,39 @@ namespace FujinTerm.Tests;
 public sealed class StatlineSettingsTests
 {
     [Fact]
-    public void Defaults_NullWildcard()
+    public void Defaults_NullCommand()
     {
         StatlineSettings dto = new();
-        Assert.Null(dto.Wildcard);
+        Assert.Null(dto.Command);
     }
 
     [Fact]
-    public void RoundTripJson_PreservesWildcard()
+    public void RoundTripJson_PreservesFullCustomString()
     {
-        StatlineSettings original = new() { Wildcard = "[HP=%h/MA=%m]: (%p) " };
+        StatlineSettings original = new() { Command = "full custom [HP=%h,MA=%m]: %r" };
         string json = JsonSerializer.Serialize(original);
         StatlineSettings? round = JsonSerializer.Deserialize<StatlineSettings>(json);
         Assert.NotNull(round);
-        Assert.Equal(original.Wildcard, round!.Wildcard);
+        Assert.Equal(original.Command, round!.Command);
+    }
+
+    [Fact]
+    public void RoundTripJson_PreservesRawWildcard()
+    {
+        StatlineSettings original = new() { Command = "[HP=%h]: %r" };
+        string json = JsonSerializer.Serialize(original);
+        StatlineSettings? round = JsonSerializer.Deserialize<StatlineSettings>(json);
+        Assert.NotNull(round);
+        Assert.Equal(original.Command, round!.Command);
     }
 
     [Fact]
     public void RoundTripJson_NullSurvives()
     {
-        StatlineSettings original = new() { Wildcard = null };
+        StatlineSettings original = new() { Command = null };
         string json = JsonSerializer.Serialize(original);
         StatlineSettings? round = JsonSerializer.Deserialize<StatlineSettings>(json);
         Assert.NotNull(round);
-        Assert.Null(round!.Wildcard);
+        Assert.Null(round!.Command);
     }
 }
