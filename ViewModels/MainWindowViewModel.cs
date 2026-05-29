@@ -1011,6 +1011,28 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Bridge for the Settings window's Statline tab: pushes a single
+    /// string to the BBS as Latin-1 bytes, returns whether the send
+    /// could even be attempted (i.e. we have a live socket).
+    /// </summary>
+    private async Task<bool> SendTextFromSettings(string text)
+    {
+        TelnetClient? t = _telnet;
+        if (t is null) return false;
+        try
+        {
+            await t.SendTextAsync(text).ConfigureAwait(true);
+            return true;
+        }
+        catch
+        {
+            // Caller surfaces a status banner on the Statline tab; we don't
+            // want to crash the dialog because the socket died mid-send.
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Send raw key bytes from the terminal control to the server. Called
     /// by the view's UserInput handler; no-op if not connected.
     /// </summary>
@@ -1469,7 +1491,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices svc = AppServices.Current;
         SettingsWindow window = new()
         {
-            DataContext = new SettingsWindowViewModel(svc.Profile, svc.Log, sectionId),
+            DataContext = new SettingsWindowViewModel(
+                svc.Profile, svc.Log,
+                sendText: SendTextFromSettings,
+                initialSectionId: sectionId),
         };
         window.Closed += (_, _) => _settings = null;
         _settings = window;

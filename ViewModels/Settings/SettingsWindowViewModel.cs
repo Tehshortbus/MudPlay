@@ -26,6 +26,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
 {
     private readonly ProfileService _profile;
     private readonly LogService _log;
+    private readonly Func<string, Task<bool>>? _sendText;
     private bool _suppressSelectionSideEffects;
 
     /// <summary>Raised when the shell wants the host window to close.</summary>
@@ -48,12 +49,17 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         ? "Pick a section from the sidebar."
         : SelectedSection.Title;
 
-    public SettingsWindowViewModel(ProfileService profile, LogService log, string? initialSectionId = null)
+    public SettingsWindowViewModel(
+        ProfileService profile,
+        LogService log,
+        Func<string, Task<bool>>? sendText = null,
+        string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(log);
         _profile = profile;
         _log = log;
+        _sendText = sendText;
 
         SeedSections();
         RebuildVisibleSections();
@@ -215,7 +221,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Add("combat",    "Combat",    "Phase 4 PR 4.8", "Weapon swap matrix, target order, multi-attack room spells.");
         Add("party",     "Party",     "Phase 4 PR 4.8", "Party-cast decisions, par frequency, request-heal-at, party rank.");
         Add("cash",      "Cash",      "Phase 4 PR 4.8", "Per-coin Discard / Ignore / Collect, encumbrance gates, auto-deposit.");
-        Add("statline",  "Statline",  "Phase 4 PR 4.7", "Current server-side statline + wildcard preview. Token editor lands in Phase 12.");
+        Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));
         Add("talk",      "Talk",      "Phase 4 PR 4.8", "Per-channel filter toggles consumed by the Conversation window.");
         Add("auto-lair", "Auto-Lair", "Phase 4 PR 4.8", "Marked-lair list + scheduler heuristic + idle-penalty weight.");
         Add("other",     "Other",     "Phase 4 PR 4.8", "Auto-action toggles, scrollback size, log retention, etc.");

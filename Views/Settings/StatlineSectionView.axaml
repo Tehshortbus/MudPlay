@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="500"
+             x:Class="FujinTerm.Views.Settings.StatlineSectionView"
+             x:DataType="vm:StatlineSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid>
+
+            <!-- No-profile banner. -->
+            <Border IsVisible="{Binding !HasProfile}" Padding="22"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="Statline"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit the statline command."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22" Spacing="4"
+                        MaxWidth="640" HorizontalAlignment="Left">
+
+                <TextBlock Text="Statline"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="{StaticResource FontSizeLg}"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+
+                <!-- ===== Current Statline (preview) ===== -->
+                <TextBlock Classes="SectionHeader" Text="Current Statline"/>
+                <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        Background="{StaticResource ChromeBgSunkenBrush}"
+                        Padding="8,6"
+                        Height="64">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding CurrentStatlinePreview}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Top"/>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- ===== Statline Command (editable) ===== -->
+                <TextBlock Classes="SectionHeader" Text="Statline Command"/>
+                <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        Background="{StaticResource ChromeBgSunkenBrush}">
+                    <TextBox Text="{Binding Command, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             AcceptsReturn="False"
+                             FontFamily="{StaticResource FontMono}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             MinHeight="64"
+                             TextWrapping="Wrap"/>
+                </Border>
+                <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"
+                           Text="Sent verbatim after `set statline ` when you click OK or Apply, if the command changed. Default is `full` (class-default format). For a hand-rolled prompt, type `full custom &lt;wildcards&gt;` or a raw wildcard string."/>
+
+                <!-- ===== Customize ===== -->
+                <TextBlock Classes="SectionHeader" Text="Customize"/>
+                <Grid ColumnDefinitions="60,Auto,Auto,Auto,*" RowDefinitions="Auto">
+                    <TextBlock Grid.Column="0" Text="Item:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding AvailableWildcards}"
+                              SelectedItem="{Binding SelectedWildcard, Mode=TwoWay}"
+                              PlaceholderText="Pick a wildcard"
+                              Width="260">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:StatlineSectionViewModel+WildcardItem">
+                                <TextBlock Text="{Binding Display}"
+                                           FontFamily="{StaticResource FontMono}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Grid.Column="2" Content="Add"
+                            Command="{Binding AddWildcardCommand}"
+                            Margin="8,0,0,0" MinWidth="64"/>
+                    <Button Grid.Column="3" Content="Default"
+                            Command="{Binding ResetToDefaultCommand}"
+                            Margin="6,0,0,0" MinWidth="64"/>
+                </Grid>
+
+            </StackPanel>
+
+        </Grid>
+    </ScrollViewer>
+</UserControl>
