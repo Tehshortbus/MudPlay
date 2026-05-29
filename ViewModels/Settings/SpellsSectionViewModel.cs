@@ -26,18 +26,19 @@ public sealed class SpellsSectionViewModel : StubSectionViewModel
             new StubField("Mana Regen",     StubFieldKind.Combo,   "Auto-regen utility for the mana pool."),
             new StubField("When HP full",   StubFieldKind.Combo,   "Cast this when HP is full and we're between actions (e.g. room spell, debuff)."),
             new StubField("When Mana full", StubFieldKind.Combo,   "Cast this when MA is full and we're between actions."),
-            new StubField("Min. rate per click", StubFieldKind.Numeric, "Cap on how often a cast is allowed to retrigger inside the same heal window."),
         }),
         new StubGroup("Other spells", new[]
         {
-            new StubField("Freedom (cure paralyze)", StubFieldKind.Combo, "Cure-paralyze spell — canonically `freedom` in MajorMUD."),
-            new StubField("Cure poison",             StubFieldKind.Combo, "Cure-poison spell."),
-            new StubField("Cure disease",            StubFieldKind.Combo, "Cure-disease spell."),
-            new StubField("Cure blindness",          StubFieldKind.Combo, "Cure-blindness spell."),
-            new StubField("Room light",              StubFieldKind.Combo, "Cast when entering a dark room (pairs with Other → Provide light in dimly lit rooms)."),
+            new StubField("Cure Holds",     StubFieldKind.Combo, "Cure-paralyze / cure-hold spell — canonically `freedom` in stock MajorMUD."),
+            new StubField("Cure poison",    StubFieldKind.Combo, "Cure-poison spell."),
+            new StubField("Cure disease",   StubFieldKind.Combo, "Cure-disease spell."),
+            new StubField("Cure blindness", StubFieldKind.Combo, "Cure-blindness spell."),
+            new StubField("Room light",     StubFieldKind.Combo, "Cast when entering a dark room (pairs with Other → Provide light in dimly lit rooms)."),
         }),
         new StubGroup("Bless spells (10 slots)", new[]
         {
+            new StubField("Stock realms cap effects at 10 — known as \"10-spelling\". Buffs and debuffs share the same 10 slots, so a player can sometimes shove a debuff off by stacking buffs (or vice versa). The 10 slots here are sized for stock realms. Paradigm-style realms remove the cap; expanding to 15 slots there is tracked separately and lands once realm typing exists.",
+                          StubFieldKind.Note, "Note about 10-spelling."),
             new StubField("Bless 1",  StubFieldKind.Combo, "Self-buff slot #1 — recast when not active."),
             new StubField("Bless 2",  StubFieldKind.Combo, "Self-buff slot #2."),
             new StubField("Bless 3",  StubFieldKind.Combo, "Self-buff slot #3."),
