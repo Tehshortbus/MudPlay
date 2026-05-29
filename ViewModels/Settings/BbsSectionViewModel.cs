@@ -120,6 +120,15 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // when there's only one in the list and it's already selected.
         if (SelectedBbsName is not null) ReloadSelected();
         _suppressDirty = false;
+
+        // If the auto-picked selection doesn't match the profile's current
+        // pin — common case: blank draft (BbsName null) on first open with
+        // one BBS in the list — mark dirty so OK stamps the pin even when
+        // the user doesn't touch any field.
+        if (!string.Equals(SelectedBbsName, _profile.Current?.BbsName, StringComparison.OrdinalIgnoreCase))
+        {
+            Dirty();
+        }
     }
 
     public override void Apply()

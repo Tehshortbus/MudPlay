@@ -193,23 +193,14 @@ public sealed class AppServices
         Profile.ProfileLoaded += ApplyDisplayFromProfile;
         Profile.ProfileClosed += ResetDisplayToDefaults;
 
-        // Auto-load the most recently used profile if one is recorded and the
-        // file still exists; otherwise stand up an in-memory blank draft so
-        // every settings tab has a target the user can read / edit without
-        // having to manually create a profile first. The draft persists in
-        // memory only until the user names + saves it via the File menu.
-        string? last = Settings.Current.LastUsedProfileName;
-        if (!string.IsNullOrWhiteSpace(last) &&
-            File.Exists(AppPaths.CharacterProfileFile(last)))
-        {
-            Profile.Load(last);
-        }
-        else
-        {
-            Profile.LoadBlank();
-        }
+        // Always start with a blank draft. Auto-loading the most recently used
+        // profile is a deliberate opt-in feature that ships in a later PR
+        // (Settings → General toggle); until then the user picks the profile
+        // they want via File → Open profile / Recent profiles.
+        Profile.LoadBlank();
 
-        // Track which profile was last loaded so the next launch can reopen it.
+        // Track which profile was last loaded so the future "auto-load last"
+        // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
     }
 
