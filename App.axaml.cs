@@ -3,7 +3,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using FujinTerm.Services;
 using FujinTerm.ViewModels;
+using FujinTerm.ViewModels.Import;
 using FujinTerm.Views;
+using FujinTerm.Views.Import;
 
 namespace FujinTerm;
 
@@ -36,6 +38,12 @@ public partial class App : Application
             // floating panel windows with the same parenting story.
             AppServices.Current.Dialogs.SetMainWindow(mainWindow);
             AppServices.Current.Panels.SetOwnerWindow(mainWindow);
+
+            // Phase 5 PR 5.3 — register the unified import-conflict dialog.
+            // Every importer (MDB tables, MegaMUD spell messages, MegaMUD
+            // .mp paths, favourites) routes its row-level conflicts through
+            // this one window via DialogService.OpenWindowAsync.
+            AppServices.Current.Dialogs.RegisterWindow<ImportConflictViewModel, ImportConflictWindow>();
         }
 
         base.OnFrameworkInitializationCompleted();

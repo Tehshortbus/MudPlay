@@ -1,0 +1,156 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Import"
+        xmlns:m="using:FujinTerm.Models.Import"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.Import.ImportConflictWindow"
+        x:DataType="vm:ImportConflictViewModel"
+        Title="{Binding Title}"
+        Width="800" Height="540"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.Header">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeLg}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.Subtitle">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="TextBlock.GroupHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <!-- Rows where the field changed get a subtle amber tint. -->
+        <Style Selector="Border.DiffChanged">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Padding="22" Background="{StaticResource ChromeBgBrush}">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+
+            <!-- ===== Title + summary ===== -->
+            <StackPanel Grid.Row="0" Spacing="2">
+                <TextBlock Classes="Header"   Text="{Binding Title}"/>
+                <TextBlock Classes="Subtitle" Text="{Binding Summary}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <!-- ===== Bulk-apply bar ===== -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Apply to all:"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Content="Skip"      Command="{Binding SkipAllCommand}"/>
+                <Button Content="Overwrite" Command="{Binding OverwriteAllCommand}"/>
+                <Button Content="Merge"     Command="{Binding MergeAllCommand}"/>
+            </StackPanel>
+
+            <!-- ===== Two-pane: left list, right diff ===== -->
+            <Grid Grid.Row="2" ColumnDefinitions="260,*" ColumnSpacing="10">
+
+                <!-- Left rail: conflicts list with per-row action picker. -->
+                <Border Grid.Column="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        Background="{StaticResource ChromeBgSunkenBrush}">
+                    <ListBox ItemsSource="{Binding Rows}"
+                             SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImportConflictRowViewModel">
+                                <StackPanel Margin="4,4">
+                                    <TextBlock Text="{Binding Identifier}"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               FontSize="{StaticResource FontSizeMd}"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Category}"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="{StaticResource FontSizeSm}"/>
+                                    <ComboBox SelectedItem="{Binding Action, Mode=TwoWay}"
+                                              Margin="0,4,0,0"
+                                              HorizontalAlignment="Stretch">
+                                        <m:ImportAction>Skip</m:ImportAction>
+                                        <m:ImportAction>Overwrite</m:ImportAction>
+                                        <m:ImportAction>Merge</m:ImportAction>
+                                        <m:ImportAction>Rename</m:ImportAction>
+                                    </ComboBox>
+                                    <TextBox Text="{Binding RenameTo, Mode=TwoWay}"
+                                             PlaceholderText="New name…"
+                                             IsVisible="{Binding IsRenameSelected}"
+                                             Margin="0,4,0,0"
+                                             FontFamily="{StaticResource FontMono}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <!-- Right pane: diff table for the selected row. -->
+                <Border Grid.Column="1"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        Background="{StaticResource ChromeBgSunkenBrush}">
+                    <Grid RowDefinitions="Auto,*">
+                        <Grid Grid.Row="0" ColumnDefinitions="180,*,*" Margin="8,6"
+                              Background="{StaticResource ChromeBgElevBrush}">
+                            <TextBlock Grid.Column="0" Classes="GroupHeader" Text="Field"/>
+                            <TextBlock Grid.Column="1" Classes="GroupHeader" Text="Existing"/>
+                            <TextBlock Grid.Column="2" Classes="GroupHeader" Text="Incoming"/>
+                        </Grid>
+                        <ScrollViewer Grid.Row="1" Padding="8,0">
+                            <ItemsControl ItemsSource="{Binding SelectedRow.FieldDiffs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:FieldDiff">
+                                        <Border Classes.DiffChanged="{Binding Changed}"
+                                                Padding="0,2">
+                                            <Grid ColumnDefinitions="180,*,*">
+                                                <TextBlock Grid.Column="0" Text="{Binding FieldName}"
+                                                           Classes="FieldLabel"
+                                                           FontFamily="{StaticResource FontMono}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding ExistingValue}"
+                                                           FontFamily="{StaticResource FontMono}"
+                                                           Foreground="{StaticResource ChromeFgBrush}"
+                                                           TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding IncomingValue}"
+                                                           FontFamily="{StaticResource FontMono}"
+                                                           Foreground="{StaticResource ChromeFgBrush}"
+                                                           TextWrapping="Wrap"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ===== OK / Cancel ===== -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right">
+                <Button Content="OK"
+                        Command="{Binding OkCommand}"
+                        IsDefault="True"/>
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"/>
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>
