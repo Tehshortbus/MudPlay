@@ -183,7 +183,7 @@
                                TextWrapping="Wrap"
                                Text="{Binding CredentialsHint}"/>
 
-                    <Grid Margin="0,6,0,0" IsEnabled="{Binding HasNamedProfile}"
+                    <Grid Margin="0,6,0,0" IsEnabled="{Binding HasProfile}"
                           ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Username:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
@@ -207,7 +207,7 @@
                     <TextBlock Classes="GroupHeader" Text="Permissions"/>
 
                     <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
-                              IsEnabled="{Binding HasNamedProfile}"
+                              IsEnabled="{Binding HasProfile}"
                               Content="I have sysop / goto powers on this BBS"
                               ToolTip.Tip="Per-character. Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
 
@@ -218,7 +218,7 @@
                                TextWrapping="Wrap"
                                Text="Steps the client walks from connect through into the game — wait for the substring, send the reply. The Enter key is appended automatically; you only type the response itself. In Send: {username} / {userid} drops the configured username, {password} / {passwd} drops the decrypted password. Each credential placeholder fires once per session — re-prompts after acceptance are refused so a malicious server can't echo your secrets back."/>
 
-                    <StackPanel IsEnabled="{Binding HasNamedProfile}" Spacing="4" Margin="0,6,0,0">
+                    <StackPanel IsEnabled="{Binding HasProfile}" Spacing="4" Margin="0,6,0,0">
                         <Grid ColumnDefinitions="*,140,80,Auto,Auto,Auto" Margin="0,0,0,2">
                             <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Wait for substring"/>
                             <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Send"      Margin="6,0,0,0"/>

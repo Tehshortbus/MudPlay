@@ -76,10 +76,19 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _scrollbackLines = 10_000;
 
     // ----- Per-character credentials (PR 4.5b) -----
-    /// <summary>True when a named character profile is loaded — gates the credentials section.</summary>
+    /// <summary>
+    /// True when any character profile is loaded — including unsaved
+    /// drafts. Credentials, sysop flag, and menu nav all bind against the
+    /// in-memory CharacterProfile; the password is encrypted with the
+    /// per-user .credkey (not anything keyed on the profile name) so an
+    /// unsaved draft can carry them forward into its first Save just
+    /// fine. Only used now to dim the credentials block when literally
+    /// no profile object exists (a state we never actually reach at
+    /// runtime, but the guard keeps designer-time previews honest).
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CredentialsHint))]
-    private bool _hasNamedProfile;
+    private bool _hasProfile;
 
     [ObservableProperty] private string _username = string.Empty;
     [ObservableProperty] private string _password = string.Empty;
@@ -88,10 +97,18 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
-    /// <summary>Helper text under the credentials section ("for character: …" or warning).</summary>
-    public string CredentialsHint => HasNamedProfile
-        ? $"For character: {_profile.CurrentProfileName}"
-        : "Load or create a named character profile (File → New profile) to attach credentials to a BBS.";
+    /// <summary>Helper text under the credentials section.</summary>
+    public string CredentialsHint
+    {
+        get
+        {
+            if (!HasProfile)
+                return "Load or create a profile to edit credentials.";
+            return _profile.CurrentProfileName is { } name
+                ? $"For character: {name}"
+                : "For character: (unsaved draft — save the profile to persist these settings)";
+        }
+    }
 
     public BbsSectionViewModel(
         BbsProfileStore bbsStore,
@@ -177,30 +194,30 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         CharacterProfile? character = _profile.Current;
         if (character is null) return;
 
-        // Slice 1 — always: pin the active BBS.
+        // Slice 1 — pin the active BBS onto the character profile.
         character.BbsName = bbs;
 
-        // Slice 2 — only when the profile is named (credentials need a
-        // stable per-character key in the credential store).
-        if (HasNamedProfile && _profile.CurrentProfileName is { } profileName)
+        // Slice 2 — credentials. Runs whenever any CharacterProfile is
+        // loaded (draft or named) because the inline EncryptedPassword
+        // is keyed off the per-user .credkey, not the profile name. A
+        // draft's BbsCredentials survive into the first Save and are
+        // serialised right alongside the BbsName pin.
+        character.BbsCredentials ??= new();
+        if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
         {
-            character.BbsCredentials ??= new();
-            if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
-            {
-                cred = new BbsCredentials();
-                character.BbsCredentials[bbs] = cred;
-            }
-            cred.Username = Username;
-            cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
-            cred.HasSysopPowers = HasSysopPowers;
+            cred = new BbsCredentials();
+            character.BbsCredentials[bbs] = cred;
+        }
+        cred.Username = Username;
+        cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
+        cred.HasSysopPowers = HasSysopPowers;
 
-            if (_pendingPassword is not null)
-            {
-                cred.EncryptedPassword = _pendingPassword.Length == 0
-                    ? null
-                    : _passwords.Protect(_pendingPassword);
-                _pendingPassword = null;
-            }
+        if (_pendingPassword is not null)
+        {
+            cred.EncryptedPassword = _pendingPassword.Length == 0
+                ? null
+                : _passwords.Protect(_pendingPassword);
+            _pendingPassword = null;
         }
 
         // Save() no-ops on drafts (no name to write to). NotifyMutated
@@ -343,7 +360,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         _pendingPassword = null;
         MenuNavSteps.Clear();
-        if (!HasNamedProfile)
+        if (!HasProfile)
         {
             Username = string.Empty;
             Password = string.Empty;
@@ -376,7 +393,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     private void RefreshProfileState()
     {
-        HasNamedProfile = !_profile.IsBlankDraft && _profile.Current is not null;
+        HasProfile = _profile.Current is not null;
         OnPropertyChanged(nameof(CredentialsHint));
         if (SelectedBbsName is not null)
         {
@@ -464,7 +481,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnShowPasswordChanged(bool value)
     {
         if (!value) return;
-        if (!HasNamedProfile) return;
+        if (!HasProfile) return;
         if (!string.IsNullOrEmpty(Password)) return;
         if (_pendingPassword is not null) return;
         if (SelectedBbsName is not { } bbs) return;
