@@ -21,11 +21,11 @@ public sealed class SpellsSectionViewModel : StubSectionViewModel
     {
         new StubGroup("Spell type priority (between-round casting order)", new[]
         {
-            new StubField("Minor party heal", StubFieldKind.Numeric,
-                          "Priority slot for the Party tab's Minor heal pick. 1 fires first when multiple casts are queued.",
+            new StubField("Minor party heal (single + party)", StubFieldKind.Numeric,
+                          "Priority slot shared by the Party tab's Minor single-target heal and Minor AOE party heal. The engine picks which to cast each tick; this row only orders when heals fire relative to other categories.",
                           Min: 1, Max: 7),
-            new StubField("Major party heal", StubFieldKind.Numeric,
-                          "Priority slot for the Party tab's Major heal pick.",
+            new StubField("Major party heal (single + party)", StubFieldKind.Numeric,
+                          "Priority slot shared by the Party tab's Major single-target heal and Major AOE party heal.",
                           Min: 1, Max: 7),
             new StubField("Minor self heal",  StubFieldKind.Numeric,
                           "Priority slot for this tab's Minor heal pick.",

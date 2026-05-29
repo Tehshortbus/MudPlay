@@ -133,11 +133,37 @@
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major heal"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Expensive heal used at the lower threshold (overrides Minor)."/>
+                                 ToolTip.Tip="Expensive single-target heal used at the lower threshold (overrides Minor)."/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
                            HorizontalAlignment="Center"/>
                 <NumericUpDown Grid.Column="3" IsEnabled="False" Value="20" Minimum="0" Maximum="100" Width="80"
                                ToolTip.Tip="Cast Major when any member drops below this percentage of MaxHp."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Minor party heal (AOE): spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor party heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Cheap AOE party-heal — hits every member at once."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast the AOE Minor when multiple members fall under this threshold."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Major party heal (AOE): spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major party heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Expensive AOE party-heal — hits every member at once."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="30" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast the AOE Major when multiple members fall under this threshold (overrides Minor)."/>
                 <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
             </Grid>
 
