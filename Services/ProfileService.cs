@@ -87,6 +87,13 @@ public sealed class ProfileService
 
         if (Current is not null)
         {
+            // Auto-save the outgoing profile so per-session edits don't
+            // bleed into / get lost behind the incoming profile. Save()
+            // already no-ops on blank drafts (no name to write to), so
+            // this is only consequential for the common "swap from one
+            // named profile to another" path.
+            try { Save(); }
+            catch { /* swallow — Load shouldn't fail because the outgoing save did */ }
             Current = null;
             CurrentProfileName = null;
             ProfileClosed?.Invoke();
@@ -114,6 +121,10 @@ public sealed class ProfileService
     {
         if (Current is not null)
         {
+            // Auto-save the outgoing profile (no-op on drafts) so per-session
+            // edits aren't dropped by File → New.
+            try { Save(); }
+            catch { /* swallow — LoadBlank shouldn't fail because the outgoing save did */ }
             Current = null;
             CurrentProfileName = null;
             ProfileClosed?.Invoke();
