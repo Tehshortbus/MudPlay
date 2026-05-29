@@ -52,6 +52,16 @@ public sealed class CharacterProfile
     public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 
     /// <summary>
+    /// User-defined incoming-text triggers. Per-character so the
+    /// pattern + action list follows the character that authored it.
+    /// Loaded into <see cref="Services.TriggerEngine"/> on profile
+    /// load (Phase 5 PR 5.10). Named capture variables emitted by
+    /// matches are app-session-scoped in the engine, not persisted
+    /// here.
+    /// </summary>
+    public List<GameData.Trigger>? Triggers { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels

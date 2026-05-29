@@ -52,10 +52,16 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         }
     }
 
+    private readonly TriggerEngine? _triggers;
+
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
+        : this(gameData, triggers: null, initialSectionId) { }
+
+    public GameDataBrowserViewModel(GameDataCache gameData, TriggerEngine? triggers, string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         _gameData = gameData;
+        _triggers = triggers;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -97,7 +103,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new ItemsSectionViewModel(_gameData));
         Sections.Add(new SpellsSectionViewModel(_gameData));
         Sections.Add(new ConditionsSectionViewModel(_gameData));
-        Add("triggers",      "Triggers",       "Phase 5 PR 5.10", "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
+        if (_triggers is not null)
+            Sections.Add(new TriggersSectionViewModel(_triggers));
+        else
+            Add("triggers", "Triggers", "Phase 5 PR 5.10",
+                "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
         Add("aliases",       "Aliases",        "Phase 5 PR 5.11", "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
         Add("rooms",         "Rooms",          "Phase 5 PR 5.12", "Static MDB table — id / name / description / shop refs / remote-action prerequisites (Phase 7 walker).");
         Add("paths",         "Paths",          "Phase 5 PR 5.13", "Static MDB table — directed edges between rooms.");

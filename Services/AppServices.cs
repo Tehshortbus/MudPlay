@@ -169,6 +169,16 @@ public sealed class AppServices
     public GameDataCache GameData { get; } = new();
 
     /// <summary>
+    /// In-memory cache of the active character's
+    /// <see cref="Models.GameData.Trigger"/> list + the shared
+    /// session-scoped named-variable store used by both triggers and
+    /// aliases. Phase 5 PR 5.10 ships the data spine;
+    /// MessageRouter integration + runtime action dispatch land in
+    /// Phase 13.
+    /// </summary>
+    public TriggerEngine Triggers { get; }
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -223,6 +233,7 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        Triggers = new TriggerEngine(Profile);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
