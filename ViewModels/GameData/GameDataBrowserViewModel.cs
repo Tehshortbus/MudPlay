@@ -96,7 +96,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new MonstersSectionViewModel(_gameData));
         Sections.Add(new ItemsSectionViewModel(_gameData));
         Sections.Add(new SpellsSectionViewModel(_gameData));
-        Add("conditions",    "Conditions",     "Phase 5 PR 5.9",  "Non-spell condition messages (blinded / poisoned / paralyzed / etc.) with effect-flag bitfield + action enum.");
+        Sections.Add(new ConditionsSectionViewModel(_gameData));
         Add("triggers",      "Triggers",       "Phase 5 PR 5.10", "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
         Add("aliases",       "Aliases",        "Phase 5 PR 5.11", "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
         Add("rooms",         "Rooms",          "Phase 5 PR 5.12", "Static MDB table — id / name / description / shop refs / remote-action prerequisites (Phase 7 walker).");
