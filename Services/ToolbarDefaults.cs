@@ -19,6 +19,7 @@ public static class ToolbarDefaults
         List<ToolbarItem> list = new();
         foreach (ToolbarItemCatalogue.Entry e in ToolbarItemCatalogue.AllEntries)
         {
+            if (!e.InDefaultLayout) continue;
             list.Add(new ToolbarItem
             {
                 Kind = ToolbarItemKind.Button,

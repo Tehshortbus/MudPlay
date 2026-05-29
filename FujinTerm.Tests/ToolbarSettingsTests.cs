@@ -16,21 +16,32 @@ public sealed class ToolbarSettingsTests
     }
 
     [Fact]
-    public void ToolbarDefaults_ReturnsEveryCatalogueEntry_AsButtons()
+    public void ToolbarDefaults_OnlyIncludesInDefaultLayoutEntries_AsButtons()
     {
         var defaults = ToolbarDefaults.Build();
-        Assert.Equal(ToolbarItemCatalogue.AllEntries.Count, defaults.Count);
+        var expected = ToolbarItemCatalogue.AllEntries.Where(e => e.InDefaultLayout).ToArray();
+
+        Assert.Equal(expected.Length, defaults.Count);
         Assert.All(defaults, item =>
         {
             Assert.Equal(ToolbarItemKind.Button, item.Kind);
             Assert.NotNull(item.ActionId);
         });
 
-        // Order matches catalogue order.
+        // Order matches the catalogue's filtered order.
         for (int i = 0; i < defaults.Count; i++)
         {
-            Assert.Equal(ToolbarItemCatalogue.AllEntries[i].ActionId, defaults[i].ActionId);
+            Assert.Equal(expected[i].ActionId, defaults[i].ActionId);
         }
+    }
+
+    [Fact]
+    public void ToolbarDefaults_DoesNotIncludePhase4_6bStubs()
+    {
+        var defaults = ToolbarDefaults.Build();
+        Assert.DoesNotContain(defaults, i => i.ActionId == "ActionGetAll");
+        Assert.DoesNotContain(defaults, i => i.ActionId == "ToggleAutoCombat");
+        Assert.DoesNotContain(defaults, i => i.ActionId == "ToggleAllAutoOff");
     }
 
     [Fact]
@@ -65,9 +76,10 @@ public sealed class ToolbarSettingsTests
         ToolbarConfig live = new();
         live.ApplyFrom(new ToolbarSettings());
 
-        Assert.Equal(ToolbarItemCatalogue.AllEntries.Count, live.Layout.Count);
+        var expected = ToolbarItemCatalogue.AllEntries.Where(e => e.InDefaultLayout).ToArray();
+        Assert.Equal(expected.Length, live.Layout.Count);
         Assert.Equal(
-            ToolbarItemCatalogue.AllEntries.Select(e => e.ActionId).ToArray(),
+            expected.Select(e => e.ActionId).ToArray(),
             live.Layout.Select(i => i.ActionId).ToArray());
     }
 
