@@ -19,6 +19,7 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(3, dto.MaxRedials);
         Assert.Equal(5, dto.RedialPauseSeconds);
         Assert.Equal(0, dto.CleanupPeriodMinutes);
+        Assert.Equal(0, dto.NoResponseTimeoutSeconds);
         Assert.False(dto.ReconnectOnFailedConnect);
         Assert.False(dto.ReconnectOnCarrierLost);
         Assert.False(dto.ReconnectOnNoResponse);
@@ -42,6 +43,7 @@ public sealed class BbsProfileFieldsTests
             MaxRedials = 5,
             RedialPauseSeconds = 10,
             CleanupPeriodMinutes = 60,
+            NoResponseTimeoutSeconds = 90,
             ReconnectOnFailedConnect = true,
             ReconnectOnCarrierLost = true,
             ReconnectOnNoResponse = false,
@@ -63,6 +65,7 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(original.MaxRedials,               round.MaxRedials);
         Assert.Equal(original.RedialPauseSeconds,       round.RedialPauseSeconds);
         Assert.Equal(original.CleanupPeriodMinutes,     round.CleanupPeriodMinutes);
+        Assert.Equal(original.NoResponseTimeoutSeconds, round.NoResponseTimeoutSeconds);
         Assert.Equal(original.ReconnectOnFailedConnect, round.ReconnectOnFailedConnect);
         Assert.Equal(original.ReconnectOnCarrierLost,   round.ReconnectOnCarrierLost);
         Assert.Equal(original.ReconnectOnNoResponse,    round.ReconnectOnNoResponse);

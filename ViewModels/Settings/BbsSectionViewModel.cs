@@ -65,6 +65,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _maxRedials = 3;
     [ObservableProperty] private int _redialPauseSeconds = 5;
     [ObservableProperty] private int _cleanupPeriodMinutes;
+    [ObservableProperty] private int _noResponseTimeoutSeconds;
     [ObservableProperty] private bool _reconnectOnFailedConnect;
     [ObservableProperty] private bool _reconnectOnCarrierLost;
     [ObservableProperty] private bool _reconnectOnNoResponse;
@@ -346,6 +347,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         MaxRedials = profile.MaxRedials;
         RedialPauseSeconds = profile.RedialPauseSeconds;
         CleanupPeriodMinutes = profile.CleanupPeriodMinutes;
+        NoResponseTimeoutSeconds = profile.NoResponseTimeoutSeconds;
         ReconnectOnFailedConnect = profile.ReconnectOnFailedConnect;
         ReconnectOnCarrierLost = profile.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = profile.ReconnectOnNoResponse;
@@ -413,6 +415,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         MaxRedials = defaults.MaxRedials;
         RedialPauseSeconds = defaults.RedialPauseSeconds;
         CleanupPeriodMinutes = defaults.CleanupPeriodMinutes;
+        NoResponseTimeoutSeconds = defaults.NoResponseTimeoutSeconds;
         ReconnectOnFailedConnect = defaults.ReconnectOnFailedConnect;
         ReconnectOnCarrierLost = defaults.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = defaults.ReconnectOnNoResponse;
@@ -451,6 +454,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.MaxRedials = MaxRedials;
         profile.RedialPauseSeconds = RedialPauseSeconds;
         profile.CleanupPeriodMinutes = CleanupPeriodMinutes;
+        profile.NoResponseTimeoutSeconds = NoResponseTimeoutSeconds;
         profile.ReconnectOnFailedConnect = ReconnectOnFailedConnect;
         profile.ReconnectOnCarrierLost = ReconnectOnCarrierLost;
         profile.ReconnectOnNoResponse = ReconnectOnNoResponse;
@@ -508,6 +512,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnMaxRedialsChanged(int value)                 { PushToCache(); Dirty(); }
     partial void OnRedialPauseSecondsChanged(int value)         { PushToCache(); Dirty(); }
     partial void OnCleanupPeriodMinutesChanged(int value)       { PushToCache(); Dirty(); }
+    partial void OnNoResponseTimeoutSecondsChanged(int value)   { PushToCache(); Dirty(); }
     partial void OnReconnectOnFailedConnectChanged(bool value)  { PushToCache(); Dirty(); }
     partial void OnReconnectOnCarrierLostChanged(bool value)    { PushToCache(); Dirty(); }
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }

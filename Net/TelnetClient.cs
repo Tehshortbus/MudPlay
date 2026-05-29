@@ -46,6 +46,26 @@ public sealed class TelnetClient : IAsyncDisposable
     /// <summary>Window size advertised through NAWS (rows).</summary>
     public int Rows { get; set; } = 25;
 
+    /// <summary>
+    /// Seconds of socket idle before the OS starts probing the connection
+    /// with TCP keepalive packets. <c>0</c> disables keepalive — the OS
+    /// default (~2 hours on Linux) is too long for a BBS. Set before
+    /// <see cref="ConnectAsync"/>; applied to the live socket once the
+    /// TCP connection is established. Hardcoded interval / retry-count
+    /// give a ~30 s tail (3 probes 10 s apart) before the socket dies.
+    /// </summary>
+    public int NoResponseTimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// Wall-clock timestamp of the most recent read that returned bytes.
+    /// <see cref="DateTimeOffset.MinValue"/> if no data has arrived yet
+    /// this session. The connection-lifecycle code in
+    /// <c>MainWindowViewModel</c> reads this on <see cref="Disconnected"/>
+    /// to distinguish a server-side carrier drop from a keepalive
+    /// timeout — long quiet stretch + dead socket = no response.
+    /// </summary>
+    public DateTimeOffset LastDataReceived { get; private set; } = DateTimeOffset.MinValue;
+
 
     public bool IsConnected => _tcp.Connected && _stream is not null;
 
@@ -61,9 +81,31 @@ public sealed class TelnetClient : IAsyncDisposable
     {
         await _tcp.ConnectAsync(host, port, ct);
         _stream = _tcp.GetStream();
+        ApplyKeepAlive();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _readLoop = Task.Run(() => ReadLoopAsync(_cts.Token));
         Connected?.Invoke();
+    }
+
+    /// <summary>
+    /// Configure TCP-level keepalive on the connected socket, gated on
+    /// <see cref="NoResponseTimeoutSeconds"/>. Cross-platform via .NET's
+    /// SocketOptionName.TcpKeepAlive* (mapped to TCP_KEEPIDLE / INTVL /
+    /// CNT on Linux, the equivalents on Windows + macOS). Best-effort:
+    /// any platform that doesn't support a given option throws, which
+    /// we swallow — keepalive is a defense, not a correctness
+    /// requirement.
+    /// </summary>
+    private void ApplyKeepAlive()
+    {
+        int idle = NoResponseTimeoutSeconds;
+        if (idle <= 0) return;
+
+        Socket sock = _tcp.Client;
+        try { sock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true); } catch { }
+        try { sock.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, idle); } catch { }
+        try { sock.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 10); } catch { }
+        try { sock.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3); } catch { }
     }
 
     /// <summary>
@@ -154,6 +196,8 @@ public sealed class TelnetClient : IAsyncDisposable
             {
                 int n = await _stream.ReadAsync(inBuf.AsMemory(0, inBuf.Length), ct);
                 if (n == 0) break; // Server closed the connection.
+
+                LastDataReceived = DateTimeOffset.UtcNow;
 
                 // Filter out telnet command bytes; outBuf gets only display data.
                 int outLen = Interpret(inBuf.AsSpan(0, n), outBuf);

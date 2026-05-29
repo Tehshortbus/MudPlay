@@ -57,6 +57,20 @@ public sealed class BbsProfile
     public bool ReconnectOnNoResponse { get; set; }
 
     /// <summary>
+    /// Seconds of TCP-level idle before the OS starts probing the
+    /// connection with TCP keepalive packets. <c>0</c> disables
+    /// keepalive entirely (the OS default — typically ~2 hours idle —
+    /// is way too long for a BBS).
+    /// </summary>
+    /// <remarks>
+    /// We pair this with hardcoded probe interval = 10s and retry
+    /// count = 3, so once the idle elapses the OS declares the socket
+    /// dead within ~30s. The <see cref="ReconnectOnNoResponse"/>
+    /// toggle then decides whether to auto-dial back.
+    /// </remarks>
+    public int NoResponseTimeoutSeconds { get; set; }
+
+    /// <summary>
     /// Reconnect automatically after the BBS kicks the session for cleanup
     /// (see <see cref="CleanupPeriodMinutes"/>).
     /// </summary>

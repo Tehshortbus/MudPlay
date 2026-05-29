@@ -158,6 +158,8 @@ public partial class MainWindowViewModel : ObservableObject
         FailedConnect,
         /// <summary>Connected session ended without our initiation — server-side drop.</summary>
         CarrierLost,
+        /// <summary>Socket died after a long quiet stretch — TCP keepalive caught a hung server.</summary>
+        NoResponse,
     }
 
     private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
@@ -682,7 +684,32 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    // ----- Reactive auto-reconnect (carrier-lost / failed-connect) ------
+    /// <summary>
+    /// Distinguish a server-side carrier drop from a TCP-keepalive
+    /// timeout. The connection was alive; now the socket died. If
+    /// keepalive was enabled on the active BBS AND the wire was silent
+    /// for longer than the configured idle window before the drop,
+    /// attribute to <see cref="DisconnectCause.NoResponse"/>; otherwise
+    /// <see cref="DisconnectCause.CarrierLost"/>. The threshold gets a
+    /// small grace (+5s) so a server that responded just before the
+    /// idle window closes doesn't get mis-classified as silent.
+    /// </summary>
+    private DisconnectCause ClassifyServerSideDrop()
+    {
+        BbsProfile? bbs = ResolveActiveBbs();
+        int idle = bbs?.NoResponseTimeoutSeconds ?? 0;
+        if (idle <= 0) return DisconnectCause.CarrierLost;
+
+        DateTimeOffset lastRead = _telnet?.LastDataReceived ?? DateTimeOffset.MinValue;
+        if (lastRead == DateTimeOffset.MinValue) return DisconnectCause.NoResponse;
+
+        double silentSeconds = (DateTimeOffset.UtcNow - lastRead).TotalSeconds;
+        return silentSeconds >= idle + 5
+            ? DisconnectCause.NoResponse
+            : DisconnectCause.CarrierLost;
+    }
+
+    // ----- Reactive auto-reconnect (carrier-lost / failed-connect / no-response) ------
 
     /// <summary>
     /// Arm a reactive reconnect if the relevant <see cref="BbsProfile"/>
@@ -698,12 +725,17 @@ public partial class MainWindowViewModel : ObservableObject
         BbsProfile? bbs = ResolveActiveBbs();
         if (bbs is null) return;
 
-        // CarrierLost is the only reactive cause that reaches this hook:
         // FailedConnect is fully handled inside ConnectWithRetriesAsync
-        // (its retry-loop IS the response to ReconnectOnFailedConnect),
-        // and UserInitiated never auto-retries by policy.
-        if (_lastDisconnectCause != DisconnectCause.CarrierLost) return;
-        if (!bbs.ReconnectOnCarrierLost) return;
+        // (its retry-loop IS the response to ReconnectOnFailedConnect);
+        // UserInitiated never auto-retries by policy. That leaves
+        // CarrierLost / NoResponse — each gated on its own toggle.
+        bool shouldRetry = _lastDisconnectCause switch
+        {
+            DisconnectCause.CarrierLost => bbs.ReconnectOnCarrierLost,
+            DisconnectCause.NoResponse  => bbs.ReconnectOnNoResponse,
+            _ => false,
+        };
+        if (!shouldRetry) return;
 
         TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
         _cleanupReconnectCts?.Cancel();
@@ -711,7 +743,9 @@ public partial class MainWindowViewModel : ObservableObject
         _cleanupReconnectCts = new CancellationTokenSource();
         CancellationToken token = _cleanupReconnectCts.Token;
 
-        const string reasonLabel = "carrier lost";
+        string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
+            ? "no response"
+            : "carrier lost";
         WriteTerminalStatus(
             $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}) — DIALING IN {(int)delay.TotalSeconds}s.]",
             TerminalStatusKind.Notice);
@@ -769,11 +803,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private TelnetClient BuildTelnetClient()
     {
+        BbsProfile? activeBbs = ResolveActiveBbs();
         TelnetClient client = new()
         {
             Cols = Emulator.Screen.Cols,
             Rows = Emulator.Screen.Rows,
             TerminalType = "ansi-bbs",
+            NoResponseTimeoutSeconds = activeBbs?.NoResponseTimeoutSeconds ?? 0,
         };
 
         // Telnet client events fire on a background thread. Marshal anything
@@ -821,8 +857,11 @@ public partial class MainWindowViewModel : ObservableObject
                 IsConnected = false;
 
                 // Categorise: if the user clicked Disconnect, the flag was
-                // set in DisconnectInternalAsync. Otherwise the session
-                // ended without our initiation — server-side carrier drop.
+                // set in DisconnectInternalAsync. Otherwise distinguish a
+                // server-side carrier drop from a TCP keepalive timeout by
+                // looking at how long the wire was silent before the drop:
+                // long silence + keepalive-enabled implies the OS's probe
+                // train detected an unresponsive server.
                 if (_userInitiatedDisconnect)
                 {
                     _userInitiatedDisconnect = false;
@@ -830,7 +869,7 @@ public partial class MainWindowViewModel : ObservableObject
                 }
                 else if (wasConnected)
                 {
-                    _lastDisconnectCause = DisconnectCause.CarrierLost;
+                    _lastDisconnectCause = ClassifyServerSideDrop();
                 }
 
                 // Predictive scheduler first (cleanup warning gives a
