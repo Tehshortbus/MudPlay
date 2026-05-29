@@ -176,7 +176,8 @@
                                TextWrapping="Wrap"
                                Text="Columns / rows are advertised via Telnet NAWS. MajorMUD renders against a fixed 80×25 grid and won't reflow if you push higher; non-game BBS doors usually do reflow."/>
 
-                    <TextBlock Classes="GroupHeader" Text="Credentials"/>
+                    <TextBlock Classes="GroupHeader"
+                               Text="Credentials  —  The settings shown below are saved per character profile"/>
 
                     <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="{StaticResource FontSizeSm}"
