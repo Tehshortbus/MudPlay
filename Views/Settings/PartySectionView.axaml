@@ -144,13 +144,13 @@
             <!-- Request healing: just threshold, no spell. -->
             <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Request healing"/>
-                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="(send @health to the party healer)"
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="(send @heal)"
                            Foreground="{StaticResource ChromeFgMutedBrush}"
                            FontStyle="Italic"/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
                            HorizontalAlignment="Center"/>
                 <NumericUpDown Grid.Column="3" IsEnabled="False" Value="50" Minimum="0" Maximum="100" Width="80"
-                               ToolTip.Tip="Send @health to the party healer at this HP %."/>
+                               ToolTip.Tip="Broadcast @heal at this HP %. (@health is a different command — it requests party-member health status.)"/>
                 <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
             </Grid>
 
