@@ -38,9 +38,12 @@ public sealed class BbsProfile
     public int RedialPauseSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Minutes the BBS allows a session to idle before kicking. Drives the
-    /// optional <see cref="ReconnectAfterCleanup"/> auto-reconnect; <c>0</c>
-    /// disables the timer.
+    /// Minutes the BBS is offline for its nightly auto-cleanup. Used by
+    /// the <see cref="ReconnectAfterCleanup"/> schedule: when the
+    /// CleanupWarningWatcher catches a "shutting down in N minutes"
+    /// announcement, the client arms a reconnect at
+    /// <c>warning_observed_at + N + CleanupPeriodMinutes</c>.
+    /// <c>0</c> means "dial back the moment shutdown_at is past."
     /// </summary>
     public int CleanupPeriodMinutes { get; set; }
 
