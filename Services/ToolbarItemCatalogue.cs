@@ -63,7 +63,7 @@ public static class ToolbarItemCatalogue
             "OpenSessionStatsCommand", ShortcutHint: "F11"),
         new("OpenGameDataBrowser","Game Data Browser",    "IconDatabase",
             "OpenGameDataBrowserCommand", ShortcutHint: "Ctrl+G"),
-        new("OpenLogPane",        "Log",                  "IconLog",
+        new("OpenLogPane",        "Program Log",          "IconLog",
             "OpenLogPaneCommand",      ShortcutHint: "F9"),
 
         // ----- Action menu surface (PR 4.6b) ---------------------------------
