@@ -45,6 +45,7 @@
                 <MenuItem Header="{Binding ConnectionLabel}"
                           Command="{Binding ToggleConnectionCommand}"
                           InputGesture="Ctrl+K"/>
+                <MenuItem Header="_Quick Connect…" Command="{Binding OpenQuickConnectCommand}"/>
                 <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
                 <Separator/>
                 <MenuItem Header="_New profile…"  InputGesture="Ctrl+N"       Command="{Binding NewProfileCommand}"/>

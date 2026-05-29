@@ -74,22 +74,37 @@ public partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<ToolbarButtonItem> ToolbarItems { get; } = new();
 
     /// <summary>
-    /// Host the active BBS resolves to. Read-only from the UI — the user
-    /// picks the active BBS in Settings → BBS, and that selection's Host /
-    /// Port drives the connect button.
+    /// File → Quick Connect target. Wins over <see cref="ResolveActiveBbs"/>
+    /// once set; cleared when the user picks a (different) BBS via
+    /// Settings → BBS, or when a new profile loads.
     /// </summary>
-    public string Host => ResolveActiveBbs()?.Host ?? string.Empty;
-
-    /// <summary>Port the active BBS resolves to. <c>0</c> when no BBS is configured.</summary>
-    public int Port => ResolveActiveBbs()?.Port ?? 0;
+    private (string Host, int Port)? _quickConnectTarget;
 
     /// <summary>
-    /// Name of the BBS the connect button will dial. Follows the same
-    /// preference order as <see cref="ResolveActiveBbs"/> — the loaded
-    /// character's pin first, then a fallback to the first BBS in the
-    /// global list.
+    /// Tracks the BBS pin observed on the last profile-mutation event so we
+    /// can detect when the user actually changed BBS (vs. tweaked an
+    /// unrelated setting). Used to drop <see cref="_quickConnectTarget"/>.
     /// </summary>
-    public string? ActiveBbsName => ResolveActiveBbs()?.Name;
+    private string? _lastSeenBbsName;
+
+    /// <summary>
+    /// Host the active connection target resolves to. Quick Connect wins
+    /// over the saved BBS pin when set; otherwise the user's BBS Host
+    /// stands in.
+    /// </summary>
+    public string Host => _quickConnectTarget?.Host ?? ResolveActiveBbs()?.Host ?? string.Empty;
+
+    /// <summary>Port the active connection target resolves to. <c>0</c> when nothing is configured.</summary>
+    public int Port => _quickConnectTarget?.Port ?? ResolveActiveBbs()?.Port ?? 0;
+
+    /// <summary>
+    /// Name of the dial target — Quick Connect's <c>host:port</c> when
+    /// active, otherwise the active BBS's display name (or <c>null</c>).
+    /// Consumed by the title bar and the connect-status banner.
+    /// </summary>
+    public string? ActiveBbsName => _quickConnectTarget is { } qc
+        ? $"Quick Connect: {qc.Host}:{qc.Port}"
+        : ResolveActiveBbs()?.Name;
 
     /// <summary>
     /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
@@ -250,13 +265,17 @@ public partial class MainWindowViewModel : ObservableObject
         };
         RebuildRecentProfiles();
         SyncProfileMenuState();
-        AppServices.Current.Profile.ProfileLoaded += _ => { SyncProfileMenuState(); RefreshBbsBindings(); };
-        AppServices.Current.Profile.ProfileClosed += () => { SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileLoaded += _ => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
         // ProfileMutated fires from BbsSectionViewModel.Apply after the
         // BBS pin has been stamped onto the profile — works for both
         // named profiles and unsaved drafts (Save no-ops on drafts but
         // the mutation signal still fires).
-        AppServices.Current.Profile.ProfileMutated += _ => RefreshBbsBindings();
+        AppServices.Current.Profile.ProfileMutated += _ => OnProfileMutatedForBbs();
+
+        // Seed the BBS-pin sentinel so OnProfileMutatedForBbs can detect
+        // the first real change against a known baseline.
+        _lastSeenBbsName = ResolveActiveBbs()?.Name;
 
         // Cleanup-warning banner: when the BBS announces nightly shutdown
         // on the wire, drop a yellow banner into the terminal canvas so
@@ -904,6 +923,34 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanConnect));
     }
 
+    /// <summary>
+    /// ProfileMutated runs for every settings tab's Apply. We only want
+    /// to drop the Quick Connect override when the BBS pin itself
+    /// changed — display / toolbar / statline edits shouldn't kick the
+    /// user off a quick-dialled target.
+    /// </summary>
+    private void OnProfileMutatedForBbs()
+    {
+        string? current = ResolveActiveBbs()?.Name;
+        if (!string.Equals(current, _lastSeenBbsName, StringComparison.Ordinal))
+        {
+            ClearQuickConnect();
+        }
+        _lastSeenBbsName = current;
+        RefreshBbsBindings();
+    }
+
+    /// <summary>
+    /// Drops the Quick Connect override and pushes the BBS-derived
+    /// bindings back into the title bar / connect button.
+    /// </summary>
+    private void ClearQuickConnect()
+    {
+        if (_quickConnectTarget is null) return;
+        _quickConnectTarget = null;
+        RefreshBbsBindings();
+    }
+
     private TelnetClient BuildTelnetClient()
     {
         BbsProfile? activeBbs = ResolveActiveBbs();
@@ -1457,6 +1504,49 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenBbsSettings() => OpenSettingsAt("bbs");
+
+    /// <summary>
+    /// Singleton-ish handle to the Quick Connect window so re-press of
+    /// the menu / hotkey toggles it closed (per CLAUDE.md).
+    /// </summary>
+    private QuickConnectWindow? _quickConnect;
+
+    /// <summary>File → Quick Connect. Modeless dialog; on commit the host/port becomes the connect target.</summary>
+    [RelayCommand]
+    private async Task OpenQuickConnectAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_quickConnect is { } existing) { existing.Close(); return; }
+
+        QuickConnectViewModel vm = new();
+        QuickConnectWindow window = new() { DataContext = vm };
+
+        vm.ConnectRequested += async () =>
+        {
+            string host = vm.HostText.Trim();
+            int port = vm.Port;
+            window.Close();
+            if (string.IsNullOrWhiteSpace(host) || port is <= 0 or > 65535) return;
+
+            // If we're already on a connection, drop it first so the new
+            // target can dial cleanly.
+            if (IsConnected) await DisconnectInternalAsync();
+            else if (IsConnecting) _connectCts?.Cancel();
+
+            _quickConnectTarget = (host, port);
+            RefreshBbsBindings();
+            CancelCleanupReconnect("user opened Quick Connect");
+            await ConnectWithRetriesAsync();
+        };
+        vm.Cancelled += () => window.Close();
+
+        window.Closed += (_, _) => _quickConnect = null;
+        _quickConnect = window;
+        window.Show(main);
+        await Task.CompletedTask;
+    }
 
     private void OpenSettingsAt(string? sectionId)
     {

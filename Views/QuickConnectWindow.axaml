@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="200"
+        x:Class="FujinTerm.Views.QuickConnectWindow"
+        x:DataType="vm:QuickConnectViewModel"
+        Title="Quick Connect"
+        Width="380" Height="200"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Padding="22" Background="{StaticResource ChromeBgBrush}">
+        <StackPanel Spacing="10">
+
+            <TextBlock Text="Dial a host:port directly. Nothing is saved to the BBS list or the profile."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       TextWrapping="Wrap"/>
+
+            <Grid ColumnDefinitions="60,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Host"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           VerticalAlignment="Center"/>
+                <TextBox  Grid.Row="0" Grid.Column="1"
+                          Text="{Binding HostText, Mode=TwoWay}"
+                          PlaceholderText="hostname or IP"
+                          FontFamily="{StaticResource FontMono}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Port"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                               Value="{Binding Port, Mode=TwoWay}"
+                               Minimum="1" Maximum="65535"
+                               FormatString="0"
+                               HorizontalAlignment="Left" Width="120"/>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="Connect"
+                        Command="{Binding ConnectCommand}"
+                        IsDefault="True"/>
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"/>
+            </StackPanel>
+
+        </StackPanel>
+    </Border>
+</Window>
