@@ -19,6 +19,21 @@ public sealed class SpellsSectionViewModel : StubSectionViewModel
 
     public override IReadOnlyList<StubGroup> Groups { get; } = new[]
     {
+        new StubGroup("Spell type priority (between-round casting order)", new[]
+        {
+            new StubField("Healing",   StubFieldKind.Numeric,
+                          "Priority slot for healing spells when multiple casts are queued between rounds. 1 fires first. Applies to self and party-cast.",
+                          Min: 1, Max: 4),
+            new StubField("Curing",    StubFieldKind.Numeric,
+                          "Priority slot for cure spells. 1 fires first.",
+                          Min: 1, Max: 4),
+            new StubField("Buffing",   StubFieldKind.Numeric,
+                          "Priority slot for buff / bless casts. 1 fires first.",
+                          Min: 1, Max: 4),
+            new StubField("Debuffing", StubFieldKind.Numeric,
+                          "Priority slot for between-round debuffs. 1 fires first.",
+                          Min: 1, Max: 4),
+        }),
         new StubGroup("Healing / regeneration", new[]
         {
             new StubField("Heal HP",        StubFieldKind.Combo,   "Primary heal — fires when Health → Heal threshold trips."),
