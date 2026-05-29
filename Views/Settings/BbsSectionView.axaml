@@ -19,7 +19,10 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,16,0,6"/>
         </Style>
-        <Style Selector="TextBlock.HintWarning">
+        <Style Selector="TextBlock.CredHint">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.CredHint.HintWarning">
             <Setter Property="Foreground" Value="#E55353"/>
         </Style>
     </UserControl.Styles>
@@ -190,7 +193,7 @@
                     <TextBlock Classes="GroupHeader"
                                Text="Credentials  —  The settings shown below are saved per character profile"/>
 
-                    <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                    <TextBlock Classes="CredHint"
                                Classes.HintWarning="{Binding IsCredentialsHintWarning}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
