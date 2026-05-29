@@ -82,27 +82,27 @@
                     <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
-                                   Text="{Binding Name, Mode=TwoWay}"
+                                   Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                    PlaceholderText="My BBS" Width="280"
                                    HorizontalAlignment="Left"
                                    ToolTip.Tip="Display name and on-disk filename. Renames the file when applied."/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Host:"/>
                         <TextBox   Grid.Row="1" Grid.Column="1"
-                                   Text="{Binding Host, Mode=TwoWay}"
+                                   Text="{Binding Host, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                    PlaceholderText="bbs.example.com" Width="280"
                                    HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Port:"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                       Value="{Binding Port, Mode=TwoWay}"
+                                       Value="{Binding Port, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="1" Maximum="65535" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Website:"/>
                         <TextBox   Grid.Row="3" Grid.Column="1"
-                                   Text="{Binding WebsiteUrl, Mode=TwoWay}"
+                                   Text="{Binding WebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                    PlaceholderText="https://… (optional)" Width="280"
                                    HorizontalAlignment="Left"/>
                     </Grid>
@@ -112,21 +112,21 @@
                     <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max redials:"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1"
-                                       Value="{Binding MaxRedials, Mode=TwoWay}"
+                                       Value="{Binding MaxRedials, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="1" Maximum="20" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Redial pause (s):"/>
                         <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                       Value="{Binding RedialPauseSeconds, Mode=TwoWay}"
+                                       Value="{Binding RedialPauseSeconds, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="1" Maximum="300" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Cleanup wait (m):"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                       Value="{Binding CleanupPeriodMinutes, Mode=TwoWay}"
+                                       Value="{Binding CleanupPeriodMinutes, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="0" Maximum="600" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"
@@ -134,7 +134,7 @@
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="No-response (s):"/>
                         <NumericUpDown Grid.Row="3" Grid.Column="1"
-                                       Value="{Binding NoResponseTimeoutSeconds, Mode=TwoWay}"
+                                       Value="{Binding NoResponseTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="0" Maximum="3600" Increment="10"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"
@@ -155,21 +155,21 @@
                     <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Columns:"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1"
-                                       Value="{Binding TerminalCols, Mode=TwoWay}"
+                                       Value="{Binding TerminalCols, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="40" Maximum="200" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Rows:"/>
                         <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                       Value="{Binding TerminalRows, Mode=TwoWay}"
+                                       Value="{Binding TerminalRows, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="20" Maximum="100" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Font size:"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                       Value="{Binding FontSize, Mode=TwoWay}"
+                                       Value="{Binding FontSize, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="8" Maximum="32" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"
@@ -177,7 +177,7 @@
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Scrollback (lines):"/>
                         <NumericUpDown Grid.Row="3" Grid.Column="1"
-                                       Value="{Binding ScrollbackLines, Mode=TwoWay}"
+                                       Value="{Binding ScrollbackLines, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="100" Maximum="100000" Increment="500"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"
@@ -203,14 +203,14 @@
                           ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Username:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
-                                   Text="{Binding Username, Mode=TwoWay}"
+                                   Text="{Binding Username, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                    Width="280" HorizontalAlignment="Left"/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Password:"/>
                         <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="280,6,Auto"
                               HorizontalAlignment="Left">
                             <TextBox Grid.Column="0"
-                                     Text="{Binding Password, Mode=TwoWay}"
+                                     Text="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                      PasswordChar="{Binding ShowPassword, Converter={x:Static vm:PasswordCharConverter.Instance}}"
                                      PlaceholderText="(leave empty to keep the existing password)"/>
                             <ToggleButton Grid.Column="2"
@@ -239,10 +239,10 @@
                                 <DataTemplate x:DataType="vm:MenuStepEditorViewModel">
                                     <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,4">
                                         <TextBox Grid.Column="0"
-                                                 Text="{Binding WaitForPattern, Mode=TwoWay}"
+                                                 Text="{Binding WaitForPattern, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                                  PlaceholderText="Main Menu:"/>
                                         <TextBox Grid.Column="1" Margin="6,0,0,0"
-                                                 Text="{Binding Send, Mode=TwoWay}"
+                                                 Text="{Binding Send, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                                  PlaceholderText="G"/>
                                         <Button Grid.Column="2" Margin="6,0,0,0" Content="↑"
                                                 Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepUpCommand}"
