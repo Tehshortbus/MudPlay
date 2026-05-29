@@ -10,26 +10,18 @@ using FujinTerm.ViewModels;
 namespace FujinTerm.Controls;
 
 /// <summary>
-/// One <see cref="SelectableTextBlock"/> that renders the whole Backscroll
-/// transcript — every row's cells inline as colored <see cref="Run"/>s,
-/// separated by <see cref="LineBreak"/>s, prefixed by a muted timestamp.
-/// Because it's one TextBlock, native drag-to-select naturally spans rows
-/// and Ctrl+C copies the selection across multi-line ranges.
+/// One <see cref="SelectableTextBlock"/> that renders the body of the
+/// Backscroll transcript — every row's cells inline as coloured
+/// <see cref="Run"/>s, separated by <see cref="LineBreak"/>s. Native
+/// drag-to-select spans rows and Ctrl+C copies the multi-line range.
+/// Timestamps live in the parallel <see cref="TimestampGutter"/> so the
+/// user's selection can't accidentally include them.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Trade-offs vs the previous per-row layout:
-/// </para>
-/// <list type="bullet">
-///   <item><description>Multi-row text selection works (the requested behaviour).</description></item>
-///   <item><description>Timestamps share the cell font / size so glyphs land
-///     on the same baseline as the row text; the muted colour keeps them
-///     visually de-emphasised.</description></item>
-///   <item><description>Rebuilding all <see cref="TextBlock.Inlines"/> on
-///     every <see cref="INotifyCollectionChanged.CollectionChanged"/>
-///     scales linearly with row count. For the Backscroll's default 10k-row
-///     cap that's fine on modern hardware; revisit if it becomes a bottleneck.</description></item>
-/// </list>
+/// Rebuilding all <see cref="TextBlock.Inlines"/> on every
+/// <see cref="INotifyCollectionChanged.CollectionChanged"/> scales
+/// linearly with row count. For the Backscroll's default 10k-row cap
+/// that's fine on modern hardware; revisit if it becomes a bottleneck.
 /// </remarks>
 public sealed class SelectableTranscript : SelectableTextBlock
 {
@@ -99,16 +91,11 @@ public sealed class SelectableTranscript : SelectableTextBlock
 
         int[] offsets = new int[rows.Count];
         int charOffset = 0;
-        IBrush tsBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x80, 0x80, 0x80));
 
         for (int r = 0; r < rows.Count; r++)
         {
             offsets[r] = charOffset;
             if (rows[r] is not BackscrollRowViewModel row) continue;
-
-            string tsText = row.TimestampText + "  ";
-            inlines.Add(new Run(tsText) { Foreground = tsBrush });
-            charOffset += tsText.Length;
 
             Cell[] cells = row.Cells;
             int end = cells.Length;

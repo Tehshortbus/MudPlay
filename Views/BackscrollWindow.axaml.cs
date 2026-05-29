@@ -70,9 +70,10 @@ public partial class BackscrollWindow : Window
         if ((uint)rowIndex >= (uint)vm.Rows.Count) return;
         if (rowIndex >= _transcript.RowCharOffsets.Count) return;
 
-        // Each row's text is laid out as: "HH:mm:ss" + 2 spaces + cell text.
-        int prefixLen = vm.Rows[rowIndex].TimestampText.Length + 2;
-        int abs = _transcript.RowCharOffsets[rowIndex] + prefixLen + columnOffset;
+        // Transcript text is cell content only (timestamps live in the
+        // sibling TimestampGutter), so the column offset within the row
+        // maps directly to the absolute position.
+        int abs = _transcript.RowCharOffsets[rowIndex] + columnOffset;
         _transcript.SelectionStart = abs;
         _transcript.SelectionEnd = abs + length;
 

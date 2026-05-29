@@ -58,20 +58,29 @@
              the Mx437 font's cell height (16 px). The default Fluent
              ListBoxItem ships with ~6 px vertical padding which reads as
              "double-spaced" against terminal output. -->
-        <!-- Single SelectableTextBlock for the whole transcript so drag-select
-             naturally spans rows and Ctrl+C copies the multi-line range.
-             Timestamps inline at the start of each line, muted colour. -->
+        <!-- Two-column layout inside one ScrollViewer so the gutter scrolls
+             in lockstep with the body. Timestamps render in the gutter
+             (non-selectable); body is a SelectableTextBlock so drag-select
+             spans rows and Ctrl+C copies the multi-line range. Both
+             controls share the same font + size so the lines stay aligned. -->
         <ScrollViewer x:Name="RowsScroll"
                       Background="Black"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       UseLayoutRounding="True">
-            <ctl:SelectableTranscript x:Name="Transcript"
-                                      Rows="{Binding Rows}"
-                                      Margin="4"
-                                      Foreground="White"
-                                      FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                      FontSize="16"/>
+            <Grid ColumnDefinitions="Auto,*" Margin="4">
+                <ctl:TimestampGutter Grid.Column="0"
+                                     Rows="{Binding Rows}"
+                                     Margin="0,0,12,0"
+                                     FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                     FontSize="16"/>
+                <ctl:SelectableTranscript Grid.Column="1"
+                                          x:Name="Transcript"
+                                          Rows="{Binding Rows}"
+                                          Foreground="White"
+                                          FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                          FontSize="16"/>
+            </Grid>
         </ScrollViewer>
 
     </DockPanel>
