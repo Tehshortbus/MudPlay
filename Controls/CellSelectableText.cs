@@ -44,15 +44,35 @@ public sealed class CellSelectableText : SelectableTextBlock
         // cell stays crisp instead of being anti-aliased into mush.
         UseLayoutRounding = true;
         RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
+
+        // Default Control.Background is null which makes the control
+        // hit-testable only where ink lands — that breaks click-and-drag
+        // selection on whitespace and past end-of-line. Transparent makes
+        // the whole bounds hit-testable while still painting nothing.
+        Background = Brushes.Transparent;
+
+        // SelectableTextBlock auto-focuses on click, but make it explicit
+        // in case a host ItemsControl rebinds the row template and rests
+        // the property.
+        Focusable = true;
+
+        // Default SelectionBrush is a Fluent theme resource that's barely
+        // visible against the backscroll's pure-black background. Hard-set
+        // a translucent steel-blue tint so the user can actually see what
+        // they've selected.
+        SelectionBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x4F, 0x8F, 0xD0));
     }
 
     private void Rebuild()
     {
-        InlineCollection inlines = Inlines ??= new InlineCollection();
-        inlines.Clear();
-
         Cell[]? cells = Cells;
-        if (cells is null || cells.Length == 0) return;
+        // Re-assigning Inlines (rather than mutating in place) forces
+        // TextBlock to rebuild its text layout from scratch — selection
+        // hit-testing reads the freshly-built layout, so mid-flight
+        // edits don't get a stale layout.
+        InlineCollection inlines = new();
+
+        if (cells is null || cells.Length == 0) { Inlines = inlines; return; }
 
         // Trim trailing spaces with default attributes — they're padding
         // from the terminal grid and just balloon the row width.
@@ -61,7 +81,7 @@ public sealed class CellSelectableText : SelectableTextBlock
         {
             end--;
         }
-        if (end == 0) return;
+        if (end == 0) { Inlines = inlines; return; }
 
         int i = 0;
         while (i < end)
@@ -71,6 +91,7 @@ public sealed class CellSelectableText : SelectableTextBlock
             do { i++; } while (i < end && cells[i].Attr.Equals(attr));
             inlines.Add(BuildRun(cells, runStart, i, attr));
         }
+        Inlines = inlines;
     }
 
     private static bool IsPlainBackground(CellAttributes attr)
