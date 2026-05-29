@@ -222,7 +222,6 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new HealthSectionViewModel());
         Sections.Add(new SpellsSectionViewModel());
         Sections.Add(new CombatSectionViewModel());
-        Sections.Add(new PvPSectionViewModel());
         Sections.Add(new PartySectionViewModel());
         Sections.Add(new CashSectionViewModel());
         Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));

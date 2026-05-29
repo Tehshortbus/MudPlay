@@ -6,11 +6,11 @@ using FujinTerm.Views.Settings;
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// Base class for the 11 "stub" settings tabs (Health, Spells, Combat,
-/// PvP, Party, Cash, Talk, Auto-Lair, Sounds, Other, Events) that ship
-/// in Phase 4 PR 4.8 with disabled controls + per-field "wired in Phase
-/// X" tooltips. Persistence and the actual control behaviour land in
-/// the owning phase named by each tooltip.
+/// Base class for the 10 "stub" settings tabs (Health, Spells, Combat,
+/// Party, Cash, Talk, Auto-Lair, Sounds, Other, Events) that ship in
+/// Phase 4 PR 4.8 with disabled controls + per-field "wired in Phase X"
+/// tooltips. Persistence and the actual control behaviour land in the
+/// owning phase named by each tooltip.
 /// </summary>
 /// <remarks>
 /// Subclasses populate <see cref="Groups"/> and override

@@ -11,8 +11,7 @@ namespace FujinTerm.Models.Profile;
 /// <remarks>
 /// Field set mirrors the Action menu's auto-toggle group exactly
 /// (Combat / Nuke / Heal-Rest / Bless / Light / Get-Items / Get-Cash /
-/// Sneak / Hide / Search). Track is not on this DTO — it stays in the
-/// deferred-PvP bucket until PvE is solid (Issue #16).
+/// Sneak / Hide / Search).
 /// </remarks>
 public sealed class AutoActionDefaults
 {
