@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="440"
+             x:Class="FujinTerm.Views.Settings.ToolbarSectionView"
+             x:DataType="vm:ToolbarSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.GroupHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="540" HorizontalAlignment="Left">
+
+            <TextBlock Text="Toolbar"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="Pick which icons appear on the main window's toolbar. Hidden icons are still reachable via View / File / Help menus and their hotkeys."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0"/>
+
+            <TextBlock Classes="GroupHeader" Text="Connection"/>
+            <CheckBox IsChecked="{Binding ShowConnect, Mode=TwoWay}" Content="Connect / Disconnect"/>
+            <CheckBox IsChecked="{Binding ShowSettings, Mode=TwoWay}" Content="Settings"/>
+
+            <TextBlock Classes="GroupHeader" Text="Tools"/>
+            <CheckBox IsChecked="{Binding ShowNavigation, Mode=TwoWay}" Content="Navigation (F5)"/>
+            <CheckBox IsChecked="{Binding ShowBackscroll, Mode=TwoWay}" Content="Backscroll (F10)"/>
+            <CheckBox IsChecked="{Binding ShowCapture, Mode=TwoWay}" Content="Capture"/>
+            <CheckBox IsChecked="{Binding ShowWireInspector, Mode=TwoWay}" Content="Wire Inspector"/>
+
+            <TextBlock Classes="GroupHeader" Text="Panels"/>
+            <CheckBox IsChecked="{Binding ShowConversation, Mode=TwoWay}" Content="Conversation (F2)"/>
+            <CheckBox IsChecked="{Binding ShowParty, Mode=TwoWay}" Content="Party (F3)"/>
+            <CheckBox IsChecked="{Binding ShowWorkshop, Mode=TwoWay}" Content="Player Workshop (F4)"/>
+            <CheckBox IsChecked="{Binding ShowSpellBook, Mode=TwoWay}" Content="Spell Book (F7)"/>
+            <CheckBox IsChecked="{Binding ShowSessionStats, Mode=TwoWay}" Content="Session Stats (F11)"/>
+            <CheckBox IsChecked="{Binding ShowGameDataBrowser, Mode=TwoWay}" Content="Game Data Browser (Ctrl+G)"/>
+            <CheckBox IsChecked="{Binding ShowLog, Mode=TwoWay}" Content="Log (F9)"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

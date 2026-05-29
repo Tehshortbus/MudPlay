@@ -139,6 +139,15 @@ public sealed class AppServices
     public DisplayConfig Display { get; } = new();
 
     /// <summary>
+    /// Global-tier toolbar visibility mirror. MainWindow toolbar buttons
+    /// bind their IsVisible here. Hydrated on startup from the
+    /// "Toolbar" entry in <see cref="SettingsService.Current"/>.Settings
+    /// and re-hydrated on every <see cref="SettingsService.GlobalSettingsChanged"/>
+    /// tick.
+    /// </summary>
+    public ToolbarConfig Toolbar { get; } = new();
+
+    /// <summary>
     /// AES-GCM encrypt / decrypt for short secrets (BBS passwords).
     /// Ciphertext is stored inline on the owning record (e.g.
     /// <see cref="Models.Profile.BbsCredentials.EncryptedPassword"/>),
@@ -218,6 +227,12 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetDisplayToDefaults;
         Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
+        // Bridge: keep the live ToolbarConfig in sync with the Global tier.
+        // Hydrate once now from whatever was loaded on disk, then re-hydrate
+        // every time the Settings → Toolbar section saves.
+        ApplyToolbarFromGlobal();
+        Settings.GlobalSettingsChanged += _ => ApplyToolbarFromGlobal();
+
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
         // (Settings → General toggle); until then the user picks the profile
@@ -227,6 +242,20 @@ public sealed class AppServices
         // Track which profile was last loaded so the future "auto-load last"
         // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
+    }
+
+    private void ApplyToolbarFromGlobal()
+    {
+        Models.Settings.ToolbarSettings dto = ReadToolbar(Settings.Current);
+        Toolbar.ApplyFrom(dto);
+    }
+
+    private static Models.Settings.ToolbarSettings ReadToolbar(Models.Settings.GlobalSettings g)
+    {
+        if (g.Settings is null) return new();
+        if (!g.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
+        return System.Text.Json.JsonSerializer.Deserialize<Models.Settings.ToolbarSettings>(json.GetRawText())
+               ?? new Models.Settings.ToolbarSettings();
     }
 
     private void ApplyDisplayFromActiveBbs()

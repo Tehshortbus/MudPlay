@@ -55,6 +55,14 @@ public partial class MainWindowViewModel : ObservableObject
     public double TerminalFontSize => AppServices.Current.Display.FontSize;
 
     /// <summary>
+    /// Live mirror of the Global-tier toolbar visibility settings.
+    /// Each toolbar Button in the XAML binds its <c>IsVisible</c> to a
+    /// property on this so edits in Settings → Toolbar apply
+    /// immediately on Apply / OK.
+    /// </summary>
+    public Services.ToolbarConfig Toolbar => AppServices.Current.Toolbar;
+
+    /// <summary>
     /// Host the active BBS resolves to. Read-only from the UI — the user
     /// picks the active BBS in Settings → BBS, and that selection's Host /
     /// Port drives the connect button.

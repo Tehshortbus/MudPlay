@@ -202,7 +202,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
-        Add("toolbar",   "Toolbar",   "Phase 4 PR 4.6", "Which toolbar icons are visible.");
+        Sections.Add(new ToolbarSectionViewModel(AppServices.Current.Settings));
 
         Sections.Add(new BbsSectionViewModel(
             AppServices.Current.Bbs,
