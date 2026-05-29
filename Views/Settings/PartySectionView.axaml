@@ -58,16 +58,49 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"/>
 
-            <!-- ============ Party rank ============ -->
-            <TextBlock Classes="SectionHeader" Text="Party rank"/>
-            <StackPanel Orientation="Horizontal" Spacing="16">
-                <RadioButton GroupName="Rank" Content="Front" IsEnabled="False"
+            <!-- ============ Party behavior ============ -->
+            <TextBlock Classes="SectionHeader" Text="Party behavior"/>
+            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2,0,0">
+
+                <!-- Rank: Front / Mid / Back. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rank"/>
+                <RadioButton Grid.Row="0" Grid.Column="1" GroupName="Rank" Content="Front" IsEnabled="False"
+                             Margin="0,0,16,0"
                              ToolTip.Tip="Front rank — defaults the target order to attack-first."/>
-                <RadioButton GroupName="Rank" Content="Mid"   IsEnabled="False" IsChecked="True"
+                <RadioButton Grid.Row="0" Grid.Column="2" GroupName="Rank" Content="Mid"   IsEnabled="False" IsChecked="True"
+                             Margin="0,0,16,0"
                              ToolTip.Tip="Mid rank — balanced default."/>
-                <RadioButton GroupName="Rank" Content="Back"  IsEnabled="False"
+                <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"  IsEnabled="False"
                              ToolTip.Tip="Back rank — caster / healer position."/>
-            </StackPanel>
+
+                <!-- Attack priority: who do we target? -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Attack priority" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Default — target what we'd pick on our own. Party leader — mirror the leader's target. Party member — mirror a named member's target.">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Party leader"/>
+                    <ComboBoxItem Content="Party member"/>
+                </ComboBox>
+                <AutoCompleteBox Grid.Row="1" Grid.Column="3" IsEnabled="False" Width="180"
+                                 Margin="0,8,0,0"
+                                 PlaceholderText="Member name" FilterMode="Contains"
+                                 ToolTip.Tip="Active when Attack priority is set to Party member — names autocomplete from PartyState.Members once Phase 6 lands."/>
+
+                <!-- Attack order: when in the round do we swing? -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Attack order" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Default — fire in our usual slot. Attack last — be the last attacker in the party, re-announce if needed. Attack after member — re-announce after the named member's attack on the same target. Non-party attack announces are filtered out at the engine level so other groups in the room don't affect ordering.">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Attack last"/>
+                    <ComboBoxItem Content="Attack after member"/>
+                </ComboBox>
+                <AutoCompleteBox Grid.Row="2" Grid.Column="3" IsEnabled="False" Width="180"
+                                 Margin="0,8,0,0"
+                                 PlaceholderText="Member name" FilterMode="Contains"
+                                 ToolTip.Tip="Active when Attack order is set to Attack after member."/>
+            </Grid>
 
             <!-- ============ Party heal (inline spell + threshold) ============ -->
             <TextBlock Classes="SectionHeader" Text="Party heal"/>
