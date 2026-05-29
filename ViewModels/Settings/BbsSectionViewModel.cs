@@ -255,17 +255,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         string? activeName = _profile.Current?.BbsName;
         BbsProfile? active = string.IsNullOrEmpty(activeName) ? null : _bbsStore.Get(activeName);
-        if (active is null)
-        {
-            BbsProfile defaults = new();
-            _display.FontSize = defaults.FontSize;
-            _display.ScrollbackLines = defaults.ScrollbackLines;
-        }
-        else
-        {
-            _display.FontSize = active.FontSize;
-            _display.ScrollbackLines = active.ScrollbackLines;
-        }
+        BbsProfile values = active ?? new BbsProfile();
+        _display.FontSize = values.FontSize;
+        _display.ScrollbackLines = values.ScrollbackLines;
+        _display.TerminalCols = values.TerminalCols;
+        _display.TerminalRows = values.TerminalRows;
     }
 
     [RelayCommand]
@@ -502,8 +496,18 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnReconnectAfterCleanupChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnHasSysopPowersChanged(bool value)            { Dirty(); }
-    partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
-    partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
+    partial void OnTerminalColsChanged(int value)
+    {
+        _display.TerminalCols = value;
+        PushToCache();
+        Dirty();
+    }
+    partial void OnTerminalRowsChanged(int value)
+    {
+        _display.TerminalRows = value;
+        PushToCache();
+        Dirty();
+    }
 
     // Live-preview the font on the terminal canvas as the user types. Push
     // happens whether the change came from typing or from re-selecting a

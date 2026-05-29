@@ -214,13 +214,11 @@ public sealed class AppServices
     {
         string? bbsName = Profile.Current?.BbsName;
         Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
-        if (bbs is null)
-        {
-            ResetDisplayToDefaults();
-            return;
-        }
-        Display.FontSize = bbs.FontSize;
-        Display.ScrollbackLines = bbs.ScrollbackLines;
+        Models.Settings.BbsProfile values = bbs ?? new Models.Settings.BbsProfile();
+        Display.FontSize = values.FontSize;
+        Display.ScrollbackLines = values.ScrollbackLines;
+        Display.TerminalCols = values.TerminalCols;
+        Display.TerminalRows = values.TerminalRows;
     }
 
     private void ResetDisplayToDefaults()
@@ -228,6 +226,8 @@ public sealed class AppServices
         Models.Settings.BbsProfile defaults = new();
         Display.FontSize = defaults.FontSize;
         Display.ScrollbackLines = defaults.ScrollbackLines;
+        Display.TerminalCols = defaults.TerminalCols;
+        Display.TerminalRows = defaults.TerminalRows;
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

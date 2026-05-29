@@ -224,6 +224,11 @@ public partial class MainWindowViewModel : ObservableObject
             Emulator.Screen.Scrollback.SetCapacity(initialScrollback);
         }
 
+        // Apply the active BBS's terminal-grid size to the live emulator.
+        // Without this the emulator stays at the 80×25 ctor default even
+        // when the BBS file says otherwise.
+        ApplyTerminalSize();
+
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
@@ -249,6 +254,32 @@ public partial class MainWindowViewModel : ObservableObject
             int newCapacity = AppServices.Current.Display.ScrollbackLines;
             if (newCapacity > 0) Emulator.Screen.Scrollback.SetCapacity(newCapacity);
         }
+        else if (e.PropertyName == nameof(Services.DisplayConfig.TerminalCols)
+              || e.PropertyName == nameof(Services.DisplayConfig.TerminalRows))
+        {
+            ApplyTerminalSize();
+        }
+    }
+
+    /// <summary>
+    /// Resize the live emulator screen and (if connected) re-advertise the
+    /// new dimensions to the BBS via Telnet NAWS. Reads from
+    /// <see cref="DisplayConfig"/> so any caller that wrote into it picks
+    /// up the same source of truth.
+    /// </summary>
+    private void ApplyTerminalSize()
+    {
+        int cols = AppServices.Current.Display.TerminalCols;
+        int rows = AppServices.Current.Display.TerminalRows;
+        if (cols <= 0 || rows <= 0) return;
+        if (cols == Emulator.Screen.Cols && rows == Emulator.Screen.Rows)
+        {
+            // Same size — still re-send NAWS in case the server lost state.
+            _ = _telnet?.SendWindowSizeAsync(cols, rows);
+            return;
+        }
+        Emulator.Resize(cols, rows);
+        _ = _telnet?.SendWindowSizeAsync(cols, rows);
     }
 
     /// <summary>
