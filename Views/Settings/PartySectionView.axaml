@@ -228,12 +228,10 @@
                               ToolTip.Tip="Split loot evenly via the party-share command."/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Spacing="2">
-                    <CheckBox Content="Help leader bash doors" IsEnabled="False"
-                              ToolTip.Tip="Join in on bash attempts when the leader is forcing a door."/>
+                    <CheckBox Content="Help leader open doors" IsEnabled="False"
+                              ToolTip.Tip="Pitch in when the leader is forcing a door — bashes or picks the lock depending on the Other → 'Pick locks instead of bashing' toggle."/>
                     <CheckBox Content="Ignore party when following" IsEnabled="False"
                               ToolTip.Tip="Don't fire party-coordination commands while in `follow` mode."/>
-                    <CheckBox Content="Auto-collect when following" IsEnabled="False"
-                              ToolTip.Tip="Pick up items even while following another player."/>
                 </StackPanel>
             </Grid>
 
