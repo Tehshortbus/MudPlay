@@ -28,13 +28,12 @@ public sealed class CombatSectionViewModel : StubSectionViewModel
         new StubGroup("Weapon combat", new[]
         {
             new StubField("Normal attack command", StubFieldKind.Text, "Command sent each round to swing (default `a`)."),
-            new StubField("Normal weapon",         StubFieldKind.Combo, "Primary weapon — main-hand."),
-            new StubField("Normal off-hand",       StubFieldKind.Combo, "Off-hand pairing for the normal weapon."),
-            new StubField("Alternate weapon",      StubFieldKind.Combo, "Swap target — used when CombatManager decides to switch (see wiring notes)."),
-            new StubField("Alternate off-hand",    StubFieldKind.Combo, "Off-hand pairing for the alternate weapon."),
-            new StubField("BS weapon",             StubFieldKind.Combo, "Equipped for the BS attempt round."),
-            new StubField("Shield",                StubFieldKind.Combo, "Defensive off-hand swapped in when shield-up logic triggers."),
-            new StubField("Use shield with BS weapon",        StubFieldKind.Check, "Keep shield equipped alongside BS attempts."),
+            new StubField("Normal weapon",         StubFieldKind.AutoComplete, "Primary weapon — main-hand. Phase 5+ populates the suggestion list from items the character can actually equip."),
+            new StubField("Normal off-hand",       StubFieldKind.AutoComplete, "Off-hand pairing for the normal weapon (shield or weapon)."),
+            new StubField("Alternate weapon",      StubFieldKind.AutoComplete, "Swap target — used when CombatManager decides to switch."),
+            new StubField("Alternate off-hand",    StubFieldKind.AutoComplete, "Off-hand pairing for the alternate weapon."),
+            new StubField("BS weapon",             StubFieldKind.AutoComplete, "Equipped for the BS attempt round."),
+            new StubField("BS weapon off-hand",    StubFieldKind.AutoComplete, "Off-hand worn alongside the BS weapon (often a shield, but any off-hand works)."),
             new StubField("Use normal weapon for attack spells", StubFieldKind.Check, "Don't bother swapping to a caster off-hand for spell rounds."),
         }),
         new StubGroup("Options", new[]
@@ -44,9 +43,13 @@ public sealed class CombatSectionViewModel : StubSectionViewModel
             new StubField("Run if BS fails",      StubFieldKind.Check, "Trigger flee behaviour on a failed BS roll."),
             new StubField("Attack all monsters",  StubFieldKind.Check, "Opposite of polite — engages every hostile regardless of who else is fighting."),
             new StubField("Polite attacks",       StubFieldKind.Check, "Skip rooms where non-party players are already engaged."),
-            new StubField("Min. monsters",        StubFieldKind.Numeric, "Skip the room if fewer than this many hostiles are present."),
-            new StubField("Max. monsters",        StubFieldKind.Numeric, "Skip the room if more than this many hostiles are present."),
-            new StubField("Run distance",         StubFieldKind.Numeric, "Rooms to flee before re-evaluating.", "rooms"),
+            new StubField("Min. monsters",        StubFieldKind.Numeric,
+                          "Skip the room if fewer than this many hostiles are present. Range 0–20. Engine enforces Min ≤ Max once wired.",
+                          Min: 0, Max: 20),
+            new StubField("Max. monsters",        StubFieldKind.Numeric,
+                          "Skip the room if more than this many hostiles are present. Range 1–20 (rooms cap at 20 NPCs; 0 would mean always-run). Engine enforces Max ≥ Min once wired.",
+                          Min: 1, Max: 20),
+            new StubField("Run distance",         StubFieldKind.Numeric, "Rooms to flee before re-evaluating.", "rooms", Min: 0, Max: 100),
         }),
         new StubGroup("Spell combat — Multi-attack (room spell)", new[]
         {

@@ -10,13 +10,14 @@ namespace FujinTerm.ViewModels.Settings;
 /// </summary>
 public enum StubFieldKind
 {
-    Check,    // CheckBox
-    Numeric,  // NumericUpDown (placeholder sample value, disabled)
-    Combo,    // ComboBox (single placeholder entry, disabled)
-    Text,     // TextBox (placeholder sample, disabled)
-    Slider,   // Slider (disabled)
-    Button,   // Button (disabled)
-    Note,     // Indented muted-text note (no control)
+    Check,        // CheckBox
+    Numeric,      // NumericUpDown (placeholder sample value, disabled)
+    Combo,        // ComboBox (single placeholder entry, disabled)
+    AutoComplete, // AutoCompleteBox — typeahead-filtered list (disabled stub)
+    Text,         // TextBox (placeholder sample, disabled)
+    Slider,       // Slider (disabled)
+    Button,       // Button (disabled)
+    Note,         // Indented muted-text note (no control)
 }
 
 /// <summary>
@@ -24,7 +25,13 @@ public enum StubFieldKind
 /// describes the owning phase / PR so users hovering on a stub get the
 /// "wired in Phase X" trail without leaving the tab.
 /// </summary>
-public sealed record StubField(string Label, StubFieldKind Kind, string Tooltip, string? Suffix = null)
+public sealed record StubField(
+    string Label,
+    StubFieldKind Kind,
+    string Tooltip,
+    string? Suffix = null,
+    double Min = 0,
+    double Max = 100)
 {
     /// <summary>True when the left-column label should render — Note rows hide it because their content spans the row.</summary>
     public bool HasLabel => Kind != StubFieldKind.Note;

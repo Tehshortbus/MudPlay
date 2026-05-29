@@ -101,13 +101,20 @@
                                             <CheckBox Grid.Column="1" IsEnabled="False"
                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
                                             <NumericUpDown Grid.Column="1" IsEnabled="False"
-                                                           Value="0" Minimum="0" Maximum="100"
+                                                           Value="0"
+                                                           Minimum="{Binding Min}"
+                                                           Maximum="{Binding Max}"
                                                            Width="120"
                                                            IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}"/>
                                             <ComboBox Grid.Column="1" IsEnabled="False"
                                                       Width="180"
                                                       PlaceholderText="—"
                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Combo}}"/>
+                                            <AutoCompleteBox Grid.Column="1" IsEnabled="False"
+                                                             Width="220"
+                                                             PlaceholderText="Type to filter…"
+                                                             FilterMode="Contains"
+                                                             IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.AutoComplete}}"/>
                                             <TextBox Grid.Column="1" IsEnabled="False"
                                                      Width="220"
                                                      IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}"/>
