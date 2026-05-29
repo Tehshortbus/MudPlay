@@ -60,12 +60,11 @@ public sealed class LoginAutomator : IDisposable
     private bool _passwordPending;
     private bool _usernameLocked;
     private bool _passwordLocked;
-    private CancellationTokenSource? _stepCts;
 
     /// <summary>Fired after the final step matches and its response is sent.</summary>
     public event Action? LoggedIntoGame;
 
-    /// <summary>Fired when a step times out or fails. Payload is a short reason.</summary>
+    /// <summary>Fired when a step's send fails (no value to substitute, send IO error, etc.). Payload is a short reason.</summary>
     public event Action<string>? Aborted;
 
     /// <summary>True once <see cref="Start"/> has been called and the queue has steps left.</summary>
@@ -100,10 +99,7 @@ public sealed class LoginAutomator : IDisposable
         List<AutomationStep> steps = new(credentials.MenuNavSteps.Count);
         foreach (MenuStep ms in credentials.MenuNavSteps)
         {
-            steps.Add(new AutomationStep(
-                ms.WaitForPattern,
-                ms.Send,
-                Math.Max(1, ms.TimeoutSeconds)));
+            steps.Add(new AutomationStep(ms.WaitForPattern, ms.Send));
         }
         return steps;
     }
@@ -137,7 +133,7 @@ public sealed class LoginAutomator : IDisposable
         return new LoginAutomator(steps, credentials.Username, resolvePassword, sendText, log);
     }
 
-    /// <summary>Begin the automation. Arms the timeout for the first step.</summary>
+    /// <summary>Begin the automation.</summary>
     public void Start()
     {
         bool done;
@@ -146,7 +142,6 @@ public sealed class LoginAutomator : IDisposable
             if (_started || _disposed) return;
             _started = true;
             done = _steps.Count == 0;
-            if (!done) ArmStepTimeoutLocked();
         }
         if (done) FireDone();
     }
@@ -197,7 +192,6 @@ public sealed class LoginAutomator : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            CancelStepTimeoutLocked();
         }
     }
 
@@ -221,7 +215,6 @@ public sealed class LoginAutomator : IDisposable
             if (_usernamePending) { _usernameLocked = true; _usernamePending = false; }
             if (_passwordPending) { _passwordLocked = true; _passwordPending = false; }
 
-            CancelStepTimeoutLocked();
             _resolving = true;
             dispatchIndex = _stepIndex;
         }
@@ -305,38 +298,10 @@ public sealed class LoginAutomator : IDisposable
             _stepIndex++;
             _resolving = false;
             done = _stepIndex >= _steps.Count;
-            if (!done) ArmStepTimeoutLocked();
         }
 
         if (done) { FireDone(); return; }
         TryAdvance();
-    }
-
-    private void ArmStepTimeoutLocked()
-    {
-        CancelStepTimeoutLocked();
-        _stepCts = new CancellationTokenSource();
-        CancellationToken token = _stepCts.Token;
-        int seconds = Math.Max(1, _steps[_stepIndex].TimeoutSeconds);
-        int armedAt = _stepIndex;
-        string pattern = _steps[armedAt].WaitForPattern;
-
-        _ = Task.Delay(TimeSpan.FromSeconds(seconds), token).ContinueWith(t =>
-        {
-            if (t.IsCanceled) return;
-            lock (_lock)
-            {
-                if (_disposed || _stepIndex != armedAt) return;
-            }
-            Abort($"step {armedAt + 1} timed out after {seconds}s waiting for \"{pattern}\"");
-        }, TaskScheduler.Default);
-    }
-
-    private void CancelStepTimeoutLocked()
-    {
-        try { _stepCts?.Cancel(); } catch { }
-        _stepCts?.Dispose();
-        _stepCts = null;
     }
 
     private void Abort(string reason)
@@ -378,22 +343,19 @@ public sealed class LoginAutomator : IDisposable
 
 /// <summary>
 /// One step in the <see cref="LoginAutomator"/> queue: the substring to
-/// wait for, the raw reply template (with optional <c>{username}</c> /
-/// <c>{password}</c> placeholders), and the per-step timeout in seconds.
-/// Substitution + the trailing CR are added by the automator at send
-/// time, not here.
+/// wait for and the raw reply template (with optional <c>{username}</c> /
+/// <c>{password}</c> placeholders). Substitution + the trailing CR are
+/// added by the automator at send time, not here.
 /// </summary>
 public sealed class AutomationStep
 {
     public string WaitForPattern { get; }
     public string SendTemplate { get; }
-    public int TimeoutSeconds { get; }
 
-    public AutomationStep(string waitForPattern, string sendTemplate, int timeoutSeconds)
+    public AutomationStep(string waitForPattern, string sendTemplate)
     {
         WaitForPattern = waitForPattern ?? string.Empty;
         SendTemplate = sendTemplate ?? string.Empty;
-        TimeoutSeconds = timeoutSeconds;
     }
 
     /// <summary>

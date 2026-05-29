@@ -17,9 +17,6 @@ public sealed class MenuStep
     /// </summary>
     public string WaitForPattern { get; set; } = string.Empty;
 
-    /// <summary>The response to send when the pattern matches. <c>\r</c> for Enter.</summary>
+    /// <summary>The response to send when the pattern matches. The Enter key is appended automatically.</summary>
     public string Send { get; set; } = string.Empty;
-
-    /// <summary>Seconds to wait before giving up on this step and aborting the automator.</summary>
-    public int TimeoutSeconds { get; set; } = 15;
 }

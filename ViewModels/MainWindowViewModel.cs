@@ -885,24 +885,17 @@ public partial class MainWindowViewModel : ObservableObject
         ? $"_Save profile  ·  {AppServices.Current.Profile.CurrentProfileName}"
         : "_Save profile…";
 
+    /// <summary>
+    /// Blank-slate the running profile. The outgoing profile is auto-saved
+    /// first (handled inside ProfileService.LoadBlank), then Current is
+    /// replaced with a fresh in-memory draft. The user names + persists
+    /// it later via File → Save profile (which routes to Save As since
+    /// the draft has no name yet).
+    /// </summary>
     [RelayCommand]
-    private async Task NewProfileAsync()
+    private void NewProfile()
     {
-        string? name = await PromptForProfileNameAsync(
-            "New profile",
-            "Pick a name. Saves to Data/profiles/<name>.json.",
-            initial: string.Empty);
-        if (string.IsNullOrWhiteSpace(name)) return;
-        name = name.Trim();
-        if (AppServices.Current.Profile.Exists(name))
-        {
-            AppServices.Current.Log.Warn("Profile",
-                $"A profile named '{name}' already exists — pick a different name.");
-            return;
-        }
         AppServices.Current.Profile.LoadBlank();
-        AppServices.Current.Profile.SaveAs(name);
-        PromoteRecent(name);
         SyncProfileMenuState();
     }
 
@@ -1008,16 +1001,6 @@ public partial class MainWindowViewModel : ObservableObject
         {
             AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
         }
-    }
-
-    private async Task<string?> PromptForProfileNameAsync(string title, string description, string initial)
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return null;
-        InputDialog dlg = new();
-        dlg.Configure(title, description, initial);
-        dlg.Show(main);
-        return await dlg.ResultTask;
     }
 
     private void PromoteRecent(string profileName)

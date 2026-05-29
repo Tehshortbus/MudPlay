@@ -37,7 +37,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task LiteralPattern_AutoAppendsCarriageReturn()
     {
-        AutomationStep s = new("Main Menu:", "G", 30);
+        AutomationStep s = new("Main Menu:", "G");
         (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
         a.Feed(Ascii("Main Menu: "));
@@ -50,7 +50,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task EmptySend_StillSendsCarriageReturn()
     {
-        AutomationStep s = new("Press any key", "", 30);
+        AutomationStep s = new("Press any key", "");
         (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
         a.Feed(Ascii("[Press any key to continue]"));
@@ -63,7 +63,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task UsernamePlaceholder_Substitutes()
     {
-        AutomationStep s = new("Login:", "{username}", 30);
+        AutomationStep s = new("Login:", "{username}");
         (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
         a.Start();
         a.Feed(Ascii("Login:"));
@@ -76,7 +76,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task UseridPlaceholder_AlsoSubstitutes()
     {
-        AutomationStep s = new("Login:", "{userid}", 30);
+        AutomationStep s = new("Login:", "{userid}");
         (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
         a.Start();
         a.Feed(Ascii("Login:"));
@@ -89,7 +89,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task PasswordPlaceholder_Substitutes()
     {
-        AutomationStep s = new("Password:", "{password}", 30);
+        AutomationStep s = new("Password:", "{password}");
         (LoginAutomator a, var sent) = Build(
             resolvePassword: () => Task.FromResult<string?>("hunter2"), steps: s);
         a.Start();
@@ -103,7 +103,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task Placeholder_IsCaseInsensitive()
     {
-        AutomationStep s = new("Login:", "{USERNAME}", 30);
+        AutomationStep s = new("Login:", "{USERNAME}");
         (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
         a.Start();
         a.Feed(Ascii("Login:"));
@@ -116,7 +116,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task CsiSequences_StrippedBeforeMatching()
     {
-        AutomationStep s = new("Main Menu:", "G", 30);
+        AutomationStep s = new("Main Menu:", "G");
         (LoginAutomator a, var sent) = Build(steps: s);
         a.Start();
         a.Feed(Ascii("\x1b[1;33mMain Menu:\x1b[0m "));
@@ -129,9 +129,9 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task FullLoginFlow_RunsInOrder()
     {
-        AutomationStep s1 = new("Login:",    "{username}", 30);
-        AutomationStep s2 = new("Password:", "{password}", 30);
-        AutomationStep s3 = new("Main Menu:", "G",         30);
+        AutomationStep s1 = new("Login:", "{username}");
+        AutomationStep s2 = new("Password:", "{password}");
+        AutomationStep s3 = new("Main Menu:", "G");
 
         (LoginAutomator a, var sent) = Build(
             username: "alice",
@@ -153,9 +153,9 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task UsernameLock_RefusesSecondSendAfterAcceptance()
     {
-        AutomationStep s1 = new("Login:",    "{username}", 30);
-        AutomationStep s2 = new("Password:", "secret",     30);
-        AutomationStep s3 = new("Trick:",    "{username}", 30);
+        AutomationStep s1 = new("Login:", "{username}");
+        AutomationStep s2 = new("Password:", "secret");
+        AutomationStep s3 = new("Trick:", "{username}");
 
         (LoginAutomator a, var sent) = Build(
             username: "alice",
@@ -176,9 +176,9 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task PasswordLock_RefusesSecondSendAfterAcceptance()
     {
-        AutomationStep s1 = new("Password:", "{password}", 30);
-        AutomationStep s2 = new("Welcome:",  "",            30);
-        AutomationStep s3 = new("Repeat:",   "{password}", 30);
+        AutomationStep s1 = new("Password:", "{password}");
+        AutomationStep s2 = new("Welcome:", "");
+        AutomationStep s3 = new("Repeat:", "{password}");
 
         (LoginAutomator a, var sent) = Build(
             resolvePassword: () => Task.FromResult<string?>("hunter2"),
@@ -199,7 +199,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task UsernamePlaceholder_NoUsernameConfigured_Aborts()
     {
-        AutomationStep s = new("Login:", "{username}", 30);
+        AutomationStep s = new("Login:", "{username}");
         (LoginAutomator a, _) = Build(username: null, steps: s);
         string? abortReason = null;
         a.Aborted += r => abortReason = r;
@@ -214,7 +214,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task PasswordPlaceholder_NoResolverConfigured_Aborts()
     {
-        AutomationStep s = new("Password:", "{password}", 30);
+        AutomationStep s = new("Password:", "{password}");
         (LoginAutomator a, _) = Build(resolvePassword: null, steps: s);
         string? abortReason = null;
         a.Aborted += r => abortReason = r;
@@ -229,7 +229,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public async Task PasswordPlaceholder_ResolverReturnsNull_Aborts()
     {
-        AutomationStep s = new("Password:", "{password}", 30);
+        AutomationStep s = new("Password:", "{password}");
         (LoginAutomator a, _) = Build(
             resolvePassword: () => Task.FromResult<string?>(null), steps: s);
         string? abortReason = null;
@@ -240,21 +240,6 @@ public sealed class LoginAutomatorTests
         await Task.Delay(20);
         Assert.NotNull(abortReason);
         Assert.Contains("not found", abortReason);
-    }
-
-    [Fact]
-    public async Task StepTimeout_FiresAborted()
-    {
-        AutomationStep s = new("NeverArrives", "x", 1);
-        (LoginAutomator a, _) = Build(steps: s);
-        string? abortReason = null;
-        a.Aborted += r => abortReason = r;
-        a.Start();
-        a.Feed(Ascii("unrelated banner\r\n"));
-
-        await Task.Delay(1500);
-        Assert.NotNull(abortReason);
-        Assert.Contains("timed out", abortReason);
     }
 
     private static PasswordProtector NewProtector()
@@ -293,9 +278,9 @@ public sealed class LoginAutomatorTests
                 EncryptedPassword = encrypted,
                 MenuNavSteps =
                 {
-                    new MenuStep { WaitForPattern = "Login:",    Send = "{username}", TimeoutSeconds = 30 },
-                    new MenuStep { WaitForPattern = "Password:", Send = "{password}", TimeoutSeconds = 30 },
-                    new MenuStep { WaitForPattern = "Main Menu:", Send = "G",         TimeoutSeconds = 30 },
+                    new MenuStep { WaitForPattern = "Login:",    Send = "{username}" },
+                    new MenuStep { WaitForPattern = "Password:", Send = "{password}" },
+                    new MenuStep { WaitForPattern = "Main Menu:", Send = "G" },
                 },
             };
 

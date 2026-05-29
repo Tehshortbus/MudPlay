@@ -15,7 +15,6 @@ public sealed partial class MenuStepEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _waitForPattern = string.Empty;
     [ObservableProperty] private string _send = string.Empty;
-    [ObservableProperty] private int _timeoutSeconds = 15;
 
     public MenuStepEditorViewModel(Action onDirty)
     {
@@ -27,7 +26,6 @@ public sealed partial class MenuStepEditorViewModel : ObservableObject
     {
         WaitForPattern = WaitForPattern,
         Send = Send,
-        TimeoutSeconds = TimeoutSeconds,
     };
 
     public static MenuStepEditorViewModel FromModel(MenuStep model, Action onDirty)
@@ -37,11 +35,9 @@ public sealed partial class MenuStepEditorViewModel : ObservableObject
         {
             WaitForPattern = model.WaitForPattern,
             Send = model.Send,
-            TimeoutSeconds = model.TimeoutSeconds,
         };
     }
 
     partial void OnWaitForPatternChanged(string value) => _onDirty();
     partial void OnSendChanged(string value) => _onDirty();
-    partial void OnTimeoutSecondsChanged(int value) => _onDirty();
 }
