@@ -75,7 +75,7 @@
                                      ToolTip.Tip="Stub — thresholds below are interpreted as absolute HP."/>
                     </StackPanel>
 
-                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Stop resting once HP reaches this threshold. Phase 13 PR 13.B."/>
@@ -85,14 +85,17 @@
                         <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Heal (rest)"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Cast heal during rest when HP drops below this. Phase 13 PR 13.D."/>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Heal (combat)"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Minor heal (combat)"/>
                         <NumericUpDown Grid.Row="3" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
-                                       ToolTip.Tip="Cast heal during combat when HP drops below this. Phase 13 PR 13.D."/>
-                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
+                                       ToolTip.Tip="Cast the Spells → Minor heal spell during combat when HP drops below this. Phase 13 PR 13.D."/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Major heal (combat)"/>
                         <NumericUpDown Grid.Row="4" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
-                                       ToolTip.Tip="Flee threshold. Phase 13 PR 13.B."/>
-                        <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Hang up if below"/>
+                                       ToolTip.Tip="Cast the Spells → Major heal spell during combat when HP drops below this. Phase 13 PR 13.D."/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
                         <NumericUpDown Grid.Row="5" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Flee threshold. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Hang up if below"/>
+                        <NumericUpDown Grid.Row="6" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Drop the line when HP falls this low. Phase 13 PR 13.B."/>
                     </Grid>
                 </StackPanel>
@@ -111,24 +114,18 @@
                                      ToolTip.Tip="Stub — thresholds below are interpreted as absolute MA / KAI."/>
                     </StackPanel>
 
-                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Stop resting once MA / KAI reaches this threshold. Phase 13 PR 13.B."/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Rest if below"/>
                         <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Auto-rest trigger for the caster pool. Phase 13 PR 13.B."/>
-                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Heal (rest)"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
-                                       ToolTip.Tip="Cast regen-mana spell during rest when MA drops below this. Phase 13 PR 13.D."/>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Heal (combat)"/>
-                        <NumericUpDown Grid.Row="3" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
-                                       ToolTip.Tip="Cast regen-mana spell during combat when MA drops below this. Phase 13 PR 13.D."/>
-                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
-                        <NumericUpDown Grid.Row="4" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Flee when caster runs out of MA to cast. Phase 13 PR 13.B."/>
-                        <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Bless if above"/>
-                        <NumericUpDown Grid.Row="5" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Bless if above"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
                                        ToolTip.Tip="Re-cast party / self buffs when MA recovers past this point. Phase 13 PR 13.D."/>
                     </Grid>
                 </StackPanel>
