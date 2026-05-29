@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="180"
+        x:Class="FujinTerm.Views.InputDialog"
+        Title="FujinTerm"
+        Width="420" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Border Background="{StaticResource ChromeBgBrush}"
+            Padding="18">
+        <StackPanel Spacing="12">
+            <TextBlock x:Name="HeadlineText"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+            <TextBlock x:Name="DescriptionText"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="{StaticResource FontSizeMd}"
+                       TextWrapping="Wrap"/>
+            <TextBox   x:Name="InputBox"
+                       FontFamily="{StaticResource FontMono}"/>
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right">
+                <Button Content="Cancel" Click="OnCancel"/>
+                <Button Content="OK"     Click="OnOk" IsDefault="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

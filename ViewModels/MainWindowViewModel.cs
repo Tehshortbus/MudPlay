@@ -8,6 +8,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Net;
+using System.Collections.ObjectModel;
+using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.Terminal;
 using FujinTerm.ViewModels.Settings;
@@ -167,6 +169,12 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
+
+        // Seed File → Recent profiles + Save profile label from persisted state.
+        RebuildRecentProfiles();
+        SyncProfileMenuState();
+        AppServices.Current.Profile.ProfileLoaded += _ => SyncProfileMenuState();
+        AppServices.Current.Profile.ProfileClosed += () => SyncProfileMenuState();
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
@@ -684,6 +692,177 @@ public partial class MainWindowViewModel : ObservableObject
                 "pattern matchers). Compact and detail modes.");
 
     private SettingsWindow? _settings;
+
+    // ----- Profile file management (Phase 4 PR 4.5a) ----------------------
+
+    /// <summary>
+    /// Most-recent-first list of saved profile names. Drives the
+    /// File → Recent profiles submenu. Rebuilt from <c>GlobalSettings</c>
+    /// on startup and after every profile save.
+    /// </summary>
+    public ObservableCollection<string> RecentProfiles { get; } = new();
+
+    /// <summary>True when a named profile is loaded — gates File → Save profile.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveProfileLabel))]
+    private bool _hasNamedProfile;
+
+    public string SaveProfileLabel => HasNamedProfile
+        ? $"_Save profile  ·  {AppServices.Current.Profile.CurrentProfileName}"
+        : "_Save profile…";
+
+    [RelayCommand]
+    private async Task NewProfileAsync()
+    {
+        string? name = await PromptForProfileNameAsync(
+            "New profile",
+            "Pick a name. Saves to Data/profiles/<name>.json.",
+            initial: string.Empty);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+        if (AppServices.Current.Profile.Exists(name))
+        {
+            AppServices.Current.Log.Warn("Profile",
+                $"A profile named '{name}' already exists — pick a different name.");
+            return;
+        }
+        AppServices.Current.Profile.LoadBlank();
+        AppServices.Current.Profile.SaveAs(name);
+        PromoteRecent(name);
+        SyncProfileMenuState();
+    }
+
+    [RelayCommand]
+    private async Task OpenProfileAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
+        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open profile",
+            AllowMultiple = false,
+            SuggestedStartLocation = profilesFolder,
+            FileTypeFilter = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
+        });
+        if (files.Count == 0) return;
+
+        string name = Path.GetFileNameWithoutExtension(files[0].Name);
+        try
+        {
+            AppServices.Current.Profile.Load(name);
+            PromoteRecent(name);
+            SyncProfileMenuState();
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveProfileAsync()
+    {
+        ProfileService profile = AppServices.Current.Profile;
+        if (profile.Current is null)
+        {
+            AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
+            return;
+        }
+        if (profile.IsBlankDraft)
+        {
+            await SaveProfileAsAsync();
+            return;
+        }
+        profile.Save();
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{profile.CurrentProfileName}'.");
+    }
+
+    [RelayCommand]
+    private async Task SaveProfileAsAsync()
+    {
+        ProfileService profile = AppServices.Current.Profile;
+        if (profile.Current is null)
+        {
+            AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
+            return;
+        }
+
+        string? name = await PromptForProfileNameAsync(
+            "Save profile as",
+            "Pick a name. Saves to Data/profiles/<name>.json.",
+            initial: profile.CurrentProfileName ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+        if (!string.Equals(name, profile.CurrentProfileName, StringComparison.Ordinal) && profile.Exists(name))
+        {
+            AppServices.Current.Log.Warn("Profile",
+                $"A profile named '{name}' already exists — pick a different name.");
+            return;
+        }
+        profile.SaveAs(name);
+        PromoteRecent(name);
+        SyncProfileMenuState();
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}'.");
+    }
+
+    [RelayCommand]
+    private void OpenRecentProfile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (!AppServices.Current.Profile.Exists(name))
+        {
+            AppServices.Current.Log.Warn("Profile", $"Recent profile '{name}' no longer exists.");
+            RecentProfiles.Remove(name);
+            return;
+        }
+        try
+        {
+            AppServices.Current.Profile.Load(name);
+            PromoteRecent(name);
+            SyncProfileMenuState();
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+        }
+    }
+
+    private async Task<string?> PromptForProfileNameAsync(string title, string description, string initial)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return null;
+        InputDialog dlg = new();
+        dlg.Configure(title, description, initial);
+        dlg.Show(main);
+        return await dlg.ResultTask;
+    }
+
+    private void PromoteRecent(string profileName)
+    {
+        SettingsService settingsSvc = AppServices.Current.Settings;
+        GlobalSettings settings = settingsSvc.Current;
+        settings.RecentProfiles ??= new();
+        settings.RecentProfiles.Remove(profileName);
+        settings.RecentProfiles.Insert(0, profileName);
+        while (settings.RecentProfiles.Count > GlobalSettings.RecentProfilesLimit)
+            settings.RecentProfiles.RemoveAt(settings.RecentProfiles.Count - 1);
+        settings.LastUsedProfileName = profileName;
+        settingsSvc.Save();
+        RebuildRecentProfiles();
+    }
+
+    private void RebuildRecentProfiles()
+    {
+        RecentProfiles.Clear();
+        IList<string>? source = AppServices.Current.Settings.Current.RecentProfiles;
+        if (source is null) return;
+        foreach (string name in source) RecentProfiles.Add(name);
+    }
+
+    private void SyncProfileMenuState()
+        => HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
 
     [RelayCommand]
     private void OpenSettings() => OpenSettingsAt(null);

@@ -16,6 +16,10 @@
 
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProfileCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProfileAsCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
         <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
         <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
@@ -41,11 +45,24 @@
                           InputGesture="Ctrl+K"/>
                 <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
                 <Separator/>
-                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
-                <MenuItem Header="_Save profile"  InputGesture="Ctrl+S" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N"       Command="{Binding NewProfileCommand}"/>
+                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O"       Command="{Binding OpenProfileCommand}"/>
+                <MenuItem Header="{Binding SaveProfileLabel}"  InputGesture="Ctrl+S"
+                          Command="{Binding SaveProfileCommand}"/>
+                <MenuItem Header="Save profile as…" InputGesture="Ctrl+Shift+S"
+                          Command="{Binding SaveProfileAsCommand}"/>
                 <Separator/>
-                <MenuItem Header="Recent profiles" IsEnabled="False" ToolTip.Tip="Wired in Phase 4"/>
+                <MenuItem Header="Recent profiles"
+                          ItemsSource="{Binding RecentProfiles}"
+                          IsEnabled="{Binding RecentProfiles.Count}">
+                    <MenuItem.ItemTemplate>
+                        <DataTemplate>
+                            <MenuItem Header="{Binding}"
+                                      Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenRecentProfileCommand}"
+                                      CommandParameter="{Binding}"/>
+                        </DataTemplate>
+                    </MenuItem.ItemTemplate>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="Ctrl+Q"/>
             </MenuItem>

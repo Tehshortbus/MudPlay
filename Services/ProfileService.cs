@@ -143,4 +143,39 @@ public sealed class ProfileService
         CurrentProfileName = null;
         ProfileClosed?.Invoke();
     }
+
+    /// <summary>
+    /// Save the in-memory profile under <paramref name="profileName"/>. Used
+    /// by File → New profile (to name a fresh blank), File → Save As, and the
+    /// "name your draft" path of File → Save when the loaded profile doesn't
+    /// have a name yet. Replaces an existing file at that name without
+    /// asking — the caller is responsible for the confirm-overwrite UX.
+    /// </summary>
+    public void SaveAs(string profileName)
+    {
+        if (string.IsNullOrWhiteSpace(profileName))
+            throw new ArgumentException("Profile name is required.", nameof(profileName));
+        if (Current is null)
+            throw new InvalidOperationException("No profile loaded to save.");
+
+        Current.Name = profileName;
+        CurrentProfileName = profileName;
+        ProfileSaving?.Invoke(Current);
+        JsonStore.Save(AppPaths.CharacterProfileFile(profileName), Current);
+    }
+
+    /// <summary>Enumerate every saved profile filename (without <c>.json</c>).</summary>
+    public IEnumerable<string> ListNames()
+    {
+        if (!Directory.Exists(AppPaths.ProfilesDir)) yield break;
+        foreach (string file in Directory.EnumerateFiles(AppPaths.ProfilesDir, "*.json"))
+        {
+            yield return Path.GetFileNameWithoutExtension(file);
+        }
+    }
+
+    /// <summary>True if a saved profile with the given name already exists.</summary>
+    public bool Exists(string profileName)
+        => !string.IsNullOrWhiteSpace(profileName)
+           && File.Exists(AppPaths.CharacterProfileFile(profileName));
 }

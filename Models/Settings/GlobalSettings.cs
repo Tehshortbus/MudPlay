@@ -28,6 +28,16 @@ public sealed class GlobalSettings
     public string? LastUsedProfileName { get; set; }
 
     /// <summary>
+    /// Up to <see cref="RecentProfilesLimit"/> profile filenames the user
+    /// has loaded recently, ordered most-recent-first. Drives the
+    /// File → Recent profiles submenu.
+    /// </summary>
+    public List<string>? RecentProfiles { get; set; }
+
+    /// <summary>Cap on <see cref="RecentProfiles"/> retention.</summary>
+    public const int RecentProfilesLimit = 5;
+
+    /// <summary>
     /// Default game-data set name used when no character profile is loaded.
     /// Once a profile is loaded its own <c>ActiveGameDataSet</c> takes over.
     /// </summary>
