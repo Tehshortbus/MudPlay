@@ -143,20 +143,6 @@
                 <MenuItem Header="Export chatlog…"             Command="{Binding ExportChatlogCommand}"/>
                 <MenuItem Header="Clear chatlog"               Command="{Binding ClearChatlogCommand}"/>
                 <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
-                <Separator/>
-                <!-- Dev-facing entrypoint to inspect every edit-dialog
-                     placeholder. Once each owning phase ships a real list
-                     row that opens its editor, this submenu can go away. -->
-                <MenuItem Header="Preview placeholder dialogs">
-                    <MenuItem Header="Spell — Edit…"              Command="{Binding PreviewSpellEditDialogCommand}"/>
-                    <MenuItem Header="Trigger — Edit…"            Command="{Binding PreviewTriggerEditDialogCommand}"/>
-                    <MenuItem Header="Alias — Edit…"              Command="{Binding PreviewAliasEditDialogCommand}"/>
-                    <MenuItem Header="Condition — Edit…"          Command="{Binding PreviewConditionEditDialogCommand}"/>
-                    <MenuItem Header="Macro — Edit…"              Command="{Binding PreviewMacroEditDialogCommand}"/>
-                    <MenuItem Header="Event — Edit…"              Command="{Binding PreviewEventEditDialogCommand}"/>
-                    <MenuItem Header="Ambiguous Location…"        Command="{Binding PreviewAmbiguousLocationDialogCommand}"/>
-                    <MenuItem Header="Import Conflict…"           Command="{Binding PreviewImportConflictDialogCommand}"/>
-                </MenuItem>
             </MenuItem>
 
             <MenuItem Header="_Help">
