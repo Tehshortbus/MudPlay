@@ -31,6 +31,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     private readonly ProfileService _profile;
     private readonly PlayerState _playerState;
     private readonly Func<string, Task<bool>>? _sendText;
+    private string _appliedCommand = DefaultCommand;
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -56,7 +57,6 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentStatlinePreview))]
-    [NotifyPropertyChangedFor(nameof(CanSend))]
     private string _command = DefaultCommand;
 
     /// <summary>
@@ -71,12 +71,6 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddWildcardCommand))]
     private WildcardItem? _selectedWildcard;
-
-    /// <summary>
-    /// Short status line shown next to the Send button — last action's
-    /// result. Reset when the user edits the command.
-    /// </summary>
-    [ObservableProperty] private string _sendStatus = string.Empty;
 
     /// <summary>Catalogue of wildcards offered by the Customize dropdown.</summary>
     public IReadOnlyList<WildcardItem> AvailableWildcards { get; } = BuildCatalogue();
@@ -100,9 +94,6 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         _suppressDirty = false;
     }
 
-    /// <summary>True when the Send button should be enabled — needs both a sender and non-empty text.</summary>
-    public bool CanSend => _sendText is not null && !string.IsNullOrWhiteSpace(Command);
-
     public override void Apply()
     {
         if (_profile.Current is not { } profile) return;
@@ -116,6 +107,18 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save();
         _profile.NotifyMutated();
+
+        // If the command changed since this section loaded (i.e. the user
+        // actually edited something), push the new statline to the BBS so
+        // the in-game prompt matches what we just persisted. Fire-and-
+        // forget — the send is async but the Apply contract is sync.
+        if (!string.Equals(_appliedCommand, Command, StringComparison.Ordinal))
+        {
+            string wire = NormalizeForWire(Command);
+            _ = _sendText?.Invoke($"set statline {wire}\r");
+            _appliedCommand = Command;
+        }
+
         ClearDirty();
     }
 
@@ -125,29 +128,6 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         LoadFromProfile();
         _suppressDirty = false;
         ClearDirty();
-    }
-
-    /// <summary>
-    /// Push the current command to the connected BBS as
-    /// <c>set statline &lt;command&gt;\r</c>. No-op (with a status
-    /// banner) when nothing is connected or the command is blank.
-    /// </summary>
-    [RelayCommand]
-    private async Task SendToBbsAsync()
-    {
-        if (_sendText is null)
-        {
-            SendStatus = "Connect to a BBS first.";
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(Command))
-        {
-            SendStatus = "Statline command is empty.";
-            return;
-        }
-
-        bool ok = await _sendText($"set statline {Command}\r").ConfigureAwait(true);
-        SendStatus = ok ? "Sent." : "Send failed — check connection.";
     }
 
     /// <summary>Append the selected wildcard token to the command box.</summary>
@@ -197,7 +177,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     {
         StatlineSettings dto = ReadOrDefault();
         Command = string.IsNullOrWhiteSpace(dto.Command) ? DefaultCommand : dto.Command!;
-        SendStatus = string.Empty;
+        _appliedCommand = Command;
     }
 
     private StatlineSettings ReadOrDefault()
@@ -222,10 +202,21 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         OnPropertyChanged(nameof(IsDirty));
     }
 
-    partial void OnCommandChanged(string value)
+    partial void OnCommandChanged(string value) => Dirty();
+
+    /// <summary>
+    /// Normalize the user's command to the on-wire form the BBS expects.
+    /// `full` / blank → `full`. Anything already starting with `full`
+    /// (e.g. `full custom %h`) goes through verbatim. A raw wildcard
+    /// string gets wrapped in `full custom …`.
+    /// </summary>
+    private static string NormalizeForWire(string command)
     {
-        if (!_suppressDirty) SendStatus = string.Empty;
-        Dirty();
+        if (IsDefault(command)) return DefaultCommand;
+        string trimmed = command.TrimStart();
+        return trimmed.StartsWith("full", StringComparison.OrdinalIgnoreCase)
+            ? command
+            : $"full custom {command}";
     }
 
     // ----- Wildcard rendering -------------------------------------------
@@ -307,7 +298,9 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     /// <summary>One entry in the Customize dropdown — label + wildcard code.</summary>
     public sealed record WildcardItem(string Label, string Code)
     {
-        public string Display => $"{Label}   {Code}";
+        // Pad to the widest label (18 chars: "Current Mana / Kai") + 4 for
+        // breathing room so the code column lines up under FontMono.
+        public string Display => $"{Label,-22}{Code}";
     }
 
     private static List<WildcardItem> BuildCatalogue() => new()

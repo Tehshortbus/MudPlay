@@ -78,7 +78,7 @@
                            FontSize="{StaticResource FontSizeSm}"
                            TextWrapping="Wrap"
                            Margin="0,4,0,0"
-                           Text="Sent verbatim after `set statline `. Default is `full` (class-default format). For a hand-rolled prompt, type `full custom &lt;wildcards&gt;` or a raw wildcard string."/>
+                           Text="Sent verbatim after `set statline ` when you click OK or Apply, if the command changed. Default is `full` (class-default format). For a hand-rolled prompt, type `full custom &lt;wildcards&gt;` or a raw wildcard string."/>
 
                 <!-- ===== Customize ===== -->
                 <TextBlock Classes="SectionHeader" Text="Customize"/>
@@ -105,17 +105,6 @@
                             Command="{Binding ResetToDefaultCommand}"
                             Margin="6,0,0,0" MinWidth="64"/>
                 </Grid>
-
-                <!-- ===== Send row ===== -->
-                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,16,0,0">
-                    <Button Content="Send to BBS"
-                            Command="{Binding SendToBbsCommand}"
-                            IsEnabled="{Binding CanSend}"/>
-                    <TextBlock Text="{Binding SendStatus}"
-                               Foreground="{StaticResource ChromeFgSecBrush}"
-                               FontSize="{StaticResource FontSizeSm}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
 
             </StackPanel>
 
