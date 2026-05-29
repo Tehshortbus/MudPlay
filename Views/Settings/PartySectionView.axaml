@@ -224,8 +224,6 @@
                 <StackPanel Grid.Column="0" Spacing="2">
                     <CheckBox Content="Request party health" IsEnabled="False"
                               ToolTip.Tip="Periodic @health probe to track party state."/>
-                    <CheckBox Content="Auto-share collected cash" IsEnabled="False"
-                              ToolTip.Tip="Split loot evenly via the party-share command."/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Spacing="2">
                     <CheckBox Content="Help leader open doors" IsEnabled="False"

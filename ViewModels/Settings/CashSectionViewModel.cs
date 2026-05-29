@@ -45,6 +45,10 @@ public sealed class CashSectionViewModel : StubSectionViewModel
             new StubField("Minimum cash to keep on hand",   StubFieldKind.Text, "Don't deposit below this floor."),
             new StubField("Banking done at",                StubFieldKind.Combo, "Picked from the Phase 5 Shops table where ShopType == 7."),
         }),
+        new StubGroup("Party loot", new[]
+        {
+            new StubField("Auto-share collected cash",      StubFieldKind.Check, "Split loot evenly with the party via the party-share command. Engine wires alongside Phase 13 PR 13.E (CashManager) + Phase 6 (PartyManager)."),
+        }),
         // Runic currency naming moved to the BBS + Display tab — it's a
         // per-BBS / per-realm label, not a per-character preference.
     };
