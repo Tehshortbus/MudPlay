@@ -113,7 +113,7 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max redials:"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1"
                                        Value="{Binding MaxRedials, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                       Minimum="1" Maximum="20" Increment="1"
+                                       Minimum="1" Maximum="9999" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
