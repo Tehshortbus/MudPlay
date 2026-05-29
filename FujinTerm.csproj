@@ -36,6 +36,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="FujinTerm.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
@@ -48,6 +52,10 @@
     </PackageReference>
     <!-- Source-generated MVVM helpers ([ObservableProperty], [RelayCommand]). -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <!-- OLE DB stack for the Phase 5 MdbImporter — System.Data.OleDb is no
+         longer in the BCL on .NET Core / .NET 5+. Native Windows or Linux
+         via Wine + the ACE redistributable. -->
+    <PackageReference Include="System.Data.OleDb" Version="9.0.0" />
   </ItemGroup>
 
 </Project>
