@@ -312,6 +312,25 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- ===== Realm-specific naming (Phase 4 PR 4.8 stub) =====
+                         Per-BBS / per-realm label. Default is "runic"; users
+                         edit when they're playing on a realm that relabels
+                         the runic currency. Wires alongside the Phase 13
+                         CashManager bits that consume the name. -->
+                    <TextBlock Classes="GroupHeader" Text="Realm naming"
+                               Margin="0,18,0,4"/>
+
+                    <Grid ColumnDefinitions="220,*" Margin="0,4,0,0">
+                        <TextBlock Grid.Column="0" Text="Name of runic currency"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontSize="{StaticResource FontSizeMd}"
+                                   VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" IsEnabled="False"
+                                 Text="runic"
+                                 Width="220" HorizontalAlignment="Left"
+                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Saved to the BBS settings — different realms relabel the runic currency, so this is per-BBS, not per-character."/>
+                    </Grid>
+
                 </StackPanel>
             </Grid>
         </ScrollViewer>

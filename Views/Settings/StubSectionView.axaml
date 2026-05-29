@@ -84,7 +84,7 @@
                             <ItemsControl ItemsSource="{Binding Fields}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:StubField">
-                                        <Grid ColumnDefinitions="180,Auto,Auto"
+                                        <Grid ColumnDefinitions="260,Auto,Auto"
                                               Margin="0,3,0,3"
                                               ToolTip.Tip="{Binding Tooltip}">
 
@@ -98,7 +98,9 @@
                                                  control type and toggle IsVisible by Kind
                                                  because Avalonia DataTemplates can't easily
                                                  pick on an enum value without a converter. -->
-                                            <CheckBox Grid.Column="1" IsEnabled="False"
+                                            <CheckBox Grid.Column="0" Grid.ColumnSpan="3"
+                                                      IsEnabled="False"
+                                                      Content="{Binding Label}"
                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
                                             <NumericUpDown Grid.Column="1" IsEnabled="False"
                                                            Value="0"

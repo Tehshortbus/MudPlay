@@ -23,10 +23,10 @@ public sealed class CashSectionViewModel : StubSectionViewModel
     {
         new StubGroup("Per-currency policy", new[]
         {
-            new StubField("Platinum", StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Gold",     StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Silver",   StubFieldKind.Combo, "Collect / Ignore / Discard."),
             new StubField("Copper",   StubFieldKind.Combo, "Collect / Ignore / Discard."),
+            new StubField("Silver",   StubFieldKind.Combo, "Collect / Ignore / Discard."),
+            new StubField("Gold",     StubFieldKind.Combo, "Collect / Ignore / Discard."),
+            new StubField("Platinum", StubFieldKind.Combo, "Collect / Ignore / Discard."),
             new StubField("Runic",    StubFieldKind.Combo, "Collect / Ignore / Discard."),
         }),
         new StubGroup("Encumbrance gates", new[]
@@ -45,9 +45,7 @@ public sealed class CashSectionViewModel : StubSectionViewModel
             new StubField("Minimum cash to keep on hand",   StubFieldKind.Text, "Don't deposit below this floor."),
             new StubField("Banking done at",                StubFieldKind.Combo, "Picked from the Phase 5 Shops table where ShopType == 7."),
         }),
-        new StubGroup("Miscellaneous", new[]
-        {
-            new StubField("Name of runic currency", StubFieldKind.Text, "Per-character override — some realms relabel runics."),
-        }),
+        // Runic currency naming moved to the BBS + Display tab — it's a
+        // per-BBS / per-realm label, not a per-character preference.
     };
 }

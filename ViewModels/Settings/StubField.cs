@@ -33,8 +33,14 @@ public sealed record StubField(
     double Min = 0,
     double Max = 100)
 {
-    /// <summary>True when the left-column label should render — Note rows hide it because their content spans the row.</summary>
-    public bool HasLabel => Kind != StubFieldKind.Note;
+    /// <summary>
+    /// True when the left-column label should render. Note rows hide
+    /// it because their content spans the row; Check rows hide it
+    /// because the CheckBox.Content carries the label to the right of
+    /// the box (so the user sees `[box] Label` instead of
+    /// `Label  [box]`).
+    /// </summary>
+    public bool HasLabel => Kind != StubFieldKind.Note && Kind != StubFieldKind.Check;
 }
 
 /// <summary>
