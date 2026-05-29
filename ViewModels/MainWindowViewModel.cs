@@ -272,6 +272,7 @@ public partial class MainWindowViewModel : ObservableObject
         // named profiles and unsaved drafts (Save no-ops on drafts but
         // the mutation signal still fires).
         AppServices.Current.Profile.ProfileMutated += _ => OnProfileMutatedForBbs();
+        AppServices.Current.Profile.BbsPinApplied += _ => { ClearQuickConnect(); RefreshBbsBindings(); };
 
         // Seed the BBS-pin sentinel so OnProfileMutatedForBbs can detect
         // the first real change against a known baseline.

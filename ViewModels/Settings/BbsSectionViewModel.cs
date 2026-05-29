@@ -238,6 +238,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // always fires so observers refresh either way.
         _profile.Save();
         _profile.NotifyMutated();
+
+        // The user explicitly pinned a BBS via this tab — let the main
+        // window drop any Quick Connect override even when the pinned
+        // name didn't actually change between opens.
+        _profile.NotifyBbsPinApplied();
     }
 
     private void RenameSelected(string oldName, string newName)
