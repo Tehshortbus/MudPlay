@@ -139,6 +139,15 @@ public sealed class AppServices
     public DisplayConfig Display { get; } = new();
 
     /// <summary>
+    /// Global-tier toolbar visibility mirror. MainWindow toolbar buttons
+    /// bind their IsVisible here. Hydrated on startup from the
+    /// "Toolbar" entry in <see cref="SettingsService.Current"/>.Settings
+    /// and re-hydrated on every <see cref="SettingsService.GlobalSettingsChanged"/>
+    /// tick.
+    /// </summary>
+    public ToolbarConfig Toolbar { get; } = new();
+
+    /// <summary>
     /// AES-GCM encrypt / decrypt for short secrets (BBS passwords).
     /// Ciphertext is stored inline on the owning record (e.g.
     /// <see cref="Models.Profile.BbsCredentials.EncryptedPassword"/>),
@@ -218,6 +227,15 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetDisplayToDefaults;
         Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
+        // Bridge: keep the live ToolbarConfig in sync with the loaded
+        // character profile (Char-tier — each character can have its own
+        // toolbar layout). Re-hydrates on every profile load AND on every
+        // ProfileMutated tick (which fires from the Settings → Toolbar
+        // Apply path).
+        Profile.ProfileLoaded += _ => ApplyToolbarFromActiveProfile();
+        Profile.ProfileClosed += ResetToolbarToDefaults;
+        Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
+
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
         // (Settings → General toggle); until then the user picks the profile
@@ -227,6 +245,25 @@ public sealed class AppServices
         // Track which profile was last loaded so the future "auto-load last"
         // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
+    }
+
+    private void ApplyToolbarFromActiveProfile()
+    {
+        Models.Profile.ToolbarSettings dto = ReadToolbar(Profile.Current);
+        Toolbar.ApplyFrom(dto);
+    }
+
+    private void ResetToolbarToDefaults()
+    {
+        Toolbar.ApplyFrom(new Models.Profile.ToolbarSettings());
+    }
+
+    private static Models.Profile.ToolbarSettings ReadToolbar(Models.Profile.CharacterProfile? profile)
+    {
+        if (profile?.Settings is null) return new();
+        if (!profile.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
+        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.ToolbarSettings>(json.GetRawText())
+               ?? new Models.Profile.ToolbarSettings();
     }
 
     private void ApplyDisplayFromActiveBbs()

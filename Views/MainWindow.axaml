@@ -191,6 +191,7 @@
                     <Button Classes="ToolbarBtn"
                             Classes.Active="{Binding IsConnecting}"
                             Classes.Danger="{Binding IsConnected}"
+                            IsVisible="{Binding Toolbar.ShowConnect}"
                             Command="{Binding ToggleConnectionCommand}"
                             ToolTip.Tip="{Binding ConnectionLabel}">
                         <Panel>
@@ -210,7 +211,9 @@
                     <Border Classes="ToolbarSeparator"/>
 
                     <!-- Group 2: settings -->
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowSettings}"
+                            Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings (Ctrl+,)">
                         <Path Data="{StaticResource IconGear}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
@@ -220,26 +223,33 @@
                     <Border Classes="ToolbarSeparator"/>
 
                     <!-- Group 3: navigation / capture / wire -->
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Navigation (F5)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowNavigation}"
+                            Command="{Binding OpenNavigationCommand}" ToolTip.Tip="Navigation (F5)">
                         <Path Data="{StaticResource IconMap}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenBackscrollCommand}" ToolTip.Tip="Backscroll (F10)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowBackscroll}"
+                            Command="{Binding OpenBackscrollCommand}" ToolTip.Tip="Backscroll (F10)">
                         <Path Data="{StaticResource IconHistory}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
                     <Button Classes="ToolbarBtn" Command="{Binding ToggleDumpCommand}"
+                            IsVisible="{Binding Toolbar.ShowCapture}"
                             Classes.Active="{Binding IsDumping}" ToolTip.Tip="Capture — toggle session capture">
                         <Path Data="{StaticResource IconRecord}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenWireInspectorCommand}"
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowWireInspector}"
+                            Command="{Binding OpenWireInspectorCommand}"
                             ToolTip.Tip="Wire Inspector — view raw + stripped byte streams">
                         <Path Data="{StaticResource IconSearch}"
                               Stroke="{Binding $parent[Button].Foreground}"
@@ -250,43 +260,57 @@
                     <Border Classes="ToolbarSeparator"/>
 
                     <!-- Group 4: panel toggles (stubbed) -->
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenConversationCommand}" ToolTip.Tip="Conversation (F2)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowConversation}"
+                            Command="{Binding OpenConversationCommand}" ToolTip.Tip="Conversation (F2)">
                         <Path Data="{StaticResource IconChat}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenPartyCommand}" ToolTip.Tip="Party (F3)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowParty}"
+                            Command="{Binding OpenPartyCommand}" ToolTip.Tip="Party (F3)">
                         <Path Data="{StaticResource IconParty}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenWorkshopCommand}" ToolTip.Tip="Player Workshop (F4)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowWorkshop}"
+                            Command="{Binding OpenWorkshopCommand}" ToolTip.Tip="Player Workshop (F4)">
                         <Path Data="{StaticResource IconUser}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenSpellBookCommand}" ToolTip.Tip="Spell Book (F7)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowSpellBook}"
+                            Command="{Binding OpenSpellBookCommand}" ToolTip.Tip="Spell Book (F7)">
                         <Path Data="{StaticResource IconBook}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenSessionStatsCommand}" ToolTip.Tip="Session Stats (F11)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowSessionStats}"
+                            Command="{Binding OpenSessionStatsCommand}" ToolTip.Tip="Session Stats (F11)">
                         <Path Data="{StaticResource IconStats}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenGameDataBrowserCommand}" ToolTip.Tip="Game Data Browser (Ctrl+G)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowGameDataBrowser}"
+                            Command="{Binding OpenGameDataBrowserCommand}" ToolTip.Tip="Game Data Browser (Ctrl+G)">
                         <Path Data="{StaticResource IconDatabase}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
                               Width="16" Height="16" Stretch="Uniform"/>
                     </Button>
-                    <Button Classes="ToolbarBtn" Command="{Binding OpenLogPaneCommand}" ToolTip.Tip="Log (F9)">
+                    <Button Classes="ToolbarBtn"
+                            IsVisible="{Binding Toolbar.ShowLog}"
+                            Command="{Binding OpenLogPaneCommand}" ToolTip.Tip="Log (F9)">
                         <Path Data="{StaticResource IconLog}"
                               Stroke="{Binding $parent[Button].Foreground}"
                               StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
