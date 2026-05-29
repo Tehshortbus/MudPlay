@@ -216,43 +216,38 @@
                     <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
-                               Text="Steps the client walks from connect through into the game — wait for the pattern, send the reply. Use \r for Enter. In Send: {username} / {userid} drops the configured username, {password} / {passwd} drops the decrypted password. Each credential placeholder fires once per session — re-prompts after acceptance are refused so a malicious server can't echo your secrets back."/>
+                               Text="Steps the client walks from connect through into the game — wait for the substring, send the reply. The Enter key is appended automatically; you only type the response itself. In Send: {username} / {userid} drops the configured username, {password} / {passwd} drops the decrypted password. Each credential placeholder fires once per session — re-prompts after acceptance are refused so a malicious server can't echo your secrets back."/>
 
                     <StackPanel IsEnabled="{Binding HasNamedProfile}" Spacing="4" Margin="0,6,0,0">
-                        <Grid ColumnDefinitions="*,90,140,80,Auto,Auto,Auto" Margin="0,0,0,2">
-                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Wait for pattern"/>
-                            <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Match"     Margin="6,0,0,0"/>
-                            <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Send"      Margin="6,0,0,0"/>
-                            <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Timeout s" Margin="6,0,0,0"/>
+                        <Grid ColumnDefinitions="*,140,80,Auto,Auto,Auto" Margin="0,0,0,2">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Wait for substring"/>
+                            <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Send"      Margin="6,0,0,0"/>
+                            <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Timeout s" Margin="6,0,0,0"/>
                         </Grid>
 
                         <ItemsControl ItemsSource="{Binding MenuNavSteps}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:MenuStepEditorViewModel">
-                                    <Grid ColumnDefinitions="*,90,140,80,Auto,Auto,Auto" Margin="0,0,0,4">
+                                    <Grid ColumnDefinitions="*,140,80,Auto,Auto,Auto" Margin="0,0,0,4">
                                         <TextBox Grid.Column="0"
                                                  Text="{Binding WaitForPattern, Mode=TwoWay}"
                                                  PlaceholderText="Main Menu:"/>
-                                        <ComboBox Grid.Column="1" Margin="6,0,0,0"
-                                                  ItemsSource="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MatchTypes}"
-                                                  SelectedItem="{Binding MatchType, Mode=TwoWay}"
-                                                  HorizontalAlignment="Stretch"/>
-                                        <TextBox Grid.Column="2" Margin="6,0,0,0"
+                                        <TextBox Grid.Column="1" Margin="6,0,0,0"
                                                  Text="{Binding Send, Mode=TwoWay}"
-                                                 PlaceholderText="{}{username}\r"/>
-                                        <NumericUpDown Grid.Column="3" Margin="6,0,0,0"
+                                                 PlaceholderText="G"/>
+                                        <NumericUpDown Grid.Column="2" Margin="6,0,0,0"
                                                        Value="{Binding TimeoutSeconds, Mode=TwoWay}"
                                                        Minimum="1" Maximum="600" Increment="1"
                                                        FormatString="0"/>
-                                        <Button Grid.Column="4" Margin="6,0,0,0" Content="↑"
+                                        <Button Grid.Column="3" Margin="6,0,0,0" Content="↑"
                                                 Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepUpCommand}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip.Tip="Move step up"/>
-                                        <Button Grid.Column="5" Margin="2,0,0,0" Content="↓"
+                                        <Button Grid.Column="4" Margin="2,0,0,0" Content="↓"
                                                 Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepDownCommand}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip.Tip="Move step down"/>
-                                        <Button Grid.Column="6" Margin="6,0,0,0" Content="Remove"
+                                        <Button Grid.Column="5" Margin="6,0,0,0" Content="Remove"
                                                 Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).RemoveMenuStepCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </Grid>

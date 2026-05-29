@@ -6,6 +6,7 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
+
 /// <summary>
 /// Drives the per-character BBS handshake. Walks the menu-nav sequence the
 /// user authored on the BBS section — wait for a pattern, send a reply,
@@ -101,7 +102,6 @@ public sealed class LoginAutomator : IDisposable
         {
             steps.Add(new AutomationStep(
                 ms.WaitForPattern,
-                ms.MatchType,
                 ms.Send,
                 Math.Max(1, ms.TimeoutSeconds)));
         }
@@ -364,89 +364,48 @@ public sealed class LoginAutomator : IDisposable
         string r = template;
         if (username is not null) r = UserPlaceholder.Replace(r, username);
         if (password is not null) r = PasswordPlaceholder.Replace(r, password);
-        // Users author Send values in a TextBox where they can't type literal
-        // CR / LF — accept the common backslash escapes so "G\r" ⇒ "G\r".
-        return r.Replace("\\r", "\r").Replace("\\n", "\n").Replace("\\t", "\t");
+        // Auto-append the CR — every menu-nav response is "type X, hit Enter".
+        // Forces the user to NOT have to think about escape sequences when
+        // authoring steps; the BBS sees a complete submitted line either way.
+        return r + "\r";
     }
 
     private enum StripState : byte { Normal, EscSeen, Csi }
 }
 
 /// <summary>
-/// One step in the <see cref="LoginAutomator"/> queue: the pattern to wait
-/// for, the raw reply template (with optional <c>{username}</c> /
+/// One step in the <see cref="LoginAutomator"/> queue: the substring to
+/// wait for, the raw reply template (with optional <c>{username}</c> /
 /// <c>{password}</c> placeholders), and the per-step timeout in seconds.
-/// Substitution is performed by the automator at send time, not here.
+/// Substitution + the trailing CR are added by the automator at send
+/// time, not here.
 /// </summary>
 public sealed class AutomationStep
 {
     public string WaitForPattern { get; }
-    public MenuStepMatchType MatchType { get; }
     public string SendTemplate { get; }
     public int TimeoutSeconds { get; }
 
-    private readonly Regex? _regex;
-
-    public AutomationStep(
-        string waitForPattern,
-        MenuStepMatchType matchType,
-        string sendTemplate,
-        int timeoutSeconds)
+    public AutomationStep(string waitForPattern, string sendTemplate, int timeoutSeconds)
     {
         WaitForPattern = waitForPattern ?? string.Empty;
-        MatchType = matchType;
         SendTemplate = sendTemplate ?? string.Empty;
         TimeoutSeconds = timeoutSeconds;
-
-        _regex = matchType switch
-        {
-            MenuStepMatchType.Regex => SafeCompile(WaitForPattern),
-            MenuStepMatchType.Wildcard => CompileWildcard(WaitForPattern),
-            _ => null,
-        };
     }
 
     /// <summary>
     /// Returns <c>true</c> + the index just past the matched span if
-    /// <paramref name="text"/> contains the step's pattern. The caller uses
-    /// <paramref name="matchEnd"/> to trim the buffer so the same characters
-    /// can't satisfy a later step.
+    /// <paramref name="text"/> contains the step's pattern (case-insensitive
+    /// substring). The caller uses <paramref name="matchEnd"/> to trim the
+    /// buffer so the same characters can't satisfy a later step.
     /// </summary>
     public bool TryMatch(string text, out int matchEnd)
     {
         matchEnd = 0;
         if (string.IsNullOrEmpty(WaitForPattern)) return false;
-
-        if (MatchType == MenuStepMatchType.Literal)
-        {
-            int idx = text.IndexOf(WaitForPattern, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) return false;
-            matchEnd = idx + WaitForPattern.Length;
-            return true;
-        }
-
-        if (_regex is null) return false;
-        Match m = _regex.Match(text);
-        if (!m.Success) return false;
-        matchEnd = m.Index + m.Length;
+        int idx = text.IndexOf(WaitForPattern, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return false;
+        matchEnd = idx + WaitForPattern.Length;
         return true;
-    }
-
-    private static Regex? SafeCompile(string pattern)
-    {
-        try { return new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled); }
-        catch (ArgumentException) { return null; }
-    }
-
-    private static Regex CompileWildcard(string pattern)
-    {
-        StringBuilder sb = new(pattern.Length * 2 + 2);
-        foreach (char c in pattern)
-        {
-            if (c == '*') sb.Append(".*");
-            else if (c == '?') sb.Append('.');
-            else sb.Append(Regex.Escape(c.ToString()));
-        }
-        return new Regex(sb.ToString(), RegexOptions.IgnoreCase | RegexOptions.Compiled);
     }
 }

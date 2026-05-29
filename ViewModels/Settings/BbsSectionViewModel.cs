@@ -88,9 +88,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
-    /// <summary>Drives the per-row MatchType ComboBox.</summary>
-    public Array MatchTypes { get; } = Enum.GetValues(typeof(MenuStepMatchType));
-
     /// <summary>Helper text under the credentials section ("for character: …" or warning).</summary>
     public string CredentialsHint => HasNamedProfile
         ? $"For character: {_profile.CurrentProfileName}"
