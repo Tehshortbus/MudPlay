@@ -91,17 +91,20 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public string? ActiveBbsName => ResolveActiveBbs()?.Name;
 
-    /// <summary>Window title — "FujinTerm — {profile} — {bbs}", trimmed when bits are missing.</summary>
+    /// <summary>
+    /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
+    /// is loaded the placeholder <c>{default}</c> stands in so the
+    /// title bar never silently drops the slot.
+    /// </summary>
     public string WindowTitle
     {
         get
         {
-            string? profile = AppServices.Current.Profile.CurrentProfileName;
+            string profile = AppServices.Current.Profile.CurrentProfileName ?? "{default}";
             string? bbs = ActiveBbsName;
-            if (profile is null && bbs is null) return "FujinTerm";
-            if (profile is null) return $"FujinTerm — {bbs}";
-            if (bbs is null)     return $"FujinTerm — {profile}";
-            return $"FujinTerm — {profile} — {bbs}";
+            return bbs is null
+                ? $"FujinTerm — {profile}"
+                : $"FujinTerm — {profile} — {bbs}";
         }
     }
 
