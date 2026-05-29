@@ -48,6 +48,16 @@ public sealed class AppServices
     public FloatingPanelHost Panels { get; }
 
     /// <summary>
+    /// Per-character top-level window position + size memory. Each
+    /// window calls <see cref="WindowLayoutStore.AttachWindow"/> once
+    /// during construction with a stable id; the store handles
+    /// restore-on-open and capture-on-close, hydrating from
+    /// <see cref="CharacterProfile.WindowBounds"/> on profile load and
+    /// snapshotting back on save.
+    /// </summary>
+    public WindowLayoutStore WindowLayouts { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -164,6 +174,7 @@ public sealed class AppServices
         Dialogs = new DialogService();
         Log = new LogService();
         Panels = new FloatingPanelHost();
+        WindowLayouts = new WindowLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 

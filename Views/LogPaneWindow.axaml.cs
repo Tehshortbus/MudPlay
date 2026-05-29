@@ -19,6 +19,7 @@ public partial class LogPaneWindow : Window
     {
         InitializeComponent();
         GlobalHotkeys.Attach(this);
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "logpane");
         Opened += OnOpened;
         Closed += OnClosed;
     }

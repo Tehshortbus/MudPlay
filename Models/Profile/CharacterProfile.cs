@@ -62,8 +62,18 @@ public sealed class CharacterProfile
     /// <summary>
     /// Per-BBS login credentials for this character. Keyed by BBS name
     /// (matches <see cref="Settings.BbsProfile.Name"/>). Username is plaintext;
-    /// password lives in the <see cref="Services.ICredentialStore"/> under
-    /// the id stored on <see cref="BbsCredentials.PasswordCredentialId"/>.
+    /// password lives inline on <see cref="BbsCredentials.EncryptedPassword"/>
+    /// (AES-GCM, decrypted via <see cref="Services.PasswordProtector"/>).
     /// </summary>
     public Dictionary<string, BbsCredentials>? BbsCredentials { get; set; }
+
+    /// <summary>
+    /// Persisted size + screen position per top-level window, keyed by
+    /// stable id ("main", "backscroll", "settings", etc.). Populated by
+    /// <see cref="Services.WindowLayoutStore"/> on profile save and consumed
+    /// on every window <c>Opened</c>. <c>null</c> / missing entries mean
+    /// "use the window's XAML defaults", so the user only ends up with a
+    /// saved position once they've actually moved / resized a window.
+    /// </summary>
+    public Dictionary<string, WindowBounds>? WindowBounds { get; set; }
 }

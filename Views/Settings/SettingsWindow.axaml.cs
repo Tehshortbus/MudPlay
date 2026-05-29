@@ -8,6 +8,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "settings");
         // Re-subscribe whenever the view-model is swapped; first attach happens
         // after construction when the host assigns DataContext.
         DataContextChanged += (_, _) => HookCloseRequested();

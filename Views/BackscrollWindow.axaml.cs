@@ -22,6 +22,7 @@ public partial class BackscrollWindow : Window
     {
         InitializeComponent();
         GlobalHotkeys.Attach(this);
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "backscroll");
         Opened += OnOpened;
         Closed += OnClosed;
     }

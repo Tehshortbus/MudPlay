@@ -24,6 +24,7 @@ public partial class WireInspectorWindow : Window
     {
         InitializeComponent();
         GlobalHotkeys.Attach(this);
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "wireinspector");
         Opened += OnOpened;
         Closed += OnClosed;
     }

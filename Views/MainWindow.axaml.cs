@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AppServices.Current.WindowLayouts.AttachWindow(this, "main");
 
         // Forward keystrokes captured by the terminal control to whatever
         // view-model is currently set as DataContext.

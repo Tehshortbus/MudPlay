@@ -18,6 +18,7 @@ public partial class ConversationWindow : Window
     {
         InitializeComponent();
         GlobalHotkeys.Attach(this);
+        FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "conversation");
         Opened += OnOpened;
         Closed += OnClosed;
     }
