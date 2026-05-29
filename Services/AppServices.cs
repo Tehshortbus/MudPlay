@@ -121,11 +121,13 @@ public sealed class AppServices
     public DisplayConfig Display { get; } = new();
 
     /// <summary>
-    /// Cross-platform secret storage for things like per-character BBS
-    /// passwords. Phase 4 PR 4.5b ships an AES-GCM file-backed store;
-    /// later PRs can swap in real OS keychains behind the same interface.
+    /// AES-GCM encrypt / decrypt for short secrets (BBS passwords).
+    /// Ciphertext is stored inline on the owning record (e.g.
+    /// <see cref="Models.Profile.BbsCredentials.EncryptedPassword"/>),
+    /// so profile JSON stays fully self-contained for backup. The
+    /// per-user key lives at <c>Data/.credkey</c>.
     /// </summary>
-    public ICredentialStore Credentials { get; } = new EncryptedFileCredentialStore();
+    public PasswordProtector Passwords { get; } = new();
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return

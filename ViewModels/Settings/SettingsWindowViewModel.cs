@@ -187,7 +187,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new BbsSectionViewModel(
             AppServices.Current.Bbs,
             _profile,
-            AppServices.Current.Credentials,
+            AppServices.Current.Passwords,
             AppServices.Current.Display));
 
         Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");

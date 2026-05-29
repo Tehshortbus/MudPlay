@@ -115,19 +115,22 @@ public sealed class LoginAutomator : IDisposable
     /// </summary>
     public static LoginAutomator? TryBuild(
         BbsCredentials? credentials,
-        ICredentialStore credStore,
+        PasswordProtector passwords,
         Func<string, CancellationToken, Task> sendText,
         Action<string>? log = null)
     {
-        ArgumentNullException.ThrowIfNull(credStore);
+        ArgumentNullException.ThrowIfNull(passwords);
         ArgumentNullException.ThrowIfNull(sendText);
         if (credentials is null) return null;
         if (credentials.MenuNavSteps.Count == 0) return null;
 
         Func<Task<string?>>? resolvePassword = null;
-        if (credentials.PasswordCredentialId is { } pwid)
+        if (credentials.EncryptedPassword is { } blob)
         {
-            resolvePassword = () => credStore.GetAsync(pwid);
+            // Decrypt lazily — the protector is sync and fast, but we keep
+            // the async signature so the automator can stay agnostic of
+            // where the secret comes from (future OS keychain swap, etc.).
+            resolvePassword = () => Task.FromResult(passwords.Unprotect(blob));
         }
 
         IReadOnlyList<AutomationStep> steps = BuildSteps(credentials);

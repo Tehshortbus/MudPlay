@@ -439,7 +439,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         LoginAutomator? automator = LoginAutomator.TryBuild(
             creds,
-            AppServices.Current.Credentials,
+            AppServices.Current.Passwords,
             (text, ct) => client.SendTextAsync(text, ct),
             msg => AppServices.Current.Log.Debug("LoginAuto", msg));
         if (automator is null)

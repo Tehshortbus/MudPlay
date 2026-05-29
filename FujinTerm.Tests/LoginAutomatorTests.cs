@@ -257,45 +257,40 @@ public sealed class LoginAutomatorTests
         Assert.Contains("timed out", abortReason);
     }
 
+    private static PasswordProtector NewProtector()
+        => new(Path.Combine(Path.GetTempPath(), $"FT-key-{Guid.NewGuid():N}"));
+
     [Fact]
     public void TryBuild_NullCredentials_ReturnsNull()
     {
-        EncryptedFileCredentialStore store = new(
-            Path.Combine(Path.GetTempPath(), $"FT-key-{Guid.NewGuid():N}"),
-            Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}"));
         LoginAutomator? a = LoginAutomator.TryBuild(
-            null, store, (_, _) => Task.CompletedTask);
+            null, NewProtector(), (_, _) => Task.CompletedTask);
         Assert.Null(a);
     }
 
     [Fact]
     public void TryBuild_NoMenuNavSteps_ReturnsNull()
     {
-        EncryptedFileCredentialStore store = new(
-            Path.Combine(Path.GetTempPath(), $"FT-key-{Guid.NewGuid():N}"),
-            Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}"));
         BbsCredentials creds = new() { Username = "alice" };
         LoginAutomator? a = LoginAutomator.TryBuild(
-            creds, store, (_, _) => Task.CompletedTask);
+            creds, NewProtector(), (_, _) => Task.CompletedTask);
         Assert.Null(a);
     }
 
     [Fact]
-    public async Task TryBuild_FullFlow_ResolvesPasswordFromStore()
+    public async Task TryBuild_FullFlow_ResolvesPasswordFromInlineCiphertext()
     {
         string scratchDir = Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}");
         Directory.CreateDirectory(scratchDir);
         try
         {
-            EncryptedFileCredentialStore store = new(
-                Path.Combine(scratchDir, ".key"),
-                Path.Combine(scratchDir, "creds.dat"));
-            await store.SetAsync("bbs:foo:char:password", "hunter2");
+            PasswordProtector protector = new(Path.Combine(scratchDir, ".key"));
+            string encrypted = protector.Protect("hunter2");
 
             BbsCredentials creds = new()
             {
                 Username = "alice",
-                PasswordCredentialId = "bbs:foo:char:password",
+                EncryptedPassword = encrypted,
                 MenuNavSteps =
                 {
                     new MenuStep { WaitForPattern = "Login:",    Send = "{username}", TimeoutSeconds = 30 },
@@ -306,7 +301,7 @@ public sealed class LoginAutomatorTests
 
             ConcurrentQueue<string> sent = new();
             LoginAutomator? a = LoginAutomator.TryBuild(
-                creds, store,
+                creds, protector,
                 (text, _) => { sent.Enqueue(text); return Task.CompletedTask; });
             Assert.NotNull(a);
             bool done = false;

@@ -18,11 +18,13 @@ public sealed class BbsCredentials
     public string Username { get; set; } = string.Empty;
 
     /// <summary>
-    /// Opaque key the <see cref="Services.ICredentialStore"/> uses to look
-    /// up the password. Format: <c>bbs:{bbs-name}:{char-name}:password</c>.
-    /// <c>null</c> when no password has been set yet.
+    /// AES-GCM-encrypted password, produced by
+    /// <see cref="Services.PasswordProtector.Protect"/>. Stored inline on
+    /// the character profile JSON so the profile is fully self-contained
+    /// for backup / copy; decryption needs the per-user key file at
+    /// <c>Data/.credkey</c>. <c>null</c> when no password has been set.
     /// </summary>
-    public string? PasswordCredentialId { get; set; }
+    public string? EncryptedPassword { get; set; }
 
     /// <summary>
     /// Menu-navigation steps the <see cref="Services.LoginAutomator"/> walks

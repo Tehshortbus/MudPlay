@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using Avalonia.Controls;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
@@ -28,7 +27,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 {
     private readonly BbsProfileStore _bbsStore;
     private readonly ProfileService _profile;
-    private readonly ICredentialStore _credentials;
+    private readonly PasswordProtector _passwords;
     private readonly DisplayConfig _display;
     private readonly Dictionary<string, BbsProfile> _loaded = new(StringComparer.OrdinalIgnoreCase);
     private string? _pendingPassword;          // null = unchanged; "" = clear; else write
@@ -97,16 +96,16 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     public BbsSectionViewModel(
         BbsProfileStore bbsStore,
         ProfileService profile,
-        ICredentialStore credentials,
+        PasswordProtector passwords,
         DisplayConfig display)
     {
         ArgumentNullException.ThrowIfNull(bbsStore);
         ArgumentNullException.ThrowIfNull(profile);
-        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(passwords);
         ArgumentNullException.ThrowIfNull(display);
         _bbsStore = bbsStore;
         _profile = profile;
-        _credentials = credentials;
+        _passwords = passwords;
         _display = display;
 
         _profile.ProfileLoaded += _ => RefreshProfileState();
@@ -197,17 +196,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
             if (_pendingPassword is not null)
             {
-                string credId = BuildCredentialId(bbs, profileName);
-                if (_pendingPassword.Length == 0)
-                {
-                    _ = _credentials.DeleteAsync(credId);
-                    cred.PasswordCredentialId = null;
-                }
-                else
-                {
-                    _ = _credentials.SetAsync(credId, _pendingPassword);
-                    cred.PasswordCredentialId = credId;
-                }
+                cred.EncryptedPassword = _pendingPassword.Length == 0
+                    ? null
+                    : _passwords.Protect(_pendingPassword);
                 _pendingPassword = null;
             }
         }
@@ -217,9 +208,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         _profile.Save();
         _profile.NotifyMutated();
     }
-
-    private static string BuildCredentialId(string bbsName, string charName)
-        => $"bbs:{bbsName}:{charName}:password";
 
     private void RenameSelected(string oldName, string newName)
     {
@@ -490,26 +478,18 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         CharacterProfile? character = _profile.Current;
         if (character?.BbsCredentials is null) return;
         if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred)) return;
-        if (cred.PasswordCredentialId is not { } credId) return;
+        if (cred.EncryptedPassword is not { } blob) return;
 
-        _ = RevealStoredPasswordAsync(credId);
-    }
-
-    private async Task RevealStoredPasswordAsync(string credId)
-    {
-        string? pw = await _credentials.GetAsync(credId).ConfigureAwait(false);
+        string? pw = _passwords.Unprotect(blob);
         if (string.IsNullOrEmpty(pw)) return;
 
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            // Suppress the OnPasswordChanged side-effect: this assignment is
-            // a reveal, not a user edit. Without the gate, _pendingPassword
-            // would get stamped with the same value and Apply would re-encrypt
-            // it back to the store as if the user had retyped it.
-            _suppressDirty = true;
-            try { Password = pw; }
-            finally { _suppressDirty = false; }
-        });
+        // Suppress the OnPasswordChanged side-effect: this assignment is a
+        // reveal, not a user edit. Without the gate, _pendingPassword would
+        // get stamped with the same value and Apply would re-encrypt it
+        // back to the profile as if the user had retyped it.
+        _suppressDirty = true;
+        try { Password = pw; }
+        finally { _suppressDirty = false; }
     }
     partial void OnHostChanged(string value)                    { PushToCache(); Dirty(); }
     partial void OnPortChanged(int value)                       { PushToCache(); Dirty(); }
