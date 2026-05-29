@@ -1,0 +1,301 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="720"
+             x:Class="FujinTerm.Views.Settings.PartySectionView"
+             x:DataType="vm:PartySectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="780" HorizontalAlignment="Left">
+
+            <!-- ============ Tab header ============ -->
+            <TextBlock Text="{Binding Title}"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+
+            <Border Padding="4,2"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    HorizontalAlignment="Left"
+                    Margin="0,4,0,4">
+                <TextBlock Text="{Binding PhaseTag}"
+                           Foreground="{StaticResource AccentAmberBrush}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"/>
+            </Border>
+
+            <TextBlock Text="{Binding Description}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="{StaticResource FontSizeMd}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4"/>
+
+            <TextBlock Text="Surface preview only — every control below is disabled. Hover for the phase / PR that will wire it."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       FontStyle="Italic"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"/>
+
+            <!-- ============ Party behavior ============ -->
+            <TextBlock Classes="SectionHeader" Text="Party behavior"/>
+            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+
+                <!-- Rank: Front / Mid / Back. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rank"/>
+                <RadioButton Grid.Row="0" Grid.Column="1" GroupName="Rank" Content="Front" IsEnabled="False"
+                             Margin="0,0,16,0"
+                             ToolTip.Tip="Front rank — defaults the target order to attack-first."/>
+                <RadioButton Grid.Row="0" Grid.Column="2" GroupName="Rank" Content="Mid"   IsEnabled="False" IsChecked="True"
+                             Margin="0,0,16,0"
+                             ToolTip.Tip="Mid rank — balanced default."/>
+                <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"  IsEnabled="False"
+                             ToolTip.Tip="Back rank — caster / healer position."/>
+
+                <!-- Monster target order: which monster do we swing at first? -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Target order" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Normal — front-of-room first. Reverse — back-of-room first. Random — pick a hostile at random each engagement.">
+                    <ComboBoxItem Content="Normal"/>
+                    <ComboBoxItem Content="Reverse"/>
+                    <ComboBoxItem Content="Random"/>
+                </ComboBox>
+
+                <!-- Attack priority: who do we target? -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Attack priority" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Default — target what we'd pick on our own. Party leader — mirror the leader's target. Party member — mirror a named member's target.">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Party leader"/>
+                    <ComboBoxItem Content="Party member"/>
+                </ComboBox>
+                <AutoCompleteBox Grid.Row="2" Grid.Column="3" IsEnabled="False" Width="180"
+                                 Margin="0,8,0,0"
+                                 PlaceholderText="Member name" FilterMode="Contains"
+                                 ToolTip.Tip="Active when Attack priority is set to Party member — names autocomplete from PartyState.Members once Phase 6 lands."/>
+
+                <!-- Attack order: when in the round do we swing? -->
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack order" Margin="0,8,0,0"/>
+                <ComboBox  Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
+                           Margin="0,8,8,0"
+                           ToolTip.Tip="Default — fire in our usual slot. Attack last — be the last attacker in the party, re-announce if needed. Attack after member — re-announce after the named member's attack on the same target. Non-party attack announces are filtered out at the engine level so other groups in the room don't affect ordering.">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Attack last"/>
+                    <ComboBoxItem Content="Attack after member"/>
+                </ComboBox>
+                <AutoCompleteBox Grid.Row="3" Grid.Column="3" IsEnabled="False" Width="180"
+                                 Margin="0,8,0,0"
+                                 PlaceholderText="Member name" FilterMode="Contains"
+                                 ToolTip.Tip="Active when Attack order is set to Attack after member."/>
+            </Grid>
+
+            <!-- ============ Party heal (inline spell + threshold) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Party heal"/>
+
+            <!-- Minor heal: spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Cheap heal used at the upper threshold."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="89" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast Minor when any member drops below this percentage of MaxHp."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Major heal: spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Expensive single-target heal used at the lower threshold (overrides Minor)."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="20" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast Major when any member drops below this percentage of MaxHp."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Minor party heal (AOE): spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor party heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Cheap AOE party-heal — hits every member at once."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast the AOE Minor when multiple members fall under this threshold."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Major party heal (AOE): spell + threshold side-by-side. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major party heal"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="Type to filter…" FilterMode="Contains"
+                                 ToolTip.Tip="Expensive AOE party-heal — hits every member at once."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="30" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Cast the AOE Major when multiple members fall under this threshold (overrides Minor)."/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- Request healing: just threshold, no spell. -->
+            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Request healing"/>
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="(send @heal)"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontStyle="Italic"/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                           HorizontalAlignment="Center"/>
+                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="50" Minimum="0" Maximum="100" Width="80"
+                               ToolTip.Tip="Broadcast @heal at this HP %. (@health is a different command — it requests party-member health status.)"/>
+                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+
+            <!-- ============ Party bless (10 slots, no timeouts) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)"/>
+            <Grid ColumnDefinitions="120,260,*">
+                <!-- 10 rows of label + autocomplete spell picker. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Bless 1"/>
+                <AutoCompleteBox Grid.Row="0" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #1."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 2"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #2."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 3"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #3."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 4"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #4."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 5"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #5."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 6"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #6."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 7"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #7."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 8"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #8."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 9"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #9."/>
+            </Grid>
+            <Grid ColumnDefinitions="120,260,*">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 10"/>
+                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 PlaceholderText="—" FilterMode="Contains"
+                                 ToolTip.Tip="Party-buff slot #10."/>
+            </Grid>
+
+            <!-- ============ Options ============ -->
+            <TextBlock Classes="SectionHeader" Text="Options"/>
+            <Grid ColumnDefinitions="*,16,*">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <CheckBox Content="Request party health" IsEnabled="False"
+                              ToolTip.Tip="Periodic @health probe to track party state."/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="2">
+                    <CheckBox Content="Help leader open doors" IsEnabled="False"
+                              ToolTip.Tip="Pitch in when the leader is forcing a door — bashes or picks the lock depending on the Other → 'Pick locks instead of bashing' toggle."/>
+                    <CheckBox Content="Ignore @wait when leading" IsEnabled="False"
+                              ToolTip.Tip="When leading, drop incoming @wait broadcasts from party members — use this character's own Wait-if-members-below threshold instead of pausing on every member's personal wait setting."/>
+                </StackPanel>
+            </Grid>
+
+            <!-- ============ Capacity + cadence ============ -->
+            <TextBlock Classes="SectionHeader" Text="Capacity + cadence"/>
+            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters when partying"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="20" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="Cap on hostiles to engage as a party (overrides Combat-tab cap)."/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
+                                   ToolTip.Tip="Pause the party action loop while any member is below this HP %."/>
+                    <TextBlock Classes="FieldLabel" Text="%"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
+                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown IsEnabled="False" Value="2" Minimum="0" Maximum="60" Width="80"
+                                   ToolTip.Tip="Cap the wait window when this character is the leader."/>
+                    <TextBlock Classes="FieldLabel" Text="min"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
+                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown IsEnabled="False" Value="5" Minimum="1" Maximum="60" Width="80"
+                                   ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
+                    <TextBlock Classes="FieldLabel" Text="s"/>
+                </StackPanel>
+
+                <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                          Content="Reset statistics on loop start" IsEnabled="False"
+                          ToolTip.Tip="Sends `@Reset` so the party EXP / kill counters zero at the start of every loop run."/>
+
+                <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
+                          Content="Auto-invite reconnecting member" IsEnabled="False"
+                          ToolTip.Tip="Leader-only — auto-invite a member who returns inside the wait window."/>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

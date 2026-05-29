@@ -1,0 +1,150 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="500"
+             x:Class="FujinTerm.Views.Settings.StubSectionView"
+             x:DataType="vm:StubSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+        <Style Selector="TextBlock.FieldNote">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,2"/>
+        </Style>
+        <Style Selector="TextBlock.FieldSuffix">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="640" HorizontalAlignment="Left">
+
+            <!-- Tab header + phase tag + description. -->
+            <TextBlock Text="{Binding Title}"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+
+            <Border Padding="4,2"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    HorizontalAlignment="Left"
+                    Margin="0,4,0,4">
+                <TextBlock Text="{Binding PhaseTag}"
+                           Foreground="{StaticResource AccentAmberBrush}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"/>
+            </Border>
+
+            <TextBlock Text="{Binding Description}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="{StaticResource FontSizeMd}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4"/>
+
+            <TextBlock Text="Surface preview only — every control below is disabled. Hover for the phase / PR that will wire it."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       FontStyle="Italic"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4"/>
+
+            <!-- Groups list. -->
+            <ItemsControl ItemsSource="{Binding Groups}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StubGroup">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="SectionHeader"
+                                       Text="{Binding Header}"
+                                       IsVisible="{Binding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                            <ItemsControl ItemsSource="{Binding Fields}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StubField">
+                                        <Grid ColumnDefinitions="260,*,Auto"
+                                              Margin="0,3,0,3"
+                                              ToolTip.Tip="{Binding Tooltip}">
+
+                                            <!-- Label (except for Note rows which span). -->
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="FieldLabel"
+                                                       Text="{Binding Label}"
+                                                       IsVisible="{Binding HasLabel}"/>
+
+                                            <!-- Control switched on Kind. We render every
+                                                 control type and toggle IsVisible by Kind
+                                                 because Avalonia DataTemplates can't easily
+                                                 pick on an enum value without a converter. -->
+                                            <CheckBox Grid.Column="0" Grid.ColumnSpan="3"
+                                                      IsEnabled="False"
+                                                      Content="{Binding Label}"
+                                                      IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
+                                            <NumericUpDown Grid.Column="1" IsEnabled="False"
+                                                           Value="0"
+                                                           Minimum="{Binding Min}"
+                                                           Maximum="{Binding Max}"
+                                                           Width="120"
+                                                           IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}"/>
+                                            <ComboBox Grid.Column="1" IsEnabled="False"
+                                                      Width="180"
+                                                      PlaceholderText="—"
+                                                      IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Combo}}"/>
+                                            <AutoCompleteBox Grid.Column="1" IsEnabled="False"
+                                                             Width="220"
+                                                             PlaceholderText="Type to filter…"
+                                                             FilterMode="Contains"
+                                                             IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.AutoComplete}}"/>
+                                            <TextBox Grid.Column="1" IsEnabled="False"
+                                                     Width="220"
+                                                     IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}"/>
+                                            <Slider Grid.Column="1" IsEnabled="False"
+                                                    Width="180" Minimum="0" Maximum="100" Value="50"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Slider}}"/>
+                                            <Button Grid.Column="1" IsEnabled="False"
+                                                    Content="{Binding Label}"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Button}}"/>
+                                            <TextBlock Grid.Column="1" Grid.ColumnSpan="2"
+                                                       Classes="FieldNote"
+                                                       Text="{Binding Label}"
+                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Note}}"/>
+
+                                            <!-- Optional suffix (units, e.g. "seconds", "lines"). -->
+                                            <TextBlock Grid.Column="2"
+                                                       Classes="FieldSuffix"
+                                                       Text="{Binding Suffix}"
+                                                       IsVisible="{Binding Suffix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

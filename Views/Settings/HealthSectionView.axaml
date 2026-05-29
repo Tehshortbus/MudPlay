@@ -1,0 +1,158 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="520"
+             x:Class="FujinTerm.Views.Settings.HealthSectionView"
+             x:DataType="vm:HealthSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="720" HorizontalAlignment="Left">
+
+            <!-- Tab header. -->
+            <TextBlock Text="{Binding Title}"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+
+            <Border Padding="4,2"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    HorizontalAlignment="Left"
+                    Margin="0,4,0,4">
+                <TextBlock Text="{Binding PhaseTag}"
+                           Foreground="{StaticResource AccentAmberBrush}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"/>
+            </Border>
+
+            <TextBlock Text="{Binding Description}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="{StaticResource FontSizeMd}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4"/>
+
+            <TextBlock Text="Surface preview only — every threshold control below is disabled. Hover for the phase / PR that will wire it."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       FontStyle="Italic"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"/>
+
+            <!-- Two columns: HP left, Mana / Kai right. -->
+            <Grid ColumnDefinitions="*,24,*">
+
+                <!-- ============ Health (HP) ============ -->
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Classes="SectionHeader" Text="Health (HP)"/>
+
+                    <!-- Mode picker -->
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
+                        <RadioButton GroupName="HpUnit" Content="Percentage"
+                                     IsChecked="True" IsEnabled="False"
+                                     ToolTip.Tip="Stub — thresholds below are interpreted as % of MaxHp."/>
+                        <RadioButton GroupName="HpUnit" Content="Value"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Stub — thresholds below are interpreted as absolute HP."/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Stop resting once HP reaches this threshold. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Rest if below"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Auto-rest trigger. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Heal (rest)"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Cast heal during rest when HP drops below this. Phase 13 PR 13.D."/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Minor heal (combat)"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Cast the Spells → Minor heal spell during combat when HP drops below this. Phase 13 PR 13.D."/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Major heal (combat)"/>
+                        <NumericUpDown Grid.Row="4" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Cast the Spells → Major heal spell during combat when HP drops below this. Phase 13 PR 13.D."/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
+                        <NumericUpDown Grid.Row="5" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Flee threshold. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Hang up if below"/>
+                        <NumericUpDown Grid.Row="6" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Drop the line when HP falls this low. Phase 13 PR 13.B."/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ============ Mana / Kai ============ -->
+                <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="SectionHeader" Text="Mana / Kai"/>
+
+                    <!-- Mode picker -->
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
+                        <RadioButton GroupName="MaUnit" Content="Percentage"
+                                     IsChecked="True" IsEnabled="False"
+                                     ToolTip.Tip="Stub — thresholds below are interpreted as % of MaxMa / MaxKai."/>
+                        <RadioButton GroupName="MaUnit" Content="Value"
+                                     IsEnabled="False"
+                                     ToolTip.Tip="Stub — thresholds below are interpreted as absolute MA / KAI."/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
+                        <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Stop resting once MA / KAI reaches this threshold. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Rest if below"/>
+                        <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Auto-rest trigger for the caster pool. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
+                        <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Flee when caster runs out of MA to cast. Phase 13 PR 13.B."/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Bless if above"/>
+                        <NumericUpDown Grid.Row="3" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="100000" Width="120" HorizontalAlignment="Left"
+                                       ToolTip.Tip="Re-cast party / self buffs when MA recovers past this point. Phase 13 PR 13.D."/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- ============ Meditation ============ -->
+            <TextBlock Classes="SectionHeader" Text="Meditation"/>
+            <CheckBox Content="Use 'meditate' ability" IsEnabled="False"
+                      ToolTip.Tip="Stub. Phase 13 PR 13.B — uses the class-specific meditate command on the handful of classes that have it."/>
+            <CheckBox Content="Meditate before resting" IsEnabled="False"
+                      ToolTip.Tip="Stub. Phase 13 PR 13.B — sit and meditate first when MA is also low."/>
+
+            <!-- ============ Resting commands ============ -->
+            <TextBlock Classes="SectionHeader" Text="Resting commands"/>
+            <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto" Margin="0,0,0,4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
+                           Text="Pre-rest / meditate command"/>
+                <TextBox Grid.Row="0" Grid.Column="1" IsEnabled="False"
+                         PlaceholderText="e.g. peer^M;look"
+                         ToolTip.Tip="Stub. Phase 13 PR 13.B — sent right before the rest / meditate command. `^M` and `;` are both treated as carriage returns so multiple commands can be chained."/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel"
+                           Text="Post-rest / meditate command"/>
+                <TextBox Grid.Row="1" Grid.Column="1" IsEnabled="False"
+                         PlaceholderText="e.g. stand^M;look"
+                         ToolTip.Tip="Stub. Phase 13 PR 13.B — sent right after standing up. `^M` and `;` are both treated as carriage returns."/>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

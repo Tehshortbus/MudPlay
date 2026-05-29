@@ -216,20 +216,19 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
             AppServices.Current.Passwords,
             AppServices.Current.Display));
 
-        Add("health",    "Health",    "Phase 4 PR 4.8", "Passive thresholds — rest / hang / run / regen. No spell decisions (see Spells / Party).");
-        Add("spells",    "Spells",    "Phase 4 PR 4.8", "Self-cast decisions — self-heal / self-cure / self-buff and which spell for each.");
-        Add("combat",    "Combat",    "Phase 4 PR 4.8", "Weapon swap matrix, target order, multi-attack room spells.");
-        Add("party",     "Party",     "Phase 4 PR 4.8", "Party-cast decisions, par frequency, request-heal-at, party rank.");
-        Add("cash",      "Cash",      "Phase 4 PR 4.8", "Per-coin Discard / Ignore / Collect, encumbrance gates, auto-deposit.");
+        // Phase 4 PR 4.8 stub tabs — disabled controls with per-field tooltips
+        // showing the owning PR. Real persistence + wiring lands per the
+        // tooltip on each row.
+        Sections.Add(new HealthSectionViewModel());
+        Sections.Add(new SpellsSectionViewModel());
+        Sections.Add(new CombatSectionViewModel());
+        Sections.Add(new PartySectionViewModel());
+        Sections.Add(new CashSectionViewModel());
         Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));
-        Add("talk",      "Talk",      "Phase 4 PR 4.8", "Per-channel filter toggles consumed by the Conversation window.");
-        Add("auto-lair", "Auto-Lair", "Phase 4 PR 4.8", "Marked-lair list + scheduler heuristic + idle-penalty weight.");
-        Add("other",     "Other",     "Phase 4 PR 4.8", "Auto-action toggles, scrollback size, log retention, etc.");
-
-        Add("events",    "Events",    "Phase 4 PR 4.8", "Scheduled / lifecycle events: AtTime, Every, Logon / Logoff / Re-log.");
-        Add("sounds",    "Sounds",    "Phase 4 PR 4.8", "Sound cues for triggers, events, party state changes.");
-
-        void Add(string id, string title, string phase, string description)
-            => Sections.Add(new PlaceholderSectionViewModel(id, title, phase, description));
+        Sections.Add(new TalkSectionViewModel());
+        Sections.Add(new AutoLairSectionViewModel());
+        Sections.Add(new OtherSectionViewModel());
+        Sections.Add(new EventsSectionViewModel());
+        Sections.Add(new SoundsSectionViewModel());
     }
 }

@@ -36,7 +36,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private Control? _view;
 
     public override string Id => "bbs";
-    public override string Title => "BBS";
+    public override string Title => "BBS + Display";
     public override bool IsDirty => _dirty;
 
     public override IEnumerable<string> SearchableLabels => new[]
@@ -44,6 +44,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "BBS", "Host", "Port", "Telnet", "Redial", "Cleanup", "Reconnect",
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
+        "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
+        "Show information messages", "Show reason for running", "Show data being sent",
+        "Combat round totals",
     };
 
     public override Control View => _view ??= new BbsSectionView { DataContext = this };
@@ -235,6 +238,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // always fires so observers refresh either way.
         _profile.Save();
         _profile.NotifyMutated();
+
+        // The user explicitly pinned a BBS via this tab — let the main
+        // window drop any Quick Connect override even when the pinned
+        // name didn't actually change between opens.
+        _profile.NotifyBbsPinApplied();
     }
 
     private void RenameSelected(string oldName, string newName)

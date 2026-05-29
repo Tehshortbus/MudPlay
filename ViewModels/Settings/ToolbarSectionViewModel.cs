@@ -60,7 +60,39 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     /// <summary>Selected entry in the Add-button dropdown.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddButtonCommand))]
+    [NotifyPropertyChangedFor(nameof(IsCustomCommandSelected))]
     private ToolbarItemCatalogue.Entry? _selectedAvailable;
+
+    /// <summary>
+    /// Free-text typed by the user when <see cref="IsCustomCommandSelected"/>
+    /// is true. Stub — Phase 4 PR 4.8 lets the textbox appear so the
+    /// eventual UX is visible, but Add stays disabled until a later PR
+    /// extends the persistence model.
+    /// </summary>
+    [ObservableProperty] private string _customCommand = string.Empty;
+
+    /// <summary>True when the user picked the <c>Custom command…</c> sentinel from the dropdown.</summary>
+    public bool IsCustomCommandSelected
+        => SelectedAvailable is { ActionId: CustomCommandActionId };
+
+    // Synthetic dropdown entries: the editor exposes "── Add separator ──"
+    // and "Custom command…" alongside the real catalogue picks so the
+    // user has one Add flow instead of three. Action ids are sentinels —
+    // they never appear in the live catalogue, and the live toolbar
+    // render-time lookup (ToolbarItemCatalogue.Find) returns null for
+    // them so unknown rows are simply skipped.
+    private const string SeparatorActionId     = "__separator__";
+    private const string CustomCommandActionId = "__customcommand__";
+
+    private static readonly ToolbarItemCatalogue.Entry SeparatorSentinel = new(
+        SeparatorActionId, "── Add separator ──", "IconMinus", string.Empty,
+        Tooltip: "Inserts a separator at the end of the layout.",
+        InDefaultLayout: false);
+
+    private static readonly ToolbarItemCatalogue.Entry CustomCommandSentinel = new(
+        CustomCommandActionId, "Custom command…", "IconTools", string.Empty,
+        Tooltip: "Adds a button that sends an arbitrary command — wires in a later PR.",
+        InDefaultLayout: false);
 
     public ToolbarSectionViewModel(ProfileService profile)
     {
@@ -142,7 +174,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             if (placed.Contains(e.ActionId)) continue;
             AvailableActions.Add(e);
         }
-        if (AvailableActions.Count == 0) SelectedAvailable = null;
+        // Sentinels are always available — separators can be added many times,
+        // and a Custom command can be added many times.
+        AvailableActions.Add(SeparatorSentinel);
+        AvailableActions.Add(CustomCommandSentinel);
     }
 
     // ----- Commands -----
@@ -151,21 +186,28 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private void AddButton()
     {
         if (SelectedAvailable is null) return;
+
+        if (SelectedAvailable.ActionId == SeparatorActionId)
+        {
+            Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Separator, null));
+            SelectedRow = Rows[^1];
+            Dirty();
+            return;
+        }
+
+        // Custom command — stub for Phase 4 PR 4.8 (no persistence shape yet).
+        // CanAddButton blocks this branch from firing today; left as a guard.
+        if (SelectedAvailable.ActionId == CustomCommandActionId) return;
+
         Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Button, SelectedAvailable.ActionId));
         SelectedRow = Rows[^1];
         RefreshAvailableActions();
         Dirty();
     }
 
-    private bool CanAddButton() => SelectedAvailable is not null;
-
-    [RelayCommand]
-    private void AddSeparator()
-    {
-        Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Separator, null));
-        SelectedRow = Rows[^1];
-        Dirty();
-    }
+    private bool CanAddButton()
+        => SelectedAvailable is not null
+        && SelectedAvailable.ActionId != CustomCommandActionId;
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
     private void MoveUp()

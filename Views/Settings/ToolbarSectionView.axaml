@@ -62,15 +62,33 @@
         <!-- Editor — visible when a profile is loaded. -->
         <Grid IsVisible="{Binding HasProfile}"
               Margin="22"
-              RowDefinitions="Auto,*,Auto"
+              RowDefinitions="Auto,Auto,*,Auto"
               ColumnDefinitions="*,180">
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+            <!-- Global toolbar options (Phase 4 PR 4.8 stubs).
+                 Show / Vertical land in a later PR; surface visible here
+                 so the eventual knobs are advertised on day one. -->
+            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                        Spacing="2" Margin="0,0,0,10">
+                <TextBlock Classes="SectionHeader" Text="Toolbar options"/>
+                <CheckBox Content="Show toolbar" IsEnabled="False"
+                          ToolTip.Tip="Stub (Phase 4 PR 4.8). Wires to MainWindow toolbar visibility in a later PR."/>
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <CheckBox Content="Vertical toolbar" IsEnabled="False"
+                              ToolTip.Tip="Stub (Phase 4 PR 4.8). Rotates the toolbar to a vertical edge — needs MainWindow layout work."/>
+                    <RadioButton GroupName="VerticalSide" Content="Left"  IsEnabled="False"
+                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Dock the vertical toolbar to the left edge."/>
+                    <RadioButton GroupName="VerticalSide" Content="Right" IsEnabled="False"
+                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Dock the vertical toolbar to the right edge."/>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                        Classes="SectionHeader"
                        Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
             <!-- Row list. SelectionMode=Single drives the Move/Delete commands. -->
-            <Border Grid.Row="1" Grid.Column="0"
+            <Border Grid.Row="2" Grid.Column="0"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
@@ -107,7 +125,7 @@
             </Border>
 
             <!-- Right rail: row actions + add controls + reset. -->
-            <StackPanel Grid.Row="1" Grid.Column="1"
+            <StackPanel Grid.Row="2" Grid.Column="1"
                         Margin="12,0,0,0"
                         Spacing="6">
 
@@ -125,7 +143,7 @@
                         Background="{StaticResource ChromeBorderBrush}"
                         Margin="0,8"/>
 
-                <TextBlock Text="Add button"
+                <TextBlock Text="Add"
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="{StaticResource FontSizeSm}"/>
                 <ComboBox ItemsSource="{Binding AvailableActions}"
@@ -138,16 +156,21 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
+
+                <!-- Visible only when the dropdown's "Custom command…"
+                     sentinel is picked. Stub for Phase 4 PR 4.8 — the
+                     Add button stays disabled for this path because the
+                     persistence model hasn't gained a CustomCommand
+                     field yet. Surface here so the eventual flow is
+                     obvious from day one. -->
+                <TextBox Text="{Binding CustomCommand, Mode=TwoWay}"
+                         IsEnabled="False"
+                         IsVisible="{Binding IsCustomCommandSelected}"
+                         PlaceholderText="e.g. peer^M"
+                         ToolTip.Tip="Stub (Phase 4 PR 4.8). Type the command this toolbar button should send; wires in a later PR."/>
+
                 <Button Content="Add"
                         Command="{Binding AddButtonCommand}"
-                        HorizontalAlignment="Stretch"/>
-
-                <Border Height="1"
-                        Background="{StaticResource ChromeBorderBrush}"
-                        Margin="0,8"/>
-
-                <Button Content="Add separator"
-                        Command="{Binding AddSeparatorCommand}"
                         HorizontalAlignment="Stretch"/>
 
                 <Border Height="1"

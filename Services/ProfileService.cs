@@ -66,6 +66,22 @@ public sealed class ProfileService
     }
 
     /// <summary>
+    /// Raised specifically from the Settings → BBS tab's Apply path so
+    /// consumers that care about an explicit BBS-pin selection — like
+    /// the main window's Quick Connect override — can clear themselves
+    /// even when the user re-selected the same BBS (i.e. the pinned
+    /// name didn't change and <see cref="ProfileMutated"/> would not
+    /// otherwise convey new intent).
+    /// </summary>
+    public event Action<CharacterProfile>? BbsPinApplied;
+
+    /// <summary>Fire <see cref="BbsPinApplied"/> for the current profile, if any.</summary>
+    public void NotifyBbsPinApplied()
+    {
+        if (Current is not null) BbsPinApplied?.Invoke(Current);
+    }
+
+    /// <summary>
     /// Load the profile stored at <c>Data/profiles/{name}.json</c> and fire
     /// <see cref="ProfileLoaded"/>. If a different profile is already loaded
     /// it is closed first (<see cref="ProfileClosed"/> fires before the new
