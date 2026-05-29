@@ -496,29 +496,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnReconnectAfterCleanupChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnHasSysopPowersChanged(bool value)            { Dirty(); }
-    partial void OnTerminalColsChanged(int value)
-    {
-        _display.TerminalCols = value;
-        PushToCache();
-        Dirty();
-    }
-    partial void OnTerminalRowsChanged(int value)
-    {
-        _display.TerminalRows = value;
-        PushToCache();
-        Dirty();
-    }
+    partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
+    partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
 
-    // Live-preview the font on the terminal canvas as the user types. Push
-    // happens whether the change came from typing or from re-selecting a
-    // BBS in the list, so switching list items also previews the new BBS's
-    // font. Scrollback only persists — the live ring is sized at startup.
-    partial void OnFontSizeChanged(double value)
-    {
-        _display.FontSize = value;
-        PushToCache();
-        Dirty();
-    }
+    partial void OnFontSizeChanged(double value)                { PushToCache(); Dirty(); }
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
 
     [RelayCommand]

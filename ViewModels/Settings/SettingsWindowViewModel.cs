@@ -65,6 +65,14 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// True once the user has chosen a commit path (OK / Apply-and-close
+    /// or Cancel). Lets the host window's Closing handler distinguish
+    /// "X / Alt-F4 with no explicit decision" from "we already discarded
+    /// / saved" and route the no-decision close through <see cref="DiscardChanges"/>.
+    /// </summary>
+    public bool IsCommitted { get; private set; }
+
+    /// <summary>
     /// Save path — apply every dirty section, then ask the host window to
     /// close. Called by the OK button AND by the MainWindow toggle-hotkey
     /// re-press path (per CLAUDE.md).
@@ -72,18 +80,30 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     public void ApplyAndClose()
     {
         ApplyAll();
+        IsCommitted = true;
         CloseRequested?.Invoke();
     }
 
     /// <summary>
     /// Discard path — drop pending edits without writing, then close.
-    /// Called by the Cancel button. (The title-bar X also drops without
-    /// writing since pending edits live in unflushed VM state.)
+    /// Called by the Cancel button.
     /// </summary>
     public void DiscardAndClose()
     {
-        foreach (SettingsSectionViewModel s in Sections) s.Discard();
+        DiscardChanges();
+        IsCommitted = true;
         CloseRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Drop pending edits but don't close the window. Used by the host
+    /// window's Closing handler to route X / Alt-F4 through the same
+    /// rollback logic as Cancel without re-entering Close.
+    /// </summary>
+    public void DiscardChanges()
+    {
+        foreach (SettingsSectionViewModel s in Sections) s.Discard();
+        IsCommitted = true;
     }
 
     [RelayCommand]
