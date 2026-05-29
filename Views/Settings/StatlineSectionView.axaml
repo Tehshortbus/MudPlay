@@ -82,7 +82,7 @@
 
                 <!-- ===== Customize ===== -->
                 <TextBlock Classes="SectionHeader" Text="Customize"/>
-                <Grid ColumnDefinitions="60,*,Auto,Auto" RowDefinitions="Auto">
+                <Grid ColumnDefinitions="60,Auto,Auto,Auto,*" RowDefinitions="Auto">
                     <TextBlock Grid.Column="0" Text="Item:"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                VerticalAlignment="Center"/>
@@ -90,7 +90,7 @@
                               ItemsSource="{Binding AvailableWildcards}"
                               SelectedItem="{Binding SelectedWildcard, Mode=TwoWay}"
                               PlaceholderText="Pick a wildcard"
-                              HorizontalAlignment="Stretch">
+                              Width="260">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:StatlineSectionViewModel+WildcardItem">
                                 <TextBlock Text="{Binding Display}"
