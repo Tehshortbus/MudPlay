@@ -37,8 +37,6 @@ public sealed class SpellsSectionViewModel : StubSectionViewModel
         }),
         new StubGroup("Bless spells (10 slots)", new[]
         {
-            new StubField("Stock realms cap effects at 10 — known as \"10-spelling\". Buffs and debuffs share the same 10 slots, so a player can sometimes shove a debuff off by stacking buffs (or vice versa). The 10 slots here are sized for stock realms. Paradigm-style realms remove the cap; expanding to 15 slots there is tracked separately and lands once realm typing exists.",
-                          StubFieldKind.Note, "Note about 10-spelling."),
             new StubField("Bless 1",  StubFieldKind.Combo, "Self-buff slot #1 — recast when not active."),
             new StubField("Bless 2",  StubFieldKind.Combo, "Self-buff slot #2."),
             new StubField("Bless 3",  StubFieldKind.Combo, "Self-buff slot #3."),
