@@ -3,12 +3,12 @@
         xmlns:vm="using:FujinTerm.ViewModels.Settings"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="880" d:DesignHeight="600"
         x:Class="FujinTerm.Views.Settings.SettingsWindow"
         x:DataType="vm:SettingsWindowViewModel"
         Title="Settings"
-        Width="820" Height="600"
-        MinWidth="700" MinHeight="500"
+        Width="880" Height="600"
+        MinWidth="760" MinHeight="500"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
