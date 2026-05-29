@@ -157,6 +157,18 @@ public sealed class AppServices
     public PasswordProtector Passwords { get; } = new();
 
     /// <summary>
+    /// Live cache of imported MajorMUD game data. Loads JSON tables on
+    /// demand from <c>Data/game data/{set}/</c>; the active set follows
+    /// the loaded character's
+    /// <see cref="Models.Profile.CharacterProfile.ActiveGameDataSet"/>
+    /// field. Per-tab consumers (Phase 5 PRs 5.5+) convert raw
+    /// <see cref="System.Text.Json.JsonDocument"/> rows into typed
+    /// model collections and call <c>EvictTable</c> to drop the raw
+    /// bytes.
+    /// </summary>
+    public GameDataCache GameData { get; } = new();
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -235,6 +247,13 @@ public sealed class AppServices
         Profile.ProfileLoaded += _ => ApplyToolbarFromActiveProfile();
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
+
+        // Bridge: follow the loaded character's preferred game-data set.
+        // Profile.ProfileLoaded fires before the rest of the per-character
+        // services react, so subscribers that key off ActiveSetChanged
+        // (Phase 5 PRs 5.5+) see the correct set when they re-pull.
+        Profile.ProfileLoaded += p => GameData.SwitchSet(p.ActiveGameDataSet);
+        Profile.ProfileClosed += () => GameData.SwitchSet(null);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
