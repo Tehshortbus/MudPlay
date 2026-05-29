@@ -34,6 +34,7 @@ public partial class MainWindowViewModel : ObservableObject
 {
     private TelnetClient? _telnet;
     private LoginAutomator? _automator;
+    private Action<PromptObservation>? _loginKillSwitch;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -357,6 +358,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         TelnetClient? t = _telnet;
         _telnet = null;
+        DetachLoginKillSwitch();
         _automator?.Dispose();
         _automator = null;
         if (t is not null) await t.DisposeAsync();
@@ -472,6 +474,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private void ArmLoginAutomator(TelnetClient client)
     {
+        DetachLoginKillSwitch();
         _automator?.Dispose();
         _automator = null;
 
@@ -496,11 +499,52 @@ public partial class MainWindowViewModel : ObservableObject
 
         string bbsName = bbs.Name;
         automator.LoggedIntoGame += () =>
+        {
             AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
+            DetachLoginKillSwitch();
+        };
         automator.Aborted += reason =>
+        {
             AppServices.Current.Log.Warn("LoginAuto", $"'{bbsName}': {reason}");
+            DetachLoginKillSwitch();
+        };
         _automator = automator;
+
+        // Hard kill-switch: the moment WirePromptScanner observes any
+        // MajorMUD status line (`[HP=...]` on the wire), we know we're
+        // inside the game. Dispose the automator immediately regardless
+        // of where it sits in its step queue — no later step the user
+        // may have authored can run, even if it references {username}
+        // or {password}. Belt-and-braces on top of the auto-dispose at
+        // FireDone: if the user's menu-nav doesn't structurally end at
+        // "we're now in game" (extra trailing steps, a step that never
+        // matches, etc.), this is the final defence that stops any of
+        // them from firing in-game.
+        WirePromptScanner scanner = AppServices.Current.PromptScanner;
+        Action<PromptObservation>? handler = null;
+        handler = _ =>
+        {
+            LoginAutomator? a = _automator;
+            if (a is null) { DetachLoginKillSwitch(); return; }
+            int stepsRun = a.CurrentStepIndex;
+            int stepsTotal = a.StepCount;
+            a.Dispose();
+            _automator = null;
+            DetachLoginKillSwitch();
+            AppServices.Current.Log.Info("LoginAuto",
+                $"In-game prompt observed — force-disposed automator for '{bbsName}' after {stepsRun}/{stepsTotal} step(s).");
+        };
+        scanner.PromptObserved += handler;
+        _loginKillSwitch = handler;
+
         automator.Start();
+    }
+
+    private void DetachLoginKillSwitch()
+    {
+        if (_loginKillSwitch is null) return;
+        AppServices.Current.PromptScanner.PromptObserved -= _loginKillSwitch;
+        _loginKillSwitch = null;
     }
 
     /// <summary>
