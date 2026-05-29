@@ -65,6 +65,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _maxRedials = 3;
     [ObservableProperty] private int _redialPauseSeconds = 5;
     [ObservableProperty] private int _cleanupPeriodMinutes;
+    [ObservableProperty] private int _noResponseTimeoutSeconds;
     [ObservableProperty] private bool _reconnectOnFailedConnect;
     [ObservableProperty] private bool _reconnectOnCarrierLost;
     [ObservableProperty] private bool _reconnectOnNoResponse;
@@ -88,6 +89,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CredentialsHint))]
+    [NotifyPropertyChangedFor(nameof(IsCredentialsHintWarning))]
     private bool _hasProfile;
 
     [ObservableProperty] private string _username = string.Empty;
@@ -106,9 +108,18 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
                 return "Load or create a profile to edit credentials.";
             return _profile.CurrentProfileName is { } name
                 ? $"For character: {name}"
-                : "For character: (unsaved draft — save the profile to persist these settings)";
+                : "(default profile - You haven't saved this profile)";
         }
     }
+
+    /// <summary>
+    /// True when the credentials hint should be drawn in a warning color
+    /// (e.g., red) — currently only for the unsaved-draft case, so the
+    /// user can see at a glance that their edits won't persist until
+    /// they Save / Save As.
+    /// </summary>
+    public bool IsCredentialsHintWarning =>
+        HasProfile && _profile.CurrentProfileName is null;
 
     public BbsSectionViewModel(
         BbsProfileStore bbsStore,
@@ -346,6 +357,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         MaxRedials = profile.MaxRedials;
         RedialPauseSeconds = profile.RedialPauseSeconds;
         CleanupPeriodMinutes = profile.CleanupPeriodMinutes;
+        NoResponseTimeoutSeconds = profile.NoResponseTimeoutSeconds;
         ReconnectOnFailedConnect = profile.ReconnectOnFailedConnect;
         ReconnectOnCarrierLost = profile.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = profile.ReconnectOnNoResponse;
@@ -395,6 +407,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         HasProfile = _profile.Current is not null;
         OnPropertyChanged(nameof(CredentialsHint));
+        OnPropertyChanged(nameof(IsCredentialsHintWarning));
         if (SelectedBbsName is not null)
         {
             _suppressDirty = true;
@@ -413,6 +426,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         MaxRedials = defaults.MaxRedials;
         RedialPauseSeconds = defaults.RedialPauseSeconds;
         CleanupPeriodMinutes = defaults.CleanupPeriodMinutes;
+        NoResponseTimeoutSeconds = defaults.NoResponseTimeoutSeconds;
         ReconnectOnFailedConnect = defaults.ReconnectOnFailedConnect;
         ReconnectOnCarrierLost = defaults.ReconnectOnCarrierLost;
         ReconnectOnNoResponse = defaults.ReconnectOnNoResponse;
@@ -451,6 +465,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.MaxRedials = MaxRedials;
         profile.RedialPauseSeconds = RedialPauseSeconds;
         profile.CleanupPeriodMinutes = CleanupPeriodMinutes;
+        profile.NoResponseTimeoutSeconds = NoResponseTimeoutSeconds;
         profile.ReconnectOnFailedConnect = ReconnectOnFailedConnect;
         profile.ReconnectOnCarrierLost = ReconnectOnCarrierLost;
         profile.ReconnectOnNoResponse = ReconnectOnNoResponse;
@@ -508,6 +523,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnMaxRedialsChanged(int value)                 { PushToCache(); Dirty(); }
     partial void OnRedialPauseSecondsChanged(int value)         { PushToCache(); Dirty(); }
     partial void OnCleanupPeriodMinutesChanged(int value)       { PushToCache(); Dirty(); }
+    partial void OnNoResponseTimeoutSecondsChanged(int value)   { PushToCache(); Dirty(); }
     partial void OnReconnectOnFailedConnectChanged(bool value)  { PushToCache(); Dirty(); }
     partial void OnReconnectOnCarrierLostChanged(bool value)    { PushToCache(); Dirty(); }
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }

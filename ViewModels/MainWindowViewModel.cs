@@ -135,23 +135,35 @@ public partial class MainWindowViewModel : ObservableObject
     private CancellationTokenSource? _connectCts;
 
     /// <summary>
-    /// Maximum number of connect attempts (initial + retries). Phase 4
-    /// Settings.BBS will surface the knob (issue #6); until then it's a constant.
-    /// </summary>
-    private const int MaxConnectAttempts = 3;
-
-    /// <summary>
-    /// Wait time between connect attempts. Phase 4 Settings.BBS will surface
-    /// the knob (issue #6).
-    /// </summary>
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
-
-    /// <summary>
     /// Per-attempt socket timeout. The OS default (~75s on Linux for
-    /// unreachable hosts) is far too long for a BBS client. Phase 4
-    /// Settings.BBS will surface the knob (issue #6).
+    /// unreachable hosts) is far too long for a BBS client. Could be a
+    /// per-BBS knob in a future PR; constant for now since most BBSes
+    /// behave similarly on this dimension.
     /// </summary>
     private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Why the most recent connection ended. Drives the reactive
+    /// reconnect decision (<see cref="BbsProfile.ReconnectOnFailedConnect"/> /
+    /// <see cref="BbsProfile.ReconnectOnCarrierLost"/>) and is reset on
+    /// every successful new connection.
+    /// </summary>
+    private enum DisconnectCause
+    {
+        /// <summary>No disconnect this session (initial state or just reset).</summary>
+        None,
+        /// <summary>User clicked Disconnect — never auto-retry.</summary>
+        UserInitiated,
+        /// <summary>Initial dial threw or timed out before reaching the BBS.</summary>
+        FailedConnect,
+        /// <summary>Connected session ended without our initiation — server-side drop.</summary>
+        CarrierLost,
+        /// <summary>Socket died after a long quiet stretch — TCP keepalive caught a hung server.</summary>
+        NoResponse,
+    }
+
+    private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
+    private bool _userInitiatedDisconnect;
 
     // ----- Status-bar tick countdowns -----------------------------------
     // Each cycle is rendered as a single text label. HP / MA append the
@@ -366,6 +378,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private async Task DisconnectInternalAsync()
     {
+        // Mark the user-initiated nature BEFORE we close the socket, so
+        // the Disconnected event handler (which races with the await
+        // below) can distinguish this from a server-side drop and skip
+        // the carrier-lost auto-reconnect.
+        _userInitiatedDisconnect = true;
+        _lastDisconnectCause = DisconnectCause.UserInitiated;
+
         TelnetClient? t = _telnet;
         _telnet = null;
         DetachLoginKillSwitch();
@@ -388,17 +407,28 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        // Per-BBS retry knobs. ReconnectOnFailedConnect gates the loop:
+        // when off, the user gets one shot and we surface the error — no
+        // silent retries. When on, the loop runs up to MaxRedials with
+        // RedialPauseSeconds between attempts. Defaults fall through to
+        // a 1-attempt floor if a BBS has bogus values.
+        BbsProfile? activeBbs = ResolveActiveBbs();
+        int maxAttempts = (activeBbs?.ReconnectOnFailedConnect ?? false)
+            ? Math.Max(1, activeBbs?.MaxRedials ?? 1)
+            : 1;
+        TimeSpan retryDelay = TimeSpan.FromSeconds(Math.Max(1, activeBbs?.RedialPauseSeconds ?? 5));
+
         _connectCts = new CancellationTokenSource();
         IsConnecting = true;
         try
         {
-            for (int attempt = 1; attempt <= MaxConnectAttempts; attempt++)
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 if (_connectCts.IsCancellationRequested) break;
 
                 WriteTerminalStatus($"[CONNECTING TO: {Host} {Port}]", TerminalStatusKind.Notice);
                 AppServices.Current.Log.Info("Connect",
-                    $"Connecting to {Host}:{Port} (attempt {attempt}/{MaxConnectAttempts})…");
+                    $"Connecting to {Host}:{Port} (attempt {attempt}/{maxAttempts})…");
 
                 TelnetClient client = BuildTelnetClient();
 
@@ -414,6 +444,7 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     await client.ConnectAsync(Host, Port, attemptCts.Token);
                     _telnet = client;
+                    _lastDisconnectCause = DisconnectCause.None;
                     ArmLoginAutomator(client);
                     return;  // success — IsConnected flips via Connected event handler.
                 }
@@ -423,6 +454,7 @@ public partial class MainWindowViewModel : ObservableObject
                     await client.DisposeAsync();
                     WriteTerminalStatus("[CONNECT CANCELLED]", TerminalStatusKind.Notice);
                     AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+                    _lastDisconnectCause = DisconnectCause.UserInitiated;
                     return;
                 }
                 catch (OperationCanceledException)
@@ -444,28 +476,31 @@ public partial class MainWindowViewModel : ObservableObject
                     attemptFailed = true;
                 }
 
-                if (attemptFailed && attempt < MaxConnectAttempts)
+                if (attemptFailed && attempt < maxAttempts)
                 {
-                    int seconds = (int)RetryDelay.TotalSeconds;
+                    int seconds = (int)retryDelay.TotalSeconds;
                     WriteTerminalStatus($"[RETRYING IN: {seconds} SECONDS...]",
                                         TerminalStatusKind.Notice);
                     try
                     {
-                        await Task.Delay(RetryDelay, _connectCts.Token);
+                        await Task.Delay(retryDelay, _connectCts.Token);
                     }
                     catch (OperationCanceledException)
                     {
                         WriteTerminalStatus("[CONNECT CANCELLED]", TerminalStatusKind.Notice);
                         AppServices.Current.Log.Info("Connect", "Connect cancelled.");
+                        _lastDisconnectCause = DisconnectCause.UserInitiated;
                         return;
                     }
                 }
             }
 
-            WriteTerminalStatus($"[GIVING UP AFTER {MaxConnectAttempts} ATTEMPTS.]",
+            // Loop fell through — every attempt failed.
+            _lastDisconnectCause = DisconnectCause.FailedConnect;
+            WriteTerminalStatus($"[GIVING UP AFTER {maxAttempts} ATTEMPT{(maxAttempts == 1 ? "" : "S")}.]",
                                 TerminalStatusKind.Error);
             AppServices.Current.Log.Error("Connect",
-                $"Gave up after {MaxConnectAttempts} attempts.");
+                $"Gave up after {maxAttempts} attempt(s).");
         }
         finally
         {
@@ -650,6 +685,87 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Distinguish a server-side carrier drop from a TCP-keepalive
+    /// timeout. The connection was alive; now the socket died. If
+    /// keepalive was enabled on the active BBS AND the wire was silent
+    /// for longer than the configured idle window before the drop,
+    /// attribute to <see cref="DisconnectCause.NoResponse"/>; otherwise
+    /// <see cref="DisconnectCause.CarrierLost"/>. The threshold gets a
+    /// small grace (+5s) so a server that responded just before the
+    /// idle window closes doesn't get mis-classified as silent.
+    /// </summary>
+    private DisconnectCause ClassifyServerSideDrop()
+    {
+        BbsProfile? bbs = ResolveActiveBbs();
+        int idle = bbs?.NoResponseTimeoutSeconds ?? 0;
+        if (idle <= 0) return DisconnectCause.CarrierLost;
+
+        DateTimeOffset lastRead = _telnet?.LastDataReceived ?? DateTimeOffset.MinValue;
+        if (lastRead == DateTimeOffset.MinValue) return DisconnectCause.NoResponse;
+
+        double silentSeconds = (DateTimeOffset.UtcNow - lastRead).TotalSeconds;
+        return silentSeconds >= idle + 5
+            ? DisconnectCause.NoResponse
+            : DisconnectCause.CarrierLost;
+    }
+
+    // ----- Reactive auto-reconnect (carrier-lost / failed-connect / no-response) ------
+
+    /// <summary>
+    /// Arm a reactive reconnect if the relevant <see cref="BbsProfile"/>
+    /// toggle matches <see cref="_lastDisconnectCause"/>. Shares
+    /// <see cref="_cleanupReconnectCts"/> with the predictive cleanup
+    /// scheduler so only one reconnect can be pending at a time. Never
+    /// fires for <see cref="DisconnectCause.UserInitiated"/> regardless
+    /// of any toggle state — that's the "user said no, don't dial back"
+    /// safeguard.
+    /// </summary>
+    private void TryScheduleReactiveReconnect()
+    {
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is null) return;
+
+        // FailedConnect is fully handled inside ConnectWithRetriesAsync
+        // (its retry-loop IS the response to ReconnectOnFailedConnect);
+        // UserInitiated never auto-retries by policy. That leaves
+        // CarrierLost / NoResponse — each gated on its own toggle.
+        bool shouldRetry = _lastDisconnectCause switch
+        {
+            DisconnectCause.CarrierLost => bbs.ReconnectOnCarrierLost,
+            DisconnectCause.NoResponse  => bbs.ReconnectOnNoResponse,
+            _ => false,
+        };
+        if (!shouldRetry) return;
+
+        TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
+        _cleanupReconnectCts?.Cancel();
+        _cleanupReconnectCts?.Dispose();
+        _cleanupReconnectCts = new CancellationTokenSource();
+        CancellationToken token = _cleanupReconnectCts.Token;
+
+        string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
+            ? "no response"
+            : "carrier lost";
+        WriteTerminalStatus(
+            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}) — DIALING IN {(int)delay.TotalSeconds}s.]",
+            TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Reconnect",
+            $"Reactive reconnect scheduled ({reasonLabel}) in {(int)delay.TotalSeconds}s.");
+
+        _ = Task.Delay(delay, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConnected || IsConnecting) return;
+                _cleanupReconnectCts?.Dispose();
+                _cleanupReconnectCts = null;
+                _ = ConnectWithRetriesAsync();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>
     /// Resolve which BBS the connect target reads off of. Preference order:
     /// <list type="number">
     ///   <item><description>The pin on the loaded character profile
@@ -687,11 +803,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private TelnetClient BuildTelnetClient()
     {
+        BbsProfile? activeBbs = ResolveActiveBbs();
         TelnetClient client = new()
         {
             Cols = Emulator.Screen.Cols,
             Rows = Emulator.Screen.Rows,
             TerminalType = "ansi-bbs",
+            NoResponseTimeoutSeconds = activeBbs?.NoResponseTimeoutSeconds ?? 0,
         };
 
         // Telnet client events fire on a background thread. Marshal anything
@@ -735,8 +853,30 @@ public partial class MainWindowViewModel : ObservableObject
             // server-initiated drop will fire this too.
             Dispatcher.UIThread.Post(() =>
             {
+                bool wasConnected = IsConnected;
                 IsConnected = false;
+
+                // Categorise: if the user clicked Disconnect, the flag was
+                // set in DisconnectInternalAsync. Otherwise distinguish a
+                // server-side carrier drop from a TCP keepalive timeout by
+                // looking at how long the wire was silent before the drop:
+                // long silence + keepalive-enabled implies the OS's probe
+                // train detected an unresponsive server.
+                if (_userInitiatedDisconnect)
+                {
+                    _userInitiatedDisconnect = false;
+                    _lastDisconnectCause = DisconnectCause.UserInitiated;
+                }
+                else if (wasConnected)
+                {
+                    _lastDisconnectCause = ClassifyServerSideDrop();
+                }
+
+                // Predictive scheduler first (cleanup warning gives a
+                // deterministic reconnect-at). Reactive only fires if
+                // predictive didn't arm anything.
                 TryScheduleCleanupReconnect();
+                if (_cleanupReconnectCts is null) TryScheduleReactiveReconnect();
             });
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;

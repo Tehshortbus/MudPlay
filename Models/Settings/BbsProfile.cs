@@ -38,9 +38,12 @@ public sealed class BbsProfile
     public int RedialPauseSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Minutes the BBS allows a session to idle before kicking. Drives the
-    /// optional <see cref="ReconnectAfterCleanup"/> auto-reconnect; <c>0</c>
-    /// disables the timer.
+    /// Minutes the BBS is offline for its nightly auto-cleanup. Used by
+    /// the <see cref="ReconnectAfterCleanup"/> schedule: when the
+    /// CleanupWarningWatcher catches a "shutting down in N minutes"
+    /// announcement, the client arms a reconnect at
+    /// <c>warning_observed_at + N + CleanupPeriodMinutes</c>.
+    /// <c>0</c> means "dial back the moment shutdown_at is past."
     /// </summary>
     public int CleanupPeriodMinutes { get; set; }
 
@@ -52,6 +55,20 @@ public sealed class BbsProfile
 
     /// <summary>Reconnect automatically when the server stops responding to keep-alives.</summary>
     public bool ReconnectOnNoResponse { get; set; }
+
+    /// <summary>
+    /// Seconds of TCP-level idle before the OS starts probing the
+    /// connection with TCP keepalive packets. <c>0</c> disables
+    /// keepalive entirely (the OS default — typically ~2 hours idle —
+    /// is way too long for a BBS).
+    /// </summary>
+    /// <remarks>
+    /// We pair this with hardcoded probe interval = 10s and retry
+    /// count = 3, so once the idle elapses the OS declares the socket
+    /// dead within ~30s. The <see cref="ReconnectOnNoResponse"/>
+    /// toggle then decides whether to auto-dial back.
+    /// </remarks>
+    public int NoResponseTimeoutSeconds { get; set; }
 
     /// <summary>
     /// Reconnect automatically after the BBS kicks the session for cleanup
