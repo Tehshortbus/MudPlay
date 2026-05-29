@@ -93,18 +93,17 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
-    /// is loaded the placeholder <c>{default}</c> stands in so the
-    /// title bar never silently drops the slot.
+    /// is loaded the placeholder <c>{default}</c> stands in; when no
+    /// BBS is selected <c>{No BBS}</c> stands in. Both slots always
+    /// render so the title bar shape stays consistent.
     /// </summary>
     public string WindowTitle
     {
         get
         {
             string profile = AppServices.Current.Profile.CurrentProfileName ?? "{default}";
-            string? bbs = ActiveBbsName;
-            return bbs is null
-                ? $"FujinTerm — {profile}"
-                : $"FujinTerm — {profile} — {bbs}";
+            string bbs     = ActiveBbsName ?? "{No BBS}";
+            return $"FujinTerm — {profile} — {bbs}";
         }
     }
 
