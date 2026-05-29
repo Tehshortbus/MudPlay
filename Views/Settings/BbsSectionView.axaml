@@ -19,6 +19,9 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,16,0,6"/>
         </Style>
+        <Style Selector="TextBlock.HintWarning">
+            <Setter Property="Foreground" Value="#E55353"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid ColumnDefinitions="220,1,*">
@@ -141,7 +144,7 @@
                         <CheckBox IsChecked="{Binding ReconnectOnFailedConnect, Mode=TwoWay}" Content="Connect attempt fails"/>
                         <CheckBox IsChecked="{Binding ReconnectOnCarrierLost,   Mode=TwoWay}" Content="Carrier is lost mid-session"/>
                         <CheckBox IsChecked="{Binding ReconnectOnNoResponse,    Mode=TwoWay}" Content="Server stops responding"/>
-                        <CheckBox IsChecked="{Binding ReconnectAfterCleanup,    Mode=TwoWay}" Content="BBS kicks the session for cleanup"/>
+                        <CheckBox IsChecked="{Binding ReconnectAfterCleanup,    Mode=TwoWay}" Content="After Cleanup"/>
                     </StackPanel>
 
                     <TextBlock Classes="GroupHeader" Text="Display"/>
@@ -188,6 +191,7 @@
                                Text="Credentials  —  The settings shown below are saved per character profile"/>
 
                     <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                               Classes.HintWarning="{Binding IsCredentialsHintWarning}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
                                Text="{Binding CredentialsHint}"/>
