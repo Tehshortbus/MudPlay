@@ -84,7 +84,7 @@
                             <ItemsControl ItemsSource="{Binding Fields}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:StubField">
-                                        <Grid ColumnDefinitions="260,Auto,Auto"
+                                        <Grid ColumnDefinitions="260,*,Auto"
                                               Margin="0,3,0,3"
                                               ToolTip.Tip="{Binding Tooltip}">
 

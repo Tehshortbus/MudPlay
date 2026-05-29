@@ -28,11 +28,21 @@ public sealed class TalkSectionViewModel : StubSectionViewModel
         new StubGroup("Remote-control master switches", new[]
         {
             new StubField("Disallow all remote control commands", StubFieldKind.Check,
-                          "Phase 6 — hard kill-switch above the per-player permissions on the Players tab."),
+                          "Phase 6 — hard kill-switch above every per-channel row below and above the per-player permissions on the Players tab."),
             new StubField("Disallow @party commands (from leader)", StubFieldKind.Check,
                           "Phase 6 — overrides the base @party whitelist; useful for solo runs inside a party."),
-            new StubField("Disallow remote control from gangpaths", StubFieldKind.Check,
-                          "Phase 6 — gang-channel @-commands are denied wholesale."),
+            new StubField("Disallow @-commands from gossip", StubFieldKind.Check,
+                          "Phase 6 — realm-wide gossip channel."),
+            new StubField("Disallow @-commands from telepaths / pages", StubFieldKind.Check,
+                          "Phase 6 — direct tells from individual players."),
+            new StubField("Disallow @-commands from gangpaths", StubFieldKind.Check,
+                          "Phase 6 — gang-channel @-commands."),
+            new StubField("Disallow @-commands from say (local)", StubFieldKind.Check,
+                          "Phase 6 — local-room talk."),
+            new StubField("Disallow @-commands from broadcasts", StubFieldKind.Check,
+                          "Phase 6 — sysop / global broadcast channel."),
+            new StubField("Disallow @-commands from auctions", StubFieldKind.Check,
+                          "Phase 6 — auction channel."),
         }),
         new StubGroup("Remote diverting", new[]
         {
