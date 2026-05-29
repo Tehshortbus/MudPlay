@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows.Input;
 using FujinTerm.Net;
 using System.Collections.ObjectModel;
 using FujinTerm.Models.Profile;
@@ -61,6 +62,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// immediately on Apply / OK.
     /// </summary>
     public Services.ToolbarConfig Toolbar => AppServices.Current.Toolbar;
+
+    /// <summary>
+    /// Render-ready view-models for the dynamic toolbar
+    /// <c>ItemsControl</c>. Mirrors <see cref="ToolbarConfig.Layout"/>;
+    /// each entry resolves through
+    /// <see cref="ToolbarItemCatalogue"/> and binds against the matching
+    /// command on this view-model. Rebuilt whenever <c>Layout</c>
+    /// changes (Settings → Toolbar Apply path).
+    /// </summary>
+    public ObservableCollection<ToolbarButtonItem> ToolbarItems { get; } = new();
 
     /// <summary>
     /// Host the active BBS resolves to. Read-only from the UI — the user
@@ -283,6 +294,88 @@ public partial class MainWindowViewModel : ObservableObject
             if (t is not null) _ = t.SendAsync(bytes);
         };
 
+        // Build the dynamic toolbar items now, then rebuild whenever the
+        // user reorders / adds / removes via Settings → Toolbar (which
+        // mutates Toolbar.Layout on Apply).
+        RebuildToolbarItems();
+        Toolbar.Layout.CollectionChanged += (_, _) => RebuildToolbarItems();
+        PropertyChanged += SyncToolbarStateFlags;
+    }
+
+    /// <summary>
+    /// Walks <see cref="ToolbarConfig.Layout"/> and rebuilds
+    /// <see cref="ToolbarItems"/>. Each <c>Button</c> row is resolved
+    /// through <see cref="ToolbarItemCatalogue"/>; the command property
+    /// is fetched by reflection from the catalogue's
+    /// <c>CommandName</c> so adding a new toolbar action is a one-line
+    /// catalogue entry. Unknown action ids are skipped.
+    /// </summary>
+    private void RebuildToolbarItems()
+    {
+        ToolbarItems.Clear();
+        foreach (ToolbarItem item in Toolbar.Layout)
+        {
+            if (item.Kind == ToolbarItemKind.Separator)
+            {
+                ToolbarItems.Add(new ToolbarButtonItem(
+                    ToolbarItemKind.Separator, null,
+                    label: string.Empty,
+                    iconResourceKey: null,
+                    tooltip: string.Empty,
+                    command: null));
+                continue;
+            }
+
+            ToolbarItemCatalogue.Entry? entry = ToolbarItemCatalogue.Find(item.ActionId);
+            if (entry is null) continue;
+
+            ICommand? command = GetType().GetProperty(entry.CommandName)?.GetValue(this) as ICommand;
+            string tooltip = entry.Tooltip
+                          ?? (entry.ShortcutHint is null ? entry.Label : $"{entry.Label} ({entry.ShortcutHint})");
+
+            // Connect button is the one row with a dual-icon (plug / unplug)
+            // visual; everything else uses a single static glyph.
+            string? alt = entry.ActionId == "ToggleConnection" ? "IconUnplug" : null;
+
+            ToolbarButtonItem row = new(
+                ToolbarItemKind.Button, entry.ActionId,
+                label: entry.Label,
+                iconResourceKey: entry.IconResourceKey,
+                tooltip: tooltip,
+                command: command,
+                alternateIconResourceKey: alt);
+
+            ApplyToolbarRowState(row);
+            ToolbarItems.Add(row);
+        }
+    }
+
+    /// <summary>Mirrors current connection / capture state onto matching toolbar rows.</summary>
+    private void SyncToolbarStateFlags(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IsConnected)
+         && e.PropertyName != nameof(IsConnecting)
+         && e.PropertyName != nameof(IsDumping)) return;
+
+        foreach (ToolbarButtonItem row in ToolbarItems)
+        {
+            if (row.IsButton) ApplyToolbarRowState(row);
+        }
+    }
+
+    private void ApplyToolbarRowState(ToolbarButtonItem row)
+    {
+        switch (row.ActionId)
+        {
+            case "ToggleConnection":
+                row.IsActive = IsConnecting;
+                row.IsDanger = IsConnected;
+                row.ShowAlternate = IsConnected;
+                break;
+            case "ToggleCapture":
+                row.IsActive = IsDumping;
+                break;
+        }
     }
 
     private void OnDisplayChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
