@@ -110,6 +110,14 @@ public sealed class AppServices
     public WirePromptScanner PromptScanner { get; }
 
     /// <summary>
+    /// Sniffs the post-IAC wire stream for "BBS shutting down in N minutes"
+    /// announcements. The connect lifecycle in MainWindowViewModel reads
+    /// <see cref="CleanupWarningWatcher.Latest"/> on disconnect to decide
+    /// whether to arm an auto-reconnect.
+    /// </summary>
+    public CleanupWarningWatcher Cleanup { get; } = new();
+
+    /// <summary>
     /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
     /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
     /// the regen ticks.

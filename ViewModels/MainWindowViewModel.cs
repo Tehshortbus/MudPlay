@@ -35,6 +35,7 @@ public partial class MainWindowViewModel : ObservableObject
     private TelnetClient? _telnet;
     private LoginAutomator? _automator;
     private Action<PromptObservation>? _loginKillSwitch;
+    private CancellationTokenSource? _cleanupReconnectCts;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -224,6 +225,12 @@ public partial class MainWindowViewModel : ObservableObject
         // the mutation signal still fires).
         AppServices.Current.Profile.ProfileMutated += _ => RefreshBbsBindings();
 
+        // Cleanup-warning banner: when the BBS announces nightly shutdown
+        // on the wire, drop a yellow banner into the terminal canvas so
+        // the user knows to type `quit` at a safe room. The auto-reconnect
+        // schedule is armed later, on the Disconnected event.
+        AppServices.Current.Cleanup.WarningObserved += OnCleanupWarningObserved;
+
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
         // font live. Also resize the live scrollback when ScrollbackLines
@@ -351,6 +358,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (IsConnected)        { await DisconnectInternalAsync();   return; }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
+        // User clicking Connect overrides any pending cleanup-reconnect
+        // schedule — they explicitly want to dial now.
+        CancelCleanupReconnect("user clicked Connect");
         await ConnectWithRetriesAsync();
     }
 
@@ -547,6 +557,98 @@ public partial class MainWindowViewModel : ObservableObject
         _loginKillSwitch = null;
     }
 
+    // ----- Cleanup-warning auto-reconnect ------------------------------
+
+    private void OnCleanupWarningObserved(CleanupWarning warning)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            WriteTerminalStatus(
+                $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]",
+                TerminalStatusKind.Notice);
+            AppServices.Current.Log.Warn("Cleanup",
+                $"Server announced shutdown in {warning.MinutesRemaining} minute(s) at {warning.ObservedAt.LocalDateTime:HH:mm:ss}.");
+        });
+    }
+
+    /// <summary>
+    /// On disconnect, if a cleanup warning was observed during this
+    /// session AND the active BBS has <see cref="BbsProfile.ReconnectAfterCleanup"/>
+    /// enabled, arm a one-shot reconnect at the moment we think the BBS
+    /// is back online. Formula:
+    /// <code>
+    /// shutdown_at = warning_observed_at + warning_minutes_remaining
+    /// reconnect_at = max(now, shutdown_at) + BBS.CleanupPeriodMinutes
+    /// </code>
+    /// Handles both the clean-quit-before-shutdown case (we take the
+    /// long path: full warning countdown + user-set cleanup duration)
+    /// and the dirty-shutdown case (the <c>max</c> collapses to
+    /// <c>now + cleanup</c>, since shutdown_at has already passed).
+    /// </summary>
+    private void TryScheduleCleanupReconnect()
+    {
+        CleanupWarning? maybeWarning = AppServices.Current.Cleanup.Latest;
+        if (maybeWarning is not { } warning) return;
+
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is null || !bbs.ReconnectAfterCleanup)
+        {
+            AppServices.Current.Log.Debug("Cleanup",
+                "Warning observed but ReconnectAfterCleanup is off — not scheduling.");
+            return;
+        }
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset shutdownAt = warning.EstimatedShutdownAt;
+        DateTimeOffset reconnectAt =
+            (shutdownAt > now ? shutdownAt : now) +
+            TimeSpan.FromMinutes(Math.Max(0, bbs.CleanupPeriodMinutes));
+
+        TimeSpan delay = reconnectAt - now;
+        if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
+
+        CancelCleanupReconnect(reason: null);
+        _cleanupReconnectCts = new CancellationTokenSource();
+        CancellationToken token = _cleanupReconnectCts.Token;
+
+        string when = reconnectAt.LocalDateTime.ToString("HH:mm:ss");
+        int minutes = (int)delay.TotalMinutes;
+        int seconds = delay.Seconds;
+        WriteTerminalStatus(
+            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s).]",
+            TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Cleanup",
+            $"Reconnect scheduled at {when} — warning observed at " +
+            $"{warning.ObservedAt.LocalDateTime:HH:mm:ss} with {warning.MinutesRemaining}m remaining " +
+            $"+ {bbs.CleanupPeriodMinutes}m cleanup period.");
+
+        _ = Task.Delay(delay, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConnected || IsConnecting) return;
+                _cleanupReconnectCts?.Dispose();
+                _cleanupReconnectCts = null;
+                AppServices.Current.Cleanup.Reset();
+                _ = ConnectWithRetriesAsync();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void CancelCleanupReconnect(string? reason)
+    {
+        if (_cleanupReconnectCts is null) return;
+        try { _cleanupReconnectCts.Cancel(); } catch { }
+        _cleanupReconnectCts.Dispose();
+        _cleanupReconnectCts = null;
+        if (reason is not null)
+        {
+            AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
+            WriteTerminalStatus("[AUTO-RECONNECT CANCELLED.]", TerminalStatusKind.Notice);
+        }
+    }
+
     /// <summary>
     /// Resolve which BBS the connect target reads off of. Preference order:
     /// <list type="number">
@@ -609,6 +711,7 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 AppServices.Current.PromptScanner.Append(copy);
+                AppServices.Current.Cleanup.Append(copy);
                 _automator?.Feed(copy);
                 Emulator.Feed(copy);
             });
@@ -616,13 +719,25 @@ public partial class MainWindowViewModel : ObservableObject
         client.Connected += () =>
         {
             AppServices.Current.Log.Info("Telnet", $"Connected to {Host}:{Port}");
-            Dispatcher.UIThread.Post(() => IsConnected = true);
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsConnected = true;
+                // Fresh session — drop any cleanup warning carried over
+                // and clear any pending auto-reconnect schedule (which
+                // would be redundant now that we're connected anyway).
+                AppServices.Current.Cleanup.Reset();
+                CancelCleanupReconnect("connected");
+            });
         };
         client.Disconnected += () =>
         {
             // Don't log here; DisconnectInternalAsync already did, and a
             // server-initiated drop will fire this too.
-            Dispatcher.UIThread.Post(() => IsConnected = false);
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsConnected = false;
+                TryScheduleCleanupReconnect();
+            });
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;
         // route them into LogService at Debug severity so the Log pane can
