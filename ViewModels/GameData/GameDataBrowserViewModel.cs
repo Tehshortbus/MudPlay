@@ -166,10 +166,12 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new ItemsSectionViewModel(_gameData));
         Sections.Add(new SpellsSectionViewModel(_gameData));
         Sections.Add(new RoomsSectionViewModel(_gameData));
+        Sections.Add(new LairsSectionViewModel(_gameData));
         Sections.Add(new ShopsSectionViewModel(_gameData));
         Sections.Add(new RacesSectionViewModel(_gameData));
         Sections.Add(new ClassesSectionViewModel(_gameData));
         Sections.Add(new TextBlocksSectionViewModel(_gameData));
+        Sections.Add(new InfoSectionViewModel(_gameData));
 
         void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));

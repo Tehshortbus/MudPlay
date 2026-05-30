@@ -38,10 +38,12 @@ public sealed class GameDataBrowserViewModelTests : IDisposable
         Assert.Contains(vm.Sections, s => s.Id == "items");
         Assert.Contains(vm.Sections, s => s.Id == "spells");
         Assert.Contains(vm.Sections, s => s.Id == "rooms");
+        Assert.Contains(vm.Sections, s => s.Id == "lairs");
         Assert.Contains(vm.Sections, s => s.Id == "shops");
         Assert.Contains(vm.Sections, s => s.Id == "races");
         Assert.Contains(vm.Sections, s => s.Id == "classes");
         Assert.Contains(vm.Sections, s => s.Id == "textblocks");
+        Assert.Contains(vm.Sections, s => s.Id == "info");
     }
 
     [Fact]
