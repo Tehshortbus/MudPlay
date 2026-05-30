@@ -290,6 +290,12 @@ public partial class MainWindowViewModel : ObservableObject
         // moves.
         AppServices.Current.Display.PropertyChanged += OnDisplayChanged;
 
+        // Seed the File → Game Data → Active set menu and keep it in
+        // sync with the GameDataCache so newly-imported sets appear
+        // immediately.
+        RebuildGameDataSetsMenu();
+        AppServices.Current.GameData.ActiveSetChanged += _ => RebuildGameDataSetsMenu();
+
         // Apply the loaded profile's persisted scrollback size now — the
         // buffer was constructed with the default; AppServices already
         // populated DisplayConfig from the profile by the time we got here.
@@ -1615,11 +1621,132 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Triggers,
                 AppServices.Current.Aliases,
                 AppServices.Current.Players,
-                AppServices.Current.Favorites),
+                AppServices.Current.Favorites,
+                AppServices.Current.Macros),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;
         window.Show(main);
+    }
+
+    /// <summary>
+    /// Items bound to File → Game Data → Active set. Each entry has a
+    /// checkbox-style header (checked = currently active set) and a
+    /// command that flips <see cref="GameDataCache.ActiveSet"/> + writes
+    /// the loaded profile's <c>ActiveGameDataSet</c> field.
+    /// </summary>
+    public ObservableCollection<GameDataSetMenuItem> GameDataSets { get; } = new();
+
+    private void RebuildGameDataSetsMenu()
+    {
+        GameDataSets.Clear();
+        string? active = AppServices.Current.GameData.ActiveSet;
+        foreach (string set in AppServices.Current.GameData.AvailableSets)
+        {
+            GameDataSets.Add(new GameDataSetMenuItem(
+                name: set,
+                isActive: string.Equals(set, active, StringComparison.OrdinalIgnoreCase),
+                switchCommand: new RelayCommand(() => SwitchActiveGameDataSet(set))));
+        }
+    }
+
+    private void SwitchActiveGameDataSet(string setName)
+    {
+        AppServices.Current.GameData.SwitchSet(setName);
+        if (AppServices.Current.Profile.Current is { } profile)
+        {
+            profile.ActiveGameDataSet = setName;
+            AppServices.Current.Profile.Save();
+        }
+        RebuildGameDataSetsMenu();
+    }
+
+    /// <summary>
+    /// File → Game Data → Import .mdb… — picks an Access database,
+    /// runs the Phase 5 PR 5.1 importer, switches to the new set
+    /// on success.
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportMdbAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Pick a MajorMUD MDB file to import",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Access database (.mdb / .accdb)") { Patterns = new[] { "*.mdb", "*.accdb" } },
+            },
+        });
+        if (files.Count == 0) return;
+
+        string path = files[0].Path.LocalPath;
+        MdbImporter importer = new();
+        importer.OnStatusChanged += s => AppServices.Current.Log.Info("MDB", s);
+        importer.OnError += s => AppServices.Current.Log.Error("MDB", s);
+
+        WriteTerminalStatus("[MDB IMPORT STARTED]", TerminalStatusKind.Notice);
+        var (success, message, folder) = await importer.ImportAsync(path);
+        AppServices.Current.Log.Info("MDB", message);
+
+        if (success)
+        {
+            WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
+            SwitchActiveGameDataSet(folder);
+        }
+        else
+        {
+            WriteTerminalStatus("[MDB IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
+        }
+    }
+
+    /// <summary>
+    /// File → Game Data → Import Spell Messages… — parses a MegaMUD
+    /// spell-message JSON file via the Phase 5 PR 5.8 importer and
+    /// writes it into the active game-data set's
+    /// <c>SpellMessages.json</c>. Conflict-resolution wiring against
+    /// the existing file ships with the spell-messages editor PR; this
+    /// command currently does an overwrite-on-conflict write.
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportSpellMessagesAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (AppServices.Current.GameData.ActiveSet is null)
+        {
+            WriteTerminalStatus("[NO ACTIVE GAME-DATA SET — IMPORT AN MDB FIRST OR SWITCH SETS]", TerminalStatusKind.Error);
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Pick a spell-messages JSON file",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Spell messages (.json)") { Patterns = new[] { "*.json" } },
+            },
+        });
+        if (files.Count == 0) return;
+
+        try
+        {
+            var rows = await SpellMessageImporter.ParseAsync(files[0].Path.LocalPath);
+            SpellMessageImporter importer = new(AppServices.Current.GameData);
+            await importer.WriteAsync(rows);
+            WriteTerminalStatus($"[SPELL MESSAGES IMPORTED: {rows.Count} rows]", TerminalStatusKind.Notice);
+            AppServices.Current.Log.Info("SpellMessages", $"Imported {rows.Count} rows into {AppServices.Current.GameData.ActiveSet}.");
+        }
+        catch (Exception ex)
+        {
+            WriteTerminalStatus("[SPELL MESSAGES IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
+            AppServices.Current.Log.Error("SpellMessages", $"Import failed: {ex.Message}");
+        }
     }
 
     [RelayCommand]

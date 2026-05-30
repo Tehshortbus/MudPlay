@@ -126,12 +126,32 @@
             </MenuItem>
 
             <MenuItem Header="_Game Data">
-                <MenuItem Header="Active set"             IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Active set"
+                          ItemsSource="{Binding GameDataSets}">
+                    <MenuItem.Styles>
+                        <Style Selector="MenuItem">
+                            <Setter Property="ToggleType" Value="CheckBox"/>
+                        </Style>
+                    </MenuItem.Styles>
+                    <MenuItem.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}"/>
+                        </DataTemplate>
+                    </MenuItem.ItemTemplate>
+                    <MenuItem.ItemContainerTheme>
+                        <ControlTheme x:DataType="vm:GameDataSetMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Setter Property="Header"    Value="{Binding Name}"/>
+                            <Setter Property="IsChecked" Value="{Binding IsActive}"/>
+                            <Setter Property="ToggleType" Value="CheckBox"/>
+                            <Setter Property="Command"   Value="{Binding SwitchCommand}"/>
+                        </ControlTheme>
+                    </MenuItem.ItemContainerTheme>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="Open Browser…"          InputGesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
                 <Separator/>
-                <MenuItem Header="Import .mdb…"           IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
-                <MenuItem Header="Import Spell Messages…" IsEnabled="False" ToolTip.Tip="Wired in Phase 5"/>
+                <MenuItem Header="Import .mdb…"           Command="{Binding ImportMdbCommand}"/>
+                <MenuItem Header="Import Spell Messages…" Command="{Binding ImportSpellMessagesCommand}"/>
                 <MenuItem Header="Import loops (MegaMUD .mp)…" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (MpFileImporter)"/>
             </MenuItem>
 
