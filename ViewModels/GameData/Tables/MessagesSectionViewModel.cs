@@ -21,7 +21,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Name", "Action", "Pattern",
+        "Name", "Action", "Message", "EndsWith",
     };
 
     public override string SearchKeyColumn => "Name";
@@ -48,7 +48,8 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel
             {
                 ["Name"]    = m.Name,
                 ["Action"]  = m.Action.ToString(),
-                ["Pattern"] = m.Pattern,
+                ["Message"] = m.Message,
+                ["EndsWith"] = m.EndsWith,
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }

@@ -65,5 +65,5 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel
             ["Currency"]   = MmudEnums.FormatCurrency,
         };
 
-    public ItemsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public ItemsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

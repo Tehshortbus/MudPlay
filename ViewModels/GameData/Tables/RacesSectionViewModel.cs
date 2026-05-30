@@ -45,5 +45,5 @@ public sealed class RacesSectionViewModel : JsonTableSectionViewModel
         Title, "race", "human", "elf", "dwarf", "hobbit", "gnome", "goblin", "orc",
     };
 
-    public RacesSectionViewModel(GameDataCache cache) : base(cache) { }
+    public RacesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

@@ -144,6 +144,11 @@ public partial class MainWindow : Window
         });
         GameDataMenu.Items.Add(new MenuItem
         {
+            Header  = "Import Messages (MegaMUD .md)…",
+            Command = vm.ImportMegaMudMessagesCommand,
+        });
+        GameDataMenu.Items.Add(new MenuItem
+        {
             Header  = "Import Spell Messages…",
             Command = vm.ImportSpellMessagesCommand,
         });

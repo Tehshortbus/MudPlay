@@ -57,5 +57,5 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel
             ["Targets"] = MmudEnums.FormatSpellTargets,
         };
 
-    public SpellsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public SpellsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

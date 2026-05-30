@@ -48,5 +48,5 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel
             ["ShopType"] = MmudEnums.FormatShopType,
         };
 
-    public ShopsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public ShopsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

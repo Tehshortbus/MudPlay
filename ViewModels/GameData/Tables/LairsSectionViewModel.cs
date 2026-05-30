@@ -48,5 +48,5 @@ public sealed class LairsSectionViewModel : JsonTableSectionViewModel
         Title, "lair", "group", "respawn", "mob",
     };
 
-    public LairsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public LairsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

@@ -60,5 +60,5 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel
             ["Align"] = MmudEnums.FormatMonAlignment,
         };
 
-    public MonstersSectionViewModel(GameDataCache cache) : base(cache) { }
+    public MonstersSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

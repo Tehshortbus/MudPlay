@@ -41,7 +41,7 @@ public partial class GameDataTableSectionView : UserControl
         int index = 0;
         foreach (string column in vm.Columns)
         {
-            // Bind each column to its positional cell on the row —
+            // Bind each data column to its positional cell on the row —
             // GameDataRow.Cells is ordered to match Columns, so the
             // indexer round-trip is stable.
             RowsGrid.Columns.Add(new DataGridTextColumn
@@ -52,6 +52,15 @@ public partial class GameDataTableSectionView : UserControl
             });
             index++;
         }
+        // Trailing virtual "Use" column — shows which tier (Def / Glob /
+        // BBS / Char) owns the row's current values. Bound to the
+        // GameDataRow.UseLabel computed property rather than a cell.
+        RowsGrid.Columns.Add(new DataGridTextColumn
+        {
+            Header  = GameDataTableSectionViewModel.UseColumnName,
+            Binding = new Binding(nameof(GameDataRow.UseLabel)),
+            Width   = DataGridLength.Auto,
+        });
         _columnsBuilt = true;
     }
 }

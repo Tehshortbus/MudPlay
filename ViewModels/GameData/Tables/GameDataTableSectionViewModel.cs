@@ -21,15 +21,27 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// </summary>
 public abstract partial class GameDataTableSectionViewModel : GameDataSectionViewModel
 {
+    /// <summary>Trailing virtual column name shown on every grid — see <see cref="GameDataRow.SourceTier"/>.</summary>
+    public const string UseColumnName = "Use";
+
     private Control? _view;
 
     /// <summary>
-    /// Columns to surface, in display order. Search hits, sort, and
-    /// the right-pane row view all key off this list.
+    /// Data columns in display order. Search hits, sort, and the
+    /// right-pane row view all key off this list. The virtual
+    /// <see cref="UseColumnName"/> tier column gets appended
+    /// automatically by <see cref="DisplayColumns"/>.
     /// </summary>
     public abstract IReadOnlyList<string> Columns { get; }
 
-    /// <summary>Column the search box filters against (substring match).</summary>
+    /// <summary>
+    /// Columns rendered in the DataGrid: data columns + the trailing
+    /// "Use" tier column. The view's column builder reads from this.
+    /// </summary>
+    public IReadOnlyList<string> DisplayColumns =>
+        Columns.Concat(new[] { UseColumnName }).ToArray();
+
+    /// <summary>Column the search box filters against by default (kept for status-bar display only).</summary>
     public abstract string SearchKeyColumn { get; }
 
     /// <summary>
@@ -103,12 +115,28 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
         foreach (GameDataRow row in AllRows)
         {
-            if (filter.Length == 0 ||
-                (row.Get(SearchKeyColumn)?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
-            {
+            if (filter.Length == 0 || RowMatches(row, filter))
                 FilteredRows.Add(row);
-            }
         }
+    }
+
+    /// <summary>
+    /// A row matches the filter when *any* column's raw value contains
+    /// the filter substring (case-insensitive). Raw values drive the
+    /// match so numeric codes (e.g. <c>1</c>) are findable even when
+    /// the grid renders them via a formatter (<c>"Weapon"</c>).
+    /// </summary>
+    private bool RowMatches(GameDataRow row, string filter)
+    {
+        foreach (string column in Columns)
+        {
+            string? value = row.Get(column);
+            if (value is not null && value.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        // Also match against the Use-tier short label so the user can
+        // filter by tier (e.g. typing "Char" surfaces every overridden row).
+        return row.SourceTier.ToShortLabel().Contains(filter, StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -122,14 +150,24 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
 {
     private readonly GameDataCache _cache;
+    private readonly SettingsResolver? _resolver;
 
     /// <summary>Underlying table name in the active set (e.g. <c>"Monsters"</c>).</summary>
     protected abstract string TableName { get; }
 
-    protected JsonTableSectionViewModel(GameDataCache cache)
+    /// <summary>
+    /// Column whose value identifies the record for tier-override
+    /// lookup (default: the primary-key column, typically <c>"Number"</c>
+    /// on MajorMUD MDB tables). Subclasses can override if the table's
+    /// natural key isn't <c>"Number"</c>.
+    /// </summary>
+    protected virtual string OverrideKeyColumn => "Number";
+
+    protected JsonTableSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
         _cache = cache;
+        _resolver = resolver;
         _cache.ActiveSetChanged += _ => Reload();
         Reload();
     }
@@ -142,7 +180,17 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
         IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
-            rows.Add(GameDataRow.FromJson(el, Columns, formatters));
+            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters);
+            // Per-row tier resolution: look up the record by its primary
+            // key column value (typically Number) and ask the resolver
+            // which tier owns the highest-priority override, if any.
+            if (_resolver is not null)
+            {
+                string? key = row.Get(OverrideKeyColumn);
+                if (!string.IsNullOrEmpty(key))
+                    row.SourceTier = _resolver.GetGameDataSourceTier(TableName, key);
+            }
+            rows.Add(row);
         }
     }
 }
@@ -157,7 +205,18 @@ public sealed class GameDataRow
 {
     private readonly IReadOnlyDictionary<string, string?> _values;
 
+    /// <summary>Data cells in display order; the trailing "Use" virtual cell is appended by the view.</summary>
     public IReadOnlyList<GameDataCell> Cells { get; }
+
+    /// <summary>
+    /// Highest-priority tier that owns this record. Drives the Game
+    /// Data Browser's "Use" column label and the edit dialog's "Use:"
+    /// dropdown initial value.
+    /// </summary>
+    public SettingsTier SourceTier { get; set; } = SettingsTier.Defaults;
+
+    /// <summary>Short tier label rendered in the virtual "Use" column.</summary>
+    public string UseLabel => SourceTier.ToShortLabel();
 
     private GameDataRow(IReadOnlyDictionary<string, string?> values, IReadOnlyList<GameDataCell> cells)
     {

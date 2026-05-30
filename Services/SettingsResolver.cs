@@ -223,6 +223,23 @@ public sealed class SettingsResolver
         }
     }
 
+    /// <summary>
+    /// Which tier owns the highest-priority override for the given
+    /// record, or <see cref="SettingsTier.Defaults"/> when no tier has
+    /// an override. Used by the Game Data Browser's "Use" column to
+    /// label each row with the tier its current values come from.
+    /// </summary>
+    public SettingsTier GetGameDataSourceTier(string table, string recordId)
+    {
+        if (GetGameDataDelta(_profile.Current?.GameDataOverrides, table, recordId) is not null)
+            return SettingsTier.Character;
+        if (GetGameDataDelta(_activeBbs?.GameDataOverrides, table, recordId) is not null)
+            return SettingsTier.Bbs;
+        if (GetGameDataDelta(_settings.Current.GameDataOverrides, table, recordId) is not null)
+            return SettingsTier.Global;
+        return SettingsTier.Defaults;
+    }
+
     // ----- Active-BBS tracking -------------------------------------------
 
     private void OnProfileLoaded(CharacterProfile profile)

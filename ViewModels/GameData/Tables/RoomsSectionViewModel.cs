@@ -44,5 +44,5 @@ public sealed class RoomsSectionViewModel : JsonTableSectionViewModel
         Title, "room", "map", "area", "shop", "lair", "exit",
     };
 
-    public RoomsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public RoomsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

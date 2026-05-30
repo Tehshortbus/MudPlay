@@ -53,5 +53,5 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
             ["ArmourType"] = MmudEnums.FormatArmourType,
         };
 
-    public ClassesSectionViewModel(GameDataCache cache) : base(cache) { }
+    public ClassesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

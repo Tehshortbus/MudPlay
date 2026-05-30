@@ -60,9 +60,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     private readonly PlayerDatabase? _players;
     private readonly MacroStore? _macros;
     private readonly MessageStore? _messages;
+    private readonly SettingsResolver? _resolver;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -71,6 +72,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         PlayerDatabase? players = null,
         MacroStore? macros = null,
         MessageStore? messages = null,
+        SettingsResolver? resolver = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -80,6 +82,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         _players = players;
         _macros = macros;
         _messages = messages;
+        _resolver = resolver;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -162,16 +165,16 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
 
         // ----- MDB-derived (bottom group) ---------------------------------
 
-        Sections.Add(new MonstersSectionViewModel(_gameData));
-        Sections.Add(new ItemsSectionViewModel(_gameData));
-        Sections.Add(new SpellsSectionViewModel(_gameData));
-        Sections.Add(new RoomsSectionViewModel(_gameData));
-        Sections.Add(new LairsSectionViewModel(_gameData));
-        Sections.Add(new ShopsSectionViewModel(_gameData));
-        Sections.Add(new RacesSectionViewModel(_gameData));
-        Sections.Add(new ClassesSectionViewModel(_gameData));
-        Sections.Add(new TextBlocksSectionViewModel(_gameData));
-        Sections.Add(new InfoSectionViewModel(_gameData));
+        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new SpellsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new ShopsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new RacesSectionViewModel(_gameData, _resolver));
+        Sections.Add(new ClassesSectionViewModel(_gameData, _resolver));
+        Sections.Add(new TextBlocksSectionViewModel(_gameData, _resolver));
+        Sections.Add(new InfoSectionViewModel(_gameData, _resolver));
 
         void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));

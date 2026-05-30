@@ -36,5 +36,5 @@ public sealed class InfoSectionViewModel : JsonTableSectionViewModel
         Title, "info", "version", "metadata", "realm",
     };
 
-    public InfoSectionViewModel(GameDataCache cache) : base(cache) { }
+    public InfoSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

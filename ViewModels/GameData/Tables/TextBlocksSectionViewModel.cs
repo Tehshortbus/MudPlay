@@ -40,5 +40,5 @@ public sealed class TextBlocksSectionViewModel : JsonTableSectionViewModel
         Title, "textblock", "tb", "quest", "dialogue", "sign", "action",
     };
 
-    public TextBlocksSectionViewModel(GameDataCache cache) : base(cache) { }
+    public TextBlocksSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }
