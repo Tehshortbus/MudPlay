@@ -80,6 +80,15 @@ public sealed class CharacterProfile
     public List<GameData.Favorite>? Favorites { get; set; }
 
     /// <summary>
+    /// User-defined keybinds. Per-character; loaded into
+    /// <see cref="Services.MacroStore"/> on profile load. The Phase 10
+    /// MacroManager engine intercepts keystrokes on TerminalControl +
+    /// ConversationWindow's input field and dispatches the matched
+    /// command in place of the raw key.
+    /// </summary>
+    public List<GameData.Macro>? Macros { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels

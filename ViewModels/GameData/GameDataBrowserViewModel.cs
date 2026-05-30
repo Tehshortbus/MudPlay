@@ -56,9 +56,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     private readonly AliasEngine? _aliases;
     private readonly PlayerDatabase? _players;
     private readonly FavoritesManager? _favorites;
+    private readonly MacroStore? _macros;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, favorites: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, favorites: null, macros: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -66,6 +67,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         AliasEngine? aliases = null,
         PlayerDatabase? players = null,
         FavoritesManager? favorites = null,
+        MacroStore? macros = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -74,6 +76,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         _aliases = aliases;
         _players = players;
         _favorites = favorites;
+        _macros = macros;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -142,7 +145,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         else
             Add("favorites", "Favorites", "Phase 5 PR 5.21",
                 "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
-        Add("macros",        "Macros",         "Phase 5 PR 5.22", "Read-only listing — double-click row opens the Phase 10 Macro editor.");
+        if (_macros is not null)
+            Sections.Add(new MacrosSectionViewModel(_macros));
+        else
+            Add("macros", "Macros", "Phase 5 PR 5.22",
+                "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 
         void Add(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));

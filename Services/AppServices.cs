@@ -201,6 +201,14 @@ public sealed class AppServices
     /// </summary>
     public FavoritesManager Favorites { get; }
 
+    /// <summary>
+    /// Loaded character's <see cref="Models.GameData.Macro"/> store.
+    /// Surfaced by the Game Data Browser → Macros tab; the Phase 10
+    /// MacroManager engine intercepts keystrokes and dispatches from
+    /// the same store.
+    /// </summary>
+    public MacroStore Macros { get; }
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -260,6 +268,7 @@ public sealed class AppServices
         Triggers = new TriggerEngine(Profile);
         Aliases = new AliasEngine(Profile);
         Favorites = new FavoritesManager(Profile);
+        Macros = new MacroStore(Profile);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
