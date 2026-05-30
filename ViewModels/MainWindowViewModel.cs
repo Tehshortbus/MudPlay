@@ -1706,40 +1706,62 @@ public partial class MainWindowViewModel : ObservableObject
 
         string path = files[0].Path.LocalPath;
         MdbImporter importer = new();
-        int errorCount = 0;
+        // Per-table errors go to the Program Log only — the terminal
+        // gets a single summary line after the import finishes, with
+        // counts sourced from MdbImportResult.TablesSkipped (so we
+        // don't keep a separate UI counter in sync with the worker).
         importer.OnStatusChanged += s => AppServices.Current.Log.Info("MDB", s);
-        importer.OnError += s =>
-        {
-            // Per-table errors go to the Program Log only — the
-            // terminal gets a single summary line after the import
-            // finishes, pointing the user at the log for detail.
-            AppServices.Current.Log.Error("MDB", s);
-            System.Threading.Interlocked.Increment(ref errorCount);
-        };
+        importer.OnError         += s => AppServices.Current.Log.Error("MDB", s);
 
         WriteTerminalStatus("[MDB IMPORT STARTED]", TerminalStatusKind.Notice);
-        var (success, message, folder) = await importer.ImportAsync(path);
-        AppServices.Current.Log.Info("MDB", message);
+        MdbImportResult result = await importer.ImportAsync(path);
+        AppServices.Current.Log.Info("MDB", result.Message);
 
-        if (success)
+        if (result.Success)
         {
-            if (errorCount > 0)
-            {
-                WriteTerminalStatus(
-                    $"[MDB IMPORT COMPLETED WITH ERRORS: {folder} — see Program Log]",
-                    TerminalStatusKind.Error);
-            }
-            else
-            {
-                WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
-            }
-            SwitchActiveGameDataSet(folder);
+            WriteTerminalStatus(BuildMdbCompleteStatus(result), TerminalStatusKindFor(result));
+            SwitchActiveGameDataSet(result.FolderName);
         }
         else
         {
             WriteTerminalStatus("[MDB IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
         }
     }
+
+    /// <summary>
+    /// Compose the terminal-status line for a successful MDB import.
+    /// Carries entry + table totals plus a format-tag derived from the
+    /// MajorMUD MDB shape: 9 user tables = old realm format, 10 = new
+    /// format. Anything else (or any per-table skips) flips the line
+    /// red so the user notices the structural drift.
+    /// </summary>
+    private static string BuildMdbCompleteStatus(MdbImportResult r)
+    {
+        string entries = $"{r.RowsImported:N0} entries";
+
+        string tablesPart = r.TablesSkipped == 0
+            ? $"{r.TablesImported} tables"
+            : $"{r.TablesImported}/{r.TablesFound} tables ({r.TablesSkipped} skipped)";
+
+        string formatTag = r.TablesFound switch
+        {
+            9  => " (old format)",
+            10 => " (new format)",
+            _  => " — UNEXPECTED TABLE COUNT",   // < 9 or > 10
+        };
+
+        // The "see Program Log" hint fires whenever the user has reason
+        // to dig in — skipped tables OR a wrong-shape MDB.
+        bool needsLogPointer = r.TablesSkipped > 0 || r.TablesFound < 9 || r.TablesFound > 10;
+        string logHint = needsLogPointer ? " — see Program Log" : string.Empty;
+
+        return $"[MDB IMPORT COMPLETE: {r.FolderName} — {tablesPart}{formatTag}, {entries}{logHint}]";
+    }
+
+    private static TerminalStatusKind TerminalStatusKindFor(MdbImportResult r)
+        => (r.TablesSkipped > 0 || r.TablesFound < 9 || r.TablesFound > 10)
+           ? TerminalStatusKind.Error
+           : TerminalStatusKind.Notice;
 
     /// <summary>
     /// File → Game Data → Import Spell Messages… — parses a MegaMUD
