@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game.GameData;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -19,8 +20,6 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
 
     private readonly PlayerRecord _original;
 
-    [ObservableProperty] private string _givenName = string.Empty;
-    [ObservableProperty] private string _familyName = string.Empty;
     [ObservableProperty] private bool _inviteToPartyIfSeen;
     [ObservableProperty] private bool _joinPartyIfInvited;
     [ObservableProperty] private bool _dontAutoDelete;
@@ -52,12 +51,51 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     /// <summary>Read-only display strings for the observation footer.</summary>
     public string FirstSeenText => _original.FirstSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public string LastSeenText  => _original.LastSeenUtc .ToLocalTime().ToString("yyyy-MM-dd HH:mm");
-    public string? Class          => _original.Class;
     public string? Race           => _original.Race;
     public string? Alignment      => _original.Alignment;
     /// <summary>In-game class title (renamed to avoid colliding with the Window-bound <see cref="Title"/>).</summary>
     public string? ObservedTitle  => _original.Title;
     public string? Gang           => _original.Gang;
+
+    /// <summary>
+    /// Display value for the Class row. Falls through in this order:
+    /// (1) an explicitly-recorded <see cref="PlayerRecord.Class"/>
+    /// (from a future <c>@health</c> / <c>@stat</c> parser), (2) class
+    /// inferred from the in-game title via <see cref="ClassTitleTable"/>
+    /// — single match shows the class with a "(by title)" hint, multi-
+    /// match shows "(multiple)", no match returns <c>null</c>.
+    /// </summary>
+    public string? ClassText
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_original.Class)) return _original.Class;
+            IReadOnlyList<string> inferred = ClassTitleTable.LookupClasses(_original.Title);
+            return inferred.Count switch
+            {
+                0 => null,
+                1 => $"{inferred[0]} (by title)",
+                _ => $"{string.Join(" / ", inferred)} (by title)",
+            };
+        }
+    }
+
+    /// <summary>
+    /// Display value for the Level row. <c>null</c> when neither an
+    /// exact level nor a derivable range is known. Once <c>@level</c> /
+    /// <c>@exp</c> remote parsing ships, an exact <c>PlayerRecord.Level</c>
+    /// will take precedence over the title-derived range — for now the
+    /// range is the only signal we have.
+    /// </summary>
+    public string? LevelText
+    {
+        get
+        {
+            (int min, int max)? range = ClassTitleTable.LookupLevelRange(_original.Title);
+            return range is null ? null : ClassTitleTable.FormatLevelRange(range.Value);
+        }
+    }
+
     public string? Role           => string.IsNullOrEmpty(_original.Role)
                                       ? "Regular"
                                       : _original.Role switch
@@ -71,8 +109,6 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     public PlayerEditDialogViewModel(PlayerRecord original)
     {
         _original           = original;
-        GivenName           = original.GivenName;
-        FamilyName          = original.FamilyName;
         InviteToPartyIfSeen = original.InviteToPartyIfSeen;
         JoinPartyIfInvited  = original.JoinPartyIfInvited;
         DontAutoDelete      = original.DontAutoDelete;
@@ -121,8 +157,8 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
 
         PlayerRecord updated = _original with
         {
-            GivenName           = (GivenName ?? string.Empty).Trim(),
-            FamilyName          = (FamilyName ?? string.Empty).Trim(),
+            // Name fields stay as observed — the dialog doesn't expose
+            // them for edit (the title bar shows the character name).
             RemoteControls      = rc,
             InviteToPartyIfSeen = InviteToPartyIfSeen,
             JoinPartyIfInvited  = JoinPartyIfInvited,

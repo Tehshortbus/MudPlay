@@ -25,20 +25,10 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
-
-            <!-- ===== Names ===== -->
-            <Grid Grid.Row="0"
-                  ColumnDefinitions="100,*,100,*"
-                  ColumnSpacing="8" RowSpacing="6">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Given name"/>
-                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding GivenName, Mode=TwoWay}"/>
-                <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Family name"/>
-                <TextBox   Grid.Row="0" Grid.Column="3" Text="{Binding FamilyName, Mode=TwoWay}"/>
-            </Grid>
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
 
             <!-- ===== Behavior toggles ===== -->
-            <StackPanel Grid.Row="1" Spacing="3">
+            <StackPanel Grid.Row="0" Spacing="3">
                 <TextBlock Classes="SectionHeader" Text="Behavior"/>
                 <CheckBox Content="Invite to party if seen"
                           IsChecked="{Binding InviteToPartyIfSeen, Mode=TwoWay}"
@@ -52,7 +42,7 @@
             </StackPanel>
 
             <!-- ===== Remote controls + observation footer ===== -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
+            <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="14">
 
                 <!-- Left: Allowed Remote Control (12 checkboxes + All) -->
                 <Border Grid.Column="0"
@@ -91,10 +81,11 @@
                     <StackPanel Spacing="6">
                         <TextBlock Classes="SectionHeader" Text="Observed"/>
                         <Grid ColumnDefinitions="90,*" RowSpacing="3"
-                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Class"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Class, TargetNullValue='—'}"
-                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ClassText, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       ToolTip.Tip="From @health observation when available; otherwise inferred from the in-game title."/>
                             <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Race"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Race, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
@@ -104,17 +95,21 @@
                             <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Title"/>
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ObservedTitle, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Gang"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Gang, TargetNullValue='—'}"
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Level"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LevelText, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       ToolTip.Tip="Title-derived range; exact level appears once @level / @exp remotes land."/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Gang"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Gang, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Role"/>
-                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Role}"
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Role"/>
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding Role}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
-                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding FirstSeenText}"
+                            <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
+                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding FirstSeenText}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Last seen"/>
-                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding LastSeenText}"
+                            <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Last seen"/>
+                            <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding LastSeenText}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
                         </Grid>
                     </StackPanel>
@@ -122,7 +117,7 @@
             </Grid>
 
             <!-- ===== Buttons ===== -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                 <Button Content="Save"   Command="{Binding SaveCommand}"   IsDefault="True" MinWidth="80"/>
                 <Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True"  MinWidth="80"/>
             </StackPanel>
