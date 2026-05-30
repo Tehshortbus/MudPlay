@@ -69,16 +69,27 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     public override Control View => _view ??= new GameDataTableSectionView { DataContext = this };
 
-    /// <summary>Bottom-strip status — row count + selected row pointer.</summary>
+    /// <summary>
+    /// Bottom-strip status. Shows the 1-based position of the selected
+    /// row out of the table total when something is selected
+    /// (<c>"5 of 240 rows"</c>); otherwise just the row count, with the
+    /// filtered / unfiltered split (<c>"3 / 240 rows"</c> when a search
+    /// filter is active, <c>"240 rows"</c> otherwise).
+    /// </summary>
     public string StatusText
     {
         get
         {
             int total = AllRows.Count;
             int visible = FilteredRows.Count;
-            string countText = total == visible ? $"{total} rows" : $"{visible} / {total} rows";
-            string selection = SelectedRow is null ? "" : $"  ·  {SearchKeyColumn} = {SelectedRow.Get(SearchKeyColumn)}";
-            return countText + selection;
+
+            if (SelectedRow is not null)
+            {
+                int index = FilteredRows.IndexOf(SelectedRow);
+                if (index >= 0) return $"{index + 1} of {total} rows";
+            }
+
+            return total == visible ? $"{total} rows" : $"{visible} / {total} rows";
         }
     }
 
