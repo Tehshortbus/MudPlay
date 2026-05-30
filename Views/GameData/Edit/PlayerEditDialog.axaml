@@ -91,7 +91,7 @@
                     <StackPanel Spacing="6">
                         <TextBlock Classes="SectionHeader" Text="Observed"/>
                         <Grid ColumnDefinitions="90,*" RowSpacing="3"
-                              RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Class"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Class, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
@@ -101,11 +101,20 @@
                             <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Alignment"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Alignment, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FirstSeenText}"
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Title"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ObservedTitle, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Last seen"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LastSeenText}"
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Gang"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Gang, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Role"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Role}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding FirstSeenText}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Last seen"/>
+                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding LastSeenText}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
                         </Grid>
                     </StackPanel>

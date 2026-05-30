@@ -37,6 +37,9 @@ public partial class MainWindowViewModel : ObservableObject
     private LoginAutomator? _automator;
     private Action<PromptObservation>? _loginKillSwitch;
     private CancellationTokenSource? _cleanupReconnectCts;
+    // GC root for the who-list parser — it subscribes to LineExtractor
+    // in its ctor and stays alive as long as MainWindowViewModel does.
+    private readonly Game.WhoListParser _whoListParser;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -330,6 +333,12 @@ public partial class MainWindowViewModel : ObservableObject
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
+
+        // who-list observer: subscribes to LineExtractor on its own
+        // (the table is multi-line — needs state, doesn't fit
+        // MessageRouter's stateless dispatch). Feeds every observed
+        // player into PlayerDatabase.
+        _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players);
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.

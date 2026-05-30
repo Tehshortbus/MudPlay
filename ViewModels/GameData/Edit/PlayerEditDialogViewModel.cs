@@ -52,9 +52,21 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     /// <summary>Read-only display strings for the observation footer.</summary>
     public string FirstSeenText => _original.FirstSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public string LastSeenText  => _original.LastSeenUtc .ToLocalTime().ToString("yyyy-MM-dd HH:mm");
-    public string? Class        => _original.Class;
-    public string? Race         => _original.Race;
-    public string? Alignment    => _original.Alignment;
+    public string? Class          => _original.Class;
+    public string? Race           => _original.Race;
+    public string? Alignment      => _original.Alignment;
+    /// <summary>In-game class title (renamed to avoid colliding with the Window-bound <see cref="Title"/>).</summary>
+    public string? ObservedTitle  => _original.Title;
+    public string? Gang           => _original.Gang;
+    public string? Role           => string.IsNullOrEmpty(_original.Role)
+                                      ? "Regular"
+                                      : _original.Role switch
+                                        {
+                                            "M" => "Mudop",
+                                            "S" => "Sysop",
+                                            "V" => "Visitor",
+                                            _   => _original.Role,
+                                        };
 
     public PlayerEditDialogViewModel(PlayerRecord original)
     {

@@ -20,10 +20,12 @@ namespace FujinTerm.Models.GameData;
 /// </remarks>
 /// <param name="GivenName">First word of the in-game name (the "Forged" in "Forged Paradigm"). May be empty for legacy records.</param>
 /// <param name="FamilyName">Remainder of the in-game name after the first space. Empty when the player has a single-word name.</param>
-/// <param name="Class">Most recent class seen on <c>who</c>.</param>
-/// <param name="Race">Most recent race seen on <c>who</c>.</param>
-/// <param name="Alignment">Most recent alignment seen on <c>who</c>.</param>
-/// <param name="Title">Most recent title seen on <c>who</c>.</param>
+/// <param name="Class">Most recent class seen — from <c>@health</c> / <c>@stat</c> remotes (the <c>who</c> table doesn't carry it).</param>
+/// <param name="Race">Most recent race seen — same source as <see cref="Class"/>.</param>
+/// <param name="Alignment">Most recent alignment seen on <c>who</c>. <c>"Neutral"</c> when the alignment column was blank.</param>
+/// <param name="Title">Most recent title seen on <c>who</c>. Class + level range can be inferred from the title via the future class-titles table.</param>
+/// <param name="Gang">Most recent gang/guild name (<c>"of …"</c> suffix on <c>who</c>). Empty when the player is ungang'd.</param>
+/// <param name="Role">MegaMUD-style trailing marker — <c>M</c> mudop, <c>S</c> sysop, <c>V</c> visitor, <c>null</c> for regular players.</param>
 /// <param name="FirstSeenUtc">When this record was first created.</param>
 /// <param name="LastSeenUtc">When this record was last refreshed by a <c>who</c> observation.</param>
 /// <param name="Notes">Free-form note the user can attach via the edit dialog.</param>
@@ -38,6 +40,8 @@ public sealed record PlayerRecord(
     string? Race,
     string? Alignment,
     string? Title,
+    string? Gang,
+    string? Role,
     DateTime FirstSeenUtc,
     DateTime LastSeenUtc,
     string? Notes = null,

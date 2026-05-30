@@ -12,13 +12,15 @@ public sealed class PlayerDatabaseTests
         PlayerDatabase db = new();
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", now);
+        db.RecordObservation("Forged", null, null, "Lawful", "Magebane", "Mudd Life Crisis", null, now);
 
         Assert.Single(db.Players);
         PlayerRecord r = db.Players[0];
         Assert.Equal("Forged", r.GivenName);
         Assert.Equal(string.Empty, r.FamilyName);
-        Assert.Equal("Mage", r.Class);
+        Assert.Equal("Lawful",   r.Alignment);
+        Assert.Equal("Magebane", r.Title);
+        Assert.Equal("Mudd Life Crisis", r.Gang);
         Assert.Equal(now, r.FirstSeenUtc);
         Assert.Equal(now, r.LastSeenUtc);
     }
@@ -29,7 +31,7 @@ public sealed class PlayerDatabaseTests
         PlayerDatabase db = new();
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Forged Paradigm", "Mage", null, null, null, now);
+        db.RecordObservation("Forged Paradigm", null, null, null, "Magebane", null, null, now);
 
         Assert.Equal("Forged",   db.Players[0].GivenName);
         Assert.Equal("Paradigm", db.Players[0].FamilyName);
@@ -43,7 +45,7 @@ public sealed class PlayerDatabaseTests
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 5, 2, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", first);
+        db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", null, null, first);
         db.EditNotes("Forged", "trusted healer");
         db.EditRecord("Forged", db.Players[0] with
         {
@@ -53,7 +55,7 @@ public sealed class PlayerDatabaseTests
             DontAutoDelete       = true,
         });
 
-        db.RecordObservation("Forged", "Archmage", "Elf", "Good", null, later);
+        db.RecordObservation("Forged", "Archmage", "Elf", "Good", null, "Mudd Life Crisis", null, later);
 
         Assert.Equal("Archmage", db.Players[0].Class);
         Assert.Equal("trusted healer", db.Players[0].Notes);
@@ -64,6 +66,7 @@ public sealed class PlayerDatabaseTests
         Assert.True(db.Players[0].DontAutoDelete);
         Assert.Equal(first, db.Players[0].FirstSeenUtc);
         Assert.Equal(later, db.Players[0].LastSeenUtc);
+        Assert.Equal("Mudd Life Crisis", db.Players[0].Gang);
     }
 
     [Fact]
@@ -72,8 +75,8 @@ public sealed class PlayerDatabaseTests
         PlayerDatabase db = new();
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", now);
-        db.RecordObservation("Forged", null, null, null, null, now.AddDays(1));
+        db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", null, null, now);
+        db.RecordObservation("Forged", null, null, null, null, null, null, now.AddDays(1));
 
         Assert.Equal("Mage", db.Players[0].Class);
         Assert.Equal("the Wise", db.Players[0].Title);
@@ -85,8 +88,8 @@ public sealed class PlayerDatabaseTests
         PlayerDatabase db = new();
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Recent", null, null, null, null, now.AddDays(-10));
-        db.RecordObservation("Ancient", null, null, null, null, now.AddDays(-120));
+        db.RecordObservation("Recent", null, null, null, null, null, null, now.AddDays(-10));
+        db.RecordObservation("Ancient", null, null, null, null, null, null, now.AddDays(-120));
 
         int removed = db.PurgeStale(days: 90, nowUtc: now);
 
@@ -101,7 +104,7 @@ public sealed class PlayerDatabaseTests
         PlayerDatabase db = new();
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        db.RecordObservation("Keeper", null, null, null, null, now.AddDays(-365));
+        db.RecordObservation("Keeper", null, null, null, null, null, null, now.AddDays(-365));
         db.EditRecord("Keeper", db.Players[0] with { DontAutoDelete = true });
 
         int removed = db.PurgeStale(days: 90, nowUtc: now);

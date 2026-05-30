@@ -53,6 +53,8 @@ public sealed class PlayerDatabase
         string? race,
         string? alignment,
         string? title,
+        string? gang,
+        string? role,
         DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -68,6 +70,8 @@ public sealed class PlayerDatabase
                 Race:         race,
                 Alignment:    alignment,
                 Title:        title,
+                Gang:         gang,
+                Role:         role,
                 FirstSeenUtc: nowUtc,
                 LastSeenUtc:  nowUtc));
             return;
@@ -84,6 +88,8 @@ public sealed class PlayerDatabase
             Race        = race ?? existing.Race,
             Alignment   = alignment ?? existing.Alignment,
             Title       = title ?? existing.Title,
+            Gang        = gang ?? existing.Gang,
+            Role        = role ?? existing.Role,
             LastSeenUtc = nowUtc,
             // Notes + RemoteControls + auto-party flags + DontAutoDelete
             // intentionally preserved — observation never overwrites
