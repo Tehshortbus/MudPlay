@@ -39,10 +39,13 @@ namespace FujinTerm.Services;
 /// <para>
 /// Wiring (Phase 0 PR 0.2 event protocol): <see cref="AppServices"/>
 /// constructs the cache and subscribes it to
-/// <see cref="ProfileService.ProfileLoaded"/> so the per-character
-/// <see cref="Models.Profile.CharacterProfile.ActiveGameDataSet"/>
-/// drives the switch automatically. Manual switches via the eventual
-/// Game Data menu write back to the loaded profile (Phase 5 PR 5.22).
+/// <see cref="ProfileService.ProfileLoaded"/> +
+/// <see cref="ProfileService.BbsPinApplied"/> so the pinned BBS's
+/// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> drives
+/// the switch automatically (falling back to
+/// <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/>
+/// when no BBS is pinned). Manual switches via the File → Game Data
+/// → Active set menu write back to the resolved BBS profile.
 /// </para>
 /// </remarks>
 public sealed class GameDataCache
