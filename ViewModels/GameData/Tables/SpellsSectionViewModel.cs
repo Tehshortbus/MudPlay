@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
@@ -10,11 +11,11 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// Spell Book.
 /// </summary>
 /// <remarks>
-/// PR 5.7 ships the listing only. The "key UX improvement over
-/// MegaMUD" — the inline Spell-fields-left / Spell-Messages-right
-/// editor — lives in the edit dialog opened from this tab's row
-/// double-click, which lands once the listing for every table is
-/// in place.
+/// Column names mirror the MajorMUD MDB schema verbatim. <c>Short</c>
+/// is the cast-name shortcode (e.g. <c>"star"</c>), <c>ReqLevel</c> is
+/// the cast prerequisite, <c>Diff</c> is the cast-difficulty score.
+/// <c>Magery</c>, <c>AttType</c>, and <c>Targets</c> render via
+/// <see cref="MmudEnums"/> ("Mage" / "Cold" / "Full Area" / etc.).
 /// </remarks>
 public sealed class SpellsSectionViewModel : GameDataTableSectionViewModel
 {
@@ -25,23 +26,36 @@ public sealed class SpellsSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Id",
+        "Number",
         "Name",
-        "Code",
-        "Level",
-        "Class",
-        "MaCost",
-        "PrepTime",
-        "Range",
-        "TargetType",
+        "Short",
+        "Magery",
+        "MageryLVL",
+        "ReqLevel",
+        "ManaCost",
+        "EnergyCost",
+        "Diff",
+        "AttType",
+        "Targets",
+        "MinBase",
+        "MaxBase",
+        "Dur",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "spell", "level", "mana", "cost", "class", "code",
+        Title, "spell", "magery", "mana", "cast", "level", "code", "short", "target",
     };
+
+    protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
+        new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Magery"]  = MmudEnums.FormatMagery,
+            ["AttType"] = MmudEnums.FormatSpellAttackType,
+            ["Targets"] = MmudEnums.FormatSpellTargets,
+        };
 
     public SpellsSectionViewModel(GameDataCache cache) : base(cache) { }
 }

@@ -43,15 +43,15 @@ public sealed class GameDataTableSectionTests : IDisposable
     public void Reload_PopulatesRowsFromActiveSet()
     {
         SeedMonsters("v1.11p",
-            "[{\"Id\":1,\"Name\":\"Goblin\",\"Level\":1,\"Hp\":10}," +
-             "{\"Id\":2,\"Name\":\"Orc\",\"Level\":3,\"Hp\":25}]");
+            "[{\"Number\":1,\"Name\":\"Goblin\",\"HP\":10,\"EXP\":3}," +
+             "{\"Number\":2,\"Name\":\"Orc\",\"HP\":25,\"EXP\":10}]");
 
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
 
         Assert.Equal(2, vm.AllRows.Count);
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
-        Assert.Equal("1",      vm.AllRows[0].Get("Level"));
+        Assert.Equal("10",     vm.AllRows[0].Get("HP"));
         Assert.Equal("Orc",    vm.AllRows[1].Get("Name"));
     }
 
@@ -74,12 +74,12 @@ public sealed class GameDataTableSectionTests : IDisposable
     [Fact]
     public void MissingColumn_RendersAsNull()
     {
-        SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]"); // no Level / Hp
+        SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]"); // no HP / EXP
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
 
-        Assert.Null(vm.AllRows[0].Get("Level"));
-        Assert.Null(vm.AllRows[0].Get("Hp"));
+        Assert.Null(vm.AllRows[0].Get("HP"));
+        Assert.Null(vm.AllRows[0].Get("EXP"));
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
     }
 
@@ -102,15 +102,15 @@ public sealed class GameDataTableSectionTests : IDisposable
     public void GameDataRow_CollapsesAllJsonValueKindsToStrings()
     {
         SeedMonsters("v1.11p",
-            "[{\"Name\":\"Goblin\",\"Level\":5,\"IsBoss\":true,\"Notes\":null}]");
+            "[{\"Name\":\"Goblin\",\"HP\":5,\"Undead\":true,\"GreetTXT\":null}]");
         _cache.SwitchSet("v1.11p");
 
         MonstersSectionViewModel vm = new(_cache);
 
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
-        Assert.Equal("5",      vm.AllRows[0].Get("Level"));
-        // IsBoss + Notes aren't in the Monsters column list so they don't appear.
-        Assert.DoesNotContain(vm.AllRows[0].Cells, c => c.Column == "IsBoss");
+        Assert.Equal("5",      vm.AllRows[0].Get("HP"));
+        // GreetTXT isn't in the Monsters column list so it doesn't appear.
+        Assert.DoesNotContain(vm.AllRows[0].Cells, c => c.Column == "GreetTXT");
     }
 
     [Fact]

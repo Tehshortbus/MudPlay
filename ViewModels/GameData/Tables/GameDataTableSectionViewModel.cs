@@ -41,6 +41,16 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     /// <summary>Column the search box filters against (substring match).</summary>
     public abstract string SearchKeyColumn { get; }
 
+    /// <summary>
+    /// Optional per-column display formatters. Keys are column names in
+    /// <see cref="Columns"/>; values transform the raw cell string into
+    /// the human-readable form rendered in the grid (e.g. <c>1 → "Weapon"</c>,
+    /// <c>5 → "Feet"</c>). Subclasses opt in by overriding; the search
+    /// filter still runs against the raw value so numeric codes are
+    /// findable both ways.
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, Func<string?, string?>>? ColumnFormatters => null;
+
     /// <summary>Every row loaded from the active set, original order.</summary>
     public ObservableCollection<GameDataRow> AllRows { get; } = new();
 
@@ -91,9 +101,10 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         JsonDocument? doc = _cache.GetRawTable(TableName);
         if (doc is null) { OnPropertyChanged(nameof(StatusText)); return; }
 
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
-            AllRows.Add(GameDataRow.FromJson(el, Columns));
+            AllRows.Add(GameDataRow.FromJson(el, Columns, formatters));
         }
         ApplyFilter();
         OnPropertyChanged(nameof(StatusText));
@@ -140,18 +151,27 @@ public sealed class GameDataRow
     /// <summary>
     /// Build a row from a JSON element. Columns missing from the source
     /// render as <c>null</c> in the resulting row so subclasses see a
-    /// uniform shape regardless of schema drift.
+    /// uniform shape regardless of schema drift. The raw cell value
+    /// drives <see cref="Get"/> (so search/filter sees the underlying
+    /// data) while the optional <paramref name="formatters"/> map shapes
+    /// the *displayed* value in <see cref="Cells"/>.
     /// </summary>
-    public static GameDataRow FromJson(JsonElement element, IReadOnlyList<string> columns)
+    public static GameDataRow FromJson(
+        JsonElement element,
+        IReadOnlyList<string> columns,
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
     {
         Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
         List<GameDataCell> cells = new(columns.Count);
 
         foreach (string column in columns)
         {
-            string? value = ReadValue(element, column);
-            values[column] = value;
-            cells.Add(new GameDataCell(column, value));
+            string? raw = ReadValue(element, column);
+            values[column] = raw;
+            string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
+                ? fmt(raw)
+                : raw;
+            cells.Add(new GameDataCell(column, display));
         }
         return new GameDataRow(values, cells);
     }

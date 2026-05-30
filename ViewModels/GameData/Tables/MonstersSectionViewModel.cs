@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
@@ -6,16 +7,19 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <summary>
 /// Game Data Browser → Monsters tab. Renders the imported MajorMUD
 /// <c>Monsters</c> table — the static MDB table that drives Auto-Lair
-/// respawn timers (via <c>Respawn</c>), Phase 13 CombatManager's
+/// respawn timers (via <c>RegenTime</c>), Phase 13 CombatManager's
 /// per-monster behaviour gating, and the Phase 9 Workshop COMBAT
 /// preview's damage projection.
 /// </summary>
 /// <remarks>
-/// PR 5.5 ships a read-only listing — every per-table tab is a
-/// listing-first PR; Add / Modify / Remove + per-record tier picker
-/// land in a Phase 5 follow-up that wires the
-/// <see cref="Models.Import.ImportConflict"/> infrastructure into the
-/// table-row editor.
+/// Column names mirror the MajorMUD MDB schema verbatim (per
+/// <c>data-v1.11p.mdb</c>). <c>EXP</c> is the experience reward,
+/// <c>MagicRes</c> is the magic-resist score, <c>AvgDmg</c> is the
+/// average per-round outgoing damage, <c>RegenTime</c> is respawn
+/// cadence in ticks. <c>Type</c> and <c>Align</c> render via
+/// <see cref="MmudEnums"/> ("Solo" / "Lawful Good" / etc.) and
+/// <c>Undead</c> is a boolean from the MDB so it already arrives
+/// as <c>"true"</c> / <c>"false"</c>.
 /// </remarks>
 public sealed class MonstersSectionViewModel : GameDataTableSectionViewModel
 {
@@ -26,23 +30,35 @@ public sealed class MonstersSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Id",
+        "Number",
         "Name",
-        "Level",
-        "Hp",
-        "Race",
-        "Damage",
-        "AC",
-        "ExpValue",
-        "Respawn",
+        "EXP",
+        "HP",
+        "ArmourClass",
+        "DamageResist",
+        "MagicRes",
+        "AvgDmg",
+        "Energy",
+        "HPRegen",
+        "RegenTime",
+        "Type",
+        "Align",
+        "Undead",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "monster", "level", "hp", "race", "damage", "respawn",
+        Title, "monster", "mob", "enemy", "creature", "lair", "regen", "respawn",
     };
+
+    protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
+        new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Type"]  = MmudEnums.FormatMonType,
+            ["Align"] = MmudEnums.FormatMonAlignment,
+        };
 
     public MonstersSectionViewModel(GameDataCache cache) : base(cache) { }
 }
