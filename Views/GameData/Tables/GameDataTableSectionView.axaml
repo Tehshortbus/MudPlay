@@ -17,31 +17,6 @@
             <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
         </Style>
-        <!-- DataGrid chrome tuned to match the rest of the browser. -->
-        <Style Selector="DataGrid">
-            <Setter Property="Background" Value="{StaticResource ChromeBgSunkenBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="RowBackground" Value="Transparent"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource ChromeBorderBrush}"/>
-            <Setter Property="VerticalGridLinesBrush" Value="{StaticResource ChromeBorderBrush}"/>
-            <Setter Property="RowHeight" Value="22"/>
-            <Setter Property="ColumnHeaderHeight" Value="26"/>
-        </Style>
-        <Style Selector="DataGridColumnHeader">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="8,2"/>
-        </Style>
-        <Style Selector="DataGridCell">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
-            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
-            <Setter Property="Padding" Value="8,2"/>
-        </Style>
     </UserControl.Styles>
 
     <Grid Margin="22" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8">
