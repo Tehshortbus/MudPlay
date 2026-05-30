@@ -94,9 +94,21 @@ public sealed partial class WhoListParser : IDisposable
 
     private void HandleLine(string text, bool isPromptLine, DateTime nowUtc)
     {
-        // Prompt lines aren't data — they share a buffer row with chat
-        // / output and would confuse every state transition.
-        if (isPromptLine) return;
+        // The statline / prompt is the universal "server's done
+        // responding" marker — every command the user sends ends with
+        // it. Use it as the definitive block terminator: any in-flight
+        // who-parse stops here, even if the table was followed by
+        // mid-block padding the row parser couldn't classify.
+        if (isPromptLine)
+        {
+            if (_state != State.Idle)
+            {
+                _log?.Info("WhoListParser",
+                    $"End of block ({_rowsThisBlock} rows) — prompt arrived.");
+                _state = State.Idle;
+            }
+            return;
+        }
 
         switch (_state)
         {
@@ -109,6 +121,9 @@ public sealed partial class WhoListParser : IDisposable
                 break;
 
             case State.WaitForSeparator:
+                // Servers commonly emit a blank line between the header
+                // and the separator — stay parked here rather than bail.
+                if (string.IsNullOrWhiteSpace(text)) break;
                 if (SeparatorPattern().IsMatch(text))
                 {
                     _state = State.Reading;
@@ -126,6 +141,13 @@ public sealed partial class WhoListParser : IDisposable
                 break;
 
             case State.Reading:
+                // Blank lines between the separator and the first row, or
+                // mid-table padding, do NOT end the block — the server in
+                // the wild emits one right after the ============ line.
+                // The block only ends when we get a non-blank line that
+                // doesn't parse as a player row (the prompt, the footer,
+                // chat, etc.).
+                if (string.IsNullOrWhiteSpace(text)) break;
                 if (TryParseRow(text, out PlayerRowMatch row))
                 {
                     string display = string.IsNullOrEmpty(row.Family)
@@ -147,12 +169,15 @@ public sealed partial class WhoListParser : IDisposable
                 }
                 else
                 {
-                    // First non-row line ends the block. Empty lines /
-                    // trailing prompt / "Total:" footer all land us back
-                    // in Idle, ready for the next `who`.
+                    // First non-blank, non-row line ends the block —
+                    // typically the trailing prompt or a "Total:" footer.
                     _log?.Info("WhoListParser",
                         $"End of block ({_rowsThisBlock} rows). Stopper line: '{Quote(text)}'");
                     _state = State.Idle;
+                    // The terminator line might itself be the next who's
+                    // header (back-to-back `who` calls). Re-feed through
+                    // the fresh Idle state so we don't drop it.
+                    HandleLine(text, isPromptLine, nowUtc);
                 }
                 break;
         }

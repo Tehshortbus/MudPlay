@@ -114,6 +114,50 @@ public sealed class WhoListParserTests
         Assert.Equal("V", db.Players[2].Role);
     }
 
+    /// <summary>
+    /// Verbatim live-server output (Newhaven, Narrow Road dump). Differs
+    /// from the earlier <see cref="HavenSample"/> in three ways the parser
+    /// must tolerate: (a) a blank line between the ============ separator
+    /// and the first row, (b) a blank line between the last row and the
+    /// trailing prompt, (c) <c>  -  </c> (two-space dash two-space) marker
+    /// rather than <c>-</c>.
+    /// </summary>
+    [Fact]
+    public void ParsesNewhavenLiveDump_Including_BlankLines_AndTwoSpaceMarker()
+    {
+        WhoListParser p = Build(out PlayerDatabase db);
+        p.FeedTestLines(new[]
+        {
+            "         Current Adventurers",
+            "         ===================",
+            "",
+            "  Lawful Debbie Schwartz         -  Magebane  of Mudd Life Crisis",
+            "         Fujin WuzHere           -  Apprentice",
+            "  Lawful Furnagerie Clawful      -  Acolyte  of Mudd Life Crisis",
+            "  Lawful Gammi Clawful           -  Duelist  of what happen",
+            "  Lawful Gampi Clawful           -  Mercenary  of Mudd Life Crisis",
+            "    Good Ivy Leaf                -  High Druid  of what happen",
+            "  Lawful Kitti Clawful           -  Fighter Priestess  of what happen",
+            "  Lawful Kittigammi Clawful      -  Defender  of what happen",
+            "    Good Krow GoesKaw            -  Warrior Novice",
+            "    Good Lenneth BoxOfRocksDumb  -  Heroine  of what happen",
+            "  Lawful Maggie May              -  Illusionist  of Mudd Life Crisis",
+            "  Lawful Meowynator Clawful      -  Herbalist  of Mudd Life Crisis",
+            "  Lawful Osiyo Myers             -  Fighter Priestess  of Mudd Life Crisis",
+            "  Lawful Posc Positis            -  Pickpocket  of Mudd Life Crisis",
+            "  Lawful Sabrina Myers           -  Duelist  of Mudd Life Crisis",
+            "  Lawful Sister BadTouch         -  High Priestess  of what happen",
+            "  Lawful Tabitha Myers           -  Pastor  of Mudd Life Crisis",
+            "",
+        }, Now);
+
+        Assert.Equal(17, db.Players.Count);
+        AssertHas(db, given: "Fujin",      family: "WuzHere",        align: "Neutral", title: "Apprentice",       gang: null);
+        AssertHas(db, given: "Lenneth",    family: "BoxOfRocksDumb", align: "Good",    title: "Heroine",          gang: "what happen");
+        AssertHas(db, given: "Meowynator", family: "Clawful",        align: "Lawful",  title: "Herbalist",        gang: "Mudd Life Crisis");
+        AssertHas(db, given: "Kitti",      family: "Clawful",        align: "Lawful",  title: "Fighter Priestess", gang: "what happen");
+    }
+
     [Fact]
     public void RowsRefreshExistingRecord_OnSecondObservation()
     {
