@@ -48,6 +48,8 @@ public sealed class GameDataTableSectionTests : IDisposable
 
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        // Lazy-load: rows materialise on first activation, not ctor.
+        vm.OnActivated();
 
         Assert.Equal(2, vm.AllRows.Count);
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
@@ -64,6 +66,7 @@ public sealed class GameDataTableSectionTests : IDisposable
              "{\"Id\":3,\"Name\":\"Orc Chieftain\"}]");
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        vm.OnActivated();
 
         vm.SearchText = "goblin";
 
@@ -77,6 +80,7 @@ public sealed class GameDataTableSectionTests : IDisposable
         SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]"); // no HP / EXP
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        vm.OnActivated();
 
         Assert.Null(vm.AllRows[0].Get("HP"));
         Assert.Null(vm.AllRows[0].Get("EXP"));
@@ -90,6 +94,10 @@ public sealed class GameDataTableSectionTests : IDisposable
         SeedMonsters("paradigm-1.8.5", "[{\"Name\":\"Skeleton\"},{\"Name\":\"Zombie\"}]");
 
         MonstersSectionViewModel vm = new(_cache);
+        // Activation marks the tab as "loaded" — subsequent ActiveSetChanged
+        // events trigger a reload. Without activation the section stays cold
+        // (the lazy-load contract) and set switches would no-op.
+        vm.OnActivated();
 
         _cache.SwitchSet("v1.11p");
         Assert.Single(vm.AllRows);
@@ -106,6 +114,7 @@ public sealed class GameDataTableSectionTests : IDisposable
         _cache.SwitchSet("v1.11p");
 
         MonstersSectionViewModel vm = new(_cache);
+        vm.OnActivated();
 
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
         Assert.Equal("5",      vm.AllRows[0].Get("HP"));
@@ -120,6 +129,7 @@ public sealed class GameDataTableSectionTests : IDisposable
             "[{\"Name\":\"Goblin\"},{\"Name\":\"Orc\"},{\"Name\":\"Skeleton\"}]");
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        vm.OnActivated();
 
         Assert.Contains("3 rows", vm.StatusText);
 

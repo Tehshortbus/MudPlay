@@ -101,6 +101,19 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
+    /// <summary>
+    /// Drive each section's lazy-load on first selection. JSON-backed
+    /// tabs (Monsters / Items / Spells / …) defer their MDB parse until
+    /// the user actually opens the tab — this is where they're told to
+    /// wake up. No-op for tabs already loaded or for engine-backed
+    /// sections that hydrate eagerly from their service.
+    /// </summary>
+    partial void OnSelectedSectionChanged(GameDataSectionViewModel? value)
+    {
+        if (value is Tables.GameDataTableSectionViewModel tab)
+            tab.OnActivated();
+    }
+
     private void RebuildVisibleSections()
     {
         string filter = (SearchText ?? string.Empty).Trim();

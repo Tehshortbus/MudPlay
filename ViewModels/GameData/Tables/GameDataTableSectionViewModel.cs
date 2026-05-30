@@ -83,9 +83,20 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     /// <summary>
     /// Subclass hook: append every visible row to <paramref name="rows"/>.
-    /// Called on construction and on every <see cref="Reload"/> trigger.
+    /// Called on the first activation (see <see cref="OnActivated"/>) and
+    /// on every <see cref="Reload"/> trigger.
     /// </summary>
     protected abstract void PopulateRows(ObservableCollection<GameDataRow> rows);
+
+    /// <summary>
+    /// Called by <see cref="GameDataBrowserViewModel"/> whenever this
+    /// section becomes the selected one. Lets expensive sections
+    /// (10k+ rows of MDB-derived JSON) defer their parse + row-build
+    /// work until the user actually opens the tab. Base implementation
+    /// is a no-op; <see cref="JsonTableSectionViewModel"/> overrides to
+    /// trigger the first load.
+    /// </summary>
+    public virtual void OnActivated() { }
 
     /// <summary>
     /// Clear + re-populate <see cref="AllRows"/> and re-apply the filter.
@@ -163,12 +174,28 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
     /// </summary>
     protected virtual string OverrideKeyColumn => "Number";
 
+    private bool _loaded;
+
     protected JsonTableSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
         _cache = cache;
         _resolver = resolver;
-        _cache.ActiveSetChanged += _ => Reload();
+        // ActiveSetChanged invalidates whatever was loaded — but we only
+        // re-parse if the tab has already been opened. Tabs that have never
+        // been activated stay un-loaded until first activation, dodging the
+        // upfront 10-tables-times-thousands-of-rows parse on browser open.
+        _cache.ActiveSetChanged += _ =>
+        {
+            if (_loaded) Reload();
+        };
+        // NOTE: ctor does NOT call Reload() — that's lazy via OnActivated.
+    }
+
+    public override void OnActivated()
+    {
+        if (_loaded) return;
+        _loaded = true;
         Reload();
     }
 
