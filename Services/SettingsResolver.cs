@@ -175,6 +175,27 @@ public sealed class SettingsResolver
     // ----- Game-data record overrides (per-set side-files) ---------------
 
     /// <summary>
+    /// Fired after a successful <see cref="WriteGameDataAt{T}"/> or a
+    /// <see cref="ClearGameDataAt"/> that actually removed an override.
+    /// Payload identifies the (table, recordId, tier) that was mutated.
+    /// </summary>
+    /// <remarks>
+    /// Phase 13 automation engines that cache typed model collections
+    /// from a game-data table — RoomGraphManager, MessageStore-style
+    /// catalogues, AutoLairScheduler's per-monster respawn map, etc. —
+    /// subscribe here and either reload the affected record (via
+    /// <see cref="ResolveGameData{T}"/>) or invalidate their whole table
+    /// cache when an edit lands. Engines that re-resolve on every use
+    /// don't need to subscribe — the resolver's own per-file cache is
+    /// already coherent with disk by the time this fires.
+    ///
+    /// Currently consumed by: nothing (Phase 13 engines don't exist
+    /// yet). The wire is here so those engines can plug in without
+    /// retrofitting the write paths.
+    /// </remarks>
+    public event Action<GameDataChange>? GameDataChanged;
+
+    /// <summary>
     /// Resolve a single game-data record (e.g. a Spell or Item) across all
     /// four tiers. The Defaults tier for game data is the imported MDB → JSON
     /// set under <c>Data/game data/{set}/</c>; resolver consumers supply that
@@ -219,6 +240,7 @@ public sealed class SettingsResolver
         Dictionary<string, JsonElement> records = LoadOverrideFile(tier, scope, table, set);
         records[recordId] = asJson;
         SaveOverrideFile(tier, scope, table, set, records);
+        GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
     }
 
     /// <summary>
@@ -234,7 +256,10 @@ public sealed class SettingsResolver
 
         Dictionary<string, JsonElement> records = LoadOverrideFile(tier, scope, table, set);
         if (records.Remove(recordId))
+        {
             SaveOverrideFile(tier, scope, table, set, records);
+            GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
+        }
     }
 
     /// <summary>
@@ -378,3 +403,14 @@ public sealed class SettingsResolver
         }
     }
 }
+
+/// <summary>
+/// Payload for <see cref="SettingsResolver.GameDataChanged"/>. Identifies
+/// the table + record + tier whose override was just written or cleared
+/// so subscribers can decide between a targeted reload (one record) or
+/// a full table cache invalidation.
+/// </summary>
+/// <param name="Table">Game-data table name (e.g. <c>"Monsters"</c>, <c>"Items"</c>).</param>
+/// <param name="RecordId">Primary-key string of the affected record.</param>
+/// <param name="Tier">Tier the override was written at / cleared from.</param>
+public readonly record struct GameDataChange(string Table, string RecordId, SettingsTier Tier);
