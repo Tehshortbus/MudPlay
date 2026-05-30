@@ -10,23 +10,30 @@ namespace FujinTerm.Views.GameData.Tables;
 /// <see cref="DataGrid"/>'s columns from the bound view-model's
 /// <see cref="GameDataTableSectionViewModel.Columns"/> list — each VM
 /// supplies a different ordered list, so the columns can't be authored
-/// in XAML and must be rebuilt when the DataContext changes.
+/// in XAML and must be rebuilt when the DataContext is wired up.
 /// </summary>
 public partial class GameDataTableSectionView : UserControl
 {
+    private bool _columnsBuilt;
+
     public GameDataTableSectionView()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => RebuildColumns();
+        // Two triggers because either ordering can happen: DataContext
+        // may land before the control is in the visual tree, or after.
+        // Whichever fires first wins; the second is a guarded no-op.
+        DataContextChanged   += (_, _) => TryBuildColumns();
+        AttachedToVisualTree += (_, _) => TryBuildColumns();
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    private void RebuildColumns()
+    private void TryBuildColumns()
     {
-        RowsGrid.Columns.Clear();
+        if (_columnsBuilt) return;
         if (DataContext is not GameDataTableSectionViewModel vm) return;
 
+        RowsGrid.Columns.Clear();
         int index = 0;
         foreach (string column in vm.Columns)
         {
@@ -41,5 +48,6 @@ public partial class GameDataTableSectionView : UserControl
             });
             index++;
         }
+        _columnsBuilt = true;
     }
 }
