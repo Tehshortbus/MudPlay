@@ -1594,18 +1594,28 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>
+    /// Singleton-ish handle to the Game Data Browser. Re-press of the
+    /// command / hotkey toggles it closed (per CLAUDE.md).
+    /// </summary>
+    private FujinTerm.Views.GameData.GameDataBrowserWindow? _gameDataBrowser;
+
     [RelayCommand]
     private void OpenGameDataBrowser()
-        => OpenPlaceholder(
-            id: "game-data",
-            panelName: "Game Data Browser",
-            phaseTag: "Phase 5",
-            headline: "MDB-imported tables + user overrides",
-            description:
-                "Tabs for Monsters / Items / Spells / Spell Messages / Conditions / " +
-                "Triggers / Rooms / Paths / Lairs / Shops / Races / Classes / " +
-                "TextBlocks / Players / Favorites / Macros. Per-record tier picker. " +
-                "Unified inline Spell + Spell-Messages editor.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_gameDataBrowser is { } existing) { existing.Close(); return; }
+
+        FujinTerm.Views.GameData.GameDataBrowserWindow window = new()
+        {
+            DataContext = new FujinTerm.ViewModels.GameData.GameDataBrowserViewModel(AppServices.Current.GameData),
+        };
+        window.Closed += (_, _) => _gameDataBrowser = null;
+        _gameDataBrowser = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenNavigation()
