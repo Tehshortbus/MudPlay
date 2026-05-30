@@ -102,15 +102,25 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
     /// <summary>
-    /// Drive each section's lazy-load on first selection. JSON-backed
-    /// tabs (Monsters / Items / Spells / …) defer their MDB parse until
-    /// the user actually opens the tab — this is where they're told to
-    /// wake up. No-op for tabs already loaded or for engine-backed
-    /// sections that hydrate eagerly from their service.
+    /// Drive each section's lazy-load on first selection AND break the
+    /// dual-ListBox feedback loop. The sidebar splits the section list
+    /// into two ListBoxes (engine-backed / MDB-derived); both bind
+    /// SelectedItem TwoWay to <see cref="SelectedSection"/>. When the
+    /// user picks an item in one, the other ListBox sees a SelectedSection
+    /// value not in its ItemsSource and writes back null — which would
+    /// blow away the real selection. Restore the previous value whenever
+    /// we receive a null from that feedback path. Sections shouldn't be
+    /// "no selection" anyway; clicking empty space in a ListBox isn't a
+    /// meaningful "clear" gesture for this browser.
     /// </summary>
-    partial void OnSelectedSectionChanged(GameDataSectionViewModel? value)
+    partial void OnSelectedSectionChanged(GameDataSectionViewModel? oldValue, GameDataSectionViewModel? newValue)
     {
-        if (value is Tables.GameDataTableSectionViewModel tab)
+        if (newValue is null && oldValue is not null)
+        {
+            SelectedSection = oldValue;
+            return;
+        }
+        if (newValue is Tables.GameDataTableSectionViewModel tab)
             tab.OnActivated();
     }
 

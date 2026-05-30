@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Services;
 using FujinTerm.Views.GameData.Tables;
@@ -196,7 +197,15 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
     {
         if (_loaded) return;
         _loaded = true;
-        Reload();
+        // Defer Reload to the next dispatcher tick so it runs *after* the
+        // ContentControl constructs our View and the DataGrid builds its
+        // columns (DataContextChanged handler in code-behind). Without
+        // the defer, rows arrive on a 0-column grid; adding columns later
+        // doesn't re-materialise rows — the tab renders blank on first
+        // activation. The deferred Add()s emit CollectionChanged events
+        // the DataGrid picks up correctly. Tests drain pending posts via
+        // Dispatcher.UIThread.RunJobs() to force synchronous completion.
+        Dispatcher.UIThread.Post(Reload);
     }
 
     protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
