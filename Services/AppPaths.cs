@@ -156,6 +156,15 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
     /// <summary>
+    /// Per-BBS observed-players side-file. One PlayerObservation per
+    /// player ever seen on this BBS; the Phase 5 PR 5.20 design keeps
+    /// observations at the BBS tier so the same display name on a
+    /// different BBS counts as a different person.
+    /// </summary>
+    public static string BbsPlayersFile(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "players.json");
+
+    /// <summary>
     /// Folder holding all files for one character — primary profile
     /// JSON plus per-set override side-files and any future
     /// per-character helper files (macros, triggers, equipment sets,

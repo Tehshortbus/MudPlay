@@ -193,7 +193,7 @@ public sealed class AppServices
     /// parser that calls <c>RecordObservation</c> lives with Phase 6
     /// PartyManager.
     /// </summary>
-    public PlayerDatabase Players { get; } = new();
+    public PlayerDatabase Players { get; }
 
     /// <summary>
     /// Loaded character's <see cref="Models.GameData.Favorite"/>
@@ -292,6 +292,13 @@ public sealed class AppServices
         Aliases = new AliasEngine(Profile);
         Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
+        // PlayerDatabase: BBS-tier observations + Char-tier customisations.
+        // Wires its own subscriptions (ProfileLoaded / ProfileClosed /
+        // BbsPinApplied / ProfileSaving) so both layers track the
+        // active BBS + loaded character. Active-BBS delegate routes
+        // through ResolveActiveBbs so Quick Connect and the BBS pin
+        // resolution chain stay the single source of truth.
+        Players = new PlayerDatabase(Profile, ResolveActiveBbs);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

@@ -1,26 +1,24 @@
 namespace FujinTerm.Models.GameData;
 
 /// <summary>
-/// One observed-or-edited player. Stored at the BBS tier by default —
-/// the same display name on a different BBS represents a different
-/// person, so per-BBS storage is the natural fit. Per-character
-/// promotion of a record (for personalised permission overrides) and
-/// global promotion (for cross-BBS friend lists) use the standard
-/// 4-tier resolver.
+/// Observation-only fields for one player — what the server told us via
+/// <c>who</c> / <c>look</c>. Lives at the <b>BBS tier</b>: every player
+/// observed on a given BBS is stored under
+/// <c>Data/BBS/{bbs-name}/players.json</c>. Same display name on a
+/// different BBS represents a different person, so the per-BBS scope
+/// matches the social reality.
 /// </summary>
 /// <remarks>
-/// Observation writes (from <c>who</c> output) refresh
-/// <see cref="GivenName"/> / <see cref="FamilyName"/> / <see cref="Class"/>
-/// / <see cref="Race"/> / <see cref="Alignment"/> / <see cref="Title"/>
-/// / <see cref="LastSeenUtc"/>. User-edited fields
-/// (<see cref="Notes"/>, <see cref="RemoteControls"/>,
-/// <see cref="InviteToPartyIfSeen"/>, <see cref="JoinPartyIfInvited"/>,
-/// <see cref="DontAutoDelete"/>) are never overwritten by observation —
-/// <see cref="Services.PlayerDatabase.RecordObservation"/> enforces this.
+/// Mutations to this record only come from the server-output parsers
+/// (<see cref="Services.WhoListParser"/> and the planned look-on-player
+/// parser). User-authored fields live separately on
+/// <see cref="PlayerCustomization"/> at the <b>Character tier</b>; the
+/// edit dialog never touches an observation. <see cref="Services.PlayerDatabase"/>
+/// merges both layers for display.
 /// </remarks>
 /// <param name="GivenName">First word of the in-game name (the "Forged" in "Forged Paradigm"). May be empty for legacy records.</param>
 /// <param name="FamilyName">Remainder of the in-game name after the first space. Empty when the player has a single-word name.</param>
-/// <param name="Class">Most recent class seen — from <c>@health</c> / <c>@stat</c> remotes (the <c>who</c> table doesn't carry it).</param>
+/// <param name="Class">Most recent class seen — from a future <c>look</c> / <c>@health</c> parser. <c>who</c> doesn't carry it.</param>
 /// <param name="Race">Most recent race seen — same source as <see cref="Class"/>.</param>
 /// <param name="Alignment">Most recent alignment seen on <c>who</c>. <c>"Neutral"</c> when the alignment column was blank.</param>
 /// <param name="Title">Most recent title seen on <c>who</c>. Class + level range can be inferred from the title via the future class-titles table.</param>
@@ -28,12 +26,7 @@ namespace FujinTerm.Models.GameData;
 /// <param name="Role">MegaMUD-style trailing marker — <c>M</c> mudop, <c>S</c> sysop, <c>V</c> visitor, <c>null</c> for regular players.</param>
 /// <param name="FirstSeenUtc">When this record was first created.</param>
 /// <param name="LastSeenUtc">When this record was last refreshed by a <c>who</c> observation.</param>
-/// <param name="Notes">Free-form note the user can attach via the edit dialog.</param>
-/// <param name="RemoteControls">Bitmask of @-command categories the user has explicitly allowed.</param>
-/// <param name="InviteToPartyIfSeen">Auto-invite this player when our character spots them in the room.</param>
-/// <param name="JoinPartyIfInvited">Auto-accept party invites from this player.</param>
-/// <param name="DontAutoDelete">Skip this record during stale-record cleanup.</param>
-public sealed record PlayerRecord(
+public sealed record PlayerObservation(
     string GivenName,
     string FamilyName,
     string? Class,
@@ -43,17 +36,12 @@ public sealed record PlayerRecord(
     string? Gang,
     string? Role,
     DateTime FirstSeenUtc,
-    DateTime LastSeenUtc,
-    string? Notes = null,
-    PlayerRemoteControls RemoteControls = PlayerRemoteControls.None,
-    bool InviteToPartyIfSeen = false,
-    bool JoinPartyIfInvited = false,
-    bool DontAutoDelete = false)
+    DateTime LastSeenUtc)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
-    /// Used by the database's case-insensitive lookup and by the Players
-    /// tab for searches that ignore the first/last split.
+    /// Used by the database's case-insensitive lookup and by the
+    /// customization dictionary as the key.
     /// </summary>
     public string DisplayName =>
         string.IsNullOrEmpty(FamilyName) ? GivenName : $"{GivenName} {FamilyName}";
@@ -74,6 +62,103 @@ public sealed record PlayerRecord(
             ? (trimmed, string.Empty)
             : (trimmed[..space], trimmed[(space + 1)..].TrimStart());
     }
+}
+
+/// <summary>
+/// User-authored per-player settings for the loaded character.
+/// Lives at the <b>Character tier</b> on
+/// <see cref="Profile.CharacterProfile.PlayerCustomizations"/>; only
+/// entries that hold a non-default value are persisted so a fresh
+/// profile doesn't get bloated with one entry per observed stranger
+/// (see <see cref="IsDefault"/>).
+/// </summary>
+/// <param name="RemoteControls">Bitmask of <c>@-command</c> categories the user allows from this player.</param>
+/// <param name="InviteToPartyIfSeen">Auto-invite this player when our character spots them in the room.</param>
+/// <param name="JoinPartyIfInvited">Auto-accept party invites from this player.</param>
+/// <param name="DontAutoDelete">Skip this record during stale-record cleanup.</param>
+/// <param name="Notes">Free-form note the user attached via the edit dialog.</param>
+public readonly record struct PlayerCustomization(
+    PlayerRemoteControls RemoteControls = PlayerRemoteControls.None,
+    bool InviteToPartyIfSeen = false,
+    bool JoinPartyIfInvited = false,
+    bool DontAutoDelete = false,
+    string? Notes = null)
+{
+    /// <summary>True when every field holds the default value. Drives the "don't persist" rule.</summary>
+    public bool IsDefault
+        => RemoteControls == PlayerRemoteControls.None
+        && !InviteToPartyIfSeen
+        && !JoinPartyIfInvited
+        && !DontAutoDelete
+        && string.IsNullOrEmpty(Notes);
+}
+
+/// <summary>
+/// Merged display view — the observation fields + the customization
+/// fields for one player. Built by <see cref="Services.PlayerDatabase"/>
+/// for the UI; not persisted directly.
+/// </summary>
+/// <remarks>
+/// The split is invisible to the table view + edit dialog (they keep
+/// reading one record), but writes have to go to the right layer:
+/// observation writes call <see cref="Services.PlayerDatabase.RecordObservation"/>;
+/// customization writes (from the edit dialog Save path) call
+/// <see cref="Services.PlayerDatabase.EditCustomization"/>.
+/// </remarks>
+public sealed record PlayerRecord(
+    string GivenName,
+    string FamilyName,
+    string? Class,
+    string? Race,
+    string? Alignment,
+    string? Title,
+    string? Gang,
+    string? Role,
+    DateTime FirstSeenUtc,
+    DateTime LastSeenUtc,
+    string? Notes = null,
+    PlayerRemoteControls RemoteControls = PlayerRemoteControls.None,
+    bool InviteToPartyIfSeen = false,
+    bool JoinPartyIfInvited = false,
+    bool DontAutoDelete = false)
+{
+    /// <summary>
+    /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
+    /// Identical contract to <see cref="PlayerObservation.DisplayName"/>
+    /// so callers don't have to know which type they're holding.
+    /// </summary>
+    public string DisplayName =>
+        string.IsNullOrEmpty(FamilyName) ? GivenName : $"{GivenName} {FamilyName}";
+
+    /// <inheritdoc cref="PlayerObservation.SplitName"/>
+    public static (string Given, string Family) SplitName(string? name)
+        => PlayerObservation.SplitName(name);
+
+    /// <summary>Combine a BBS-tier observation with the loaded character's customization (if any) into a single display row.</summary>
+    public static PlayerRecord Merge(PlayerObservation obs, PlayerCustomization cust) => new(
+        GivenName:           obs.GivenName,
+        FamilyName:          obs.FamilyName,
+        Class:               obs.Class,
+        Race:                obs.Race,
+        Alignment:           obs.Alignment,
+        Title:               obs.Title,
+        Gang:                obs.Gang,
+        Role:                obs.Role,
+        FirstSeenUtc:        obs.FirstSeenUtc,
+        LastSeenUtc:         obs.LastSeenUtc,
+        Notes:               cust.Notes,
+        RemoteControls:      cust.RemoteControls,
+        InviteToPartyIfSeen: cust.InviteToPartyIfSeen,
+        JoinPartyIfInvited:  cust.JoinPartyIfInvited,
+        DontAutoDelete:      cust.DontAutoDelete);
+
+    /// <summary>Pull just the customization slice off this merged row (used by the edit dialog Save path).</summary>
+    public PlayerCustomization ToCustomization() => new(
+        RemoteControls:      RemoteControls,
+        InviteToPartyIfSeen: InviteToPartyIfSeen,
+        JoinPartyIfInvited:  JoinPartyIfInvited,
+        DontAutoDelete:      DontAutoDelete,
+        Notes:               Notes);
 }
 
 /// <summary>

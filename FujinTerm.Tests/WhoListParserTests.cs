@@ -108,10 +108,20 @@ public sealed class WhoListParserTests
             "",
         }, Now);
 
+        // PlayerDatabase.Players sorts alphabetically by display name on
+        // every rebuild, so look up by name rather than by insertion order.
         Assert.Equal(3, db.Players.Count);
-        Assert.Equal("M", db.Players[0].Role);
-        Assert.Equal("S", db.Players[1].Role);
-        Assert.Equal("V", db.Players[2].Role);
+        Assert.Equal("M", FindByGiven(db, "Wizzo")  .Role);
+        Assert.Equal("S", FindByGiven(db, "Sysop")  .Role);
+        Assert.Equal("V", FindByGiven(db, "Vincent").Role);
+    }
+
+    private static PlayerRecord FindByGiven(PlayerDatabase db, string given)
+    {
+        foreach (PlayerRecord p in db.Players)
+            if (string.Equals(p.GivenName, given, StringComparison.OrdinalIgnoreCase))
+                return p;
+        throw new InvalidOperationException($"No player with given name '{given}' in database.");
     }
 
     /// <summary>

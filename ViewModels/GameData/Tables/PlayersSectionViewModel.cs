@@ -110,7 +110,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         PlayerEditResult? result = await _dialogs.OpenWindowAsync<PlayerEditDialogViewModel, PlayerEditResult>(vm);
         if (result is null) return;
 
-        _db.EditRecord(result.OriginalDisplayName, result.Updated);
+        // Save only the customization slice — observed fields stay
+        // observation-only and never get stomped by the dialog.
+        _db.EditCustomization(result.OriginalDisplayName, result.Updated.ToCustomization());
         Reload();
     }
 }

@@ -76,6 +76,21 @@ public sealed class CharacterProfile
     public List<GameData.Macro>? Macros { get; set; }
 
     /// <summary>
+    /// Per-player customisations the loaded character has authored —
+    /// remote-command permissions, auto-party toggles, the
+    /// don't-auto-delete flag, notes. Keyed by player display name
+    /// (case-insensitive on read). <b>Only non-default entries are
+    /// persisted</b>: a fresh profile that's never opened the player
+    /// edit dialog leaves this <c>null</c>, and pristine
+    /// "all unchecked" entries are pruned at save time.
+    /// Per-BBS observation rows live separately at
+    /// <c>Data/BBS/{name}/players.json</c> so a customisation on
+    /// character A doesn't leak into character B even when both play
+    /// the same BBS.
+    /// </summary>
+    public Dictionary<string, GameData.PlayerCustomization>? PlayerCustomizations { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels
