@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="540"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="640"
         x:Class="FujinTerm.Views.GameData.Edit.PlayerEditDialog"
         x:DataType="vm:PlayerEditDialogViewModel"
         Title="{Binding Title}"
-        Width="560" Height="540"
+        Width="560" Height="640"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -57,20 +57,27 @@
                                     Padding="8,2" Margin="0,2,0,4"
                                     ToolTip.Tip="Toggle every category at once."/>
                         </Grid>
-                        <StackPanel Grid.Row="1" Spacing="2">
-                            <CheckBox Content="Query version"        IsChecked="{Binding RcQueryVersion, Mode=TwoWay}"/>
-                            <CheckBox Content="Query experience"     IsChecked="{Binding RcQueryExperience, Mode=TwoWay}"/>
-                            <CheckBox Content="Query health/status"  IsChecked="{Binding RcQueryHealthStatus, Mode=TwoWay}"/>
-                            <CheckBox Content="Query location"       IsChecked="{Binding RcQueryLocation, Mode=TwoWay}"/>
-                            <CheckBox Content="Query inventory"      IsChecked="{Binding RcQueryInventory, Mode=TwoWay}"/>
-                            <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"/>
-                            <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"/>
-                            <CheckBox Content="Execute commands"     IsChecked="{Binding RcExecuteCommands, Mode=TwoWay}"/>
-                            <CheckBox Content="Hangup/disconnect"    IsChecked="{Binding RcHangupDisconnect, Mode=TwoWay}"/>
-                            <CheckBox Content="Alter settings"       IsChecked="{Binding RcAlterSettings, Mode=TwoWay}"/>
-                            <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"/>
-                            <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"/>
-                        </StackPanel>
+                        <!-- ScrollViewer + tighter padding so all 12 categories
+                             stay reachable even if a future addition pushes the
+                             content past the dialog's natural height. -->
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="2">
+                                <CheckBox Content="Query version"        IsChecked="{Binding RcQueryVersion, Mode=TwoWay}"/>
+                                <CheckBox Content="Query experience"     IsChecked="{Binding RcQueryExperience, Mode=TwoWay}"/>
+                                <CheckBox Content="Query health/status"  IsChecked="{Binding RcQueryHealthStatus, Mode=TwoWay}"/>
+                                <CheckBox Content="Query location"       IsChecked="{Binding RcQueryLocation, Mode=TwoWay}"/>
+                                <CheckBox Content="Query inventory"      IsChecked="{Binding RcQueryInventory, Mode=TwoWay}"/>
+                                <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"/>
+                                <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"/>
+                                <CheckBox Content="Execute commands"     IsChecked="{Binding RcExecuteCommands, Mode=TwoWay}"/>
+                                <CheckBox Content="Hangup/disconnect"    IsChecked="{Binding RcHangupDisconnect, Mode=TwoWay}"/>
+                                <CheckBox Content="Alter settings"       IsChecked="{Binding RcAlterSettings, Mode=TwoWay}"/>
+                                <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"/>
+                                <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </Border>
 

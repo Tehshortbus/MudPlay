@@ -61,9 +61,11 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     /// Display value for the Class row. Falls through in this order:
     /// (1) an explicitly-recorded <see cref="PlayerRecord.Class"/>
     /// (from a future <c>@health</c> / <c>@stat</c> parser), (2) class
-    /// inferred from the in-game title via <see cref="ClassTitleTable"/>
-    /// — single match shows the class with a "(by title)" hint, multi-
-    /// match shows "(multiple)", no match returns <c>null</c>.
+    /// inferred from the in-game title via <see cref="ClassTitleTable"/>.
+    /// Single match shows the class with a "(by title)" hint;
+    /// a universally-shared title (every class has it — Apprentice at
+    /// level 1) shows "Unknown" rather than spamming every class name;
+    /// a partial multi-match (rare) lists the candidates.
     /// </summary>
     public string? ClassText
     {
@@ -71,12 +73,10 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         {
             if (!string.IsNullOrEmpty(_original.Class)) return _original.Class;
             IReadOnlyList<string> inferred = ClassTitleTable.LookupClasses(_original.Title);
-            return inferred.Count switch
-            {
-                0 => null,
-                1 => $"{inferred[0]} (by title)",
-                _ => $"{string.Join(" / ", inferred)} (by title)",
-            };
+            if (inferred.Count == 0) return null;
+            if (inferred.Count == 1) return $"{inferred[0]} (by title)";
+            if (inferred.Count >= ClassTitleTable.ClassCount) return "Unknown";
+            return $"{string.Join(" / ", inferred)} (by title)";
         }
     }
 

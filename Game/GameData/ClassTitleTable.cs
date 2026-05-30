@@ -25,6 +25,9 @@ namespace FujinTerm.Game.GameData;
 /// </remarks>
 public static class ClassTitleTable
 {
+    /// <summary>Total number of distinct classes in the table — drives "universally shared title" detection in callers.</summary>
+    public static int ClassCount => _titles.Count;
+
     /// <summary>Range of levels that share <paramref name="title"/>, across all matching classes. <c>null</c> when no class matches.</summary>
     public static (int MinLevel, int MaxLevel)? LookupLevelRange(string? title)
     {
