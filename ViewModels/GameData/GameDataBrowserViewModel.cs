@@ -119,7 +119,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         else
             Add("aliases", "Aliases", "Phase 5 PR 5.11",
                 "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
-        Add("rooms",         "Rooms",          "Phase 5 PR 5.12", "Static MDB table — id / name / description / shop refs / remote-action prerequisites (Phase 7 walker).");
+        Sections.Add(new RoomsSectionViewModel(_gameData));
         Add("paths",         "Paths",          "Phase 5 PR 5.13", "Static MDB table — directed edges between rooms.");
         Add("lairs",         "Lairs",          "Phase 5 PR 5.14", "Static MDB table — referenced by Auto-Lair scheduler UI.");
         Add("shops",         "Shops",          "Phase 5 PR 5.15", "Static MDB table — ShopType (7 = bank, drives Cash auto-deposit) + buy/sell prices + inventory.");
