@@ -109,9 +109,10 @@ public partial class MainWindow : Window
     /// Compose the Game Data menu's items: every imported set on top
     /// (each as a checkable MenuItem the user can click to activate),
     /// a separator, then the static actions (Open Browser / Import .mdb
-    /// / Import Spell Messages / Import loops). Avalonia's MenuItem
-    /// can't mix ItemsSource-bound dynamic children with inline static
-    /// ones, so we assemble the whole list in code on every change.
+    /// / Import MegaMUD messages.md / Import loops). Avalonia's
+    /// MenuItem can't mix ItemsSource-bound dynamic children with
+    /// inline static ones, so we assemble the whole list in code on
+    /// every change.
     /// </summary>
     private void RebuildGameDataMenu(MainWindowViewModel vm)
     {
@@ -146,11 +147,6 @@ public partial class MainWindow : Window
         {
             Header  = "Import Messages (MegaMUD .md)…",
             Command = vm.ImportMegaMudMessagesCommand,
-        });
-        GameDataMenu.Items.Add(new MenuItem
-        {
-            Header  = "Import Spell Messages…",
-            Command = vm.ImportSpellMessagesCommand,
         });
         MenuItem loops = new()
         {

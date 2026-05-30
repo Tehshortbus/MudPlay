@@ -1789,52 +1789,6 @@ public partial class MainWindowViewModel : ObservableObject
            : TerminalStatusKind.Notice;
 
     /// <summary>
-    /// File → Game Data → Import Spell Messages… — parses a MegaMUD
-    /// spell-message JSON file via the Phase 5 PR 5.8 importer and
-    /// writes it into the active game-data set's
-    /// <c>SpellMessages.json</c>. Conflict-resolution wiring against
-    /// the existing file ships with the spell-messages editor PR; this
-    /// command currently does an overwrite-on-conflict write.
-    /// </summary>
-    [RelayCommand]
-    private async Task ImportSpellMessagesAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-
-        if (AppServices.Current.GameData.ActiveSet is null)
-        {
-            WriteTerminalStatus("[NO ACTIVE GAME-DATA SET — IMPORT AN MDB FIRST OR SWITCH SETS]", TerminalStatusKind.Error);
-            return;
-        }
-
-        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Pick a spell-messages JSON file",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Spell messages (.json)") { Patterns = new[] { "*.json" } },
-            },
-        });
-        if (files.Count == 0) return;
-
-        try
-        {
-            var rows = await SpellMessageImporter.ParseAsync(files[0].Path.LocalPath);
-            SpellMessageImporter importer = new(AppServices.Current.GameData);
-            await importer.WriteAsync(rows);
-            WriteTerminalStatus($"[SPELL MESSAGES IMPORTED: {rows.Count} rows]", TerminalStatusKind.Notice);
-            AppServices.Current.Log.Info("SpellMessages", $"Imported {rows.Count} rows into {AppServices.Current.GameData.ActiveSet}.");
-        }
-        catch (Exception ex)
-        {
-            WriteTerminalStatus("[SPELL MESSAGES IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
-            AppServices.Current.Log.Error("SpellMessages", $"Import failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
     /// File → Game Data → Import Messages (MegaMUD .md)… — parses a
     /// MegaMUD <c>messages.md</c> legacy text file via
     /// <see cref="MegaMudMessagesImporter"/> and writes the rows into
