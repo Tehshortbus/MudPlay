@@ -63,7 +63,35 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     [ObservableProperty] private string _searchText = string.Empty;
 
-    public override Control View => _view ??= new GameDataTableSectionView { DataContext = this };
+    public override Control View
+    {
+        get
+        {
+            if (_view is not null) return _view;
+            try
+            {
+                _view = new GameDataTableSectionView { DataContext = this };
+                return _view;
+            }
+            catch (Exception ex)
+            {
+                // Surface the real load failure to stderr; the binding
+                // layer otherwise reports a generic NRE that hides the
+                // actual XAML / control issue.
+                Console.Error.WriteLine(
+                    $"[GameDataTableSectionView ctor failed for '{Title}']:\n" +
+                    $"  Type:     {ex.GetType().FullName}\n" +
+                    $"  Message:  {ex.Message}\n" +
+                    $"  Inner:    {ex.InnerException?.GetType().FullName} / {ex.InnerException?.Message}\n" +
+                    $"  Stack:\n{ex.StackTrace}\n" +
+                    (ex.InnerException is { } inner
+                        ? $"  InnerStack:\n{inner.StackTrace}\n"
+                        : ""));
+                _view = new TextBlock { Text = $"[view failed: {ex.Message}]" };
+                return _view;
+            }
+        }
+    }
 
     /// <summary>Bottom-strip status — row count + selected row pointer.</summary>
     public string StatusText
