@@ -125,35 +125,12 @@
                 <!-- Corpse-recovery actions land here when Phase 9 DEATH ships. -->
             </MenuItem>
 
-            <MenuItem Header="_Game Data">
-                <MenuItem Header="Active set"
-                          ItemsSource="{Binding GameDataSets}">
-                    <MenuItem.Styles>
-                        <Style Selector="MenuItem">
-                            <Setter Property="ToggleType" Value="CheckBox"/>
-                        </Style>
-                    </MenuItem.Styles>
-                    <MenuItem.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Name}"/>
-                        </DataTemplate>
-                    </MenuItem.ItemTemplate>
-                    <MenuItem.ItemContainerTheme>
-                        <ControlTheme x:DataType="vm:GameDataSetMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="Header"    Value="{Binding Name}"/>
-                            <Setter Property="IsChecked" Value="{Binding IsActive}"/>
-                            <Setter Property="ToggleType" Value="CheckBox"/>
-                            <Setter Property="Command"   Value="{Binding SwitchCommand}"/>
-                        </ControlTheme>
-                    </MenuItem.ItemContainerTheme>
-                </MenuItem>
-                <Separator/>
-                <MenuItem Header="Open Browser…"          InputGesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
-                <Separator/>
-                <MenuItem Header="Import .mdb…"           Command="{Binding ImportMdbCommand}"/>
-                <MenuItem Header="Import Spell Messages…" Command="{Binding ImportSpellMessagesCommand}"/>
-                <MenuItem Header="Import loops (MegaMUD .mp)…" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (MpFileImporter)"/>
-            </MenuItem>
+            <!-- Game Data: dynamic set list at the top (rebuilt from
+                 code-behind whenever GameDataSets changes), then the
+                 static actions. Inline sets + inline static items can't
+                 coexist via XAML binding on a single MenuItem, so the
+                 items collection is composed in code. -->
+            <MenuItem x:Name="GameDataMenu" Header="_Game Data"/>
 
             <MenuItem Header="_Tools">
                 <MenuItem Header="{Binding CaptureMenuLabel}"  Command="{Binding ToggleDumpCommand}"/>

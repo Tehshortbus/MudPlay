@@ -1,5 +1,7 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using FujinTerm.Services;
 using FujinTerm.ViewModels;
@@ -35,6 +37,11 @@ public partial class MainWindow : Window
         {
             if (DataContext is INotifyPropertyChanged pc)
                 pc.PropertyChanged += OnVmPropertyChanged;
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.GameDataSets.CollectionChanged += OnGameDataSetsChanged;
+                RebuildGameDataMenu(vm);
+            }
         };
 
         Opened += (_, _) =>
@@ -91,5 +98,61 @@ public partial class MainWindow : Window
         {
             Terminal.Focus();
         }
+    }
+
+    private void OnGameDataSetsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm) RebuildGameDataMenu(vm);
+    }
+
+    /// <summary>
+    /// Compose the Game Data menu's items: every imported set on top
+    /// (each as a checkable MenuItem the user can click to activate),
+    /// a separator, then the static actions (Open Browser / Import .mdb
+    /// / Import Spell Messages / Import loops). Avalonia's MenuItem
+    /// can't mix ItemsSource-bound dynamic children with inline static
+    /// ones, so we assemble the whole list in code on every change.
+    /// </summary>
+    private void RebuildGameDataMenu(MainWindowViewModel vm)
+    {
+        GameDataMenu.Items.Clear();
+
+        foreach (GameDataSetMenuItem set in vm.GameDataSets)
+        {
+            GameDataMenu.Items.Add(new MenuItem
+            {
+                Header     = set.Name,
+                ToggleType = MenuItemToggleType.CheckBox,
+                IsChecked  = set.IsActive,
+                Command    = set.SwitchCommand,
+            });
+        }
+
+        if (vm.GameDataSets.Count > 0) GameDataMenu.Items.Add(new Separator());
+
+        GameDataMenu.Items.Add(new MenuItem
+        {
+            Header       = "Open Browser…",
+            InputGesture = new KeyGesture(Key.G, KeyModifiers.Control),
+            Command      = vm.OpenGameDataBrowserCommand,
+        });
+        GameDataMenu.Items.Add(new Separator());
+        GameDataMenu.Items.Add(new MenuItem
+        {
+            Header  = "Import .mdb…",
+            Command = vm.ImportMdbCommand,
+        });
+        GameDataMenu.Items.Add(new MenuItem
+        {
+            Header  = "Import Spell Messages…",
+            Command = vm.ImportSpellMessagesCommand,
+        });
+        MenuItem loops = new()
+        {
+            Header    = "Import loops (MegaMUD .mp)…",
+            IsEnabled = false,
+        };
+        ToolTip.SetTip(loops, "Wired in Phase 7 (MpFileImporter)");
+        GameDataMenu.Items.Add(loops);
     }
 }
