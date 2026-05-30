@@ -26,6 +26,7 @@ namespace FujinTerm.Models.GameData;
 /// <param name="Role">MegaMUD-style trailing marker — <c>M</c> mudop, <c>S</c> sysop, <c>V</c> visitor, <c>null</c> for regular players.</param>
 /// <param name="FirstSeenUtc">When this record was first created.</param>
 /// <param name="LastSeenUtc">When this record was last refreshed by a <c>who</c> observation.</param>
+/// <param name="Equipment">Most recent equipment loadout seen on <c>look &lt;player&gt;</c>. Empty list = explicit "Nothing"; <c>null</c> = never looked at.</param>
 public sealed record PlayerObservation(
     string GivenName,
     string FamilyName,
@@ -36,7 +37,8 @@ public sealed record PlayerObservation(
     string? Gang,
     string? Role,
     DateTime FirstSeenUtc,
-    DateTime LastSeenUtc)
+    DateTime LastSeenUtc,
+    IReadOnlyList<EquipmentItem>? Equipment = null)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
@@ -120,7 +122,8 @@ public sealed record PlayerRecord(
     PlayerRemoteControls RemoteControls = PlayerRemoteControls.None,
     bool InviteToPartyIfSeen = false,
     bool JoinPartyIfInvited = false,
-    bool DontAutoDelete = false)
+    bool DontAutoDelete = false,
+    IReadOnlyList<EquipmentItem>? Equipment = null)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
@@ -150,7 +153,8 @@ public sealed record PlayerRecord(
         RemoteControls:      cust.RemoteControls,
         InviteToPartyIfSeen: cust.InviteToPartyIfSeen,
         JoinPartyIfInvited:  cust.JoinPartyIfInvited,
-        DontAutoDelete:      cust.DontAutoDelete);
+        DontAutoDelete:      cust.DontAutoDelete,
+        Equipment:           obs.Equipment);
 
     /// <summary>Pull just the customization slice off this merged row (used by the edit dialog Save path).</summary>
     public PlayerCustomization ToCustomization() => new(
@@ -223,3 +227,15 @@ public enum PlayerRemoteControls
         | QueryInventory | RequestInvite | MovePlayer | ExecuteCommands
         | HangupDisconnect | AlterSettings | DivertConversations | SysopCommands,
 }
+
+/// <summary>
+/// One equipment slot's contents from a <c>look &lt;player&gt;</c>
+/// response. <see cref="SlotLabel"/> is the literal label printed by
+/// the server (e.g. <c>"Torso"</c>, <c>"Weapon Hand"</c>,
+/// <c>"Two Handed"</c>); we don't normalise — different realms print
+/// 2H weapons with either <c>"Weapon Hand"</c> or <c>"Two Handed"</c>
+/// and consumers can treat both equivalently when needed.
+/// </summary>
+/// <param name="SlotLabel">As printed by the server. Wrist / Finger / Worn can repeat across multiple items.</param>
+/// <param name="ItemName">Item display name as printed.</param>
+public readonly record struct EquipmentItem(string SlotLabel, string ItemName);

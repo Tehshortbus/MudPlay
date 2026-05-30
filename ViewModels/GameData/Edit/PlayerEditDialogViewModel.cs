@@ -1,3 +1,4 @@
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
@@ -95,6 +96,27 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
             return range is null ? null : ClassTitleTable.FormatLevelRange(range.Value);
         }
     }
+
+    /// <summary>
+    /// Equipment slot summary for the Observed pane — one per slot,
+    /// formatted as <c>"Slot: item name"</c>. Empty list ("Nothing")
+    /// reports as a single "(none)" placeholder so the user can tell
+    /// "explicitly naked" apart from "never looked at" (which shows
+    /// "—" because <see cref="HasEquipment"/> is false).
+    /// </summary>
+    public IReadOnlyList<string> EquipmentLines
+    {
+        get
+        {
+            IReadOnlyList<Models.GameData.EquipmentItem>? eq = _original.Equipment;
+            if (eq is null) return Array.Empty<string>();
+            if (eq.Count == 0) return new[] { "(none)" };
+            return eq.Select(e => $"{e.SlotLabel}: {e.ItemName}").ToArray();
+        }
+    }
+
+    /// <summary>True when a <c>look</c> observation has populated equipment (empty list still counts).</summary>
+    public bool HasEquipment => _original.Equipment is not null;
 
     public string? Role           => string.IsNullOrEmpty(_original.Role)
                                       ? "Regular"

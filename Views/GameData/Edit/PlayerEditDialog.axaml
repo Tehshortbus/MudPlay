@@ -85,6 +85,8 @@
                 <Border Grid.Column="1"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1" CornerRadius="3" Padding="10">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="6">
                         <TextBlock Classes="SectionHeader" Text="Observed"/>
                         <Grid ColumnDefinitions="90,*" RowSpacing="3"
@@ -119,7 +121,31 @@
                             <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding LastSeenText}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
                         </Grid>
+
+                        <!-- Equipment loadout (from `look <player>`). Hidden when
+                             no look has ever been performed; shows "(none)" when
+                             the loadout was explicitly empty (player naked). -->
+                        <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                BorderThickness="0,1,0,0" Padding="0,6,0,0">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="FieldLabel" Text="Equipment"/>
+                                <TextBlock Text="—"
+                                           Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                           IsVisible="{Binding !HasEquipment}"/>
+                                <ItemsControl ItemsSource="{Binding EquipmentLines}"
+                                              IsVisible="{Binding HasEquipment}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       FontSize="11"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
 

@@ -140,6 +140,59 @@ public sealed class PlayerDatabase
     }
 
     /// <summary>
+    /// Apply one <c>look &lt;player&gt;</c> observation — race + class
+    /// extracted from the description sentence, plus the equipment
+    /// loadout block. Creates a new record if the player is unknown,
+    /// merges into the existing observation otherwise. Nulls for race /
+    /// class don't overwrite (caller may have failed to infer either);
+    /// equipment, when supplied, REPLACES the previous loadout (it's a
+    /// fresh snapshot, not a delta — empty list means "they were
+    /// equipped with Nothing"). Saves the BBS observation file after
+    /// the merge.
+    /// </summary>
+    public void RecordLook(
+        string name,
+        string? race,
+        string? @class,
+        IReadOnlyList<EquipmentItem>? equipment,
+        DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        (string given, string family) = PlayerObservation.SplitName(name);
+        string display = string.IsNullOrEmpty(family) ? given : $"{given} {family}";
+        if (string.IsNullOrEmpty(display)) return;
+
+        if (_observations.TryGetValue(display, out PlayerObservation? existing))
+        {
+            _observations[display] = existing with
+            {
+                Race        = race  ?? existing.Race,
+                Class       = @class ?? existing.Class,
+                Equipment   = equipment ?? existing.Equipment,
+                LastSeenUtc = nowUtc,
+            };
+        }
+        else
+        {
+            _observations[display] = new PlayerObservation(
+                GivenName:    given,
+                FamilyName:   family,
+                Class:        @class,
+                Race:         race,
+                Alignment:    null,
+                Title:        null,
+                Gang:         null,
+                Role:         null,
+                FirstSeenUtc: nowUtc,
+                LastSeenUtc:  nowUtc,
+                Equipment:    equipment);
+        }
+
+        Rebuild();
+        SaveObservations();
+    }
+
+    /// <summary>
     /// Replace the customization slice for one player. Triggered by the
     /// player edit dialog Save path; persists via
     /// <see cref="ProfileService.Save"/>. Defaults aren't stored: a

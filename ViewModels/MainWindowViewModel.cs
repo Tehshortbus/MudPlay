@@ -40,6 +40,9 @@ public partial class MainWindowViewModel : ObservableObject
     // GC root for the who-list parser — it subscribes to LineExtractor
     // in its ctor and stays alive as long as MainWindowViewModel does.
     private readonly Game.WhoListParser _whoListParser;
+    // GC root for the look-on-player parser — sibling to the who-list
+    // parser; populates race / class / equipment from `look <player>`.
+    private readonly Game.LookParser _lookParser;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -339,6 +342,7 @@ public partial class MainWindowViewModel : ObservableObject
         // MessageRouter's stateless dispatch). Feeds every observed
         // player into PlayerDatabase.
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
+        _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
