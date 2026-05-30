@@ -55,15 +55,17 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     private readonly TriggerEngine? _triggers;
     private readonly AliasEngine? _aliases;
     private readonly PlayerDatabase? _players;
+    private readonly FavoritesManager? _favorites;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, favorites: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
         TriggerEngine? triggers,
         AliasEngine? aliases = null,
         PlayerDatabase? players = null,
+        FavoritesManager? favorites = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -71,6 +73,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         _triggers = triggers;
         _aliases = aliases;
         _players = players;
+        _favorites = favorites;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -134,7 +137,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         else
             Add("players", "Players", "Phase 5 PR 5.20",
                 "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
-        Add("favorites",     "Favorites",      "Phase 5 PR 5.21", "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
+        if (_favorites is not null)
+            Sections.Add(new FavoritesSectionViewModel(_favorites));
+        else
+            Add("favorites", "Favorites", "Phase 5 PR 5.21",
+                "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
         Add("macros",        "Macros",         "Phase 5 PR 5.22", "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 
         void Add(string id, string title, string phase, string description)
