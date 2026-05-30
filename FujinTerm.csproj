@@ -56,9 +56,12 @@
     <!-- Source-generated MVVM helpers ([ObservableProperty], [RelayCommand]). -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
     <!-- Pure-managed Jet (.mdb / .accdb) reader for the Phase 5 MdbImporter.
-         No OLE DB / ACE / ODBC / Wine — runs natively on Windows, Linux,
-         and macOS. Jet3 + Jet4 + ACCDB. -->
-    <PackageReference Include="JetDatabaseReader" Version="2.2.0" />
+         Vendored in Vendor/JetDatabaseReader/ rather than pulled from the
+         NuGet so we can patch a false-positive encryption-flag check that
+         rejects MajorMUD-distribution MDBs. See that folder's README for
+         the patch detail. The vendored source's only runtime dep is
+         System.Text.Encoding.CodePages — bundled in .NET 10's framework,
+         so no PackageReference needed. -->
   </ItemGroup>
 
 </Project>
