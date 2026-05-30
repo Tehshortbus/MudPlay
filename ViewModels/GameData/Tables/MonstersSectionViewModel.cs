@@ -91,12 +91,17 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         // Pull the MDB row for the right-pane "Other Info" pane.
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo = BuildMdbInfo(wcc);
 
-        // Existing overlay (if any) at the row's resolved tier.
-        MonsterOverlay? existing = null;
-        if (_resolverRef is not null && row.SourceTier != SettingsTier.Defaults)
-        {
-            existing = _resolverRef.ResolveGameData<MonsterOverlay>("Monsters", wcc, new MonsterOverlay());
-        }
+        // Existing overlay — always merged across all 4 tiers (Char →
+        // BBS → Global → Defaults). ResolveGameData starts from a
+        // blank MonsterOverlay base and overlays each tier's delta
+        // in priority order, so the dialog opens showing exactly
+        // what the runtime engines will see for this monster. When no
+        // tier has an override the returned overlay is all-null and
+        // the dialog's defaults (Enemy / Normal / no flags) take
+        // over.
+        MonsterOverlay existing = _resolverRef?.ResolveGameData<MonsterOverlay>(
+            "Monsters", wcc, new MonsterOverlay())
+            ?? new MonsterOverlay();
 
         MonsterEditDialogViewModel vm = new(
             wccNoStr:    wcc,

@@ -9,11 +9,13 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 
 /// <summary>
 /// View-model for the Game Data Browser → Monsters tab's per-record
-/// edit dialog. Mirrors MegaMUD's Monster/NPC Details dialog: editable
-/// left pane (Use-tier, Name, Relationship, Priority, Experience,
-/// MaxHP override + Max twin, Pre-attack / Attack spell IDs + counts,
-/// Not hostile / Don't backstab flags) + read-only right pane
-/// (<see cref="MdbInfo"/> — sourced from the MDB <c>Monsters</c> row).
+/// edit dialog. Mirrors MegaMUD's Monster/NPC Details dialog but only
+/// surfaces fields we actually let the user override — the MDB row is
+/// canonical for stats like Experience and MaxHP, so those are
+/// read-only on the right-pane <see cref="MdbInfo"/> and not duplicated
+/// as editable fields. Editable left pane: Use-tier, Name,
+/// Relationship, Priority, the two override-spell slots + Max counts,
+/// NotHostile / DontBackstab flags.
 /// </summary>
 public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDialogViewModel<MonsterEditResult>
 {
@@ -26,10 +28,6 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     [ObservableProperty] private MonsterRelationship _relationship = MonsterRelationship.Enemy;
     [ObservableProperty] private MonsterAttackPriority _priority = MonsterAttackPriority.Normal;
-
-    [ObservableProperty] private string _experience = string.Empty;
-    [ObservableProperty] private string _maxHp = string.Empty;
-    [ObservableProperty] private string _maxHpMax = string.Empty;
 
     [ObservableProperty] private string _preAttackSpellId = string.Empty;
     [ObservableProperty] private string _preAttackCount = string.Empty;
@@ -68,14 +66,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         Relationship = existing?.Relationship ?? MonsterRelationship.Enemy;
         Priority     = existing?.Priority     ?? MonsterAttackPriority.Normal;
 
-        Experience = (existing?.ExperienceOverride is { } e) ? e.ToString() : string.Empty;
-        MaxHp      = (existing?.MaxHpOverride      is { } h) ? h.ToString() : string.Empty;
-        MaxHpMax   = (existing?.MaxHpMax           is { } m) ? m.ToString() : string.Empty;
-
-        PreAttackSpellId = (existing?.PreAttackSpellId is { } pi) ? pi.ToString() : string.Empty;
-        PreAttackCount   = (existing?.PreAttackCount   is { } pc) ? pc.ToString() : string.Empty;
-        AttackSpellId    = (existing?.AttackSpellId    is { } ai) ? ai.ToString() : string.Empty;
-        AttackCount      = (existing?.AttackCount      is { } ac) ? ac.ToString() : string.Empty;
+        PreAttackSpellId = (existing?.OverridePreAttackSpellId is { } pi) ? pi.ToString() : string.Empty;
+        PreAttackCount   = (existing?.OverridePreAttackCount   is { } pc) ? pc.ToString() : string.Empty;
+        AttackSpellId    = (existing?.OverrideAttackSpellId    is { } ai) ? ai.ToString() : string.Empty;
+        AttackCount      = (existing?.OverrideAttackCount      is { } ac) ? ac.ToString() : string.Empty;
 
         NotHostile   = existing?.NotHostile   ?? false;
         DontBackstab = existing?.DontBackstab ?? false;
@@ -86,18 +80,15 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     {
         MonsterOverlay overlay = new()
         {
-            Name               = string.IsNullOrWhiteSpace(Name) ? null : Name,
-            Relationship       = Relationship,
-            Priority           = Priority,
-            ExperienceOverride = ParseNullableInt(Experience),
-            MaxHpOverride      = ParseNullableInt(MaxHp),
-            MaxHpMax           = ParseNullableInt(MaxHpMax),
-            PreAttackSpellId   = ParseNullableInt(PreAttackSpellId),
-            PreAttackCount     = ParseNullableInt(PreAttackCount),
-            AttackSpellId      = ParseNullableInt(AttackSpellId),
-            AttackCount        = ParseNullableInt(AttackCount),
-            NotHostile         = NotHostile,
-            DontBackstab       = DontBackstab,
+            Name                     = string.IsNullOrWhiteSpace(Name) ? null : Name,
+            Relationship             = Relationship,
+            Priority                 = Priority,
+            OverridePreAttackSpellId = ParseNullableInt(PreAttackSpellId),
+            OverridePreAttackCount   = ParseNullableInt(PreAttackCount),
+            OverrideAttackSpellId    = ParseNullableInt(AttackSpellId),
+            OverrideAttackCount      = ParseNullableInt(AttackCount),
+            NotHostile               = NotHostile,
+            DontBackstab             = DontBackstab,
         };
 
         CloseRequested?.Invoke(new MonsterEditResult(WccNoStr, overlay, UseTier));

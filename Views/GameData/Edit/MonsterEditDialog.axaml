@@ -57,8 +57,8 @@
                             </Grid>
 
                             <TextBlock Classes="SectionHeader" Text="Details"/>
-                            <Grid ColumnDefinitions="110,*,8,Auto,Auto"
-                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                            <Grid ColumnDefinitions="160,*,8,Auto,Auto"
+                                  RowDefinitions="Auto,Auto,Auto"
                                   ColumnSpacing="8" RowSpacing="6">
 
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Relationship"/>
@@ -67,24 +67,17 @@
                                            SelectedItem="{Binding Relationship, Mode=TwoWay}"
                                            HorizontalAlignment="Stretch"/>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Experience"/>
-                                <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4"
-                                           Text="{Binding Experience, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Override Pre-attack"
+                                           ToolTip.Tip="Spell.Number to cast on this monster before melee — takes priority over the global Combat-tab pre-attack."/>
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding PreAttackSpellId, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
+                                <TextBox   Grid.Row="1" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}" Width="64"/>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Max HP's"/>
-                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding MaxHp, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Override Attack Spell"
+                                           ToolTip.Tip="Spell.Number to cast as the primary attack on this monster — takes priority over the global Combat-tab attack spell."/>
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding AttackSpellId, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding MaxHpMax, Mode=TwoWay}" Width="64"/>
-
-                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Pre-attack ID"/>
-                                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding PreAttackSpellId, Mode=TwoWay}"/>
-                                <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="3" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}" Width="64"/>
-
-                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Attack spell ID"/>
-                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding AttackSpellId, Mode=TwoWay}"/>
-                                <TextBlock Grid.Row="4" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="4" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}" Width="64"/>
+                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}" Width="64"/>
                             </Grid>
 
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="14" Margin="0,8,0,0">

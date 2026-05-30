@@ -7,17 +7,36 @@ namespace FujinTerm.Models.GameData;
 /// table = <c>"Monsters"</c> and record-id = the WCC No string. The
 /// Game Data Browser → Monsters tab merges overrides on top of the
 /// MDB <c>Monsters.json</c> base; the editor surface mirrors
-/// MegaMUD's Monster/NPC Details dialog (minus the
-/// <c>Find first</c> / <c>Check if alive</c> flags, which don't map
-/// onto our automation engines).
+/// MegaMUD's Monster/NPC Details dialog with deliberate omissions:
 /// </summary>
 /// <remarks>
-/// All fields are nullable so a partial-tier override only carries
-/// the keys the user actually set — the resolver overlays them onto
-/// the next-lower tier's values, preserving the MDB row for fields
-/// the user didn't touch. Uses init-only properties (rather than the
-/// positional-record syntax) so the resolver's <c>new T()</c>
-/// requirement is satisfied.
+/// <para>
+/// <b>Deliberately not overridable</b> — every BBS supplies a
+/// concrete MDB (stock or custom-realm), so the MDB is the
+/// canonical source of truth for the monster's static stats. No
+/// override layer for Experience, MaxHP, etc. — read those from
+/// the MDB row.
+/// </para>
+/// <para>
+/// <b>Deliberately not modelled</b> — MegaMUD's <c>Find first</c>
+/// and <c>Check if alive</c> flags don't map onto our automation
+/// engines (per user direction); not stored.
+/// </para>
+/// <para>
+/// <b>What IS overridable</b> — per-monster automation behaviour:
+/// display name, relationship, target priority, per-monster spell
+/// preferences (the override-pre-attack and override-attack-spell
+/// slots take priority over the global Combat-tab spell choices
+/// for this specific monster), plus the NotHostile / DontBackstab
+/// flags. All fields nullable so a partial-tier override only
+/// carries the keys the user actually set — the resolver overlays
+/// them onto the next-lower tier's values, preserving lower-tier
+/// values for fields the user didn't touch.
+/// </para>
+/// <para>
+/// Uses init-only properties (rather than the positional-record
+/// syntax) so the resolver's <c>new T()</c> requirement is satisfied.
+/// </para>
 /// </remarks>
 public sealed record MonsterOverlay
 {
@@ -30,26 +49,27 @@ public sealed record MonsterOverlay
     /// <summary>Target-selection priority within auto-combat.</summary>
     public MonsterAttackPriority? Priority { get; init; }
 
-    /// <summary>Replacement EXP value when the MDB number is stale; <c>null</c> keeps the MDB value.</summary>
-    public int? ExperienceOverride { get; init; }
+    /// <summary>
+    /// Override pre-attack spell — Spell.Number to cast on this
+    /// monster before melee opens, regardless of the global
+    /// Combat-tab pre-attack choice. <c>null</c> = no per-monster
+    /// override (use the global setting).
+    /// </summary>
+    public int? OverridePreAttackSpellId { get; init; }
 
-    /// <summary>Replacement MaxHP; <c>null</c> keeps the MDB value.</summary>
-    public int? MaxHpOverride { get; init; }
+    /// <summary>Cast count for <see cref="OverridePreAttackSpellId"/>; <c>null</c> = 0.</summary>
+    public int? OverridePreAttackCount { get; init; }
 
-    /// <summary>Companion ceiling for <see cref="MaxHpOverride"/>; per the MegaMUD UI, the "Max" twin field on the HP row.</summary>
-    public int? MaxHpMax { get; init; }
+    /// <summary>
+    /// Override attack spell — Spell.Number to cast as the primary
+    /// attack on this monster, regardless of the global Combat-tab
+    /// attack-spell choice. <c>null</c> = no per-monster override
+    /// (use the global setting).
+    /// </summary>
+    public int? OverrideAttackSpellId { get; init; }
 
-    /// <summary>Spell to cast before melee opens; <c>null</c> = none.</summary>
-    public int? PreAttackSpellId { get; init; }
-
-    /// <summary>Cast count for <see cref="PreAttackSpellId"/>; <c>null</c> = 0.</summary>
-    public int? PreAttackCount { get; init; }
-
-    /// <summary>Spell to cast as the primary attack; <c>null</c> = none.</summary>
-    public int? AttackSpellId { get; init; }
-
-    /// <summary>Cast count for <see cref="AttackSpellId"/>; <c>null</c> = 0.</summary>
-    public int? AttackCount { get; init; }
+    /// <summary>Cast count for <see cref="OverrideAttackSpellId"/>; <c>null</c> = 0.</summary>
+    public int? OverrideAttackCount { get; init; }
 
     /// <summary>Don't attack unless attacked first.</summary>
     public bool? NotHostile { get; init; }
@@ -59,26 +79,21 @@ public sealed record MonsterOverlay
 }
 
 /// <summary>
-/// How the automation engines treat a monster on sight. Wire-format
-/// names match MegaMUD's listing column ("Friend" column displays
-/// these values: <c>Enemy</c> / <c>Friend</c> / <c>Neutral</c> /
-/// <c>Avoid</c> / <c>Hangup</c>).
+/// How the automation engines treat a monster on sight.
+/// <list type="bullet">
+///   <item><see cref="Enemy"/> — kill on sight.</item>
+///   <item><see cref="Neutral"/> — don't attack unless attacked first (or unless "attack all monsters" is on in Combat settings).</item>
+///   <item><see cref="Friend"/> — never attack.</item>
+///   <item><see cref="Flee"/> — actively run from on sight.</item>
+///   <item><see cref="Hangup"/> — disconnect from the BBS on sight.</item>
+/// </list>
 /// </summary>
 public enum MonsterRelationship
 {
-    /// <summary>Don't attack unless attacked first.</summary>
     Neutral = 0,
-
-    /// <summary>Kill on sight.</summary>
     Enemy   = 1,
-
-    /// <summary>Never attack.</summary>
     Friend  = 2,
-
-    /// <summary>Actively flee on sight.</summary>
-    Avoid   = 3,
-
-    /// <summary>Disconnect from the BBS on sight.</summary>
+    Flee    = 3,
     Hangup  = 4,
 }
 
