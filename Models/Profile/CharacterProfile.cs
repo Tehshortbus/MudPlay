@@ -32,13 +32,6 @@ public sealed class CharacterProfile
     public string? BbsName { get; set; }
 
     /// <summary>
-    /// Game-data set this character expects. On profile load the
-    /// <c>GameDataCache</c> (Phase 5) switches to this set; if the user
-    /// manually switches sets later this field is rewritten and persisted.
-    /// </summary>
-    public string? ActiveGameDataSet { get; set; }
-
-    /// <summary>
     /// Per-tab settings deltas at the Character tier — same shape as
     /// <see cref="Settings.GlobalSettings.Settings"/>. Anything the user
     /// pinned to "only for this character."

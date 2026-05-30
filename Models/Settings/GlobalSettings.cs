@@ -38,8 +38,10 @@ public sealed class GlobalSettings
     public const int RecentProfilesLimit = 5;
 
     /// <summary>
-    /// Default game-data set name used when no character profile is loaded.
-    /// Once a profile is loaded its own <c>ActiveGameDataSet</c> takes over.
+    /// Fallback game-data set name used when no BBS is pinned (or the
+    /// pinned BBS has no <c>ActiveGameDataSet</c> of its own). Once a
+    /// BBS is pinned its setting takes over via the resolution chain
+    /// in <see cref="Services.AppServices"/>.
     /// </summary>
     public string? DefaultGameDataSet { get; set; }
 

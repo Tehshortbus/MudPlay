@@ -290,11 +290,15 @@ public partial class MainWindowViewModel : ObservableObject
         // moves.
         AppServices.Current.Display.PropertyChanged += OnDisplayChanged;
 
-        // Seed the File → Game Data → Active set menu and keep it in
-        // sync with the GameDataCache so newly-imported sets appear
-        // immediately.
+        // Seed the File → Game Data → Active set menu. Rebuild on every
+        // signal that could change which row carries the checkmark:
+        // a different set is now active, a different BBS got pinned,
+        // a profile re-mutated (BBS rename), or a fresh profile loaded.
         RebuildGameDataSetsMenu();
         AppServices.Current.GameData.ActiveSetChanged += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.BbsPinApplied      += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.ProfileMutated     += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.ProfileLoaded      += _ => RebuildGameDataSetsMenu();
 
         // Apply the loaded profile's persisted scrollback size now — the
         // buffer was constructed with the default; AppServices already
@@ -1633,7 +1637,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// Items bound to File → Game Data → Active set. Each entry has a
     /// checkbox-style header (checked = currently active set) and a
     /// command that flips <see cref="GameDataCache.ActiveSet"/> + writes
-    /// the loaded profile's <c>ActiveGameDataSet</c> field.
+    /// the resolved BBS's <see cref="BbsProfile.ActiveGameDataSet"/>
+    /// field (falling back to <c>GlobalSettings.DefaultGameDataSet</c>
+    /// when no BBS is pinned).
     /// </summary>
     public ObservableCollection<GameDataSetMenuItem> GameDataSets { get; } = new();
 
@@ -1650,14 +1656,29 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Flip the active set and persist the user's choice. Active set is
+    /// a BBS-scoped setting (every character on the same realm shares
+    /// the same MajorMUD MDB); we write to the resolved BBS profile
+    /// when one is pinned, else fall through to global settings so the
+    /// menu still works before any BBS is configured.
+    /// </summary>
     private void SwitchActiveGameDataSet(string setName)
     {
         AppServices.Current.GameData.SwitchSet(setName);
-        if (AppServices.Current.Profile.Current is { } profile)
+
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is not null)
         {
-            profile.ActiveGameDataSet = setName;
-            AppServices.Current.Profile.Save();
+            bbs.ActiveGameDataSet = setName;
+            AppServices.Current.Bbs.Save(bbs);
         }
+        else
+        {
+            AppServices.Current.Settings.Current.DefaultGameDataSet = setName;
+            AppServices.Current.Settings.Save();
+        }
+
         RebuildGameDataSetsMenu();
     }
 

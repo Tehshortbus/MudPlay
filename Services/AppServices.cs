@@ -159,12 +159,13 @@ public sealed class AppServices
     /// <summary>
     /// Live cache of imported MajorMUD game data. Loads JSON tables on
     /// demand from <c>Data/game data/{set}/</c>; the active set follows
-    /// the loaded character's
-    /// <see cref="Models.Profile.CharacterProfile.ActiveGameDataSet"/>
-    /// field. Per-tab consumers (Phase 5 PRs 5.5+) convert raw
-    /// <see cref="System.Text.Json.JsonDocument"/> rows into typed
-    /// model collections and call <c>EvictTable</c> to drop the raw
-    /// bytes.
+    /// the pinned BBS's
+    /// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> field
+    /// (falling back to <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/>
+    /// when no BBS is pinned). Per-tab consumers (Phase 5 PRs 5.5+)
+    /// convert raw <see cref="System.Text.Json.JsonDocument"/> rows into
+    /// typed model collections and call <c>EvictTable</c> to drop the
+    /// raw bytes.
     /// </summary>
     public GameDataCache GameData { get; } = new();
 
@@ -294,12 +295,19 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
 
-        // Bridge: follow the loaded character's preferred game-data set.
-        // Profile.ProfileLoaded fires before the rest of the per-character
-        // services react, so subscribers that key off ActiveSetChanged
-        // (Phase 5 PRs 5.5+) see the correct set when they re-pull.
-        Profile.ProfileLoaded += p => GameData.SwitchSet(p.ActiveGameDataSet);
-        Profile.ProfileClosed += () => GameData.SwitchSet(null);
+        // Bridge: follow the pinned BBS's preferred game-data set.
+        // Active set lives at BBS scope (every character on the same
+        // realm shares the same MDB). Resolution chain:
+        //   pinned BBS's ActiveGameDataSet
+        //     → GlobalSettings.DefaultGameDataSet
+        //       → null (no set active).
+        // Re-resolve on every signal that could change the answer:
+        // a fresh profile load, an explicit BBS pin from Settings →
+        // BBS Apply, a re-pin via ProfileMutated, and profile close.
+        Profile.ProfileLoaded  += _ => ApplyActiveGameDataSet();
+        Profile.BbsPinApplied  += _ => ApplyActiveGameDataSet();
+        Profile.ProfileMutated += _ => ApplyActiveGameDataSet();
+        Profile.ProfileClosed  += ApplyActiveGameDataSet;
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
@@ -329,6 +337,20 @@ public sealed class AppServices
         if (!profile.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
         return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.ToolbarSettings>(json.GetRawText())
                ?? new Models.Profile.ToolbarSettings();
+    }
+
+    /// <summary>
+    /// Recompute the active game-data set from the BBS-pin chain and
+    /// flip <see cref="GameData"/> if it differs. Idempotent — the
+    /// cache short-circuits no-op switches so calling this on every
+    /// profile / BBS / mutate signal is cheap.
+    /// </summary>
+    private void ApplyActiveGameDataSet()
+    {
+        string? bbsName = Profile.Current?.BbsName;
+        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
+        string? resolved = bbs?.ActiveGameDataSet ?? Settings.Current.DefaultGameDataSet;
+        GameData.SwitchSet(resolved);
     }
 
     private void ApplyDisplayFromActiveBbs()
