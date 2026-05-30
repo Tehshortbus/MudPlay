@@ -44,6 +44,9 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.2" />
+    <!-- DataGrid widget — first-party Avalonia control shipped as a
+         separate package; powers the Game Data Browser tables. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
     <!-- Diagnostics overlay (F12 dev tools) — only pulled in for Debug
          builds so Release ships without it. -->
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
