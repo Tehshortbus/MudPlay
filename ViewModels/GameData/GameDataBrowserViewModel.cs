@@ -125,7 +125,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new ShopsSectionViewModel(_gameData));
         Sections.Add(new RacesSectionViewModel(_gameData));
         Sections.Add(new ClassesSectionViewModel(_gameData));
-        Add("textblocks",    "TextBlocks",     "Phase 5 PR 5.18", "Quest text / NPC dialogue / signs — referenced by Phase 9 Workshop QUESTS.");
+        Sections.Add(new TextBlocksSectionViewModel(_gameData));
         Add("players",       "Players",        "Phase 5 PR 5.20", "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
         Add("favorites",     "Favorites",      "Phase 5 PR 5.21", "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
         Add("macros",        "Macros",         "Phase 5 PR 5.22", "Read-only listing — double-click row opens the Phase 10 Macro editor.");
