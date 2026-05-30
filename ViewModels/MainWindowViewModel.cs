@@ -1613,7 +1613,8 @@ public partial class MainWindowViewModel : ObservableObject
             DataContext = new FujinTerm.ViewModels.GameData.GameDataBrowserViewModel(
                 AppServices.Current.GameData,
                 AppServices.Current.Triggers,
-                AppServices.Current.Aliases),
+                AppServices.Current.Aliases,
+                AppServices.Current.Players),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;

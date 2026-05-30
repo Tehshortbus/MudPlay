@@ -54,20 +54,23 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
 
     private readonly TriggerEngine? _triggers;
     private readonly AliasEngine? _aliases;
+    private readonly PlayerDatabase? _players;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
         TriggerEngine? triggers,
         AliasEngine? aliases = null,
+        PlayerDatabase? players = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         _gameData = gameData;
         _triggers = triggers;
         _aliases = aliases;
+        _players = players;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -126,7 +129,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new RacesSectionViewModel(_gameData));
         Sections.Add(new ClassesSectionViewModel(_gameData));
         Sections.Add(new TextBlocksSectionViewModel(_gameData));
-        Add("players",       "Players",        "Phase 5 PR 5.20", "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
+        if (_players is not null)
+            Sections.Add(new PlayersSectionViewModel(_players));
+        else
+            Add("players", "Players", "Phase 5 PR 5.20",
+                "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
         Add("favorites",     "Favorites",      "Phase 5 PR 5.21", "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
         Add("macros",        "Macros",         "Phase 5 PR 5.22", "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 

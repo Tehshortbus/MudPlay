@@ -187,6 +187,15 @@ public sealed class AppServices
     public AliasEngine Aliases { get; }
 
     /// <summary>
+    /// Observed + edited <see cref="Models.GameData.PlayerRecord"/>
+    /// store. Phase 5 PR 5.20 ships the spine; the <c>who</c>-output
+    /// parser that calls <c>RecordObservation</c> lives with Phase 6
+    /// PartyManager.
+    /// </summary>
+    public PlayerDatabase Players { get; } = new();
+
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
