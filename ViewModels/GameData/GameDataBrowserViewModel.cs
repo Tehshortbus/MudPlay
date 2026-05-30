@@ -123,7 +123,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new PathsSectionViewModel(_gameData));
         Sections.Add(new LairsSectionViewModel(_gameData));
         Sections.Add(new ShopsSectionViewModel(_gameData));
-        Add("races",         "Races",          "Phase 5 PR 5.16", "Static MDB table — race attributes + class compatibility.");
+        Sections.Add(new RacesSectionViewModel(_gameData));
         Add("classes",       "Classes",        "Phase 5 PR 5.17", "Static MDB table — class spell + ability progression.");
         Add("textblocks",    "TextBlocks",     "Phase 5 PR 5.18", "Quest text / NPC dialogue / signs — referenced by Phase 9 Workshop QUESTS.");
         Add("players",       "Players",        "Phase 5 PR 5.20", "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
