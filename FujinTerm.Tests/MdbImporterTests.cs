@@ -6,10 +6,11 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// Surface tests for <see cref="MdbImporter"/> — covers the code that
-/// runs without ACE installed and without an actual MDB file present.
-/// The real OLE DB read path needs Wine + the ACE redistributable and
-/// is exercised manually.
+/// Surface tests for <see cref="MdbImporter"/> — covers folder
+/// bookkeeping, filename sanitization, and the missing-file early
+/// exit. The Jackcess read path runs against real .mdb / .accdb
+/// fixtures and is exercised manually via the Game Data → Import
+/// .mdb… flow.
 /// </summary>
 public sealed class MdbImporterTests
 {
@@ -61,14 +62,6 @@ public sealed class MdbImporterTests
             Directory.Delete(a, recursive: true);
             Directory.Delete(b, recursive: true);
         }
-    }
-
-    [Fact]
-    public void GetAceNotInstalledMessage_IncludesDownloadUrl()
-    {
-        string msg = MdbImporter.GetAceNotInstalledMessage();
-        Assert.Contains("microsoft.com", msg);
-        Assert.Contains("bitness", msg);
     }
 
     [Fact]
