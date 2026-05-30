@@ -1685,8 +1685,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         string path = files[0].Path.LocalPath;
         MdbImporter importer = new();
+        int errorCount = 0;
         importer.OnStatusChanged += s => AppServices.Current.Log.Info("MDB", s);
-        importer.OnError += s => AppServices.Current.Log.Error("MDB", s);
+        importer.OnError += s =>
+        {
+            // Per-table errors go to the Program Log only — the
+            // terminal gets a single summary line after the import
+            // finishes, pointing the user at the log for detail.
+            AppServices.Current.Log.Error("MDB", s);
+            System.Threading.Interlocked.Increment(ref errorCount);
+        };
 
         WriteTerminalStatus("[MDB IMPORT STARTED]", TerminalStatusKind.Notice);
         var (success, message, folder) = await importer.ImportAsync(path);
@@ -1694,7 +1702,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (success)
         {
-            WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
+            if (errorCount > 0)
+            {
+                WriteTerminalStatus(
+                    $"[MDB IMPORT COMPLETED WITH ERRORS: {folder} — see Program Log]",
+                    TerminalStatusKind.Error);
+            }
+            else
+            {
+                WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
+            }
             SwitchActiveGameDataSet(folder);
         }
         else
@@ -1952,7 +1969,7 @@ public partial class MainWindowViewModel : ObservableObject
 
               • Avalonia UI                — MIT
               • CommunityToolkit.Mvvm       — MIT
-              • System.Data.OleDb           — MIT (Phase 5 MDB import)
+              • JetDatabaseReader           — MIT (Phase 5 MDB import)
 
             Other dependencies arrive with their respective phases; their
             licenses will appear here once they're added.
