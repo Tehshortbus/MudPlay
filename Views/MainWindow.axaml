@@ -149,7 +149,10 @@
                 <Separator/>
                 <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
                 <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
-                <MenuItem Header="BBS site ↗" IsEnabled="False" ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
+                <MenuItem Header="BBS site ↗"
+                          Command="{Binding OpenBbsWebsiteCommand}"
+                          IsEnabled="{Binding HasBbsWebsite}"
+                          ToolTip.Tip="{Binding BbsWebsiteUrl, FallbackValue='Set a Website URL on the active BBS (Settings → BBS) to enable.', TargetNullValue='Set a Website URL on the active BBS (Settings → BBS) to enable.'}"/>
                 <Separator/>
                 <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>

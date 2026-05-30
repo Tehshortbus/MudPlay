@@ -107,6 +107,19 @@ public partial class MainWindowViewModel : ObservableObject
         : ResolveActiveBbs()?.Name;
 
     /// <summary>
+    /// Optional URL field on the active BBS's <see cref="BbsProfile.WebsiteUrl"/>.
+    /// Drives the Help → BBS site menu item's enable state + the actual launch.
+    /// Quick Connect targets have no website (Quick Connect bypasses the
+    /// BBS profile store entirely), so this is <c>null</c> in that case.
+    /// </summary>
+    public string? BbsWebsiteUrl => _quickConnectTarget is null
+        ? ResolveActiveBbs()?.WebsiteUrl
+        : null;
+
+    /// <summary>True when <see cref="BbsWebsiteUrl"/> looks launch-able — gates the Help menu item.</summary>
+    public bool HasBbsWebsite => !string.IsNullOrWhiteSpace(BbsWebsiteUrl);
+
+    /// <summary>
     /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
     /// is loaded the placeholder <c>{default}</c> stands in; when no
     /// BBS is selected <c>{No BBS}</c> stands in. Both slots always
@@ -920,6 +933,8 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveBbsName));
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(CanConnect));
+        OnPropertyChanged(nameof(BbsWebsiteUrl));
+        OnPropertyChanged(nameof(HasBbsWebsite));
     }
 
     /// <summary>
@@ -2031,6 +2046,22 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenMajorMudReddit() => ShellLaunch.OpenUrl(AppInfo.MajorMudRedditUrl);
+
+    /// <summary>
+    /// Help → BBS site. Opens the active BBS's <see cref="BbsProfile.WebsiteUrl"/>
+    /// in the OS default browser. Silently no-ops when no URL is set —
+    /// the menu item's <see cref="HasBbsWebsite"/> binding keeps it
+    /// disabled in that state, but we guard here too in case the user
+    /// triggered it some other way.
+    /// </summary>
+    [RelayCommand]
+    private void OpenBbsWebsite()
+    {
+        string? url = BbsWebsiteUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!ShellLaunch.OpenUrl(url))
+            AppServices.Current.Log.Warn("Help", $"Could not open BBS website: {url}");
+    }
 
     [RelayCommand]
     private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
