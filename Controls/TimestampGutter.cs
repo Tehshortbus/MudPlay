@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.Threading;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Controls;
@@ -27,6 +28,9 @@ public sealed class TimestampGutter : TextBlock
     }
 
     private INotifyCollectionChanged? _observed;
+    // Coalesces burst CollectionChanged events into a single Rebuild per
+    // dispatcher tick — same compounding-on-typing fix as SelectableTranscript.
+    private bool _rebuildScheduled;
 
     static TimestampGutter()
     {
@@ -57,7 +61,18 @@ public sealed class TimestampGutter : TextBlock
         Rebuild();
     }
 
-    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuild();
+
+    private void ScheduleRebuild()
+    {
+        if (_rebuildScheduled) return;
+        _rebuildScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _rebuildScheduled = false;
+            Rebuild();
+        });
+    }
 
     private void Rebuild()
     {

@@ -338,7 +338,7 @@ public partial class MainWindowViewModel : ObservableObject
         // (the table is multi-line — needs state, doesn't fit
         // MessageRouter's stateless dispatch). Feeds every observed
         // player into PlayerDatabase.
-        _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players);
+        _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.

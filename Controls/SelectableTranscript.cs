@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.Threading;
 using FujinTerm.Terminal;
 using FujinTerm.ViewModels;
 
@@ -43,6 +44,12 @@ public sealed class SelectableTranscript : SelectableTextBlock
     private int[] _rowOffsets = Array.Empty<int>();
 
     private INotifyCollectionChanged? _observed;
+    // Coalesces a burst of CollectionChanged events into a single Rebuild
+    // per dispatcher tick. BackscrollViewModel.RefreshLiveTail replaces up
+    // to ~25 rows per screen update, each firing CollectionChanged; without
+    // coalescing each fire walks every row in the buffer (up to 10k) to
+    // rebuild the inline runs — quadratic on screen-update bursts.
+    private bool _rebuildScheduled;
 
     static SelectableTranscript()
     {
@@ -76,7 +83,18 @@ public sealed class SelectableTranscript : SelectableTextBlock
         Rebuild();
     }
 
-    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => Rebuild();
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuild();
+
+    private void ScheduleRebuild()
+    {
+        if (_rebuildScheduled) return;
+        _rebuildScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _rebuildScheduled = false;
+            Rebuild();
+        });
+    }
 
     private void Rebuild()
     {

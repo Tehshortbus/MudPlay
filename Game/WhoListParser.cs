@@ -46,6 +46,7 @@ public sealed partial class WhoListParser : IDisposable
 {
     private readonly LineExtractor _lines;
     private readonly PlayerDatabase _db;
+    private readonly LogService? _log;
     private State _state = State.Idle;
     private int _rowsThisBlock;
 
@@ -62,12 +63,13 @@ public sealed partial class WhoListParser : IDisposable
         "Saint", "Lawful", "Good", "Seedy", "Outlaw", "Criminal", "Villain", "Fiend",
     };
 
-    public WhoListParser(LineExtractor lines, PlayerDatabase db)
+    public WhoListParser(LineExtractor lines, PlayerDatabase db, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(db);
         _lines = lines;
         _db = db;
+        _log = log;
         _lines.LineEmitted += OnLineEmitted;
     }
 
@@ -99,7 +101,11 @@ public sealed partial class WhoListParser : IDisposable
         switch (_state)
         {
             case State.Idle:
-                if (HeaderPattern().IsMatch(text)) _state = State.WaitForSeparator;
+                if (HeaderPattern().IsMatch(text))
+                {
+                    _state = State.WaitForSeparator;
+                    _log?.Info("WhoListParser", $"Saw 'Current Adventurers' header: '{Quote(text)}'");
+                }
                 break;
 
             case State.WaitForSeparator:
@@ -107,11 +113,14 @@ public sealed partial class WhoListParser : IDisposable
                 {
                     _state = State.Reading;
                     _rowsThisBlock = 0;
+                    _log?.Info("WhoListParser", $"Saw separator, reading rows: '{Quote(text)}'");
                 }
                 else if (!HeaderPattern().IsMatch(text))
                 {
                     // Header was a false positive (chat message containing
                     // "Current Adventurers", maybe a remote command). Bail.
+                    _log?.Warn("WhoListParser",
+                        $"Expected separator after header but got: '{Quote(text)}' — bailing back to Idle");
                     _state = State.Idle;
                 }
                 break;
@@ -132,16 +141,29 @@ public sealed partial class WhoListParser : IDisposable
                         role:      row.Role,
                         nowUtc:    nowUtc);
                     _rowsThisBlock++;
+                    _log?.Info("WhoListParser",
+                        $"Parsed row: {display} [{row.Alignment}] - {row.Title}" +
+                        (row.Gang is null ? "" : $" of {row.Gang}"));
                 }
                 else
                 {
                     // First non-row line ends the block. Empty lines /
                     // trailing prompt / "Total:" footer all land us back
                     // in Idle, ready for the next `who`.
+                    _log?.Info("WhoListParser",
+                        $"End of block ({_rowsThisBlock} rows). Stopper line: '{Quote(text)}'");
                     _state = State.Idle;
                 }
                 break;
         }
+    }
+
+    /// <summary>Defensive quote helper — caps long lines, shows whitespace via length so the user can spot leading-space mismatches.</summary>
+    private static string Quote(string s)
+    {
+        const int max = 120;
+        string body = s.Length > max ? s[..max] + "…" : s;
+        return $"[{s.Length}] {body}";
     }
 
     /// <summary>Number of rows recorded by the most recent <c>who</c> block. Useful for tests / debug.</summary>
