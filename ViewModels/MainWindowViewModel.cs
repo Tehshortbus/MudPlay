@@ -265,7 +265,7 @@ public partial class MainWindowViewModel : ObservableObject
         };
         RebuildRecentProfiles();
         SyncProfileMenuState();
-        AppServices.Current.Profile.ProfileLoaded += _ => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileLoaded += OnProfileLoadedForConnect;
         AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
         // ProfileMutated fires from BbsSectionViewModel.Apply after the
         // BBS pin has been stamped onto the profile — works for both
@@ -920,6 +920,43 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveBbsName));
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(CanConnect));
+    }
+
+    /// <summary>
+    /// ProfileLoaded handler that wires in the Settings → General
+    /// "Auto-connect when profile loads" toggle. Runs the original
+    /// post-load refresh chain first, then — only when not already
+    /// connected/connecting, the loaded profile has a usable BBS pin,
+    /// and the GeneralSettings.AutoConnect flag is on — kicks off
+    /// <see cref="ConnectWithRetriesAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// async void is intentional: ProfileLoaded is an Action&lt;CharacterProfile&gt;
+    /// event and we want fire-and-forget on the connect attempt so the
+    /// caller (typically File → Open profile) doesn't block on the
+    /// retry loop. The connect path already self-marshals UI updates
+    /// and never throws to the caller.
+    /// </remarks>
+    private async void OnProfileLoadedForConnect(Models.Profile.CharacterProfile _)
+    {
+        ClearQuickConnect();
+        SyncProfileMenuState();
+        RefreshBbsBindings();
+
+        if (IsConnected || IsConnecting) return;
+
+        Models.Profile.GeneralSettings general =
+            AppServices.Current.Resolver.Resolve<Models.Profile.GeneralSettings>("General");
+        if (!general.AutoConnect) return;
+
+        // No usable BBS resolves → silently skip. Explicit Connect prints
+        // the "no BBS selected" guidance; the auto-connect path doesn't
+        // need to be noisy about something the user didn't manually trigger.
+        if (ResolveActiveBbs() is null) return;
+        if (string.IsNullOrWhiteSpace(Host) || Port <= 0) return;
+
+        AppServices.Current.Log.Info("Connect", "Auto-connect on profile load — General → Auto-connect is on.");
+        await ConnectWithRetriesAsync();
     }
 
     /// <summary>

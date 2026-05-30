@@ -136,8 +136,7 @@
                 <CheckBox Margin="0,8,0,0"
                           IsChecked="{Binding AutoConnect, Mode=TwoWay}"
                           Content="Auto-connect when profile loads"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4 PR 4.5 (BBS connection settings)."/>
+                          ToolTip.Tip="When checked, FujinTerm dials the profile's pinned BBS immediately after the profile loads (skipped if you're already connected or there's no BBS pinned yet)."/>
 
                 <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
                           Content="Backup profile when making changes"
