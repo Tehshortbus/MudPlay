@@ -58,18 +58,24 @@ public partial class GameDataTableSectionView : UserControl
         {
             // Bind each data column to its positional cell on the row —
             // GameDataRow.Cells is ordered to match Columns, so the
-            // indexer round-trip is stable.
+            // indexer round-trip is stable. CustomSortComparer handles
+            // numeric columns properly (cell values are strings, so the
+            // DataGrid's default sort would treat EXP as
+            // "0, 1, 10, 100, 11, 2…").
             RowsGrid.Columns.Add(new DataGridTextColumn
             {
-                Header  = column,
-                Binding = new Binding($"Cells[{index}].Value"),
-                Width   = DataGridLength.Auto,
+                Header             = column,
+                Binding            = new Binding($"Cells[{index}].Value"),
+                Width              = DataGridLength.Auto,
+                CustomSortComparer = new NumericAwareCellComparer(index),
             });
             index++;
         }
         // Trailing virtual "Use" column — shows which tier (Def / Glob /
         // BBS / Char) owns the row's current values. Bound to the
         // GameDataRow.UseLabel computed property rather than a cell.
+        // Always a string ("Def" / "Glob" / "BBS" / "Char") so the
+        // default sort is fine here.
         RowsGrid.Columns.Add(new DataGridTextColumn
         {
             Header  = GameDataTableSectionViewModel.UseColumnName,
