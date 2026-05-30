@@ -1685,8 +1685,17 @@ public partial class MainWindowViewModel : ObservableObject
 
         string path = files[0].Path.LocalPath;
         MdbImporter importer = new();
+        int errorCount = 0;
         importer.OnStatusChanged += s => AppServices.Current.Log.Info("MDB", s);
-        importer.OnError += s => AppServices.Current.Log.Error("MDB", s);
+        importer.OnError += s =>
+        {
+            AppServices.Current.Log.Error("MDB", s);
+            System.Threading.Interlocked.Increment(ref errorCount);
+            // OnError fires from the import worker; bounce to the UI
+            // thread so terminal-canvas writes are race-free.
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => WriteTerminalStatus($"[MDB ERROR: {s}]", TerminalStatusKind.Error));
+        };
 
         WriteTerminalStatus("[MDB IMPORT STARTED]", TerminalStatusKind.Notice);
         var (success, message, folder) = await importer.ImportAsync(path);
@@ -1694,12 +1703,23 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (success)
         {
-            WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
+            string suffix = errorCount > 0
+                ? $" — {errorCount} TABLE{(errorCount == 1 ? "" : "S")} SKIPPED, see Program Log"
+                : string.Empty;
+            WriteTerminalStatus(
+                $"[MDB IMPORT COMPLETE: {folder}{suffix}]",
+                errorCount > 0 ? TerminalStatusKind.Error : TerminalStatusKind.Notice);
             SwitchActiveGameDataSet(folder);
         }
         else
         {
-            WriteTerminalStatus("[MDB IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
+            // First non-empty line of the failure message — the
+            // substantive cause. Everything else (multi-line stack /
+            // table list / actionable suggestions) goes to the log.
+            string headline = message
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault() ?? "see Program Log";
+            WriteTerminalStatus($"[MDB IMPORT FAILED: {headline}]", TerminalStatusKind.Error);
         }
     }
 
@@ -1744,7 +1764,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            WriteTerminalStatus("[SPELL MESSAGES IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
+            WriteTerminalStatus($"[SPELL MESSAGES IMPORT FAILED: {ex.Message}]", TerminalStatusKind.Error);
             AppServices.Current.Log.Error("SpellMessages", $"Import failed: {ex.Message}");
         }
     }
