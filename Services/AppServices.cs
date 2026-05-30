@@ -194,6 +194,13 @@ public sealed class AppServices
     /// </summary>
     public PlayerDatabase Players { get; } = new();
 
+    /// <summary>
+    /// Loaded character's <see cref="Models.GameData.Favorite"/>
+    /// shortcuts. Phase 7 Goto / Loop dialogs consume the list as the
+    /// left-rail sidebar.
+    /// </summary>
+    public FavoritesManager Favorites { get; }
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -252,6 +259,7 @@ public sealed class AppServices
         Regen = new Game.RegenTracker(PlayerState);
         Triggers = new TriggerEngine(Profile);
         Aliases = new AliasEngine(Profile);
+        Favorites = new FavoritesManager(Profile);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

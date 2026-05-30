@@ -71,6 +71,15 @@ public sealed class CharacterProfile
     public List<GameData.Alias>? Aliases { get; set; }
 
     /// <summary>
+    /// User-authored room favourites with their folder-path hierarchy.
+    /// Per-character; loaded into <see cref="Services.FavoritesManager"/>
+    /// on profile load. Phase 5 PR 5.25's starter bundle layers
+    /// pre-seeded defaults from the active game-data set on top of
+    /// whatever's stored here.
+    /// </summary>
+    public List<GameData.Favorite>? Favorites { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels
