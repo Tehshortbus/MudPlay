@@ -52,11 +52,4 @@ public sealed class GlobalSettings
     /// merges these across all four tiers.
     /// </summary>
     public Dictionary<string, JsonElement>? Settings { get; set; }
-
-    /// <summary>
-    /// Per-record game-data overrides at the Global tier, keyed by
-    /// <c>table-name → record-id → partial record</c>. Empty by default;
-    /// populated when users edit a record at "for all characters" scope.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }

@@ -39,12 +39,6 @@ public sealed class CharacterProfile
     public Dictionary<string, JsonElement>? Settings { get; set; }
 
     /// <summary>
-    /// Per-record game-data overrides at the Character tier. Same shape as
-    /// <see cref="Settings.GlobalSettings.GameDataOverrides"/>.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
-
-    /// <summary>
     /// User-defined incoming-text triggers. Per-character so the
     /// pattern + action list follows the character that authored it.
     /// Loaded into <see cref="Services.TriggerEngine"/> on profile

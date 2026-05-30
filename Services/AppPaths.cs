@@ -108,13 +108,61 @@ public static class AppPaths
     public static string GameDataSetDir(string setName) =>
         Path.Combine(GameDataRoot, setName);
 
-    /// <summary>Path to a single BBS profile file.</summary>
-    public static string BbsProfileFile(string bbsName) =>
-        Path.Combine(BbsDir, bbsName + ".json");
+    /// <summary>
+    /// Folder holding all files for one BBS — primary settings JSON
+    /// plus per-set override side-files (<c>monster_overrides.{set}.json</c>,
+    /// <c>message_overrides.{set}.json</c>, …) and any future helper
+    /// files (per-BBS favorites list, character roster, etc.).
+    /// </summary>
+    public static string BbsFolder(string bbsName) =>
+        Path.Combine(BbsDir, bbsName);
 
-    /// <summary>Path to a single character profile file.</summary>
+    /// <summary>Primary BBS settings file inside <see cref="BbsFolder"/>.</summary>
+    public static string BbsProfileFile(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "bbs.json");
+
+    /// <summary>
+    /// Folder holding all files for one character — primary profile
+    /// JSON plus per-set override side-files and any future
+    /// per-character helper files (macros, triggers, equipment sets,
+    /// death history, etc.).
+    /// </summary>
+    public static string ProfileFolder(string characterName) =>
+        Path.Combine(ProfilesDir, characterName);
+
+    /// <summary>Primary character profile file inside <see cref="ProfileFolder"/>.</summary>
     public static string CharacterProfileFile(string characterName) =>
-        Path.Combine(ProfilesDir, characterName + ".json");
+        Path.Combine(ProfileFolder(characterName), "profile.json");
+
+    /// <summary>
+    /// Per-set game-data override side-file at the given tier. Routes
+    /// to the right folder: Global → <see cref="DataRoot"/>/Global,
+    /// BBS → <see cref="BbsFolder"/>, Character → <see cref="ProfileFolder"/>.
+    /// File name is <c>{table-lowercase}_overrides.{set}.json</c>, e.g.
+    /// <c>monster_overrides.data-v1.11p.json</c>. <see cref="SettingsTier.Defaults"/>
+    /// is read-only and throws.
+    /// </summary>
+    /// <param name="tier">Tier the override lives at.</param>
+    /// <param name="tierScopeName">For BBS / Character tiers: the BBS or profile name. Ignored for Global.</param>
+    /// <param name="table">Game-data table the override applies to (e.g. <c>"Monsters"</c>, <c>"Messages"</c>).</param>
+    /// <param name="setName">Active game-data set name (paired with the override file).</param>
+    public static string OverrideFile(SettingsTier tier, string? tierScopeName, string table, string setName)
+    {
+        string folder = tier switch
+        {
+            SettingsTier.Defaults  => throw new InvalidOperationException("Defaults tier is read-only — no override side-file."),
+            SettingsTier.Global    => Path.Combine(DataRoot, "Global"),
+            SettingsTier.Bbs       => BbsFolder(RequireScope(tierScopeName, "BBS")),
+            SettingsTier.Character => ProfileFolder(RequireScope(tierScopeName, "Character")),
+            _ => throw new ArgumentOutOfRangeException(nameof(tier)),
+        };
+        return Path.Combine(folder, $"{table.ToLowerInvariant()}_overrides.{setName}.json");
+    }
+
+    private static string RequireScope(string? scope, string label)
+        => string.IsNullOrWhiteSpace(scope)
+            ? throw new InvalidOperationException($"OverrideFile for {label} tier requires a scope name (the BBS or profile).")
+            : scope;
 
     /// <summary>
     /// Path for a new debug log file. Caller supplies a topic; the timestamp is

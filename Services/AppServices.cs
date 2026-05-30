@@ -238,12 +238,21 @@ public sealed class AppServices
         // will surface a knob in Phase 4.
         DebugLogWriter.PruneOldLogs();
 
-        _current = new AppServices();
+        // One-shot migration: relocate legacy flat-file layouts
+        // (Data/BBS/{name}.json, Data/profiles/{name}.json) into the
+        // per-name folders the rest of the bootstrap now expects.
+        // Runs BEFORE any store touches disk; idempotent on
+        // already-migrated trees.
+        LogService bootstrapLog = new();
+        DataMigration.RunIfNeeded(bootstrapLog);
+
+        _current = new AppServices(bootstrapLog);
         return _current;
     }
 
-    private AppServices()
+    private AppServices(LogService bootstrapLog)
     {
+        Log = bootstrapLog;
         Settings = new SettingsService();
         Profile = new ProfileService();
         Bbs = new BbsProfileStore();
@@ -251,10 +260,13 @@ public sealed class AppServices
         // Resolver subscribes to Profile events for active-BBS tracking; build
         // it before Load() below so it catches the auto-load's ProfileLoaded
         // (it also self-syncs from Profile.Current as a defensive fallback).
-        Resolver = new SettingsResolver(Settings, Bbs, Profile);
+        // The active-set provider lets game-data override I/O target the
+        // currently active MDB set's per-set side-files.
+        Resolver = new SettingsResolver(Settings, Bbs, Profile, () => GameData.ActiveSet);
 
         Dialogs = new DialogService();
-        Log = new LogService();
+        // Log already set by ctor parameter — bootstrap log carries the
+        // DataMigration entries from before AppServices was constructed.
         Panels = new FloatingPanelHost();
         WindowLayouts = new WindowLayoutStore(Profile);
         Wire = new WireBuffer();

@@ -118,10 +118,4 @@ public sealed class BbsProfile
     /// to "only for this BBS."
     /// </summary>
     public Dictionary<string, JsonElement>? Settings { get; set; }
-
-    /// <summary>
-    /// Per-record game-data overrides at the BBS tier. Same shape as
-    /// <see cref="GlobalSettings.GameDataOverrides"/>.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }
