@@ -142,6 +142,26 @@
                           Content="Backup profile when making changes"
                           ToolTip.Tip="Copy the existing profile JSON to {name}.json.bak before each save."/>
 
+                <TextBlock Classes="SectionHeader" Text="Player database"/>
+
+                <Grid ColumnDefinitions="180,90,*" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="Auto-delete after (days):"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Column="1"
+                                   Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
+                                   Minimum="0" Maximum="3650"
+                                   Increment="1" FormatString="0"
+                                   ShowButtonSpinner="True"
+                                   ToolTip.Tip="Stale Players-tab records get dropped at startup once they're older than this. 0 disables auto-cleanup. Per-player 'Don't auto-delete' opts records out individually."/>
+                    <TextBlock Grid.Column="2"
+                               Text="Global setting — applies to every character. 90 = MegaMUD default."
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                </Grid>
+
                 <!-- Two-column defaults grid. -->
                 <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">
                     <StackPanel Grid.Column="0" Spacing="2">

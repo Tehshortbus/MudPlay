@@ -346,6 +346,19 @@ public sealed class AppServices
         // Track which profile was last loaded so the future "auto-load last"
         // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
+
+        // Best-effort startup prune of the Players table — drops records the
+        // user hasn't seen in GlobalSettings.PlayerCleanupDays days
+        // (per-record DontAutoDelete opts out). The cleanup window is global
+        // and editable from Settings → General → Player database.
+        int cleanupDays = Settings.Current.PlayerCleanupDays;
+        if (cleanupDays > 0)
+        {
+            int removed = Players.PurgeStale(cleanupDays, DateTime.UtcNow);
+            if (removed > 0)
+                Log.Info("PlayerDatabase",
+                    $"Pruned {removed} stale player record(s) older than {cleanupDays} day(s).");
+        }
     }
 
     private void ApplyToolbarFromActiveProfile()

@@ -175,7 +175,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- Engine-backed (top group) ----------------------------------
 
         if (_players is not null)
-            Sections.Add(new PlayersSectionViewModel(_players));
+            Sections.Add(new PlayersSectionViewModel(_players, _dialogs));
         else
             AddPlaceholder("players", "Players", "Phase 5",
                 "In-game `who` observations + manual overrides; per-player remote-command permission flags.");

@@ -46,6 +46,16 @@ public sealed class GlobalSettings
     public string? DefaultGameDataSet { get; set; }
 
     /// <summary>
+    /// Auto-cleanup window for the Players table (see
+    /// <see cref="Services.PlayerDatabase.PurgeStale"/>). Records whose
+    /// <c>LastSeenUtc</c> falls outside this window get dropped at
+    /// startup so the table doesn't accumulate one-shot tourists from
+    /// every session. Per-record <c>DontAutoDelete</c> opts out.
+    /// <c>0</c> or negative disables auto-cleanup entirely.
+    /// </summary>
+    public int PlayerCleanupDays { get; set; } = 90;
+
+    /// <summary>
     /// Per-tab settings deltas — keyed by tab name (Health / Combat / Talk /
     /// etc.). Each value is a partial DTO for that tab containing only the
     /// fields the user pinned to the Global tier. <see cref="Services.SettingsResolver"/>
