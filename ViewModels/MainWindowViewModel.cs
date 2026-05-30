@@ -1372,23 +1372,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenProfileAsync()
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
+        ProfileService profile = AppServices.Current.Profile;
+        FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel vm =
+            new(profile.ListNames());
 
-        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
-        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open profile",
-            AllowMultiple = false,
-            SuggestedStartLocation = profilesFolder,
-            FileTypeFilter = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
-        });
-        if (files.Count == 0) return;
+        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, string>(vm);
+        if (string.IsNullOrEmpty(name)) return;
 
-        string name = Path.GetFileNameWithoutExtension(files[0].Name);
         try
         {
-            AppServices.Current.Profile.Load(name);
+            profile.Load(name);
             PromoteRecent(name);
             SyncProfileMenuState();
         }
@@ -1425,26 +1419,15 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
             return;
         }
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
 
-        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
-        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Save profile as",
-            SuggestedStartLocation = profilesFolder,
-            SuggestedFileName = profile.CurrentProfileName ?? "character",
-            DefaultExtension = "json",
-            FileTypeChoices = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
-            ShowOverwritePrompt = true,
-        });
-        if (file is null) return;
+        FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel vm = new(
+            suggestedName: profile.CurrentProfileName ?? "character",
+            exists:        profile.Exists);
 
-        // Profile names map to files under Data/profiles/{name}.json. If the
-        // picker landed somewhere else we still pull just the basename and
-        // write into Data/profiles — keeps ProfileService's layout invariant.
-        string name = Path.GetFileNameWithoutExtension(file.Name);
+        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel, string>(vm);
         if (string.IsNullOrWhiteSpace(name)) return;
+
         profile.SaveAs(name);
         PromoteRecent(name);
         SyncProfileMenuState();

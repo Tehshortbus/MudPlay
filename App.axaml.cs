@@ -52,6 +52,16 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.MonsterEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.MonsterEditDialog>();
+
+            // File → Open profile / Save profile as — custom modeless dialogs
+            // replacing the platform file pickers (the per-folder layout means
+            // profiles live as subfolders, not flat .json files).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel,
+                FujinTerm.Views.Profile.ProfilePickerDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel,
+                FujinTerm.Views.Profile.ProfileNameInputDialog>();
         }
 
         base.OnFrameworkInitializationCompleted();

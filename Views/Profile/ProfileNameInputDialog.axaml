@@ -1,0 +1,45 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Profile"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="200"
+        x:Class="FujinTerm.Views.Profile.ProfileNameInputDialog"
+        x:DataType="vm:ProfileNameInputDialogViewModel"
+        Title="Save profile as"
+        Width="380" Height="200"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+            <TextBlock Grid.Row="0"
+                       Text="Profile name"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"/>
+
+            <TextBox Grid.Row="1"
+                     Name="NameBox"
+                     Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+            <TextBlock Grid.Row="2"
+                       Text="{Binding ErrorMessage}"
+                       Foreground="#FFE06D6D" FontSize="11"
+                       IsVisible="{Binding HasError}"/>
+
+            <TextBlock Grid.Row="3"
+                       Text="A profile with this name already exists — saving will overwrite it."
+                       Foreground="#FFE2C46D" FontSize="11" TextWrapping="Wrap"
+                       VerticalAlignment="Top"
+                       IsVisible="{Binding WillOverwrite}"/>
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding CanSave}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
