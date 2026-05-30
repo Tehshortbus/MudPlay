@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -30,12 +31,21 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel
         Title, "macro", "key", "keybind",
     };
 
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
     public MacrosSectionViewModel(MacroStore store)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
-        _store.Macros.CollectionChanged += (_, _) => Reload();
+        _handler = (_, _) => Reload();
+        _store.Macros.CollectionChanged += _handler;
         Reload();
+    }
+
+    public override void Dispose()
+    {
+        _store.Macros.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)

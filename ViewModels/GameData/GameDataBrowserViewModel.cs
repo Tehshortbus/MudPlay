@@ -14,7 +14,7 @@ namespace FujinTerm.ViewModels.GameData;
 /// selected section (whose <see cref="GameDataSectionViewModel.View"/>
 /// renders in the content pane).
 /// </summary>
-public sealed partial class GameDataBrowserViewModel : ObservableObject
+public sealed partial class GameDataBrowserViewModel : ObservableObject, IDisposable
 {
     private readonly GameDataCache _gameData;
 
@@ -98,6 +98,22 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     }
 
     private void OnActiveSetChanged(string? set) => OnPropertyChanged(nameof(StatusText));
+
+    /// <summary>
+    /// Detach from <see cref="GameDataCache.ActiveSetChanged"/> and
+    /// dispose every section in <see cref="Sections"/>. The browser
+    /// window calls this from its <c>Closed</c> handler — without it
+    /// each open leaks the entire VM tree (sections subscribe to
+    /// long-lived service events that pin their <see cref="AllRows"/>
+    /// / <see cref="FilteredRows"/> / cached <see cref="GameDataSectionViewModel.View"/>
+    /// instances forever, growing the heap on every reopen).
+    /// </summary>
+    public void Dispose()
+    {
+        _gameData.ActiveSetChanged -= OnActiveSetChanged;
+        foreach (GameDataSectionViewModel section in Sections)
+            section.Dispose();
+    }
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 

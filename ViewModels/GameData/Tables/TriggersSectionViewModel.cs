@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -31,12 +32,21 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
         Title, "trigger", "pattern", "match",
     };
 
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
     public TriggersSectionViewModel(TriggerEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
-        _engine.Triggers.CollectionChanged += (_, _) => Reload();
+        _handler = (_, _) => Reload();
+        _engine.Triggers.CollectionChanged += _handler;
         Reload();
+    }
+
+    public override void Dispose()
+    {
+        _engine.Triggers.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)

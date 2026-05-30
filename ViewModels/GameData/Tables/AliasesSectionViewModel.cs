@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -29,12 +30,21 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
         Title, "alias", "shortcut", "command",
     };
 
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
     public AliasesSectionViewModel(AliasEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
-        _engine.Aliases.CollectionChanged += (_, _) => Reload();
+        _handler = (_, _) => Reload();
+        _engine.Aliases.CollectionChanged += _handler;
         Reload();
+    }
+
+    public override void Dispose()
+    {
+        _engine.Aliases.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)

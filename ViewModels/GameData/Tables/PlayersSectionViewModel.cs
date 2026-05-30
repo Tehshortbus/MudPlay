@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -31,12 +32,23 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel
         Title, "player", "name", "class", "race", "alignment",
     };
 
+    // Stored as a field so Dispose can detach — the database singleton
+    // otherwise pins every section VM ever created across browser opens.
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
     public PlayersSectionViewModel(PlayerDatabase db)
     {
         ArgumentNullException.ThrowIfNull(db);
         _db = db;
-        _db.Players.CollectionChanged += (_, _) => Reload();
+        _handler = (_, _) => Reload();
+        _db.Players.CollectionChanged += _handler;
         Reload();
+    }
+
+    public override void Dispose()
+    {
+        _db.Players.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)

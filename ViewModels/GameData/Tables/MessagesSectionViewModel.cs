@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
@@ -43,15 +44,24 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
 
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
     public MessagesSectionViewModel(MessageStore store, DialogService? dialogs = null, SettingsResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
         _dialogs = dialogs;
         _resolver = resolver;
-        _store.Messages.CollectionChanged += (_, _) => Reload();
+        _handler = (_, _) => Reload();
+        _store.Messages.CollectionChanged += _handler;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         Reload();
+    }
+
+    public override void Dispose()
+    {
+        _store.Messages.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)

@@ -257,6 +257,12 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
     /// </summary>
     protected virtual string OverrideKeyColumn => "Number";
 
+    // Stored as a field so Dispose can unsubscribe — without this the
+    // GameDataCache singleton's event roots every JsonTableSectionViewModel
+    // ever created (leaking section VMs + their cached row collections +
+    // their lazy-built Views across every browser open).
+    private readonly Action<string?> _activeSetHandler;
+
     protected JsonTableSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -266,11 +272,18 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
         // re-parse if the tab has already been opened. Tabs that have never
         // been activated stay un-loaded until first activation, dodging the
         // upfront 10-tables-times-thousands-of-rows parse on browser open.
-        _cache.ActiveSetChanged += _ =>
+        _activeSetHandler = _ =>
         {
             if (IsLoaded) Reload();
         };
+        _cache.ActiveSetChanged += _activeSetHandler;
         // NOTE: ctor does NOT call Reload() — that's lazy via OnActivated.
+    }
+
+    public override void Dispose()
+    {
+        _cache.ActiveSetChanged -= _activeSetHandler;
+        base.Dispose();
     }
 
     public override void OnActivated()

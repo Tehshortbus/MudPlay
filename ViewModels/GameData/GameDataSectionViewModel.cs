@@ -16,7 +16,7 @@ namespace FujinTerm.ViewModels.GameData;
 /// label, the content view, and search labels. The browser shell binds
 /// against this base.
 /// </remarks>
-public abstract partial class GameDataSectionViewModel : ObservableObject
+public abstract partial class GameDataSectionViewModel : ObservableObject, IDisposable
 {
     /// <summary>Stable identifier — sidebar selection persists across reopens against this.</summary>
     public abstract string Id { get; }
@@ -37,4 +37,17 @@ public abstract partial class GameDataSectionViewModel : ObservableObject
     /// pays no UI cost.
     /// </summary>
     public abstract Control View { get; }
+
+    /// <summary>
+    /// Unsubscribe from any long-lived service events the section
+    /// subscribed to in its ctor (<see cref="Services.GameDataCache.ActiveSetChanged"/>,
+    /// engine <c>CollectionChanged</c>, etc.). Called by
+    /// <see cref="GameDataBrowserViewModel.Dispose"/> when the browser
+    /// window closes — without it, every browser open leaks a fresh
+    /// set of section VMs (their cached rows + Views) since the
+    /// singleton services keep their event subscriptions alive.
+    /// Default impl is a no-op for sections that don't subscribe to
+    /// anything external (placeholder rows / read-only Info tab).
+    /// </summary>
+    public virtual void Dispose() { }
 }
