@@ -49,6 +49,8 @@ public sealed partial class WhoListParser : IDisposable
     private readonly LogService? _log;
     private State _state = State.Idle;
     private int _rowsThisBlock;
+    /// <summary>Players.Count at block start — used to split added vs updated counts in the end-of-block log line.</summary>
+    private int _playersCountAtBlockStart;
 
     /// <summary>
     /// Alignment words that can appear in the left column of the
@@ -96,17 +98,14 @@ public sealed partial class WhoListParser : IDisposable
     {
         // The statline / prompt is the universal "server's done
         // responding" marker — every command the user sends ends with
-        // it. Use it as the definitive block terminator: any in-flight
-        // who-parse stops here, even if the table was followed by
-        // mid-block padding the row parser couldn't classify.
+        // it. Use it as the definitive block terminator. (Doesn't
+        // always fire promptly: the prompt row doesn't complete +
+        // emit until a \n closes it, which only happens when the user
+        // sends the next command. The blank-line-after-rows path below
+        // ends the block earlier in the common case.)
         if (isPromptLine)
         {
-            if (_state != State.Idle)
-            {
-                _log?.Info("WhoListParser",
-                    $"End of block ({_rowsThisBlock} rows) — prompt arrived.");
-                _state = State.Idle;
-            }
+            if (_state != State.Idle) EndBlock();
             return;
         }
 
@@ -116,7 +115,7 @@ public sealed partial class WhoListParser : IDisposable
                 if (HeaderPattern().IsMatch(text))
                 {
                     _state = State.WaitForSeparator;
-                    _log?.Info("WhoListParser", $"Saw 'Current Adventurers' header: '{Quote(text)}'");
+                    _log?.Info("WhoListParser", "who response started");
                 }
                 break;
 
@@ -128,26 +127,31 @@ public sealed partial class WhoListParser : IDisposable
                 {
                     _state = State.Reading;
                     _rowsThisBlock = 0;
-                    _log?.Info("WhoListParser", $"Saw separator, reading rows: '{Quote(text)}'");
+                    _playersCountAtBlockStart = _db.Players.Count;
                 }
                 else if (!HeaderPattern().IsMatch(text))
                 {
                     // Header was a false positive (chat message containing
-                    // "Current Adventurers", maybe a remote command). Bail.
-                    _log?.Warn("WhoListParser",
-                        $"Expected separator after header but got: '{Quote(text)}' — bailing back to Idle");
+                    // "Current Adventurers", maybe a remote command). Bail
+                    // silently — no log entry to spam the pane on every
+                    // such false alarm.
                     _state = State.Idle;
                 }
                 break;
 
             case State.Reading:
-                // Blank lines between the separator and the first row, or
-                // mid-table padding, do NOT end the block — the server in
-                // the wild emits one right after the ============ line.
-                // The block only ends when we get a non-blank line that
-                // doesn't parse as a player row (the prompt, the footer,
-                // chat, etc.).
-                if (string.IsNullOrWhiteSpace(text)) break;
+                // Blank lines BEFORE the first row are padding (every
+                // server emits one right after the ============ separator)
+                // — stay in Reading. Blank lines AFTER at least one row
+                // mark the end of the table; the prompt is on the very
+                // next physical row but doesn't emit until a \n closes
+                // it (which is why the prompt-line terminator alone made
+                // the end-of-block log wait for the user's next keystroke).
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    if (_rowsThisBlock > 0) EndBlock();
+                    break;
+                }
                 if (TryParseRow(text, out PlayerRowMatch row))
                 {
                     string display = string.IsNullOrEmpty(row.Family)
@@ -163,32 +167,29 @@ public sealed partial class WhoListParser : IDisposable
                         role:      row.Role,
                         nowUtc:    nowUtc);
                     _rowsThisBlock++;
-                    _log?.Info("WhoListParser",
-                        $"Parsed row: {display} [{row.Alignment}] - {row.Title}" +
-                        (row.Gang is null ? "" : $" of {row.Gang}"));
                 }
                 else
                 {
                     // First non-blank, non-row line ends the block —
-                    // typically the trailing prompt or a "Total:" footer.
-                    _log?.Info("WhoListParser",
-                        $"End of block ({_rowsThisBlock} rows). Stopper line: '{Quote(text)}'");
-                    _state = State.Idle;
-                    // The terminator line might itself be the next who's
-                    // header (back-to-back `who` calls). Re-feed through
-                    // the fresh Idle state so we don't drop it.
+                    // typically a "Total:" footer or the next who's
+                    // header (back-to-back calls). Re-feed through the
+                    // now-Idle state so we don't drop it.
+                    EndBlock();
                     HandleLine(text, isPromptLine, nowUtc);
                 }
                 break;
         }
     }
 
-    /// <summary>Defensive quote helper — caps long lines, shows whitespace via length so the user can spot leading-space mismatches.</summary>
-    private static string Quote(string s)
+    private void EndBlock()
     {
-        const int max = 120;
-        string body = s.Length > max ? s[..max] + "…" : s;
-        return $"[{s.Length}] {body}";
+        int added = _db.Players.Count - _playersCountAtBlockStart;
+        if (added < 0) added = 0;
+        int updated = _rowsThisBlock - added;
+        if (updated < 0) updated = 0;
+        _log?.Info("WhoListParser",
+            $"who response complete — {_rowsThisBlock} player(s) seen ({added} added, {updated} updated)");
+        _state = State.Idle;
     }
 
     /// <summary>Number of rows recorded by the most recent <c>who</c> block. Useful for tests / debug.</summary>
