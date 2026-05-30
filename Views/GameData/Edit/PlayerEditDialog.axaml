@@ -111,9 +111,11 @@
                             <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Gang"/>
                             <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Gang, TargetNullValue='—'}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
-                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Role"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Role"
+                                       IsVisible="{Binding HasRole}"/>
                             <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding Role}"
-                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       IsVisible="{Binding HasRole}"/>
                             <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
                             <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding FirstSeenText}"
                                        Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>

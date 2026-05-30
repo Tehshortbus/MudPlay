@@ -119,15 +119,21 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     /// <summary>True when a <c>look</c> observation has populated equipment (empty list still counts).</summary>
     public bool HasEquipment => _original.Equipment is not null;
 
-    public string? Role           => string.IsNullOrEmpty(_original.Role)
-                                      ? "Regular"
-                                      : _original.Role switch
-                                        {
-                                            "M" => "Mudop",
-                                            "S" => "Sysop",
-                                            "V" => "Visitor",
-                                            _   => _original.Role,
-                                        };
+    public string? Role           => _original.Role switch
+                                      {
+                                          "M" => "Mudop",
+                                          "S" => "Sysop",
+                                          "V" => "Visitor",
+                                          _   => null,   // Regular players hide the row entirely.
+                                      };
+
+    /// <summary>
+    /// True only when <see cref="Role"/> has a non-Regular value to
+    /// show. Most players are Regular, so the row would be noise
+    /// otherwise — the Observed pane collapses the row to zero height
+    /// via IsVisible on both the label and value cells.
+    /// </summary>
+    public bool HasRole => Role is not null;
 
     public PlayerEditDialogViewModel(PlayerRecord original)
     {
