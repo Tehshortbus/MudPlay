@@ -122,7 +122,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         Sections.Add(new RoomsSectionViewModel(_gameData));
         Sections.Add(new PathsSectionViewModel(_gameData));
         Sections.Add(new LairsSectionViewModel(_gameData));
-        Add("shops",         "Shops",          "Phase 5 PR 5.15", "Static MDB table — ShopType (7 = bank, drives Cash auto-deposit) + buy/sell prices + inventory.");
+        Sections.Add(new ShopsSectionViewModel(_gameData));
         Add("races",         "Races",          "Phase 5 PR 5.16", "Static MDB table — race attributes + class compatibility.");
         Add("classes",       "Classes",        "Phase 5 PR 5.17", "Static MDB table — class spell + ability progression.");
         Add("textblocks",    "TextBlocks",     "Phase 5 PR 5.18", "Quest text / NPC dialogue / signs — referenced by Phase 9 Workshop QUESTS.");
