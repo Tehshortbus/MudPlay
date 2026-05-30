@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Logging;
 
 namespace FujinTerm;
 
@@ -22,7 +21,5 @@ internal static class Program
             .WithDeveloperTools()      // F12 inspector in debug builds.
 #endif
             .WithInterFont()           // Fall-back UI font for chrome/text boxes.
-            .LogToTextWriter(             // Route Avalonia diagnostics — including
-                Console.Error,            // binding errors — to stderr so they show
-                LogEventLevel.Warning);   // up in `dotnet run` output / journalctl.
+            .LogToTrace();             // Route Avalonia diagnostics to the trace listener.
 }
