@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Data;
-using Avalonia.Markup.Xaml;
 using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.Views.GameData.Tables;
@@ -12,6 +11,14 @@ namespace FujinTerm.Views.GameData.Tables;
 /// supplies a different ordered list, so the columns can't be authored
 /// in XAML and must be rebuilt when the DataContext is wired up.
 /// </summary>
+/// <remarks>
+/// No hand-written <c>InitializeComponent</c> here: the Avalonia name
+/// generator owns that method (per <c>AvaloniaNameGeneratorBehavior =
+/// InitializeComponent</c>) so the <c>x:Name="RowsGrid"</c> field gets
+/// populated. Overriding it manually short-circuits the generator and
+/// leaves x:Name fields null — which is how this view first shipped
+/// and crashed every section open with an NRE on <c>RowsGrid.Columns</c>.
+/// </remarks>
 public partial class GameDataTableSectionView : UserControl
 {
     private bool _columnsBuilt;
@@ -19,14 +26,11 @@ public partial class GameDataTableSectionView : UserControl
     public GameDataTableSectionView()
     {
         InitializeComponent();
-        // Two triggers because either ordering can happen: DataContext
-        // may land before the control is in the visual tree, or after.
-        // Whichever fires first wins; the second is a guarded no-op.
+        // Either trigger can fire first depending on layout timing;
+        // guard via _columnsBuilt so the second is a no-op.
         DataContextChanged   += (_, _) => TryBuildColumns();
         AttachedToVisualTree += (_, _) => TryBuildColumns();
     }
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
     private void TryBuildColumns()
     {
