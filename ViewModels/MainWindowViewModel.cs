@@ -1952,7 +1952,7 @@ public partial class MainWindowViewModel : ObservableObject
 
               • Avalonia UI                — MIT
               • CommunityToolkit.Mvvm       — MIT
-              • JackcessDotNet              — Apache 2.0 (Phase 5 MDB import)
+              • JetDatabaseReader           — MIT (Phase 5 MDB import)
 
             Other dependencies arrive with their respective phases; their
             licenses will appear here once they're added.

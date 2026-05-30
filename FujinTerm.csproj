@@ -53,9 +53,9 @@
     <!-- Source-generated MVVM helpers ([ObservableProperty], [RelayCommand]). -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
     <!-- Pure-managed Jet (.mdb / .accdb) reader for the Phase 5 MdbImporter.
-         Port of Apache Jackcess; no OLE DB / ACE / ODBC / Wine — runs
-         natively on Windows, Linux, and macOS. -->
-    <PackageReference Include="JackcessDotNet" Version="1.2.2" />
+         No OLE DB / ACE / ODBC / Wine — runs natively on Windows, Linux,
+         and macOS. Jet3 + Jet4 + ACCDB. -->
+    <PackageReference Include="JetDatabaseReader" Version="2.2.0" />
   </ItemGroup>
 
 </Project>

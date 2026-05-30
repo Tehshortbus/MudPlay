@@ -1,7 +1,8 @@
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using JackcessDotNet;
+using JetDatabaseReader;
 
 namespace FujinTerm.Services;
 
@@ -14,9 +15,10 @@ namespace FujinTerm.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Backed by <see cref="Database"/> from JackcessDotNet — a pure-managed
-/// port of Apache Jackcess. No native dependencies, no OLE DB / ACE /
-/// ODBC / Wine: the same binary reads Jet on Windows, Linux, and macOS.
+/// Backed by <see cref="AccessReader"/> from JetDatabaseReader — a
+/// pure-managed Jet3 / Jet4 / ACCDB reader. No native dependencies, no
+/// OLE DB / ACE / ODBC / Wine: the same binary reads Jet on Windows,
+/// Linux, and macOS.
 /// </para>
 /// <para>
 /// "Every user table" means every table the database exposes — the
@@ -97,8 +99,8 @@ public sealed class MdbImporter
         string outputPath = Path.Combine(GameDataRoot, folderName);
         Directory.CreateDirectory(outputPath);
 
-        // Jackcess reads off the calling thread; run the whole pipeline on
-        // a worker so the UI stays responsive during large imports.
+        // Reader runs synchronously off the calling thread; hop to a
+        // worker so the UI stays responsive during large imports.
         return await Task.Run(() => ImportCore(mdbFilePath, folderName, outputPath, cancellationToken),
                               cancellationToken);
     }
@@ -111,10 +113,10 @@ public sealed class MdbImporter
     {
         try
         {
-            using Database db = Database.Open(mdbFilePath);
+            using AccessReader reader = AccessReader.Open(mdbFilePath);
             OnStatusChanged?.Invoke("Opened database…");
 
-            IReadOnlyList<string> tables = FilterUserTables(db.ListTables(includeSystem: false));
+            IReadOnlyList<string> tables = FilterUserTables(reader.ListTables());
             OnStatusChanged?.Invoke($"Found {tables.Count} user tables");
 
             int tablesDone = 0;
@@ -129,7 +131,7 @@ public sealed class MdbImporter
 
                 try
                 {
-                    int rowCount = await ExportTableAsync(db, tableName, outputPath, cancellationToken);
+                    int rowCount = await ExportTableAsync(reader, tableName, outputPath, cancellationToken);
                     imported.Add($"{tableName} ({rowCount} rows)");
                 }
                 catch (Exception ex)
@@ -202,41 +204,45 @@ public sealed class MdbImporter
     // ----- Per-table export -------------------------------------------------
 
     private async Task<int> ExportTableAsync(
-        Database db,
+        AccessReader reader,
         string tableName,
         string outputPath,
         CancellationToken cancellationToken)
     {
-        Table table = db.GetTable(tableName);
-        IReadOnlyList<Row> rawRows = table.ReadAllRows();
-        OnStatusChanged?.Invoke($"  {rawRows.Count} rows");
+        // ReadTable returns a typed DataTable — column.DataType is the
+        // CLR mapping (int / decimal / DateTime / string / byte[] / etc.).
+        DataTable dt = reader.ReadTable(tableName);
+        int totalRows = dt.Rows.Count;
+        OnStatusChanged?.Invoke($"  {totalRows} rows");
 
-        string[] columns = table.Columns.Select(c => c.Name).ToArray();
+        string[] columns = new string[dt.Columns.Count];
+        for (int i = 0; i < dt.Columns.Count; i++)
+            columns[i] = dt.Columns[i].ColumnName;
 
-        List<Dictionary<string, object?>> rows = new(capacity: rawRows.Count);
+        List<Dictionary<string, object?>> rows = new(capacity: totalRows);
         int rowsDone = 0;
         int lastReportedPercent = 0;
 
-        foreach (Row raw in rawRows)
+        foreach (DataRow dr in dt.Rows)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             Dictionary<string, object?> row = new(columns.Length, StringComparer.OrdinalIgnoreCase);
-            foreach (string col in columns)
+            for (int i = 0; i < columns.Length; i++)
             {
-                raw.TryGetValue(col, out object? value);
-                row[col] = NormalizeValue(value);
+                object cell = dr[i];
+                row[columns[i]] = cell is DBNull ? null : NormalizeValue(cell);
             }
             rows.Add(row);
             rowsDone++;
 
-            if (rawRows.Count > 0)
+            if (totalRows > 0)
             {
-                int percent = rowsDone * 100 / rawRows.Count;
+                int percent = rowsDone * 100 / totalRows;
                 if (percent >= lastReportedPercent + 5)
                 {
                     lastReportedPercent = percent;
-                    OnRowProgress?.Invoke(tableName, rowsDone, rawRows.Count);
+                    OnRowProgress?.Invoke(tableName, rowsDone, totalRows);
                 }
             }
         }
@@ -250,12 +256,12 @@ public sealed class MdbImporter
         return rows.Count;
     }
 
-    // Marshal Jackcess scalar types to JSON-friendly primitives. Most
-    // values come through as .NET primitives already; byte[] (OLE / binary
-    // columns) gets base64'd so it round-trips through JSON cleanly.
-    private static object? NormalizeValue(object? value) => value switch
+    // Marshal Jet column types to JSON-friendly primitives. Most values
+    // already come through as .NET primitives; byte[] (OLE / binary
+    // columns) gets base64'd so it round-trips through JSON cleanly,
+    // and DateTime serializes as ISO 8601 round-trip "O" format.
+    private static object? NormalizeValue(object value) => value switch
     {
-        null => null,
         byte[] bytes => Convert.ToBase64String(bytes),
         DateTime dt => dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
         _ => value,
