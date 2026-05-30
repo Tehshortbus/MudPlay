@@ -23,7 +23,6 @@
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProfileCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProfileAsCommand}"/>
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
-        <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
         <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
         <KeyBinding Gesture="F3"     Command="{Binding OpenPartyCommand}"/>
         <KeyBinding Gesture="F4"     Command="{Binding OpenWorkshopCommand}"/>
@@ -144,8 +143,9 @@
             </MenuItem>
 
             <MenuItem Header="_Help">
-                <MenuItem Header="Help topics…"        InputGesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
-                <MenuItem Header="Keyboard shortcuts…" Command="{Binding OpenKeyboardShortcutsCommand}"/>
+                <MenuItem Header="Help topics…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Old-school help browser lands in a later phase."/>
                 <Separator/>
                 <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
                 <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>

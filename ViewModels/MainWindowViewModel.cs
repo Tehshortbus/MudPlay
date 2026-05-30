@@ -1980,21 +1980,6 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
-    /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>
-    [RelayCommand]
-    private void OpenHelpTopics()
-    {
-        string? docs = AppInfo.TryFindDocsFolder();
-        if (docs is not null)
-        {
-            ShellLaunch.OpenPath(docs);
-            return;
-        }
-        // Shipped builds don't carry docs/ — fall back to the repo readme.
-        if (!ShellLaunch.OpenUrl(AppInfo.RepoUrl))
-            AppServices.Current.Log.Warn("Help", "Could not open help.");
-    }
-
     [RelayCommand]
     private void OpenMajorMudWiki() => ShellLaunch.OpenUrl(AppInfo.MajorMudWikiUrl);
 
@@ -2019,39 +2004,6 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
-
-    /// <summary>Help → Keyboard shortcuts… Opens a modeless info dialog.</summary>
-    [RelayCommand]
-    private void OpenKeyboardShortcuts()
-        => ShowInfoDialog("Keyboard shortcuts — FujinTerm",
-            """
-            Connect / Disconnect (toggle) ... Ctrl+K
-            Quit ............................ Ctrl+Q
-
-            View
-              Conversation .................. F2  (wired Phase 2)
-              Party ......................... F3  (wired Phase 6)
-              Player Workshop ............... F4  (wired Phase 9)
-              Navigation .................... F5  (wired Phase 7)
-              Spell Book .................... F7  (wired Phase 9)
-              Backscroll .................... F10 (wired Phase 1)
-              Session Stats ................. F11 (wired Phase 8)
-              Settings ...................... Ctrl+,  (Phase 4)
-
-            Tools
-              Program Log ................... F9  (wired Phase 1)
-              Wire Inspector ................ (no shortcut — toolbar / menu)
-
-            Game Data
-              Browser ....................... Ctrl+G  (Phase 5)
-
-            File
-              New / Open / Save profile ..... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
-
-            Help topics ..................... F1  (this dialog's neighbor)
-
-            More entries land as each phase wires its feature.
-            """);
 
     /// <summary>Help → License… Project + third-party license summary.</summary>
     [RelayCommand]

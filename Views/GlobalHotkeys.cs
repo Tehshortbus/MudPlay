@@ -33,7 +33,6 @@ public static class GlobalHotkeys
             } desktop) return;
         if (ReferenceEquals(window, desktop.MainWindow)) return;
 
-        Add(window, "F1",            vm.OpenHelpTopicsCommand);
         Add(window, "F2",            vm.OpenConversationCommand);
         Add(window, "F3",            vm.OpenPartyCommand);
         Add(window, "F4",            vm.OpenWorkshopCommand);
