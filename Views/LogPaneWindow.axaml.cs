@@ -32,6 +32,18 @@ public partial class LogPaneWindow : Window
         if (DataContext is LogPaneViewModel vm)
         {
             vm.Rows.CollectionChanged += OnRowsChanged;
+
+            // Show the newest entries first — the log accumulates while
+            // the window's closed, so opening it scrolled-to-top would
+            // make the user scroll to find what just happened. Defer to
+            // the next dispatcher tick so the ListBox has materialised
+            // its items before we ask it to scroll one into view.
+            if (vm.Rows.Count > 0)
+            {
+                object newest = vm.Rows[vm.Rows.Count - 1];
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => _rowsList?.ScrollIntoView(newest));
+            }
         }
     }
 
