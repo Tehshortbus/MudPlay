@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="640"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="670"
         x:Class="FujinTerm.Views.GameData.Edit.PlayerEditDialog"
         x:DataType="vm:PlayerEditDialogViewModel"
         Title="{Binding Title}"
-        Width="560" Height="640"
+        Width="560" Height="670"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>

@@ -99,10 +99,11 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
 
     /// <summary>
     /// Equipment slot summary for the Observed pane — one per slot,
-    /// formatted as <c>"Slot: item name"</c>. Empty list ("Nothing")
-    /// reports as a single "(none)" placeholder so the user can tell
-    /// "explicitly naked" apart from "never looked at" (which shows
-    /// "—" because <see cref="HasEquipment"/> is false).
+    /// formatted as <c>"item name (Slot)"</c> to mirror exactly what
+    /// the game prints in the <c>look &lt;player&gt;</c> response.
+    /// Empty list ("Nothing") reports as a single "(none)" placeholder
+    /// so the user can tell "explicitly naked" apart from "never looked
+    /// at" (which shows "—" because <see cref="HasEquipment"/> is false).
     /// </summary>
     public IReadOnlyList<string> EquipmentLines
     {
@@ -111,7 +112,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
             IReadOnlyList<Models.GameData.EquipmentItem>? eq = _original.Equipment;
             if (eq is null) return Array.Empty<string>();
             if (eq.Count == 0) return new[] { "(none)" };
-            return eq.Select(e => $"{e.SlotLabel}: {e.ItemName}").ToArray();
+            return eq.Select(e => $"{e.ItemName} ({e.SlotLabel})").ToArray();
         }
     }
 
