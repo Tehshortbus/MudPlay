@@ -911,19 +911,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// BBSes saved on disk.
     /// </summary>
     private static BbsProfile? ResolveActiveBbs()
-    {
-        string? name = AppServices.Current.Profile.Current?.BbsName;
-        if (!string.IsNullOrEmpty(name))
-        {
-            BbsProfile? pinned = AppServices.Current.Bbs.Get(name);
-            if (pinned is not null) return pinned;
-        }
-
-        string? first = AppServices.Current.Bbs.ListNames()
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        return first is null ? null : AppServices.Current.Bbs.Get(first);
-    }
+        => AppServices.Current.ResolveActiveBbs();
 
     private void RefreshBbsBindings()
     {

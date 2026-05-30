@@ -356,6 +356,33 @@ public sealed class AppServices
     }
 
     /// <summary>
+    /// Resolve which BBS the runtime should treat as active. Pin on
+    /// the loaded character profile wins; otherwise fall back to the
+    /// first BBS alphabetically (a user on a blank draft with one
+    /// saved BBS should still get its connection info, display
+    /// settings, and ActiveGameDataSet applied without manual
+    /// intervention). Returns <c>null</c> only when there's no pin
+    /// AND zero BBSes saved on disk. Mirrors the resolution logic
+    /// the main window's title-bar / Connect button use, so the
+    /// game-data + display + cache layers see the same active BBS
+    /// the user sees in the chrome.
+    /// </summary>
+    public Models.Settings.BbsProfile? ResolveActiveBbs()
+    {
+        string? name = Profile.Current?.BbsName;
+        if (!string.IsNullOrEmpty(name))
+        {
+            Models.Settings.BbsProfile? pinned = Bbs.Get(name);
+            if (pinned is not null) return pinned;
+        }
+
+        string? first = Bbs.ListNames()
+            .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        return first is null ? null : Bbs.Get(first);
+    }
+
+    /// <summary>
     /// Recompute the active game-data set from the BBS-pin chain and
     /// flip <see cref="GameData"/> if it differs. Idempotent — the
     /// cache short-circuits no-op switches so calling this on every
@@ -363,17 +390,14 @@ public sealed class AppServices
     /// </summary>
     private void ApplyActiveGameDataSet()
     {
-        string? bbsName = Profile.Current?.BbsName;
-        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
+        Models.Settings.BbsProfile? bbs = ResolveActiveBbs();
         string? resolved = bbs?.ActiveGameDataSet ?? Settings.Current.DefaultGameDataSet;
         GameData.SwitchSet(resolved);
     }
 
     private void ApplyDisplayFromActiveBbs()
     {
-        string? bbsName = Profile.Current?.BbsName;
-        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
-        Models.Settings.BbsProfile values = bbs ?? new Models.Settings.BbsProfile();
+        Models.Settings.BbsProfile values = ResolveActiveBbs() ?? new Models.Settings.BbsProfile();
         Display.FontSize = values.FontSize;
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;
