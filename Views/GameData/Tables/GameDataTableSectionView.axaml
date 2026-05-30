@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.GameData.Tables"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="480"
+             x:Class="FujinTerm.Views.GameData.Tables.GameDataTableSectionView"
+             x:DataType="vm:GameDataTableSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.Header">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeLg}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.ColumnHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,16,0"/>
+            <Setter Property="MinWidth" Value="80"/>
+        </Style>
+        <Style Selector="TextBlock.Cell">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="Margin" Value="0,0,16,0"/>
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        <Style Selector="TextBlock.StatusText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+        <!-- Tab header. -->
+        <TextBlock Grid.Row="0" Classes="Header" Text="{Binding Title}"/>
+
+        <!-- Search box. -->
+        <TextBox Grid.Row="1"
+                 Text="{Binding SearchText, Mode=TwoWay}"
+                 PlaceholderText="Filter…"
+                 Width="320" HorizontalAlignment="Left"/>
+
+        <!-- Column header row. -->
+        <ScrollViewer Grid.Row="2"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Columns}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Classes="ColumnHeader" Text="{Binding}"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Row list. Horizontal scroll on wide tables. -->
+        <Border Grid.Row="3"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="1"
+                Background="{StaticResource ChromeBgSunkenBrush}">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                <ListBox ItemsSource="{Binding FilteredRows}"
+                         SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GameDataRow">
+                            <ItemsControl ItemsSource="{Binding Cells}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GameDataCell">
+                                        <TextBlock Classes="Cell" Text="{Binding Value}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Footer status -->
+        <TextBlock Grid.Row="4" Classes="StatusText" Text="{Binding StatusText}"/>
+
+    </Grid>
+</UserControl>

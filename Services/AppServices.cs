@@ -169,6 +169,40 @@ public sealed class AppServices
     public GameDataCache GameData { get; } = new();
 
     /// <summary>
+    /// In-memory cache of the active character's
+    /// <see cref="Models.GameData.Trigger"/> list + the shared
+    /// session-scoped named-variable store used by both triggers and
+    /// aliases. Phase 5 PR 5.10 ships the data spine;
+    /// MessageRouter integration + runtime action dispatch land in
+    /// Phase 13.
+    /// </summary>
+    public TriggerEngine Triggers { get; }
+
+    /// <summary>
+    /// In-memory cache of the active character's
+    /// <see cref="Models.GameData.Alias"/> entries. Outgoing-text
+    /// mirror of <see cref="Triggers"/>; matches on the first token
+    /// of typed input land alongside the editor in a follow-up.
+    /// </summary>
+    public AliasEngine Aliases { get; }
+
+    /// <summary>
+    /// Observed + edited <see cref="Models.GameData.PlayerRecord"/>
+    /// store. Phase 5 PR 5.20 ships the spine; the <c>who</c>-output
+    /// parser that calls <c>RecordObservation</c> lives with Phase 6
+    /// PartyManager.
+    /// </summary>
+    public PlayerDatabase Players { get; } = new();
+
+    /// <summary>
+    /// Loaded character's <see cref="Models.GameData.Favorite"/>
+    /// shortcuts. Phase 7 Goto / Loop dialogs consume the list as the
+    /// left-rail sidebar.
+    /// </summary>
+    public FavoritesManager Favorites { get; }
+
+
+    /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
     /// the existing instance. Touches <see cref="AppPaths"/> to force
     /// directory creation before any service tries to read or write a file.
@@ -223,6 +257,9 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        Triggers = new TriggerEngine(Profile);
+        Aliases = new AliasEngine(Profile);
+        Favorites = new FavoritesManager(Profile);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

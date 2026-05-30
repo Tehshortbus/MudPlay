@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData;
 
@@ -51,10 +52,28 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         }
     }
 
+    private readonly TriggerEngine? _triggers;
+    private readonly AliasEngine? _aliases;
+    private readonly PlayerDatabase? _players;
+    private readonly FavoritesManager? _favorites;
+
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
+        : this(gameData, triggers: null, aliases: null, players: null, favorites: null, initialSectionId) { }
+
+    public GameDataBrowserViewModel(
+        GameDataCache gameData,
+        TriggerEngine? triggers,
+        AliasEngine? aliases = null,
+        PlayerDatabase? players = null,
+        FavoritesManager? favorites = null,
+        string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         _gameData = gameData;
+        _triggers = triggers;
+        _aliases = aliases;
+        _players = players;
+        _favorites = favorites;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -92,21 +111,37 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     /// </summary>
     private void SeedSections()
     {
-        Add("monsters",      "Monsters",       "Phase 5 PR 5.5",  "Static MDB table — name, level, HP, attacks, ability effects via AbilityNames helper.");
-        Add("items",         "Items",          "Phase 5 PR 5.6",  "Static MDB table — slot, weight, ability effects (via AbilityNames), shop price.");
-        Add("spells",        "Spells",         "Phase 5 PR 5.7",  "Static MDB table + inline linked Spell Messages editor (key UX improvement over MegaMUD).");
-        Add("conditions",    "Conditions",     "Phase 5 PR 5.9",  "Non-spell condition messages (blinded / poisoned / paralyzed / etc.) with effect-flag bitfield + action enum.");
-        Add("triggers",      "Triggers",       "Phase 5 PR 5.10", "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
-        Add("aliases",       "Aliases",        "Phase 5 PR 5.11", "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
-        Add("rooms",         "Rooms",          "Phase 5 PR 5.12", "Static MDB table — id / name / description / shop refs / remote-action prerequisites (Phase 7 walker).");
-        Add("paths",         "Paths",          "Phase 5 PR 5.13", "Static MDB table — directed edges between rooms.");
-        Add("lairs",         "Lairs",          "Phase 5 PR 5.14", "Static MDB table — referenced by Auto-Lair scheduler UI.");
-        Add("shops",         "Shops",          "Phase 5 PR 5.15", "Static MDB table — ShopType (7 = bank, drives Cash auto-deposit) + buy/sell prices + inventory.");
-        Add("races",         "Races",          "Phase 5 PR 5.16", "Static MDB table — race attributes + class compatibility.");
-        Add("classes",       "Classes",        "Phase 5 PR 5.17", "Static MDB table — class spell + ability progression.");
-        Add("textblocks",    "TextBlocks",     "Phase 5 PR 5.18", "Quest text / NPC dialogue / signs — referenced by Phase 9 Workshop QUESTS.");
-        Add("players",       "Players",        "Phase 5 PR 5.20", "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
-        Add("favorites",     "Favorites",      "Phase 5 PR 5.21", "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
+        Sections.Add(new MonstersSectionViewModel(_gameData));
+        Sections.Add(new ItemsSectionViewModel(_gameData));
+        Sections.Add(new SpellsSectionViewModel(_gameData));
+        Sections.Add(new ConditionsSectionViewModel(_gameData));
+        if (_triggers is not null)
+            Sections.Add(new TriggersSectionViewModel(_triggers));
+        else
+            Add("triggers", "Triggers", "Phase 5 PR 5.10",
+                "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
+        if (_aliases is not null)
+            Sections.Add(new AliasesSectionViewModel(_aliases));
+        else
+            Add("aliases", "Aliases", "Phase 5 PR 5.11",
+                "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
+        Sections.Add(new RoomsSectionViewModel(_gameData));
+        Sections.Add(new PathsSectionViewModel(_gameData));
+        Sections.Add(new LairsSectionViewModel(_gameData));
+        Sections.Add(new ShopsSectionViewModel(_gameData));
+        Sections.Add(new RacesSectionViewModel(_gameData));
+        Sections.Add(new ClassesSectionViewModel(_gameData));
+        Sections.Add(new TextBlocksSectionViewModel(_gameData));
+        if (_players is not null)
+            Sections.Add(new PlayersSectionViewModel(_players));
+        else
+            Add("players", "Players", "Phase 5 PR 5.20",
+                "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
+        if (_favorites is not null)
+            Sections.Add(new FavoritesSectionViewModel(_favorites));
+        else
+            Add("favorites", "Favorites", "Phase 5 PR 5.21",
+                "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
         Add("macros",        "Macros",         "Phase 5 PR 5.22", "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 
         void Add(string id, string title, string phase, string description)

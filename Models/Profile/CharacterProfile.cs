@@ -52,6 +52,34 @@ public sealed class CharacterProfile
     public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 
     /// <summary>
+    /// User-defined incoming-text triggers. Per-character so the
+    /// pattern + action list follows the character that authored it.
+    /// Loaded into <see cref="Services.TriggerEngine"/> on profile
+    /// load (Phase 5 PR 5.10). Named capture variables emitted by
+    /// matches are app-session-scoped in the engine, not persisted
+    /// here.
+    /// </summary>
+    public List<GameData.Trigger>? Triggers { get; set; }
+
+    /// <summary>
+    /// User-defined outgoing-text aliases. Per-character; loaded into
+    /// the Phase 5 PR 5.11 <see cref="Services.AliasEngine"/> on
+    /// profile load. Variables substitution inside an alias's
+    /// expansion reads from the shared session-scoped variable store
+    /// the trigger engine maintains.
+    /// </summary>
+    public List<GameData.Alias>? Aliases { get; set; }
+
+    /// <summary>
+    /// User-authored room favourites with their folder-path hierarchy.
+    /// Per-character; loaded into <see cref="Services.FavoritesManager"/>
+    /// on profile load. Phase 5 PR 5.25's starter bundle layers
+    /// pre-seeded defaults from the active game-data set on top of
+    /// whatever's stored here.
+    /// </summary>
+    public List<GameData.Favorite>? Favorites { get; set; }
+
+    /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
     /// <see cref="Services.FloatingPanelHost"/> on profile save; consumed on
     /// profile load. <c>null</c> means "no layouts captured yet" — panels
