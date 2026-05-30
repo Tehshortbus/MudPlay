@@ -62,6 +62,11 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel,
                 FujinTerm.Views.Profile.ProfileNameInputDialog>();
+
+            // Settings → General → "Change data directory" confirm + execute dialog.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
+                FujinTerm.Views.Settings.DataDirectoryRelocateDialog>();
         }
 
         base.OnFrameworkInitializationCompleted();

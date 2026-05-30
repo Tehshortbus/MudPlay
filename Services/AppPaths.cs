@@ -20,6 +20,21 @@ public static class AppPaths
     /// <summary>Single root containing all user-writable app data.</summary>
     public static string DataRoot { get; }
 
+    /// <summary>
+    /// Tiny one-line text file that overrides <see cref="DataRoot"/> with a
+    /// user-chosen absolute path. Lives at the platform-config equivalent
+    /// (Linux: <c>~/.config/FujinTerm/</c>, Windows: <c>%LocalAppData%\FujinTerm\</c>,
+    /// macOS: <c>~/Library/Preferences/FujinTerm/</c>) — the *only* file
+    /// FujinTerm writes outside <see cref="DataRoot"/>. Absent on a fresh
+    /// install; created by the Settings → General "Change data directory"
+    /// migration flow. <see cref="DataRootRelocator"/> writes it; this
+    /// type only reads it at static-init.
+    /// </summary>
+    public static string PointerFile { get; }
+
+    /// <summary>The path resolution source for the active <see cref="DataRoot"/> — useful for the Settings UI tooltip.</summary>
+    public static DataRootSource DataRootResolvedFrom { get; }
+
     /// <summary>Imported game-data sets (Defaults tier — read-only base).</summary>
     public static string GameDataRoot { get; }
 
@@ -58,12 +73,30 @@ public static class AppPaths
 
     static AppPaths()
     {
-        // FUJINTERM_DATA_ROOT lets tests and portable installs relocate the entire
-        // Data tree to an arbitrary directory.
+        // Pointer file lives at the platform's "config" location — separate from
+        // the data root itself so the user can relocate data to a different
+        // drive without losing the breadcrumb that tells us where it went.
+        //   Linux  → $XDG_CONFIG_HOME (or ~/.config)
+        //   Win    → %LOCALAPPDATA%   (Windows doesn't separate config / data)
+        //   macOS  → ~/Library/Preferences
+        string configDir = Environment.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolderOption.Create);
+        PointerFile = Path.Combine(configDir, AppFolderName, "data-location.txt");
+
+        // Resolution order: env var → pointer file → platform default.
+        // FUJINTERM_DATA_ROOT wins for tests and CI; pointer file wins for
+        // user-relocated installs; otherwise the OS standard data location.
         string? envOverride = Environment.GetEnvironmentVariable("FUJINTERM_DATA_ROOT");
         if (!string.IsNullOrWhiteSpace(envOverride))
         {
-            DataRoot = Path.GetFullPath(envOverride);
+            DataRoot             = Path.GetFullPath(envOverride);
+            DataRootResolvedFrom = DataRootSource.EnvironmentVariable;
+        }
+        else if (TryReadPointerFile(PointerFile, out string? pointed))
+        {
+            DataRoot             = pointed;
+            DataRootResolvedFrom = DataRootSource.PointerFile;
         }
         else
         {
@@ -74,7 +107,8 @@ public static class AppPaths
             string baseDir = Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData,
                 Environment.SpecialFolderOption.Create);
-            DataRoot = Path.Combine(baseDir, AppFolderName, DataSubfolder);
+            DataRoot             = Path.Combine(baseDir, AppFolderName, DataSubfolder);
+            DataRootResolvedFrom = DataRootSource.PlatformDefault;
         }
 
         GameDataRoot       = Path.Combine(DataRoot, "game data");
@@ -173,4 +207,43 @@ public static class AppPaths
         string ts = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         return Path.Combine(LogsDir, $"{ts}-{topic}.log");
     }
+
+    private static bool TryReadPointerFile(string path, out string resolved)
+    {
+        resolved = string.Empty;
+        try
+        {
+            if (!File.Exists(path)) return false;
+            string line = File.ReadAllText(path).Trim();
+            if (line.Length == 0) return false;
+
+            // Defensive: only accept a real, absolute, syntactically-valid path.
+            // A stale or hand-edited pointer to a non-existent path is still
+            // honoured (we'll create the structure there) — but garbage that
+            // isn't even a valid path is silently ignored.
+            string full = Path.GetFullPath(line);
+            resolved = full;
+            return true;
+        }
+        catch
+        {
+            // Unreadable / permission-denied / malformed → silently fall back
+            // to the platform default. The Settings UI is the place to fix it,
+            // not the bootstrap.
+            return false;
+        }
+    }
+}
+
+/// <summary>Where <see cref="AppPaths.DataRoot"/> was resolved from at startup.</summary>
+public enum DataRootSource
+{
+    /// <summary>Platform-standard user-data path (the install default).</summary>
+    PlatformDefault,
+
+    /// <summary>User-relocated; <see cref="AppPaths.PointerFile"/> points here.</summary>
+    PointerFile,
+
+    /// <summary><c>FUJINTERM_DATA_ROOT</c> env var override (tests / CI).</summary>
+    EnvironmentVariable,
 }

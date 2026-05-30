@@ -35,7 +35,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "General", "Data files", "Open Data folder",
+        "General", "Data files", "Open Data folder", "Change data directory",
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
@@ -62,6 +62,20 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     {
         if (!ShellLaunch.OpenPath(AppPaths.DataRoot))
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.DataRoot}");
+    }
+
+    /// <summary>
+    /// Opens the "Change data directory" modeless dialog. On confirm the
+    /// dialog runs <see cref="DataRootRelocator"/> and restarts the app at
+    /// the new location; this method's task completes only on Cancel.
+    /// </summary>
+    [RelayCommand]
+    private async Task ChangeDataFolderAsync()
+    {
+        DataRootRelocator.MovePlan plan = DataRootRelocator.Plan();
+        DataDirectoryRelocateDialogViewModel vm = new(AppPaths.DataRoot, plan);
+        await AppServices.Current.Dialogs.OpenWindowAsync<
+            DataDirectoryRelocateDialogViewModel, bool>(vm);
     }
 
     // ----- Initial task (three radios — mutual exclusion handled by GroupName) -----

@@ -52,7 +52,7 @@
 
                 <TextBlock Classes="SectionHeader" Text="Directories"/>
 
-                <Grid ColumnDefinitions="120,*,Auto">
+                <Grid ColumnDefinitions="120,*,Auto,Auto">
                     <TextBlock Grid.Column="0" Text="Data files:"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeMd}"
@@ -63,11 +63,16 @@
                              FontFamily="{StaticResource FontMono}"
                              FontSize="{StaticResource FontSizeSm}"
                              VerticalAlignment="Center"
-                             ToolTip.Tip="Resolved per platform (XDG on Linux, %AppData% on Windows, Application Support on macOS). Not user-editable — set FUJINTERM_DATA to override."/>
+                             ToolTip.Tip="Defaults to the platform user-data path (XDG on Linux, %AppData% on Windows, Application Support on macOS). Use Change… to move the folder elsewhere — a tiny pointer file at the platform-config location remembers the new path on next launch."/>
                     <Button Grid.Column="2"
                             Content="Open Data folder…"
                             Command="{Binding OpenDataFolderCommand}"
                             Margin="8,0,0,0"/>
+                    <Button Grid.Column="3"
+                            Content="Change…"
+                            Command="{Binding ChangeDataFolderCommand}"
+                            Margin="8,0,0,0"
+                            ToolTip.Tip="Move every file under the data folder to a different location; the app restarts at the new path."/>
                 </Grid>
 
                 <TextBlock Classes="SectionHeader" Text="Initial"/>
