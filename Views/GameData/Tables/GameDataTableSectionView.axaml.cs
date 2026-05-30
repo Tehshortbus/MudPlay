@@ -77,5 +77,20 @@ public partial class GameDataTableSectionView : UserControl
             Width   = DataGridLength.Auto,
         });
         _columnsBuilt = true;
+
+        // The XAML ItemsSource binding ({Binding FilteredRows}) fires
+        // when DataContext is set — which happens *before* we get the
+        // DataContextChanged callback, so the DataGrid receives its
+        // rows while it still has zero columns and never materialises
+        // them. Toggling ItemsSource forces re-materialisation now that
+        // the columns are in place. Without this kick the first-ever
+        // activation of a table tab renders blank until the user
+        // switches sections and comes back.
+        System.Collections.IEnumerable? src = RowsGrid.ItemsSource;
+        if (src is not null)
+        {
+            RowsGrid.ItemsSource = null;
+            RowsGrid.ItemsSource = src;
+        }
     }
 }

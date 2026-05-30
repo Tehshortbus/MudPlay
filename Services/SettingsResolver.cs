@@ -40,6 +40,19 @@ public sealed class SettingsResolver
     private readonly Func<string?>? _activeSetProvider;
     private BbsProfile? _activeBbs;
 
+    /// <summary>
+    /// Per-path cache of override side-files. Keyed by the absolute
+    /// path returned from <see cref="AppPaths.OverrideFile"/>; value
+    /// is <c>null</c> when the file is absent or empty so we can
+    /// distinguish "checked, missing" from "not yet checked." Without
+    /// this cache the Game Data Browser triggered ~N rows × 3 tiers
+    /// disk reads per table on open — 10s of thousands of stat() calls.
+    /// Invalidated by <see cref="WriteGameDataAt"/> /
+    /// <see cref="ClearGameDataAt"/>, which mutate the same path.
+    /// </summary>
+    private readonly Dictionary<string, Dictionary<string, JsonElement>?> _overrideCache =
+        new(StringComparer.Ordinal);
+
     public SettingsResolver(
         SettingsService settings,
         BbsProfileStore bbsStore,
@@ -270,7 +283,7 @@ public sealed class SettingsResolver
 
     // ----- Override file I/O ---------------------------------------------
 
-    private static JsonElement? ReadOverride(
+    private JsonElement? ReadOverride(
         SettingsTier tier,
         string? scope,
         string table,
@@ -282,25 +295,38 @@ public sealed class SettingsResolver
         if (tier != SettingsTier.Global && string.IsNullOrEmpty(scope)) return null;
 
         string path = AppPaths.OverrideFile(tier, scope, table, set);
-        Dictionary<string, JsonElement>? records = JsonStore.Load<Dictionary<string, JsonElement>>(path);
+        Dictionary<string, JsonElement>? records = GetCachedOverrideFile(path);
         if (records is null) return null;
         return records.TryGetValue(recordId, out JsonElement v) ? v : null;
     }
 
-    private static Dictionary<string, JsonElement> LoadOverrideFile(
+    private Dictionary<string, JsonElement> LoadOverrideFile(
         SettingsTier tier, string scope, string table, string set)
     {
         string path = AppPaths.OverrideFile(tier, scope, table, set);
-        return JsonStore.Load<Dictionary<string, JsonElement>>(path) ?? new();
+        return GetCachedOverrideFile(path) ?? new();
     }
 
-    private static void SaveOverrideFile(
+    private void SaveOverrideFile(
         SettingsTier tier, string scope, string table, string set,
         Dictionary<string, JsonElement> records)
     {
         string path = AppPaths.OverrideFile(tier, scope, table, set);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         JsonStore.Save(path, records);
+        // Stash the freshly-written contents so subsequent reads don't
+        // hit disk and so the in-memory cache stays in sync with the
+        // file we just produced.
+        _overrideCache[path] = records.Count == 0 ? null : records;
+    }
+
+    private Dictionary<string, JsonElement>? GetCachedOverrideFile(string path)
+    {
+        if (_overrideCache.TryGetValue(path, out Dictionary<string, JsonElement>? cached))
+            return cached;
+        Dictionary<string, JsonElement>? loaded = JsonStore.Load<Dictionary<string, JsonElement>>(path);
+        _overrideCache[path] = loaded;
+        return loaded;
     }
 
     // ----- Merge plumbing ------------------------------------------------
