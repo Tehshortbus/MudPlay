@@ -44,6 +44,14 @@ public partial class App : Application
             // .mp paths, favourites) routes its row-level conflicts through
             // this one window via DialogService.OpenWindowAsync.
             AppServices.Current.Dialogs.RegisterWindow<ImportConflictViewModel, ImportConflictWindow>();
+
+            // Phase 5 per-record edit dialogs — Messages tab + Monsters tab.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MessageEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MessageEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MonsterEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MonsterEditDialog>();
         }
 
         base.OnFrameworkInitializationCompleted();

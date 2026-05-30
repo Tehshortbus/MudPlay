@@ -61,9 +61,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     private readonly MacroStore? _macros;
     private readonly MessageStore? _messages;
     private readonly SettingsResolver? _resolver;
+    private readonly DialogService? _dialogs;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, dialogs: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -73,6 +74,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         MacroStore? macros = null,
         MessageStore? messages = null,
         SettingsResolver? resolver = null,
+        DialogService? dialogs = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -83,6 +85,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         _macros = macros;
         _messages = messages;
         _resolver = resolver;
+        _dialogs = dialogs;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -157,7 +160,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
                 "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
 
         if (_messages is not null)
-            Sections.Add(new MessagesSectionViewModel(_messages));
+            Sections.Add(new MessagesSectionViewModel(_messages, _dialogs, _resolver));
         else
             AddPlaceholder("messages", "Messages", "Phase 5",
                 "Per-set Messages/Responses catalogue. Imported from a MegaMUD messages.md file and " +
@@ -165,7 +168,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
 
         // ----- MDB-derived (bottom group) ---------------------------------
 
-        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver));
+        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs));
         Sections.Add(new ItemsSectionViewModel(_gameData, _resolver));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));

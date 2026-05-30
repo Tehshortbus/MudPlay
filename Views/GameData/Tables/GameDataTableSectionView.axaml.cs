@@ -30,6 +30,21 @@ public partial class GameDataTableSectionView : UserControl
         // guard via _columnsBuilt so the second is a no-op.
         DataContextChanged   += (_, _) => TryBuildColumns();
         AttachedToVisualTree += (_, _) => TryBuildColumns();
+
+        // Double-click any row → invoke the section's OpenEditCommand
+        // with the row as the argument. Sections that don't expose an
+        // editor (e.g. read-only Info tab) leave the command null and
+        // the double-click is a no-op.
+        RowsGrid.DoubleTapped += (_, _) =>
+        {
+            if (DataContext is IEditableTableSectionViewModel editable
+                && RowsGrid.SelectedItem is GameDataRow row
+                && editable.OpenEditCommand is { } cmd
+                && cmd.CanExecute(row))
+            {
+                cmd.Execute(row);
+            }
+        };
     }
 
     private void TryBuildColumns()

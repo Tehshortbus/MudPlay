@@ -1,0 +1,146 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.GameData.Edit.MonsterEditDialog"
+        x:DataType="vm:MonsterEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="780" Height="540"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.MdbKey">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBlock.MdbValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+
+            <!-- ===== Two panes: editable left + read-only MDB right ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,*" ColumnSpacing="14">
+
+                <!-- Editable -->
+                <Border Grid.Column="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="SectionHeader" Text="Monster"/>
+                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Use"/>
+                                <ComboBox  Grid.Row="1" Grid.Column="1"
+                                           ItemsSource="{Binding AvailableTiers}"
+                                           SelectedItem="{Binding UseTier, Mode=TwoWay}"
+                                           HorizontalAlignment="Stretch"/>
+                            </Grid>
+
+                            <TextBlock Classes="SectionHeader" Text="Details"/>
+                            <Grid ColumnDefinitions="110,*,8,Auto,Auto"
+                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                  ColumnSpacing="8" RowSpacing="6">
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Relationship"/>
+                                <ComboBox  Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="4"
+                                           ItemsSource="{Binding AvailableRelationships}"
+                                           SelectedItem="{Binding Relationship, Mode=TwoWay}"
+                                           HorizontalAlignment="Stretch"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Experience"/>
+                                <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4"
+                                           Text="{Binding Experience, Mode=TwoWay}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Max HP's"/>
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding MaxHp, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
+                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding MaxHpMax, Mode=TwoWay}" Width="64"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Pre-attack ID"/>
+                                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding PreAttackSpellId, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
+                                <TextBox   Grid.Row="3" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}" Width="64"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Attack spell ID"/>
+                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding AttackSpellId, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="4" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
+                                <TextBox   Grid.Row="4" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}" Width="64"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="14" Margin="0,8,0,0">
+                                <Border Grid.Column="0"
+                                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                                        BorderThickness="1" CornerRadius="3" Padding="8">
+                                    <StackPanel>
+                                        <TextBlock Classes="SectionHeader" Text="Attack Priority"/>
+                                        <ComboBox ItemsSource="{Binding AvailablePriorities}"
+                                                  SelectedItem="{Binding Priority, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1"
+                                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                                        BorderThickness="1" CornerRadius="3" Padding="8">
+                                    <StackPanel>
+                                        <TextBlock Classes="SectionHeader" Text="Options"/>
+                                        <CheckBox Content="Not hostile"    IsChecked="{Binding NotHostile, Mode=TwoWay}"/>
+                                        <CheckBox Content="Don't backstab" IsChecked="{Binding DontBackstab, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Read-only MDB info -->
+                <Border Grid.Column="1"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10"
+                        Background="{StaticResource ChromeBgSunkenBrush}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Classes="SectionHeader" Text="Other Info (from MDB)"/>
+                            <ItemsControl ItemsSource="{Binding MdbInfo}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="140,*" Margin="0,1">
+                                            <TextBlock Grid.Column="0" Classes="MdbKey"   Text="{Binding Key}"/>
+                                            <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"   IsDefault="True"  MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True"   MinWidth="80"/>
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>
