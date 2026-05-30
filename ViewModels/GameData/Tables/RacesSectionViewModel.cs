@@ -16,7 +16,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// starting character points, <c>ExpTable</c> is the progression
 /// curve.
 /// </remarks>
-public sealed class RacesSectionViewModel : GameDataTableSectionViewModel
+public sealed class RacesSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "races";
     public override string Title => "Races";

@@ -17,7 +17,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>Magery</c>, <c>AttType</c>, and <c>Targets</c> render via
 /// <see cref="MmudEnums"/> ("Mage" / "Cold" / "Full Area" / etc.).
 /// </remarks>
-public sealed class SpellsSectionViewModel : GameDataTableSectionViewModel
+public sealed class SpellsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "spells";
     public override string Title => "Spells";

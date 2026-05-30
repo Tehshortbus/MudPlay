@@ -10,27 +10,18 @@ using FujinTerm.Views.GameData.Tables;
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
-/// Shared base for every per-table tab in the Game Data Browser. Loads
-/// the active set's table from <see cref="GameDataCache"/>, normalises
-/// each row to a string-string dictionary keyed by column name, and
-/// exposes a search-filtered view plus a selected-row slot. Subclasses
-/// supply the table name + the column list to display + the search-key
-/// column; the shared view (<see cref="GameDataTableSectionView"/>)
-/// renders the result.
+/// Shared, source-agnostic base for every per-table tab in the Game
+/// Data Browser. Owns the column list, the all-rows / filtered-rows
+/// observable pair, the selected-row slot, the search box, and the
+/// DataGrid view. Subclasses supply rows via <see cref="PopulateRows"/>
+/// — JSON-backed tabs pull from <see cref="GameDataCache"/> (see
+/// <see cref="JsonTableSectionViewModel"/>), engine-backed tabs
+/// (Triggers / Aliases / Players / Macros / Messages) pull from their
+/// runtime services.
 /// </summary>
-/// <remarks>
-/// PR 5.5 introduces this base alongside the first concrete consumer
-/// (Monsters). Every subsequent per-table PR (5.6 / 5.7 / 5.12-5.18 /
-/// 5.20-5.22) is just a ~30-line subclass — table name + columns +
-/// search key, plus the section's Id / Title / SearchableLabels.
-/// </remarks>
 public abstract partial class GameDataTableSectionViewModel : GameDataSectionViewModel
 {
-    private readonly GameDataCache _cache;
     private Control? _view;
-
-    /// <summary>Underlying table name in the active set (e.g. <c>"Monsters"</c>).</summary>
-    protected abstract string TableName { get; }
 
     /// <summary>
     /// Columns to surface, in display order. Search hits, sort, and
@@ -51,7 +42,7 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     /// </summary>
     protected virtual IReadOnlyDictionary<string, Func<string?, string?>>? ColumnFormatters => null;
 
-    /// <summary>Every row loaded from the active set, original order.</summary>
+    /// <summary>Every row loaded from the source, original order.</summary>
     public ObservableCollection<GameDataRow> AllRows { get; } = new();
 
     /// <summary>Rows that survive the current <see cref="SearchText"/> filter.</summary>
@@ -78,34 +69,29 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         }
     }
 
-    protected GameDataTableSectionViewModel(GameDataCache cache)
-    {
-        ArgumentNullException.ThrowIfNull(cache);
-        _cache = cache;
-        _cache.ActiveSetChanged += _ => Reload();
-        Reload();
-    }
+    /// <summary>
+    /// Subclass hook: append every visible row to <paramref name="rows"/>.
+    /// Called on construction and on every <see cref="Reload"/> trigger.
+    /// </summary>
+    protected abstract void PopulateRows(ObservableCollection<GameDataRow> rows);
 
-    partial void OnSearchTextChanged(string value)
-    {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
-    private void Reload()
+    /// <summary>
+    /// Clear + re-populate <see cref="AllRows"/> and re-apply the filter.
+    /// Subclasses call this when their source changes (set switch, engine
+    /// CollectionChanged, profile reload, etc.).
+    /// </summary>
+    protected void Reload()
     {
         AllRows.Clear();
         FilteredRows.Clear();
         SelectedRow = null;
+        PopulateRows(AllRows);
+        ApplyFilter();
+        OnPropertyChanged(nameof(StatusText));
+    }
 
-        JsonDocument? doc = _cache.GetRawTable(TableName);
-        if (doc is null) { OnPropertyChanged(nameof(StatusText)); return; }
-
-        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            AllRows.Add(GameDataRow.FromJson(el, Columns, formatters));
-        }
+    partial void OnSearchTextChanged(string value)
+    {
         ApplyFilter();
         OnPropertyChanged(nameof(StatusText));
     }
@@ -127,7 +113,42 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 }
 
 /// <summary>
-/// One row loaded from a game-data JSON table. Holds the column-name →
+/// Concrete base for MDB-derived tabs. Loads its rows from
+/// <see cref="GameDataCache"/>'s active set on construction and on
+/// every <see cref="GameDataCache.ActiveSetChanged"/>. Subclasses
+/// supply <see cref="TableName"/> + <see cref="GameDataTableSectionViewModel.Columns"/> +
+/// <see cref="GameDataTableSectionViewModel.SearchKeyColumn"/>.
+/// </summary>
+public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
+{
+    private readonly GameDataCache _cache;
+
+    /// <summary>Underlying table name in the active set (e.g. <c>"Monsters"</c>).</summary>
+    protected abstract string TableName { get; }
+
+    protected JsonTableSectionViewModel(GameDataCache cache)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        _cache = cache;
+        _cache.ActiveSetChanged += _ => Reload();
+        Reload();
+    }
+
+    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    {
+        JsonDocument? doc = _cache.GetRawTable(TableName);
+        if (doc is null) return;
+
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            rows.Add(GameDataRow.FromJson(el, Columns, formatters));
+        }
+    }
+}
+
+/// <summary>
+/// One row loaded from a game-data source. Holds the column-name →
 /// string-rendered-value dictionary. Numbers / nulls / nested objects
 /// are all collapsed to strings at parse time so the view only has to
 /// deal with one shape.
@@ -167,6 +188,32 @@ public sealed class GameDataRow
         foreach (string column in columns)
         {
             string? raw = ReadValue(element, column);
+            values[column] = raw;
+            string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
+                ? fmt(raw)
+                : raw;
+            cells.Add(new GameDataCell(column, display));
+        }
+        return new GameDataRow(values, cells);
+    }
+
+    /// <summary>
+    /// Build a row from an arbitrary column-name → raw-value dictionary
+    /// (engine-backed tabs that don't have an MDB JSON source). The same
+    /// formatter contract as <see cref="FromJson"/> applies — formatted
+    /// strings render in the grid, raw strings drive search.
+    /// </summary>
+    public static GameDataRow FromDictionary(
+        IReadOnlyDictionary<string, string?> source,
+        IReadOnlyList<string> columns,
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
+    {
+        Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
+        List<GameDataCell> cells = new(columns.Count);
+
+        foreach (string column in columns)
+        {
+            source.TryGetValue(column, out string? raw);
             values[column] = raw;
             string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
                 ? fmt(raw)

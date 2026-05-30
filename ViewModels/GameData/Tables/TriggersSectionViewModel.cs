@@ -1,90 +1,57 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
 /// Game Data Browser → Triggers tab. Surfaces the active character's
-/// user-defined triggers from <see cref="TriggerEngine"/>. Unlike the
-/// MDB-derived tabs, the data source here is the loaded
-/// <see cref="Models.Profile.CharacterProfile"/>, not
-/// <see cref="GameDataCache"/>.
+/// user-defined triggers from <see cref="TriggerEngine"/>. Engine-backed
+/// (not from MDB JSON); reloads on every engine CollectionChanged so
+/// the grid mirrors the live <see cref="TriggerEngine.Triggers"/>
+/// collection.
 /// </summary>
-/// <remarks>
-/// PR 5.10 ships the listing surface; the editor dialog opened from
-/// row double-click lands once every table's listing is in place.
-/// </remarks>
-public sealed partial class TriggersSectionViewModel : GameDataSectionViewModel
+public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
 {
     private readonly TriggerEngine _engine;
-    private Control? _view;
 
     public override string Id => "triggers";
     public override string Title => "Triggers";
 
-    public ObservableCollection<Trigger> AllTriggers => _engine.Triggers;
+    public override IReadOnlyList<string> Columns { get; } = new[]
+    {
+        "Enabled", "Name", "MatchType", "Pattern", "Scope",
+    };
 
-    public ObservableCollection<Trigger> FilteredTriggers { get; } = new();
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private Trigger? _selectedTrigger;
-
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new TriggersSectionView { DataContext = this };
+    public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "trigger", "pattern", "match",
     };
 
-    public string StatusText
-    {
-        get
-        {
-            int total = AllTriggers.Count;
-            int visible = FilteredTriggers.Count;
-            string countText = total == visible ? $"{total} triggers" : $"{visible} / {total} triggers";
-            string selection = SelectedTrigger is null ? "" : $"  ·  {SelectedTrigger.Name}";
-            return countText + selection;
-        }
-    }
-
     public TriggersSectionViewModel(TriggerEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
-        _engine.Triggers.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
+        _engine.Triggers.CollectionChanged += (_, _) => Reload();
+        Reload();
     }
 
-    partial void OnSearchTextChanged(string value)
+    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
     {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
-    private void ApplyFilter()
-    {
-        FilteredTriggers.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (Trigger t in AllTriggers)
+        foreach (Trigger t in _engine.Triggers)
         {
-            if (filter.Length == 0 ||
-                t.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                t.Pattern.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                FilteredTriggers.Add(t);
-            }
+                ["Enabled"]   = t.Enabled ? "✓" : "",
+                ["Name"]      = t.Name,
+                ["MatchType"] = t.MatchType.ToString(),
+                ["Pattern"]   = t.Pattern,
+                ["Scope"]     = t.Scope.ToString(),
+            };
+            rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
-        OnPropertyChanged(nameof(StatusText));
     }
 }

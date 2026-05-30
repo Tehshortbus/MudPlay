@@ -36,6 +36,13 @@ public static class AppPaths
     public static string LogsDir { get; }
 
     /// <summary>
+    /// Per-game-data-set Messages/Responses catalogues, one JSON file
+    /// per imported set (paired with the folder name under
+    /// <see cref="GameDataRoot"/>).
+    /// </summary>
+    public static string MessagesDir { get; }
+
+    /// <summary>
     /// App-shipped fallback defaults, alongside the executable.
     /// Read-only at runtime; populated by the build pipeline.
     /// </summary>
@@ -72,6 +79,7 @@ public static class AppPaths
 
         GameDataRoot       = Path.Combine(DataRoot, "game data");
         GlobalSettingsFile = Path.Combine(DataRoot, "Global", "global.json");
+        MessagesDir        = Path.Combine(DataRoot, "Global", "Messages");
         BbsDir             = Path.Combine(DataRoot, "BBS");
         ProfilesDir        = Path.Combine(DataRoot, "profiles");
         LogsDir            = Path.Combine(DataRoot, "Logs");
@@ -86,10 +94,15 @@ public static class AppPaths
         Directory.CreateDirectory(DataRoot);
         Directory.CreateDirectory(GameDataRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(GlobalSettingsFile)!);
+        Directory.CreateDirectory(MessagesDir);
         Directory.CreateDirectory(BbsDir);
         Directory.CreateDirectory(ProfilesDir);
         Directory.CreateDirectory(LogsDir);
     }
+
+    /// <summary>Path to a single set's Messages/Responses JSON.</summary>
+    public static string MessagesFile(string setName) =>
+        Path.Combine(MessagesDir, setName + ".json");
 
     /// <summary>Path to a single imported game-data set's directory.</summary>
     public static string GameDataSetDir(string setName) =>

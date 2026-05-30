@@ -17,7 +17,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// gates. <c>ShopType</c> renders via <see cref="MmudEnums"/>
 /// ("Weapons" / "Armour" / "Bank" / "Tavern" / etc.).
 /// </remarks>
-public sealed class ShopsSectionViewModel : GameDataTableSectionViewModel
+public sealed class ShopsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "shops";
     public override string Title => "Shops";

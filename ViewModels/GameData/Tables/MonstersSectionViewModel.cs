@@ -21,7 +21,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>Undead</c> is a boolean from the MDB so it already arrives
 /// as <c>"true"</c> / <c>"false"</c>.
 /// </remarks>
-public sealed class MonstersSectionViewModel : GameDataTableSectionViewModel
+public sealed class MonstersSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "monsters";
     public override string Title => "Monsters";

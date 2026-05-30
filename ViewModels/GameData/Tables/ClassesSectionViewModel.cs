@@ -17,7 +17,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// level. <c>MageryType</c>, <c>WeaponType</c>, and <c>ArmourType</c>
 /// render via <see cref="MmudEnums"/>.
 /// </remarks>
-public sealed class ClassesSectionViewModel : GameDataTableSectionViewModel
+public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "classes";
     public override string Title => "Classes";

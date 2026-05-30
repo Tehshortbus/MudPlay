@@ -1625,8 +1625,8 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Triggers,
                 AppServices.Current.Aliases,
                 AppServices.Current.Players,
-                AppServices.Current.Favorites,
-                AppServices.Current.Macros),
+                AppServices.Current.Macros,
+                AppServices.Current.Messages),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;

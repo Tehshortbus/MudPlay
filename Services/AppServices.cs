@@ -210,6 +210,16 @@ public sealed class AppServices
     /// </summary>
     public MacroStore Macros { get; }
 
+    /// <summary>
+    /// Active game-data set's Messages/Responses catalogue. Imported
+    /// from a MegaMUD <c>messages.md</c> file, persisted alongside
+    /// the set under <c>Data/Global/Messages/{set-name}.json</c>.
+    /// Surfaced by the Game Data Browser → Messages tab; the Phase 13
+    /// HealthManager / CastingDirector consume the same catalogue at
+    /// runtime to gate on observed conditions.
+    /// </summary>
+    public MessageStore Messages { get; } = new();
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -308,6 +318,12 @@ public sealed class AppServices
         Profile.BbsPinApplied  += _ => ApplyActiveGameDataSet();
         Profile.ProfileMutated += _ => ApplyActiveGameDataSet();
         Profile.ProfileClosed  += ApplyActiveGameDataSet;
+
+        // Messages catalogue is paired per game-data set on disk
+        // (Data/Global/Messages/{set-name}.json) — reload whenever the
+        // active set changes so the Browser tab and runtime engines
+        // see the right realm's catalogue.
+        GameData.ActiveSetChanged += Messages.Load;
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

@@ -18,7 +18,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// textblock fires (encrypted in some MDB versions), <c>Called From</c>
 /// is the source-side reverse pointer.
 /// </remarks>
-public sealed class TextBlocksSectionViewModel : GameDataTableSectionViewModel
+public sealed class TextBlocksSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "textblocks";
     public override string Title => "TextBlocks";

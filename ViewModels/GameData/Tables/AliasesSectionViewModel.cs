@@ -1,10 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
@@ -13,67 +10,44 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// user-defined aliases from <see cref="AliasEngine"/> — the
 /// outgoing-text mirror of the Triggers tab.
 /// </summary>
-public sealed partial class AliasesSectionViewModel : GameDataSectionViewModel
+public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
 {
     private readonly AliasEngine _engine;
-    private Control? _view;
 
     public override string Id => "aliases";
     public override string Title => "Aliases";
 
-    public ObservableCollection<Alias> AllAliases => _engine.Aliases;
-    public ObservableCollection<Alias> FilteredAliases { get; } = new();
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private Alias? _selectedAlias;
-
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new AliasesSectionView { DataContext = this };
-
-    public override IEnumerable<string> SearchableLabels => new[] { Title, "alias", "shortcut", "command" };
-
-    public string StatusText
+    public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        get
-        {
-            int total = AllAliases.Count;
-            int visible = FilteredAliases.Count;
-            string countText = total == visible ? $"{total} aliases" : $"{visible} / {total} aliases";
-            string selection = SelectedAlias is null ? "" : $"  ·  {SelectedAlias.Name}";
-            return countText + selection;
-        }
-    }
+        "Enabled", "Name", "Expansion",
+    };
+
+    public override string SearchKeyColumn => "Name";
+
+    public override IEnumerable<string> SearchableLabels => new[]
+    {
+        Title, "alias", "shortcut", "command",
+    };
 
     public AliasesSectionViewModel(AliasEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
-        _engine.Aliases.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
+        _engine.Aliases.CollectionChanged += (_, _) => Reload();
+        Reload();
     }
 
-    partial void OnSearchTextChanged(string value)
+    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
     {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
-    private void ApplyFilter()
-    {
-        FilteredAliases.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (Alias a in AllAliases)
+        foreach (Alias a in _engine.Aliases)
         {
-            if (filter.Length == 0 ||
-                a.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                a.Expansion.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                FilteredAliases.Add(a);
-            }
+                ["Enabled"]   = a.Enabled ? "✓" : "",
+                ["Name"]      = a.Name,
+                ["Expansion"] = a.Expansion,
+            };
+            rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
-        OnPropertyChanged(nameof(StatusText));
     }
 }

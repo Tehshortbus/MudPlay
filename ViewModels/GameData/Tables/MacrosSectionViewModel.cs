@@ -1,10 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
@@ -14,68 +11,46 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// plan, double-click a row opens the Phase 10 MacroEditDialog —
 /// wiring lands in Phase 10 PR 10.3 once that dialog exists.
 /// </summary>
-public sealed partial class MacrosSectionViewModel : GameDataSectionViewModel
+public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel
 {
     private readonly MacroStore _store;
-    private Control? _view;
 
     public override string Id => "macros";
     public override string Title => "Macros";
 
-    public ObservableCollection<Macro> All => _store.Macros;
-    public ObservableCollection<Macro> Filtered { get; } = new();
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private Macro? _selected;
-
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new MacrosSectionView { DataContext = this };
-
-    public override IEnumerable<string> SearchableLabels => new[] { Title, "macro", "key", "keybind" };
-
-    public string StatusText
+    public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        get
-        {
-            int total = All.Count;
-            int visible = Filtered.Count;
-            string countText = total == visible ? $"{total} macros" : $"{visible} / {total} macros";
-            string selection = Selected is null ? "" : $"  ·  {Selected.Name}";
-            return countText + selection;
-        }
-    }
+        "Enabled", "Key", "Modifier", "Name", "Command",
+    };
+
+    public override string SearchKeyColumn => "Name";
+
+    public override IEnumerable<string> SearchableLabels => new[]
+    {
+        Title, "macro", "key", "keybind",
+    };
 
     public MacrosSectionViewModel(MacroStore store)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
-        _store.Macros.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
+        _store.Macros.CollectionChanged += (_, _) => Reload();
+        Reload();
     }
 
-    partial void OnSearchTextChanged(string value)
+    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
     {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
-    private void ApplyFilter()
-    {
-        Filtered.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (Macro m in All)
+        foreach (Macro m in _store.Macros)
         {
-            if (filter.Length == 0 ||
-                m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                m.Command.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                m.Key.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                Filtered.Add(m);
-            }
+                ["Enabled"]  = m.Enabled ? "✓" : "",
+                ["Key"]      = m.Key,
+                ["Modifier"] = m.Modifier,
+                ["Name"]     = m.Name,
+                ["Command"]  = m.Command,
+            };
+            rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
-        OnPropertyChanged(nameof(StatusText));
     }
 }

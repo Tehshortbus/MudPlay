@@ -20,7 +20,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather than the
 /// raw integers.
 /// </remarks>
-public sealed class ItemsSectionViewModel : GameDataTableSectionViewModel
+public sealed class ItemsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "items";
     public override string Title => "Items";

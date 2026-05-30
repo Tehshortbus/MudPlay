@@ -17,7 +17,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// the per-room editor (Phase 5 follow-up) will show the full schema
 /// including all eight horizontal exits plus up / down.
 /// </remarks>
-public sealed class RoomsSectionViewModel : GameDataTableSectionViewModel
+public sealed class RoomsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "rooms";
     public override string Title => "Rooms";

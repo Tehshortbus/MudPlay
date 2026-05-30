@@ -7,28 +7,31 @@ using FujinTerm.ViewModels.GameData.Tables;
 namespace FujinTerm.ViewModels.GameData;
 
 /// <summary>
-/// Shell view-model for the Game Data Browser window. Holds the
-/// sidebar list of sections, a search box, and the currently selected
-/// section (whose <see cref="GameDataSectionViewModel.View"/> renders
-/// in the content pane).
+/// Shell view-model for the Game Data Browser window. Holds two
+/// sidebar groups (engine-backed tabs on top, MDB-derived JSON tables
+/// below — see <see cref="EngineSections"/> and
+/// <see cref="TableSections"/>), a search box, and the currently
+/// selected section (whose <see cref="GameDataSectionViewModel.View"/>
+/// renders in the content pane).
 /// </summary>
-/// <remarks>
-/// PR 5.4 ships the shell with placeholders for every eventual tab.
-/// Per-tab PRs (5.5+) replace each placeholder with a real section
-/// view-model. Section list is constructed once in
-/// <see cref="SeedSections"/>; tracks the active <see cref="GameDataCache"/>
-/// set in the status line so the user always knows which data they're
-/// browsing.
-/// </remarks>
 public sealed partial class GameDataBrowserViewModel : ObservableObject
 {
     private readonly GameDataCache _gameData;
 
-    /// <summary>Full section catalog — drives the search filter and the sidebar order.</summary>
+    /// <summary>Full section catalog — drives the search filter.</summary>
     public ObservableCollection<GameDataSectionViewModel> Sections { get; } = new();
 
-    /// <summary>Filtered view the sidebar binds against. Recomputed on search-text change.</summary>
-    public ObservableCollection<GameDataSectionViewModel> VisibleSections { get; } = new();
+    /// <summary>
+    /// Top sidebar group — engine-backed tabs that don't come from a
+    /// MajorMUD MDB (Players / Macros / Triggers / Aliases / Messages).
+    /// </summary>
+    public ObservableCollection<GameDataSectionViewModel> EngineSections { get; } = new();
+
+    /// <summary>
+    /// Bottom sidebar group — MDB-derived JSON tables (Monsters / Items
+    /// / Spells / Rooms / Shops / Races / Classes / TextBlocks).
+    /// </summary>
+    public ObservableCollection<GameDataSectionViewModel> TableSections { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
@@ -55,19 +58,19 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
     private readonly TriggerEngine? _triggers;
     private readonly AliasEngine? _aliases;
     private readonly PlayerDatabase? _players;
-    private readonly FavoritesManager? _favorites;
     private readonly MacroStore? _macros;
+    private readonly MessageStore? _messages;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, favorites: null, macros: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
         TriggerEngine? triggers,
         AliasEngine? aliases = null,
         PlayerDatabase? players = null,
-        FavoritesManager? favorites = null,
         MacroStore? macros = null,
+        MessageStore? messages = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -75,8 +78,8 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
         _triggers = triggers;
         _aliases = aliases;
         _players = players;
-        _favorites = favorites;
         _macros = macros;
+        _messages = messages;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -94,64 +97,81 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject
 
     private void RebuildVisibleSections()
     {
-        VisibleSections.Clear();
         string filter = (SearchText ?? string.Empty).Trim();
+
+        EngineSections.Clear();
+        TableSections.Clear();
 
         foreach (GameDataSectionViewModel s in Sections)
         {
-            if (filter.Length == 0 ||
-                s.SearchableLabels.Any(l => l.Contains(filter, StringComparison.OrdinalIgnoreCase)))
-            {
-                VisibleSections.Add(s);
-            }
+            bool matches = filter.Length == 0 ||
+                s.SearchableLabels.Any(l => l.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            if (!matches) continue;
+
+            // Engine-backed sections live in EngineGroup; everything
+            // else is a JSON table — split by the concrete base type
+            // so the sidebar can render two groups with a visual
+            // separator between them.
+            if (s is JsonTableSectionViewModel) TableSections.Add(s);
+            else                                EngineSections.Add(s);
         }
     }
 
     /// <summary>
-    /// Seed the sidebar. PR 5.4 fills every slot with a placeholder
-    /// advertising the eventual PR. Subsequent per-tab PRs replace
-    /// the matching <c>Add(...)</c> line with a real section VM.
+    /// Seed the sidebar in the order the user expects: engine-backed
+    /// tabs (Players → Macros → Triggers → Aliases → Messages) first,
+    /// then MDB-derived tables (Monsters / Items / Spells / Rooms /
+    /// Shops / Races / Classes / TextBlocks). Placeholder fallbacks
+    /// kick in for the engine-backed tabs when the corresponding
+    /// service wasn't passed to the ctor (e.g. tests).
     /// </summary>
     private void SeedSections()
     {
-        Sections.Add(new MonstersSectionViewModel(_gameData));
-        Sections.Add(new ItemsSectionViewModel(_gameData));
-        Sections.Add(new SpellsSectionViewModel(_gameData));
-        Sections.Add(new ConditionsSectionViewModel(_gameData));
+        // ----- Engine-backed (top group) ----------------------------------
+
+        if (_players is not null)
+            Sections.Add(new PlayersSectionViewModel(_players));
+        else
+            AddPlaceholder("players", "Players", "Phase 5",
+                "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
+
+        if (_macros is not null)
+            Sections.Add(new MacrosSectionViewModel(_macros));
+        else
+            AddPlaceholder("macros", "Macros", "Phase 5 / Phase 10",
+                "Read-only listing — double-click row opens the Phase 10 Macro editor.");
+
         if (_triggers is not null)
             Sections.Add(new TriggersSectionViewModel(_triggers));
         else
-            Add("triggers", "Triggers", "Phase 5 PR 5.10",
+            AddPlaceholder("triggers", "Triggers", "Phase 5",
                 "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
+
         if (_aliases is not null)
             Sections.Add(new AliasesSectionViewModel(_aliases));
         else
-            Add("aliases", "Aliases", "Phase 5 PR 5.11",
+            AddPlaceholder("aliases", "Aliases", "Phase 5",
                 "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
+
+        if (_messages is not null)
+            Sections.Add(new MessagesSectionViewModel(_messages));
+        else
+            AddPlaceholder("messages", "Messages", "Phase 5",
+                "Per-set Messages/Responses catalogue. Imported from a MegaMUD messages.md file and " +
+                "saved alongside the active game-data set under Data/Global/Messages/.");
+
+        // ----- MDB-derived (bottom group) ---------------------------------
+
+        Sections.Add(new MonstersSectionViewModel(_gameData));
+        Sections.Add(new ItemsSectionViewModel(_gameData));
+        Sections.Add(new SpellsSectionViewModel(_gameData));
         Sections.Add(new RoomsSectionViewModel(_gameData));
-        Sections.Add(new PathsSectionViewModel(_gameData));
-        Sections.Add(new LairsSectionViewModel(_gameData));
         Sections.Add(new ShopsSectionViewModel(_gameData));
         Sections.Add(new RacesSectionViewModel(_gameData));
         Sections.Add(new ClassesSectionViewModel(_gameData));
         Sections.Add(new TextBlocksSectionViewModel(_gameData));
-        if (_players is not null)
-            Sections.Add(new PlayersSectionViewModel(_players));
-        else
-            Add("players", "Players", "Phase 5 PR 5.20",
-                "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
-        if (_favorites is not null)
-            Sections.Add(new FavoritesSectionViewModel(_favorites));
-        else
-            Add("favorites", "Favorites", "Phase 5 PR 5.21",
-                "Folder hierarchy of named room shortcuts; sidebar of the Phase 7 Goto / Loop dialogs.");
-        if (_macros is not null)
-            Sections.Add(new MacrosSectionViewModel(_macros));
-        else
-            Add("macros", "Macros", "Phase 5 PR 5.22",
-                "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 
-        void Add(string id, string title, string phase, string description)
+        void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
     }
 }
