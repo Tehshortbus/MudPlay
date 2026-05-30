@@ -53,6 +53,16 @@ public sealed class SettingsResolver
     private readonly Dictionary<string, Dictionary<string, JsonElement>?> _overrideCache =
         new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Guards <see cref="_overrideCache"/>. The Game Data Browser now
+    /// runs each tab's row-build on <see cref="System.Threading.Tasks.Task.Run"/>,
+    /// so two activations in quick succession can hit the resolver
+    /// concurrently from different threads. Plain <see cref="Dictionary{TKey,TValue}"/>
+    /// isn't safe under concurrent read+write, so reads and writes lock
+    /// on this object.
+    /// </summary>
+    private readonly object _overrideCacheLock = new();
+
     public SettingsResolver(
         SettingsService settings,
         BbsProfileStore bbsStore,
@@ -317,15 +327,27 @@ public sealed class SettingsResolver
         // Stash the freshly-written contents so subsequent reads don't
         // hit disk and so the in-memory cache stays in sync with the
         // file we just produced.
-        _overrideCache[path] = records.Count == 0 ? null : records;
+        lock (_overrideCacheLock)
+        {
+            _overrideCache[path] = records.Count == 0 ? null : records;
+        }
     }
 
     private Dictionary<string, JsonElement>? GetCachedOverrideFile(string path)
     {
-        if (_overrideCache.TryGetValue(path, out Dictionary<string, JsonElement>? cached))
-            return cached;
+        lock (_overrideCacheLock)
+        {
+            if (_overrideCache.TryGetValue(path, out Dictionary<string, JsonElement>? cached))
+                return cached;
+        }
+        // Load outside the lock so a slow disk read doesn't block other
+        // threads checking unrelated paths. A race where two threads load
+        // the same file is benign — same bytes either way.
         Dictionary<string, JsonElement>? loaded = JsonStore.Load<Dictionary<string, JsonElement>>(path);
-        _overrideCache[path] = loaded;
+        lock (_overrideCacheLock)
+        {
+            _overrideCache[path] = loaded;
+        }
         return loaded;
     }
 

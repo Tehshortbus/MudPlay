@@ -39,7 +39,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
         Reload();
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         foreach (Trigger t in _engine.Triggers)
         {

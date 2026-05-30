@@ -39,7 +39,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel
         Reload();
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         foreach (PlayerRecord p in _db.Players)
         {

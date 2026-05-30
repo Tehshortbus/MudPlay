@@ -56,10 +56,26 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     protected virtual IReadOnlyDictionary<string, Func<string?, string?>>? ColumnFormatters => null;
 
     /// <summary>Every row loaded from the source, original order.</summary>
-    public ObservableCollection<GameDataRow> AllRows { get; } = new();
+    /// <remarks>
+    /// Set in one shot on <see cref="Reload"/> rather than appended row-by-row
+    /// so the DataGrid sees a single PropertyChanged + re-bind instead of N
+    /// CollectionChanged events. Critical at 27k-row table sizes (Rooms in
+    /// MajorMUD v1.11p), where per-row notifications were the hot loop.
+    /// </remarks>
+    private ObservableCollection<GameDataRow> _allRows = new();
+    public ObservableCollection<GameDataRow> AllRows
+    {
+        get => _allRows;
+        private set => SetProperty(ref _allRows, value);
+    }
 
     /// <summary>Rows that survive the current <see cref="SearchText"/> filter.</summary>
-    public ObservableCollection<GameDataRow> FilteredRows { get; } = new();
+    private ObservableCollection<GameDataRow> _filteredRows = new();
+    public ObservableCollection<GameDataRow> FilteredRows
+    {
+        get => _filteredRows;
+        private set => SetProperty(ref _filteredRows, value);
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
@@ -96,9 +112,13 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     /// <summary>
     /// Subclass hook: append every visible row to <paramref name="rows"/>.
     /// Called on the first activation (see <see cref="OnActivated"/>) and
-    /// on every <see cref="Reload"/> trigger.
+    /// on every <see cref="Reload"/> trigger. Use <see cref="IList{T}"/>
+    /// (not <see cref="ObservableCollection{T}"/>) so the row-build can
+    /// run against a plain <see cref="List{T}"/> — caller wraps the
+    /// finished list in a fresh ObservableCollection once for the
+    /// bulk-replace.
     /// </summary>
-    protected abstract void PopulateRows(ObservableCollection<GameDataRow> rows);
+    protected abstract void PopulateRows(IList<GameDataRow> rows);
 
     /// <summary>
     /// Called by <see cref="GameDataBrowserViewModel"/> whenever this
@@ -111,17 +131,58 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     public virtual void OnActivated() { }
 
     /// <summary>
-    /// Clear + re-populate <see cref="AllRows"/> and re-apply the filter.
-    /// Subclasses call this when their source changes (set switch, engine
-    /// CollectionChanged, profile reload, etc.).
+    /// True once <see cref="Reload"/> or <see cref="LoadAsync"/> has
+    /// completed at least once. Subclasses that re-react to source
+    /// changes (set switch, profile reload) check this to skip work
+    /// for cold tabs the user has never opened.
+    /// </summary>
+    protected bool IsLoaded { get; private set; }
+
+    /// <summary>
+    /// Rebuild <see cref="AllRows"/> + <see cref="FilteredRows"/> from
+    /// the source and reapply the filter. Builds a fresh
+    /// <see cref="List{T}"/> via <see cref="PopulateRows"/>, wraps it in
+    /// a new <see cref="ObservableCollection{T}"/>, and assigns to the
+    /// properties — one PropertyChanged each instead of N
+    /// CollectionChanged events. Subclasses call this when their source
+    /// changes (set switch, engine CollectionChanged, profile reload).
     /// </summary>
     protected void Reload()
     {
-        AllRows.Clear();
-        FilteredRows.Clear();
         SelectedRow = null;
-        PopulateRows(AllRows);
+        List<GameDataRow> rows = new();
+        PopulateRows(rows);
+        AllRows = new ObservableCollection<GameDataRow>(rows);
         ApplyFilter();
+        IsLoaded = true;
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    /// <summary>
+    /// Async variant of <see cref="Reload"/>: row-build runs on a worker
+    /// thread, then bulk-replace <see cref="AllRows"/> back on the UI
+    /// thread once the parse is done. Keeps the UI responsive on big
+    /// tables (Rooms reaches 27k+ rows in MajorMUD v1.11p, more on
+    /// custom-edit realms). <see cref="JsonTableSectionViewModel.OnActivated"/>
+    /// fires this through the dispatcher post; tests can <c>await</c>
+    /// it directly for deterministic completion.
+    /// </summary>
+    internal async Task LoadAsync()
+    {
+        List<GameDataRow> rows = await Task.Run(() =>
+        {
+            List<GameDataRow> list = new();
+            PopulateRows(list);
+            return list;
+        });
+        // Task.Run resumes the continuation on the captured
+        // SynchronizationContext (Avalonia dispatcher in app context,
+        // none in tests — either way the property writes happen on a
+        // single thread per call).
+        SelectedRow = null;
+        AllRows = new ObservableCollection<GameDataRow>(rows);
+        ApplyFilter();
+        IsLoaded = true;
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -133,14 +194,24 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     private void ApplyFilter()
     {
-        FilteredRows.Clear();
         string filter = (SearchText ?? string.Empty).Trim();
+        if (filter.Length == 0)
+        {
+            // Unfiltered — alias the AllRows collection directly so the
+            // DataGrid sees identical content with zero extra allocation.
+            // Both collections are treated as immutable snapshots between
+            // Reloads, so sharing is safe.
+            FilteredRows = AllRows;
+            return;
+        }
 
+        List<GameDataRow> matched = new();
         foreach (GameDataRow row in AllRows)
         {
-            if (filter.Length == 0 || RowMatches(row, filter))
-                FilteredRows.Add(row);
+            if (RowMatches(row, filter))
+                matched.Add(row);
         }
+        FilteredRows = new ObservableCollection<GameDataRow>(matched);
     }
 
     /// <summary>
@@ -186,8 +257,6 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
     /// </summary>
     protected virtual string OverrideKeyColumn => "Number";
 
-    private bool _loaded;
-
     protected JsonTableSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -199,27 +268,24 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
         // upfront 10-tables-times-thousands-of-rows parse on browser open.
         _cache.ActiveSetChanged += _ =>
         {
-            if (_loaded) Reload();
+            if (IsLoaded) Reload();
         };
         // NOTE: ctor does NOT call Reload() — that's lazy via OnActivated.
     }
 
     public override void OnActivated()
     {
-        if (_loaded) return;
-        _loaded = true;
-        // Defer Reload to the next dispatcher tick so it runs *after* the
+        if (IsLoaded) return;
+        // Defer to the next dispatcher tick so the parse runs *after* the
         // ContentControl constructs our View and the DataGrid builds its
         // columns (DataContextChanged handler in code-behind). Without
-        // the defer, rows arrive on a 0-column grid; adding columns later
-        // doesn't re-materialise rows — the tab renders blank on first
-        // activation. The deferred Add()s emit CollectionChanged events
-        // the DataGrid picks up correctly. Tests drain pending posts via
-        // Dispatcher.UIThread.RunJobs() to force synchronous completion.
-        Dispatcher.UIThread.Post(Reload);
+        // the defer, rows would arrive on a 0-column grid and never
+        // materialise — the tab would render blank on first activation.
+        // LoadAsync flips IsLoaded once the rows land.
+        Dispatcher.UIThread.Post(() => _ = LoadAsync());
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         JsonDocument? doc = _cache.GetRawTable(TableName);
         if (doc is null) return;

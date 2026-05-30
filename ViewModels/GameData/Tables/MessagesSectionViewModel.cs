@@ -54,7 +54,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         Reload();
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         foreach (MessageRecord m in _store.Messages)
         {

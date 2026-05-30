@@ -38,7 +38,7 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel
         Reload();
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         foreach (Macro m in _store.Macros)
         {

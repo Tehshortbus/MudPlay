@@ -37,7 +37,7 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
         Reload();
     }
 
-    protected override void PopulateRows(ObservableCollection<GameDataRow> rows)
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
         foreach (Alias a in _engine.Aliases)
         {
