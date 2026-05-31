@@ -35,7 +35,9 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         {
             Rows.Clear();
             foreach (UnanchoredSpell s in result.Unanchored) Rows.Add(s);
-            SummaryText = $"Set '{result.SetName}': {result.UnanchoredCount} of {result.ConsideredCount} player-facing spells have no Message anchor.";
+            SummaryText =
+                $"The Spells listed below from Game Data set \"{result.SetName}\" has " +
+                $"{result.UnanchoredCount} of {result.ConsideredCount} player-facing spells with no Message Anchor.";
             WindowTitle = $"Spell coverage — {result.SetName}";
         });
     }
