@@ -48,16 +48,27 @@ public static class GlobalHotkeys
     /// panels. The XAML &lt;KeyBinding&gt; literals previously here
     /// have been removed in favour of this one source of truth.
     /// </summary>
+    /// <remarks>
+    /// DataContext is set by <c>App.OnFrameworkInitializationCompleted</c>
+    /// *after* the ctor runs, so we can't Rebuild synchronously. We
+    /// hook two events to cover both orderings: <see cref="Window.Opened"/>
+    /// (definitive — fires after Show, by which time DataContext is set)
+    /// and <see cref="StyledElement.DataContextChanged"/> (covers the
+    /// case where DataContext is swapped post-Show, currently unused
+    /// but cheap insurance).
+    /// </remarks>
     public static void AttachMain(Window mainWindow)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime
-            { } desktop) return;
-        // MainWindow's VM may not be set yet at ctor time; resolve lazily.
-        mainWindow.AttachedToLogicalTree += (_, _) =>
+            { } _) return;
+
+        void TryRebuild()
         {
-            if (mainWindow.DataContext is not MainWindowViewModel vm) return;
-            Rebuild(mainWindow, vm);
-        };
+            if (mainWindow.DataContext is MainWindowViewModel vm) Rebuild(mainWindow, vm);
+        }
+
+        mainWindow.Opened             += (_, _) => TryRebuild();
+        mainWindow.DataContextChanged += (_, _) => TryRebuild();
 
         _attached.Add(new WeakReference<Window>(mainWindow));
         EnsureStoreSubscription();
@@ -118,8 +129,9 @@ public static class GlobalHotkeys
         BuiltInAction.OpenSessionStats     => vm.OpenSessionStatsCommand,
         BuiltInAction.OpenSettings         => vm.OpenSettingsCommand,
         BuiltInAction.OpenGameDataBrowser  => vm.OpenGameDataBrowserCommand,
-        BuiltInAction.OpenWireInspector    => null, // toolbar-only, no command on VM yet
+        BuiltInAction.OpenWireInspector    => vm.OpenWireInspectorCommand,
         BuiltInAction.ToggleConnection     => vm.ToggleConnectionCommand,
+        BuiltInAction.ToggleCapture        => vm.ToggleDumpCommand,
         BuiltInAction.NewProfile           => vm.NewProfileCommand,
         BuiltInAction.OpenProfile          => vm.OpenProfileCommand,
         BuiltInAction.SaveProfile          => vm.SaveProfileCommand,

@@ -24,6 +24,7 @@ public enum BuiltInAction
 
     // ---- Connection ----
     ToggleConnection,
+    ToggleCapture,
 
     // ---- File menu ----
     NewProfile,

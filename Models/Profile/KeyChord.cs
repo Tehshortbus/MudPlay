@@ -39,7 +39,9 @@ public readonly record struct KeyChord(
     /// <summary>
     /// Friendly name for the key — strips Avalonia's <c>D0..D9</c>
     /// (top-row digits) and <c>NumPadN</c> (numpad digits) to a
-    /// shorter human form. Falls back to the enum name otherwise.
+    /// shorter human form, and maps the common <c>Oem*</c> punctuation
+    /// keys back to their printable character. Falls back to the enum
+    /// name otherwise.
     /// </summary>
     public string KeyName
     {
@@ -50,7 +52,21 @@ public readonly record struct KeyChord(
             if (raw.StartsWith("NumPad", StringComparison.Ordinal) &&
                 raw.Length == "NumPad".Length + 1 && char.IsDigit(raw[^1]))
                 return "Numpad " + raw[^1];
-            return raw;
+            return Key switch
+            {
+                Key.OemComma        => ",",
+                Key.OemPeriod       => ".",
+                Key.OemMinus        => "-",
+                Key.OemPlus         => "=",
+                Key.OemQuestion     => "/",
+                Key.OemSemicolon    => ";",
+                Key.OemQuotes       => "'",
+                Key.OemOpenBrackets => "[",
+                Key.OemCloseBrackets=> "]",
+                Key.OemPipe         => "\\",
+                Key.OemTilde        => "`",
+                _ => raw,
+            };
         }
     }
 

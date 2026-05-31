@@ -175,30 +175,15 @@
                                      only entry that swaps between two
                                      icons (plug ↔ unplug) — controlled by
                                      ShowAlternate, which the VM flips when
-                                     IsConnected changes.
-                                     Right-click → context menu for keybind
-                                     rebind / reset. The command parameter
-                                     is the ToolbarButtonItem.ActionId; the
-                                     MainWindow VM's command no-ops when
-                                     the id doesn't map to a BuiltInAction
-                                     (toolbar entries like ToggleCapture
-                                     have no rebindable keybind). -->
+                                     IsConnected changes. Rebinding the
+                                     keybind lives in Settings → Toolbar
+                                     (per-row "Change keybind…" button). -->
                                 <Button Classes="ToolbarBtn"
                                         Classes.Active="{Binding IsActive}"
                                         Classes.Danger="{Binding IsDanger}"
                                         IsVisible="{Binding IsButton}"
                                         Command="{Binding Command}"
                                         ToolTip.Tip="{Binding Tooltip}">
-                                    <Button.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Change keybind…"
-                                                      Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenKeybindEditCommand}"
-                                                      CommandParameter="{Binding ActionId}"/>
-                                            <MenuItem Header="Reset keybind to default"
-                                                      Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ResetKeybindCommand}"
-                                                      CommandParameter="{Binding ActionId}"/>
-                                        </ContextMenu>
-                                    </Button.ContextMenu>
                                     <Panel>
                                         <Path Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
                                               IsVisible="{Binding !ShowAlternate}"

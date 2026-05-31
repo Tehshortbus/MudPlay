@@ -74,9 +74,8 @@ public sealed class KeybindRegistryTests
     public void IsForbidden_AllowsPlainFunctionKey_WhenNotReserved()
     {
         KeybindingStore store = DefaultStore();
-        // F1 / F6 / F8 / F12 aren't in the built-in shortcut list, so they're free.
+        // F1 / F8 / F12 aren't in the built-in shortcut list, so they're free.
         Assert.False(KeybindRegistry.IsForbidden(store, Key.F1,  false, false, false, out _));
-        Assert.False(KeybindRegistry.IsForbidden(store, Key.F6,  false, false, false, out _));
         Assert.False(KeybindRegistry.IsForbidden(store, Key.F8,  false, false, false, out _));
         Assert.False(KeybindRegistry.IsForbidden(store, Key.F12, false, false, false, out _));
     }

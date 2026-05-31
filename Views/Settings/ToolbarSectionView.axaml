@@ -143,6 +143,15 @@
                         Background="{StaticResource ChromeBorderBrush}"
                         Margin="0,8"/>
 
+                <Button Content="Change keybind…"
+                        Command="{Binding ChangeKeybindCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Rebind the shortcut for the selected toolbar action, or clear it to leave the action unbound. Disabled for separators and non-rebindable rows."/>
+
+                <Border Height="1"
+                        Background="{StaticResource ChromeBorderBrush}"
+                        Margin="0,8"/>
+
                 <TextBlock Text="Add"
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="{StaticResource FontSizeSm}"/>

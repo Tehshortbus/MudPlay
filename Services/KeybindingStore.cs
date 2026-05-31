@@ -28,7 +28,7 @@ public sealed class KeybindingStore
     private readonly Dictionary<BuiltInAction, KeyChord> _bindings =
         new(EqualityComparer<BuiltInAction>.Default);
 
-    /// <summary>Fired after a binding changes (Rebind or ResetToDefault). Payload: the action whose chord moved.</summary>
+    /// <summary>Fired after a binding changes via <see cref="Rebind"/>. Payload: the action whose chord moved.</summary>
     public event Action<BuiltInAction>? BindingChanged;
 
     /// <summary>Parameterless ctor for tests / in-memory scenarios. Seeds defaults.</summary>
@@ -66,13 +66,6 @@ public sealed class KeybindingStore
         _bindings[action] = chord;
         _profile?.Save();
         BindingChanged?.Invoke(action);
-    }
-
-    /// <summary>Restore <paramref name="action"/>'s chord to its seed default + persist + fire change.</summary>
-    public void ResetToDefault(BuiltInAction action)
-    {
-        if (DefaultBindings.TryGetValue(action, out KeyChord def))
-            Rebind(action, def);
     }
 
     /// <summary>
@@ -118,6 +111,7 @@ public sealed class KeybindingStore
         BuiltInAction.OpenGameDataBrowser  => "Open Game Data Browser",
         BuiltInAction.OpenWireInspector    => "Open Wire Inspector",
         BuiltInAction.ToggleConnection     => "Connect / Disconnect",
+        BuiltInAction.ToggleCapture        => "Toggle session capture",
         BuiltInAction.NewProfile           => "New profile",
         BuiltInAction.OpenProfile          => "Open profile",
         BuiltInAction.SaveProfile          => "Save profile",
@@ -147,6 +141,7 @@ public sealed class KeybindingStore
             [BuiltInAction.OpenGameDataBrowser] = new(Key.G,        Ctrl: true),
             [BuiltInAction.OpenWireInspector]   = KeyChord.Empty, // toolbar-only
             [BuiltInAction.ToggleConnection]    = new(Key.K,        Ctrl: true),
+            [BuiltInAction.ToggleCapture]       = new(Key.F6),
             [BuiltInAction.NewProfile]          = new(Key.N,        Ctrl: true),
             [BuiltInAction.OpenProfile]         = new(Key.O,        Ctrl: true),
             [BuiltInAction.SaveProfile]         = new(Key.S,        Ctrl: true),

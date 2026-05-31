@@ -30,15 +30,6 @@ public sealed class KeybindingStoreTests
     }
 
     [Fact]
-    public void ResetToDefault_RestoresSeedChord()
-    {
-        KeybindingStore store = new();
-        store.Rebind(BuiltInAction.OpenConversation, new KeyChord(Key.F6, Ctrl: true));
-        store.ResetToDefault(BuiltInAction.OpenConversation);
-        Assert.Equal(new KeyChord(Key.F2), store.Get(BuiltInAction.OpenConversation));
-    }
-
-    [Fact]
     public void IsConflict_FlagsCollidingChord_ReportsCollidingAction()
     {
         KeybindingStore store = new();

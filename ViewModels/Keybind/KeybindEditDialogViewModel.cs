@@ -156,14 +156,6 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [RelayCommand]
     private void Clear() => Hydrate(KeyChord.Empty);
 
-    /// <summary>Restore the action's seed default chord (snapshot the store's default, push into the editor).</summary>
-    [RelayCommand]
-    private void ResetToDefault()
-    {
-        if (KeybindingStore.DefaultBindings.TryGetValue(_action, out KeyChord def))
-            Hydrate(def);
-    }
-
     /// <summary>
     /// Mirror of <see cref="GameData.Edit.MacroEditDialogViewModel.ProcessCaptureKey"/>.
     /// Called from the dialog code-behind on every KeyDown / KeyUp

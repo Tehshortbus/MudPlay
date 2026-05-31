@@ -37,6 +37,11 @@ public partial class MainWindowViewModel : ObservableObject
     private LoginAutomator? _automator;
     private Action<PromptObservation>? _loginKillSwitch;
     private CancellationTokenSource? _cleanupReconnectCts;
+    // Counts reactive reconnect arms in a row (carrier-lost / no-response).
+    // Resets to 0 on a successful Connect or any user-initiated disconnect /
+    // connect — so the (REDIAL m/N) hint in the armed status only reflects
+    // the current uninterrupted disconnect cycle.
+    private int _reactiveReconnectCount;
     // GC root for the who-list parser — it subscribes to LineExtractor
     // in its ctor and stays alive as long as MainWindowViewModel does.
     private readonly Game.WhoListParser _whoListParser;
@@ -151,12 +156,14 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnected;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
@@ -167,13 +174,24 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsIdle => !IsConnected && !IsConnecting;
 
     /// <summary>
+    /// True when an auto-reconnect is armed but hasn't fired yet — covers
+    /// both the predictive cleanup scheduler and the reactive carrier-lost
+    /// path. Drives the toolbar / menu's Connect label so a re-press
+    /// cancels the pending redial instead of immediately dialling.
+    /// </summary>
+    public bool IsReconnectPending
+        => _cleanupReconnectCts is not null && !IsConnected && !IsConnecting;
+
+    /// <summary>
     /// Header text for the single Connect ↔ Disconnect menu entry / button
-    /// tooltip. Three-state cycle: Idle → "Connect" → Connecting → "Cancel
-    /// connect" → Connected → "Disconnect".
+    /// tooltip. Four-state cycle: ReconnectPending → "Cancel reconnect" →
+    /// Idle → "Connect" → Connecting → "Cancel connect" → Connected →
+    /// "Disconnect".
     /// </summary>
     public string ConnectionLabel
         => IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
+         : IsReconnectPending ? "Cancel reconnect"
          : "Connect";
 
     /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
@@ -350,10 +368,17 @@ public partial class MainWindowViewModel : ObservableObject
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
 
-        // Refresh every menu's InputGesture text on rebind. Each gesture
-        // label property reads through to KeybindingStore.Get(...) so
-        // PropertyChanged on all of them is enough to update the menu.
-        AppServices.Current.Keybindings.BindingChanged += _ => RefreshKeybindLabels();
+        // Refresh every menu's InputGesture text + the toolbar button
+        // tooltips on rebind. Each gesture label property reads through
+        // to KeybindingStore.Get(...) so PropertyChanged on all of them
+        // is enough to update the menu; toolbar tooltips are baked into
+        // ToolbarButtonItem at row-build time, so we re-run RebuildToolbarItems
+        // to pick up the new label.
+        AppServices.Current.Keybindings.BindingChanged += _ =>
+        {
+            RefreshKeybindLabels();
+            RebuildToolbarItems();
+        };
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
@@ -399,8 +424,21 @@ public partial class MainWindowViewModel : ObservableObject
             if (entry is null) continue;
 
             ICommand? command = GetType().GetProperty(entry.CommandName)?.GetValue(this) as ICommand;
+
+            // Live shortcut hint: if the action id parses as a BuiltInAction,
+            // pull the current binding from KeybindingStore so a user rebind
+            // (Settings → Toolbar → Change keybind…) updates the tooltip
+            // immediately. Otherwise (ToggleCapture, ActionGetAll, …) fall
+            // back to the catalogue's hardcoded hint.
+            string? liveHint =
+                Enum.TryParse(entry.ActionId, ignoreCase: false, out Models.Profile.BuiltInAction parsedAction)
+                    ? AppServices.Current.Keybindings.Get(parsedAction) is { IsEmpty: false } live
+                        ? live.Label
+                        : null
+                    : entry.ShortcutHint;
+
             string tooltip = entry.Tooltip
-                          ?? (entry.ShortcutHint is null ? entry.Label : $"{entry.Label} ({entry.ShortcutHint})");
+                          ?? (liveHint is null ? entry.Label : $"{entry.Label} ({liveHint})");
 
             // Connect button is the one row with a dual-icon (plug / unplug)
             // visual; everything else uses a single static glyph.
@@ -540,9 +578,17 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (IsConnected)        { await DisconnectInternalAsync();   return; }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
-        // User clicking Connect overrides any pending cleanup-reconnect
-        // schedule — they explicitly want to dial now.
-        CancelCleanupReconnect("user clicked Connect");
+        // Auto-reconnect armed (predictive cleanup OR reactive carrier-lost):
+        // first click cancels the pending redial — the user is opting out of
+        // the loop, not asking to dial immediately. They can click again to
+        // dial if that's what they actually wanted.
+        if (IsReconnectPending)
+        {
+            _reactiveReconnectCount = 0;
+            CancelCleanupReconnect("user clicked Cancel reconnect");
+            return;
+        }
+        _reactiveReconnectCount = 0;
         await ConnectWithRetriesAsync();
     }
 
@@ -554,6 +600,7 @@ public partial class MainWindowViewModel : ObservableObject
         // the carrier-lost auto-reconnect.
         _userInitiatedDisconnect = true;
         _lastDisconnectCause = DisconnectCause.UserInitiated;
+        _reactiveReconnectCount = 0;
 
         TelnetClient? t = _telnet;
         _telnet = null;
@@ -814,13 +861,14 @@ public partial class MainWindowViewModel : ObservableObject
 
         CancelCleanupReconnect(reason: null);
         _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
         string when = reconnectAt.LocalDateTime.ToString("HH:mm:ss");
         int minutes = (int)delay.TotalMinutes;
         int seconds = delay.Seconds;
         WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s).]",
+            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s). PRESS CONNECT TO CANCEL.]",
             TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Cleanup",
             $"Reconnect scheduled at {when} — warning observed at " +
@@ -835,6 +883,7 @@ public partial class MainWindowViewModel : ObservableObject
                 if (IsConnected || IsConnecting) return;
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
                 AppServices.Current.Cleanup.Reset();
                 _ = ConnectWithRetriesAsync();
             });
@@ -847,11 +896,23 @@ public partial class MainWindowViewModel : ObservableObject
         try { _cleanupReconnectCts.Cancel(); } catch { }
         _cleanupReconnectCts.Dispose();
         _cleanupReconnectCts = null;
+        NotifyReconnectPendingChanged();
         if (reason is not null)
         {
             AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
             WriteTerminalStatus("[AUTO-RECONNECT CANCELLED.]", TerminalStatusKind.Notice);
         }
+    }
+
+    /// <summary>
+    /// Fires PropertyChanged for the bindings that depend on whether a
+    /// reconnect is armed. Called from every site that flips the CTS
+    /// between null and an instance so the toolbar / menu label updates.
+    /// </summary>
+    private void NotifyReconnectPendingChanged()
+    {
+        OnPropertyChanged(nameof(IsReconnectPending));
+        OnPropertyChanged(nameof(ConnectionLabel));
     }
 
     /// <summary>
@@ -907,20 +968,37 @@ public partial class MainWindowViewModel : ObservableObject
         };
         if (!shouldRetry) return;
 
+        // Redial budget — same MaxRedials knob the in-flight retry loop
+        // uses. Stop arming once we've burned through it; the user can
+        // still click Connect manually.
+        int maxRedials = Math.Max(1, bbs.MaxRedials);
+        _reactiveReconnectCount++;
+        if (_reactiveReconnectCount > maxRedials)
+        {
+            WriteTerminalStatus(
+                $"[AUTO-RECONNECT GAVE UP AFTER {maxRedials} REDIAL{(maxRedials == 1 ? "" : "S")}.]",
+                TerminalStatusKind.Error);
+            AppServices.Current.Log.Error("Reconnect",
+                $"Reactive reconnect budget exhausted ({maxRedials}).");
+            _reactiveReconnectCount = 0;
+            return;
+        }
+
         TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
         _cleanupReconnectCts?.Cancel();
         _cleanupReconnectCts?.Dispose();
         _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
         string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
             ? "no response"
             : "carrier lost";
         WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}) — DIALING IN {(int)delay.TotalSeconds}s.]",
+            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {(int)delay.TotalSeconds}s. PRESS CONNECT TO CANCEL.]",
             TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Reconnect",
-            $"Reactive reconnect scheduled ({reasonLabel}) in {(int)delay.TotalSeconds}s.");
+            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {(int)delay.TotalSeconds}s.");
 
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
@@ -930,6 +1008,7 @@ public partial class MainWindowViewModel : ObservableObject
                 if (IsConnected || IsConnecting) return;
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
                 _ = ConnectWithRetriesAsync();
             });
         }, TaskScheduler.Default);
@@ -1065,10 +1144,12 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 IsConnected = true;
-                // Fresh session — drop any cleanup warning carried over
-                // and clear any pending auto-reconnect schedule (which
-                // would be redundant now that we're connected anyway).
+                // Fresh session — drop any cleanup warning carried over,
+                // clear any pending auto-reconnect schedule, and reset the
+                // reactive-redial counter so the next disconnect cycle
+                // starts from 1/N again.
                 AppServices.Current.Cleanup.Reset();
+                _reactiveReconnectCount = 0;
                 CancelCleanupReconnect("connected");
             });
         };
@@ -2094,44 +2175,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(SaveProfileGesture));
         OnPropertyChanged(nameof(SaveProfileAsGesture));
         OnPropertyChanged(nameof(QuitGesture));
-    }
-
-    /// <summary>
-    /// Rebind UX entry point — used by toolbar button + menu item context
-    /// menus. <paramref name="actionId"/> is the stable identifier the
-    /// toolbar catalogue uses (matches the <see cref="BuiltInAction"/>
-    /// enum-name); the command resolves it, opens
-    /// <see cref="ViewModels.Keybind.KeybindEditDialogViewModel"/>, and
-    /// pushes the chosen chord back via
-    /// <see cref="KeybindingStore.Rebind"/>. Silently no-ops when the
-    /// id doesn't map to a known action (toolbar entry without a
-    /// rebindable keybind, e.g. ToggleCapture).
-    /// </summary>
-    [RelayCommand]
-    private async Task OpenKeybindEditAsync(string? actionId)
-    {
-        if (!Enum.TryParse<Models.Profile.BuiltInAction>(actionId, ignoreCase: false, out Models.Profile.BuiltInAction action))
-            return;
-
-        ViewModels.Keybind.KeybindEditDialogViewModel vm = new(
-            action,
-            AppServices.Current.Keybindings,
-            AppServices.Current.Macros);
-        Models.Profile.KeyChord chord = await AppServices.Current.Dialogs
-            .OpenWindowAsync<ViewModels.Keybind.KeybindEditDialogViewModel, Models.Profile.KeyChord>(vm);
-        // The dialog always returns a chord — Save returns the new one,
-        // Cancel returns the original (so the rebind is a no-op).
-        if (!chord.Equals(AppServices.Current.Keybindings.Get(action)))
-            AppServices.Current.Keybindings.Rebind(action, chord);
-    }
-
-    /// <summary>One-click reset for a context-menu "Reset to default" entry. Same actionId mapping as the editor.</summary>
-    [RelayCommand]
-    private void ResetKeybind(string? actionId)
-    {
-        if (!Enum.TryParse<Models.Profile.BuiltInAction>(actionId, ignoreCase: false, out Models.Profile.BuiltInAction action))
-            return;
-        AppServices.Current.Keybindings.ResetToDefault(action);
     }
 
     /// <summary>Help → About FujinTerm.</summary>
