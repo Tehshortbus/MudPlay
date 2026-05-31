@@ -16,7 +16,6 @@ namespace FujinTerm.Models.GameData;
 /// triggers, aliases). No per-step delay; if pacing matters use the
 /// triggers system instead.
 /// </remarks>
-/// <param name="Name">Display name shown in the Macros list.</param>
 /// <param name="Key">The literal key captured by the editor (e.g. <c>"F1"</c>, <c>"NumPad8"</c>, <c>"A"</c>). Maps to Avalonia's <c>Key</c> enum names.</param>
 /// <param name="Ctrl">Ctrl modifier required.</param>
 /// <param name="Shift">Shift modifier required.</param>
@@ -29,7 +28,6 @@ namespace FujinTerm.Models.GameData;
 /// </param>
 /// <param name="Enabled">Per-macro on / off without deleting.</param>
 public sealed record Macro(
-    string Name,
     string Key,
     bool Ctrl,
     bool Shift,

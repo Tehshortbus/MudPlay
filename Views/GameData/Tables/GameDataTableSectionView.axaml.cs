@@ -74,14 +74,18 @@ public partial class GameDataTableSectionView : UserControl
         // Trailing virtual "Use" column — shows which tier (Def / Glob /
         // BBS / Char) owns the row's current values. Bound to the
         // GameDataRow.UseLabel computed property rather than a cell.
-        // Always a string ("Def" / "Glob" / "BBS" / "Char") so the
-        // default sort is fine here.
-        RowsGrid.Columns.Add(new DataGridTextColumn
+        // Skipped for engine-backed sections (Macros / Triggers / Aliases
+        // / Players) where every row lives at one tier and the badge
+        // would always read the same.
+        if (vm.ShowUseColumn)
         {
-            Header  = GameDataTableSectionViewModel.UseColumnName,
-            Binding = new Binding(nameof(GameDataRow.UseLabel)),
-            Width   = DataGridLength.Auto,
-        });
+            RowsGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header  = GameDataTableSectionViewModel.UseColumnName,
+                Binding = new Binding(nameof(GameDataRow.UseLabel)),
+                Width   = DataGridLength.Auto,
+            });
+        }
         _columnsBuilt = true;
     }
 }

@@ -12,7 +12,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_ReturnsFalse_WhenNoSenderBound()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North", "NumPad8", false, false, false, "n", true));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", true));
         MacroDispatcher d = new(store);
 
         Assert.False(d.TryHandleKey(Key.NumPad8, KeyModifiers.None));
@@ -22,7 +22,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_ReturnsFalse_WhenChordHasNoMatch()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North", "NumPad8", false, false, false, "n", true));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", true));
         MacroDispatcher d = new(store);
         d.SetSender(_ => { });
 
@@ -33,7 +33,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_FiresSingleStepMacro_WithCrTerminator()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North", "NumPad8", false, false, false, "n", true));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", true));
         List<byte[]> sent = new();
         MacroDispatcher d = new(store);
         d.SetSender(sent.Add);
@@ -47,7 +47,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_FiresMultiStepMacro_OneSendPerFragment()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("Loot box", "F1", false, false, false,
+        store.Macros.Add(new Macro("F1", false, false, false,
             Command: "open chest;look in chest;take all", Enabled: true));
         List<byte[]> sent = new();
         MacroDispatcher d = new(store);
@@ -64,7 +64,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_AcceptsCaretM_AsCarriageReturnDelimiter()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("Combo", "F2", false, false, false,
+        store.Macros.Add(new Macro("F2", false, false, false,
             Command: "sneak^Mhide", Enabled: true));
         List<byte[]> sent = new();
         MacroDispatcher d = new(store);
@@ -80,8 +80,8 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_DistinguishesModifierVariants()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("Cast heal",  "H", Ctrl: true,  Shift: false, Alt: false, Command: "cast heal me",  Enabled: true));
-        store.Macros.Add(new Macro("Cast nuke",  "H", Ctrl: true,  Shift: true,  Alt: false, Command: "cast nuke 1",  Enabled: true));
+        store.Macros.Add(new Macro("H", Ctrl: true,  Shift: false, Alt: false, Command: "cast heal me",  Enabled: true));
+        store.Macros.Add(new Macro("H", Ctrl: true,  Shift: true,  Alt: false, Command: "cast nuke 1",  Enabled: true));
         List<byte[]> sent = new();
         MacroDispatcher d = new(store);
         d.SetSender(sent.Add);
@@ -102,7 +102,7 @@ public sealed class MacroDispatcherTests
     public void TryHandleKey_IgnoresDisabledMacro()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North (off)", "NumPad8", false, false, false, "n", Enabled: false));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", Enabled: false));
         List<byte[]> sent = new();
         MacroDispatcher d = new(store);
         d.SetSender(sent.Add);

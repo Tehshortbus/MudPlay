@@ -27,6 +27,9 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
 
     public override string SearchKeyColumn => "Name";
 
+    /// <summary>Engine-backed table — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
+    public override bool ShowUseColumn => false;
+
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "trigger", "pattern", "match",

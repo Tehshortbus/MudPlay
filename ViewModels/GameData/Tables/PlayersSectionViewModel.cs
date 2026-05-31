@@ -33,6 +33,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
 
     public override string SearchKeyColumn => "Given Name";
 
+    /// <summary>Engine-backed (BBS-tier observations + Char-tier customisations) — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
+    public override bool ShowUseColumn => false;
+
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "player", "name", "remote", "@", "permissions",

@@ -25,7 +25,7 @@ public sealed class MacroStoreTests
     public void IsDuplicate_FlagsSameChord_FromAnotherMacro()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North", "NumPad8", false, false, false, "n", true));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", true));
         Assert.True(store.IsDuplicate("NumPad8", false, false, false));
     }
 
@@ -33,7 +33,7 @@ public sealed class MacroStoreTests
     public void IsDuplicate_ExcludesSpecifiedMacro_DuringSelfEdit()
     {
         MacroStore store = new();
-        Macro self = new("North", "NumPad8", false, false, false, "n", true);
+        Macro self = new("NumPad8", false, false, false, "n", true);
         store.Macros.Add(self);
         // Editing 'self' without changing the chord should not flag a self-duplicate.
         Assert.False(store.IsDuplicate("NumPad8", false, false, false, excluding: self));
@@ -43,7 +43,7 @@ public sealed class MacroStoreTests
     public void IsDuplicate_DistinguishesByModifier()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("F1 plain", "F1", false, false, false, "say hi", true));
+        store.Macros.Add(new Macro("F1", false, false, false, "say hi", true));
         Assert.False(store.IsDuplicate("F1", true,  false, false));  // Ctrl+F1 free
         Assert.False(store.IsDuplicate("F1", false, true,  false));  // Shift+F1 free
         Assert.True (store.IsDuplicate("F1", false, false, false));  // plain F1 taken
@@ -53,7 +53,7 @@ public sealed class MacroStoreTests
     public void FindMatch_ReturnsNull_WhenMacroDisabled()
     {
         MacroStore store = new();
-        store.Macros.Add(new Macro("North", "NumPad8", false, false, false, "n", Enabled: false));
+        store.Macros.Add(new Macro("NumPad8", false, false, false, "n", Enabled: false));
         Assert.Null(store.FindMatch("NumPad8", false, false, false));
     }
 

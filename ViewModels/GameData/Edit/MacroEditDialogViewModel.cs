@@ -29,7 +29,6 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     /// <summary>Picker items for the Key combo box — display name + underlying Key.</summary>
     public IReadOnlyList<KeyEntry> AvailableKeys { get; }
 
-    [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string _command = string.Empty;
     [ObservableProperty] private bool _enabled = true;
 
@@ -57,7 +56,7 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _alt;
 
-    public string Title => $"Macro — {(_original.Name.Length > 0 ? _original.Name : "(new)")}";
+    public string Title => $"Macro — {(_original.Command.Length > 0 ? _original.Command : "(new)")}";
 
     /// <summary>Inline status line under the chord row. Red on error, muted preview on success.</summary>
     public string StatusMessage
@@ -98,7 +97,6 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
             .Select(b => new KeyEntry(b.DisplayName, b.Key))
             .ToArray();
 
-        Name    = original.Name;
         Command = original.Command;
         Enabled = original.Enabled;
         Ctrl    = original.Ctrl;
@@ -118,7 +116,6 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     {
         if (!CanSave || SelectedKey is null) return;
         Macro updated = new(
-            Name:    (Name ?? string.Empty).Trim(),
             Key:     SelectedKey.Key.ToString(),
             Ctrl:    Ctrl,
             Shift:   Shift,

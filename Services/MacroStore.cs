@@ -127,16 +127,16 @@ public sealed class MacroStore
     /// </summary>
     public static IReadOnlyList<Macro> DefaultMacros() => new[]
     {
-        new Macro("North",     Key: "NumPad8", Ctrl: false, Shift: false, Alt: false, Command: "n",  Enabled: true),
-        new Macro("South",     Key: "NumPad2", Ctrl: false, Shift: false, Alt: false, Command: "s",  Enabled: true),
-        new Macro("West",      Key: "NumPad4", Ctrl: false, Shift: false, Alt: false, Command: "w",  Enabled: true),
-        new Macro("East",      Key: "NumPad6", Ctrl: false, Shift: false, Alt: false, Command: "e",  Enabled: true),
-        new Macro("Northeast", Key: "NumPad9", Ctrl: false, Shift: false, Alt: false, Command: "ne", Enabled: true),
-        new Macro("Northwest", Key: "NumPad7", Ctrl: false, Shift: false, Alt: false, Command: "nw", Enabled: true),
-        new Macro("Southeast", Key: "NumPad3", Ctrl: false, Shift: false, Alt: false, Command: "se", Enabled: true),
-        new Macro("Southwest", Key: "NumPad1", Ctrl: false, Shift: false, Alt: false, Command: "sw", Enabled: true),
-        new Macro("Up",        Key: "NumPad0", Ctrl: false, Shift: false, Alt: false, Command: "u",  Enabled: true),
-        new Macro("Down",      Key: "Decimal", Ctrl: false, Shift: false, Alt: false, Command: "d",  Enabled: true),
+        new Macro(Key: "NumPad8", Ctrl: false, Shift: false, Alt: false, Command: "n",  Enabled: true),
+        new Macro(Key: "NumPad2", Ctrl: false, Shift: false, Alt: false, Command: "s",  Enabled: true),
+        new Macro(Key: "NumPad4", Ctrl: false, Shift: false, Alt: false, Command: "w",  Enabled: true),
+        new Macro(Key: "NumPad6", Ctrl: false, Shift: false, Alt: false, Command: "e",  Enabled: true),
+        new Macro(Key: "NumPad9", Ctrl: false, Shift: false, Alt: false, Command: "ne", Enabled: true),
+        new Macro(Key: "NumPad7", Ctrl: false, Shift: false, Alt: false, Command: "nw", Enabled: true),
+        new Macro(Key: "NumPad3", Ctrl: false, Shift: false, Alt: false, Command: "se", Enabled: true),
+        new Macro(Key: "NumPad1", Ctrl: false, Shift: false, Alt: false, Command: "sw", Enabled: true),
+        new Macro(Key: "NumPad0", Ctrl: false, Shift: false, Alt: false, Command: "u",  Enabled: true),
+        new Macro(Key: "Decimal", Ctrl: false, Shift: false, Alt: false, Command: "d",  Enabled: true),
     };
 
     // ----- Profile sync ---------------------------------------------------

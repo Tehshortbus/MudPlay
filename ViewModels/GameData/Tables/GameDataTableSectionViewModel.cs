@@ -37,10 +37,22 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     /// <summary>
     /// Columns rendered in the DataGrid: data columns + the trailing
-    /// "Use" tier column. The view's column builder reads from this.
+    /// "Use" tier column (when applicable). The view's column builder
+    /// reads from this.
     /// </summary>
-    public IReadOnlyList<string> DisplayColumns =>
-        Columns.Concat(new[] { UseColumnName }).ToArray();
+    public IReadOnlyList<string> DisplayColumns => ShowUseColumn
+        ? Columns.Concat(new[] { UseColumnName }).ToArray()
+        : Columns;
+
+    /// <summary>
+    /// True when the trailing virtual "Use" tier column should render.
+    /// MDB-overlay tables (Monsters / Items / Spells / Messages) keep it
+    /// — the tier badge tells the user which layer owns each row.
+    /// Engine-backed tables (Macros / Triggers / Aliases / Players)
+    /// hide it: every row lives at one tier so the badge would always
+    /// read the same value and just adds visual noise.
+    /// </summary>
+    public virtual bool ShowUseColumn => true;
 
     /// <summary>Column the search box filters against by default (kept for status-bar display only).</summary>
     public abstract string SearchKeyColumn { get; }

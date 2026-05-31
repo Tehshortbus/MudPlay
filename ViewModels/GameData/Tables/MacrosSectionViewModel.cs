@@ -25,10 +25,13 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Enabled", "Chord", "Name", "Command",
+        "Enabled", "Key", "Command",
     };
 
-    public override string SearchKeyColumn => "Name";
+    public override string SearchKeyColumn => "Command";
+
+    /// <summary>Engine-backed table — every row lives only at the Char tier, so the "Use" badge would always read the same value and just adds noise.</summary>
+    public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
@@ -64,8 +67,7 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Enabled"] = m.Enabled ? "✓" : "",
-                ["Chord"]   = m.KeyChordLabel,
-                ["Name"]    = m.Name,
+                ["Key"]     = m.KeyChordLabel,
                 ["Command"] = m.Command,
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
@@ -75,16 +77,15 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
     private async Task OpenEditAsync(GameDataRow? row)
     {
         if (row is null || _dialogs is null) return;
-        string? chord = row.Get("Chord");
+        string? chord = row.Get("Key");
         if (string.IsNullOrEmpty(chord)) return;
 
-        // Locate the live record by chord + name (chord alone is unique,
-        // but name disambiguates if a future hot-edit lands two macros
-        // sharing a chord mid-flight).
+        // Locate the live record by chord — IsDuplicate already
+        // prevents two macros sharing one chord at save time.
         Macro? original = null;
         foreach (Macro m in _store.Macros)
         {
-            if (m.KeyChordLabel == chord && m.Name == row.Get("Name"))
+            if (m.KeyChordLabel == chord)
             {
                 original = m;
                 break;
