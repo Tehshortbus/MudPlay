@@ -42,8 +42,12 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
 
     /// <summary>Open the per-record edit dialog for the row currently double-clicked.</summary>
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand  => RemoveSelectedCommand;
 
     private readonly NotifyCollectionChangedEventHandler _handler;
 
@@ -60,7 +64,16 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         _cache = cache;
         _handler = (_, _) => Reload();
         _store.Messages.CollectionChanged += _handler;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
         Reload();
     }
 
@@ -129,6 +142,51 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         }
         if (idx >= 0) _store.Messages[idx] = result.Updated;
         else          _store.Messages.Add(result.Updated);
+        _store.Save();
+    }
+
+    /// <summary>
+    /// Add-button handler — opens the edit dialog with a fresh
+    /// blank record. Save through ApplyResult appends it to the
+    /// store; Cancel discards. <c>isNew: true</c> tells the dialog
+    /// to skip the self-duplicate-check exemption.
+    /// </summary>
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        MessageRecord blank = new(
+            Id:          string.Empty,
+            Name:        string.Empty,
+            Message:     string.Empty,
+            EndsWith:    string.Empty,
+            Action:      MessageAction.Ignore,
+            Flags:       MessageFlags.None,
+            RawFlagsHex: 0,
+            Response:    string.Empty,
+            Links:       Array.Empty<GameDataLink>());
+
+        MessageEditDialogViewModel vm = new(
+            blank,
+            currentTier:     SettingsTier.Defaults,
+            existingRecords: _store.Messages,
+            isNew:           true,
+            cache:           _cache);
+        MessageEditResult? result = await _dialogs.OpenWindowAsync<MessageEditDialogViewModel, MessageEditResult>(vm);
+        if (result is null) return;
+        ApplyResult(result);
+    }
+
+    /// <summary>Remove the selected row's record from the store.</summary>
+    private void RemoveSelected()
+    {
+        if (SelectedRow is null) return;
+        string id = MegaMudMessagesImporter.ComputeId(
+            SelectedRow.Get("Name")     ?? string.Empty,
+            SelectedRow.Get("Message")  ?? string.Empty,
+            SelectedRow.Get("EndsWith") ?? string.Empty);
+        MessageRecord? target = _store.Messages.FirstOrDefault(m => m.Id == id);
+        if (target is null) return;
+        _store.Messages.Remove(target);
         _store.Save();
     }
 }
