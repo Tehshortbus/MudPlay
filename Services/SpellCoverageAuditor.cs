@@ -151,7 +151,7 @@ public sealed class SpellCoverageAuditor
                 Name:        name,
                 CastedBy:    ResolveRefs(castedByRaw),
                 LearnedFrom: ResolveRefs(learnedFromRaw),
-                Classes:     ReadString(row, "Classes")));
+                Classes:     ResolveClasses(ReadString(row, "Classes"))));
         }
 
         gaps.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -262,6 +262,49 @@ public sealed class SpellCoverageAuditor
     private static readonly System.Text.RegularExpressions.Regex RefPattern = new(
         @"\b(Monster|Item|Spell)\s*#\s*(\d+)\b",
         System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Matches a single class-restriction token in a Spells.Classes
+    /// field — e.g. <c>"(*)"</c> (all), <c>"(3)"</c> (Class #3), or
+    /// multi-token strings like <c>"(11),(10)"</c>. Captured group 1
+    /// is either <c>*</c> or the class number.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex ClassPattern = new(
+        @"\((\*|\d+)\)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Translate every <c>(N)</c> class-restriction token in
+    /// <paramref name="raw"/> to the corresponding class Name via
+    /// the active set's Classes.json. <c>(*)</c> renders as <c>"All"</c>;
+    /// missing-class tokens fall through verbatim. Multi-class lists
+    /// join with " / " for readability (avoids confusion with the
+    /// comma separator some other columns already use).
+    /// </summary>
+    private string ResolveClasses(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        var matches = ClassPattern.Matches(raw);
+        if (matches.Count == 0) return raw;
+        List<string> parts = new(matches.Count);
+        foreach (System.Text.RegularExpressions.Match m in matches)
+        {
+            string token = m.Groups[1].Value;
+            if (token == "*")
+            {
+                parts.Add("All");
+                continue;
+            }
+            if (!int.TryParse(token, out int n))
+            {
+                parts.Add(m.Value);
+                continue;
+            }
+            string? name = _cache.FindNameByNumber("Classes", n);
+            parts.Add(name ?? $"Class #{n}");
+        }
+        return string.Join(" / ", parts);
+    }
 
     /// <summary>
     /// True when any Monster/Item ref in <paramref name="raw"/>
