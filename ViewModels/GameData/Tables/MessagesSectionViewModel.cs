@@ -98,7 +98,11 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         MessageRecord? original = _store.Messages.FirstOrDefault(m => m.Id == id);
         if (original is null) return;
 
-        MessageEditDialogViewModel vm = new(original, row.SourceTier);
+        MessageEditDialogViewModel vm = new(
+            original,
+            row.SourceTier,
+            _store.Messages,
+            isNew: false);
         MessageEditResult? result = await _dialogs.OpenWindowAsync<MessageEditDialogViewModel, MessageEditResult>(vm);
         if (result is null) return;
 

@@ -210,10 +210,10 @@ public static class MegaMudMessagesImporter
 
         return new Partial
         {
-            Name             = name,
-            RawFlagsHex      = rawFlags,
-            Action           = (MessageAction)actionInt,
-            ResponseCommands = ParseResponseCommands(responseStr),
+            Name        = name,
+            RawFlagsHex = rawFlags,
+            Action      = (MessageAction)actionInt,
+            Response    = responseStr,
         };
     }
 
@@ -221,14 +221,14 @@ public static class MegaMudMessagesImporter
     {
         string id = ComputeId(p.Name, message, endsWith);
         result.Messages.Add(new MessageRecord(
-            Id:               id,
-            Name:             p.Name,
-            Message:          message,
-            EndsWith:         endsWith,
-            Action:           p.Action,
-            Flags:            MaskKnown(p.RawFlagsHex),
-            RawFlagsHex:      p.RawFlagsHex,
-            ResponseCommands: p.ResponseCommands));
+            Id:          id,
+            Name:        p.Name,
+            Message:     message,
+            EndsWith:    endsWith,
+            Action:      p.Action,
+            Flags:       MaskKnown(p.RawFlagsHex),
+            RawFlagsHex: p.RawFlagsHex,
+            Response:    p.Response));
     }
 
     private static MessageFlags MaskKnown(ushort raw)
@@ -243,22 +243,6 @@ public static class MegaMudMessagesImporter
             (ushort)MessageFlags.LastActionFailed    | (ushort)MessageFlags.UseWhenChasing      |
             (ushort)MessageFlags.Disabled;
         return (MessageFlags)(raw & knownMask);
-    }
-
-    private static IReadOnlyList<string> ParseResponseCommands(string response)
-    {
-        if (string.IsNullOrEmpty(response)) return Array.Empty<string>();
-        // Legacy files may encode the separator as the literal two-char
-        // sequence "^M" or as a raw CR. Normalize both to CR, then split.
-        string normalized = response.Replace("^M", "\r");
-        string[] parts = normalized.Split('\r');
-        List<string> result = new(parts.Length);
-        foreach (string part in parts)
-        {
-            string trimmed = part.TrimEnd();
-            if (trimmed.Length > 0) result.Add(trimmed);
-        }
-        return result;
     }
 
     /// <summary>
@@ -281,7 +265,7 @@ public static class MegaMudMessagesImporter
         public string Name = "";
         public ushort RawFlagsHex;
         public MessageAction Action;
-        public IReadOnlyList<string> ResponseCommands = Array.Empty<string>();
+        public string Response = "";
         public string Message = "";
     }
 }

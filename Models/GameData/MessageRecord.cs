@@ -52,10 +52,14 @@ namespace FujinTerm.Models.GameData;
 /// file. Preserves reserved-but-unknown bits (notably <c>0x0800</c>)
 /// so the record round-trips back to the file losslessly.
 /// </param>
-/// <param name="ResponseCommands">
-/// Commands the engine sends when the pattern fires. Legacy
-/// <c>messages.md</c> encodes multiple commands separated by literal
-/// <c>^M</c> or raw CR; we parse them out and store as a list.
+/// <param name="Response">
+/// Verbatim response field as the user typed it in MegaMUD — multiple
+/// commands separated by literal <c>^M</c> (two characters) and / or
+/// raw CR. Stored as a single string so the editor displays it
+/// identically to MegaMUD's "Game Message Details" dialog (no
+/// canonicalization, no early splitting). The runtime consumer
+/// (Phase 13) is the one that translates <c>^M</c> / CR into actual
+/// CR-terminated wire sends.
 /// </param>
 public sealed record MessageRecord(
     string         Id,
@@ -65,7 +69,7 @@ public sealed record MessageRecord(
     MessageAction  Action,
     MessageFlags   Flags,
     ushort         RawFlagsHex,
-    IReadOnlyList<string> ResponseCommands);
+    string         Response);
 
 /// <summary>
 /// What the engine does when a message pattern fires. Values match the

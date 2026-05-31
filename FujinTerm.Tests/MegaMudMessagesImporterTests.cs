@@ -31,8 +31,10 @@ public sealed class MegaMudMessagesImporterTests
         Assert.Equal(MessageAction.WaitForEnd, m.Action);
         Assert.Equal(MessageFlags.Poisoned, m.Flags);
         Assert.Equal((ushort)0x0004, m.RawFlagsHex);
-        Assert.Single(m.ResponseCommands);
-        Assert.Equal("cure poison", m.ResponseCommands[0]);
+        // Response is stored verbatim — exactly the bytes after the
+        // header's third colon. The runtime consumer (Phase 13)
+        // interprets ^M / CR as multi-step boundaries at send time.
+        Assert.Equal("cure poison", m.Response);
     }
 
     [Fact]
@@ -56,16 +58,18 @@ public sealed class MegaMudMessagesImporterTests
     }
 
     [Fact]
-    public void Response_SplitsCommands_On_LiteralCaretM_And_RawCR()
+    public void Response_StoredVerbatim_Including_LiteralCaretM_And_RawCR()
     {
-        // Legacy mixes literal "^M" and raw CR as command separators.
+        // Response field is the raw 4th-colon-suffix of the header line.
+        // No splitting at import time — the runtime consumer interprets
+        // ^M / CR as multi-step boundaries when actually sending.
         const string src =
             "Warn:0000:0:c1^Mc2\rc3\n" +
             "msg\n";
 
         MessageImportResult r = MegaMudMessagesImporter.ParseText(src, "test");
         Assert.Single(r.Messages);
-        Assert.Equal(new[] { "c1", "c2", "c3" }, r.Messages[0].ResponseCommands);
+        Assert.Equal("c1^Mc2\rc3", r.Messages[0].Response);
     }
 
     [Fact]
@@ -118,8 +122,7 @@ public sealed class MegaMudMessagesImporterTests
         const string src = "Tell:0000:0:tell wizard hello:there\nmsg\n\n";
         MessageImportResult r = MegaMudMessagesImporter.ParseText(src, "test");
         Assert.Single(r.Messages);
-        Assert.Single(r.Messages[0].ResponseCommands);
-        Assert.Equal("tell wizard hello:there", r.Messages[0].ResponseCommands[0]);
+        Assert.Equal("tell wizard hello:there", r.Messages[0].Response);
     }
 
     [Fact]
