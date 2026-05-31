@@ -39,7 +39,12 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
     };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
+
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand  => RemoveSelectedCommand;
 
     private readonly NotifyCollectionChangedEventHandler _handler;
 
@@ -50,7 +55,18 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         _dialogs = dialogs;
         _handler = (_, _) => Reload();
         _store.Macros.CollectionChanged += _handler;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        OpenEditAsyncCommand   = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand        = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand  = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+
+        // The Remove button's CanExecute depends on the current SelectedRow —
+        // re-evaluate every time the selection changes.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
         Reload();
     }
 
@@ -72,6 +88,32 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        // Seed a blank macro — the dialog forces the user to pick a key
+        // before save (CanSave gates the Save button on a valid chord).
+        Macro blank = new(Key: string.Empty, Ctrl: false, Shift: false, Alt: false,
+                          Command: string.Empty, Enabled: true);
+        MacroEditDialogViewModel vm = new(blank, _store);
+        Macro? created = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
+        if (created is null) return;
+        _store.Add(created);
+        Reload();
+    }
+
+    private void RemoveSelected()
+    {
+        if (SelectedRow is null) return;
+        string? chord = SelectedRow.Get("Key");
+        if (string.IsNullOrEmpty(chord)) return;
+        Macro? target = null;
+        foreach (Macro m in _store.Macros)
+            if (m.KeyChordLabel == chord) { target = m; break; }
+        if (target is not null) _store.Remove(target);
+        Reload();
     }
 
     private async Task OpenEditAsync(GameDataRow? row)

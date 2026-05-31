@@ -27,17 +27,24 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
 
-            <!-- ===== Chord (Key + modifiers) + Enabled ===== -->
-            <Grid Grid.Row="0" ColumnDefinitions="100,*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+            <!-- ===== Key chord (Capture button + read-only display) + Enabled ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="100,Auto,*,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Key"/>
-                <ComboBox  Grid.Column="1"
-                           ItemsSource="{Binding AvailableKeys}"
-                           SelectedItem="{Binding SelectedKey, Mode=TwoWay}"
-                           HorizontalAlignment="Stretch"/>
-                <CheckBox  Grid.Column="2" Content="Ctrl"    IsChecked="{Binding Ctrl,    Mode=TwoWay}" Margin="8,0,0,0"/>
-                <CheckBox  Grid.Column="3" Content="Shift"   IsChecked="{Binding Shift,   Mode=TwoWay}" Margin="8,0,0,0"/>
-                <CheckBox  Grid.Column="4" Content="Alt"     IsChecked="{Binding Alt,     Mode=TwoWay}" Margin="8,0,0,0"/>
-                <CheckBox  Grid.Column="5" Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Margin="12,0,0,0"/>
+                <Button    Grid.Column="1"
+                           Content="{Binding CaptureButtonText}"
+                           Command="{Binding StartCaptureCommand}"
+                           IsEnabled="{Binding !IsCapturing}"
+                           MinWidth="100"/>
+                <Border    Grid.Column="2"
+                           BorderBrush="{StaticResource ChromeBorderBrush}"
+                           BorderThickness="1" CornerRadius="3" Padding="8,6"
+                           VerticalAlignment="Center" MinHeight="30">
+                    <TextBlock Text="{Binding KeyDisplay}"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontFamily="{StaticResource FontMono}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                </Border>
+                <CheckBox  Grid.Column="3" Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Margin="12,0,0,0"/>
             </Grid>
 
             <!-- Live status / error line for the chord. Two TextBlocks

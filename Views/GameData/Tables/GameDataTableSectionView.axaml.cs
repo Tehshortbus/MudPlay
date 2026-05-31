@@ -28,8 +28,8 @@ public partial class GameDataTableSectionView : UserControl
         InitializeComponent();
         // Either trigger can fire first depending on layout timing;
         // guard via _columnsBuilt so the second is a no-op.
-        DataContextChanged   += (_, _) => TryBuildColumns();
-        AttachedToVisualTree += (_, _) => TryBuildColumns();
+        DataContextChanged   += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); };
+        AttachedToVisualTree += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); };
 
         // Double-click any row → invoke the section's OpenEditCommand
         // with the row as the argument. Sections that don't expose an
@@ -45,6 +45,30 @@ public partial class GameDataTableSectionView : UserControl
                 cmd.Execute(row);
             }
         };
+    }
+
+    /// <summary>
+    /// Conditionally surface the Add / Remove buttons next to the
+    /// search filter when the section exposes those commands. Sections
+    /// that don't (MDB-derived read-only tabs) leave both null and
+    /// the buttons stay hidden. Command wired imperatively rather
+    /// than via XAML binding because <see cref="IEditableTableSectionViewModel"/>'s
+    /// optional members aren't surfaced by compiled bindings.
+    /// </summary>
+    private void WireAddRemoveButtons()
+    {
+        if (DataContext is not IEditableTableSectionViewModel editable) return;
+
+        if (editable.AddCommand is { } add)
+        {
+            AddButton.Command   = add;
+            AddButton.IsVisible = true;
+        }
+        if (editable.RemoveCommand is { } remove)
+        {
+            RemoveButton.Command   = remove;
+            RemoveButton.IsVisible = true;
+        }
     }
 
     private void TryBuildColumns()

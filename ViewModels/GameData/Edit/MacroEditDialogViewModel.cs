@@ -26,9 +26,6 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     private readonly Macro _original;
     private readonly MacroStore _store;
 
-    /// <summary>Picker items for the Key combo box — display name + underlying Key.</summary>
-    public IReadOnlyList<KeyEntry> AvailableKeys { get; }
-
     [ObservableProperty] private string _command = string.Empty;
     [ObservableProperty] private bool _enabled = true;
 
@@ -36,7 +33,13 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
-    private KeyEntry? _selectedKey;
+    [NotifyPropertyChangedFor(nameof(KeyDisplay))]
+    private Key? _selectedKey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KeyDisplay))]
+    [NotifyPropertyChangedFor(nameof(CaptureButtonText))]
+    private bool _isCapturing;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -58,44 +61,49 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
 
     public string Title => $"Macro — {(_original.Command.Length > 0 ? _original.Command : "(new)")}";
 
+    /// <summary>Capture button label — flips to "Press key…" while in capture mode.</summary>
+    public string CaptureButtonText => IsCapturing ? "Press key…" : "Capture";
+
+    /// <summary>The chord shown in the read-only key display. Empty until the user picks one.</summary>
+    public string KeyDisplay
+    {
+        get
+        {
+            if (SelectedKey is null) return IsCapturing ? "(waiting for key…)" : "(not set)";
+            string mods = (Ctrl ? "Ctrl+" : "") + (Shift ? "Shift+" : "") + (Alt ? "Alt+" : "");
+            (string DisplayName, Key Key)? entry = KeybindRegistry.FindBindable(SelectedKey.Value);
+            return mods + (entry?.DisplayName ?? SelectedKey.Value.ToString());
+        }
+    }
+
     /// <summary>Inline status line under the chord row. Red on error, muted preview on success.</summary>
     public string StatusMessage
     {
         get
         {
-            if (SelectedKey is null) return "Pick a key.";
-            if (KeybindRegistry.IsForbidden(SelectedKey.Key, Ctrl, Shift, Alt, out string? reason))
+            if (SelectedKey is null)
+                return IsCapturing
+                    ? "Press a key combination — release a non-modifier key to confirm. Esc cancels."
+                    : "Click Capture and press the keybind.";
+            if (KeybindRegistry.IsForbidden(SelectedKey.Value, Ctrl, Shift, Alt, out string? reason))
                 return reason!;
-            if (_store.IsDuplicate(SelectedKey.Key.ToString(), Ctrl, Shift, Alt, excluding: _original))
+            if (_store.IsDuplicate(SelectedKey.Value.ToString(), Ctrl, Shift, Alt, excluding: _original))
                 return "Another macro is already bound to this chord.";
-            return $"Chord: {ChordLabel}";
+            return $"Chord: {KeyDisplay}";
         }
     }
 
     public bool HasError =>
         SelectedKey is null
-        || KeybindRegistry.IsForbidden(SelectedKey.Key, Ctrl, Shift, Alt, out _)
-        || _store.IsDuplicate(SelectedKey.Key.ToString(), Ctrl, Shift, Alt, excluding: _original);
+        || KeybindRegistry.IsForbidden(SelectedKey.Value, Ctrl, Shift, Alt, out _)
+        || _store.IsDuplicate(SelectedKey.Value.ToString(), Ctrl, Shift, Alt, excluding: _original);
 
-    public bool CanSave => !HasError;
-
-    private string ChordLabel
-    {
-        get
-        {
-            string mods = (Ctrl ? "Ctrl+" : "") + (Shift ? "Shift+" : "") + (Alt ? "Alt+" : "");
-            return mods + (SelectedKey?.DisplayName ?? string.Empty);
-        }
-    }
+    public bool CanSave => !HasError && !IsCapturing;
 
     public MacroEditDialogViewModel(Macro original, MacroStore store)
     {
         _original = original;
         _store    = store;
-
-        AvailableKeys = KeybindRegistry.BindableKeys
-            .Select(b => new KeyEntry(b.DisplayName, b.Key))
-            .ToArray();
 
         Command = original.Command;
         Enabled = original.Enabled;
@@ -104,11 +112,65 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
         Alt     = original.Alt;
 
         // Hydrate SelectedKey from the original Key string. Falls
-        // through to null when the stored key isn't in the bindable
-        // list (legacy data, future deprecated keys, etc.) — the user
-        // is forced to pick a new key in that case.
+        // through to null when the stored key isn't a valid Avalonia
+        // Key (legacy data, mistyped) — the user is forced to capture
+        // a fresh key in that case.
         if (Enum.TryParse<Key>(original.Key, ignoreCase: true, out Key parsed))
-            SelectedKey = AvailableKeys.FirstOrDefault(k => k.Key == parsed);
+            SelectedKey = parsed;
+    }
+
+    /// <summary>Toggle into capture mode — the code-behind handles the actual key events.</summary>
+    [RelayCommand]
+    private void StartCapture() => IsCapturing = true;
+
+    /// <summary>
+    /// Called from the dialog's code-behind on every KeyDown / KeyUp
+    /// while capture is active. Tracks modifiers as the user holds
+    /// them; commits the chord on the first non-modifier key release.
+    /// Escape cancels.
+    /// </summary>
+    /// <param name="key">The key just pressed or released.</param>
+    /// <param name="modifiers">Current modifier state (live, from the event).</param>
+    /// <param name="isKeyDown"><c>true</c> for KeyDown, <c>false</c> for KeyUp.</param>
+    /// <returns><c>true</c> when capture mode handled the event and the caller should mark it handled.</returns>
+    public bool ProcessCaptureKey(Key key, KeyModifiers modifiers, bool isKeyDown)
+    {
+        if (!IsCapturing) return false;
+
+        // Escape always cancels — never accepted as a bindable key.
+        if (key == Key.Escape)
+        {
+            IsCapturing = false;
+            return true;
+        }
+
+        // Modifier keys never commit on their own — they just update
+        // the modifier state for the upcoming non-modifier press.
+        bool isModifierOnly = key is Key.LeftCtrl or Key.RightCtrl
+                                  or Key.LeftShift or Key.RightShift
+                                  or Key.LeftAlt or Key.RightAlt
+                                  or Key.LWin or Key.RWin;
+
+        // On KeyDown, snapshot the live chord for the status preview
+        // but DON'T commit yet — wait for the matching KeyUp so the
+        // user can roll over modifiers without prematurely sealing.
+        if (isKeyDown)
+        {
+            if (isModifierOnly) return true;
+            // Preview: show the chord shape live.
+            SelectedKey = key;
+            Ctrl  = modifiers.HasFlag(KeyModifiers.Control);
+            Shift = modifiers.HasFlag(KeyModifiers.Shift);
+            Alt   = modifiers.HasFlag(KeyModifiers.Alt);
+            return true;
+        }
+
+        // KeyUp on a non-modifier key commits the chord and exits.
+        if (!isModifierOnly && SelectedKey == key)
+        {
+            IsCapturing = false;
+        }
+        return true;
     }
 
     [RelayCommand]
@@ -116,7 +178,7 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     {
         if (!CanSave || SelectedKey is null) return;
         Macro updated = new(
-            Key:     SelectedKey.Key.ToString(),
+            Key:     SelectedKey.Value.ToString(),
             Ctrl:    Ctrl,
             Shift:   Shift,
             Alt:     Alt,
@@ -127,10 +189,4 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
-
-    /// <summary>Combo-box item — display name + the underlying Avalonia key.</summary>
-    public sealed record KeyEntry(string DisplayName, Key Key)
-    {
-        public override string ToString() => DisplayName;
-    }
 }

@@ -15,4 +15,19 @@ public interface IEditableTableSectionViewModel
 {
     /// <summary>The command fired when a row is double-tapped.</summary>
     ICommand? OpenEditCommand { get; }
+
+    /// <summary>
+    /// Optional Add button next to the search filter — opens the edit
+    /// dialog for a fresh row. <c>null</c> when the section can't
+    /// add rows (MDB-derived tables where the MDB is the source).
+    /// </summary>
+    ICommand? AddCommand => null;
+
+    /// <summary>
+    /// Optional Remove button next to the search filter — deletes the
+    /// currently-selected row. <c>null</c> when the section can't
+    /// remove rows. View binds <c>IsEnabled</c> to the selected-row
+    /// presence so the button greys out before invocation.
+    /// </summary>
+    ICommand? RemoveCommand => null;
 }
