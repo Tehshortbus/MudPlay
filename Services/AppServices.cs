@@ -220,6 +220,14 @@ public sealed class AppServices
     public MacroDispatcher MacroDispatcher { get; }
 
     /// <summary>
+    /// Per-character keybindings for built-in app actions (toolbar +
+    /// menu shortcuts). Sister service to <see cref="Macros"/> — both
+    /// contribute to the unified conflict-detection check so a chord
+    /// can never bind to both a macro and a built-in action.
+    /// </summary>
+    public KeybindingStore Keybindings { get; }
+
+    /// <summary>
     /// Active game-data set's Messages/Responses catalogue. Imported
     /// from a MegaMUD <c>messages.md</c> file, persisted alongside
     /// the set under <c>Data/Global/Messages/{set-name}.json</c>.
@@ -302,6 +310,7 @@ public sealed class AppServices
         Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
         MacroDispatcher = new MacroDispatcher(Macros);
+        Keybindings = new KeybindingStore(Profile);
         // PlayerDatabase: BBS-tier observations + Char-tier customisations.
         // Wires its own subscriptions (ProfileLoaded / ProfileClosed /
         // BbsPinApplied / ProfileSaving) so both layers track the

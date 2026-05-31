@@ -21,6 +21,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         AppServices.Current.WindowLayouts.AttachWindow(this, "main");
+        // Wire the keybinds from the per-character KeybindingStore so
+        // they track the user's overrides. Lazily resolves the VM on
+        // AttachedToLogicalTree because DataContext is set externally
+        // by App.OnFrameworkInitializationCompleted.
+        GlobalHotkeys.AttachMain(this);
 
         // Forward keystrokes captured by the terminal control to whatever
         // view-model is currently set as DataContext.

@@ -25,6 +25,7 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
 
     private readonly Macro _original;
     private readonly MacroStore _store;
+    private readonly KeybindingStore _keybindings;
 
     [ObservableProperty] private string _command = string.Empty;
     [ObservableProperty] private bool _enabled = true;
@@ -90,7 +91,7 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
                 return IsCapturing
                     ? "Press a key combination — release a non-modifier key to confirm. Esc cancels."
                     : "Click Capture and press the keybind.";
-            if (KeybindRegistry.IsForbidden(SelectedKey.Value, Ctrl, Shift, Alt, out string? reason))
+            if (KeybindRegistry.IsForbidden(_keybindings, SelectedKey.Value, Ctrl, Shift, Alt, out string? reason))
                 return reason!;
             if (_store.IsDuplicate(SelectedKey.Value.ToString(), Ctrl, Shift, Alt, excluding: _original))
                 return "Another macro is already bound to this chord.";
@@ -100,15 +101,16 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
 
     public bool HasError =>
         SelectedKey is null
-        || KeybindRegistry.IsForbidden(SelectedKey.Value, Ctrl, Shift, Alt, out _)
+        || KeybindRegistry.IsForbidden(_keybindings, SelectedKey.Value, Ctrl, Shift, Alt, out _)
         || _store.IsDuplicate(SelectedKey.Value.ToString(), Ctrl, Shift, Alt, excluding: _original);
 
     public bool CanSave => !HasError && !IsCapturing;
 
-    public MacroEditDialogViewModel(Macro original, MacroStore store)
+    public MacroEditDialogViewModel(Macro original, MacroStore store, KeybindingStore keybindings)
     {
-        _original = original;
-        _store    = store;
+        _original     = original;
+        _store        = store;
+        _keybindings  = keybindings;
 
         Command = original.Command;
         Enabled = original.Enabled;

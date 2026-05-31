@@ -76,6 +76,17 @@ public sealed class CharacterProfile
     public List<GameData.Macro>? Macros { get; set; }
 
     /// <summary>
+    /// Per-character keybindings for built-in app actions (toolbar +
+    /// menu shortcuts). Sparse — only entries the user has overridden
+    /// from the seed defaults get persisted. <see cref="Services.KeybindingStore"/>
+    /// fills in the rest from <c>KeybindingStore.DefaultBindings</c>
+    /// on load, and prunes back to non-defaults at save time so a
+    /// fresh profile that never touched the keybind editor leaves this
+    /// <c>null</c>.
+    /// </summary>
+    public Dictionary<BuiltInAction, KeyChord>? BuiltInKeybindings { get; set; }
+
+    /// <summary>
     /// Per-player customisations the loaded character has authored —
     /// remote-command permissions, auto-party toggles, the
     /// don't-auto-delete flag, notes. Keyed by player display name

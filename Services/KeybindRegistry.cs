@@ -1,4 +1,5 @@
 using Avalonia.Input;
+using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
@@ -104,66 +105,58 @@ public static class KeybindRegistry
     };
 
     /// <summary>
-    /// Combinations reserved by the app itself — built-in shortcuts in
-    /// <see cref="Views.GlobalHotkeys"/> + TerminalControl-level copy/paste.
-    /// If a macro could bind to these the built-in action would silently
-    /// stop working. Order doesn't matter; lookup is by exact match.
+    /// Chords reserved at the OS / terminal level — these never live
+    /// in <see cref="KeybindingStore"/> because the user can't rebind
+    /// them, but they still need to be rejected as macro keybinds.
+    /// Alt+F4 stays the system's window-close shortcut; Ctrl+C /
+    /// Ctrl+V stay copy / paste in <see cref="Controls.TerminalControl"/>.
     /// </summary>
-    private static readonly IReadOnlyList<ReservedChord> _reservedCombos = new ReservedChord[]
+    private static readonly IReadOnlyList<(Key Key, bool Ctrl, bool Shift, bool Alt, string Action)> _systemReserved = new[]
     {
-        // Built-in window-toggle / app-action shortcuts (mirror GlobalHotkeys).
-        new(Key.F2,        Ctrl: false, Shift: false, Alt: false, Action: "Open Conversation"),
-        new(Key.F3,        Ctrl: false, Shift: false, Alt: false, Action: "Open Party"),
-        new(Key.F4,        Ctrl: false, Shift: false, Alt: false, Action: "Open Workshop"),
-        new(Key.F5,        Ctrl: false, Shift: false, Alt: false, Action: "Open Navigation"),
-        new(Key.F7,        Ctrl: false, Shift: false, Alt: false, Action: "Open Spell Book"),
-        new(Key.F9,        Ctrl: false, Shift: false, Alt: false, Action: "Open Program Log"),
-        new(Key.F10,       Ctrl: false, Shift: false, Alt: false, Action: "Open Backscroll"),
-        new(Key.F11,       Ctrl: false, Shift: false, Alt: false, Action: "Open Session Stats"),
-        new(Key.OemComma,  Ctrl: true,  Shift: false, Alt: false, Action: "Open Settings"),
-        new(Key.G,         Ctrl: true,  Shift: false, Alt: false, Action: "Open Game Data Browser"),
-        new(Key.K,         Ctrl: true,  Shift: false, Alt: false, Action: "Toggle connection"),
-        new(Key.Q,         Ctrl: true,  Shift: false, Alt: false, Action: "Quit"),
-        new(Key.N,         Ctrl: true,  Shift: false, Alt: false, Action: "New profile"),
-        new(Key.O,         Ctrl: true,  Shift: false, Alt: false, Action: "Open profile"),
-        new(Key.S,         Ctrl: true,  Shift: false, Alt: false, Action: "Save profile"),
-        new(Key.S,         Ctrl: true,  Shift: true,  Alt: false, Action: "Save profile as"),
-        // Terminal-level reserved combos (handled in TerminalControl).
-        new(Key.C,         Ctrl: true,  Shift: false, Alt: false, Action: "Copy"),
-        new(Key.V,         Ctrl: true,  Shift: false, Alt: false, Action: "Paste"),
-        // OS-level — taking Alt+F4 over from the window manager is hostile.
-        new(Key.F4,        Ctrl: false, Shift: false, Alt: true,  Action: "Close window (OS)"),
+        (Key.C,  true,  false, false, "Copy"),
+        (Key.V,  true,  false, false, "Paste"),
+        (Key.F4, false, false, true,  "Close window (OS)"),
     };
 
     /// <summary>
-    /// True when the supplied chord is reserved by the app — returns
-    /// the action name via <paramref name="action"/> so the edit
-    /// dialog can show <i>"reserved: Open Conversation"</i> instead of
-    /// just refusing silently.
+    /// True when the supplied chord is reserved by the app or the
+    /// OS / terminal — returns a friendly action name via
+    /// <paramref name="action"/>. Queries the live
+    /// <see cref="KeybindingStore"/> for built-in-action collisions
+    /// so a rebind takes effect immediately for downstream conflict
+    /// checks (the macro edit dialog stops flagging the old chord
+    /// the moment it's freed).
     /// </summary>
-    public static bool IsReserved(Key key, bool ctrl, bool shift, bool alt, out string? action)
+    public static bool IsReserved(KeybindingStore store, Key key, bool ctrl, bool shift, bool alt, out string? action)
     {
-        foreach (ReservedChord r in _reservedCombos)
+        ArgumentNullException.ThrowIfNull(store);
+        foreach ((Key k, bool c, bool s, bool a, string label) in _systemReserved)
         {
-            if (r.Key == key && r.Ctrl == ctrl && r.Shift == shift && r.Alt == alt)
+            if (k == key && c == ctrl && s == shift && a == alt)
             {
-                action = r.Action;
+                action = label;
                 return true;
             }
+        }
+        BuiltInAction? hit = store.FindAction(new KeyChord(key, ctrl, shift, alt));
+        if (hit is not null)
+        {
+            action = KeybindingStore.ActionLabel(hit.Value);
+            return true;
         }
         action = null;
         return false;
     }
 
     /// <summary>Convenience: refuse to bind a chord that's either an excluded key or a reserved combo.</summary>
-    public static bool IsForbidden(Key key, bool ctrl, bool shift, bool alt, out string? reason)
+    public static bool IsForbidden(KeybindingStore store, Key key, bool ctrl, bool shift, bool alt, out string? reason)
     {
         if (ExcludedKeys.Contains(key))
         {
             reason = $"'{key}' can't be bound as a macro.";
             return true;
         }
-        if (IsReserved(key, ctrl, shift, alt, out string? action))
+        if (IsReserved(store, key, ctrl, shift, alt, out string? action))
         {
             reason = $"Reserved by built-in action: {action}.";
             return true;
@@ -180,5 +173,4 @@ public static class KeybindRegistry
         return null;
     }
 
-    private readonly record struct ReservedChord(Key Key, bool Ctrl, bool Shift, bool Alt, string Action);
 }

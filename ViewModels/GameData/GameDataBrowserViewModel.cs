@@ -62,9 +62,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly MessageStore? _messages;
     private readonly SettingsResolver? _resolver;
     private readonly DialogService? _dialogs;
+    private readonly KeybindingStore? _keybindings;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, dialogs: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -75,6 +76,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         MessageStore? messages = null,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
+        KeybindingStore? keybindings = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -86,6 +88,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _messages = messages;
         _resolver = resolver;
         _dialogs = dialogs;
+        _keybindings = keybindings;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -181,7 +184,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
                 "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
 
         if (_macros is not null)
-            Sections.Add(new MacrosSectionViewModel(_macros, _dialogs));
+            Sections.Add(new MacrosSectionViewModel(_macros, _dialogs, _keybindings));
         else
             AddPlaceholder("macros", "Macros", "Phase 5 / Phase 10",
                 "Read-only listing — double-click row opens the Phase 10 Macro editor.");

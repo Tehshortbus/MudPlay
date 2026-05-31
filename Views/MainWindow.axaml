@@ -16,24 +16,10 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
-        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProfileAsCommand}"/>
-        <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
-        <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
-        <KeyBinding Gesture="F3"     Command="{Binding OpenPartyCommand}"/>
-        <KeyBinding Gesture="F4"     Command="{Binding OpenWorkshopCommand}"/>
-        <KeyBinding Gesture="F5"     Command="{Binding OpenNavigationCommand}"/>
-        <KeyBinding Gesture="F7"     Command="{Binding OpenSpellBookCommand}"/>
-        <KeyBinding Gesture="F9"     Command="{Binding OpenLogPaneCommand}"/>
-        <KeyBinding Gesture="F10"    Command="{Binding OpenBackscrollCommand}"/>
-        <KeyBinding Gesture="F11"    Command="{Binding OpenSessionStatsCommand}"/>
-        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
-        <KeyBinding Gesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
-    </Window.KeyBindings>
+    <!-- KeyBindings are wired in code-behind from KeybindingStore so the
+         per-character rebind UI takes effect at runtime — see
+         GlobalHotkeys.AttachMain in MainWindow.axaml.cs. -->
+
 
     <DockPanel LastChildFill="True">
 

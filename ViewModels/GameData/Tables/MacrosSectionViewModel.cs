@@ -19,6 +19,7 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 {
     private readonly MacroStore _store;
     private readonly DialogService? _dialogs;
+    private readonly KeybindingStore? _keybindings;
 
     public override string Id => "macros";
     public override string Title => "Macros";
@@ -48,11 +49,12 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 
     private readonly NotifyCollectionChangedEventHandler _handler;
 
-    public MacrosSectionViewModel(MacroStore store, DialogService? dialogs = null)
+    public MacrosSectionViewModel(MacroStore store, DialogService? dialogs = null, KeybindingStore? keybindings = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
         _dialogs = dialogs;
+        _keybindings = keybindings;
         _handler = (_, _) => Reload();
         _store.Macros.CollectionChanged += _handler;
         OpenEditAsyncCommand   = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
@@ -97,7 +99,8 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         // before save (CanSave gates the Save button on a valid chord).
         Macro blank = new(Key: string.Empty, Ctrl: false, Shift: false, Alt: false,
                           Command: string.Empty, Enabled: true);
-        MacroEditDialogViewModel vm = new(blank, _store);
+        if (_keybindings is null) return;
+        MacroEditDialogViewModel vm = new(blank, _store, _keybindings);
         Macro? created = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
         if (created is null) return;
         _store.Add(created);
@@ -135,7 +138,8 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         }
         if (original is null) return;
 
-        MacroEditDialogViewModel vm = new(original, _store);
+        if (_keybindings is null) return;
+        MacroEditDialogViewModel vm = new(original, _store, _keybindings);
         Macro? updated = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
         if (updated is null) return;
 
