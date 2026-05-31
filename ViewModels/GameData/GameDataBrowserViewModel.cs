@@ -190,7 +190,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
                 "Read-only listing — double-click row opens the Phase 10 Macro editor.");
 
         if (_triggers is not null)
-            Sections.Add(new TriggersSectionViewModel(_triggers));
+            Sections.Add(new TriggersSectionViewModel(_triggers, _dialogs));
         else
             AddPlaceholder("triggers", "Triggers", "Phase 5",
                 "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
