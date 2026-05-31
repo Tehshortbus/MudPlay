@@ -1,6 +1,10 @@
 using System.Collections.Specialized;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -22,6 +26,11 @@ public partial class LogPaneWindow : Window
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "logpane");
         Opened += OnOpened;
         Closed += OnClosed;
+        // Double-click a row → look up a detail handler by Source and
+        // invoke it. Lets services like SpellCoverageAuditor register
+        // a Source ("GameData/Coverage") + open a detail window
+        // without the LogPane needing to know what their domain is.
+        AddHandler(InputElement.DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Bubble);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
@@ -53,6 +62,31 @@ public partial class LogPaneWindow : Window
         {
             vm.Rows.CollectionChanged -= OnRowsChanged;
             vm.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Find the LogPaneRowViewModel under the tapped point (walks up
+    /// the visual tree from the event source) and dispatch via
+    /// <see cref="FujinTerm.Services.LogService.TryInvokeDetailHandler"/>.
+    /// No registered handler ⇒ no-op (same behaviour as today for
+    /// every existing entry — only opt-in sources get a detail
+    /// surface).
+    /// </summary>
+    private void OnRowDoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        if (e.Source is not Visual src) return;
+        // Walk up looking for a ListBoxItem whose DataContext is our row.
+        Visual? cur = src;
+        while (cur is not null)
+        {
+            if (cur is Control c && c.DataContext is LogPaneRowViewModel row)
+            {
+                FujinTerm.Services.AppServices.Current.Log
+                    .TryInvokeDetailHandler(row.Entry.Source);
+                return;
+            }
+            cur = cur.GetVisualParent();
         }
     }
 

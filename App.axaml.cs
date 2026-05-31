@@ -85,6 +85,31 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
                 FujinTerm.Views.Settings.DataDirectoryRelocateDialog>();
+
+            // Register the LogPane double-click handler for the spell-
+            // coverage auditor's summary entries. Opening reuses any
+            // already-open window (single-instance) so repeated
+            // double-clicks just focus the existing detail surface
+            // instead of stacking new ones.
+            FujinTerm.Views.GameData.SpellCoverageReportWindow? coverageWindow = null;
+            AppServices.Current.Log.RegisterDetailHandler(
+                FujinTerm.Services.SpellCoverageAuditor.LogSource,
+                () =>
+                {
+                    if (coverageWindow is not null && coverageWindow.IsVisible)
+                    {
+                        coverageWindow.Activate();
+                        return;
+                    }
+                    var vm = new FujinTerm.ViewModels.GameData.SpellCoverageReportViewModel(
+                        AppServices.Current.SpellCoverage);
+                    coverageWindow = new FujinTerm.Views.GameData.SpellCoverageReportWindow
+                    {
+                        DataContext = vm,
+                    };
+                    coverageWindow.Closed += (_, _) => coverageWindow = null;
+                    coverageWindow.Show(desktop.MainWindow!);
+                });
         }
 
         base.OnFrameworkInitializationCompleted();

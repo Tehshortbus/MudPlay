@@ -237,6 +237,16 @@ public sealed class AppServices
     /// </summary>
     public MessageStore Messages { get; } = new();
 
+    /// <summary>
+    /// Background audit comparing player-facing spells in the active
+    /// set against the Messages catalogue's Links field — surfaces a
+    /// summary LogEntry per audit run so users know which spells
+    /// don't have a parser entry. Bound in <see cref="Initialize"/>
+    /// once <see cref="GameData"/> + <see cref="Messages"/> + the
+    /// <see cref="Log"/> sink are all live.
+    /// </summary>
+    public SpellCoverageAuditor SpellCoverage { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -366,6 +376,14 @@ public sealed class AppServices
         // active set changes so the Browser tab and runtime engines
         // see the right realm's catalogue.
         GameData.ActiveSetChanged += Messages.Load;
+
+        // Coverage audit — fires on every set switch + every Messages
+        // CollectionChanged; emits a summary LogEntry tagged
+        // SpellCoverageAuditor.LogSource that the LogPane's
+        // double-click handler routes back into a detail window. The
+        // detail-handler registration itself lives in App startup
+        // (it needs DialogService to spawn the modeless window).
+        SpellCoverage = new SpellCoverageAuditor(GameData, Messages, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

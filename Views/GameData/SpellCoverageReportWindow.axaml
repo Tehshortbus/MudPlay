@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData"
+        xmlns:svc="using:FujinTerm.Services"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.GameData.SpellCoverageReportWindow"
+        x:DataType="vm:SpellCoverageReportViewModel"
+        Title="{Binding WindowTitle}"
+        Width="800" Height="540"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <!-- Header — summary + refresh button. -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding SummaryText}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1"
+                        Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        MinWidth="80"/>
+            </Grid>
+
+            <!-- Unanchored spells grid. Read-only — users add coverage
+                 via the Messages tab's edit dialog. -->
+            <DataGrid Grid.Row="1"
+                      ItemsSource="{Binding Rows}"
+                      IsReadOnly="True"
+                      AutoGenerateColumns="False"
+                      CanUserSortColumns="True"
+                      CanUserResizeColumns="True"
+                      CanUserReorderColumns="False"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="#"             Binding="{Binding Number}"      Width="60"/>
+                    <DataGridTextColumn Header="Name"          Binding="{Binding Name}"        Width="220"/>
+                    <DataGridTextColumn Header="Classes"       Binding="{Binding Classes}"     Width="120"/>
+                    <DataGridTextColumn Header="Casted By"     Binding="{Binding CastedBy}"    Width="*"/>
+                    <DataGridTextColumn Header="Learned From"  Binding="{Binding LearnedFrom}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Footer hint. -->
+            <TextBlock Grid.Row="2"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Text="Add coverage by opening Game Data → Messages and authoring a record whose Links field points at the spell's (Spells, #). The audit re-runs on every Message change + every game-data set switch."/>
+        </Grid>
+    </Border>
+</Window>
