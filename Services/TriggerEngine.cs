@@ -339,8 +339,11 @@ public sealed class TriggerEngine
     /// <summary>
     /// Translate a Literal pattern (with <c>*</c> wildcards and
     /// <c>{name}</c> placeholders) into the equivalent .NET regex.
-    /// Non-greedy spans so multiple captures in one line work as
-    /// expected. Internal for test visibility.
+    /// Greedy spans so an end-of-pattern <c>{name}</c> captures the
+    /// rest of the line (non-greedy would settle for one character);
+    /// multi-capture patterns still resolve correctly because the
+    /// regex engine backtracks against the intervening literals.
+    /// Internal for test visibility.
     /// </summary>
     internal static string LiteralToRegex(string literal)
     {
@@ -351,13 +354,13 @@ public sealed class TriggerEngine
             char c = literal[i];
             if (c == '{' && TryReadName(literal, i, out string name, out int next))
             {
-                sb.Append("(?<").Append(name).Append(">.+?)");
+                sb.Append("(?<").Append(name).Append(">.+)");
                 i = next;
                 continue;
             }
             if (c == '*')
             {
-                sb.Append(".+?");
+                sb.Append(".+");
                 i++;
                 continue;
             }

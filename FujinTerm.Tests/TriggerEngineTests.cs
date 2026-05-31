@@ -19,7 +19,7 @@ public sealed class TriggerEngineTests
     }
 
     [Fact]
-    public void LiteralToRegex_TranslatesStarToNonGreedyNonCapture()
+    public void LiteralToRegex_TranslatesStarToGreedyNonCapture()
     {
         string regex = TriggerEngine.LiteralToRegex("* enters the room.");
         Match m = Regex.Match("Joe enters the room.", regex);
@@ -35,6 +35,17 @@ public sealed class TriggerEngineTests
         Match m = Regex.Match("Joe enters the room.", regex);
         Assert.True(m.Success);
         Assert.Equal("Joe", m.Groups["usr"].Value);
+    }
+
+    [Fact]
+    public void LiteralToRegex_EndOfPatternCaptureConsumesRestOfLine()
+    {
+        // Regression for the "Also here: {test}" case where non-greedy `.+?`
+        // matched only the first character ("h") instead of "healer.".
+        string regex = TriggerEngine.LiteralToRegex("Also here: {test}");
+        Match m = Regex.Match("Also here: healer.", regex);
+        Assert.True(m.Success);
+        Assert.Equal("healer.", m.Groups["test"].Value);
     }
 
     [Fact]
