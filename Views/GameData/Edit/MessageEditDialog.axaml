@@ -116,28 +116,61 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Read-only back-references to the game-data row(s)
-                         this message is associated with. Hidden when the
-                         record has no Links (most user-authored entries). -->
+                    <!-- Editable back-references to the game-data row(s)
+                         this message is associated with. Always
+                         visible so the user can add the first link on
+                         a brand-new record without hunting for the
+                         panel. -->
                     <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                            BorderThickness="1" CornerRadius="3" Padding="10"
-                            IsVisible="{Binding HasLinks}">
+                            BorderThickness="1" CornerRadius="3" Padding="10">
                         <StackPanel>
                             <TextBlock Classes="SectionHeader" Text="Links"/>
                             <TextBlock Text="Game-data rows that fire this message."
                                        Classes="FieldLabel"
                                        TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <!-- Existing links — each row has its own X button. -->
                             <ItemsControl ItemsSource="{Binding LinkRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:LinkRow">
-                                        <TextBlock Text="{Binding Label}"
-                                                   Foreground="{StaticResource ChromeFgBrush}"
-                                                   FontFamily="{StaticResource FontMono}"
-                                                   FontSize="11"
-                                                   Margin="0,1"/>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Label}"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1"
+                                                    Content="×"
+                                                    Padding="6,0"
+                                                    MinWidth="22" MinHeight="22"
+                                                    ToolTip.Tip="Remove this link"
+                                                    Command="{Binding $parent[Window].((vm:MessageEditDialogViewModel)DataContext).RemoveLinkCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <!-- Add-link row: Table dropdown + Number textbox + Add. -->
+                            <Border Height="1" Margin="0,8"
+                                    Background="{StaticResource ChromeBorderBrush}"/>
+                            <Grid ColumnDefinitions="*,80,Auto" ColumnSpacing="6">
+                                <ComboBox Grid.Column="0"
+                                          ItemsSource="{Binding LinkTables}"
+                                          SelectedItem="{Binding AddLinkTable, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"/>
+                                <TextBox  Grid.Column="1"
+                                          Text="{Binding AddLinkNumber, Mode=TwoWay}"
+                                          PlaceholderText="Number"
+                                          FontFamily="{StaticResource FontMono}"/>
+                                <Button   Grid.Column="2"
+                                          Content="Add"
+                                          Command="{Binding AddLinkCommand}"/>
+                            </Grid>
+                            <TextBlock Text="{Binding AddLinkStatus}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

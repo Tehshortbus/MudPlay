@@ -88,16 +88,43 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         Enum.GetValues<SettingsTier>().ToArray();
 
     /// <summary>
-    /// Read-only "Links" rows the dialog renders under the form —
-    /// each one is a (Table, Number) back-reference resolved against
-    /// the active game-data set to its human display name. Empty when
-    /// the record has no anchors. Populated once in the ctor; the
-    /// dialog never edits Links today (a future PR adds add / remove
-    /// rows + a game-data-row picker).
+    /// Editable Links panel — each row is a (Table, Number) back-
+    /// reference resolved against the active game-data set to its
+    /// human display name. Add via <see cref="AddLinkCommand"/>;
+    /// remove a row via <see cref="RemoveLinkCommand"/>.
     /// </summary>
-    public IReadOnlyList<LinkRow> LinkRows { get; }
+    public System.Collections.ObjectModel.ObservableCollection<LinkRow> LinkRows { get; } = new();
 
-    public bool HasLinks => LinkRows.Count > 0;
+    /// <summary>Tables the Add-link picker dropdown offers (matches the resolver's coverage).</summary>
+    public IReadOnlyList<string> LinkTables { get; } = new[] { "Spells", "Items", "Monsters" };
+
+    /// <summary>Selected table for the Add-link row at the bottom of the panel.</summary>
+    [ObservableProperty] private string _addLinkTable = "Spells";
+
+    /// <summary>Number textbox content for the Add-link row.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AddLinkStatus))]
+    private string _addLinkNumber = string.Empty;
+
+    /// <summary>
+    /// Helper text that previews what the Add-link row would resolve
+    /// to, or flags the row as invalid when the number doesn't parse
+    /// or doesn't exist in the active set.
+    /// </summary>
+    public string AddLinkStatus
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(AddLinkNumber)) return "Pick a table + type a Number to add a link.";
+            if (!int.TryParse(AddLinkNumber, out int n)) return $"'{AddLinkNumber}' is not a number.";
+            string? name = _cache?.FindNameByNumber(AddLinkTable, n);
+            return name is null
+                ? $"{AddLinkTable}#{n} — no row with that Number in the active set."
+                : $"Will add: {AddLinkTable}#{n} — {name}";
+        }
+    }
+
+    private readonly GameDataCache? _cache;
 
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
@@ -165,19 +192,18 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         _existingRecords = existingRecords;
         _isNew           = isNew;
 
+        _cache = cache;
         // Resolve each link to its display name via the active set.
         // Missing cache (e.g. unit-test path) renders the rows with a
         // null Name; the XAML hides those columns gracefully.
-        List<LinkRow> linkRows = new();
         if (original.Links is { Count: > 0 } links)
         {
             foreach (GameDataLink link in links)
             {
                 string? name = cache?.FindNameByNumber(link.Table, link.Number);
-                linkRows.Add(new LinkRow(link.Table, link.Number, name));
+                LinkRows.Add(new LinkRow(link.Table, link.Number, name));
             }
         }
-        LinkRows = linkRows;
 
         Name     = original.Name;
         UseTier  = currentTier;
@@ -221,16 +247,45 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
             Flags:       typed,
             RawFlagsHex: raw,
             Response:    Response ?? string.Empty,
-            // Pass Links through verbatim — the dialog UI doesn't
-            // edit them yet (read-only panel lands next commit), so
-            // the originals round-trip without loss.
-            Links:       _original.Links);
+            // Build Links from the user's edits in the panel —
+            // strips the resolved DisplayName since the persisted
+            // record only carries (Table, Number).
+            Links:       LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
 
         CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
     }
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    /// <summary>
+    /// Add the currently-pending (Table, Number) to the Links list.
+    /// Refuses when the number doesn't parse OR when the same
+    /// (Table, Number) is already in the list (duplicates would
+    /// just be noise — every link counts the same toward coverage).
+    /// </summary>
+    [RelayCommand]
+    private void AddLink()
+    {
+        if (!int.TryParse(AddLinkNumber, out int n)) return;
+        foreach (LinkRow existing in LinkRows)
+        {
+            if (string.Equals(existing.Table, AddLinkTable, StringComparison.Ordinal) &&
+                existing.Number == n)
+                return;
+        }
+        string? name = _cache?.FindNameByNumber(AddLinkTable, n);
+        LinkRows.Add(new LinkRow(AddLinkTable, n, name));
+        AddLinkNumber = string.Empty;
+    }
+
+    /// <summary>Remove a single Link row from the panel. Bound to the per-row X button.</summary>
+    [RelayCommand]
+    private void RemoveLink(LinkRow? row)
+    {
+        if (row is null) return;
+        LinkRows.Remove(row);
+    }
 
     private MessageFlags AssembleFlags()
     {
