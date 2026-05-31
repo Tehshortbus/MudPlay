@@ -22,7 +22,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Enabled", "Name", "MatchType", "Pattern", "Scope",
+        "Enabled", "Name", "Scope", "Match", "Pattern", "Response",
     };
 
     public override string SearchKeyColumn => "Name";
@@ -32,7 +32,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "trigger", "pattern", "match",
+        Title, "trigger", "pattern", "match", "response",
     };
 
     private readonly NotifyCollectionChangedEventHandler _handler;
@@ -58,13 +58,33 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel
         {
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Enabled"]   = t.Enabled ? "✓" : "",
-                ["Name"]      = t.Name,
-                ["MatchType"] = t.MatchType.ToString(),
-                ["Pattern"]   = t.Pattern,
-                ["Scope"]     = t.Scope.ToString(),
+                ["Enabled"]  = t.Enabled ? "✓" : "",
+                ["Name"]     = t.Name,
+                ["Scope"]    = FormatScope(t.Scope),
+                ["Match"]    = t.MatchType.ToString(),
+                ["Pattern"]  = t.Pattern,
+                ["Response"] = string.IsNullOrEmpty(t.Response) ? "(CR)" : t.Response,
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
     }
+
+    /// <summary>
+    /// Friendly column label for the scope enum — the underlying values
+    /// are PascalCase (<c>GameMessages</c>, <c>ChatTelepath</c>) which
+    /// reads awkwardly in a table.
+    /// </summary>
+    private static string FormatScope(TriggerScope scope) => scope switch
+    {
+        TriggerScope.GameMessages  => "Game messages",
+        TriggerScope.ChatAny       => "Chat (any)",
+        TriggerScope.ChatSay       => "Say",
+        TriggerScope.ChatYell      => "Yell",
+        TriggerScope.ChatGossip    => "Gossip",
+        TriggerScope.ChatTelepath  => "Telepath",
+        TriggerScope.ChatGangpath  => "Gangpath",
+        TriggerScope.ChatBroadcast => "Broadcast",
+        TriggerScope.SystemLog     => "System log",
+        _                          => scope.ToString(),
+    };
 }

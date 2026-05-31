@@ -20,7 +20,7 @@ namespace FujinTerm.Models.GameData;
 ///   <item><c>$0</c> — every token after the alias name as one string.</item>
 ///   <item><c>$1</c>, <c>$2</c>, … — positional whitespace-split tokens.</item>
 ///   <item><c>$name</c> — named variable from the shared <see cref="Services.TriggerEngine"/> store
-///     (Triggers can <see cref="TriggerActionKind.SetVariable"/> a value that this alias reads).</item>
+///     (Triggers populate the store by capturing <c>{name}</c> placeholders in their patterns).</item>
 /// </list>
 /// </param>
 public sealed record Alias(
