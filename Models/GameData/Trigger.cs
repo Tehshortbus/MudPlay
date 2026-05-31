@@ -9,8 +9,8 @@ namespace FujinTerm.Models.GameData;
 /// — filtering each emitted line by <see cref="Scope"/>, matching with
 /// <see cref="MatchType"/> + <see cref="Pattern"/>, capturing
 /// <c>{name}</c> placeholders into <see cref="Services.TriggerEngine.Variables"/>,
-/// then dispatching <see cref="Response"/> / <see cref="SoundFile"/> /
-/// <see cref="NotificationText"/>.
+/// then dispatching <see cref="Response"/> + the optional
+/// <see cref="SoundFile"/>.
 /// </summary>
 /// <param name="Name">Display name shown in the Triggers tab.</param>
 /// <param name="Enabled">Master per-trigger on / off — toggleable without deleting.</param>
@@ -23,7 +23,6 @@ namespace FujinTerm.Models.GameData;
 /// as macros). Blank string is valid — sends a bare carriage return.
 /// </param>
 /// <param name="SoundFile">Optional path to a sound file fired on match. Phase 13 plays it; today it's a no-op + log.</param>
-/// <param name="NotificationText">Optional system-notification text. Variable substitution applied.</param>
 public sealed record Trigger(
     string Name,
     bool Enabled,
@@ -31,8 +30,7 @@ public sealed record Trigger(
     TriggerMatchType MatchType,
     string Pattern,
     string Response,
-    string? SoundFile = null,
-    string? NotificationText = null);
+    string? SoundFile = null);
 
 /// <summary>What syntax <see cref="Trigger.Pattern"/> uses.</summary>
 public enum TriggerMatchType

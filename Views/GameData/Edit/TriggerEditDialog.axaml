@@ -112,20 +112,15 @@
             <!-- ===== Optional sidecars ===== -->
             <TextBlock Grid.Row="6" Classes="SectionHeader" Text="Optional"/>
 
-            <Grid Grid.Row="7" ColumnDefinitions="100,*,Auto" ColumnSpacing="8" RowDefinitions="Auto,Auto" RowSpacing="6">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Sound"/>
-                <TextBox   Grid.Row="0" Grid.Column="1"
+            <Grid Grid.Row="7" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Sound"/>
+                <TextBox   Grid.Column="1"
                            Text="{Binding SoundFile, Mode=TwoWay}"
                            ToolTip.Tip="Path to a sound file to play on match. Phase 13 wires actual playback; today it's a no-op + log line."/>
-                <Button    Grid.Row="0" Grid.Column="2"
+                <Button    Grid.Column="2"
                            Content="Browse…"
                            Command="{Binding BrowseSoundCommand}"
                            CommandParameter="{Binding $parent[Window]}"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Notify"/>
-                <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                           Text="{Binding NotificationText, Mode=TwoWay}"
-                           ToolTip.Tip="System notification text. {name} substitutes from the capture cache. Cross-platform stub for now."/>
             </Grid>
 
             <!-- ===== Buttons ===== -->

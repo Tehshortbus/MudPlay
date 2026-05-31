@@ -13,8 +13,8 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 /// <summary>
 /// Per-record edit dialog for Game Data Browser → Triggers. Editable
 /// fields cover the full <see cref="Trigger"/> record: Name / Enabled /
-/// Scope / MatchType / Pattern / Response, plus the optional Sound +
-/// Notification sidecars.
+/// Scope / MatchType / Pattern / Response, plus an optional Sound
+/// sidecar.
 /// </summary>
 /// <remarks>
 /// Validation is live: name + pattern must be non-empty, and regex
@@ -67,7 +67,6 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
 
     [ObservableProperty] private string _response = string.Empty;
     [ObservableProperty] private string _soundFile = string.Empty;
-    [ObservableProperty] private string _notificationText = string.Empty;
 
     /// <summary>Available enum values for the Scope dropdown.</summary>
     public IReadOnlyList<ScopeOption> ScopeOptions { get; } = new[]
@@ -143,14 +142,13 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
         _original = original;
         _isNew    = isNew;
 
-        Name             = original.Name;
-        Enabled          = original.Enabled;
-        Scope            = original.Scope;
-        MatchType        = original.MatchType;
-        Pattern          = original.Pattern;
-        Response         = original.Response;
-        SoundFile        = original.SoundFile        ?? string.Empty;
-        NotificationText = original.NotificationText ?? string.Empty;
+        Name      = original.Name;
+        Enabled   = original.Enabled;
+        Scope     = original.Scope;
+        MatchType = original.MatchType;
+        Pattern   = original.Pattern;
+        Response  = original.Response;
+        SoundFile = original.SoundFile ?? string.Empty;
     }
 
     /// <summary>Returns the first validation problem, or <c>null</c> when the record is savable.</summary>
@@ -193,14 +191,13 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
     {
         if (!CanSave) return;
         Trigger updated = new(
-            Name:             Name.Trim(),
-            Enabled:          Enabled,
-            Scope:            Scope,
-            MatchType:        MatchType,
-            Pattern:          Pattern,
-            Response:         Response ?? string.Empty,
-            SoundFile:        string.IsNullOrWhiteSpace(SoundFile)        ? null : SoundFile.Trim(),
-            NotificationText: string.IsNullOrWhiteSpace(NotificationText) ? null : NotificationText);
+            Name:      Name.Trim(),
+            Enabled:   Enabled,
+            Scope:     Scope,
+            MatchType: MatchType,
+            Pattern:   Pattern,
+            Response:  Response ?? string.Empty,
+            SoundFile: string.IsNullOrWhiteSpace(SoundFile) ? null : SoundFile.Trim());
         CloseRequested?.Invoke(updated);
     }
 

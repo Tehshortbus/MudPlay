@@ -218,14 +218,10 @@ public sealed class TriggerEngine
         if (!TryInterpolate(t.Response, t.Name, out string responseOut)) return;
         SendResponse(responseOut);
 
-        // Optional sidecars — sound + notify are stubs until Phase 13
-        // wires actual playback / OS notifications.
+        // Optional sound sidecar — stub until Phase 13 wires playback.
+        // No OS / toast notifications anywhere in the app, ever.
         if (!string.IsNullOrWhiteSpace(t.SoundFile))
             _log?.Log(LogSeverity.Debug, LogSource, $"'{t.Name}' fired — would play sound: {t.SoundFile}");
-
-        if (!string.IsNullOrWhiteSpace(t.NotificationText)
-            && TryInterpolate(t.NotificationText!, t.Name, out string noteOut))
-            _log?.Log(LogSeverity.Info, LogSource, $"'{t.Name}' notify: {noteOut}");
     }
 
     private void SendResponse(string substituted)
