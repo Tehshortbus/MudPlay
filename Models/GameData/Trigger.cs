@@ -23,6 +23,22 @@ namespace FujinTerm.Models.GameData;
 /// as macros). Blank string is valid — sends a bare carriage return.
 /// </param>
 /// <param name="SoundFile">Optional path to a sound file fired on match. Phase 13 plays it; today it's a no-op + log.</param>
+/// <param name="Location">
+/// Where this trigger persists on disk:
+/// <list type="bullet">
+///   <item><see cref="TriggerLocation.GameData"/> (default) — saved
+///     into <c>Data/game data/{set}/triggers.json</c> next to the
+///     MDB tables. Travels with the set; every character on the
+///     same realm sees it. Right choice for chase / trap / NPC-event
+///     patterns that anchor to game-data records.</item>
+///   <item><see cref="TriggerLocation.Profile"/> — saved on
+///     <see cref="Profile.CharacterProfile.Triggers"/>. Follows the
+///     character across realms. Right choice for personal alerts
+///     (your name was mentioned, a specific friend logged on, etc.).</item>
+/// </list>
+/// The runtime dispatch is location-agnostic — both buckets merge into
+/// the live <see cref="Services.TriggerEngine.Triggers"/> collection.
+/// </param>
 public sealed record Trigger(
     string Name,
     bool Enabled,
@@ -30,7 +46,8 @@ public sealed record Trigger(
     TriggerMatchType MatchType,
     string Pattern,
     string Response,
-    string? SoundFile = null);
+    string? SoundFile = null,
+    TriggerLocation Location = TriggerLocation.GameData);
 
 /// <summary>What syntax <see cref="Trigger.Pattern"/> uses.</summary>
 public enum TriggerMatchType
@@ -46,6 +63,22 @@ public enum TriggerMatchType
     /// populate <c>{name}</c> in the shared variable cache.
     /// </summary>
     Regex,
+}
+
+/// <summary>
+/// Which on-disk file a <see cref="Trigger"/> persists into.
+/// Triggers tab shows the value as a "Location" column; the edit
+/// dialog exposes a dropdown so the user can move triggers between
+/// buckets at edit time. Default is
+/// <see cref="GameData"/> — most of the seeded defaults are
+/// chase / trap / NPC-event patterns that belong with the set.
+/// </summary>
+public enum TriggerLocation
+{
+    /// <summary>Saved at <c>Data/game data/{set}/triggers.json</c> — travels with the set.</summary>
+    GameData,
+    /// <summary>Saved on <see cref="Profile.CharacterProfile.Triggers"/> — travels with the character.</summary>
+    Profile,
 }
 
 /// <summary>Which subset of incoming lines a trigger considers.</summary>

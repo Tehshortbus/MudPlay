@@ -6,7 +6,8 @@
     "MatchType": "Literal",
     "Pattern": "You have 1 lives left.",
     "Response": ".LOW ON LIVES!^M;o^M",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "2 lives left",
@@ -15,7 +16,8 @@
     "MatchType": "Literal",
     "Pattern": "You have 2 lives left.",
     "Response": ".LOW ON LIVES!^M;o^M",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "banshee's wail end",
@@ -24,7 +26,8 @@
     "MatchType": "Literal",
     "Pattern": "You don't feel quite so afraid anymore",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "blind end",
@@ -33,7 +36,8 @@
     "MatchType": "Literal",
     "Pattern": "You can see again!",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "brain eater",
@@ -42,7 +46,8 @@
     "MatchType": "Literal",
     "Pattern": "and a small creature leaps out!",
     "Response": "^M",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "breath attack end",
@@ -51,7 +56,8 @@
     "MatchType": "Literal",
     "Pattern": "The suffocating fumes dissipate.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "Cancel FUgram",
@@ -60,7 +66,8 @@
     "MatchType": "Literal",
     "Pattern": "Would you like to forward your /P to an FUgram?",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (alley)",
@@ -69,7 +76,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} slips into the dark alley.",
     "Response": "go alley",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (alley)",
@@ -78,7 +86,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} slips into the dangerous black alley.",
     "Response": "go alley",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (black gem)",
@@ -87,7 +96,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} touches the black gem, and is consumed in a crackling field of",
     "Response": "touch gem",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (burnt stump)",
@@ -96,7 +106,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs through the hole in the burnt stump.",
     "Response": "go stump",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (bushes)",
@@ -105,7 +116,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} squeezes into the opening under the bushes.",
     "Response": "enter bush",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (bushes)",
@@ -114,7 +126,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} pushes through the bushes!",
     "Response": "enter bushes",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (climb)",
@@ -123,7 +136,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} grasps onto some of the vines, and begins to climb!",
     "Response": "climb vines",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (crack)",
@@ -132,7 +146,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} walks into the wide crack.",
     "Response": "go crack",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (darkwood ring)",
@@ -141,7 +156,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rubs a darkwood ring, and is swept through the arch!",
     "Response": "go arch",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (down)",
@@ -150,7 +166,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps onto the slope and begins to slide down uncontrollably!",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (down)",
@@ -159,7 +176,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} starts down the slope, but slips and slides down!",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (down)",
@@ -168,7 +186,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} descends the steps encircling the ancient silverwood tree.",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (down)",
@@ -177,7 +196,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs down to a lower ledge with the aid of a climbing harness.",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (float)",
@@ -186,7 +206,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} drinks a bubbling white potion, and begins to float upwards!",
     "Response": "drink levitation",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -195,7 +216,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} pushes through the tentacles and into the hole.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -204,7 +226,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} crawls into the largest hole in the avalanche of stone.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -213,7 +236,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs through the slimy hole.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -222,7 +246,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs through a hole in the wall!",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -231,7 +256,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs out through the hole.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -240,7 +266,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs out through the hole to the south.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -249,7 +276,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs out of the small hole in the hillside!",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -258,7 +286,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs into the small hole in the hillside.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -267,7 +296,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs into the hole in the ceiling!",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -276,7 +306,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs into a hole.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (hole)",
@@ -285,7 +316,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs down through the hole.",
     "Response": "go hole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (jump)",
@@ -294,7 +326,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps back, starts running to the west, and makes a mighty leap!",
     "Response": "jump west",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (jump)",
@@ -303,7 +336,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps back, starts running to the south, and makes a mighty leap!",
     "Response": "jump south",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (jump)",
@@ -312,7 +346,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps back, starts running to the north, and makes a mighty leap!",
     "Response": "jump north",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (jump)",
@@ -321,7 +356,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps back, starts running to the east, and makes a mighty leap!",
     "Response": "jump east",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (lake)",
@@ -330,7 +366,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps into the water at the lake's edge and dives beneath the ice!",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (lake)",
@@ -339,7 +376,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs out of the water.",
     "Response": "u",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (lever)",
@@ -348,7 +386,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} pulls the lever, and steps through the gate.",
     "Response": "pull lever",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (lever)",
@@ -357,7 +396,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} pulls the lever, and falls through a trapdoor!",
     "Response": "pull lever",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (manhole)",
@@ -366,7 +406,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} squeezes into the dark space beneath the manhole.",
     "Response": "go manhole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (manhole)",
@@ -375,7 +416,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} enters a manhole in the ground!",
     "Response": "go manhole",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (moat)",
@@ -384,7 +426,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} jumps into the filthy black waters of the moat.",
     "Response": "go moat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (moat)",
@@ -393,7 +436,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} dives into the black waters of the moat!",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (moat)",
@@ -402,7 +446,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs out of the filthy moat.",
     "Response": "u",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (mountain stair)",
@@ -411,7 +456,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs up the mountain stair.",
     "Response": "u",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (mountain stair)",
@@ -420,7 +466,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs down the mountain stair.",
     "Response": "d",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (path)",
@@ -429,7 +476,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps onto the side-path and quickly vanishes from view.",
     "Response": "go path",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (path)",
@@ -438,7 +486,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} shoves aside the foliage, and disappears among the trees.",
     "Response": "go path",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (path)",
@@ -447,7 +496,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} pushes through the bushes, and walks onto a concealed path.",
     "Response": "go path",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (path)",
@@ -456,7 +506,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} follows a hidden path!",
     "Response": "go path",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -465,7 +516,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps through the swirling portal.",
     "Response": "go portal",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -474,7 +526,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps through the shimmering portal, and vanishes!",
     "Response": "go portal",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -483,7 +536,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps into the portal, and disappears!",
     "Response": "go portal",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -492,7 +546,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps into the dark portal, and vanishes!",
     "Response": "go portal",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -501,7 +556,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} enters the golden portal and vanishes!",
     "Response": "go golden",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -510,7 +566,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} enters the ebony portal and vanishes!",
     "Response": "go ebony",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (portal)",
@@ -519,7 +576,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} enters the crimson portal and vanishes!",
     "Response": "go crimson",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -528,7 +586,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the west.",
     "Response": "w",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -537,7 +596,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the southwest.",
     "Response": "sw",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -546,7 +606,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the southeast.",
     "Response": "se",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -555,7 +616,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the south.",
     "Response": "s",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -564,7 +626,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the northwest.",
     "Response": "nw",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -573,7 +636,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the northeast.",
     "Response": "ne",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -582,7 +646,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the north.",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -591,7 +656,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a wooden skiff to the east.",
     "Response": "e",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -600,7 +666,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a skiff south, up to the Silvermere docks.",
     "Response": "s",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -609,7 +676,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} rows a skiff north, up to the shore.",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -618,7 +686,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} hops into one of the skiffs, and rows away.",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -627,7 +696,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} hops into one of the boats, and begins to row out across the river.",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -636,7 +706,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs into one of the skiffs, and rows out into the river.",
     "Response": "go skiff",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (skiff)",
@@ -645,7 +716,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs into a boat, and rows off across the river.",
     "Response": "s",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (stone altar)",
@@ -654,7 +726,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} touches the hideous stone altar.",
     "Response": "touch altar",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (tree)",
@@ -663,7 +736,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} jumps and grabs onto a low branch, and begins to climb the tree.",
     "Response": "climb tree",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (tree)",
@@ -672,7 +746,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} grasps onto a branch of the tree, and climbs upwards.",
     "Response": "climb tree",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (tree)",
@@ -681,7 +756,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} carefully begins to climb down.",
     "Response": "climb tree",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (up)",
@@ -690,7 +766,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs up through the filthy pipe.",
     "Response": "u",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (up)",
@@ -699,7 +776,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} climbs the steps encircling the ancient silverwood tree.",
     "Response": "u",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (vines)",
@@ -708,7 +786,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} swings over the edge of the cliff, and climbs down the vines!",
     "Response": "climb vines",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (vortex)",
@@ -717,7 +796,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} steps into the swirling vortex, and vanishes in a flash!",
     "Response": "go vortex",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (wall)",
@@ -726,7 +806,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} walks through the wall to the west!",
     "Response": "w",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (wall)",
@@ -735,7 +816,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} walks through the wall to the east!",
     "Response": "e",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (warehouse)",
@@ -744,7 +826,8 @@
     "MatchType": "Literal",
     "Pattern": "The chains snap, and {target} slips inside the warehouse.",
     "Response": "n",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (waterfall)",
@@ -753,7 +836,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} walks through the waterfall!",
     "Response": "w",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "chase (willow)",
@@ -762,7 +846,8 @@
     "MatchType": "Literal",
     "Pattern": "{target} gingerly steps inside the cracked willow.",
     "Response": "go willow",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "confusion end",
@@ -771,7 +856,8 @@
     "MatchType": "Literal",
     "Pattern": "The effects of confusion wear off!",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "constriction end",
@@ -780,7 +866,8 @@
     "MatchType": "Literal",
     "Pattern": "You break free of the coils!",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "convulsions end",
@@ -789,7 +876,8 @@
     "MatchType": "Literal",
     "Pattern": "Your body returns to normal.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "creature illusion end",
@@ -798,7 +886,8 @@
     "MatchType": "Literal",
     "Pattern": "Without a sound, the illusionary attackers vanish.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "desert damage",
@@ -807,7 +896,8 @@
     "MatchType": "Literal",
     "Pattern": "You suffer in the desert heat...",
     "Response": "drink water",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "entangle end",
@@ -816,7 +906,8 @@
     "MatchType": "Literal",
     "Pattern": "The effects of entangle wear off!",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "floating key death",
@@ -825,7 +916,8 @@
     "MatchType": "Literal",
     "Pattern": "floating key for {dmg} damage!",
     "Response": "get golden lion key",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "frail end",
@@ -834,7 +926,8 @@
     "MatchType": "Literal",
     "Pattern": "You feel your strength return",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "freeze end",
@@ -843,7 +936,8 @@
     "MatchType": "Literal",
     "Pattern": "You become unfrozen.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "frost hydra entry",
@@ -852,7 +946,8 @@
     "MatchType": "Literal",
     "Pattern": "The hydra strains against its icy bond, breaks it, and comes to life!",
     "Response": "^M",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "giant skeleton shriek end",
@@ -861,7 +956,8 @@
     "MatchType": "Literal",
     "Pattern": "You feel braver.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "globe of darkness end",
@@ -870,7 +966,8 @@
     "MatchType": "Literal",
     "Pattern": "The unnatural darkness lifts.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "hold end",
@@ -879,7 +976,8 @@
     "MatchType": "Literal",
     "Pattern": "You can move again!",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "illuminate",
@@ -888,7 +986,8 @@
     "MatchType": "Literal",
     "Pattern": "You cast illuminate!",
     "Response": "use light ball",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "knockdown end",
@@ -897,7 +996,8 @@
     "MatchType": "Literal",
     "Pattern": "You get back on your feet",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "low on lives",
@@ -906,7 +1006,8 @@
     "MatchType": "Literal",
     "Pattern": "You feel your life-force ebbing.",
     "Response": ".LOW ON LIVES!^M;o^M",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "net hold end",
@@ -915,7 +1016,8 @@
     "MatchType": "Literal",
     "Pattern": "You work yourself free.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "plague end",
@@ -924,7 +1026,8 @@
     "MatchType": "Literal",
     "Pattern": "The plague has left your ravaged body.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "rosebush sleep",
@@ -933,7 +1036,8 @@
     "MatchType": "Literal",
     "Pattern": "You awaken from unnatural slumber.",
     "Response": "st",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "rotting beholder nausea end",
@@ -942,7 +1046,8 @@
     "MatchType": "Literal",
     "Pattern": "You feel less sick.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "sandstorm end",
@@ -951,7 +1056,8 @@
     "MatchType": "Literal",
     "Pattern": "The sandstorm subsides, allowing your scathed flesh to heal.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "silvery manacles end",
@@ -960,7 +1066,8 @@
     "MatchType": "Literal",
     "Pattern": "The silvery manacles restraining you shimmer and fade.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "slaver leader death",
@@ -969,7 +1076,8 @@
     "MatchType": "Literal",
     "Pattern": "The slaver leader whimpers and drops his weapon, calling for mercy!",
     "Response": "ask dying slaver leader keep",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "sleep end",
@@ -978,7 +1086,8 @@
     "MatchType": "Literal",
     "Pattern": "You awaken from the unnatural slumber",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "stun end",
@@ -987,7 +1096,8 @@
     "MatchType": "Literal",
     "Pattern": "You are no longer stunned.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "telepaths @health",
@@ -996,7 +1106,8 @@
     "MatchType": "Literal",
     "Pattern": "{1} telepaths @health",
     "Response": "par",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "teleport",
@@ -1005,7 +1116,8 @@
     "MatchType": "Literal",
     "Pattern": "You find yourself...elsewhere.",
     "Response": "par",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "weakness end",
@@ -1014,7 +1126,8 @@
     "MatchType": "Literal",
     "Pattern": "You feel your strength return.",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   },
   {
     "Name": "web end",
@@ -1023,6 +1136,7 @@
     "MatchType": "Literal",
     "Pattern": "You break free of the cocoon",
     "Response": "stat",
-    "SoundFile": null
+    "SoundFile": null,
+    "Location": "GameData"
   }
 ]
