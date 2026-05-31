@@ -480,17 +480,74 @@ public sealed class TriggerEngine
     /// GameData-scoped triggers from the active set are left in place;
     /// only the Profile-scoped slice is refreshed.
     /// </summary>
+    /// <remarks>
+    /// One-time migration runs inline: before the per-set storage
+    /// model existed, the universal seed was written straight into
+    /// <see cref="CharacterProfile.Triggers"/>. Any entry on the
+    /// profile whose (Name, Pattern) matches the seed is treated as
+    /// legacy seed-leakage and dropped — it'll re-appear from the
+    /// per-set bucket via <see cref="LoadPerSetTriggers"/>, so the
+    /// user doesn't see duplicates. Entries that don't match the
+    /// seed are genuine personal triggers and load as Profile-scoped.
+    /// The migration is idempotent: once profile.Triggers contains
+    /// no seed-matching entries, subsequent loads are a no-op.
+    /// </remarks>
     private void LoadFrom(CharacterProfile profile)
     {
         DropTriggersByLocation(TriggerLocation.Profile);
         if (profile.Triggers is null) return;
+
+        HashSet<(string Name, string Pattern)> seedKeys = LoadSeedKeys();
+
+        int dropped = 0;
         foreach (Trigger t in profile.Triggers)
         {
+            if (seedKeys.Contains((t.Name, t.Pattern)))
+            {
+                dropped++;
+                continue;
+            }
             // Storage location is the truth — anything persisted on
             // the profile is Profile-scoped, regardless of any
             // Location value the record carries from disk.
             Triggers.Add(t with { Location = TriggerLocation.Profile });
         }
+
+        if (dropped > 0)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"Migrated profile triggers: dropped {dropped} entries that match the universal seed (they now load as GameData-scoped from the active set's triggers.json). Re-save the profile to persist the cleanup.");
+        }
+    }
+
+    /// <summary>
+    /// Memoised (Name, Pattern) set for every entry in the universal
+    /// seed, used by <see cref="LoadFrom"/> to spot legacy
+    /// seed-leakage on the profile. Empty when the seed is missing
+    /// (dev build / no Defaults folder) — degrades to no migration,
+    /// safe.
+    /// </summary>
+    private static HashSet<(string, string)>? _seedKeysCache;
+    private static HashSet<(string, string)> LoadSeedKeys()
+    {
+        if (_seedKeysCache is not null) return _seedKeysCache;
+        HashSet<(string, string)> set = new();
+        string path = AppPaths.DefaultTriggersSeedFile;
+        if (System.IO.File.Exists(path))
+        {
+            try
+            {
+                List<Trigger>? loaded = JsonStore.Load<List<Trigger>>(path);
+                if (loaded is not null)
+                    foreach (Trigger t in loaded) set.Add((t.Name, t.Pattern));
+            }
+            catch
+            {
+                // Corrupt seed ⇒ empty set; migration falls through harmless.
+            }
+        }
+        _seedKeysCache = set;
+        return set;
     }
 
     private void Clear() => Triggers.Clear();
