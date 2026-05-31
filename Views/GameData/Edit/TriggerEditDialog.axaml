@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="680"
         x:Class="FujinTerm.Views.GameData.Edit.TriggerEditDialog"
         x:DataType="vm:TriggerEditDialogViewModel"
         Title="{Binding Title}"
-        Width="640" Height="640"
+        Width="640" Height="680"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -30,7 +30,7 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="8">
 
             <!-- ===== Name + Enabled ===== -->
             <Grid Grid.Row="0" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
@@ -41,8 +41,20 @@
                            Margin="12,0,0,0"/>
             </Grid>
 
+            <!-- ===== Location ===== -->
+            <Grid Grid.Row="1" ColumnDefinitions="100,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Location"/>
+                <ComboBox  Grid.Column="1"
+                           ItemsSource="{Binding LocationOptions}"
+                           SelectedValue="{Binding Location, Mode=TwoWay}"
+                           SelectedValueBinding="{Binding Value}"
+                           DisplayMemberBinding="{Binding Label}"
+                           HorizontalAlignment="Stretch"
+                           ToolTip.Tip="Where this trigger saves to. 'Game data' lives in the active set's triggers.json and travels with the realm; 'Profile' lives on the character and follows them across realms."/>
+            </Grid>
+
             <!-- ===== Scope + Match Type ===== -->
-            <Grid Grid.Row="1" ColumnDefinitions="100,*,100,180" ColumnSpacing="8">
+            <Grid Grid.Row="2" ColumnDefinitions="100,*,100,180" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Scope"/>
                 <ComboBox  Grid.Column="1"
                            ItemsSource="{Binding ScopeOptions}"
@@ -61,7 +73,7 @@
             </Grid>
 
             <!-- ===== Pattern ===== -->
-            <Grid Grid.Row="2" ColumnDefinitions="100,*" ColumnSpacing="8">
+            <Grid Grid.Row="3" ColumnDefinitions="100,*" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Pattern"
                            VerticalAlignment="Top" Margin="0,6,0,0"/>
                 <TextBox   Grid.Column="1"
@@ -72,19 +84,19 @@
 
             <!-- Status line — muted hint when valid, red when not.
                  Two TextBlocks share the same row, gated by HasError. -->
-            <TextBlock Grid.Row="3"
+            <TextBlock Grid.Row="4"
                        Margin="108,0,0,0"
                        Text="{Binding StatusMessage}"
                        Classes="MutedHint"
                        IsVisible="{Binding !HasError}"/>
-            <TextBlock Grid.Row="3"
+            <TextBlock Grid.Row="4"
                        Margin="108,0,0,0"
                        Text="{Binding StatusMessage}"
                        Foreground="#FFE06D6D" FontSize="11" TextWrapping="Wrap"
                        IsVisible="{Binding HasError}"/>
 
             <!-- Capture-hints panel — collapses when pattern has none. -->
-            <Grid Grid.Row="4" ColumnDefinitions="100,*" ColumnSpacing="8"
+            <Grid Grid.Row="5" ColumnDefinitions="100,*" ColumnSpacing="8"
                   IsVisible="{Binding CaptureHints, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Captures"/>
                 <TextBlock Grid.Column="1" Text="{Binding CaptureHints}"
@@ -95,7 +107,7 @@
             </Grid>
 
             <!-- ===== Response (multi-line) ===== -->
-            <Grid Grid.Row="5" RowDefinitions="Auto,*,Auto" RowSpacing="3">
+            <Grid Grid.Row="6" RowDefinitions="Auto,*,Auto" RowSpacing="3">
                 <TextBlock Grid.Row="0" Classes="SectionHeader" Text="Response"/>
                 <TextBox   Grid.Row="1"
                            Text="{Binding Response, Mode=TwoWay}"
@@ -110,9 +122,9 @@
             </Grid>
 
             <!-- ===== Optional sidecars ===== -->
-            <TextBlock Grid.Row="6" Classes="SectionHeader" Text="Optional"/>
+            <TextBlock Grid.Row="7" Classes="SectionHeader" Text="Optional"/>
 
-            <Grid Grid.Row="7" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
+            <Grid Grid.Row="8" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Sound"/>
                 <TextBox   Grid.Column="1"
                            Text="{Binding SoundFile, Mode=TwoWay}"
@@ -124,7 +136,7 @@
             </Grid>
 
             <!-- ===== Buttons ===== -->
-            <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+            <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
                 <Button Content="Save"   Command="{Binding SaveCommand}"
                         IsEnabled="{Binding CanSave}"
                         IsDefault="True" MinWidth="80"/>

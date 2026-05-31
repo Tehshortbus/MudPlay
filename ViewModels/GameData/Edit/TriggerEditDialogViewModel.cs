@@ -58,6 +58,12 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
 
     [ObservableProperty] private TriggerScope _scope = TriggerScope.GameMessages;
 
+    /// <summary>
+    /// Where the trigger persists on disk. Picked by the user in the
+    /// dialog; the engine routes the record to the right file on Save.
+    /// </summary>
+    [ObservableProperty] private TriggerLocation _location = TriggerLocation.GameData;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CaptureHints))]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -87,6 +93,13 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
     {
         new MatchOption(TriggerMatchType.Literal, "Literal"),
         new MatchOption(TriggerMatchType.Regex,   "Regex"),
+    };
+
+    /// <summary>Available enum values for the Location dropdown.</summary>
+    public IReadOnlyList<LocationOption> LocationOptions { get; } = new[]
+    {
+        new LocationOption(TriggerLocation.GameData, "Game data — saves with the active set"),
+        new LocationOption(TriggerLocation.Profile,  "Profile — saves with the active character"),
     };
 
     public string Title => _isNew ? "Trigger — (new)" : $"Trigger — {_original.Name}";
@@ -149,6 +162,7 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
         Pattern   = original.Pattern;
         Response  = original.Response;
         SoundFile = original.SoundFile ?? string.Empty;
+        Location  = original.Location;
     }
 
     /// <summary>Returns the first validation problem, or <c>null</c> when the record is savable.</summary>
@@ -197,7 +211,8 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
             MatchType: MatchType,
             Pattern:   Pattern,
             Response:  Response ?? string.Empty,
-            SoundFile: string.IsNullOrWhiteSpace(SoundFile) ? null : SoundFile.Trim());
+            SoundFile: string.IsNullOrWhiteSpace(SoundFile) ? null : SoundFile.Trim(),
+            Location:  Location);
         CloseRequested?.Invoke(updated);
     }
 
@@ -206,6 +221,9 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
 
     /// <summary>One scope dropdown row — pairs the enum value with its friendly label.</summary>
     public sealed record ScopeOption(TriggerScope Value, string Label);
+
+    /// <summary>One location dropdown row — pairs the enum value with its friendly label.</summary>
+    public sealed record LocationOption(TriggerLocation Value, string Label);
 
     /// <summary>One match-type dropdown row — pairs the enum value with its friendly label.</summary>
     public sealed record MatchOption(TriggerMatchType Value, string Label);

@@ -35,7 +35,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Enabled", "Name", "Scope", "Match", "Pattern", "Response",
+        "Enabled", "Name", "Location", "Scope", "Match", "Pattern", "Response",
     };
 
     public override string SearchKeyColumn => "Name";
@@ -94,6 +94,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
             {
                 ["Enabled"]  = t.Enabled ? "✓" : "",
                 ["Name"]     = t.Name,
+                ["Location"] = FormatLocation(t.Location),
                 ["Scope"]    = FormatScope(t.Scope),
                 ["Match"]    = t.MatchType.ToString(),
                 ["Pattern"]  = t.Pattern,
@@ -156,5 +157,13 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
         TriggerScope.ChatBroadcast => "Broadcast",
         TriggerScope.SystemLog     => "System log",
         _                          => scope.ToString(),
+    };
+
+    /// <summary>Friendly column label for the storage-location enum.</summary>
+    private static string FormatLocation(TriggerLocation loc) => loc switch
+    {
+        TriggerLocation.GameData => "Game data",
+        TriggerLocation.Profile  => "Profile",
+        _                        => loc.ToString(),
     };
 }
