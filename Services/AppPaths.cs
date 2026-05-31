@@ -139,13 +139,18 @@ public static class AppPaths
         Path.Combine(MessagesDir, setName + ".json");
 
     /// <summary>
-    /// Path to the app-shipped per-set seed Messages JSON — read-only.
-    /// <see cref="MessageStore"/> falls back to this when the user's
-    /// <see cref="MessagesFile"/> doesn't exist for the active set
-    /// (first launch / fresh data directory).
+    /// Path to the app-shipped Messages seed JSON — read-only, single
+    /// file shared across every game-data set. The catalogue's
+    /// message text (e.g. "You feel lucky") is universal across
+    /// MajorMUD realms; the <see cref="Models.GameData.GameDataLink"/>
+    /// numbers are paradigm-1.8.5-derived but still useful as a
+    /// starting point on other realms (the coverage auditor will
+    /// flag spells whose numbers don't match). <see cref="MessageStore"/>
+    /// falls back to this when the user's <see cref="MessagesFile"/>
+    /// doesn't exist for the active set.
     /// </summary>
-    public static string DefaultMessagesFile(string setName) =>
-        Path.Combine(DefaultsDir, "Messages", setName + ".json");
+    public static string DefaultMessagesSeedFile { get; } =
+        Path.Combine(AppContext.BaseDirectory, "Defaults", "Messages.seed.json");
 
     /// <summary>
     /// Path to the app-shipped default Triggers seed JSON — read-only.

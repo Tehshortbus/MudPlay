@@ -31,10 +31,12 @@ public sealed class MessageStore
     /// Switch the catalogue to <paramref name="setName"/>'s on-disk
     /// file. Pass <c>null</c> to clear (no set active). Missing /
     /// unparseable user file collapses to the app-shipped seed at
-    /// <see cref="AppPaths.DefaultMessagesFile"/> (when one exists for
-    /// this set), then to an empty catalogue. The seed itself is
-    /// never written — first user edit causes a fresh user file to be
-    /// created via <see cref="Save"/>.
+    /// <see cref="AppPaths.DefaultMessagesSeedFile"/> — a single
+    /// universal seed that ships with the app, regardless of which
+    /// game-data set is active (the message text is universal across
+    /// MajorMUD realms). The seed itself is never written — first
+    /// user edit causes a fresh user file to be created via
+    /// <see cref="Save"/>.
     /// </summary>
     public void Load(string? setName)
     {
@@ -46,9 +48,8 @@ public sealed class MessageStore
         string userPath = AppPaths.MessagesFile(setName);
         if (TryLoadInto(userPath)) return;
 
-        // 2. Fall back to the app-shipped seed for this set, if any.
-        string seedPath = AppPaths.DefaultMessagesFile(setName);
-        TryLoadInto(seedPath);
+        // 2. Fall back to the universal app-shipped seed.
+        TryLoadInto(AppPaths.DefaultMessagesSeedFile);
     }
 
     /// <summary>
