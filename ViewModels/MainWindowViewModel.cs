@@ -368,6 +368,13 @@ public partial class MainWindowViewModel : ObservableObject
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
 
+        // Trigger engine subscribes to the LineExtractor for game-message
+        // dispatch (chat + system-log subscriptions wired in its ctor) and
+        // borrows the same wire sender so a fired trigger's Response goes
+        // through the canonical SendUserInput path.
+        AppServices.Current.Triggers.AttachLineExtractor(Lines);
+        AppServices.Current.Triggers.SetSender(SendUserInput);
+
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
         // to KeybindingStore.Get(...) so PropertyChanged on all of them

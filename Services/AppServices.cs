@@ -305,7 +305,7 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
-        Triggers = new TriggerEngine(Profile);
+        Triggers = new TriggerEngine(Profile, Chat, Log);
         Aliases = new AliasEngine(Profile);
         Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
