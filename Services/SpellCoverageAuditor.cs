@@ -146,12 +146,14 @@ public sealed class SpellCoverageAuditor
             if (AnyCasterAnchored(castedByRaw, anchoredMonsters, anchoredItems)) continue;
             if (AnyCasterAnchored(learnedFromRaw, anchoredMonsters, anchoredItems)) continue;
 
+            int spellMagery    = ReadInt(row, "Magery");
+            int spellMageryLvl = ReadInt(row, "MageryLVL");
             gaps.Add(new UnanchoredSpell(
                 Number:      number,
                 Name:        name,
                 CastedBy:    ResolveRefs(castedByRaw),
                 LearnedFrom: ResolveRefs(learnedFromRaw),
-                Classes:     ResolveClasses(ReadString(row, "Classes"))));
+                Classes:     ResolveClasses(ReadString(row, "Classes"), spellMagery, spellMageryLvl)));
         }
 
         gaps.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -274,36 +276,68 @@ public sealed class SpellCoverageAuditor
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
-    /// Translate every <c>(N)</c> class-restriction token in
-    /// <paramref name="raw"/> to the corresponding class Name via
-    /// the active set's Classes.json. <c>(*)</c> renders as <c>"All"</c>;
-    /// missing-class tokens fall through verbatim. Multi-class lists
-    /// join with " / " for readability (avoids confusion with the
-    /// comma separator some other columns already use).
+    /// Resolve the spell's class-eligibility to a human-readable list
+    /// per the two-layer MajorMUD rules the user provided:
+    /// <list type="bullet">
+    ///   <item><b>Explicit class restriction overrides magery.</b>
+    ///     If <paramref name="raw"/> contains specific <c>(N)</c>
+    ///     tokens (not <c>(*)</c>), only those classes can cast —
+    ///     magery is ignored.</item>
+    ///   <item>Otherwise (<c>(*)</c> or empty), the spell is gated
+    ///     by magery: a class can cast it when
+    ///     <c>class.MageryType == spell.Magery</c> AND
+    ///     <c>class.MageryLVL &gt;= spell.MageryLVL</c>.</item>
+    /// </list>
+    /// Returns the resolved list (space-slash separated) or
+    /// <c>"(none)"</c> when no class meets either rule (typically an
+    /// NPC-only spell with no player route).
     /// </summary>
-    private string ResolveClasses(string? raw)
+    private string ResolveClasses(string? raw, int spellMagery, int spellMageryLvl)
     {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
-        var matches = ClassPattern.Matches(raw);
-        if (matches.Count == 0) return raw;
-        List<string> parts = new(matches.Count);
-        foreach (System.Text.RegularExpressions.Match m in matches)
+        List<string> explicitClassNames = new();
+        if (!string.IsNullOrEmpty(raw))
         {
-            string token = m.Groups[1].Value;
-            if (token == "*")
+            foreach (System.Text.RegularExpressions.Match m in ClassPattern.Matches(raw))
             {
-                parts.Add("All");
-                continue;
+                string token = m.Groups[1].Value;
+                if (token == "*") continue;
+                if (!int.TryParse(token, out int n)) continue;
+                string? name = _cache.FindNameByNumber("Classes", n);
+                explicitClassNames.Add(name ?? $"Class #{n}");
             }
-            if (!int.TryParse(token, out int n))
-            {
-                parts.Add(m.Value);
-                continue;
-            }
-            string? name = _cache.FindNameByNumber("Classes", n);
-            parts.Add(name ?? $"Class #{n}");
         }
-        return string.Join(" / ", parts);
+
+        // Explicit class restriction wins. Magery filter is ignored.
+        if (explicitClassNames.Count > 0)
+            return string.Join(" / ", explicitClassNames);
+
+        // No explicit restriction → magery filter. spellMagery == 0
+        // means "no magery type at all"; no player class can cast
+        // it (Warriors / Witchunters / Ninjas / Thieves all have
+        // MageryType 0 too but the spell isn't magery-bound to them).
+        if (spellMagery == 0) return "(none)";
+
+        List<string> mageryClassNames = new();
+        System.Text.Json.JsonDocument? doc = _cache.GetRawTable("Classes");
+        if (doc is not null)
+        {
+            foreach (System.Text.Json.JsonElement cls in doc.RootElement.EnumerateArray())
+            {
+                if (ReadInt(cls, "MageryType") != spellMagery) continue;
+                if (ReadInt(cls, "MageryLVL")  <  spellMageryLvl) continue;
+                string? name = ReadString(cls, "Name");
+                if (!string.IsNullOrEmpty(name)) mageryClassNames.Add(name);
+            }
+        }
+        return mageryClassNames.Count == 0 ? "(none)" : string.Join(" / ", mageryClassNames);
+    }
+
+    /// <summary>Small helper — reads an int property or returns 0 when missing / wrong-typed.</summary>
+    private static int ReadInt(System.Text.Json.JsonElement row, string property)
+    {
+        if (!row.TryGetProperty(property, out System.Text.Json.JsonElement el)) return 0;
+        if (el.ValueKind != System.Text.Json.JsonValueKind.Number) return 0;
+        return el.TryGetInt32(out int n) ? n : 0;
     }
 
     /// <summary>
