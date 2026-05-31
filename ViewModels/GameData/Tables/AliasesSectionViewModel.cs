@@ -28,6 +28,17 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
     /// <summary>Engine-backed table — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
     public override bool ShowUseColumn => false;
 
+    /// <summary>
+    /// Surfaced banner — tells the user that aliases only expand from
+    /// the Conversation window's input field today, not from the
+    /// terminal canvas. The canvas would need client-side line-mode
+    /// (local echo + telnet ECHO negotiation) to participate; that
+    /// work is intentionally deferred until usage demand justifies it.
+    /// </summary>
+    public override string? BannerText =>
+        "Aliases fire only when you press Enter in the Conversation window's input field. " +
+        "Typing in the main terminal sends each keystroke directly to the game and bypasses alias expansion.";
+
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "alias", "shortcut", "command",

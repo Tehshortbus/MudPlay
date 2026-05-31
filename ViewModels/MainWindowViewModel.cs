@@ -1266,6 +1266,25 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(text)) return;
 
+        // Alias check first — first-word match, case-insensitive. When
+        // an enabled alias's name matches, the engine returns the
+        // multi-step expansion + we send each step in place of the raw
+        // text. No match → fall through to the verbatim send below.
+        // This is the only surface aliases fire from today; the
+        // terminal canvas is char-by-char and would need client-side
+        // line-mode to participate — explicitly out of scope for now.
+        if (AppServices.Current.Aliases.TryExpand(text, out IReadOnlyList<string> steps))
+        {
+            foreach (string step in steps)
+            {
+                if (LooksLikeHealShapedCommand(step))
+                    AppServices.Current.Regen.RecordArtifact();
+                byte[] stepBytes = System.Text.Encoding.Latin1.GetBytes(step + "\r\n");
+                SendUserInput(stepBytes);
+            }
+            return;
+        }
+
         if (LooksLikeHealShapedCommand(text))
         {
             AppServices.Current.Regen.RecordArtifact();

@@ -19,16 +19,28 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Margin="22" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8">
+    <Grid Margin="22" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
 
         <!-- Tab header. -->
         <TextBlock Grid.Row="0" Classes="Header" Text="{Binding Title}"/>
+
+        <!-- Optional muted banner — collapses when the VM doesn't set BannerText. -->
+        <Border Grid.Row="1"
+                Padding="10,6"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="3"
+                IsVisible="{Binding BannerText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding BannerText}"
+                       Classes="StatusText"
+                       TextWrapping="Wrap"/>
+        </Border>
 
         <!-- Search box + Add/Remove buttons (Add/Remove only render
              when the section implements IEditableTableSectionViewModel
              with non-null AddCommand / RemoveCommand — wired in
              code-behind via FindControl). -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
             <TextBox Text="{Binding SearchText, Mode=TwoWay}"
                      PlaceholderText="Filter…"
                      Width="320"/>
@@ -39,7 +51,7 @@
         <!-- Tabular row grid. Columns are populated in code-behind from
              the VM's Columns list so they auto-size and align with their
              headers. -->
-        <DataGrid Grid.Row="2"
+        <DataGrid Grid.Row="3"
                   x:Name="RowsGrid"
                   ItemsSource="{Binding FilteredRows}"
                   SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
@@ -52,7 +64,7 @@
                   VerticalScrollBarVisibility="Auto"/>
 
         <!-- Footer status -->
-        <TextBlock Grid.Row="3" Classes="StatusText" Text="{Binding StatusText}"/>
+        <TextBlock Grid.Row="4" Classes="StatusText" Text="{Binding StatusText}"/>
 
     </Grid>
 </UserControl>

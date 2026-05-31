@@ -58,6 +58,14 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     public abstract string SearchKeyColumn { get; }
 
     /// <summary>
+    /// Optional muted-info banner shown directly under the tab header
+    /// — used by sections that need a one-liner note for the user
+    /// (e.g. Aliases: "fires from the Conversation window's input
+    /// field only"). <c>null</c> hides the banner row.
+    /// </summary>
+    public virtual string? BannerText => null;
+
+    /// <summary>
     /// Optional per-column display formatters. Keys are column names in
     /// <see cref="Columns"/>; values transform the raw cell string into
     /// the human-readable form rendered in the grid (e.g. <c>1 → "Weapon"</c>,

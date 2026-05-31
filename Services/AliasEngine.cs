@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Text;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 
@@ -6,32 +9,307 @@ namespace FujinTerm.Services;
 
 /// <summary>
 /// In-memory cache of the active character's
-/// <see cref="Models.GameData.Alias"/> entries. Loaded from
-/// <see cref="CharacterProfile.Aliases"/> on profile load. PR 5.11
-/// ships the data spine + the listing surface; the runtime match
-/// dispatch (intercepting input keystrokes on TerminalControl /
-/// ConversationWindow's input field) lands alongside the editor in a
-/// follow-up after every Phase 5 table's listing is in place.
+/// <see cref="Alias"/> entries + the runtime expansion path.
 /// </summary>
 /// <remarks>
-/// Aliases read from the same session-scoped named-variable store
-/// <see cref="TriggerEngine"/> exposes via
-/// <see cref="TriggerEngine.Variables"/>, so a trigger can capture a
-/// value (e.g. <c>$playerName</c>) and an alias's expansion can
-/// reference it on the next send.
+/// <para>
+/// Match shape: first-word, case-insensitive, literal only — no regex.
+/// <see cref="TryExpand"/> is called from
+/// <see cref="ViewModels.MainWindowViewModel.SendUserText"/> before the
+/// text is encoded to bytes, so both the terminal canvas and the
+/// Conversation input field get aliases for free.
+/// </para>
+/// <para>
+/// Substitution: positional placeholders only — <c>{0}</c> for the
+/// whole rest of the typed line after the alias name; <c>{1}</c>,
+/// <c>{2}</c>, … for whitespace-split tokens. Deliberately
+/// <i>not</i> the same namespace as
+/// <see cref="TriggerEngine.Variables"/> — the two engines are
+/// isolated.
+/// </para>
+/// <para>
+/// Validation: <see cref="NameConflictReason"/> rejects names that
+/// would collide with a MajorMUD chat-channel command at edit time so
+/// a user can't accidentally hijack their own chat. The alias dialog
+/// surfaces the conflict inline; no runtime check is needed.
+/// </para>
 /// </remarks>
 public sealed class AliasEngine
 {
+    private readonly ProfileService? _profile;
+
     /// <summary>The loaded character's aliases — empty when no profile is active.</summary>
     public ObservableCollection<Alias> Aliases { get; } = new();
 
     public AliasEngine(ProfileService profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
         profile.ProfileLoaded += LoadFrom;
         profile.ProfileClosed += Clear;
+        profile.ProfileSaving += SnapshotForSave;
         if (profile.Current is { } current) LoadFrom(current);
     }
+
+    /// <summary>Parameterless ctor for tests / in-memory scenarios — no profile persistence.</summary>
+    public AliasEngine() { }
+
+    // ----- CRUD ----------------------------------------------------------
+
+    /// <summary>Insert a new alias and persist.</summary>
+    public void Add(Alias alias)
+    {
+        ArgumentNullException.ThrowIfNull(alias);
+        Aliases.Add(alias);
+        _profile?.Save();
+    }
+
+    /// <summary>Replace an existing alias by reference. Persists. <c>false</c> when the original isn't in the list.</summary>
+    public bool Replace(Alias original, Alias updated)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(updated);
+        int index = Aliases.IndexOf(original);
+        if (index < 0) return false;
+        Aliases[index] = updated;
+        _profile?.Save();
+        return true;
+    }
+
+    /// <summary>Remove an alias by reference. Persists. <c>false</c> if not found.</summary>
+    public bool Remove(Alias alias)
+    {
+        ArgumentNullException.ThrowIfNull(alias);
+        bool removed = Aliases.Remove(alias);
+        if (removed) _profile?.Save();
+        return removed;
+    }
+
+    /// <summary>
+    /// True when an enabled alias with the supplied <paramref name="name"/>
+    /// already exists. <paramref name="excluding"/> lets the edit dialog
+    /// skip the alias being edited so it doesn't flag its own name as a
+    /// duplicate of itself.
+    /// </summary>
+    public bool IsDuplicate(string name, Alias? excluding = null)
+    {
+        foreach (Alias a in Aliases)
+        {
+            if (ReferenceEquals(a, excluding)) continue;
+            if (string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    // ----- Expansion -----------------------------------------------------
+
+    /// <summary>
+    /// If <paramref name="typed"/>'s first word matches an enabled alias,
+    /// return <c>true</c> + a list of CR-terminated steps to send in
+    /// place of the typed text. Falls through to <c>false</c> for
+    /// non-matches, disabled aliases, or empty input — callers send
+    /// the original text.
+    /// </summary>
+    /// <param name="typed">Raw text the user just submitted (Enter pressed).</param>
+    /// <param name="steps">
+    /// Expanded command steps (split on <c>^M</c> / <c>;</c>, trailing
+    /// whitespace trimmed per step). Empty list when the return is
+    /// <c>false</c>.
+    /// </param>
+    public bool TryExpand(string typed, out IReadOnlyList<string> steps)
+    {
+        steps = Array.Empty<string>();
+        if (string.IsNullOrWhiteSpace(typed)) return false;
+
+        // First whitespace-delimited token = the alias name to look up.
+        // Preserve everything past that token for {0} / {1..N} substitution.
+        ReadOnlySpan<char> input = typed.AsSpan();
+        int firstWordEnd = 0;
+        while (firstWordEnd < input.Length && !char.IsWhiteSpace(input[firstWordEnd]))
+            firstWordEnd++;
+        if (firstWordEnd == 0) return false;
+
+        string firstWord = input[..firstWordEnd].ToString();
+        Alias? hit = FindEnabled(firstWord);
+        if (hit is null) return false;
+
+        // Rest of the line, stripped of the single delimiter whitespace
+        // run between the alias name and the args (so `kk  goblin` yields
+        // args = "goblin", not " goblin").
+        int restStart = firstWordEnd;
+        while (restStart < input.Length && char.IsWhiteSpace(input[restStart]))
+            restStart++;
+        string rest = restStart < input.Length ? input[restStart..].ToString() : string.Empty;
+
+        string substituted = Substitute(hit.Expansion, rest);
+        steps = Split(substituted);
+        return true;
+    }
+
+    private Alias? FindEnabled(string firstWord)
+    {
+        foreach (Alias a in Aliases)
+        {
+            if (!a.Enabled) continue;
+            if (string.Equals(a.Name, firstWord, StringComparison.OrdinalIgnoreCase)) return a;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Substitute <c>{0}</c> (whole <paramref name="rest"/>) and
+    /// <c>{N}</c> (whitespace-split positionals from <paramref name="rest"/>)
+    /// inside <paramref name="expansion"/>. Missing positionals
+    /// substitute as the empty string — the per-step trim handles
+    /// dangling whitespace.
+    /// </summary>
+    internal static string Substitute(string expansion, string rest)
+    {
+        if (string.IsNullOrEmpty(expansion)) return string.Empty;
+
+        // Positional tokens are computed lazily — only when the
+        // expansion references at least one {N>=1} placeholder.
+        string[]? positional = null;
+
+        StringBuilder sb = new(expansion.Length + rest.Length);
+        int i = 0;
+        while (i < expansion.Length)
+        {
+            char c = expansion[i];
+            if (c == '{' && TryReadIndex(expansion, i, out int idx, out int next))
+            {
+                if (idx == 0)
+                {
+                    sb.Append(rest);
+                }
+                else
+                {
+                    positional ??= rest.Split(
+                        (char[]?)null,
+                        StringSplitOptions.RemoveEmptyEntries);
+                    if (idx - 1 < positional.Length)
+                        sb.Append(positional[idx - 1]);
+                    // else: missing — substitute empty string.
+                }
+                i = next;
+                continue;
+            }
+            sb.Append(c);
+            i++;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Look ahead from <paramref name="start"/> (pointing at <c>{</c>)
+    /// for a well-formed <c>{N}</c> placeholder where N is a
+    /// non-negative integer. Returns <c>false</c> when the brace
+    /// doesn't open a valid index — caller treats the brace as a
+    /// literal character.
+    /// </summary>
+    private static bool TryReadIndex(string s, int start, out int index, out int nextIndex)
+    {
+        index = -1;
+        nextIndex = start + 1;
+        int end = s.IndexOf('}', start + 1);
+        if (end <= start + 1) return false;
+        string candidate = s.Substring(start + 1, end - start - 1);
+        if (!int.TryParse(candidate, System.Globalization.NumberStyles.None,
+                           System.Globalization.CultureInfo.InvariantCulture, out int parsed))
+            return false;
+        if (parsed < 0) return false;
+        index = parsed;
+        nextIndex = end + 1;
+        return true;
+    }
+
+    /// <summary>
+    /// Split the substituted expansion on <c>^M</c> / <c>;</c> the same
+    /// way <see cref="MacroStore.SplitCommandSteps"/> does — keeps the
+    /// multi-step convention uniform across macros, triggers, aliases,
+    /// and the login automator. Trailing whitespace per step is
+    /// trimmed so an absent placeholder doesn't dangle.
+    /// </summary>
+    private static IReadOnlyList<string> Split(string substituted)
+        => MacroStore.SplitCommandSteps(substituted);
+
+    // ----- Name validation (chat-channel collision) ---------------------
+
+    /// <summary>
+    /// MajorMUD chat-channel commands whose namespace aliases must not
+    /// invade. An alias named any of these (case-insensitive) — or
+    /// starting with one of <see cref="ForbiddenFirstChars"/> — would
+    /// silently hijack the user's chat input.
+    /// </summary>
+    private static readonly HashSet<string> _forbiddenExact =
+        BuildForbiddenSet();
+
+    /// <summary>First-character prefix rules: a name starting with any of these is rejected.</summary>
+    private static readonly char[] ForbiddenFirstChars = { '.', '"', '/' };
+
+    private static HashSet<string> BuildForbiddenSet()
+    {
+        HashSet<string> set = new(StringComparer.OrdinalIgnoreCase);
+
+        // Word-channel partial forms — start length per channel matches
+        // the shortest typeable command MajorMUD recognises:
+        //   gossip   from 3 chars  (gos)
+        //   auction  from 3 chars  (auc)
+        //   broadcast from 2 chars (br)
+        AddPrefixes(set, "gossip",    minLength: 3);
+        AddPrefixes(set, "auction",   minLength: 3);
+        AddPrefixes(set, "broadcast", minLength: 2);
+
+        // Gangpath is special — not a prefix family of "gangpath" itself.
+        // Per user direction, valid command forms are:
+        //   broadg / broadga / broadgan / broadgang   (broadcast-prefixed gang variants)
+        //   bg / gb                                   (two-char shortcuts)
+        foreach (string s in new[] { "broadg", "broadga", "broadgan", "broadgang", "bg", "gb" })
+            set.Add(s);
+
+        return set;
+    }
+
+    private static void AddPrefixes(HashSet<string> set, string word, int minLength)
+    {
+        for (int len = minLength; len <= word.Length; len++)
+            set.Add(word[..len]);
+    }
+
+    /// <summary>
+    /// Returns a human-readable conflict reason when <paramref name="name"/>
+    /// would collide with a chat-channel command; <c>null</c> when the
+    /// name is free of channel collisions. Caller still needs to check
+    /// non-empty / no-whitespace / no-duplicate separately.
+    /// </summary>
+    public static string? NameConflictReason(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+
+        char first = name[0];
+        if (first == '.')  return "Names starting with '.' would intercept the say channel.";
+        if (first == '"')  return "Names starting with '\"' would intercept the yell channel.";
+        if (first == '/')  return "Names starting with '/' would intercept the telepath channel.";
+
+        if (_forbiddenExact.Contains(name))
+        {
+            string channel = ClassifyChannel(name);
+            return $"'{name}' would intercept the {channel} channel — pick a different name.";
+        }
+        return null;
+    }
+
+    private static string ClassifyChannel(string name)
+    {
+        string n = name.ToLowerInvariant();
+        if ("gossip".StartsWith(n, StringComparison.Ordinal))    return "gossip";
+        if ("auction".StartsWith(n, StringComparison.Ordinal))   return "auction";
+        if ("broadcast".StartsWith(n, StringComparison.Ordinal)) return "broadcast";
+        // Anything else in the exact set is a gangpath form.
+        return "gangpath";
+    }
+
+    // ----- Profile sync --------------------------------------------------
 
     private void LoadFrom(CharacterProfile profile)
     {
@@ -41,4 +319,10 @@ public sealed class AliasEngine
     }
 
     private void Clear() => Aliases.Clear();
+
+    /// <summary>Snapshot the live list onto the profile DTO right before save.</summary>
+    private void SnapshotForSave(CharacterProfile profile)
+    {
+        profile.Aliases = Aliases.Count == 0 ? null : Aliases.ToList();
+    }
 }
