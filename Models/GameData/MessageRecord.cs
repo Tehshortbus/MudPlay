@@ -136,10 +136,20 @@ public enum MessageAction
 /// <summary>
 /// Typed view of the message flag bitfield. Values match the legacy
 /// MegaMUD <c>messages.md</c> 16-bit hex encoding so records round-trip
-/// without translation. Bit <c>0x0800</c> is reserved / undocumented in
-/// the legacy format; preserve it verbatim via
-/// <see cref="MessageRecord.RawFlagsHex"/>.
+/// without translation.
 /// </summary>
+/// <remarks>
+/// Three MegaMUD-specific find-mode bits are deliberately omitted:
+/// <c>0x0100 FindInConversations</c>, <c>0x0400 FindInText</c>,
+/// <c>0x4000 UseWhenChasing</c>. They were stripped from the model
+/// per user direction — they're MegaMUD-internal UX hints that
+/// don't carry semantics in our consumption. The importer
+/// (<see cref="Services.MegaMudMessagesImporter.MaskKnown"/>) masks
+/// them out on read so they never enter the data; the only
+/// preserved-but-unknown bit is <c>0x0800</c> (reserved /
+/// undocumented in the legacy format), kept on
+/// <see cref="MessageRecord.RawFlagsHex"/>.
+/// </remarks>
 [Flags]
 public enum MessageFlags : ushort
 {
@@ -152,12 +162,12 @@ public enum MessageFlags : ushort
     AttackPrevented     = 0x0020,
     Diseased            = 0x0040,
     HpRegenerating      = 0x0080,
-    FindInConversations = 0x0100,
+    // 0x0100 FindInConversations dropped per user direction
     ManaRegenerating    = 0x0200,
-    FindInText          = 0x0400,
-    // 0x0800 reserved — preserve via RawFlagsHex
+    // 0x0400 FindInText dropped per user direction
+    // 0x0800 reserved — preserved via RawFlagsHex
     EndsCombat          = 0x1000,
     LastActionFailed    = 0x2000,
-    UseWhenChasing      = 0x4000,
+    // 0x4000 UseWhenChasing dropped per user direction
     Disabled            = 0x8000,
 }

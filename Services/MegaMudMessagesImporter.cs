@@ -220,35 +220,44 @@ public static class MegaMudMessagesImporter
     private static void Finalize(Partial p, string message, string endsWith, MessageImportResult result)
     {
         string id = ComputeId(p.Name, message, endsWith);
-        // Links default to empty — the importer doesn't see the active
-        // set's Spells/Items/Monsters JSON. Seed-generation tooling
-        // (the offline classifier) populates them; the edit dialog
+        // Strip the three dropped find-mode bits at import time so
+        // they never enter the data — RawFlagsHex now reflects only
+        // the kept bits + the reserved 0x0800. Links default to empty;
+        // the offline classifier populates them, and the edit dialog
         // lets the user add / remove links by hand.
+        ushort retained = (ushort)(p.RawFlagsHex & RetainedBitsMask);
         result.Messages.Add(new MessageRecord(
             Id:          id,
             Name:        p.Name,
             Message:     message,
             EndsWith:    endsWith,
             Action:      p.Action,
-            Flags:       MaskKnown(p.RawFlagsHex),
-            RawFlagsHex: p.RawFlagsHex,
+            Flags:       (MessageFlags)(retained & KnownFlagsMask),
+            RawFlagsHex: retained,
             Response:    p.Response,
             Links:       Array.Empty<GameDataLink>()));
     }
 
-    private static MessageFlags MaskKnown(ushort raw)
-    {
-        const ushort knownMask =
-            (ushort)MessageFlags.Blinded             | (ushort)MessageFlags.Confused            |
-            (ushort)MessageFlags.Poisoned            | (ushort)MessageFlags.LosingHp            |
-            (ushort)MessageFlags.MovementPrevented   | (ushort)MessageFlags.AttackPrevented     |
-            (ushort)MessageFlags.Diseased            | (ushort)MessageFlags.HpRegenerating      |
-            (ushort)MessageFlags.FindInConversations | (ushort)MessageFlags.ManaRegenerating    |
-            (ushort)MessageFlags.FindInText          | (ushort)MessageFlags.EndsCombat          |
-            (ushort)MessageFlags.LastActionFailed    | (ushort)MessageFlags.UseWhenChasing      |
-            (ushort)MessageFlags.Disabled;
-        return (MessageFlags)(raw & knownMask);
-    }
+    /// <summary>
+    /// Bits the typed <see cref="MessageFlags"/> enum recognises.
+    /// Excludes the three dropped find-mode flags + the 0x0800
+    /// reserved bit (see <see cref="MessageFlags"/> remarks).
+    /// </summary>
+    private const ushort KnownFlagsMask =
+        (ushort)MessageFlags.Blinded           | (ushort)MessageFlags.Confused          |
+        (ushort)MessageFlags.Poisoned          | (ushort)MessageFlags.LosingHp          |
+        (ushort)MessageFlags.MovementPrevented | (ushort)MessageFlags.AttackPrevented   |
+        (ushort)MessageFlags.Diseased          | (ushort)MessageFlags.HpRegenerating    |
+        (ushort)MessageFlags.ManaRegenerating  | (ushort)MessageFlags.EndsCombat        |
+        (ushort)MessageFlags.LastActionFailed  | (ushort)MessageFlags.Disabled;
+
+    /// <summary>
+    /// Bits the importer keeps on <see cref="MessageRecord.RawFlagsHex"/>
+    /// after stripping the dropped find-mode flags. The 0x0800
+    /// reserved bit is kept so it round-trips back to MegaMUD's
+    /// <c>messages.md</c> format losslessly.
+    /// </summary>
+    private const ushort RetainedBitsMask = KnownFlagsMask | 0x0800;
 
     /// <summary>
     /// Stable content hash used as <see cref="MessageRecord.Id"/>.

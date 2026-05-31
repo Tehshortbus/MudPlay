@@ -84,8 +84,18 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public IReadOnlyList<MessageAction> AvailableActions { get; } =
         Enum.GetValues<MessageAction>().ToArray();
 
-    public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
-        Enum.GetValues<SettingsTier>().ToArray();
+    /// <summary>
+    /// (Value, Label) rows for the Use dropdown — explicit friendly
+    /// labels so <c>SettingsTier.Bbs</c> renders as <c>"BBS"</c>
+    /// instead of <c>"Bbs"</c>.
+    /// </summary>
+    public IReadOnlyList<TierOption> AvailableTiers { get; } = new[]
+    {
+        new TierOption(SettingsTier.Defaults,  "Defaults"),
+        new TierOption(SettingsTier.Global,    "Global"),
+        new TierOption(SettingsTier.Bbs,       "BBS"),
+        new TierOption(SettingsTier.Character, "Character"),
+    };
 
     /// <summary>
     /// Editable Links panel — each row is a (Table, Number) back-
@@ -233,9 +243,11 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     {
         if (!CanSave) return;
         MessageFlags typed = AssembleFlags();
-        // Preserve any reserved bits (e.g. 0x0800) the importer recorded
-        // on the original so the record round-trips losslessly.
-        ushort reservedBits = (ushort)(_original.RawFlagsHex & ~AllKnownFlagsMask);
+        // Only the 0x0800 reserved bit survives a save — anything
+        // else outside the typed-flag mask (notably the three
+        // dropped MegaMUD find-mode bits that may still linger on
+        // pre-cleanup records) gets scrubbed.
+        ushort reservedBits = (ushort)(_original.RawFlagsHex & ReservedBitsMask);
         ushort raw = (ushort)((ushort)typed | reservedBits);
 
         MessageRecord updated = new(
@@ -306,12 +318,12 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     }
 
     /// <summary>
-    /// Bits the dialog actively edits. Anything outside this mask
-    /// (including the three find-mode flags FindInText /
-    /// FindInConversations / UseWhenChasing that we deliberately
-    /// don't surface in the UI, plus the reserved 0x0800 bit) is
-    /// preserved verbatim via RawFlagsHex on save so imported MegaMUD
-    /// files round-trip without losing data.
+    /// Bits the dialog actively edits. The only out-of-band bit
+    /// preserved on save is the legacy reserved 0x0800; the three
+    /// MegaMUD find-mode flags are dropped from the model entirely
+    /// (see <see cref="MessageFlags"/> remarks) and the importer
+    /// masks them at read time, so they never survive into a saved
+    /// record.
     /// </summary>
     private const ushort AllKnownFlagsMask =
         (ushort)MessageFlags.Blinded           | (ushort)MessageFlags.Confused          |
@@ -320,6 +332,16 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         (ushort)MessageFlags.Diseased          | (ushort)MessageFlags.HpRegenerating    |
         (ushort)MessageFlags.ManaRegenerating  | (ushort)MessageFlags.EndsCombat        |
         (ushort)MessageFlags.LastActionFailed  | (ushort)MessageFlags.Disabled;
+
+    /// <summary>
+    /// Single bit preserved across save — the reserved 0x0800 bit
+    /// the legacy MegaMUD format defines but doesn't otherwise use.
+    /// Anything outside this and <see cref="AllKnownFlagsMask"/> is
+    /// stripped on save, which scrubs any stale FindInText / etc.
+    /// bits left on existing records from before the find-mode
+    /// drop.
+    /// </summary>
+    private const ushort ReservedBitsMask = 0x0800;
 }
 
 /// <summary>
@@ -348,6 +370,9 @@ public sealed record MessageEditResult(
 /// <param name="Table">JSON file stem, e.g. <c>"Spells"</c>.</param>
 /// <param name="Number">Row's <c>Number</c> field.</param>
 /// <param name="DisplayName">Resolved Name; <c>null</c> on a stale link.</param>
+/// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
+public sealed record TierOption(SettingsTier Value, string Label);
+
 public sealed record LinkRow(string Table, int Number, string? DisplayName)
 {
     /// <summary>

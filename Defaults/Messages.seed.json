@@ -4835,8 +4835,8 @@
     "Message": "A kai barrier is absorbing damage dealt to you!",
     "EndsWith": "The kai barrier dissipates and fades away.",
     "Action": "Ignore",
-    "Flags": "FindInConversations, FindInText",
-    "RawFlagsHex": 1280,
+    "Flags": "None",
+    "RawFlagsHex": 0,
     "Response": "",
     "Links": [
       {
@@ -5535,8 +5535,8 @@
     "Message": "The woman suddenly shrieks, and an aura of power surrounds her!",
     "EndsWith": "",
     "Action": "Ignore",
-    "Flags": "FindInText, EndsCombat",
-    "RawFlagsHex": 5120,
+    "Flags": "EndsCombat",
+    "RawFlagsHex": 4096,
     "Response": "",
     "Links": []
   },
@@ -6084,8 +6084,8 @@
     "Message": "The massive boulder rolls out of the way, revealing an exit to the {1}",
     "EndsWith": "",
     "Action": "RecheckRoom",
-    "Flags": "FindInConversations",
-    "RawFlagsHex": 256,
+    "Flags": "None",
+    "RawFlagsHex": 0,
     "Response": "",
     "Links": []
   },
@@ -7621,8 +7621,8 @@
     "Message": "and changes into an amorphous beast!",
     "EndsWith": "",
     "Action": "Ignore",
-    "Flags": "FindInText, EndsCombat",
-    "RawFlagsHex": 5120,
+    "Flags": "EndsCombat",
+    "RawFlagsHex": 4096,
     "Response": "",
     "Links": [
       {
