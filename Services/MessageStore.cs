@@ -21,11 +21,25 @@ namespace FujinTerm.Services;
 /// </remarks>
 public sealed class MessageStore
 {
+    private readonly LogService? _log;
+
     /// <summary>Live mirror of the active set's message records. Bound by the Messages tab.</summary>
     public ObservableCollection<MessageRecord> Messages { get; } = new();
 
     /// <summary>Set name currently sourcing <see cref="Messages"/>, or <c>null</c> when none is active.</summary>
     public string? ActiveSet { get; private set; }
+
+    public MessageStore() { }
+
+    /// <summary>
+    /// Production ctor — wire the log sink so parse failures surface
+    /// in the LogPane instead of silently leaving the catalogue empty.
+    /// </summary>
+    public MessageStore(LogService log)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        _log = log;
+    }
 
     /// <summary>
     /// Switch the catalogue to <paramref name="setName"/>'s on-disk
@@ -70,11 +84,14 @@ public sealed class MessageStore
             foreach (MessageRecord m in loaded) Messages.Add(m);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // Corrupt file ⇒ leave empty; user can re-import or
-            // hand-edit. We don't surface here because the Browser
-            // status bar already shows the row count.
+            // Corrupt file ⇒ leave empty, but DO surface — a silent
+            // swallow is what hid the missing JsonStringEnumConverter
+            // for the entire seed-loading work. Log loud so future
+            // schema drift fails visibly.
+            _log?.Log(LogSeverity.Warn, "Messages",
+                $"Failed to load '{path}': {ex.Message}");
             return false;
         }
     }

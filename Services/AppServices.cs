@@ -235,7 +235,7 @@ public sealed class AppServices
     /// HealthManager / CastingDirector consume the same catalogue at
     /// runtime to gate on observed conditions.
     /// </summary>
-    public MessageStore Messages { get; } = new();
+    public MessageStore Messages { get; private set; } = null!;
 
     /// <summary>
     /// Background audit comparing player-facing spells in the active
@@ -375,6 +375,7 @@ public sealed class AppServices
         // (Data/Global/Messages/{set-name}.json) — reload whenever the
         // active set changes so the Browser tab and runtime engines
         // see the right realm's catalogue.
+        Messages = new MessageStore(Log);
         GameData.ActiveSetChanged += Messages.Load;
 
         // Coverage audit — fires on every set switch + every Messages
