@@ -41,6 +41,17 @@ public sealed class SpellCoverageAuditor
     private readonly GameDataCache _cache;
     private readonly MessageStore _messages;
     private readonly LogService _log;
+    /// <summary>
+    /// Coalesce-flag for <see cref="QueueRun"/>: a set switch fires
+    /// <see cref="GameDataCache.ActiveSetChanged"/> AND triggers
+    /// <see cref="MessageStore.Load"/> which raises one
+    /// Clear-Reset + N Add CollectionChanged events; without
+    /// debouncing the audit would run N+2 times per swap and spam
+    /// the LogPane. Posting once to the dispatcher and clearing the
+    /// flag in the dispatched handler collapses the burst to a
+    /// single run on the current UI tick.
+    /// </summary>
+    private bool _runQueued;
 
     /// <summary>The most recent result. <c>null</c> until the first audit runs (no set active).</summary>
     public CoverageResult? Latest { get; private set; }
@@ -57,11 +68,27 @@ public sealed class SpellCoverageAuditor
         _messages = messages;
         _log      = log;
 
-        cache.ActiveSetChanged           += _ => Run();
+        cache.ActiveSetChanged              += _ => QueueRun();
         messages.Messages.CollectionChanged += OnMessagesChanged;
     }
 
-    private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e) => Run();
+    private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e) => QueueRun();
+
+    /// <summary>
+    /// Defer <see cref="Run"/> to the next dispatcher tick + collapse
+    /// any further queued requests onto the same tick. Set switches
+    /// always end up here; an MDB import lands here via the
+    /// ActiveSetChanged that <c>SwitchActiveGameDataSet</c> raises
+    /// after a successful import.
+    /// </summary>
+    private void QueueRun()
+    {
+        if (_runQueued) return;
+        _runQueued = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => { _runQueued = false; Run(); },
+            Avalonia.Threading.DispatcherPriority.Background);
+    }
 
     /// <summary>Explicit re-audit hook for the report window's "Refresh" button + future MDB-import callers.</summary>
     public CoverageResult? Run()
