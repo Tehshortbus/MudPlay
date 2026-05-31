@@ -402,18 +402,59 @@ public sealed class TriggerEngine
 
     // ----- Profile sync ---------------------------------------------------
 
+    /// <summary>
+    /// Apply <paramref name="profile"/>'s persisted Triggers to the
+    /// live collection. <c>null</c> = profile has never been written
+    /// with the Triggers field set (legacy profile OR fresh-character),
+    /// and we seed from <see cref="AppPaths.DefaultTriggersSeedFile"/>.
+    /// An empty list = the user explicitly cleared all triggers; that
+    /// state is respected and the seed does NOT re-apply.
+    /// </summary>
     private void LoadFrom(CharacterProfile profile)
     {
         Triggers.Clear();
-        if (profile.Triggers is null) return;
+        if (profile.Triggers is null)
+        {
+            SeedFromDefaults();
+            return;
+        }
         foreach (Trigger t in profile.Triggers) Triggers.Add(t);
+    }
+
+    /// <summary>
+    /// Read the app-shipped seed JSON and copy each row into
+    /// <see cref="Triggers"/>. Silent no-op when the seed file
+    /// doesn't exist (dev build / missing Defaults folder) or fails
+    /// to parse — the user simply starts with zero triggers.
+    /// </summary>
+    private void SeedFromDefaults()
+    {
+        string path = AppPaths.DefaultTriggersSeedFile;
+        if (!System.IO.File.Exists(path)) return;
+        try
+        {
+            List<Trigger>? loaded = JsonStore.Load<List<Trigger>>(path);
+            if (loaded is null) return;
+            foreach (Trigger t in loaded) Triggers.Add(t);
+        }
+        catch
+        {
+            // Corrupt seed ⇒ start empty. The user can hand-edit the
+            // defaults file or author triggers from scratch.
+        }
     }
 
     private void Clear() => Triggers.Clear();
 
-    /// <summary>Snapshot the live list onto the profile DTO right before save.</summary>
+    /// <summary>
+    /// Snapshot the live list onto the profile DTO right before save.
+    /// Always writes a list (even when empty) so the next load can
+    /// distinguish "user cleared all triggers" from "fresh profile
+    /// that's never seen a Triggers field" — only the latter re-seeds
+    /// from the app defaults.
+    /// </summary>
     private void SnapshotForSave(CharacterProfile profile)
     {
-        profile.Triggers = Triggers.Count == 0 ? null : Triggers.ToList();
+        profile.Triggers = Triggers.ToList();
     }
 }

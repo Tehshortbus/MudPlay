@@ -138,6 +138,24 @@ public static class AppPaths
     public static string MessagesFile(string setName) =>
         Path.Combine(MessagesDir, setName + ".json");
 
+    /// <summary>
+    /// Path to the app-shipped per-set seed Messages JSON — read-only.
+    /// <see cref="MessageStore"/> falls back to this when the user's
+    /// <see cref="MessagesFile"/> doesn't exist for the active set
+    /// (first launch / fresh data directory).
+    /// </summary>
+    public static string DefaultMessagesFile(string setName) =>
+        Path.Combine(DefaultsDir, "Messages", setName + ".json");
+
+    /// <summary>
+    /// Path to the app-shipped default Triggers seed JSON — read-only.
+    /// <see cref="TriggerEngine"/> falls back to this when a freshly
+    /// loaded character profile has never persisted a Triggers list
+    /// (i.e. <c>CharacterProfile.Triggers</c> is <c>null</c>).
+    /// </summary>
+    public static string DefaultTriggersSeedFile { get; } =
+        Path.Combine(AppContext.BaseDirectory, "Defaults", "Triggers.seed.json");
+
     /// <summary>Path to a single imported game-data set's directory.</summary>
     public static string GameDataSetDir(string setName) =>
         Path.Combine(GameDataRoot, setName);
