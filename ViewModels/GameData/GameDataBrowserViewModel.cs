@@ -196,7 +196,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
                 "User-defined incoming-text patterns → actions; named session variables shared with Aliases.");
 
         if (_aliases is not null)
-            Sections.Add(new AliasesSectionViewModel(_aliases));
+            Sections.Add(new AliasesSectionViewModel(_aliases, _dialogs));
         else
             AddPlaceholder("aliases", "Aliases", "Phase 5",
                 "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");

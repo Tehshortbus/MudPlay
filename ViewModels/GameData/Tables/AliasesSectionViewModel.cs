@@ -1,19 +1,35 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
 /// Game Data Browser → Aliases tab. Surfaces the active character's
 /// user-defined aliases from <see cref="AliasEngine"/> — the
-/// outgoing-text mirror of the Triggers tab.
+/// outgoing-text mirror of the Triggers tab. Editable — double-click
+/// a row opens the <see cref="AliasEditDialogViewModel"/>; save
+/// routes through <see cref="AliasEngine.Replace"/>.
 /// </summary>
-public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
+public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly AliasEngine _engine;
+    private readonly DialogService? _dialogs;
+
+    /// <summary>
+    /// Per-rebuild side table mapping the displayed <see cref="GameDataRow"/>
+    /// back to the engine's live <see cref="Alias"/> instance. Same
+    /// trick the Triggers tab uses — first-word is unique at save time
+    /// but FilteredRows indices skew under search, so we remember the
+    /// reference at populate time.
+    /// </summary>
+    private readonly Dictionary<GameDataRow, Alias> _rowToAlias = new();
 
     public override string Id => "aliases";
     public override string Title => "Aliases";
@@ -44,14 +60,34 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
         Title, "alias", "shortcut", "command",
     };
 
+    public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
+
+    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand  => RemoveSelectedCommand;
+
     private readonly NotifyCollectionChangedEventHandler _handler;
 
-    public AliasesSectionViewModel(AliasEngine engine)
+    public AliasesSectionViewModel(AliasEngine engine, DialogService? dialogs = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
+        _dialogs = dialogs;
         _handler = (_, _) => Reload();
         _engine.Aliases.CollectionChanged += _handler;
+
+        OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
         Reload();
     }
 
@@ -63,6 +99,7 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
 
     protected override void PopulateRows(IList<GameDataRow> rows)
     {
+        _rowToAlias.Clear();
         foreach (Alias a in _engine.Aliases)
         {
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
@@ -71,7 +108,37 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel
                 ["Name"]      = a.Name,
                 ["Expansion"] = a.Expansion,
             };
-            rows.Add(GameDataRow.FromDictionary(dict, Columns));
+            GameDataRow row = GameDataRow.FromDictionary(dict, Columns);
+            _rowToAlias[row] = a;
+            rows.Add(row);
         }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        Alias blank = new(Name: string.Empty, Enabled: true, Expansion: string.Empty);
+        AliasEditDialogViewModel vm = new(blank, _engine, isNew: true);
+        Alias? created = await _dialogs.OpenWindowAsync<AliasEditDialogViewModel, Alias>(vm);
+        if (created is null) return;
+        _engine.Add(created);
+    }
+
+    private void RemoveSelected()
+    {
+        if (SelectedRow is null) return;
+        if (!_rowToAlias.TryGetValue(SelectedRow, out Alias? target)) return;
+        _engine.Remove(target);
+    }
+
+    private async Task OpenEditAsync(GameDataRow? row)
+    {
+        if (row is null || _dialogs is null) return;
+        if (!_rowToAlias.TryGetValue(row, out Alias? original)) return;
+
+        AliasEditDialogViewModel vm = new(original, _engine, isNew: false);
+        Alias? updated = await _dialogs.OpenWindowAsync<AliasEditDialogViewModel, Alias>(vm);
+        if (updated is null) return;
+        _engine.Replace(original, updated);
     }
 }
