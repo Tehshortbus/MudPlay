@@ -61,15 +61,48 @@ namespace FujinTerm.Models.GameData;
 /// (Phase 13) is the one that translates <c>^M</c> / CR into actual
 /// CR-terminated wire sends.
 /// </param>
+/// <param name="Links">
+/// Back-references to the game-data records this message is associated
+/// with — e.g. <c>(Spells, 14)</c> for <c>bless</c>, or
+/// <c>(Items, 119)</c> for the item that procs the message. A single
+/// message can carry multiple links (a shared "You feel lucky" line
+/// fires from every weapon + spell that grants bless). Empty when the
+/// message has no known game-data anchor. Populated at seed-generation
+/// time via case-insensitive Name match against the active set's
+/// Spells / Items / Monsters JSON; user-editable in the edit dialog.
+/// </param>
 public sealed record MessageRecord(
-    string         Id,
-    string         Name,
-    string         Message,
-    string         EndsWith,
-    MessageAction  Action,
-    MessageFlags   Flags,
-    ushort         RawFlagsHex,
-    string         Response);
+    string                       Id,
+    string                       Name,
+    string                       Message,
+    string                       EndsWith,
+    MessageAction                Action,
+    MessageFlags                 Flags,
+    ushort                       RawFlagsHex,
+    string                       Response,
+    IReadOnlyList<GameDataLink>? Links = null);
+
+/// <summary>
+/// One back-reference from a <see cref="MessageRecord"/> (or any
+/// other curated game-data row) to a record inside the active set's
+/// JSON tables. Minimal shape on purpose — the display name is
+/// looked up live from the current set so it never goes stale on a
+/// game-data update.
+/// </summary>
+/// <param name="Table">
+/// JSON file stem under <c>Data/game data/{set}/</c> — e.g.
+/// <c>"Spells"</c>, <c>"Items"</c>, <c>"Monsters"</c>,
+/// <c>"Rooms"</c>. Case-insensitive on resolution.
+/// </param>
+/// <param name="Number">
+/// The <c>Number</c> field on the target record. The active set's
+/// reader looks this up to render the display name; a stale or
+/// missing number renders as <c>"{Table}#{Number} (unknown)"</c>
+/// rather than breaking the UI.
+/// </param>
+public readonly record struct GameDataLink(
+    string Table,
+    int    Number);
 
 /// <summary>
 /// What the engine does when a message pattern fires. Values match the

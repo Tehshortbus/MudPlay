@@ -220,6 +220,10 @@ public static class MegaMudMessagesImporter
     private static void Finalize(Partial p, string message, string endsWith, MessageImportResult result)
     {
         string id = ComputeId(p.Name, message, endsWith);
+        // Links default to empty — the importer doesn't see the active
+        // set's Spells/Items/Monsters JSON. Seed-generation tooling
+        // (the offline classifier) populates them; the edit dialog
+        // lets the user add / remove links by hand.
         result.Messages.Add(new MessageRecord(
             Id:          id,
             Name:        p.Name,
@@ -228,7 +232,8 @@ public static class MegaMudMessagesImporter
             Action:      p.Action,
             Flags:       MaskKnown(p.RawFlagsHex),
             RawFlagsHex: p.RawFlagsHex,
-            Response:    p.Response));
+            Response:    p.Response,
+            Links:       Array.Empty<GameDataLink>()));
     }
 
     private static MessageFlags MaskKnown(ushort raw)

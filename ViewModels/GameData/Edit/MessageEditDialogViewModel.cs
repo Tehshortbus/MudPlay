@@ -197,7 +197,11 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
             Action:      Action,
             Flags:       typed,
             RawFlagsHex: raw,
-            Response:    Response ?? string.Empty);
+            Response:    Response ?? string.Empty,
+            // Pass Links through verbatim — the dialog UI doesn't
+            // edit them yet (read-only panel lands next commit), so
+            // the originals round-trip without loss.
+            Links:       _original.Links);
 
         CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
     }
