@@ -53,7 +53,7 @@
                        Foreground="{StaticResource ChromeFgMutedBrush}"
                        FontSize="11"
                        TextWrapping="Wrap"
-                       Text="Add coverage by opening Game Data → Messages and authoring a record whose Links field points at the spell's (Spells, #). The audit re-runs on every Message change + every game-data set switch."/>
+                       Text="Double-click a row to open the Message editor pre-filled with that spell's link. The audit re-runs on every Message change + every game-data set switch."/>
         </Grid>
     </Border>
 </Window>
