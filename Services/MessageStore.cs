@@ -43,14 +43,20 @@ public sealed class MessageStore
 
     /// <summary>
     /// Switch the catalogue to <paramref name="setName"/>'s on-disk
-    /// file. Pass <c>null</c> to clear (no set active). Missing /
-    /// unparseable user file collapses to the app-shipped seed at
-    /// <see cref="AppPaths.DefaultMessagesSeedFile"/> — a single
-    /// universal seed that ships with the app, regardless of which
-    /// game-data set is active (the message text is universal across
-    /// MajorMUD realms). The seed itself is never written — first
-    /// user edit causes a fresh user file to be created via
-    /// <see cref="Save"/>.
+    /// file. Pass <c>null</c> to clear (no set active). Load priority:
+    /// <list type="number">
+    ///   <item>Per-set file <see cref="AppPaths.MessagesFile"/>
+    ///     (<c>Data/game data/{set}/messages.json</c>) — the canonical
+    ///     persisted state since the per-set-folder migration.</item>
+    ///   <item>Legacy <see cref="AppPaths.LegacyMessagesFile"/>
+    ///     (<c>Data/Global/Messages/{set}.json</c>) — read-only
+    ///     fallback so pre-migration installs keep working. First
+    ///     subsequent <see cref="Save"/> writes the new location.</item>
+    ///   <item>Universal seed <see cref="AppPaths.DefaultMessagesSeedFile"/>
+    ///     — applies to every set; the message text is universal
+    ///     across MajorMUD realms.</item>
+    /// </list>
+    /// The seed itself is never written.
     /// </summary>
     public void Load(string? setName)
     {
@@ -58,11 +64,8 @@ public sealed class MessageStore
         ActiveSet = setName;
         if (string.IsNullOrWhiteSpace(setName)) return;
 
-        // 1. User file wins when present (the canonical persisted state).
-        string userPath = AppPaths.MessagesFile(setName);
-        if (TryLoadInto(userPath)) return;
-
-        // 2. Fall back to the universal app-shipped seed.
+        if (TryLoadInto(AppPaths.MessagesFile(setName))) return;
+        if (TryLoadInto(AppPaths.LegacyMessagesFile(setName))) return;
         TryLoadInto(AppPaths.DefaultMessagesSeedFile);
     }
 

@@ -134,9 +134,35 @@ public static class AppPaths
         Directory.CreateDirectory(LogsDir);
     }
 
-    /// <summary>Path to a single set's Messages/Responses JSON.</summary>
+    /// <summary>
+    /// Per-set Messages catalogue file, scoped INSIDE the game-data
+    /// set's folder so the catalogue travels with the set. Replaces
+    /// the older <c>Data/Global/Messages/{set}.json</c> location —
+    /// pairing the file with the MDB tables keeps a curated realm
+    /// together (back it up, copy it to another machine, etc.).
+    /// </summary>
     public static string MessagesFile(string setName) =>
+        Path.Combine(GameDataSetDir(setName), "messages.json");
+
+    /// <summary>
+    /// Legacy pre-migration Messages file location. <see cref="MessageStore"/>
+    /// reads this as a fallback when the new <see cref="MessagesFile"/>
+    /// doesn't exist yet, so any pre-existing per-set catalogue auto-
+    /// migrates forward on the next Save. Safe to delete the
+    /// <c>Data/Global/Messages/</c> tree once every active set has
+    /// been re-saved.
+    /// </summary>
+    public static string LegacyMessagesFile(string setName) =>
         Path.Combine(MessagesDir, setName + ".json");
+
+    /// <summary>
+    /// Per-set Triggers file scoped inside the game-data set's folder.
+    /// Stores only the <see cref="Models.GameData.TriggerLocation.GameData"/>-
+    /// scoped triggers; <see cref="Models.GameData.TriggerLocation.Profile"/>-
+    /// scoped ones live on <see cref="Models.Profile.CharacterProfile.Triggers"/>.
+    /// </summary>
+    public static string TriggersFile(string setName) =>
+        Path.Combine(GameDataSetDir(setName), "triggers.json");
 
     /// <summary>
     /// Path to the app-shipped Messages seed JSON — read-only, single
