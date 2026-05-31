@@ -88,6 +88,18 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
         Enum.GetValues<SettingsTier>().ToArray();
 
+    /// <summary>
+    /// Read-only "Links" rows the dialog renders under the form —
+    /// each one is a (Table, Number) back-reference resolved against
+    /// the active game-data set to its human display name. Empty when
+    /// the record has no anchors. Populated once in the ctor; the
+    /// dialog never edits Links today (a future PR adds add / remove
+    /// rows + a game-data-row picker).
+    /// </summary>
+    public IReadOnlyList<LinkRow> LinkRows { get; }
+
+    public bool HasLinks => LinkRows.Count > 0;
+
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
     /// <summary>
@@ -145,13 +157,28 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         MessageRecord original,
         SettingsTier currentTier,
         IReadOnlyCollection<MessageRecord> existingRecords,
-        bool isNew)
+        bool isNew,
+        GameDataCache? cache = null)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(existingRecords);
         _original        = original;
         _existingRecords = existingRecords;
         _isNew           = isNew;
+
+        // Resolve each link to its display name via the active set.
+        // Missing cache (e.g. unit-test path) renders the rows with a
+        // null Name; the XAML hides those columns gracefully.
+        List<LinkRow> linkRows = new();
+        if (original.Links is { Count: > 0 } links)
+        {
+            foreach (GameDataLink link in links)
+            {
+                string? name = cache?.FindNameByNumber(link.Table, link.Number);
+                linkRows.Add(new LinkRow(link.Table, link.Number, name));
+            }
+        }
+        LinkRows = linkRows;
 
         Name     = original.Name;
         UseTier  = currentTier;
@@ -256,3 +283,25 @@ public sealed record MessageEditResult(
     MessageRecord Original,
     MessageRecord Updated,
     SettingsTier  Tier);
+
+/// <summary>
+/// One row in <see cref="MessageEditDialogViewModel.LinkRows"/> —
+/// pairs the back-reference's raw <c>(Table, Number)</c> with the
+/// game-data row's display Name resolved at dialog-open time.
+/// <see cref="DisplayName"/> is <c>null</c> when the row couldn't be
+/// found in the active set (stale link, no active set, table missing).
+/// </summary>
+/// <param name="Table">JSON file stem, e.g. <c>"Spells"</c>.</param>
+/// <param name="Number">Row's <c>Number</c> field.</param>
+/// <param name="DisplayName">Resolved Name; <c>null</c> on a stale link.</param>
+public sealed record LinkRow(string Table, int Number, string? DisplayName)
+{
+    /// <summary>
+    /// Compact one-line label rendered in the dialog. Looks like
+    /// <c>"Spells#14 — bless"</c> when the name resolves, or
+    /// <c>"Spells#14 (unknown)"</c> when it doesn't.
+    /// </summary>
+    public string Label => DisplayName is null
+        ? $"{Table}#{Number} (unknown)"
+        : $"{Table}#{Number} — {DisplayName}";
+}

@@ -202,7 +202,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
                 "User-defined outgoing typed-shortcut → command expansion; positional args + shared variables.");
 
         if (_messages is not null)
-            Sections.Add(new MessagesSectionViewModel(_messages, _dialogs, _resolver));
+            Sections.Add(new MessagesSectionViewModel(_messages, _dialogs, _resolver, _gameData));
         else
             AddPlaceholder("messages", "Messages", "Phase 5",
                 "Per-set Messages/Responses catalogue. Imported from a MegaMUD messages.md file and " +

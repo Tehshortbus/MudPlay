@@ -22,6 +22,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     private readonly MessageStore _store;
     private readonly DialogService? _dialogs;
     private readonly SettingsResolver? _resolver;
+    private readonly GameDataCache? _cache;
 
     public override string Id => "messages";
     public override string Title => "Messages";
@@ -46,12 +47,17 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
 
     private readonly NotifyCollectionChangedEventHandler _handler;
 
-    public MessagesSectionViewModel(MessageStore store, DialogService? dialogs = null, SettingsResolver? resolver = null)
+    public MessagesSectionViewModel(
+        MessageStore store,
+        DialogService? dialogs = null,
+        SettingsResolver? resolver = null,
+        GameDataCache? cache = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
         _dialogs = dialogs;
         _resolver = resolver;
+        _cache = cache;
         _handler = (_, _) => Reload();
         _store.Messages.CollectionChanged += _handler;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
@@ -102,7 +108,8 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
             original,
             row.SourceTier,
             _store.Messages,
-            isNew: false);
+            isNew: false,
+            cache: _cache);
         MessageEditResult? result = await _dialogs.OpenWindowAsync<MessageEditDialogViewModel, MessageEditResult>(vm);
         if (result is null) return;
 

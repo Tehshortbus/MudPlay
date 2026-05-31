@@ -100,20 +100,46 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Right: Action picker -->
-                <Border Grid.Column="1"
-                        BorderBrush="{StaticResource ChromeBorderBrush}"
-                        BorderThickness="1" CornerRadius="3" Padding="10">
-                    <StackPanel>
-                        <TextBlock Classes="SectionHeader" Text="Action"/>
-                        <TextBlock Text="What the engine does when this message fires."
-                                   Classes="FieldLabel"
-                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        <ComboBox ItemsSource="{Binding AvailableActions}"
-                                  SelectedItem="{Binding Action, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"/>
-                    </StackPanel>
-                </Border>
+                <!-- Right: Action picker + Links panel -->
+                <StackPanel Grid.Column="1" Spacing="8">
+                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                            BorderThickness="1" CornerRadius="3" Padding="10">
+                        <StackPanel>
+                            <TextBlock Classes="SectionHeader" Text="Action"/>
+                            <TextBlock Text="What the engine does when this message fires."
+                                       Classes="FieldLabel"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <ComboBox ItemsSource="{Binding AvailableActions}"
+                                      SelectedItem="{Binding Action, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Read-only back-references to the game-data row(s)
+                         this message is associated with. Hidden when the
+                         record has no Links (most user-authored entries). -->
+                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                            BorderThickness="1" CornerRadius="3" Padding="10"
+                            IsVisible="{Binding HasLinks}">
+                        <StackPanel>
+                            <TextBlock Classes="SectionHeader" Text="Links"/>
+                            <TextBlock Text="Game-data rows that fire this message."
+                                       Classes="FieldLabel"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <ItemsControl ItemsSource="{Binding LinkRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LinkRow">
+                                        <TextBlock Text="{Binding Label}"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="11"
+                                                   Margin="0,1"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </Grid>
 
             <!-- ===== Buttons ===== -->

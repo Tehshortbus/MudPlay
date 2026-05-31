@@ -196,6 +196,30 @@ public sealed class GameDataCache
     }
 
     /// <summary>
+    /// Lookup the <c>Name</c> field of the row in
+    /// <paramref name="tableName"/> whose <c>Number</c> field equals
+    /// <paramref name="number"/>. Returns <c>null</c> when the table
+    /// isn't in the active set, the row isn't found, or either field
+    /// is missing on the matched row. Used by edit dialogs to render
+    /// <see cref="Models.GameData.GameDataLink"/> back-references as
+    /// human-readable labels.
+    /// </summary>
+    public string? FindNameByNumber(string tableName, int number)
+    {
+        JsonDocument? doc = GetRawTable(tableName);
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out JsonElement numEl)) continue;
+            if (numEl.ValueKind != JsonValueKind.Number) continue;
+            if (!numEl.TryGetInt32(out int rowNum) || rowNum != number) continue;
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)) return null;
+            return nameEl.GetString();
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Drop the cached <see cref="JsonDocument"/> for one table. Used
     /// by per-tab consumers after they've folded the raw JSON into
     /// typed model collections (the MemoryOptimization pattern).
