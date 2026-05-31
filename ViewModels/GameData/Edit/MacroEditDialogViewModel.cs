@@ -39,6 +39,11 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyDisplay))]
     [NotifyPropertyChangedFor(nameof(CaptureButtonText))]
+    // CanSave + StatusMessage both depend on IsCapturing — without these
+    // the Save button stays greyed-out after exiting capture even when
+    // the new chord is valid, because the binding never re-evaluates.
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
     private bool _isCapturing;
 
     [ObservableProperty]
