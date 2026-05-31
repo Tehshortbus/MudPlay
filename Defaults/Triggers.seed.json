@@ -1,0 +1,1028 @@
+[
+  {
+    "Name": "1 life left",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You have 1 lives left.",
+    "Response": ".LOW ON LIVES!^M;o^M",
+    "SoundFile": null
+  },
+  {
+    "Name": "2 lives left",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You have 2 lives left.",
+    "Response": ".LOW ON LIVES!^M;o^M",
+    "SoundFile": null
+  },
+  {
+    "Name": "banshee's wail end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You don't feel quite so afraid anymore",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "blind end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You can see again!",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "brain eater",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "and a small creature leaps out!",
+    "Response": "^M",
+    "SoundFile": null
+  },
+  {
+    "Name": "breath attack end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The suffocating fumes dissipate.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "Cancel FUgram",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "Would you like to forward your /P to an FUgram?",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (alley)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} slips into the dark alley.",
+    "Response": "go alley",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (alley)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} slips into the dangerous black alley.",
+    "Response": "go alley",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (black gem)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} touches the black gem, and is consumed in a crackling field of",
+    "Response": "touch gem",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (burnt stump)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs through the hole in the burnt stump.",
+    "Response": "go stump",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (bushes)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} squeezes into the opening under the bushes.",
+    "Response": "enter bush",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (bushes)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} pushes through the bushes!",
+    "Response": "enter bushes",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (climb)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} grasps onto some of the vines, and begins to climb!",
+    "Response": "climb vines",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (crack)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} walks into the wide crack.",
+    "Response": "go crack",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (darkwood ring)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rubs a darkwood ring, and is swept through the arch!",
+    "Response": "go arch",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (down)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps onto the slope and begins to slide down uncontrollably!",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (down)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} starts down the slope, but slips and slides down!",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (down)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} descends the steps encircling the ancient silverwood tree.",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (down)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs down to a lower ledge with the aid of a climbing harness.",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (float)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} drinks a bubbling white potion, and begins to float upwards!",
+    "Response": "drink levitation",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} pushes through the tentacles and into the hole.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} crawls into the largest hole in the avalanche of stone.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs through the slimy hole.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs through a hole in the wall!",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs out through the hole.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs out through the hole to the south.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs out of the small hole in the hillside!",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs into the small hole in the hillside.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs into the hole in the ceiling!",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs into a hole.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (hole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs down through the hole.",
+    "Response": "go hole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (jump)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps back, starts running to the west, and makes a mighty leap!",
+    "Response": "jump west",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (jump)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps back, starts running to the south, and makes a mighty leap!",
+    "Response": "jump south",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (jump)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps back, starts running to the north, and makes a mighty leap!",
+    "Response": "jump north",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (jump)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps back, starts running to the east, and makes a mighty leap!",
+    "Response": "jump east",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (lake)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps into the water at the lake's edge and dives beneath the ice!",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (lake)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs out of the water.",
+    "Response": "u",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (lever)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} pulls the lever, and steps through the gate.",
+    "Response": "pull lever",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (lever)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} pulls the lever, and falls through a trapdoor!",
+    "Response": "pull lever",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (manhole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} squeezes into the dark space beneath the manhole.",
+    "Response": "go manhole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (manhole)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} enters a manhole in the ground!",
+    "Response": "go manhole",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (moat)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} jumps into the filthy black waters of the moat.",
+    "Response": "go moat",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (moat)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} dives into the black waters of the moat!",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (moat)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs out of the filthy moat.",
+    "Response": "u",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (mountain stair)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs up the mountain stair.",
+    "Response": "u",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (mountain stair)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs down the mountain stair.",
+    "Response": "d",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (path)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps onto the side-path and quickly vanishes from view.",
+    "Response": "go path",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (path)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} shoves aside the foliage, and disappears among the trees.",
+    "Response": "go path",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (path)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} pushes through the bushes, and walks onto a concealed path.",
+    "Response": "go path",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (path)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} follows a hidden path!",
+    "Response": "go path",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps through the swirling portal.",
+    "Response": "go portal",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps through the shimmering portal, and vanishes!",
+    "Response": "go portal",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps into the portal, and disappears!",
+    "Response": "go portal",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps into the dark portal, and vanishes!",
+    "Response": "go portal",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} enters the golden portal and vanishes!",
+    "Response": "go golden",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} enters the ebony portal and vanishes!",
+    "Response": "go ebony",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (portal)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} enters the crimson portal and vanishes!",
+    "Response": "go crimson",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the west.",
+    "Response": "w",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the southwest.",
+    "Response": "sw",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the southeast.",
+    "Response": "se",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the south.",
+    "Response": "s",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the northwest.",
+    "Response": "nw",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the northeast.",
+    "Response": "ne",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the north.",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a wooden skiff to the east.",
+    "Response": "e",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a skiff south, up to the Silvermere docks.",
+    "Response": "s",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} rows a skiff north, up to the shore.",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} hops into one of the skiffs, and rows away.",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} hops into one of the boats, and begins to row out across the river.",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs into one of the skiffs, and rows out into the river.",
+    "Response": "go skiff",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (skiff)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs into a boat, and rows off across the river.",
+    "Response": "s",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (stone altar)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} touches the hideous stone altar.",
+    "Response": "touch altar",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (tree)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} jumps and grabs onto a low branch, and begins to climb the tree.",
+    "Response": "climb tree",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (tree)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} grasps onto a branch of the tree, and climbs upwards.",
+    "Response": "climb tree",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (tree)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} carefully begins to climb down.",
+    "Response": "climb tree",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (up)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs up through the filthy pipe.",
+    "Response": "u",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (up)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} climbs the steps encircling the ancient silverwood tree.",
+    "Response": "u",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (vines)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} swings over the edge of the cliff, and climbs down the vines!",
+    "Response": "climb vines",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (vortex)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} steps into the swirling vortex, and vanishes in a flash!",
+    "Response": "go vortex",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (wall)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} walks through the wall to the west!",
+    "Response": "w",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (wall)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} walks through the wall to the east!",
+    "Response": "e",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (warehouse)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The chains snap, and {target} slips inside the warehouse.",
+    "Response": "n",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (waterfall)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} walks through the waterfall!",
+    "Response": "w",
+    "SoundFile": null
+  },
+  {
+    "Name": "chase (willow)",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{target} gingerly steps inside the cracked willow.",
+    "Response": "go willow",
+    "SoundFile": null
+  },
+  {
+    "Name": "confusion end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The effects of confusion wear off!",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "constriction end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You break free of the coils!",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "convulsions end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "Your body returns to normal.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "creature illusion end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "Without a sound, the illusionary attackers vanish.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "desert damage",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You suffer in the desert heat...",
+    "Response": "drink water",
+    "SoundFile": null
+  },
+  {
+    "Name": "entangle end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The effects of entangle wear off!",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "floating key death",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "floating key for {dmg} damage!",
+    "Response": "get golden lion key",
+    "SoundFile": null
+  },
+  {
+    "Name": "frail end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You feel your strength return",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "freeze end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You become unfrozen.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "frost hydra entry",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The hydra strains against its icy bond, breaks it, and comes to life!",
+    "Response": "^M",
+    "SoundFile": null
+  },
+  {
+    "Name": "giant skeleton shriek end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You feel braver.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "globe of darkness end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The unnatural darkness lifts.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "hold end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You can move again!",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "illuminate",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You cast illuminate!",
+    "Response": "use light ball",
+    "SoundFile": null
+  },
+  {
+    "Name": "knockdown end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You get back on your feet",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "low on lives",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You feel your life-force ebbing.",
+    "Response": ".LOW ON LIVES!^M;o^M",
+    "SoundFile": null
+  },
+  {
+    "Name": "net hold end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You work yourself free.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "plague end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The plague has left your ravaged body.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "rosebush sleep",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You awaken from unnatural slumber.",
+    "Response": "st",
+    "SoundFile": null
+  },
+  {
+    "Name": "rotting beholder nausea end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You feel less sick.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "sandstorm end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The sandstorm subsides, allowing your scathed flesh to heal.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "silvery manacles end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The silvery manacles restraining you shimmer and fade.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "slaver leader death",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "The slaver leader whimpers and drops his weapon, calling for mercy!",
+    "Response": "ask dying slaver leader keep",
+    "SoundFile": null
+  },
+  {
+    "Name": "sleep end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You awaken from the unnatural slumber",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "stun end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You are no longer stunned.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "telepaths @health",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "{1} telepaths @health",
+    "Response": "par",
+    "SoundFile": null
+  },
+  {
+    "Name": "teleport",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You find yourself...elsewhere.",
+    "Response": "par",
+    "SoundFile": null
+  },
+  {
+    "Name": "weakness end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You feel your strength return.",
+    "Response": "stat",
+    "SoundFile": null
+  },
+  {
+    "Name": "web end",
+    "Enabled": true,
+    "Scope": "GameMessages",
+    "MatchType": "Literal",
+    "Pattern": "You break free of the cocoon",
+    "Response": "stat",
+    "SoundFile": null
+  }
+]

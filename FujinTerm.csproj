@@ -26,6 +26,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Defaults/ ships app-default seed data alongside the executable
+         (Messages catalogues per game-data set, the trigger seed list,
+         and any future per-tab defaults). Copied to bin/ on every
+         build so MessageStore / TriggerEngine can load them on first
+         launch when the per-character / per-set file doesn't exist
+         yet. NOT embedded as a resource — kept as loose files so
+         users can hand-edit them outside the build. -->
+    <Content Include="Defaults\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- FujinTerm.Tests lives at the repo root as a sibling project. Without
          these exclusions the SDK's default Compile glob would pull every
          test file into the app assembly. -->
