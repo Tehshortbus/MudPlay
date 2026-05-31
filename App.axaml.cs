@@ -61,6 +61,9 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.TriggerEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.TriggerEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.AliasEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.AliasEditDialog>();
 
             // Per-action keybind rebind dialog — opened from any
             // toolbar button or menu item that owns a BuiltInAction.
