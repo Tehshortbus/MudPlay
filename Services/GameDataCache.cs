@@ -67,6 +67,15 @@ public sealed class GameDataCache
     /// </summary>
     public event Action<string?>? ActiveSetChanged;
 
+    /// <summary>
+    /// Optional log sink — when set (production wires
+    /// <see cref="AppServices.Log"/> after construction), every
+    /// <see cref="SwitchSet"/> emits an Info entry naming the
+    /// outgoing + incoming set so the user can verify swap success
+    /// in the program log. Tests leave it null.
+    /// </summary>
+    public LogService? Log { get; set; }
+
     public GameDataCache() : this(AppPaths.GameDataRoot) { }
 
     /// <summary>Test seam — lets tests point at an isolated root.</summary>
@@ -127,8 +136,17 @@ public sealed class GameDataCache
 
         if (string.Equals(ActiveSet, setName, StringComparison.OrdinalIgnoreCase)) return;
 
+        string? outgoing = ActiveSet;
         EvictAll();
         ActiveSet = setName;
+        Log?.Log(LogSeverity.Info, "GameData",
+            (outgoing, setName) switch
+            {
+                (null, null)       => "No active game data set.",
+                (null, not null)   => $"Loaded game data set '{setName}'.",
+                (not null, null)   => $"Unloaded game data set '{outgoing}' (no set active).",
+                (not null, not null) => $"Swapped game data set '{outgoing}' → '{setName}'.",
+            });
         ActiveSetChanged?.Invoke(setName);
     }
 

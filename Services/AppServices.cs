@@ -270,6 +270,10 @@ public sealed class AppServices
     private AppServices(LogService bootstrapLog)
     {
         Log = bootstrapLog;
+        // Late-bind the cache's log sink so SwitchSet emits the swap
+        // audit entries (load / unload / swap) without coupling the
+        // cache to AppServices construction order.
+        GameData.Log = bootstrapLog;
         Settings = new SettingsService();
         Profile = new ProfileService();
         Bbs = new BbsProfileStore();
