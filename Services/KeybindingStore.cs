@@ -31,6 +31,17 @@ public sealed class KeybindingStore
     /// <summary>Fired after a binding changes via <see cref="Rebind"/>. Payload: the action whose chord moved.</summary>
     public event Action<BuiltInAction>? BindingChanged;
 
+    /// <summary>
+    /// Fired after a bulk reload — profile load (<see cref="LoadFrom"/>)
+    /// or profile close (<see cref="SeedDefaults"/>). Subscribers
+    /// re-render every binding rather than reacting to a single
+    /// action, the way they do for <see cref="BindingChanged"/>.
+    /// Without this, <see cref="Views.GlobalHotkeys"/> wouldn't know
+    /// to rebuild Window.KeyBindings on profile load, leaving the
+    /// just-loaded chords inert until the user manually rebinds.
+    /// </summary>
+    public event Action? BindingsReloaded;
+
     /// <summary>Parameterless ctor for tests / in-memory scenarios. Seeds defaults.</summary>
     public KeybindingStore()
     {
@@ -156,16 +167,20 @@ public sealed class KeybindingStore
         _bindings.Clear();
         foreach ((BuiltInAction action, KeyChord chord) in DefaultBindings)
             _bindings[action] = chord;
+        BindingsReloaded?.Invoke();
     }
 
     private void LoadFrom(CharacterProfile profile)
     {
-        SeedDefaults();
+        _bindings.Clear();
+        foreach ((BuiltInAction action, KeyChord chord) in DefaultBindings)
+            _bindings[action] = chord;
         if (profile.BuiltInKeybindings is { Count: > 0 } overrides)
         {
             foreach ((BuiltInAction action, KeyChord chord) in overrides)
                 _bindings[action] = chord;
         }
+        BindingsReloaded?.Invoke();
     }
 
     /// <summary>

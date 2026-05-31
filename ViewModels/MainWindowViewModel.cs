@@ -380,12 +380,17 @@ public partial class MainWindowViewModel : ObservableObject
         // to KeybindingStore.Get(...) so PropertyChanged on all of them
         // is enough to update the menu; toolbar tooltips are baked into
         // ToolbarButtonItem at row-build time, so we re-run RebuildToolbarItems
-        // to pick up the new label.
-        AppServices.Current.Keybindings.BindingChanged += _ =>
+        // to pick up the new label. BindingsReloaded covers the bulk
+        // profile-load / -close path so the just-loaded chords surface
+        // immediately without waiting for the user to rebind.
+        AppServices.Current.Keybindings.BindingChanged  += _ => OnKeybindsChanged();
+        AppServices.Current.Keybindings.BindingsReloaded += OnKeybindsChanged;
+
+        void OnKeybindsChanged()
         {
             RefreshKeybindLabels();
             RebuildToolbarItems();
-        };
+        }
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.

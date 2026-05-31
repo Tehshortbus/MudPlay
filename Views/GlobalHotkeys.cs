@@ -78,17 +78,21 @@ public static class GlobalHotkeys
     {
         if (_subscribed) return;
         _subscribed = true;
-        AppServices.Current.Keybindings.BindingChanged += _ =>
+        // Single-action rebind and bulk reload (profile load / close)
+        // both drive the same "rebuild all attached windows" loop.
+        AppServices.Current.Keybindings.BindingChanged  += _ => RebuildAll();
+        AppServices.Current.Keybindings.BindingsReloaded += RebuildAll;
+    }
+
+    private static void RebuildAll()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime
+            { MainWindow.DataContext: MainWindowViewModel vm } _) return;
+        for (int i = _attached.Count - 1; i >= 0; i--)
         {
-            if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime
-                { MainWindow.DataContext: MainWindowViewModel vm } _) return;
-            // Rebuild every still-alive attached window.
-            for (int i = _attached.Count - 1; i >= 0; i--)
-            {
-                if (_attached[i].TryGetTarget(out Window? w)) Rebuild(w, vm);
-                else _attached.RemoveAt(i);
-            }
-        };
+            if (_attached[i].TryGetTarget(out Window? w)) Rebuild(w, vm);
+            else _attached.RemoveAt(i);
+        }
     }
 
     private static void Rebuild(Window window, MainWindowViewModel vm)
