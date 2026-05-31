@@ -377,6 +377,14 @@ public sealed class AppServices
         // see the right realm's catalogue.
         Messages = new MessageStore(Log);
         GameData.ActiveSetChanged += Messages.Load;
+        // Triggers split storage: GameData-scoped triggers live in the
+        // active set's per-set triggers.json; Profile-scoped triggers
+        // stay on CharacterProfile.Triggers. The engine reloads its
+        // GameData slice on every set switch — the Profile slice is
+        // owned by ProfileLoaded, wired inside TriggerEngine's ctor.
+        GameData.ActiveSetChanged += Triggers.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            Triggers.OnActiveSetChanged(GameData.ActiveSet);
 
         // Coverage audit — fires on every set switch + every Messages
         // CollectionChanged; emits a summary LogEntry tagged
