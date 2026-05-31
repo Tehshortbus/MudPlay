@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="680"
         x:Class="FujinTerm.Views.GameData.Edit.MessageEditDialog"
         x:DataType="vm:MessageEditDialogViewModel"
         Title="{Binding Title}"
-        Width="620" Height="560"
+        Width="640" Height="680"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -75,12 +75,17 @@
             <!-- ===== Effects + Action ===== -->
             <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
 
-                <!-- Left: Effects checkboxes -->
+                <!-- Left: Effect checkboxes — no section header (the
+                     column position + content makes it obvious). The
+                     three MegaMUD-specific find-mode flags (FindInText,
+                     FindInConversations, UseWhenChasing) are dropped
+                     from the UI entirely; the underlying bits round-
+                     trip as "reserved" via RawFlagsHex so importing
+                     a legacy file + re-saving doesn't strip them. -->
                 <Border Grid.Column="0"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1" CornerRadius="3" Padding="10">
                     <StackPanel>
-                        <TextBlock Classes="SectionHeader" Text="Effects"/>
                         <CheckBox Content="Blinded"             IsChecked="{Binding FlagBlinded, Mode=TwoWay}"/>
                         <CheckBox Content="Confused"            IsChecked="{Binding FlagConfused, Mode=TwoWay}"/>
                         <CheckBox Content="Poisoned"            IsChecked="{Binding FlagPoisoned, Mode=TwoWay}"/>
@@ -92,11 +97,7 @@
                         <CheckBox Content="Attack prevented"    IsChecked="{Binding FlagAttackPrevented, Mode=TwoWay}"/>
                         <CheckBox Content="Ends combat"         IsChecked="{Binding FlagEndsCombat, Mode=TwoWay}"/>
                         <CheckBox Content="Last action failed"  IsChecked="{Binding FlagLastActionFailed, Mode=TwoWay}"/>
-                        <Border Height="1" Margin="0,8" Background="{StaticResource ChromeBorderBrush}"/>
-                        <CheckBox Content="Find anywhere in text" IsChecked="{Binding FlagFindInText, Mode=TwoWay}"/>
-                        <CheckBox Content="Find in conversations" IsChecked="{Binding FlagFindInConversations, Mode=TwoWay}"/>
-                        <CheckBox Content="Use when chasing"      IsChecked="{Binding FlagUseWhenChasing, Mode=TwoWay}"/>
-                        <CheckBox Content="Disabled (don't use)"  IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
+                        <CheckBox Content="Disabled (don't use)" IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
                     </StackPanel>
                 </Border>
 
