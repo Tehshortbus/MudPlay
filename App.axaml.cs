@@ -59,6 +59,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.GameData.Edit.MacroEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.MacroEditDialog>();
 
+            // Per-action keybind rebind dialog — opened from any
+            // toolbar button or menu item that owns a BuiltInAction.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Keybind.KeybindEditDialogViewModel,
+                FujinTerm.Views.Keybind.KeybindEditDialog>();
+
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
             // profiles live as subfolders, not flat .json files).

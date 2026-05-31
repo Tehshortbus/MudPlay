@@ -350,6 +350,11 @@ public partial class MainWindowViewModel : ObservableObject
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
 
+        // Refresh every menu's InputGesture text on rebind. Each gesture
+        // label property reads through to KeybindingStore.Get(...) so
+        // PropertyChanged on all of them is enough to update the menu.
+        AppServices.Current.Keybindings.BindingChanged += _ => RefreshKeybindLabels();
+
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
         Emulator.ResponseReady += bytes =>
@@ -2042,6 +2047,92 @@ public partial class MainWindowViewModel : ObservableObject
             Other dependencies arrive with their respective phases; their
             licenses will appear here once they're added.
             """);
+
+    // ----- Live-bound input-gesture labels for menu items ---------------
+    // Each property reads the current chord for one BuiltInAction.
+    // Refreshed in bulk by RefreshKeybindLabels() when KeybindingStore
+    // fires BindingChanged. The XAML menu items bind their InputGesture
+    // to these — so rebinding through the context-menu editor updates
+    // every menu's shortcut display immediately.
+
+    public string ConversationGesture     => GetGesture(Models.Profile.BuiltInAction.OpenConversation);
+    public string PartyGesture            => GetGesture(Models.Profile.BuiltInAction.OpenParty);
+    public string WorkshopGesture         => GetGesture(Models.Profile.BuiltInAction.OpenWorkshop);
+    public string NavigationGesture       => GetGesture(Models.Profile.BuiltInAction.OpenNavigation);
+    public string SpellBookGesture        => GetGesture(Models.Profile.BuiltInAction.OpenSpellBook);
+    public string LogPaneGesture          => GetGesture(Models.Profile.BuiltInAction.OpenLogPane);
+    public string BackscrollGesture       => GetGesture(Models.Profile.BuiltInAction.OpenBackscroll);
+    public string SessionStatsGesture     => GetGesture(Models.Profile.BuiltInAction.OpenSessionStats);
+    public string SettingsGesture         => GetGesture(Models.Profile.BuiltInAction.OpenSettings);
+    public string GameDataBrowserGesture  => GetGesture(Models.Profile.BuiltInAction.OpenGameDataBrowser);
+    public string ToggleConnectionGesture => GetGesture(Models.Profile.BuiltInAction.ToggleConnection);
+    public string NewProfileGesture       => GetGesture(Models.Profile.BuiltInAction.NewProfile);
+    public string OpenProfileGesture      => GetGesture(Models.Profile.BuiltInAction.OpenProfile);
+    public string SaveProfileGesture      => GetGesture(Models.Profile.BuiltInAction.SaveProfile);
+    public string SaveProfileAsGesture    => GetGesture(Models.Profile.BuiltInAction.SaveProfileAs);
+    public string QuitGesture             => GetGesture(Models.Profile.BuiltInAction.Quit);
+
+    private static string GetGesture(Models.Profile.BuiltInAction action)
+        => AppServices.Current.Keybindings.Get(action).Label;
+
+    /// <summary>Fire PropertyChanged for every *Gesture label so menus refresh after a rebind.</summary>
+    private void RefreshKeybindLabels()
+    {
+        OnPropertyChanged(nameof(ConversationGesture));
+        OnPropertyChanged(nameof(PartyGesture));
+        OnPropertyChanged(nameof(WorkshopGesture));
+        OnPropertyChanged(nameof(NavigationGesture));
+        OnPropertyChanged(nameof(SpellBookGesture));
+        OnPropertyChanged(nameof(LogPaneGesture));
+        OnPropertyChanged(nameof(BackscrollGesture));
+        OnPropertyChanged(nameof(SessionStatsGesture));
+        OnPropertyChanged(nameof(SettingsGesture));
+        OnPropertyChanged(nameof(GameDataBrowserGesture));
+        OnPropertyChanged(nameof(ToggleConnectionGesture));
+        OnPropertyChanged(nameof(NewProfileGesture));
+        OnPropertyChanged(nameof(OpenProfileGesture));
+        OnPropertyChanged(nameof(SaveProfileGesture));
+        OnPropertyChanged(nameof(SaveProfileAsGesture));
+        OnPropertyChanged(nameof(QuitGesture));
+    }
+
+    /// <summary>
+    /// Rebind UX entry point — used by toolbar button + menu item context
+    /// menus. <paramref name="actionId"/> is the stable identifier the
+    /// toolbar catalogue uses (matches the <see cref="BuiltInAction"/>
+    /// enum-name); the command resolves it, opens
+    /// <see cref="ViewModels.Keybind.KeybindEditDialogViewModel"/>, and
+    /// pushes the chosen chord back via
+    /// <see cref="KeybindingStore.Rebind"/>. Silently no-ops when the
+    /// id doesn't map to a known action (toolbar entry without a
+    /// rebindable keybind, e.g. ToggleCapture).
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenKeybindEditAsync(string? actionId)
+    {
+        if (!Enum.TryParse<Models.Profile.BuiltInAction>(actionId, ignoreCase: false, out Models.Profile.BuiltInAction action))
+            return;
+
+        ViewModels.Keybind.KeybindEditDialogViewModel vm = new(
+            action,
+            AppServices.Current.Keybindings,
+            AppServices.Current.Macros);
+        Models.Profile.KeyChord chord = await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.Keybind.KeybindEditDialogViewModel, Models.Profile.KeyChord>(vm);
+        // The dialog always returns a chord — Save returns the new one,
+        // Cancel returns the original (so the rebind is a no-op).
+        if (!chord.Equals(AppServices.Current.Keybindings.Get(action)))
+            AppServices.Current.Keybindings.Rebind(action, chord);
+    }
+
+    /// <summary>One-click reset for a context-menu "Reset to default" entry. Same actionId mapping as the editor.</summary>
+    [RelayCommand]
+    private void ResetKeybind(string? actionId)
+    {
+        if (!Enum.TryParse<Models.Profile.BuiltInAction>(actionId, ignoreCase: false, out Models.Profile.BuiltInAction action))
+            return;
+        AppServices.Current.Keybindings.ResetToDefault(action);
+    }
 
     /// <summary>Help → About FujinTerm.</summary>
     [RelayCommand]
