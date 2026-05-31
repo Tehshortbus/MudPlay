@@ -211,6 +211,15 @@ public sealed class AppServices
     public MacroStore Macros { get; }
 
     /// <summary>
+    /// Runtime keystroke → macro → wire-send bridge. Constructed up-
+    /// front; <see cref="MacroDispatcher.SetSender"/> gets bound from
+    /// <see cref="MainWindowViewModel"/> after the telnet client is
+    /// ready. Pre-binding, key handlers fall through to the normal
+    /// terminal path.
+    /// </summary>
+    public MacroDispatcher MacroDispatcher { get; }
+
+    /// <summary>
     /// Active game-data set's Messages/Responses catalogue. Imported
     /// from a MegaMUD <c>messages.md</c> file, persisted alongside
     /// the set under <c>Data/Global/Messages/{set-name}.json</c>.
@@ -292,6 +301,7 @@ public sealed class AppServices
         Aliases = new AliasEngine(Profile);
         Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
+        MacroDispatcher = new MacroDispatcher(Macros);
         // PlayerDatabase: BBS-tier observations + Char-tier customisations.
         // Wires its own subscriptions (ProfileLoaded / ProfileClosed /
         // BbsPinApplied / ProfileSaving) so both layers track the

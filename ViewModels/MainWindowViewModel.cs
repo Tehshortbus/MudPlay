@@ -344,6 +344,12 @@ public partial class MainWindowViewModel : ObservableObject
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
 
+        // Macro dispatcher needs a wire-send callback before it can fire.
+        // TerminalControl + ConversationWindow's input both call into the
+        // dispatcher on KeyDown — without a sender bound, the call returns
+        // false and the keystroke falls through to normal handling.
+        AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
+
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
         Emulator.ResponseReady += bytes =>
