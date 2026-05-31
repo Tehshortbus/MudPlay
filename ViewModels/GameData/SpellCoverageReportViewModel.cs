@@ -65,6 +65,18 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         MessageStore  store   = AppServices.Current.Messages;
         GameDataCache cache   = AppServices.Current.GameData;
 
+        // Seed Links with every game-data entity that USES this
+        // spell in-play — every Monster under Casted By + every Item
+        // under Learned From. The Spell itself isn't linked: the user
+        // wants the message anchored to the thing the player actually
+        // encounters (the monster, the item), not the underlying
+        // mechanic. De-duped via HashSet so a row appearing in
+        // multiple fields doesn't double-link.
+        List<GameDataLink> links = new();
+        HashSet<(string, int)> seen = new();
+        AppendRefsFromSpellRow(cache, spell.Number, "Casted By",    links, seen);
+        AppendRefsFromSpellRow(cache, spell.Number, "Learned From", links, seen);
+
         MessageRecord blank = new(
             Id:          string.Empty,
             Name:        spell.Name,
@@ -74,7 +86,7 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
             Flags:       MessageFlags.None,
             RawFlagsHex: 0,
             Response:    string.Empty,
-            Links:       new[] { new GameDataLink("Spells", spell.Number) });
+            Links:       links);
 
         MessageEditDialogViewModel vm = new(
             blank,
@@ -102,5 +114,41 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
     public void Detach()
     {
         _auditor.ResultAvailable -= OnResultAvailable;
+    }
+
+    /// <summary>
+    /// Re-read the raw Spells row for <paramref name="spellNumber"/>
+    /// from the active set's cache, parse the <paramref name="fieldName"/>
+    /// for Monster/Item/Spell <c>#N</c> tokens, and append each as a
+    /// <see cref="GameDataLink"/> to <paramref name="links"/>. The
+    /// resolved display strings on <see cref="UnanchoredSpell"/> can't
+    /// be re-parsed (the resolver rewrote them to <c>"Name {N}"</c>
+    /// form which loses the original "Monster #" / "Item #" tag), so
+    /// we go back to the source.
+    /// </summary>
+    private static void AppendRefsFromSpellRow(
+        GameDataCache cache,
+        int spellNumber,
+        string fieldName,
+        List<GameDataLink> links,
+        HashSet<(string, int)> seen)
+    {
+        System.Text.Json.JsonDocument? doc = cache.GetRawTable("Spells");
+        if (doc is null) return;
+        foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)) continue;
+            if (numEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (!numEl.TryGetInt32(out int n) || n != spellNumber) continue;
+            if (!row.TryGetProperty(fieldName, out System.Text.Json.JsonElement el)) return;
+            if (el.ValueKind != System.Text.Json.JsonValueKind.String) return;
+            string? raw = el.GetString();
+            foreach ((string table, int number) in SpellCoverageAuditor.ParseRefs(raw))
+            {
+                if (seen.Add((table, number)))
+                    links.Add(new GameDataLink(table, number));
+            }
+            return;
+        }
     }
 }

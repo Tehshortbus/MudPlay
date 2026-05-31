@@ -108,15 +108,24 @@ public sealed class SpellCoverageAuditor
             return Latest;
         }
 
-        // Build the set of (Spells, #) numbers any Message links at.
-        HashSet<int> anchored = new();
+        // Build per-table anchor sets: every (Spells/Monsters/Items, N)
+        // appearing in any Message's Links. A spell is "anchored" when
+        // a Message points at the spell itself OR at any caster
+        // (monster / item) of the spell. The user-facing drilldown
+        // links to casters by preference (the player encounters the
+        // monster, not the abstract spell), so a Monsters-only anchor
+        // is enough to mark coverage as resolved.
+        HashSet<int> anchoredSpells   = new();
+        HashSet<int> anchoredMonsters = new();
+        HashSet<int> anchoredItems    = new();
         foreach (MessageRecord m in _messages.Messages)
         {
             if (m.Links is null) continue;
             foreach (GameDataLink link in m.Links)
             {
-                if (string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase))
-                    anchored.Add(link.Number);
+                if (string.Equals(link.Table, "Spells",   StringComparison.OrdinalIgnoreCase)) anchoredSpells.Add(link.Number);
+                if (string.Equals(link.Table, "Monsters", StringComparison.OrdinalIgnoreCase)) anchoredMonsters.Add(link.Number);
+                if (string.Equals(link.Table, "Items",    StringComparison.OrdinalIgnoreCase)) anchoredItems.Add(link.Number);
             }
         }
 
@@ -126,13 +135,23 @@ public sealed class SpellCoverageAuditor
         {
             if (!IsPlayerFacing(row, out string name, out int number)) continue;
             considered++;
-            if (anchored.Contains(number)) continue;
+
+            // Direct anchor on the spell row itself.
+            if (anchoredSpells.Contains(number)) continue;
+
+            // Indirect anchor — any caster (monster / item) of this
+            // spell is anchored, so the message text is covered.
+            string? castedByRaw    = ReadString(row, "Casted By");
+            string? learnedFromRaw = ReadString(row, "Learned From");
+            if (AnyCasterAnchored(castedByRaw, anchoredMonsters, anchoredItems)) continue;
+            if (AnyCasterAnchored(learnedFromRaw, anchoredMonsters, anchoredItems)) continue;
+
             gaps.Add(new UnanchoredSpell(
-                Number:     number,
-                Name:       name,
-                CastedBy:   ResolveRefs(ReadString(row, "Casted By")),
-                LearnedFrom: ResolveRefs(ReadString(row, "Learned From")),
-                Classes:    ReadString(row, "Classes")));
+                Number:      number,
+                Name:        name,
+                CastedBy:    ResolveRefs(castedByRaw),
+                LearnedFrom: ResolveRefs(learnedFromRaw),
+                Classes:     ReadString(row, "Classes")));
         }
 
         gaps.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -243,6 +262,54 @@ public sealed class SpellCoverageAuditor
     private static readonly System.Text.RegularExpressions.Regex RefPattern = new(
         @"\b(Monster|Item|Spell)\s*#\s*(\d+)\b",
         System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when any Monster/Item ref in <paramref name="raw"/>
+    /// already has a Message anchor in
+    /// <paramref name="anchoredMonsters"/> /
+    /// <paramref name="anchoredItems"/>. Lets the audit treat a spell
+    /// as covered when the user has authored a message for one of
+    /// its casters even without a direct (Spells, N) link.
+    /// </summary>
+    private static bool AnyCasterAnchored(
+        string? raw,
+        HashSet<int> anchoredMonsters,
+        HashSet<int> anchoredItems)
+    {
+        foreach ((string table, int number) in ParseRefs(raw))
+        {
+            if (table == "Monsters" && anchoredMonsters.Contains(number)) return true;
+            if (table == "Items"    && anchoredItems.Contains(number))    return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Parse every <c>"Monster #N"</c> / <c>"Item #N"</c> /
+    /// <c>"Spell #N"</c> reference in <paramref name="raw"/> into
+    /// structured <c>(Table, Number)</c> tuples. Used by the
+    /// coverage report's drilldown to seed Links on a fresh Message
+    /// record. Unknown / future reference types are skipped.
+    /// </summary>
+    public static IEnumerable<(string Table, int Number)> ParseRefs(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) yield break;
+        foreach (System.Text.RegularExpressions.Match m in RefPattern.Matches(raw))
+        {
+            if (!int.TryParse(m.Groups[2].Value, System.Globalization.NumberStyles.Integer,
+                              System.Globalization.CultureInfo.InvariantCulture, out int num))
+                continue;
+            string table = m.Groups[1].Value switch
+            {
+                "Monster" => "Monsters",
+                "Item"    => "Items",
+                "Spell"   => "Spells",
+                _         => string.Empty,
+            };
+            if (table.Length == 0) continue;
+            yield return (table, num);
+        }
+    }
 }
 
 /// <summary>Snapshot returned from one <see cref="SpellCoverageAuditor"/> run.</summary>
