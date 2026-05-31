@@ -1,44 +1,53 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
-/// Game Data Browser → Macros tab. Read-only listing of the loaded
-/// character's keybinds from <see cref="MacroStore"/>. Per master
-/// plan, double-click a row opens the Phase 10 MacroEditDialog —
-/// wiring lands in Phase 10 PR 10.3 once that dialog exists.
+/// Game Data Browser → Macros tab. Surfaces the loaded character's
+/// keybinds from <see cref="MacroStore"/>. Editable — double-click a
+/// row opens the <see cref="MacroEditDialogViewModel"/>; save routes
+/// through <see cref="MacroStore.Replace"/>.
 /// </summary>
-public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel
+public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly MacroStore _store;
+    private readonly DialogService? _dialogs;
 
     public override string Id => "macros";
     public override string Title => "Macros";
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Enabled", "Key", "Modifier", "Name", "Command",
+        "Enabled", "Chord", "Name", "Command",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "macro", "key", "keybind",
+        Title, "macro", "key", "keybind", "shortcut",
     };
+
+    public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
 
     private readonly NotifyCollectionChangedEventHandler _handler;
 
-    public MacrosSectionViewModel(MacroStore store)
+    public MacrosSectionViewModel(MacroStore store, DialogService? dialogs = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
+        _dialogs = dialogs;
         _handler = (_, _) => Reload();
         _store.Macros.CollectionChanged += _handler;
+        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         Reload();
     }
 
@@ -54,13 +63,40 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel
         {
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Enabled"]  = m.Enabled ? "✓" : "",
-                ["Key"]      = m.Key,
-                ["Modifier"] = m.Modifier,
-                ["Name"]     = m.Name,
-                ["Command"]  = m.Command,
+                ["Enabled"] = m.Enabled ? "✓" : "",
+                ["Chord"]   = m.KeyChordLabel,
+                ["Name"]    = m.Name,
+                ["Command"] = m.Command,
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
+    }
+
+    private async Task OpenEditAsync(GameDataRow? row)
+    {
+        if (row is null || _dialogs is null) return;
+        string? chord = row.Get("Chord");
+        if (string.IsNullOrEmpty(chord)) return;
+
+        // Locate the live record by chord + name (chord alone is unique,
+        // but name disambiguates if a future hot-edit lands two macros
+        // sharing a chord mid-flight).
+        Macro? original = null;
+        foreach (Macro m in _store.Macros)
+        {
+            if (m.KeyChordLabel == chord && m.Name == row.Get("Name"))
+            {
+                original = m;
+                break;
+            }
+        }
+        if (original is null) return;
+
+        MacroEditDialogViewModel vm = new(original, _store);
+        Macro? updated = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
+        if (updated is null) return;
+
+        _store.Replace(original, updated);
+        Reload();
     }
 }

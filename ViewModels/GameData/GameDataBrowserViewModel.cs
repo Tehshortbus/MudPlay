@@ -181,7 +181,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
                 "In-game `who` observations + manual overrides; per-player remote-command permission flags.");
 
         if (_macros is not null)
-            Sections.Add(new MacrosSectionViewModel(_macros));
+            Sections.Add(new MacrosSectionViewModel(_macros, _dialogs));
         else
             AddPlaceholder("macros", "Macros", "Phase 5 / Phase 10",
                 "Read-only listing — double-click row opens the Phase 10 Macro editor.");

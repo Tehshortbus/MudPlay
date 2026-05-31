@@ -1,0 +1,92 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="380"
+        x:Class="FujinTerm.Views.GameData.Edit.MacroEditDialog"
+        x:DataType="vm:MacroEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="520" Height="380"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
+
+            <!-- ===== Name + Enabled ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name"/>
+                <TextBox   Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
+                <CheckBox  Grid.Column="2" Content="Enabled"
+                           IsChecked="{Binding Enabled, Mode=TwoWay}"
+                           Margin="12,0,0,0"/>
+            </Grid>
+
+            <!-- ===== Chord (Key + modifiers) ===== -->
+            <Grid Grid.Row="1" ColumnDefinitions="100,*,Auto,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Key"/>
+                <ComboBox  Grid.Column="1"
+                           ItemsSource="{Binding AvailableKeys}"
+                           SelectedItem="{Binding SelectedKey, Mode=TwoWay}"
+                           HorizontalAlignment="Stretch"/>
+                <CheckBox  Grid.Column="2" Content="Ctrl"  IsChecked="{Binding Ctrl,  Mode=TwoWay}" Margin="8,0,0,0"/>
+                <CheckBox  Grid.Column="3" Content="Shift" IsChecked="{Binding Shift, Mode=TwoWay}" Margin="8,0,0,0"/>
+                <CheckBox  Grid.Column="4" Content="Alt"   IsChecked="{Binding Alt,   Mode=TwoWay}" Margin="8,0,0,0"/>
+            </Grid>
+
+            <!-- Live status / error line for the chord. Two TextBlocks
+                 stacked — muted preview when valid, red when forbidden /
+                 duplicate. IsVisible bindings split them apart. -->
+            <TextBlock Grid.Row="2"
+                       Text="{Binding StatusMessage}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding !HasError}"/>
+            <TextBlock Grid.Row="2"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE06D6D"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}"/>
+
+            <!-- ===== Command ===== -->
+            <TextBlock Grid.Row="3" Classes="SectionHeader" Text="Command"/>
+
+            <Grid Grid.Row="4" RowDefinitions="*,Auto" RowSpacing="4">
+                <TextBox Grid.Row="0"
+                         Text="{Binding Command, Mode=TwoWay}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         FontFamily="{StaticResource FontMono}"
+                         FontSize="12"
+                         MinHeight="80"
+                         ToolTip.Tip="Text sent to the game when the chord fires. Use ^M or ; to split into multiple lines — each fragment is sent as its own command (CR-terminated)."/>
+                <TextBlock Grid.Row="1"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Text="Multi-step: split on ^M or ; — each fragment fires as its own line."/>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding CanSave}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

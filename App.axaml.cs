@@ -55,6 +55,9 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.PlayerEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.PlayerEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MacroEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MacroEditDialog>();
 
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
