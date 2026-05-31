@@ -135,6 +135,7 @@
                 <Separator/>
                 <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
                 <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
+                <MenuItem Header="MudInfo.net ↗"        Command="{Binding OpenMudInfoCommand}"/>
                 <MenuItem Header="BBS site ↗"
                           Command="{Binding OpenBbsWebsiteCommand}"
                           IsEnabled="{Binding HasBbsWebsite}"

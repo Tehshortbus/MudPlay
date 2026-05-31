@@ -2123,6 +2123,9 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenMajorMudReddit() => ShellLaunch.OpenUrl(AppInfo.MajorMudRedditUrl);
 
+    [RelayCommand]
+    private void OpenMudInfo() => ShellLaunch.OpenUrl(AppInfo.MudInfoUrl);
+
     /// <summary>
     /// Help → BBS site. Opens the active BBS's <see cref="BbsProfile.WebsiteUrl"/>
     /// in the OS default browser. Silently no-ops when no URL is set —
