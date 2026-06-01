@@ -254,14 +254,12 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             if (weaponId > 0)
                 AddRow(kv, "Weapon", LookupItemName(weaponId) ?? $"Item #{weaponId}");
 
-            // Create / Death spells — cross-ref to Spells.Name
+            // Create / Death spells — cross-ref to Spells.Name with brief
+            // effect descriptor when one of the primary Abil codes is set.
             int createSpell = ReadInt(el, "CreateSpell");
-            if (createSpell > 0)
-                AddRow(kv, "Create Spell", LookupSpellName(createSpell) ?? $"Spell #{createSpell}");
-
+            if (createSpell > 0) AddRow(kv, "Create Spell", ResolveSpellWithEffect(createSpell));
             int deathSpell = ReadInt(el, "DeathSpell");
-            if (deathSpell > 0)
-                AddRow(kv, "Death Spell", LookupSpellName(deathSpell) ?? $"Spell #{deathSpell}");
+            if (deathSpell > 0) AddRow(kv, "Death Spell",  ResolveSpellWithEffect(deathSpell));
 
             int greetTxt = ReadInt(el, "GreetTXT");
             if (greetTxt > 0) AddRow(kv, "Greet", $"Textblock #{greetTxt}");
@@ -344,9 +342,12 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             }
             if (hasAttacks)
             {
+                // Monster energy is the per-round budget the mob spends
+                // on attacks/spells. Stock MajorMUD is always 1000;
+                // paradigm / future realms may differ.
                 AddRow(kv, "Mob's Attacks",
                     monsterEnergy > 0
-                        ? $"{monsterEnergy:N0} energy/round".Replace(",", ",")
+                        ? $"{monsterEnergy} energy/round"
                         : string.Empty);
 
                 for (int i = 0; i < 5; i++)
@@ -374,22 +375,20 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                         AddRow(kv, string.Empty, $"Accuracy: {acc}");
                         AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
                         if (hitSpell > 0)
-                            AddRow(kv, string.Empty,
-                                $"Hit Spell: {LookupSpellName(hitSpell) ?? $"Spell #{hitSpell}"}");
+                            AddRow(kv, string.Empty, $"Hit Spell: {ResolveSpellWithEffect(hitSpell)}");
                     }
                     else // attType == 2 (spell-attack)
                     {
                         int spellId   = ReadInt(el, $"AttAcc-{i}");
                         int spellLvl  = ReadInt(el, $"AttMax-{i}");
                         int successPc = ReadInt(el, $"AttMin-{i}");
-                        string spell  = LookupSpellName(spellId) ?? $"Spell #{spellId}";
+                        string spell  = ResolveSpellWithEffect(spellId, spellLvl);
                         AddRow(kv, header,
                             spellLvl > 0 ? $"Spell: {spell} lvl {spellLvl}" : $"Spell: {spell}");
                         AddRow(kv, string.Empty, $"Success %: {successPc}");
                         AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
                         if (hitSpell > 0)
-                            AddRow(kv, string.Empty,
-                                $"Hit Spell: {LookupSpellName(hitSpell) ?? $"Spell #{hitSpell}"}");
+                            AddRow(kv, string.Empty, $"Hit Spell: {ResolveSpellWithEffect(hitSpell)}");
                     }
                 }
             }
@@ -408,7 +407,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 int delta = threshold - cumulative;
                 cumulative = threshold;
                 int lvl = ReadInt(el, $"MidSpellLVL-{i}");
-                string spellName = LookupSpellName(spellId) ?? $"Spell #{spellId}";
+                string spellName = ResolveSpellWithEffect(spellId, lvl);
                 string row = lvl > 0 ? $"({delta}%) [{spellName}, lvl {lvl}]" : $"({delta}%) [{spellName}]";
                 AddRow(kv, shown == 0 ? "Between Rounds" : string.Empty, row);
                 shown++;
@@ -494,6 +493,103 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     private string? LookupItemName(int itemId)    => LookupNameByNumber("Items",    itemId);
     private string? LookupSpellName(int spellId)  => LookupNameByNumber("Spells",   spellId);
     private string? LookupMonsterName(int monNum) => LookupNameByNumber("Monsters", monNum);
+
+    /// <summary>
+    /// "{spell name} (effect)" — spell name with a brief effect descriptor
+    /// when the spell's primary <c>Abil-N</c> entries surface a recognisable
+    /// effect (damage range, heal range, poison, fear, etc.). Falls back to
+    /// just the spell name when none of the primary effect codes are
+    /// present. Used by Hit Spell / Death Spell / Create Spell /
+    /// Between Rounds rows.
+    /// </summary>
+    /// <param name="castLevel">
+    /// Cast level for damage-range scaling. Pass 0 to use the spell's
+    /// raw <c>MinBase</c>/<c>MaxBase</c> (correct for monster hit / death /
+    /// create spells per MME — <c>PullSpellEQ(False, ...)</c>). For
+    /// Between Rounds spells pass <c>MidSpellLVL-N</c>.
+    /// </param>
+    private string ResolveSpellWithEffect(int spellId, int castLevel = 0)
+    {
+        string name = LookupSpellName(spellId) ?? $"Spell #{spellId}";
+        string effect = ResolveSpellEffect(spellId, castLevel);
+        return string.IsNullOrEmpty(effect) ? name : $"{name} ({effect})";
+    }
+
+    /// <summary>Brief comma-joined effect descriptor from a spell's primary Abil-N codes.</summary>
+    private string ResolveSpellEffect(int spellId, int castLevel)
+    {
+        if (spellId <= 0) return string.Empty;
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return string.Empty;
+
+        JsonElement? found = null;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
+            if (n.ValueKind != JsonValueKind.Number) continue;
+            if (n.GetInt32() == spellId) { found = el; break; }
+        }
+        if (found is null) return string.Empty;
+        JsonElement s = found.Value;
+
+        // Min/Max with optional level scaling (per MME GetCurrentSpellMinMax).
+        int minBase    = ReadInt(s, "MinBase");
+        int maxBase    = ReadInt(s, "MaxBase");
+        int minInc     = ReadInt(s, "MinInc");
+        int maxInc     = ReadInt(s, "MaxInc");
+        int minIncLvls = ReadInt(s, "MinIncLVLs");
+        int maxIncLvls = ReadInt(s, "MaxIncLVLs");
+        int cap        = ReadInt(s, "Cap");
+
+        int min = minBase;
+        int max = maxBase;
+        if (castLevel > 0)
+        {
+            if (minIncLvls > 0) min += (minInc / minIncLvls) * castLevel;
+            if (maxIncLvls > 0) max += (maxInc / maxIncLvls) * castLevel;
+            if (cap > 0)
+            {
+                if (min > cap) min = cap;
+                if (max > cap) max = cap;
+            }
+        }
+
+        // Pick out the primary effect codes. Full PullSpellEQ recursion
+        // (nested EndCast / Summon / Teleport / TextBlock descriptors) is
+        // out of scope here — the Spells tab is the place to dig into the
+        // full ability chain; the Monster dialog only surfaces the
+        // headline effect so the row reads at a glance.
+        List<string> effects = new();
+        for (int i = 0; i < 10; i++)
+        {
+            int code = ReadInt(s, $"Abil-{i}");
+            if (code == 0) continue;
+            string? desc = code switch
+            {
+                 1 => FormatRange("dmg",   min, max),  // DamageNoMR
+                17 => FormatRange("dmg",   min, max),  // DamageWithMR
+                18 => FormatRange("heal",  min, max),  // Heal
+                 8 => FormatRange("drain", min, max),  // Drain
+                19 => "poison",
+                60 => "fear",
+                71 => "confusion",
+                95 => "slay",
+                53 => "blindness",
+                12 => "summon",
+                _  => null,
+            };
+            if (!string.IsNullOrEmpty(desc) && !effects.Contains(desc)) effects.Add(desc);
+        }
+        return string.Join(", ", effects);
+    }
+
+    /// <summary>"dmg 10-30" / "dmg 10" / "" when both ends are zero.</summary>
+    private static string FormatRange(string label, int min, int max)
+    {
+        if (min == 0 && max == 0) return string.Empty;
+        if (min == max) return $"{label} {min}";
+        return $"{label} {min}-{max}";
+    }
 
     private string? LookupNameByNumber(string table, int number)
     {
