@@ -1,6 +1,11 @@
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Collections;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
@@ -19,7 +24,6 @@ namespace FujinTerm.ViewModels.GameData;
 public sealed partial class SpellCoverageReportViewModel : ObservableObject
 {
     private readonly SpellCoverageAuditor _auditor;
-    private readonly LogService? _log;
 
     public ObservableCollection<UnanchoredSpell> Rows { get; } = new();
 
@@ -34,11 +38,10 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
     [ObservableProperty] private string _summaryText = "(no audit run yet)";
     [ObservableProperty] private string _windowTitle = "Spell coverage";
 
-    public SpellCoverageReportViewModel(SpellCoverageAuditor auditor, LogService? log = null)
+    public SpellCoverageReportViewModel(SpellCoverageAuditor auditor)
     {
         ArgumentNullException.ThrowIfNull(auditor);
         _auditor = auditor;
-        _log     = log;
         RowsView = new DataGridCollectionView(Rows);
         _auditor.ResultAvailable += OnResultAvailable;
         if (_auditor.Latest is { } current) OnResultAvailable(current);
@@ -62,35 +65,55 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
     private void Refresh() => _auditor.Run();
 
     /// <summary>
-    /// Dump every currently-listed missing spell into the system log as
-    /// individual entries tagged with <see cref="SpellCoverageAuditor.LogSource"/>.
-    /// Useful for filtering / copy-pasting the unanchored list out of
-    /// the LogPane when working through coverage. A leading summary
-    /// line precedes the per-spell entries so the export is
-    /// self-bounded in the log.
+    /// Save the currently-listed missing spells to a tab-separated text
+    /// file via the user's file picker. One row per spell with columns
+    /// # / Name / Classes / Casted By / Learned From — opens cleanly in
+    /// any text editor or spreadsheet. A leading comment line records
+    /// the source set + counts.
     /// </summary>
     [RelayCommand]
-    private void ExportToLog()
+    private async Task ExportAsync()
     {
-        if (_log is null) return;
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
         CoverageResult? latest = _auditor.Latest;
-        string setName = latest?.SetName ?? "(no set)";
+        string setName = latest?.SetName ?? "no-set";
         int considered = latest?.ConsideredCount ?? 0;
 
-        _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
-            $"=== Export: {Rows.Count} of {considered} unanchored spells from set '{setName}' ===");
+        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title             = "Export spell coverage",
+            SuggestedFileName = $"spell-coverage-{setName}-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            DefaultExtension  = "txt",
+            FileTypeChoices   =
+            [
+                new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] },
+            ],
+        });
+        if (file is null) return;
 
+        // Tab-separated body — opens in spreadsheets cleanly and stays
+        // human-readable in any text editor. Leading "#" lines are
+        // comments (TSV consumers skip them, humans read them).
+        StringBuilder sb = new(capacity: Rows.Count * 80);
+        sb.Append("# Spell coverage export — set '").Append(setName).Append("'\n");
+        sb.Append("# ").Append(Rows.Count).Append(" of ").Append(considered)
+          .Append(" player-facing spells with no Message anchor\n");
+        sb.Append("#\n");
+        sb.Append("Number\tName\tClasses\tCasted By\tLearned From\n");
         foreach (UnanchoredSpell s in Rows)
         {
-            string classes     = string.IsNullOrEmpty(s.Classes)     ? "(none)" : s.Classes!;
-            string castedBy    = string.IsNullOrEmpty(s.CastedBy)    ? "(none)" : s.CastedBy!;
-            string learnedFrom = string.IsNullOrEmpty(s.LearnedFrom) ? "(none)" : s.LearnedFrom!;
-            _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
-                $"Missing #{s.Number} {s.Name} | Classes: {classes} | Casted By: {castedBy} | Learned From: {learnedFrom}");
+            sb.Append(s.Number).Append('\t')
+              .Append(s.Name).Append('\t')
+              .Append(string.IsNullOrEmpty(s.Classes)     ? "(none)" : s.Classes).Append('\t')
+              .Append(string.IsNullOrEmpty(s.CastedBy)    ? "(none)" : s.CastedBy).Append('\t')
+              .Append(string.IsNullOrEmpty(s.LearnedFrom) ? "(none)" : s.LearnedFrom).Append('\n');
         }
 
-        _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
-            $"=== End export ({Rows.Count} entries) ===");
+        await using Stream stream = await file.OpenWriteAsync();
+        await using StreamWriter writer = new(stream);
+        await writer.WriteAsync(sb.ToString()).ConfigureAwait(false);
     }
 
     /// <summary>

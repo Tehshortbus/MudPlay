@@ -23,10 +23,10 @@
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
                 <Button Grid.Column="1"
-                        Content="Export to log"
-                        Command="{Binding ExportToLogCommand}"
-                        ToolTip.Tip="Dump every listed missing spell into the system log as individual entries (filterable under GameData/Coverage in the LogPane)."
-                        MinWidth="100"/>
+                        Content="Export"
+                        Command="{Binding ExportCommand}"
+                        ToolTip.Tip="Save the listed missing spells as a tab-separated text file (# / Name / Classes / Casted By / Learned From)."
+                        MinWidth="80"/>
                 <Button Grid.Column="2"
                         Content="Refresh"
                         Command="{Binding RefreshCommand}"
