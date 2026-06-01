@@ -578,10 +578,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             if (code == 0) continue;
             string? desc = code switch
             {
-                 1 => FormatRange("dmg",   min, max),  // DamageNoMR
-                17 => FormatRange("dmg",   min, max),  // DamageWithMR
+                 1 => FormatRange("dmg",   min, max),  // Damage
+                17 => FormatRange("dmg",   min, max),  // Damage(-MR)
                 18 => FormatRange("heal",  min, max),  // Heal
-                 8 => FormatRange("drain", min, max),  // Drain
+                 8 => FormatRange("drain", min, max),  // DrainLife
                 19 => "poison",
                 60 => "fear",
                 71 => "confusion",
