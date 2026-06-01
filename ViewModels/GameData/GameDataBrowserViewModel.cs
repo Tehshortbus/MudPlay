@@ -218,7 +218,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- MDB-derived (bottom group) ---------------------------------
 
         Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed));
-        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
