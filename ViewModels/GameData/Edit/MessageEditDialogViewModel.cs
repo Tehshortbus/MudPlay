@@ -10,9 +10,9 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 /// <summary>
 /// View-model for the Game Data Browser → Messages tab's per-record
 /// edit dialog. Edits one <see cref="MessageRecord"/> end-to-end:
-/// Name / Use-tier / five perspective line slots (Caster / Target /
-/// Witness / Applied + AppliedEndsWith / Stat-line) / Action /
-/// Effects flags / Response / Links. Commits on Save (Defaults tier
+/// Name / Use-tier / four perspective line slots (Caster / Target /
+/// Witness / Applied + AppliedEndsWith) / Action / Effects flags /
+/// Response / Links. Commits on Save (Defaults tier
 /// writes back to <see cref="MessageStore"/>; other tiers are stubbed
 /// for the future <see cref="SettingsResolver.WriteGameDataAt"/>
 /// path) or discards on Cancel.
@@ -77,13 +77,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _appliedEndsWith = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [NotifyPropertyChangedFor(nameof(StatusMessage))]
-    [NotifyPropertyChangedFor(nameof(CanSave))]
-    private string _statusLineMessage = string.Empty;
 
     /// <summary>
     /// Verbatim response field — stored exactly as MegaMUD's UI would
@@ -156,26 +149,24 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     /// </summary>
     public string ProjectedId
         => MessageRecord.ComputeId(
-            Name              ?? string.Empty,
-            CasterMessage     ?? string.Empty,
-            TargetMessage     ?? string.Empty,
-            WitnessMessage    ?? string.Empty,
-            AppliedMessage    ?? string.Empty,
-            AppliedEndsWith   ?? string.Empty,
-            StatusLineMessage ?? string.Empty);
+            Name            ?? string.Empty,
+            CasterMessage   ?? string.Empty,
+            TargetMessage   ?? string.Empty,
+            WitnessMessage  ?? string.Empty,
+            AppliedMessage  ?? string.Empty,
+            AppliedEndsWith ?? string.Empty);
 
     private string? GetValidationError()
     {
         if (string.IsNullOrWhiteSpace(Name)) return "Name is required.";
         bool hasAnyLine =
-            !string.IsNullOrWhiteSpace(CasterMessage)     ||
-            !string.IsNullOrWhiteSpace(TargetMessage)     ||
-            !string.IsNullOrWhiteSpace(WitnessMessage)    ||
-            !string.IsNullOrWhiteSpace(AppliedMessage)    ||
-            !string.IsNullOrWhiteSpace(StatusLineMessage);
-        if (!hasAnyLine) return "At least one perspective line (Caster / Target / Witness / Applied / Stat-line) is required.";
+            !string.IsNullOrWhiteSpace(CasterMessage)  ||
+            !string.IsNullOrWhiteSpace(TargetMessage)  ||
+            !string.IsNullOrWhiteSpace(WitnessMessage) ||
+            !string.IsNullOrWhiteSpace(AppliedMessage);
+        if (!hasAnyLine) return "At least one perspective line (Caster / Target / Witness / Applied) is required.";
         if (FindDuplicate() is { } dup)
-            return $"Another record already has this identity (Name + all five lines): '{dup.Name}'.";
+            return $"Another record already has this identity (Name + all four lines): '{dup.Name}'.";
         return null;
     }
 
@@ -199,7 +190,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         {
             string? err = GetValidationError();
             if (err is not null) return err;
-            return $"Id: {ProjectedId}  (identity = Name + all five lines)";
+            return $"Id: {ProjectedId}  (identity = Name + all four lines)";
         }
     }
 
@@ -226,16 +217,15 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
             }
         }
 
-        Name              = original.Name;
-        UseTier           = currentTier;
-        CasterMessage     = original.CasterMessage;
-        TargetMessage     = original.TargetMessage;
-        WitnessMessage    = original.WitnessMessage;
-        AppliedMessage    = original.AppliedMessage;
-        AppliedEndsWith   = original.AppliedEndsWith;
-        StatusLineMessage = original.StatusLineMessage;
-        Response          = original.Response;
-        Action            = original.Action;
+        Name            = original.Name;
+        UseTier         = currentTier;
+        CasterMessage   = original.CasterMessage;
+        TargetMessage   = original.TargetMessage;
+        WitnessMessage  = original.WitnessMessage;
+        AppliedMessage  = original.AppliedMessage;
+        AppliedEndsWith = original.AppliedEndsWith;
+        Response        = original.Response;
+        Action          = original.Action;
 
         FlagBlinded           = original.Flags.HasFlag(MessageFlags.Blinded);
         FlagConfused          = original.Flags.HasFlag(MessageFlags.Confused);
@@ -260,21 +250,20 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         ushort raw = (ushort)((ushort)typed | reservedBits);
 
         MessageRecord updated = new(
-            Id:                MessageRecord.ComputeId(
-                                   Name, CasterMessage, TargetMessage, WitnessMessage,
-                                   AppliedMessage, AppliedEndsWith, StatusLineMessage),
-            Name:              Name,
-            Action:            Action,
-            Flags:             typed,
-            RawFlagsHex:       raw,
-            Response:          Response ?? string.Empty,
-            CasterMessage:     CasterMessage     ?? string.Empty,
-            TargetMessage:     TargetMessage     ?? string.Empty,
-            WitnessMessage:    WitnessMessage    ?? string.Empty,
-            AppliedMessage:    AppliedMessage    ?? string.Empty,
-            AppliedEndsWith:   AppliedEndsWith   ?? string.Empty,
-            StatusLineMessage: StatusLineMessage ?? string.Empty,
-            Links:             LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
+            Id:              MessageRecord.ComputeId(
+                                 Name, CasterMessage, TargetMessage, WitnessMessage,
+                                 AppliedMessage, AppliedEndsWith),
+            Name:            Name,
+            Action:          Action,
+            Flags:           typed,
+            RawFlagsHex:     raw,
+            Response:        Response ?? string.Empty,
+            CasterMessage:   CasterMessage   ?? string.Empty,
+            TargetMessage:   TargetMessage   ?? string.Empty,
+            WitnessMessage:  WitnessMessage  ?? string.Empty,
+            AppliedMessage:  AppliedMessage  ?? string.Empty,
+            AppliedEndsWith: AppliedEndsWith ?? string.Empty,
+            Links:           LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
 
         CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
     }

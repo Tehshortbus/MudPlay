@@ -27,9 +27,9 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
 
-            <!-- ===== Header fields (Name / Use / 5 perspective lines + EndsWith pair / Response) ===== -->
+            <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair / Response) ===== -->
             <Grid Grid.Row="0"
-                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="8" RowSpacing="6">
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
@@ -63,13 +63,9 @@
                            ToolTip.Tip="Wear-off line YOU see when the buff/debuff above expires."/>
                 <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding AppliedEndsWith, Mode=TwoWay}"/>
 
-                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Stat-line"
-                           ToolTip.Tip="Entry in your `stat` active-effects list while affected."/>
-                <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding StatusLineMessage, Mode=TwoWay}"/>
-
-                <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Response"
+                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Response"
                            VerticalAlignment="Top" Margin="0,6,0,0"/>
-                <TextBox   Grid.Row="8" Grid.Column="1"
+                <TextBox   Grid.Row="7" Grid.Column="1"
                            Text="{Binding Response, Mode=TwoWay}"
                            AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
                            FontFamily="{StaticResource FontMono}"

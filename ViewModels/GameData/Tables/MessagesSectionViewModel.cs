@@ -111,22 +111,20 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
 
     private static string BuildLineTags(MessageRecord m)
     {
-        List<string> tags = new(5);
-        if (!string.IsNullOrEmpty(m.CasterMessage))     tags.Add("C");
-        if (!string.IsNullOrEmpty(m.TargetMessage))     tags.Add("T");
-        if (!string.IsNullOrEmpty(m.WitnessMessage))    tags.Add("W");
-        if (!string.IsNullOrEmpty(m.AppliedMessage))    tags.Add(string.IsNullOrEmpty(m.AppliedEndsWith) ? "A" : "A•");
-        if (!string.IsNullOrEmpty(m.StatusLineMessage)) tags.Add("S");
+        List<string> tags = new(4);
+        if (!string.IsNullOrEmpty(m.CasterMessage))  tags.Add("C");
+        if (!string.IsNullOrEmpty(m.TargetMessage))  tags.Add("T");
+        if (!string.IsNullOrEmpty(m.WitnessMessage)) tags.Add("W");
+        if (!string.IsNullOrEmpty(m.AppliedMessage)) tags.Add(string.IsNullOrEmpty(m.AppliedEndsWith) ? "A" : "A•");
         return string.Join(" ", tags);
     }
 
     private static string FirstNonEmptyLine(MessageRecord m)
     {
-        if (!string.IsNullOrEmpty(m.CasterMessage))     return m.CasterMessage;
-        if (!string.IsNullOrEmpty(m.TargetMessage))     return m.TargetMessage;
-        if (!string.IsNullOrEmpty(m.WitnessMessage))    return m.WitnessMessage;
-        if (!string.IsNullOrEmpty(m.AppliedMessage))    return m.AppliedMessage;
-        if (!string.IsNullOrEmpty(m.StatusLineMessage)) return m.StatusLineMessage;
+        if (!string.IsNullOrEmpty(m.CasterMessage))  return m.CasterMessage;
+        if (!string.IsNullOrEmpty(m.TargetMessage))  return m.TargetMessage;
+        if (!string.IsNullOrEmpty(m.WitnessMessage)) return m.WitnessMessage;
+        if (!string.IsNullOrEmpty(m.AppliedMessage)) return m.AppliedMessage;
         return string.Empty;
     }
 
@@ -173,19 +171,18 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     {
         if (_dialogs is null) return;
         MessageRecord blank = new(
-            Id:                string.Empty,
-            Name:              string.Empty,
-            Action:            MessageAction.Ignore,
-            Flags:             MessageFlags.None,
-            RawFlagsHex:       0,
-            Response:          string.Empty,
-            CasterMessage:     string.Empty,
-            TargetMessage:     string.Empty,
-            WitnessMessage:    string.Empty,
-            AppliedMessage:    string.Empty,
-            AppliedEndsWith:   string.Empty,
-            StatusLineMessage: string.Empty,
-            Links:             Array.Empty<GameDataLink>());
+            Id:              string.Empty,
+            Name:            string.Empty,
+            Action:          MessageAction.Ignore,
+            Flags:           MessageFlags.None,
+            RawFlagsHex:     0,
+            Response:        string.Empty,
+            CasterMessage:   string.Empty,
+            TargetMessage:   string.Empty,
+            WitnessMessage:  string.Empty,
+            AppliedMessage:  string.Empty,
+            AppliedEndsWith: string.Empty,
+            Links:           Array.Empty<GameDataLink>());
 
         MessageEditDialogViewModel vm = new(
             blank,

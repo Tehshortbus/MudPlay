@@ -140,19 +140,18 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         List<GameDataLink> links = new() { new GameDataLink("Spells", spell.Number) };
 
         MessageRecord blank = new(
-            Id:                string.Empty,
-            Name:              spell.Name,
-            Action:            MessageAction.Ignore,
-            Flags:             MessageFlags.None,
-            RawFlagsHex:       0,
-            Response:          string.Empty,
-            CasterMessage:     string.Empty,
-            TargetMessage:     string.Empty,
-            WitnessMessage:    string.Empty,
-            AppliedMessage:    string.Empty,
-            AppliedEndsWith:   string.Empty,
-            StatusLineMessage: string.Empty,
-            Links:             links);
+            Id:              string.Empty,
+            Name:            spell.Name,
+            Action:          MessageAction.Ignore,
+            Flags:           MessageFlags.None,
+            RawFlagsHex:     0,
+            Response:        string.Empty,
+            CasterMessage:   string.Empty,
+            TargetMessage:   string.Empty,
+            WitnessMessage:  string.Empty,
+            AppliedMessage:  string.Empty,
+            AppliedEndsWith: string.Empty,
+            Links:           links);
 
         MessageEditDialogViewModel vm = new(
             blank,
