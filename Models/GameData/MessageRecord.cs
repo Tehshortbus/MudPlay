@@ -57,7 +57,34 @@ public sealed record MessageRecord(
     string                       AppliedMessage,
     string                       AppliedEndsWith,
     string                       StatusLineMessage,
-    IReadOnlyList<GameDataLink>? Links = null);
+    IReadOnlyList<GameDataLink>? Links = null)
+{
+    /// <summary>
+    /// Stable content hash used as <see cref="Id"/>. SHA1 of every
+    /// identity field (Name + each of the five perspective line slots
+    /// + the applied wear-off pair half), joined by <c>|</c>, truncated
+    /// to 16 lowercase hex chars. Any edit to any field flips the Id;
+    /// callers use the original-Id reference to find-and-replace the
+    /// record in its store after a save.
+    /// </summary>
+    public static string ComputeId(
+        string name,
+        string casterMessage,
+        string targetMessage,
+        string witnessMessage,
+        string appliedMessage,
+        string appliedEndsWith,
+        string statusLineMessage)
+    {
+        byte[] buf = System.Text.Encoding.UTF8.GetBytes(
+            $"{name}|{casterMessage}|{targetMessage}|{witnessMessage}|{appliedMessage}|{appliedEndsWith}|{statusLineMessage}");
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(buf);
+        System.Text.StringBuilder sb = new(16);
+        for (int i = 0; i < 8; i++)
+            sb.Append(hash[i].ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        return sb.ToString();
+    }
+}
 
 /// <summary>
 /// One back-reference from a <see cref="MessageRecord"/> to a record

@@ -155,7 +155,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     /// see the identity tuple updating live + spot collisions before Save.
     /// </summary>
     public string ProjectedId
-        => MegaMudMessagesImporter.ComputeId(
+        => MessageRecord.ComputeId(
             Name              ?? string.Empty,
             CasterMessage     ?? string.Empty,
             TargetMessage     ?? string.Empty,
@@ -260,7 +260,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         ushort raw = (ushort)((ushort)typed | reservedBits);
 
         MessageRecord updated = new(
-            Id:                MegaMudMessagesImporter.ComputeId(
+            Id:                MessageRecord.ComputeId(
                                    Name, CasterMessage, TargetMessage, WitnessMessage,
                                    AppliedMessage, AppliedEndsWith, StatusLineMessage),
             Name:              Name,
