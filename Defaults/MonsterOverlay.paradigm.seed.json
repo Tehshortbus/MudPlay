@@ -1,0 +1,5034 @@
+[
+  {
+    "Number": 13,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 14,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 22,
+    "Name": "Aiken",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 23,
+    "Name": "Thuluk",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 24,
+    "Name": "Helfgrim",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 25,
+    "Name": "Colin",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 26,
+    "Name": "Skali",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 27,
+    "Name": "Gurbultis",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 28,
+    "Name": "Lady Sentara",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 31,
+    "Name": "mummy",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 32,
+    "Name": "bounty hunter",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 38,
+    "Name": "Guildmaster",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 39,
+    "Name": "old man",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 40,
+    "Name": "Sheriff Lionheart",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 41,
+    "Name": "Giovanni",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 42,
+    "Name": "Meia",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 43,
+    "Name": "Sarkhee",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 45,
+    "Name": "bishop",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 46,
+    "Name": "priest",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 47,
+    "Name": "healer",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 52,
+    "Name": "giant spider",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 54,
+    "Name": "kobold slave",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 57,
+    "Name": "slime beast",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 59,
+    "Name": "Thrag",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 60,
+    "Name": "minotaur champion",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 61,
+    "Name": "boatman",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 62,
+    "Name": "crippled adventurer",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 63,
+    "Name": "gigantic black ooze",
+    "Relationship": "Flee",
+    "Priority": "High"
+  },
+  {
+    "Number": 66,
+    "Name": "moaning spirit",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "DontBackstab": true
+  },
+  {
+    "Number": 68,
+    "Name": "guardian golem",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 69,
+    "Name": "chest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 73,
+    "Name": "healer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 74,
+    "Name": "Nathaniel",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 75,
+    "Name": "Betram",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 76,
+    "Name": "Dathalar",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 77,
+    "Name": "Rayth",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 78,
+    "Name": "Corwyn",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 80,
+    "Name": "cave bear",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 81,
+    "Name": "ferryman",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 82,
+    "Name": "troll",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 83,
+    "Name": "warrior spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 85,
+    "Name": "witchunter spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 86,
+    "Name": "ogre",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 87,
+    "Name": "mystic spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 88,
+    "Name": "ranger spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 89,
+    "Name": "horned demon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 90,
+    "Name": "young girl",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 91,
+    "Name": "priest spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 92,
+    "Name": "cleric spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 93,
+    "Name": "paladin spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 94,
+    "Name": "missionary spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 95,
+    "Name": "owlbear",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 96,
+    "Name": "ninja spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 97,
+    "Name": "thief spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 98,
+    "Name": "bard spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 102,
+    "Name": "gypsy spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 103,
+    "Name": "warlock spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 104,
+    "Name": "mage spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 105,
+    "Name": "druid spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 106,
+    "Name": "Aldreth",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 108,
+    "Name": "ice sorceress",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 113,
+    "Name": "banshee",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 114,
+    "Name": "minotaur chieftain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 122,
+    "Name": "high druid",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 124,
+    "Name": "black orc shaman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 126,
+    "Name": "slave-master",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 127,
+    "Name": "werewolf",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 128,
+    "Name": "shadowy healer",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 129,
+    "Name": "mad wizard",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 130,
+    "Name": "Jorah",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 131,
+    "Name": "cyclops",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 132,
+    "Name": "Dhelvanen",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 133,
+    "Name": "violet spore",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 168,
+    "Name": "serpentkin chieftain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 169,
+    "Name": "serpentkin witchdoctor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 173,
+    "Name": "wounded worker",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 174,
+    "Name": "dark bishop",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 175,
+    "Name": "alchemist",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 176,
+    "Name": "dark wizard",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 177,
+    "Name": "prisoner",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 178,
+    "Name": "master assassin",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 179,
+    "Name": "living dummy",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 180,
+    "Name": "Champion of Blood",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 181,
+    "Name": "greater hellion",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 182,
+    "Name": "baby red dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 185,
+    "Name": "adult red dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 186,
+    "Name": "aged titan",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 187,
+    "Name": "raven",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 188,
+    "Name": "bluejay",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 189,
+    "Name": "cardinal",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 190,
+    "Name": "drunken gambler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 191,
+    "Name": "huge gruesome creation",
+    "Relationship": "Flee",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 193,
+    "Name": "practice dummy",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 194,
+    "Name": "Kotar Bloodthorn",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 196,
+    "Name": "dark-elf courser",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 198,
+    "Name": "priest",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 199,
+    "Name": "priestess",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 200,
+    "Name": "practice dummy",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 202,
+    "Name": "nomadic tribesman",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 205,
+    "Name": "nomadic huntsman",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 206,
+    "Name": "wild turkey",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 208,
+    "Name": "nomadic shaman",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 209,
+    "Name": "large yeti",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 212,
+    "Name": "fire assassin",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 213,
+    "Name": "mosquito swarm",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 214,
+    "Name": "Templar",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 215,
+    "Name": "Zanthus the Lich",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 216,
+    "Name": "Demoness Irikani",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 218,
+    "Name": "orc warleader",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 230,
+    "Name": "bombardier beetle",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 237,
+    "Name": "gnoll chieftain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 238,
+    "Name": "Madame Alexia",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 239,
+    "Name": "silvery skull",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 240,
+    "Name": "mermex queen",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 241,
+    "Name": "giant pulsating cocoon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 243,
+    "Name": "wounded messenger",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 244,
+    "Name": "Chancellor Annora",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 245,
+    "Name": "royal soldier",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 246,
+    "Name": "Commander Markus",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 247,
+    "Name": "Jael",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 248,
+    "Name": "barmaid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 249,
+    "Name": "hooded traveller",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 250,
+    "Name": "nasty-looking man",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 251,
+    "Name": "The Grey Lord",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 252,
+    "Name": "shopkeeper",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 253,
+    "Name": "greasy thief",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 254,
+    "Name": "barmaid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 255,
+    "Name": "greedy healer",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 256,
+    "Name": "grizzled trainer",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 257,
+    "Name": "huge dwarven witchunter",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 259,
+    "Name": "drunken brawler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 262,
+    "Name": "crazed lunatic",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 263,
+    "Name": "Balthazar",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 266,
+    "Name": "silverfish",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 268,
+    "Name": "water elemental",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 269,
+    "Name": "night hag",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 278,
+    "Name": "ancient willow",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 281,
+    "Name": "quickling lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 282,
+    "Name": "faerie",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 283,
+    "Name": "treant",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 284,
+    "Name": "unicorn",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 285,
+    "Name": "woodelf ranger",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 286,
+    "Name": "woodelf druid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 287,
+    "Name": "woodelf citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 288,
+    "Name": "woodelf citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 289,
+    "Name": "woodelf guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 290,
+    "Name": "woodelf wardancer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 291,
+    "Name": "woodelf wardancer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 292,
+    "Name": "woodelf lord",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 297,
+    "Name": "ogre-mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 306,
+    "Name": "gibbering horror",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 307,
+    "Name": "large gibbering horror",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 309,
+    "Name": "crimson mist",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 311,
+    "Name": "Goru-Nezar",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 312,
+    "Name": "huge basilisk",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 313,
+    "Name": "chimera",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 314,
+    "Name": "beholder",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 315,
+    "Name": "prismatic dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 316,
+    "Name": "frost hydra",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 317,
+    "Name": "wraithlord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 318,
+    "Name": "unholy idol",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 321,
+    "Name": "mind flayer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 327,
+    "Name": "terror beast",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 329,
+    "Name": "Lord of the Hunt",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 330,
+    "Name": "gnome sentry",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 331,
+    "Name": "gnome shaman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 332,
+    "Name": "gnome commander",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 337,
+    "Name": "dark-elf nobleman",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 338,
+    "Name": "dark-elf servant",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 341,
+    "Name": "dark-elf high priestess",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 342,
+    "Name": "dark-elf weaponsmaster",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 343,
+    "Name": "dark-elf queen",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 344,
+    "Name": "master torturer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 345,
+    "Name": "dark-elf archmage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 346,
+    "Name": "captain of the guard",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 347,
+    "Name": "obsidian statue",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 348,
+    "Name": "sleazy shopkeeper",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 351,
+    "Name": "guardian beast",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 353,
+    "Name": "slaver leader",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 355,
+    "Name": "prisoner",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 356,
+    "Name": "slave lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 357,
+    "Name": "dark-elf emissary",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 361,
+    "Name": "wererat plague-crafter",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 362,
+    "Name": "plagued prisoner",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 363,
+    "Name": "ghost knight",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 364,
+    "Name": "wererat emissary",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 365,
+    "Name": "dying slaver leader",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 366,
+    "Name": "Remik of the Ebon Blade",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 367,
+    "Name": "Marquis de Bassi",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 368,
+    "Name": "feline prisoner",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 370,
+    "Name": "Timelord",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 371,
+    "Name": "crimson high priest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 372,
+    "Name": "Devil Fiend Malivek",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 374,
+    "Name": "metallic monstrosity",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 375,
+    "Name": "aurumvorax",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 376,
+    "Name": "wild dog",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 381,
+    "Name": "dwarven merchant",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 382,
+    "Name": "bodyguard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 383,
+    "Name": "wandering cleric",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 384,
+    "Name": "Orfeo Talespinner",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 385,
+    "Name": "old gypsy woman",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 386,
+    "Name": "old gypsy man",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 387,
+    "Name": "young gypsy",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 388,
+    "Name": "catoblepas",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 393,
+    "Name": "giant two-headed troll",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 394,
+    "Name": "huge black dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 395,
+    "Name": "dwarven guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 396,
+    "Name": "dwarven guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 397,
+    "Name": "gnome villager",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 398,
+    "Name": "gnome farmer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 399,
+    "Name": "gnome shopkeeper",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 400,
+    "Name": "gnome inventor",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 401,
+    "Name": "gnome alchemist",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 402,
+    "Name": "gnome enchantress",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 406,
+    "Name": "kobold king",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 409,
+    "Name": "spectral knight",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 411,
+    "Name": "pale mushroom",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 412,
+    "Name": "myconid",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 414,
+    "Name": "water spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 416,
+    "Name": "efreeti",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 417,
+    "Name": "dwarven cleric",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 418,
+    "Name": "dwarven warrior",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 419,
+    "Name": "dwarf",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 420,
+    "Name": "dwarven smith",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 421,
+    "Name": "dwarven shopkeeper",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 422,
+    "Name": "dwarven miner",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 423,
+    "Name": "dwarven barkeep",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 424,
+    "Name": "dwarven royal guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 425,
+    "Name": "dwarven nobleman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 426,
+    "Name": "dwarven royal guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 427,
+    "Name": "dwarven warrior",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 428,
+    "Name": "dwarven healer",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 429,
+    "Name": "Champion Gudruk",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 430,
+    "Name": "King Kulgar",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 431,
+    "Name": "Loremaster Thulgraf",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 432,
+    "Name": "Master Smith Martok",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 433,
+    "Name": "dwarven royal guard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 434,
+    "Name": "ancient sand dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 435,
+    "Name": "ancient sand dragon",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 443,
+    "Name": "purple worm",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 444,
+    "Name": "dwarf",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 445,
+    "Name": "dwarven miner",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 446,
+    "Name": "dwarven warrior",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 447,
+    "Name": "Kai Master",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 452,
+    "Name": "huge obsidian golem",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 454,
+    "Name": "gemstone juggernaut",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 456,
+    "Name": "duergar lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 457,
+    "Name": "dwarf warrior",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 459,
+    "Name": "brain eater",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 463,
+    "Name": "Gulgulthra",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 464,
+    "Name": "shifty dwarf",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 465,
+    "Name": "Champion Gudruk",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 466,
+    "Name": "Ghost of Trader Tull",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 471,
+    "Name": "white jelly",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 475,
+    "Name": "dark dabbler",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 478,
+    "Name": "smuggler boss",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 482,
+    "Name": "black orc boss",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 485,
+    "Name": "queen ant",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 486,
+    "Name": "Leo the Quick",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 490,
+    "Name": "dread mystic",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 494,
+    "Name": "necromancer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 499,
+    "Name": "old man",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 503,
+    "Name": "shadow guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 504,
+    "Name": "Morukai",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 505,
+    "Name": "haunting spirit",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 507,
+    "Name": "practice dummy",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 510,
+    "Name": "ruby guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 513,
+    "Name": "topaz guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 514,
+    "Name": "Tyrannosaur",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 516,
+    "Name": "amber guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 519,
+    "Name": "emerald guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 520,
+    "Name": "ankylosaur",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 521,
+    "Name": "stegosaur",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 522,
+    "Name": "sapphire guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 525,
+    "Name": "amethyst guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 528,
+    "Name": "onyx guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 530,
+    "Name": "Crazed Inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 531,
+    "Name": "silver guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 533,
+    "Name": "flaming zombie",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 534,
+    "Name": "gold guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 537,
+    "Name": "diamond guardian",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 538,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 539,
+    "Name": "Spacelord",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 542,
+    "Name": "burnt witchunter",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 545,
+    "Name": "Old Mother Woodard",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 547,
+    "Name": "necromancer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 548,
+    "Name": "stone sphinx",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 549,
+    "Name": "stone sphinx",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 550,
+    "Name": "stone sphinx",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 551,
+    "Name": "stone sphinx",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 552,
+    "Name": "stone sphinx",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 553,
+    "Name": "nekojin traveler",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 554,
+    "Name": "nekojin elder",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 555,
+    "Name": "nekojin",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 556,
+    "Name": "nekojin guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 557,
+    "Name": "stronghold guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 558,
+    "Name": "guard sergeant",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 560,
+    "Name": "Master Trader Tolgard",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 561,
+    "Name": "seeress",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 562,
+    "Name": "beautiful woman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 563,
+    "Name": "handsome man",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 566,
+    "Name": "rakshasha sage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 567,
+    "Name": "rakshasha rajah",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 568,
+    "Name": "withered old man",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 571,
+    "Name": "giant roc",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 576,
+    "Name": "nomad",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 578,
+    "Name": "saracen high priest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 580,
+    "Name": "hideous abomination",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 581,
+    "Name": "stomach lining",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 587,
+    "Name": "manscorpion shaman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 588,
+    "Name": "manscorpion king",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 589,
+    "Name": "hydra",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 591,
+    "Name": "wraith",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 594,
+    "Name": "Pharaoh Rastep",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 595,
+    "Name": "dying pharaoh",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 596,
+    "Name": "grey portal",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 597,
+    "Name": "Dao Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 598,
+    "Name": "floating key",
+    "Relationship": "Flee",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 599,
+    "Name": "huge fungus creature",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 600,
+    "Name": "gaunt one temple master",
+    "Relationship": "Friend",
+    "Priority": "High"
+  },
+  {
+    "Number": 602,
+    "Name": "saracen commander",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 603,
+    "Name": "hardened practice dummy",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 604,
+    "Name": "nekojin priestess",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 616,
+    "Name": "tasloi chief",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 617,
+    "Name": "tasloi animal master",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 619,
+    "Name": "tasloi shaman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 621,
+    "Name": "trained spider",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 622,
+    "Name": "massive fanged spider",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 626,
+    "Name": "albino salamander",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 627,
+    "Name": "giant oyster",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 629,
+    "Name": "river ray",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 634,
+    "Name": "giant war dog",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 637,
+    "Name": "storm giant king",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 638,
+    "Name": "storm giant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 639,
+    "Name": "storm giant commander",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 642,
+    "Name": "stone giant chieftain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 646,
+    "Name": "hill giant",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 647,
+    "Name": "hill giant chieftan",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 649,
+    "Name": "aged earth dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 652,
+    "Name": "amazon",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 653,
+    "Name": "amazon warrior",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 654,
+    "Name": "amazon shaman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 655,
+    "Name": "amazon guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 656,
+    "Name": "amazon battle master",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 657,
+    "Name": "male slave",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 663,
+    "Name": "insect swarm",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 665,
+    "Name": "constrictor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 668,
+    "Name": "jeweled viper",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 687,
+    "Name": "sandworm",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 688,
+    "Name": "seagull",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 689,
+    "Name": "green tortoise",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 690,
+    "Name": "ocean hawk",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 691,
+    "Name": "king crab",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 692,
+    "Name": "giant river turtle",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 694,
+    "Name": "old amazon woman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 695,
+    "Name": "amazon craftswoman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 696,
+    "Name": "gaunt one spell-weaver",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 697,
+    "Name": "gaunt one messenger",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 698,
+    "Name": "gaunt one elder",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 699,
+    "Name": "wounded sailor",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 700,
+    "Name": "dark phoenix",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 701,
+    "Name": "mamba",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 703,
+    "Name": "ancestral guardian",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 704,
+    "Name": "crane spirit",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 706,
+    "Name": "gorilla spirit",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 707,
+    "Name": "monkey spirit",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 708,
+    "Name": "amazon queen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 709,
+    "Name": "amazon queen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 714,
+    "Name": "brine hag",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 715,
+    "Name": "Seher'Sahham",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 716,
+    "Name": "gnome merchant",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 717,
+    "Name": "Sylk",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 718,
+    "Name": "Kuel",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 719,
+    "Name": "deranged priest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 720,
+    "Name": "gibbering mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 721,
+    "Name": "large red demonling",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 722,
+    "Name": "Putakwa",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 723,
+    "Name": "practice dummy",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 724,
+    "Name": "orc warlord",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 725,
+    "Name": "orc captain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 726,
+    "Name": "ogre gladiator",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 730,
+    "Name": "orc trainee",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 733,
+    "Name": "nanati sorceress",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 736,
+    "Name": "nanati shadow",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 740,
+    "Name": "master assassin",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 744,
+    "Name": "amazon shopkeeper",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 745,
+    "Name": "dying master assassin",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 746,
+    "Name": "stronghold guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 747,
+    "Name": "massive white dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 748,
+    "Name": "mule",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 751,
+    "Name": "lady of the dark",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 754,
+    "Name": "orc trainee",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 755,
+    "Name": "Enigma Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 756,
+    "Name": "frost giant",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 757,
+    "Name": "elite guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 765,
+    "Name": "banshee",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 773,
+    "Name": "necromancer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 776,
+    "Name": "filthy beggar",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 777,
+    "Name": "depraved murderer",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 778,
+    "Name": "mangy dog",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 779,
+    "Name": "dread planewalker",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 780,
+    "Name": "townsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 781,
+    "Name": "drunken brawler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 782,
+    "Name": "townswoman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 783,
+    "Name": "squirrel",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 784,
+    "Name": "Mayor Godfrey",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 786,
+    "Name": "black cat",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 787,
+    "Name": "mercenary healer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 788,
+    "Name": "mangy dog",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 789,
+    "Name": "young gypsy girl",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 790,
+    "Name": "gravedigger",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 792,
+    "Name": "giant roc",
+    "Relationship": "Neutral",
+    "Priority": "High"
+  },
+  {
+    "Number": 793,
+    "Name": "lonely traveler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 794,
+    "Name": "lonely traveler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 795,
+    "Name": "dirty farmer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 796,
+    "Name": "myrmidon",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 797,
+    "Name": "rogue",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 798,
+    "Name": "rubicant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 799,
+    "Name": "sorcerer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 800,
+    "Name": "sage",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 807,
+    "Name": "wolfman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 808,
+    "Name": "vampire fledgling",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 809,
+    "Name": "Death Shrieker",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 810,
+    "Name": "nightshade",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 811,
+    "Name": "Bloody Executioner",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 813,
+    "Name": "rotting beholder",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 816,
+    "Name": "midnight unicorn",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 817,
+    "Name": "Banished One",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 818,
+    "Name": "hanging tree",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 821,
+    "Name": "groaning cloud",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 824,
+    "Name": "vampiric mist",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 828,
+    "Name": "wraith",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 831,
+    "Name": "Spirit of Draka",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 836,
+    "Name": "Ozrinom the Vampire Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 838,
+    "Name": "gremlin",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 840,
+    "Name": "famished cow",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 841,
+    "Name": "starving pig",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 842,
+    "Name": "chicken",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 844,
+    "Name": "ancient gypsy woman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 845,
+    "Name": "gypsy protector",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 846,
+    "Name": "white hart",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 847,
+    "Name": "white doe",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 848,
+    "Name": "ivory golem",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 849,
+    "Name": "Ghost of Justice Darkbane",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 850,
+    "Name": "Dark Mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 851,
+    "Name": "colossal midnight dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 852,
+    "Name": "Shadow Master",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 854,
+    "Name": "Mayor of Arlysia",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 855,
+    "Name": "townsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 856,
+    "Name": "townswoman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 857,
+    "Name": "townsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 858,
+    "Name": "townswoman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 859,
+    "Name": "arlysian guardsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 860,
+    "Name": "Inquisitor Armandriel",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 861,
+    "Name": "Oik",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 862,
+    "Name": "Lud",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 863,
+    "Name": "Pastor Lander",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 864,
+    "Name": "Volum",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 865,
+    "Name": "old hermit",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 872,
+    "Name": "dirty fisherman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 876,
+    "Name": "Dread Captain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 877,
+    "Name": "death minion",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 879,
+    "Name": "darken beast",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 881,
+    "Name": "severed waist",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 882,
+    "Name": "dark cupid",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 885,
+    "Name": "stitched zombie",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 887,
+    "Name": "old man",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 888,
+    "Name": "severed torso",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 894,
+    "Name": "gremlin witchdoctor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 898,
+    "Name": "arachnigoth",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 901,
+    "Name": "dirty farmer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 903,
+    "Name": "dread planestalker",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 905,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 906,
+    "Name": "Dreadlord of Blood",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 911,
+    "Name": "Aeriana the Pure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 913,
+    "Name": "barmaid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 914,
+    "Name": "Madame Madison",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 916,
+    "Name": "Jandare Leafdancer",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 917,
+    "Name": "townsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 918,
+    "Name": "townswoman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 919,
+    "Name": "dirty fisherman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 920,
+    "Name": "dirty farmer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 921,
+    "Name": "Enigma Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 922,
+    "Name": "gypsy spirit",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 924,
+    "Name": "stitched zombie",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 929,
+    "Name": "crowned spider",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 930,
+    "Name": "Darken Beast Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 931,
+    "Name": "townsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 932,
+    "Name": "townsman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 933,
+    "Name": "ancient gremlin shaman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 935,
+    "Name": "stitched zombie",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 937,
+    "Name": "mind flayer magus",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 943,
+    "Name": "massive black worm",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 944,
+    "Name": "triceratops",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 945,
+    "Name": "mirror portal",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 948,
+    "Name": "halfling prisoner",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 949,
+    "Name": "Gnaj the Creator",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 959,
+    "Name": "spectral mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 960,
+    "Name": "ghostly figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 971,
+    "Name": "dark-elf mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 973,
+    "Name": "baby black dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 976,
+    "Name": "black dragon hatchling",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 977,
+    "Name": "baby white dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 980,
+    "Name": "white dragon hatchling",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 981,
+    "Name": "drunken brawler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 982,
+    "Name": "unicorn",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 983,
+    "Name": "faerie",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 984,
+    "Name": "baby blue dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 987,
+    "Name": "blue dragon hatchling",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 990,
+    "Name": "baby green dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 993,
+    "Name": "green dragon hatchling",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 994,
+    "Name": "white guardsman",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 995,
+    "Name": "black knight",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 996,
+    "Name": "white bishop",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 997,
+    "Name": "black marble golem",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 998,
+    "Name": "white queen",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 999,
+    "Name": "black king",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1000,
+    "Name": "hooded man",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1001,
+    "Name": "old man",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1003,
+    "Name": "shredded tapestry",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1004,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1005,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1006,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1009,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1010,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1011,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1012,
+    "Name": "Angelic Hunter",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1013,
+    "Name": "Majestic Dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1014,
+    "Name": "Golden Phoenix",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1015,
+    "Name": "Demon Lord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1019,
+    "Name": "inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1020,
+    "Name": "inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1021,
+    "Name": "inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1022,
+    "Name": "inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1024,
+    "Name": "inquisitor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1025,
+    "Name": "enormous blue dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1026,
+    "Name": "prisoner",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1033,
+    "Name": "demon imp",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1036,
+    "Name": "aged earth dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1039,
+    "Name": "giant roc",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1041,
+    "Name": "Lord of the Hunt",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1052,
+    "Name": "demon imp",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1053,
+    "Name": "Horner the Hide",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1054,
+    "Name": "cloaked figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1055,
+    "Name": "cloaked figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1056,
+    "Name": "cloaked figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1057,
+    "Name": "cloaked figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1058,
+    "Name": "great green dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1063,
+    "Name": "old thief",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1069,
+    "Name": "white queen",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1070,
+    "Name": "white king",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1075,
+    "Name": "black queen",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1076,
+    "Name": "black king",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1084,
+    "Name": "Nahr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1086,
+    "Name": "cloaked figure",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1087,
+    "Name": "disenchanter",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1088,
+    "Name": "demon imp",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1089,
+    "Name": "constrictor",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1091,
+    "Name": "jeweled viper",
+    "Relationship": "Enemy",
+    "Priority": "Last"
+  },
+  {
+    "Number": 1093,
+    "Name": "orc warlord",
+    "Relationship": "Enemy",
+    "Priority": "First"
+  },
+  {
+    "Number": 1094,
+    "Name": "orc captain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1095,
+    "Name": "ogre gladiator",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1107,
+    "Name": "baby red dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 1110,
+    "Name": "baby green dragon",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 1111,
+    "Name": "duergar captain",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1119,
+    "Name": "Scot",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1125,
+    "Name": "Gurdal",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1127,
+    "Name": "Trina",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1130,
+    "Name": "dock worker",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1131,
+    "Name": "large cocoon",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1132,
+    "Name": "cocoon",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1133,
+    "Name": "cocoon",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1134,
+    "Name": "cocoon",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1135,
+    "Name": "cocoon",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1136,
+    "Name": "phoren",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1137,
+    "Name": "melna",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1138,
+    "Name": "luginio",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1142,
+    "Name": "bar patron",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1143,
+    "Name": "viresse",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1144,
+    "Name": "lady phoebia",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1145,
+    "Name": "sheila",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1146,
+    "Name": "rayan",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1147,
+    "Name": "gruphor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1148,
+    "Name": "amar",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1149,
+    "Name": "columna",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1150,
+    "Name": "orc'thur",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1151,
+    "Name": "luursa",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1160,
+    "Name": "guard captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1163,
+    "Name": "councilor serina",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1164,
+    "Name": "prisoner",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1165,
+    "Name": "gaalt",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1167,
+    "Name": "foilin",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1168,
+    "Name": "arkin",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1169,
+    "Name": "mariana",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1170,
+    "Name": "leryn",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1171,
+    "Name": "cyril",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1172,
+    "Name": "tortured courtesan",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1173,
+    "Name": "courtesan",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1174,
+    "Name": "daymia",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1175,
+    "Name": "head chef",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1176,
+    "Name": "butler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1177,
+    "Name": "serving woman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1178,
+    "Name": "servant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1179,
+    "Name": "lady",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1181,
+    "Name": "bath attendendant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1182,
+    "Name": "musician",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1183,
+    "Name": "peacock",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1184,
+    "Name": "maid",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1185,
+    "Name": "elder dracolich",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1187,
+    "Name": "Guildmaster Othan",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1188,
+    "Name": "Lord Albrecht",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1189,
+    "Name": "Elthazar",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1190,
+    "Name": "Lord Lachlan",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1191,
+    "Name": "Lady Astor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1192,
+    "Name": "Lord Durand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1193,
+    "Name": "unnamed spy",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1194,
+    "Name": "Falten",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 1195,
+    "Name": "kang villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1196,
+    "Name": "kang priest",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1197,
+    "Name": "kang hunter",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1208,
+    "Name": "chained apparition",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1209,
+    "Name": "fallen champion",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1211,
+    "Name": "animated juggernaut",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1245,
+    "Name": "Empyrean Dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1266,
+    "Name": "Archmage Valduin",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1268,
+    "Name": "ethereal figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1270,
+    "Name": "imprisoned mage",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1271,
+    "Name": "Kale Mandos",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1272,
+    "Name": "Captain Trendel",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1273,
+    "Name": "dockhand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1274,
+    "Name": "old recluse",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1275,
+    "Name": "miller",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1276,
+    "Name": "aging woodcutter",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1277,
+    "Name": "Ancient spore dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1278,
+    "Name": "Vectus",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1279,
+    "Name": "Aquilas",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1282,
+    "Name": "Renfry",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1283,
+    "Name": "spiked overlord",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1285,
+    "Name": "crazed magus",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1286,
+    "Name": "Rattleskull",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1287,
+    "Name": "game ender",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1288,
+    "Name": "Naram Fireblade",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1289,
+    "Name": "Arden the Zealous",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1290,
+    "Name": "Beldrin",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1291,
+    "Name": "Aghatan",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1292,
+    "Name": "Tarl",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1293,
+    "Name": "hooded figure",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1295,
+    "Name": "Farmer Lanford",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1296,
+    "Name": "Flesh Shaper",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1297,
+    "Name": "Lord Chisholm",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 1298,
+    "Name": "malformation",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1299,
+    "Name": "shadowborn prophet",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 1300,
+    "Name": "Lady Malyse",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2099,
+    "Name": "Mayor Delanon",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2100,
+    "Name": "ancient bloodwood tree",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2101,
+    "Name": "dark dryad",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2114,
+    "Name": "Dread Wraith",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2127,
+    "Name": "Inquisitor Thorand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2128,
+    "Name": "Grand Inquisitor Dulram",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2129,
+    "Name": "Dark Naga",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2130,
+    "Name": "servant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2131,
+    "Name": "order trainee",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2132,
+    "Name": "Orden",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2140,
+    "Name": "jellyfish",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 2144,
+    "Name": "stingray",
+    "Relationship": "Enemy",
+    "Priority": "Low"
+  },
+  {
+    "Number": 2155,
+    "Name": "kraken",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2161,
+    "Name": "ruby spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2162,
+    "Name": "iron spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2163,
+    "Name": "topaz spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2164,
+    "Name": "copper spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2165,
+    "Name": "amber spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2166,
+    "Name": "brass spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2167,
+    "Name": "emerald spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2168,
+    "Name": "bronze spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2169,
+    "Name": "sapphire spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2170,
+    "Name": "elite amethyst guardian",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2171,
+    "Name": "onyx spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2172,
+    "Name": "silver spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2173,
+    "Name": "gold spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2174,
+    "Name": "diamond spellbreaker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2183,
+    "Name": "ogre-mage",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2192,
+    "Name": "shadowborn high priest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2198,
+    "Name": "shadowborn loremaster",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2206,
+    "Name": "gnoll warleader",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2209,
+    "Name": "shadowborn priest",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2212,
+    "Name": "massive bore worm",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2221,
+    "Name": "froghemoth",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2238,
+    "Name": "sunwyrm",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2248,
+    "Name": "ancient fire drake",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2249,
+    "Name": "fire giant chieftan",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2262,
+    "Name": "Lord Stryfe",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2266,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2302,
+    "Name": "greater manticore",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2303,
+    "Name": "vulture",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2319,
+    "Name": "seagull",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2321,
+    "Name": "walrus calf",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2324,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2325,
+    "Name": "Templar",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2326,
+    "Name": "peasant",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2327,
+    "Name": "guardsman",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2328,
+    "Name": "sailor",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2329,
+    "Name": "fisherman",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2330,
+    "Name": "citizen",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2331,
+    "Name": "peasant",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2332,
+    "Name": "citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2333,
+    "Name": "tower sentry",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2334,
+    "Name": "priest",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2335,
+    "Name": "barmaid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2336,
+    "Name": "blacksmith",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2337,
+    "Name": "priestess",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2338,
+    "Name": "gnome brewmaster",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2341,
+    "Name": "fisherman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2342,
+    "Name": "sailor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2343,
+    "Name": "dockworker",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2344,
+    "Name": "old sea captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2345,
+    "Name": "Captain Jorgan",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2346,
+    "Name": "First Mate Kranok",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2347,
+    "Name": "seaman",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2348,
+    "Name": "salty dog",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2349,
+    "Name": "salty dog",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2350,
+    "Name": "seaman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2352,
+    "Name": "old sea captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2353,
+    "Name": "Grand Master",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2354,
+    "Name": "dockworker",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2355,
+    "Name": "sailor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2356,
+    "Name": "fisherman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2357,
+    "Name": "shipwright",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2358,
+    "Name": "merchant captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2359,
+    "Name": "city guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2360,
+    "Name": "watch captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2361,
+    "Name": "city guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2362,
+    "Name": "citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2363,
+    "Name": "citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2364,
+    "Name": "royal marine",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2365,
+    "Name": "royal footman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2366,
+    "Name": "royal archer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2367,
+    "Name": "royal captain",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2368,
+    "Name": "King Andrus",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2369,
+    "Name": "royal bodyguard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2370,
+    "Name": "Justicar Halford",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2371,
+    "Name": "mottled courser",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2373,
+    "Name": "stablehand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2374,
+    "Name": "minstrel",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2375,
+    "Name": "chanteur",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2379,
+    "Name": "shady vagrant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2380,
+    "Name": "barmaid",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2381,
+    "Name": "merry drunk",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2382,
+    "Name": "citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2383,
+    "Name": "citizen",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2384,
+    "Name": "peasant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2385,
+    "Name": "peasant",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2386,
+    "Name": "wealthy merchant",
+    "Relationship": "Neutral",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2387,
+    "Name": "refugee",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2388,
+    "Name": "refugee",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2389,
+    "Name": "refugee",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2390,
+    "Name": "stray hound",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2391,
+    "Name": "Hraldin",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2392,
+    "Name": "Gwyned",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2393,
+    "Name": "Fwyren",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2394,
+    "Name": "greedy healer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2396,
+    "Name": "Dark Revenant",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2397,
+    "Name": "huge alabaster dragon",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2398,
+    "Name": "Eldrezeth",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2409,
+    "Name": "caipora",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2413,
+    "Name": "First Mate Garn",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2414,
+    "Name": "Captain Flintlock",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2416,
+    "Name": "old sailor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2417,
+    "Name": "Cartographer Landron",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2447,
+    "Name": "Jurath",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2511,
+    "Name": "iron guardian",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2514,
+    "Name": "copper guardian",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2517,
+    "Name": "brass guardian",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2520,
+    "Name": "bronze guardian",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2538,
+    "Name": "deckhand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2548,
+    "Name": "ice troll chieftan",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2549,
+    "Name": "frost giant chieftan",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2550,
+    "Name": "royal footman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2551,
+    "Name": "royal pathfinder",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2552,
+    "Name": "royal lancer",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2561,
+    "Name": "grizzled ranger",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2562,
+    "Name": "amazon huntress",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2563,
+    "Name": "millhand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2564,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2565,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2566,
+    "Name": "aurochs",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2567,
+    "Name": "pig",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2568,
+    "Name": "chicken",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2569,
+    "Name": "courser foal",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2570,
+    "Name": "destrier foal",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2571,
+    "Name": "mule",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2572,
+    "Name": "fieldhand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2573,
+    "Name": "fieldhand",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2588,
+    "Name": "satyr",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2595,
+    "Name": "steelhead",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2598,
+    "Name": "living water",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2600,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2601,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2602,
+    "Name": "Lachlan guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2605,
+    "Name": "Vynne loyalist",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2621,
+    "Name": "mud ray",
+    "Relationship": "Enemy",
+    "Priority": "Normal",
+    "NotHostile": true
+  },
+  {
+    "Number": 2635,
+    "Name": "living plague",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2661,
+    "Name": "Fallen King",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2666,
+    "Name": "lumbering geist",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2678,
+    "Name": "fair maiden",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2679,
+    "Name": "Setra",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2680,
+    "Name": "Darem Tidegrasp",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2690,
+    "Name": "miller",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2691,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2692,
+    "Name": "villager",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2693,
+    "Name": "Lachlan guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2700,
+    "Name": "Lachlan guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2701,
+    "Name": "Forgrim",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2709,
+    "Name": "Farmer Lledwyn",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2716,
+    "Name": "Durand guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2717,
+    "Name": "Durand knight",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2718,
+    "Name": "Gelm",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2719,
+    "Name": "Horatio",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2720,
+    "Name": "Kayd",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2742,
+    "Name": "haggard witch",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2757,
+    "Name": "Astor guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2758,
+    "Name": "Astor marksman",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2777,
+    "Name": "traveler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2778,
+    "Name": "traveler",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2782,
+    "Name": "messenger",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2785,
+    "Name": "Magister Melnor",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2786,
+    "Name": "royal guard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2787,
+    "Name": "Luca Prodigio",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2793,
+    "Name": "Ethereal Watcher",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2794,
+    "Name": "Xelrym-dhar",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2795,
+    "Name": "dao",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2796,
+    "Name": "Kato",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2797,
+    "Name": "Rodolfo",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2799,
+    "Name": "Corpsemass",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2807,
+    "Name": "Volodar",
+    "Relationship": "Enemy",
+    "Priority": "High"
+  },
+  {
+    "Number": 2814,
+    "Name": "hedge wizard",
+    "Relationship": "Neutral",
+    "Priority": "Normal"
+  }
+]

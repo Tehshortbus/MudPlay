@@ -161,6 +161,25 @@ public static class AppPaths
         Path.Combine(AppContext.BaseDirectory, "Defaults", "MonsterMessages.seed.json");
 
     /// <summary>
+    /// User-writable MonsterOverlay seed JSON for the given realm flavor,
+    /// hosted in the XDG-resolved <c>Data/Global/</c> folder. Holds the
+    /// Defaults-tier baseline for relationship / priority / NotHostile /
+    /// DontBackstab — decoded from the realm's stock MegaMUD
+    /// <c>Monsters.md</c>. The active game-data set's <c>Info.json[0].Legit</c>
+    /// picks which realm seed to apply (<c>0/1</c> = stock, <c>2</c> =
+    /// paradigm). Bootstrapped from the matching
+    /// <see cref="BundledMonsterOverlaySeedFile"/> on first app launch.
+    /// The seed itself is never written by the app; user edits go to
+    /// higher tiers via <see cref="SettingsResolver.WriteGameDataAt"/>.
+    /// </summary>
+    public static string MonsterOverlaySeedFile(string realm) =>
+        Path.Combine(DataRoot, "Global", $"MonsterOverlay.{realm}.seed.json");
+
+    /// <summary>Read-only bundled copy of the realm's overlay seed, shipped next to the executable.</summary>
+    public static string BundledMonsterOverlaySeedFile(string realm) =>
+        Path.Combine(AppContext.BaseDirectory, "Defaults", $"MonsterOverlay.{realm}.seed.json");
+
+    /// <summary>
     /// Per-set Triggers file scoped inside the game-data set's folder.
     /// Stores only the <see cref="Models.GameData.TriggerLocation.GameData"/>-
     /// scoped triggers; <see cref="Models.GameData.TriggerLocation.Profile"/>-
@@ -215,6 +234,16 @@ public static class AppPaths
         TryCopySeed(BundledMessagesSeedFile,        DefaultMessagesSeedFile);
         TryCopySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
         TryCopySeed(BundledTriggersSeedFile,        DefaultTriggersSeedFile);
+
+        // MonsterOverlay seeds are realm-flavored — one file per realm
+        // family. The active set picks which to apply via Info.Legit.
+        // Bootstrap every realm file we ship so the user can browse /
+        // edit any seed without first having to switch active sets.
+        foreach (string realm in new[] { "stock", "paradigm" })
+        {
+            TryCopySeed(BundledMonsterOverlaySeedFile(realm),
+                        MonsterOverlaySeedFile(realm));
+        }
     }
 
     private static void TryCopySeed(string source, string destination)

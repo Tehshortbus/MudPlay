@@ -33,6 +33,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     private readonly DialogService? _dialogs;
     private readonly SettingsResolver? _resolverRef;
     private readonly MonsterMessageStore? _monsterMessages;
+    private readonly MonsterOverlaySeedStore? _overlaySeed;
 
     public override string Id => "monsters";
     public override string Title => "Monsters";
@@ -78,13 +79,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         GameDataCache cache,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
-        MonsterMessageStore? monsterMessages = null)
+        MonsterMessageStore? monsterMessages = null,
+        MonsterOverlaySeedStore? overlaySeed = null)
         : base(cache, resolver)
     {
         _cache = cache;
         _dialogs = dialogs;
         _resolverRef = resolver;
         _monsterMessages = monsterMessages;
+        _overlaySeed = overlaySeed;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
     }
 
@@ -98,16 +101,21 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo = BuildMdbInfo(wcc);
 
         // Existing overlay — always merged across all 4 tiers (Char →
-        // BBS → Global → Defaults). ResolveGameData starts from a
-        // blank MonsterOverlay base and overlays each tier's delta
-        // in priority order, so the dialog opens showing exactly
-        // what the runtime engines will see for this monster. When no
-        // tier has an override the returned overlay is all-null and
-        // the dialog's defaults (Enemy / Normal / no flags) take
-        // over.
+        // BBS → Global → Defaults). The Defaults-tier baseline comes
+        // from the realm-flavored MonsterOverlaySeedStore: for stock
+        // realms the seed encodes the relationship + priority + flag
+        // values shipped by MegaMUD's Monsters.md (decoded offline);
+        // for Paradigm realms the seed comes from the Paradigm-build
+        // Monsters.md. ResolveGameData then overlays each higher tier's
+        // delta in priority order so the dialog opens showing exactly
+        // what the runtime engines will see for this monster.
+        MonsterOverlay seedDefaults =
+            (_overlaySeed is not null && int.TryParse(wcc, out int seedNum))
+                ? _overlaySeed.GetOverlay(seedNum)
+                : new MonsterOverlay();
         MonsterOverlay existing = _resolverRef?.ResolveGameData<MonsterOverlay>(
-            "Monsters", wcc, new MonsterOverlay())
-            ?? new MonsterOverlay();
+            "Monsters", wcc, seedDefaults)
+            ?? seedDefaults;
 
         // Look up the existing monster-message record by Number so the
         // Messages section in the dialog opens hydrated. Null when the
