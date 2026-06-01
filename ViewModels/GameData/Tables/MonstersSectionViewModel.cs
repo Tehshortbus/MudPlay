@@ -220,9 +220,21 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
 
             if (ReadInt(el, "Undead") == 1) AddRow(kv, "Undead", "Yes");
 
-            // HP + HP Regen on separate rows.
-            AddRowIfNonZero(kv, "HP",       ReadInt(el, "HP"));
-            AddRowIfNonZero(kv, "HP Regen", ReadInt(el, "HPRegen"));
+            // HP + HP Regen combined into one row, matching MME's
+            // "7200 (Regens: 2000 HPs every 90 seconds [18 rounds])" form.
+            // 90s / 18 rounds is the classic MajorMUD tick (5s per round
+            // × 18 = 90s). If we add GreaterMUD support later, swap to
+            // 30s / 6 rounds on that realm via a Settings.RealmType
+            // branch.
+            int hp = ReadInt(el, "HP");
+            if (hp > 0)
+            {
+                string hpDisplay = hp.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+                int hpRegen = ReadInt(el, "HPRegen");
+                if (hpRegen > 0)
+                    hpDisplay += $" (Regens: {hpRegen:N0} HPs every 90 seconds [18 rounds])";
+                AddRow(kv, "HP", hpDisplay);
+            }
 
             int ac = ReadInt(el, "ArmourClass");
             int dr = ReadInt(el, "DamageResist");
