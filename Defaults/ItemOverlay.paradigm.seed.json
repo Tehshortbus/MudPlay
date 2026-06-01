@@ -1,0 +1,4543 @@
+[
+  {
+    "Number": 11,
+    "Name": "large sign",
+    "MaxToGet": 768
+  },
+  {
+    "Number": 29,
+    "Name": "small sign",
+    "MaxToGet": 768
+  },
+  {
+    "Number": 48,
+    "Name": "fist",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 64,
+    "Name": "longsword",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 65,
+    "Name": "broadsword",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 67,
+    "Name": "shortsword",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 68,
+    "Name": "dagger",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 69,
+    "Name": "knife",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 70,
+    "Name": "stiletto",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 71,
+    "Name": "battle axe",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 72,
+    "Name": "scimitar",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 73,
+    "Name": "short-spear",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 74,
+    "Name": "sickle",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 75,
+    "Name": "hatchet",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 76,
+    "Name": "falchion",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 78,
+    "Name": "greatsword",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 79,
+    "Name": "flamberge",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 80,
+    "Name": "bastard sword",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 81,
+    "Name": "greataxe",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 82,
+    "Name": "halberd",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 83,
+    "Name": "pike",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 85,
+    "Name": "long-spear",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 86,
+    "Name": "glaive",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 87,
+    "Name": "mace",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 88,
+    "Name": "morning-star",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 89,
+    "Name": "heavy-mace",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 90,
+    "Name": "club",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 91,
+    "Name": "warhammer",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 92,
+    "Name": "spiked club",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 93,
+    "Name": "whip",
+    "MaxToGet": 256
+  },
+  {
+    "Number": 95,
+    "Name": "war mattock",
+    "AutoCollect": true,
+    "MaxToGet": 256
+  },
+  {
+    "Number": 106,
+    "Name": "wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 108,
+    "Name": "tapestry",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 109,
+    "Name": "hole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 110,
+    "Name": "fountain",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 111,
+    "Name": "statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 112,
+    "Name": "sword",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 114,
+    "Name": "griffon",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 172,
+    "Name": "black star key",
+    "AutoCollect": true,
+    "AutoFind": true,
+    "MaxToGet": 2
+  },
+  {
+    "Number": 175,
+    "Name": "torch",
+    "AutoBuy": true
+  },
+  {
+    "Number": 181,
+    "Name": "tomb door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 182,
+    "Name": "stone door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 183,
+    "Name": "sarcophagus",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 184,
+    "Name": "lever",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 185,
+    "Name": "manhole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 186,
+    "Name": "iron sink",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 187,
+    "Name": "fireplace",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 188,
+    "Name": "brick",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 189,
+    "Name": "black door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 191,
+    "Name": "rope and grapple",
+    "AutoBuy": true
+  },
+  {
+    "Number": 192,
+    "Name": "red skull",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 206,
+    "Name": "switch",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 207,
+    "Name": "stone table",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 228,
+    "Name": "cracks",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 241,
+    "Name": "bas-relief image",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 242,
+    "Name": "brass plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 243,
+    "Name": "ebony triangle",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 244,
+    "Name": "golden sun symbol",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 245,
+    "Name": "silvery moon symbol",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 246,
+    "Name": "seven-pointed star symbol",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 247,
+    "Name": "stone face",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 248,
+    "Name": "minotaur statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 249,
+    "Name": "statue's stone greataxe",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 250,
+    "Name": "statue's horned head",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 251,
+    "Name": "statue's eyes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 252,
+    "Name": "words scratched into floor",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 253,
+    "Name": "statue's nose ring",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 254,
+    "Name": "bone staircase",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 255,
+    "Name": "iron door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 256,
+    "Name": "wooden table",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 257,
+    "Name": "stone shelves",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 259,
+    "Name": "ruby key",
+    "AutoFind": true
+  },
+  {
+    "Number": 271,
+    "Name": "bulletin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 283,
+    "Name": "waterskin",
+    "AutoBuy": true
+  },
+  {
+    "Number": 337,
+    "Name": "claw glyph",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 340,
+    "Name": "flame glyph",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 343,
+    "Name": "fist glyph",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 345,
+    "Name": "sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 474,
+    "Name": "darkwood ring",
+    "AutoFind": true
+  },
+  {
+    "Number": 475,
+    "Name": "green metal key",
+    "AutoFind": true
+  },
+  {
+    "Number": 476,
+    "Name": "large iron key",
+    "AutoFind": true
+  },
+  {
+    "Number": 477,
+    "Name": "small sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 485,
+    "Name": "large broken tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 488,
+    "Name": "large boulder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 490,
+    "Name": "cross key",
+    "AutoFind": true
+  },
+  {
+    "Number": 491,
+    "Name": "runed key",
+    "AutoFind": true
+  },
+  {
+    "Number": 492,
+    "Name": "skull key",
+    "AutoFind": true
+  },
+  {
+    "Number": 495,
+    "Name": "gleaming steel device",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 496,
+    "Name": "dark temple key",
+    "AutoFind": true
+  },
+  {
+    "Number": 500,
+    "Name": "hideous altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 506,
+    "Name": "silver disk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 507,
+    "Name": "shattered skeleton",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 508,
+    "Name": "crystal ball",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 509,
+    "Name": "silver pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 510,
+    "Name": "lava-rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 511,
+    "Name": "glowing ruby",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 513,
+    "Name": "small sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 515,
+    "Name": "starcharts",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 516,
+    "Name": "thin grey tome",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 517,
+    "Name": "silver spined tome",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 518,
+    "Name": "flat black tome",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 520,
+    "Name": "glass key",
+    "AutoFind": true
+  },
+  {
+    "Number": 525,
+    "Name": "altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 526,
+    "Name": "huge darkwood tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 527,
+    "Name": "pipe",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 528,
+    "Name": "eye socket",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 563,
+    "Name": "grey leather-bound tome",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 569,
+    "Name": "rusty iron key",
+    "AutoFind": true
+  },
+  {
+    "Number": 570,
+    "Name": "crowbar",
+    "AutoBuy": true
+  },
+  {
+    "Number": 571,
+    "Name": "window",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 572,
+    "Name": "rusted gate",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 573,
+    "Name": "rusty fence",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 574,
+    "Name": "chained door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 575,
+    "Name": "western wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 576,
+    "Name": "small black holes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 577,
+    "Name": "smooth metal stud",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 578,
+    "Name": "wooden table",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 579,
+    "Name": "chair",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 580,
+    "Name": "book",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 581,
+    "Name": "stove",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 582,
+    "Name": "fireplace",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 583,
+    "Name": "map",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 584,
+    "Name": "ancient door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 585,
+    "Name": "hills",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 586,
+    "Name": "road",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 587,
+    "Name": "wooden sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 588,
+    "Name": "avalanche of jagged rubble",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 595,
+    "Name": "path",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 598,
+    "Name": "large canvas tent",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 599,
+    "Name": "massive canvas tent",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 600,
+    "Name": "bonfire",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 602,
+    "Name": "walls",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 603,
+    "Name": "hole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 604,
+    "Name": "hole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 605,
+    "Name": "small hole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 606,
+    "Name": "green bubbling pool",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 613,
+    "Name": "pile of digested bodies",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 615,
+    "Name": "violet organic walls",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 616,
+    "Name": "partially concealed hole",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 617,
+    "Name": "black mountains",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 618,
+    "Name": "crevice trail",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 619,
+    "Name": "thick brown vines",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 620,
+    "Name": "filthy nests",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 643,
+    "Name": "pewter door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 644,
+    "Name": "throne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 652,
+    "Name": "massive black doors",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 653,
+    "Name": "alleyway",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 654,
+    "Name": "street",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 655,
+    "Name": "iron sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 658,
+    "Name": "huge bulletin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 693,
+    "Name": "silver river",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 694,
+    "Name": "silvermere wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 695,
+    "Name": "dark forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 696,
+    "Name": "long bridge",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 697,
+    "Name": "rocky waterfall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 698,
+    "Name": "dark brown walls of stone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 700,
+    "Name": "elevated rocky ledge",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 701,
+    "Name": "carved wall face with design",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 705,
+    "Name": "ancient statues",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 706,
+    "Name": "huge stone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 707,
+    "Name": "huge fallen tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 708,
+    "Name": "silvery stream",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 709,
+    "Name": "silvery pool",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 710,
+    "Name": "darkened ironwood forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 713,
+    "Name": "huge tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 715,
+    "Name": "bushes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 716,
+    "Name": "bright red plant",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 718,
+    "Name": "huge broken willow",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 721,
+    "Name": "bronzewood forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 723,
+    "Name": "copperwood forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 724,
+    "Name": "large tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 729,
+    "Name": "silverwood forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 730,
+    "Name": "rope bridge",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 734,
+    "Name": "ancient stone wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 735,
+    "Name": "demolished doors",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 751,
+    "Name": "shattered skeleton",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 756,
+    "Name": "contraption",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 758,
+    "Name": "white dragon carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 759,
+    "Name": "black dragon carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 760,
+    "Name": "green dragon carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 761,
+    "Name": "blue dragon carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 762,
+    "Name": "dragon carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 766,
+    "Name": "iceforge anvil",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 767,
+    "Name": "frozen hydra",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 768,
+    "Name": "frozen giant",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 769,
+    "Name": "ancient tome",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 771,
+    "Name": "painting",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 772,
+    "Name": "stone mouth",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 773,
+    "Name": "plaque on gate",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 775,
+    "Name": "ogre map",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 794,
+    "Name": "gleaming contraption",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 795,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 796,
+    "Name": "large sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 799,
+    "Name": "whirling vortex",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 802,
+    "Name": "obsidian obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 803,
+    "Name": "pipe",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 804,
+    "Name": "rubble",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 805,
+    "Name": "boulder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 806,
+    "Name": "gate key",
+    "AutoFind": true
+  },
+  {
+    "Number": 807,
+    "Name": "bloodstone orb",
+    "AutoFind": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 808,
+    "Name": "glowing key",
+    "AutoFind": true
+  },
+  {
+    "Number": 809,
+    "Name": "adamantite key",
+    "AutoFind": true
+  },
+  {
+    "Number": 811,
+    "Name": "opal brooch",
+    "AutoFind": true
+  },
+  {
+    "Number": 812,
+    "Name": "shelf and jars",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 814,
+    "Name": "wooden desk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 815,
+    "Name": "amber talisman",
+    "AutoFind": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 816,
+    "Name": "huge keg",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 818,
+    "Name": "mutilated corpses",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 819,
+    "Name": "giant apparatus",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 820,
+    "Name": "moldy key",
+    "AutoFind": true
+  },
+  {
+    "Number": 827,
+    "Name": "carved statues",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 837,
+    "Name": "door with puzzle lock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 838,
+    "Name": "guild bulletin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 839,
+    "Name": "nightblack portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 840,
+    "Name": "black orb",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 842,
+    "Name": "throne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 881,
+    "Name": "azurite stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 882,
+    "Name": "agate stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 883,
+    "Name": "hematite stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 884,
+    "Name": "malachite stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 885,
+    "Name": "obsidian stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 886,
+    "Name": "turquoise stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 887,
+    "Name": "bloodstone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 888,
+    "Name": "carnelian stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 889,
+    "Name": "moonstone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 890,
+    "Name": "onyx stone",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 891,
+    "Name": "piece of crystal",
+    "AutoDiscard": true
+  },
+  {
+    "Number": 915,
+    "Name": "crater",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 916,
+    "Name": "gouged walls",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 918,
+    "Name": "grey bushes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 919,
+    "Name": "grey bushes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 928,
+    "Name": "swamp",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 933,
+    "Name": "throne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 934,
+    "Name": "patch of black mushrooms",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 937,
+    "Name": "stone sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 938,
+    "Name": "slag sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 939,
+    "Name": "gambling sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 940,
+    "Name": "mountain of rubble",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 942,
+    "Name": "mine pass",
+    "AutoBuy": true
+  },
+  {
+    "Number": 946,
+    "Name": "mine sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 951,
+    "Name": "cracked obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 964,
+    "Name": "altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 965,
+    "Name": "sysop quest token",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 966,
+    "Name": "acid gland",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 968,
+    "Name": "metal plate",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 971,
+    "Name": "roots",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 972,
+    "Name": "unfertilized eggs",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 973,
+    "Name": "bushes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 976,
+    "Name": "skeleton key",
+    "AutoBuy": true
+  },
+  {
+    "Number": 977,
+    "Name": "a statue of a killer",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 978,
+    "Name": "text inscription",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 979,
+    "Name": "jade wave carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 980,
+    "Name": "obsidian mountain carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 981,
+    "Name": "white marble fog carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 982,
+    "Name": "sunstone flame carving",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 983,
+    "Name": "titanium fork",
+    "AutoBuy": true
+  },
+  {
+    "Number": 984,
+    "Name": "tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 985,
+    "Name": "door",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 986,
+    "Name": "ivory statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 990,
+    "Name": "old parchment",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 992,
+    "Name": "potion of levitation",
+    "AutoBuy": true
+  },
+  {
+    "Number": 993,
+    "Name": "waterfall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 994,
+    "Name": "double-terminated quartz",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 995,
+    "Name": "cave roots",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 997,
+    "Name": "barrier",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 998,
+    "Name": "golden egg",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1001,
+    "Name": "mandible",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1002,
+    "Name": "wire key",
+    "AutoFind": true
+  },
+  {
+    "Number": 1004,
+    "Name": "ruby ninjato",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1005,
+    "Name": "etched adamant broadsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1008,
+    "Name": "red parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1009,
+    "Name": "orange parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1010,
+    "Name": "yellow parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1011,
+    "Name": "green parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1012,
+    "Name": "blue parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1013,
+    "Name": "violet parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1014,
+    "Name": "black parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1015,
+    "Name": "silver parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1016,
+    "Name": "gold parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1017,
+    "Name": "white parchment deed",
+    "AutoCollect": true,
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1019,
+    "Name": "adamantite chest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1023,
+    "Name": "nexus blade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1031,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1035,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1039,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1043,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1055,
+    "Name": "wishbone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1056,
+    "Name": "silver banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1057,
+    "Name": "black banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1058,
+    "Name": "white banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1059,
+    "Name": "red banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1060,
+    "Name": "gold banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1061,
+    "Name": "blue banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1062,
+    "Name": "green banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1063,
+    "Name": "violet banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1064,
+    "Name": "orange banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1065,
+    "Name": "yellow banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1066,
+    "Name": "rotted tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1069,
+    "Name": "etched adamant warhammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1078,
+    "Name": "flaming portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1079,
+    "Name": "shuriken",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1081,
+    "Name": "flaming star",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1082,
+    "Name": "midnight glare",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1084,
+    "Name": "azure shamshir",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1098,
+    "Name": "newbie manual",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1122,
+    "Name": "palm tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1123,
+    "Name": "shimmering pool",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1126,
+    "Name": "well",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1127,
+    "Name": "basalt obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1128,
+    "Name": "basalt obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1129,
+    "Name": "basalt obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1130,
+    "Name": "mummified miner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1132,
+    "Name": "black altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1133,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1134,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1135,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1136,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1137,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1138,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1139,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1140,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1141,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1142,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1143,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1144,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1145,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1146,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1147,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1150,
+    "Name": "jeweled altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1151,
+    "Name": "stone letters",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1154,
+    "Name": "heavy box",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1158,
+    "Name": "shelf",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1159,
+    "Name": "red book",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1160,
+    "Name": "blue book",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1163,
+    "Name": "red iron axe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1164,
+    "Name": "red iron hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1165,
+    "Name": "red iron dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1168,
+    "Name": "khopesh sword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1172,
+    "Name": "meteorite rod",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1178,
+    "Name": "sculpture",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1190,
+    "Name": "javelin",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1191,
+    "Name": "stone javelin",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1195,
+    "Name": "black leather leggings",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1196,
+    "Name": "chameleon leggings",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1201,
+    "Name": "sapling longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1202,
+    "Name": "bloodstained chakram",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1203,
+    "Name": "bronze chakram",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1204,
+    "Name": "ethereal chakram",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1227,
+    "Name": "black leather belt",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1229,
+    "Name": "runed longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1230,
+    "Name": "shimmering sash",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1244,
+    "Name": "cosmic staff",
+    "AutoCollect": true,
+    "AutoBuy": true
+  },
+  {
+    "Number": 1245,
+    "Name": "starhammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1246,
+    "Name": "severed earth dragon claw",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1248,
+    "Name": "deathcoil",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1249,
+    "Name": "soulrender",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1255,
+    "Name": "twin shortswords",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1257,
+    "Name": "bloodstained broadsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1259,
+    "Name": "leaf blade",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1281,
+    "Name": "golden idol",
+    "AutoFind": true
+  },
+  {
+    "Number": 1282,
+    "Name": "sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1295,
+    "Name": "fangblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1299,
+    "Name": "withered tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1302,
+    "Name": "fungus walls",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1307,
+    "Name": "battered wooden chest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1308,
+    "Name": "boomstick",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1314,
+    "Name": "faith keeper",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1315,
+    "Name": "death's shadow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1316,
+    "Name": "blacknight",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1317,
+    "Name": "lyrist's companion",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1318,
+    "Name": "shawl of fortune",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1326,
+    "Name": "shimmering portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1327,
+    "Name": "blackened dirk",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1328,
+    "Name": "sai",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1330,
+    "Name": "lifestealer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1333,
+    "Name": "crystal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1334,
+    "Name": "Draka's Blade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1338,
+    "Name": "curved bone dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1339,
+    "Name": "diary",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1343,
+    "Name": "bloody meat cleaver",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1345,
+    "Name": "withered tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1348,
+    "Name": "gavel of justice",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1349,
+    "Name": "daikatana",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1350,
+    "Name": "ice crystal falchion",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1355,
+    "Name": "blizzardfang",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1356,
+    "Name": "severed arm",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1357,
+    "Name": "severed leg",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1358,
+    "Name": "spiked black tentacle",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1359,
+    "Name": "minotaur horn",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1362,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1363,
+    "Name": "jail cell",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1366,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1367,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1368,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1369,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1370,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1371,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1372,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1373,
+    "Name": "a statue of warrior",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1375,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1376,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1377,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1378,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1379,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1380,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1381,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1382,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1383,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1384,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1385,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1386,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1387,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1388,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1389,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1390,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1391,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1392,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1393,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1394,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1395,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1396,
+    "Name": "engraved memorial",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1397,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1398,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1399,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1400,
+    "Name": "gravestone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1401,
+    "Name": "a statue of witchhunter",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1402,
+    "Name": "a statue of paladin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1403,
+    "Name": "a statue of cleric",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1404,
+    "Name": "a statue of priest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1405,
+    "Name": "a statue of missionary",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1406,
+    "Name": "a statue of ninja",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1407,
+    "Name": "a statue of thief",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1408,
+    "Name": "a statue of bard",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1409,
+    "Name": "a statue of gypsy",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1410,
+    "Name": "a statue of warlock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1411,
+    "Name": "a statue of mage",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1412,
+    "Name": "a statue of druid",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1413,
+    "Name": "a statue of ranger",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1414,
+    "Name": "a statue of mystic",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1417,
+    "Name": "young tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1418,
+    "Name": "gambling sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1419,
+    "Name": "nightblack portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1420,
+    "Name": "gambling sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1426,
+    "Name": "tent",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1427,
+    "Name": "tainted ruby",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1435,
+    "Name": "soulblighter",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1437,
+    "Name": "blackened unicorn horn",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1441,
+    "Name": "deck of cards",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1445,
+    "Name": "vorpal hatchet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1448,
+    "Name": "jewel-encrusted warhammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1449,
+    "Name": "Darkbane",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1454,
+    "Name": "ethereal dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1455,
+    "Name": "brimstone hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1457,
+    "Name": "dark onyx ring",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1460,
+    "Name": "black stained tunic",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1467,
+    "Name": "throwing hammers",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1470,
+    "Name": "blackened bracelet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1473,
+    "Name": "bone club",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1474,
+    "Name": "blackwood cudgel",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1475,
+    "Name": "rod of might",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1476,
+    "Name": "blackwood longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1477,
+    "Name": "reading glasses",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1478,
+    "Name": "blackwood war-spear",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1481,
+    "Name": "beastly claws",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1486,
+    "Name": "elven longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1487,
+    "Name": "Sword of Ozrinom",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1488,
+    "Name": "duergar check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1489,
+    "Name": "saracen check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1490,
+    "Name": "arena check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1494,
+    "Name": "large sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1495,
+    "Name": "dragonfang ninjato",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1497,
+    "Name": "anointed morningstar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1498,
+    "Name": "diamond longsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1499,
+    "Name": "Holy Wrath and Righteous Fury",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1500,
+    "Name": "spiritual warhammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1501,
+    "Name": "white gold flail",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1502,
+    "Name": "great mithril battle-hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1505,
+    "Name": "diamond scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1506,
+    "Name": "Solarblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1507,
+    "Name": "moonstone rod",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1508,
+    "Name": "Angel's talon",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1510,
+    "Name": "obsidian trident",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1511,
+    "Name": "Demonslayer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1512,
+    "Name": "Judicator",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1518,
+    "Name": "brown leather boots",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1520,
+    "Name": "bleeding main-gauche",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1529,
+    "Name": "cobra earrings",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1531,
+    "Name": "shadowy portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1534,
+    "Name": "white oak forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1535,
+    "Name": "white oak forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1556,
+    "Name": "altar of dawn",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1558,
+    "Name": "pew",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1559,
+    "Name": "ship's wheel",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1562,
+    "Name": "angelic statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1563,
+    "Name": "scholarly statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1564,
+    "Name": "mage statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1579,
+    "Name": "death shroud",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1580,
+    "Name": "sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1581,
+    "Name": "cot",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1583,
+    "Name": "coffin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1584,
+    "Name": "Flamemasher",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1586,
+    "Name": "sapphire chakram",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1590,
+    "Name": "Windblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1591,
+    "Name": "petrified mace",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1592,
+    "Name": "acid slasher",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1594,
+    "Name": "jeweled dirk",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1595,
+    "Name": "MagiRavager",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1596,
+    "Name": "vorpal cutlass",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1597,
+    "Name": "jeweled maul",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1601,
+    "Name": "levers",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1613,
+    "Name": "enigma placeholder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1615,
+    "Name": "ancient tapestry",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1616,
+    "Name": "Deathweaver",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1617,
+    "Name": "skull flail",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1618,
+    "Name": "demonic pitchfork",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1619,
+    "Name": "AngelCrusher",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1620,
+    "Name": "netherworld hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1621,
+    "Name": "flail of oblivion",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1622,
+    "Name": "abyssal scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1623,
+    "Name": "Demontongue",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1624,
+    "Name": "Soulwaste",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1626,
+    "Name": "bloodkrys",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1627,
+    "Name": "Magus Ripper",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1628,
+    "Name": "serrated bone war-spear",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1629,
+    "Name": "crimson-hilted morningstar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1630,
+    "Name": "shredded tapestry",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1634,
+    "Name": "enigma placeholder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1636,
+    "Name": "blue portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1637,
+    "Name": "spectral shroud",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1638,
+    "Name": "amber sceptre",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1643,
+    "Name": "chaotic vortex",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1647,
+    "Name": "vorpal katana",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1648,
+    "Name": "blackwood forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1651,
+    "Name": "arlysian longsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1652,
+    "Name": "arlysian rod",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1653,
+    "Name": "arlysian dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1654,
+    "Name": "ethereal sabre",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1676,
+    "Name": "black dragon robes",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1677,
+    "Name": "tissue",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1680,
+    "Name": "blood portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1682,
+    "Name": "gravestones",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1684,
+    "Name": "weeping statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1686,
+    "Name": "hideous face",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1687,
+    "Name": "hideous face",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1688,
+    "Name": "anvil",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1689,
+    "Name": "firepit",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1693,
+    "Name": "ancient sword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1694,
+    "Name": "ancient chime",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1696,
+    "Name": "cracked statue head",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1697,
+    "Name": "twisted tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1702,
+    "Name": "bookcase",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1703,
+    "Name": "pile of rubble",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1705,
+    "Name": "dead room",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1706,
+    "Name": "shining white talisman",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1709,
+    "Name": "mithril dwarven axe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1710,
+    "Name": "serrated dwarven axe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1726,
+    "Name": "altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1739,
+    "Name": "jeweled adamantite ninjato",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1747,
+    "Name": "blood gore",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1748,
+    "Name": "granite coffin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1749,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1752,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1753,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1754,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1755,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1756,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1757,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1758,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1759,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1760,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1761,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1762,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1763,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1764,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1765,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1766,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1767,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1768,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1769,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1770,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1771,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1772,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1773,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1774,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1775,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1776,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1779,
+    "Name": "golden plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1780,
+    "Name": "golden plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1781,
+    "Name": "golden plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1782,
+    "Name": "plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1783,
+    "Name": "golden plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1784,
+    "Name": "stone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1785,
+    "Name": "disfigured statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1786,
+    "Name": "warrior statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1787,
+    "Name": "wooden hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1789,
+    "Name": "scrawling wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1791,
+    "Name": "scrawling wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1792,
+    "Name": "stone statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1793,
+    "Name": "stone sword",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1794,
+    "Name": "stone hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1795,
+    "Name": "stone jaw",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1796,
+    "Name": "eye socket",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1797,
+    "Name": "stone statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1798,
+    "Name": "large sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1799,
+    "Name": "pristine coffin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1800,
+    "Name": "large sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1803,
+    "Name": "adamantite scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1804,
+    "Name": "dark plated warchest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1807,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1809,
+    "Name": "oak chest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1811,
+    "Name": "silver box",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1812,
+    "Name": "scrawling wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1824,
+    "Name": "sadamune",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1830,
+    "Name": "mutilated corpses",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1832,
+    "Name": "aged desk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1833,
+    "Name": "aged desk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1843,
+    "Name": "black dragon tabi",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1854,
+    "Name": "adamantite ninjato",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1891,
+    "Name": "great hydra statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1892,
+    "Name": "wall",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1893,
+    "Name": "nexus portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1895,
+    "Name": "golden pillar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1900,
+    "Name": "silver plaque",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1903,
+    "Name": "bronze statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1904,
+    "Name": "starsteel shortsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1908,
+    "Name": "chained pile of bones",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1909,
+    "Name": "shintai sword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1913,
+    "Name": "dynamite longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1915,
+    "Name": "massive boulder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1917,
+    "Name": "diamond pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1918,
+    "Name": "pearl pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1919,
+    "Name": "moonstone pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1920,
+    "Name": "marble pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1925,
+    "Name": "marble pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1926,
+    "Name": "marble statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1938,
+    "Name": "sceptre",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1946,
+    "Name": "iron pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1951,
+    "Name": "stone pedestal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1952,
+    "Name": "throne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1953,
+    "Name": "throne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1954,
+    "Name": "placeholder for nahr",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1956,
+    "Name": "skeletal remains",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1957,
+    "Name": "rock outcropping",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1958,
+    "Name": "void",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1960,
+    "Name": "raven claw",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1961,
+    "Name": "black dragon hood",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1962,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1963,
+    "Name": "large rock",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1965,
+    "Name": "longsword1",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1966,
+    "Name": "longsword2",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1967,
+    "Name": "longsword3",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1968,
+    "Name": "longsword4",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1969,
+    "Name": "longsword5",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1972,
+    "Name": "lightning whip",
+    "LoyalItem": true
+  },
+  {
+    "Number": 1976,
+    "Name": "orc check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1977,
+    "Name": "dragon check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1978,
+    "Name": "cultist check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1979,
+    "Name": "stone wall letters",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1985,
+    "Name": "green check",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1986,
+    "Name": "bronze statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 1987,
+    "Name": "sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2001,
+    "Name": "brass zills",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2031,
+    "Name": "altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2036,
+    "Name": "apple tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2037,
+    "Name": "apple tree",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2053,
+    "Name": "blue shrine",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2054,
+    "Name": "Serpent Shrine",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2118,
+    "Name": "ledger",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2119,
+    "Name": "small sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2120,
+    "Name": "black leather doublet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2130,
+    "Name": "iron parchment deed",
+    "AutoCollect": true,
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2131,
+    "Name": "copper parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2132,
+    "Name": "brass parchment deed",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2133,
+    "Name": "bronze parchment deed",
+    "AutoCollect": true,
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2163,
+    "Name": "Captain's desk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2166,
+    "Name": "dark portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2167,
+    "Name": "hammer of purity",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2168,
+    "Name": "tournament sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2169,
+    "Name": "past winners board",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2170,
+    "Name": "red ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2171,
+    "Name": "orange ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2172,
+    "Name": "yellow ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2173,
+    "Name": "green ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2174,
+    "Name": "blue ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2175,
+    "Name": "violet ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2176,
+    "Name": "black ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2177,
+    "Name": "silver ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2178,
+    "Name": "gold ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2179,
+    "Name": "white ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2180,
+    "Name": "iron ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2181,
+    "Name": "copper ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2182,
+    "Name": "brass ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2183,
+    "Name": "bronze ganghouse sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2184,
+    "Name": "pile of ashes",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2185,
+    "Name": "astral scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2186,
+    "Name": "starfall shortsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2187,
+    "Name": "blazing scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2188,
+    "Name": "blazing battleaxe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2221,
+    "Name": "giantwood war-spear",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2223,
+    "Name": "lunarblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2224,
+    "Name": "jeweled starfall hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2226,
+    "Name": "mithral engraved main-gauche",
+    "LoyalItem": true
+  },
+  {
+    "Number": 2228,
+    "Name": "book stand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2229,
+    "Name": "collapsing portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 2240,
+    "Name": "a statue of a hero",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3001,
+    "Name": "black opal stud",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3002,
+    "Name": "black silken scarf",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3003,
+    "Name": "skull badge",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3004,
+    "Name": "crude sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3005,
+    "Name": "blacksteel epee",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3008,
+    "Name": "wooden sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3009,
+    "Name": "cutlass",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3010,
+    "Name": "marble fountain",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3011,
+    "Name": "gambling sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3017,
+    "Name": "blacksmith's hammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3018,
+    "Name": "gleaming longsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3019,
+    "Name": "dipper",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3025,
+    "Name": "espontoon",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3030,
+    "Name": "yew greatbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3031,
+    "Name": "statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3037,
+    "Name": "heavy stein",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3255,
+    "Name": "rotted ladder",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3304,
+    "Name": "shadowkin robes",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3307,
+    "Name": "shadowkin tabi",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3308,
+    "Name": "shadowkin hood",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3309,
+    "Name": "runed dragon robes",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3312,
+    "Name": "runed dragon tabi",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3313,
+    "Name": "runed dragon hood",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3314,
+    "Name": "kai stone",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3338,
+    "Name": "black-runed warhammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3339,
+    "Name": "star of retribution",
+    "AutoCollect": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3341,
+    "Name": "ancient battleaxe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3343,
+    "Name": "imbued truncheon",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3344,
+    "Name": "frostbrand",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3345,
+    "Name": "bloodfeast",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3347,
+    "Name": "runed ebony greatbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3350,
+    "Name": "golden broadaxe",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3351,
+    "Name": "platinum sceptre",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3353,
+    "Name": "crystal scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3354,
+    "Name": "ebony katana",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3355,
+    "Name": "flaming longsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3358,
+    "Name": "silver sabre",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3359,
+    "Name": "witchwood longbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3360,
+    "Name": "jeweled shamshir",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3361,
+    "Name": "jeweled broadsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3389,
+    "Name": "shimmering portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3390,
+    "Name": "primordial forest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3391,
+    "Name": "no token",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3392,
+    "Name": "no token 2",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3395,
+    "Name": "blacksteel scimitar",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3397,
+    "Name": "bloodwood cudgel",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3403,
+    "Name": "disturbed ground",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3409,
+    "Name": "black portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3500,
+    "Name": "sphinx statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3501,
+    "Name": "scorpion statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3507,
+    "Name": "nightfall stiletto",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3508,
+    "Name": "heartseeker",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3509,
+    "Name": "loop of infinite shadow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3511,
+    "Name": "Titanfist",
+    "AutoCollect": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3515,
+    "Name": "tzigane wristlet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3520,
+    "Name": "flowing cerulean sash",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3522,
+    "Name": "Volum's Insight",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3524,
+    "Name": "marble statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3525,
+    "Name": "flaming dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3531,
+    "Name": "ebony wrist guard",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3534,
+    "Name": "alabaster orb",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3535,
+    "Name": "ornate fountain",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3536,
+    "Name": "essence harvester",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3537,
+    "Name": "black-bladed lancet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3538,
+    "Name": "strange rift",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3539,
+    "Name": "floating red sphere",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3540,
+    "Name": "floating green sphere",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3541,
+    "Name": "floating yellow sphere",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3542,
+    "Name": "statue of a demigod",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3543,
+    "Name": "statue of the Creator",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3545,
+    "Name": "scepter of Cirgathil",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3546,
+    "Name": "demon king's grasp",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3553,
+    "Name": "ancient obelisk",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3560,
+    "Name": "celestial talisman",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3567,
+    "Name": "crystalline bottle",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3568,
+    "Name": "table",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3569,
+    "Name": "statue of Aerdwyne",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3570,
+    "Name": "sealed bottle",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3571,
+    "Name": "manaspring",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3575,
+    "Name": "rimehammer",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3581,
+    "Name": "druidic statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3582,
+    "Name": "bovine statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3586,
+    "Name": "giant hellhound tooth",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3588,
+    "Name": "robes of guile",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3589,
+    "Name": "phase-skin breeches",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3590,
+    "Name": "blood emblem",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3591,
+    "Name": "underworld insignia",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3593,
+    "Name": "scrimshaw earring",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3595,
+    "Name": "rose-colored glasses",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3597,
+    "Name": "wraith mask",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3598,
+    "Name": "umbral charm",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3601,
+    "Name": "winged chapeau",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3602,
+    "Name": "cincture of zeal",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3603,
+    "Name": "multicolored bandanna",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3605,
+    "Name": "giorvan clan tunic",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3608,
+    "Name": "nightmare glare",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3610,
+    "Name": "royal standard",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3612,
+    "Name": "bloodstained sickle",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3613,
+    "Name": "fey shortbow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3619,
+    "Name": "bracelet of concealment",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3628,
+    "Name": "carved face",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3630,
+    "Name": "shield",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3631,
+    "Name": "dull jet ring",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3634,
+    "Name": "rusted longsword",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3636,
+    "Name": "ambush bands",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3639,
+    "Name": "stone statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3641,
+    "Name": "black dragon wraps",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3643,
+    "Name": "hill chieftan's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3644,
+    "Name": "stone chieftan's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3645,
+    "Name": "storm king's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3646,
+    "Name": "storm commander's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3649,
+    "Name": "frost giant chieftan's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3650,
+    "Name": "ice troll chieftan's hand",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3657,
+    "Name": "test dagger",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3667,
+    "Name": "strange device",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3690,
+    "Name": "nether rift",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3693,
+    "Name": "heavy iron safe",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3696,
+    "Name": "small wooden crate",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3698,
+    "Name": "rogue's binding",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3699,
+    "Name": "fleshcrafter",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3706,
+    "Name": "witchblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3707,
+    "Name": "spectral stiletto",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3708,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3711,
+    "Name": "gryphon talons",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3714,
+    "Name": "golden statue",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3715,
+    "Name": "bronze sculpture",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3718,
+    "Name": "carved ice sarcophagus",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3721,
+    "Name": "white wolf mantle",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3725,
+    "Name": "celestial garb",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3729,
+    "Name": "pile of junk and debris",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3732,
+    "Name": "timeworn fountain",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3734,
+    "Name": "plugs of enhancement",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3736,
+    "Name": "scourge of rebuke",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3741,
+    "Name": "runed stone cudgel",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3742,
+    "Name": "fine adamant rod",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3744,
+    "Name": "stone sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3745,
+    "Name": "banner",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3746,
+    "Name": "chiseled sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3748,
+    "Name": "miner's remains",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3750,
+    "Name": "greasy black sash",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3754,
+    "Name": "spectral tebukoro",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3756,
+    "Name": "darkmetal star",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3757,
+    "Name": "gloom edge",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3764,
+    "Name": "reflex bow",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3772,
+    "Name": "Skorne",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3775,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3778,
+    "Name": "vorpal falchion",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3780,
+    "Name": "small wooden sign",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3781,
+    "Name": "shipwright's mallet",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3784,
+    "Name": "netherblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3786,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3787,
+    "Name": "carved stone altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3788,
+    "Name": "stone panel",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3789,
+    "Name": "grotesque altar",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3790,
+    "Name": "black crystal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3791,
+    "Name": "engineer's spanner",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3797,
+    "Name": "dark sigil",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3800,
+    "Name": "dark orb",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3804,
+    "Name": "yellow bone portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3806,
+    "Name": "adamant shortblade",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3810,
+    "Name": "Kraun's medallion",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3811,
+    "Name": "Daen's ring",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3812,
+    "Name": "Gorlok's wristguard",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3814,
+    "Name": "worn chest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3817,
+    "Name": "battered chest",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3818,
+    "Name": "Manablade",
+    "AutoBuy": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3819,
+    "Name": "elemental portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3820,
+    "Name": "elemental portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3821,
+    "Name": "ethereal portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3822,
+    "Name": "ethereal defender",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3823,
+    "Name": "kara of mortal striking",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3824,
+    "Name": "planewalker's celerity",
+    "AutoBuy": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3826,
+    "Name": "fukumen",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3827,
+    "Name": "shinobi mask",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3828,
+    "Name": "oni mask",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3829,
+    "Name": "elemental portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3839,
+    "Name": "a statue of a minstrel",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3840,
+    "Name": "a statue of an assassin",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3841,
+    "Name": "elemental portal",
+    "CannotBeTaken": true
+  },
+  {
+    "Number": 3845,
+    "Name": "chain whip",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3846,
+    "Name": "jagged main-gauche",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3847,
+    "Name": "crystalline greatstaff",
+    "AutoCollect": true,
+    "AutoBuy": true
+  },
+  {
+    "Number": 3848,
+    "Name": "crystal-woven vesture",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3849,
+    "Name": "raven's eye",
+    "AutoCollect": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3850,
+    "Name": "pendant of primordial might",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3851,
+    "Name": "macabre relic",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3852,
+    "Name": "loremaster's monocle",
+    "AutoCollect": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3853,
+    "Name": "shabby handwraps",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3855,
+    "Name": "partially digested amulet",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3856,
+    "Name": "slime-covered gloves",
+    "AutoCollect": true,
+    "LoyalItem": true
+  },
+  {
+    "Number": 3857,
+    "Name": "behemoth frog skin",
+    "AutoBuy": true
+  },
+  {
+    "Number": 3858,
+    "Name": "primordial clutches",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3859,
+    "Name": "flame-runed rod",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3861,
+    "Name": "nightblack earring",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3862,
+    "Name": "pillager's torc",
+    "LoyalItem": true
+  },
+  {
+    "Number": 3863,
+    "Name": "weighted bangle",
+    "LoyalItem": true
+  }
+]
