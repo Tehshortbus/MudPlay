@@ -68,36 +68,42 @@
                                            HorizontalAlignment="Stretch"/>
                             </Grid>
 
-                            <!-- Options — 11 checkboxes laid out in two columns.
-                                 Left-aligned so the box doesn't expand to the splitter. -->
+                            <!-- Options — 9 checkboxes laid out in two columns.
+                                 Auto-equip + Can use to backstab dropped (auto-equip
+                                 is owned by the Equipment Manager section; backstab
+                                 eligibility is derived from ability code 116 at
+                                 combat time, not user-overridable here). -->
                             <TextBlock Classes="SectionHeader" Text="Options" Margin="0,10,0,4"/>
                             <Border BorderBrush="{StaticResource ChromeBorderBrush}"
                                     BorderThickness="1" CornerRadius="3" Padding="8"
                                     HorizontalAlignment="Left">
                                 <Grid ColumnDefinitions="Auto,16,Auto">
                                     <StackPanel Grid.Column="0" Spacing="2">
-                                        <CheckBox Content="Auto-collect"        IsChecked="{Binding AutoCollect,      Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-discard"        IsChecked="{Binding AutoDiscard,      Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-equip"          IsChecked="{Binding AutoEquip,        Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-find"           IsChecked="{Binding AutoFind,         Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-open"           IsChecked="{Binding AutoOpen,         Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-buy"            IsChecked="{Binding AutoBuy,          Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-sell (or stash)" IsChecked="{Binding AutoSell,         Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-collect"         IsChecked="{Binding AutoCollect,     Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-discard"         IsChecked="{Binding AutoDiscard,     Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-find"            IsChecked="{Binding AutoFind,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-open"            IsChecked="{Binding AutoOpen,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-buy"             IsChecked="{Binding AutoBuy,         Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-sell (or stash)" IsChecked="{Binding AutoSell,        Mode=TwoWay}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Spacing="2">
-                                        <CheckBox Content="Cannot be taken"     IsChecked="{Binding CannotBeTaken,    Mode=TwoWay}"/>
-                                        <CheckBox Content="Can use to backstab" IsChecked="{Binding CanUseToBackstab, Mode=TwoWay}"/>
-                                        <CheckBox Content="Must have minimum"   IsChecked="{Binding MustHaveMinimum,  Mode=TwoWay}"/>
-                                        <CheckBox Content="Loyal item"          IsChecked="{Binding LoyalItem,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Cannot be taken"      IsChecked="{Binding CannotBeTaken,   Mode=TwoWay}"/>
+                                        <CheckBox Content="Must have minimum"    IsChecked="{Binding MustHaveMinimum, Mode=TwoWay}"/>
+                                        <CheckBox Content="Loyal item"           IsChecked="{Binding LoyalItem,       Mode=TwoWay}"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <!-- Details — mix of overlay-editable carry policy + read-only MDB fields. -->
+                            <!-- Details — overlay-editable carry policy + read-only MDB
+                                 fields. Constrained to HorizontalAlignment=Left + fixed
+                                 column widths so the controls don't stretch toward the
+                                 splitter; matches the compact look of the Item /
+                                 Options sections above. -->
                             <TextBlock Classes="SectionHeader" Text="Details" Margin="0,10,0,4"/>
-                            <Grid ColumnDefinitions="110,*,16,Auto,*"
+                            <Grid ColumnDefinitions="110,80,16,Auto,90"
                                   RowDefinitions="Auto,Auto,Auto,Auto,Auto"
-                                  ColumnSpacing="8" RowSpacing="6">
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
 
                                 <!-- Row 0: Min. to keep | Weight -->
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. to keep"
@@ -115,7 +121,10 @@
                                 <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Price"/>
                                 <TextBox   Grid.Row="1" Grid.Column="4" Classes="ReadOnlyField" Text="{Binding Price}"/>
 
-                                <!-- Row 2: Item type (read-only display from MDB) -->
+                                <!-- Row 2: Item type (read-only display from MDB).
+                                     Spans Col 1..4 so the value field gets the full
+                                     width of the constrained Grid (still bounded by
+                                     HorizontalAlignment=Left on the outer Grid). -->
                                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Item type"/>
                                 <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4"
                                            Classes="ReadOnlyField" Text="{Binding ItemTypeText}"/>
@@ -125,17 +134,16 @@
                                 <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4"
                                            Classes="ReadOnlyField" Text="{Binding BodyLocation}"/>
 
-                                <!-- Row 4: If needed, do (overlay-editable) -->
-                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="If needed, do"
-                                           ToolTip.Tip="Action to take on excess / unwanted copies (discard / drop / stash / sell). Free-form for now."/>
-                                <TextBox   Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="4"
-                                           Text="{Binding IfNeededDo, Mode=TwoWay}"/>
+                                <!-- Row 4: Bought/sold — pure MDB-derived viewable display.
+                                     TextBlock (not a TextBox) so it's unambiguously
+                                     view-only — no input focus, no caret, no
+                                     editable-looking chrome. -->
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bought / sold"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="4"
+                                           Text="{Binding BoughtSold}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"/>
                             </Grid>
-
-                            <!-- Bought/sold — derived from MDB Shops cross-reference, read-only. -->
-                            <TextBlock Classes="SectionHeader" Text="Bought / sold" Margin="0,10,0,4"/>
-                            <TextBox Classes="ReadOnlyField" Text="{Binding BoughtSold}"
-                                     TextWrapping="Wrap"/>
 
                         </StackPanel>
                     </ScrollViewer>

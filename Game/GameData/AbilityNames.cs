@@ -49,6 +49,13 @@ public static class AbilityNames
         // Item-data extras surfaced by MegaMUD's Game Item Details
         // (verified against stock items 172 / 203 / 283 / 304 / 741 / 784).
         { 86, "Quality" },           { 114, "PercentSpell" },
+        // 116 = BSable flag — per MMUD Explorer's modItemParse / frmMain
+        // weapon filter (Case 116: 'BSable check / bBSAble = True),
+        // a weapon is eligible for backstab when any of its Abil-N
+        // slots holds code 116. Surface in the dialog as "BSable" so
+        // it's visible info but the combat code (future) is the
+        // authoritative consumer — it scans Items.json for this code.
+        { 116, "BSable" },
         { 119, "DelAtMaint" },       { 121, "Recharge" },
         { 135, "MinLevel" },         { 145, "ManaRgn" },
         { 170, "Sleep" },          { 171, "Invisibility" },

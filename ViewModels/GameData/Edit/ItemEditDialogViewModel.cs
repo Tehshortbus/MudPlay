@@ -33,13 +33,11 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // ----- Options flags -----
     [ObservableProperty] private bool _autoCollect;
     [ObservableProperty] private bool _autoDiscard;
-    [ObservableProperty] private bool _autoEquip;
     [ObservableProperty] private bool _autoFind;
     [ObservableProperty] private bool _autoOpen;
     [ObservableProperty] private bool _autoBuy;
     [ObservableProperty] private bool _autoSell;
     [ObservableProperty] private bool _cannotBeTaken;
-    [ObservableProperty] private bool _canUseToBackstab;
     [ObservableProperty] private bool _mustHaveMinimum;
     [ObservableProperty] private bool _loyalItem;
 
@@ -50,9 +48,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
     /// <summary>"All" is a legit MegaMUD sentinel here, so stored as a free string.</summary>
     [ObservableProperty] private string _maxToGet = string.Empty;
-
-    /// <summary>Free-form for now; will become a ComboBox once the action set is pinned down.</summary>
-    [ObservableProperty] private string _ifNeededDo = string.Empty;
 
     // ----- Read-only MDB-derived display (Details section) -----
     public string Weight       { get; }
@@ -91,21 +86,18 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         BodyLocation = bodyLocation;
         BoughtSold   = boughtSold;
 
-        AutoCollect      = existing?.AutoCollect      ?? false;
-        AutoDiscard      = existing?.AutoDiscard      ?? false;
-        AutoEquip        = existing?.AutoEquip        ?? false;
-        AutoFind         = existing?.AutoFind         ?? false;
-        AutoOpen         = existing?.AutoOpen         ?? false;
-        AutoBuy          = existing?.AutoBuy          ?? false;
-        AutoSell         = existing?.AutoSell         ?? false;
-        CannotBeTaken    = existing?.CannotBeTaken    ?? false;
-        CanUseToBackstab = existing?.CanUseToBackstab ?? false;
-        MustHaveMinimum  = existing?.MustHaveMinimum  ?? false;
-        LoyalItem        = existing?.LoyalItem        ?? false;
+        AutoCollect     = existing?.AutoCollect     ?? false;
+        AutoDiscard     = existing?.AutoDiscard     ?? false;
+        AutoFind        = existing?.AutoFind        ?? false;
+        AutoOpen        = existing?.AutoOpen        ?? false;
+        AutoBuy         = existing?.AutoBuy         ?? false;
+        AutoSell        = existing?.AutoSell        ?? false;
+        CannotBeTaken   = existing?.CannotBeTaken   ?? false;
+        MustHaveMinimum = existing?.MustHaveMinimum ?? false;
+        LoyalItem       = existing?.LoyalItem       ?? false;
 
-        MinToKeep  = existing?.MinToKeep  ?? string.Empty;
-        MaxToGet   = existing?.MaxToGet   ?? string.Empty;
-        IfNeededDo = existing?.IfNeededDo ?? string.Empty;
+        MinToKeep = existing?.MinToKeep ?? string.Empty;
+        MaxToGet  = existing?.MaxToGet  ?? string.Empty;
     }
 
     [RelayCommand]
@@ -113,21 +105,18 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     {
         ItemOverlay overlay = new()
         {
-            Name             = string.IsNullOrWhiteSpace(Name) ? null : Name,
-            AutoCollect      = AutoCollect      ? true : null,
-            AutoDiscard      = AutoDiscard      ? true : null,
-            AutoEquip        = AutoEquip        ? true : null,
-            AutoFind         = AutoFind         ? true : null,
-            AutoOpen         = AutoOpen         ? true : null,
-            AutoBuy          = AutoBuy          ? true : null,
-            AutoSell         = AutoSell         ? true : null,
-            CannotBeTaken    = CannotBeTaken    ? true : null,
-            CanUseToBackstab = CanUseToBackstab ? true : null,
-            MustHaveMinimum  = MustHaveMinimum  ? true : null,
-            LoyalItem        = LoyalItem        ? true : null,
-            MinToKeep        = string.IsNullOrWhiteSpace(MinToKeep)  ? null : MinToKeep,
-            MaxToGet         = string.IsNullOrWhiteSpace(MaxToGet)   ? null : MaxToGet,
-            IfNeededDo       = string.IsNullOrWhiteSpace(IfNeededDo) ? null : IfNeededDo,
+            Name            = string.IsNullOrWhiteSpace(Name) ? null : Name,
+            AutoCollect     = AutoCollect     ? true : null,
+            AutoDiscard     = AutoDiscard     ? true : null,
+            AutoFind        = AutoFind        ? true : null,
+            AutoOpen        = AutoOpen        ? true : null,
+            AutoBuy         = AutoBuy         ? true : null,
+            AutoSell        = AutoSell        ? true : null,
+            CannotBeTaken   = CannotBeTaken   ? true : null,
+            MustHaveMinimum = MustHaveMinimum ? true : null,
+            LoyalItem       = LoyalItem       ? true : null,
+            MinToKeep       = string.IsNullOrWhiteSpace(MinToKeep) ? null : MinToKeep,
+            MaxToGet        = string.IsNullOrWhiteSpace(MaxToGet)  ? null : MaxToGet,
         };
 
         CloseRequested?.Invoke(new ItemEditResult(WccNoStr, overlay, UseTier));

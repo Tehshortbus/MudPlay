@@ -52,9 +52,6 @@ public sealed record ItemOverlay
     /// <summary>Auto-discard this item when picked up (drops to the room floor immediately).</summary>
     public bool? AutoDiscard { get; init; }
 
-    /// <summary>Auto-equip this item the moment it lands in inventory.</summary>
-    public bool? AutoEquip { get; init; }
-
     /// <summary>Treat this item as a search target for auto-find behaviour.</summary>
     public bool? AutoFind { get; init; }
 
@@ -69,9 +66,6 @@ public sealed record ItemOverlay
 
     /// <summary>Cannot be taken — the combat / loot engines treat this as quest-bound.</summary>
     public bool? CannotBeTaken { get; init; }
-
-    /// <summary>Allowed as a backstab weapon (overrides default weapon-type heuristics).</summary>
-    public bool? CanUseToBackstab { get; init; }
 
     /// <summary>Must keep at least <see cref="MinToKeep"/> of this item; engines won't drop below.</summary>
     public bool? MustHaveMinimum { get; init; }
@@ -93,13 +87,4 @@ public sealed record ItemOverlay
     /// store the raw string here as well.
     /// </summary>
     public string? MaxToGet { get; init; }
-
-    /// <summary>
-    /// Action to take when over the desired count or otherwise unwanted
-    /// (e.g. discard / drop / stash / sell). Stored as a raw string for
-    /// now because the dropdown's enum values aren't yet pinned down —
-    /// converted to a proper enum in a follow-up pass once the
-    /// <c>Items.md</c> decoder surfaces the option list.
-    /// </summary>
-    public string? IfNeededDo { get; init; }
 }
