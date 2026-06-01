@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Threading;
 using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.Views.GameData.Tables;
@@ -23,13 +24,20 @@ public partial class GameDataTableSectionView : UserControl
 {
     private bool _columnsBuilt;
 
+    /// <summary>
+    /// Subscribed to the bound VM's <see cref="GameDataTableSectionViewModel.ScrollToRowRequested"/>
+    /// so a cross-section navigation (Shops double-click → Rooms tab + room) actually
+    /// brings the target row on-screen. Tracked here so re-binding swaps cleanly.
+    /// </summary>
+    private GameDataTableSectionViewModel? _scrollSubscriptionTarget;
+
     public GameDataTableSectionView()
     {
         InitializeComponent();
         // Either trigger can fire first depending on layout timing;
         // guard via _columnsBuilt so the second is a no-op.
-        DataContextChanged   += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); };
-        AttachedToVisualTree += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); };
+        DataContextChanged   += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
+        AttachedToVisualTree += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
 
         // Double-click any row → invoke the section's OpenEditCommand
         // with the row as the argument. Sections that don't expose an
@@ -60,6 +68,40 @@ public partial class GameDataTableSectionView : UserControl
                 if (item is GameDataRow row) vm.SelectedRows.Add(row);
             }
         };
+    }
+
+    /// <summary>
+    /// Wire <see cref="GameDataTableSectionViewModel.ScrollToRowRequested"/>
+    /// to <see cref="DataGrid.ScrollIntoView"/>. Deferred via the dispatcher
+    /// so the call runs AFTER the DataGrid has materialised the row container
+    /// for the new SelectedItem — calling ScrollIntoView in the same frame
+    /// as the SelectedItem change can no-op when the container doesn't
+    /// exist yet (virtualised DataGrid).
+    /// </summary>
+    private void WireScrollHook()
+    {
+        // Unhook the previous VM (if any) before binding the new one;
+        // the View can be re-DataContext'd when its host section is
+        // reused, and a stale subscription would scroll the wrong grid.
+        if (_scrollSubscriptionTarget is { } prev)
+            prev.ScrollToRowRequested -= OnScrollToRowRequested;
+        _scrollSubscriptionTarget = null;
+
+        if (DataContext is not GameDataTableSectionViewModel vm) return;
+        vm.ScrollToRowRequested += OnScrollToRowRequested;
+        _scrollSubscriptionTarget = vm;
+    }
+
+    private void OnScrollToRowRequested(GameDataRow row)
+    {
+        // Defer past the current dispatcher frame: the SelectedItem source
+        // change just landed, and the DataGrid still needs to realise the
+        // row container before ScrollIntoView can locate it.
+        Dispatcher.UIThread.Post(() =>
+        {
+            try { RowsGrid.ScrollIntoView(row, null); }
+            catch { /* virtualised DataGrid can throw if row isn't materialised yet — harmless */ }
+        }, DispatcherPriority.Background);
     }
 
     /// <summary>

@@ -249,18 +249,42 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         ApplyRowSelector(predicate);
     }
 
+    /// <summary>
+    /// Fired after a programmatic <see cref="SelectRowMatching"/> lands on
+    /// a row. The view subscribes to bring the row into view (Avalonia
+    /// DataGrid doesn't auto-scroll on SelectedItem source changes — we
+    /// have to call ScrollIntoView explicitly).
+    /// </summary>
+    public event Action<GameDataRow>? ScrollToRowRequested;
+
     private void ApplyRowSelector(Func<GameDataRow, bool> predicate)
     {
         // Prefer matches that survive the current filter; fall back to
         // the full row set when none do so the navigation never lands
         // on "no selection" with the row sitting just past the filter.
+        // When a match is found in AllRows but the filter is hiding it,
+        // clear the filter so the user actually sees the selected row.
         foreach (GameDataRow row in FilteredRows)
         {
-            if (predicate(row)) { SelectedRow = row; return; }
+            if (predicate(row))
+            {
+                SelectedRow = row;
+                ScrollToRowRequested?.Invoke(row);
+                return;
+            }
         }
         foreach (GameDataRow row in AllRows)
         {
-            if (predicate(row)) { SelectedRow = row; return; }
+            if (predicate(row))
+            {
+                // Filter is hiding the row — clear it so the target is
+                // visible. The selection latches on the now-unfiltered
+                // row set.
+                if (!string.IsNullOrEmpty(SearchText)) SearchText = string.Empty;
+                SelectedRow = row;
+                ScrollToRowRequested?.Invoke(row);
+                return;
+            }
         }
     }
 
