@@ -221,6 +221,15 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                     ReadInt(el, "Speed") is int s and > 0
                         ? s.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         : string.Empty);
+
+                // BSable — explicit Yes/No row for weapons. Per MMUD
+                // Explorer's frmMain weapon filter (Case 116: bBSAble = True),
+                // a weapon is backstab-eligible iff any Abil-N slot holds
+                // code 116. Showing this unconditionally on weapons lets
+                // the user tell at a glance whether the item is BS-usable
+                // without scanning the abilities list.
+                otherInfo.Add(new KeyValuePair<string, string>("BSable",
+                    HasAbility(el, 116) ? "Yes" : "No"));
             }
             else if (itemType == 0)
             {
@@ -267,6 +276,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             {
                 int code = ReadInt(el, $"Abil-{i}");
                 if (code == 0) continue;
+                // Code 116 (BSable) is surfaced as an explicit Yes/No row
+                // above (weapon block); suppress the duplicate here.
+                if (code == 116) continue;
                 int val = ReadInt(el, $"AbilVal-{i}");
                 string label = AbilityLabelForDialog(code);
                 string value = AbilityValueForDialog(code, val);
@@ -386,6 +398,14 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     {
         if (!el.TryGetProperty(field, out JsonElement v)) return 0;
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
+    }
+
+    /// <summary>True when any <c>Abil-N</c> (N = 0..19) on the row equals <paramref name="code"/>.</summary>
+    private static bool HasAbility(JsonElement el, int code)
+    {
+        for (int i = 0; i < 20; i++)
+            if (ReadInt(el, $"Abil-{i}") == code) return true;
+        return false;
     }
 
     /// <summary>Look up a spell's Name by its Number; falls back to the raw id when absent.</summary>
