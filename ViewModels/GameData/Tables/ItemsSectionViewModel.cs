@@ -137,11 +137,23 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     /// the right pane plus the Details-section derived strings (weight,
     /// price, type label, slot label, bought/sold cross-reference).
     /// </summary>
+    /// <remarks>
+    /// "Other Info" is type-aware — mirrors MegaMUD's behaviour where the
+    /// right-pane fields vary by ItemType. Weapon-only fields (Speed /
+    /// damage range / Weapon Type) only appear for weapons; Armour-only
+    /// fields (Armour Type) only appear for armour; the
+    /// <c>Abil-N / AbilVal-N</c> pairs (0..19) are iterated and rendered
+    /// with their <see cref="AbilityNames"/> label so bonuses like
+    /// "Magical: 1" / "LearnSp: burning aura" appear inline without
+    /// hardcoding each one. <c>LearnSpell</c> (ability code 42) gets
+    /// special-cased to look the value up as a Spells.Number and render
+    /// the spell's Name instead of the raw id.
+    /// </remarks>
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
         List<KeyValuePair<string, string>> otherInfo = new();
         string weight = string.Empty, price = string.Empty;
-        string itemTypeText = string.Empty, bodyLocation = string.Empty;
+        string itemTypeText = string.Empty, bodyLocation = "None";
         string boughtSold = string.Empty;
 
         if (!int.TryParse(wccNoStr, out int wccNo))
@@ -157,30 +169,157 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (numProp.ValueKind != JsonValueKind.Number) continue;
             if (numProp.GetInt32() != wccNo) continue;
 
+            int itemType = ReadInt(el, "ItemType");
+            int worn     = ReadInt(el, "Worn");
+
             // Details-section derived strings.
             weight       = ReadString(el, "Encum");
             price        = FormatPrice(el);
-            itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType"))   ?? string.Empty;
-            bodyLocation = MmudEnums.FormatWornSlot(ReadString(el, "Worn"))       ?? string.Empty;
-            boughtSold   = ReadString(el, "Obtained From");
+            itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
+            bodyLocation = worn == 0 ? "None" : (MmudEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
+            boughtSold   = ResolveShops(ReadString(el, "Obtained From"));
 
-            // Curated Other Info pane — the headline stats a user wants
-            // to glance at without scrolling. Anything zero / missing
-            // renders as "None" so the pane stays uncluttered.
-            otherInfo.Add(new KeyValuePair<string, string>("WCC No",          wccNoStr));
-            otherInfo.Add(new KeyValuePair<string, string>("Armour Type",     MmudEnums.FormatArmourType(ReadString(el, "ArmourType")) ?? "None"));
-            otherInfo.Add(new KeyValuePair<string, string>("Accuracy Bonus",  NoneIfZero(ReadString(el, "Accy"))));
-            otherInfo.Add(new KeyValuePair<string, string>("AC Bonus",        FormatAcBonus(el)));
-            otherInfo.Add(new KeyValuePair<string, string>("Required Strength", NoneIfZero(ReadString(el, "StrReq"))));
-            otherInfo.Add(new KeyValuePair<string, string>("Weapon Type",     MmudEnums.FormatWeaponType(ReadString(el, "WeaponType")) ?? "None"));
-            otherInfo.Add(new KeyValuePair<string, string>("Speed",           NoneIfZero(ReadString(el, "Speed"))));
-            otherInfo.Add(new KeyValuePair<string, string>("Min Damage",      NoneIfZero(ReadString(el, "Min"))));
-            otherInfo.Add(new KeyValuePair<string, string>("Max Damage",      NoneIfZero(ReadString(el, "Max"))));
-            otherInfo.Add(new KeyValuePair<string, string>("Use Count",       ReadString(el, "UseCount")));
-            otherInfo.Add(new KeyValuePair<string, string>("Gettable",        ReadString(el, "Gettable") == "1" ? "Yes" : "No"));
+            // ----- Other Info pane: type-aware ordering -----
+            otherInfo.Add(new KeyValuePair<string, string>("WCC No", wccNoStr));
+
+            // Weapon-only block.
+            if (itemType == 1)
+            {
+                otherInfo.Add(new KeyValuePair<string, string>("Weapon Type",
+                    MmudEnums.FormatWeaponType(ReadString(el, "WeaponType")) ?? "None"));
+                otherInfo.Add(new KeyValuePair<string, string>("Damage",
+                    FormatRange(ReadString(el, "Min"), ReadString(el, "Max"))));
+                otherInfo.Add(new KeyValuePair<string, string>("Speed",
+                    NoneIfZero(ReadString(el, "Speed"))));
+            }
+
+            // Armour-only block.
+            if (itemType == 0)
+            {
+                otherInfo.Add(new KeyValuePair<string, string>("Armour Type",
+                    MmudEnums.FormatArmourType(ReadString(el, "ArmourType")) ?? "None"));
+            }
+
+            // Consumables — Scroll / Food / Drink / Light / Special — list
+            // "Uses Per Day" (MegaMUD's user-facing name for UseCount).
+            // -1 = unlimited; 0 = not applicable; positive = print as-is.
+            string uc = ReadString(el, "UseCount");
+            if (uc is not (null or "" or "0"))
+            {
+                otherInfo.Add(new KeyValuePair<string, string>("Uses Per Day",
+                    uc == "-1" ? "Unlimited" : uc));
+            }
+
+            // Common stat fields — shown for every item type. "None" when
+            // unset so the row stays present (useful for at-a-glance
+            // visual parity with MegaMUD).
+            otherInfo.Add(new KeyValuePair<string, string>("Accuracy Bonus",
+                NoneIfZero(ReadString(el, "Accy"))));
+            otherInfo.Add(new KeyValuePair<string, string>("AC Bonus",
+                FormatAcBonus(el)));
+            otherInfo.Add(new KeyValuePair<string, string>("Required Strength",
+                NoneIfZero(ReadString(el, "StrReq"))));
+
+            // Ability pairs — Abil-0..19 / AbilVal-0..19. Each non-zero
+            // code becomes one row labelled with its AbilityNames mapping
+            // (e.g. "Magical: 1", "Strength: +5"). LearnSpell (code 42)
+            // resolves the AbilVal to a Spells.Name lookup so the row
+            // reads "LearnSpell: burning aura" rather than "LearnSpell: 71".
+            for (int i = 0; i < 20; i++)
+            {
+                int code = ReadInt(el, $"Abil-{i}");
+                if (code == 0) continue;
+                int val = ReadInt(el, $"AbilVal-{i}");
+                string label = AbilityNames.GetName(code) ?? $"Abil{code}";
+                string value = code == 42 ? ResolveSpellName(val) : val.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                otherInfo.Add(new KeyValuePair<string, string>(label, value));
+            }
             break;
         }
         return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
+    }
+
+    private static int ReadInt(JsonElement el, string field)
+    {
+        if (!el.TryGetProperty(field, out JsonElement v)) return 0;
+        return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
+    }
+
+    /// <summary>"5-12" pair display; "None" when both are zero / missing.</summary>
+    private static string FormatRange(string min, string max)
+    {
+        bool minZero = string.IsNullOrWhiteSpace(min) || min == "0";
+        bool maxZero = string.IsNullOrWhiteSpace(max) || max == "0";
+        if (minZero && maxZero) return "None";
+        return $"{(minZero ? "0" : min)}-{(maxZero ? "0" : max)}";
+    }
+
+    /// <summary>
+    /// Items.json's "Obtained From" carries shop references as
+    /// "Shop #N, Shop #M, ..." — resolve each #N to "Shop.Name" via the
+    /// active set's Shops.json. Falls back to the raw text when the
+    /// Shops table isn't loaded or a shop isn't found.
+    /// </summary>
+    private string ResolveShops(string obtainedFrom)
+    {
+        if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+        JsonDocument? shopsDoc = _cache.GetRawTable("Shops");
+        if (shopsDoc is null) return obtainedFrom;
+
+        // Build a quick id → name map for any tokens of the form "Shop #N".
+        Dictionary<int, string> shopNames = new();
+        foreach (string token in obtainedFrom.Split(','))
+        {
+            string trimmed = token.Trim();
+            if (!trimmed.StartsWith("Shop #", StringComparison.Ordinal)) continue;
+            if (int.TryParse(trimmed.AsSpan(6), out int id)) shopNames[id] = string.Empty;
+        }
+        if (shopNames.Count == 0) return obtainedFrom;
+
+        foreach (JsonElement el in shopsDoc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
+            if (numProp.ValueKind != JsonValueKind.Number) continue;
+            int shopNum = numProp.GetInt32();
+            if (!shopNames.ContainsKey(shopNum)) continue;
+            shopNames[shopNum] = ReadString(el, "Name");
+        }
+
+        List<string> parts = new();
+        foreach (string token in obtainedFrom.Split(','))
+        {
+            string trimmed = token.Trim();
+            if (trimmed.StartsWith("Shop #", StringComparison.Ordinal)
+                && int.TryParse(trimmed.AsSpan(6), out int id)
+                && shopNames.TryGetValue(id, out string? name)
+                && !string.IsNullOrEmpty(name))
+            {
+                parts.Add(name);
+            }
+            else if (trimmed.Length > 0)
+            {
+                parts.Add(trimmed);
+            }
+        }
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>Look up a spell's Name by its Number; falls back to the raw id when absent.</summary>
+    private string ResolveSpellName(int spellNumber)
+    {
+        if (spellNumber == 0) return "None";
+        JsonDocument? spellsDoc = _cache.GetRawTable("Spells");
+        if (spellsDoc is null) return spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        foreach (JsonElement el in spellsDoc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
+            if (numProp.ValueKind != JsonValueKind.Number) continue;
+            if (numProp.GetInt32() != spellNumber) continue;
+            string name = ReadString(el, "Name");
+            return string.IsNullOrEmpty(name) ? spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture) : name;
+        }
+        return spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static string ReadString(JsonElement el, string field)
