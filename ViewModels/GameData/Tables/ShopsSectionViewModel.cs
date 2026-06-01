@@ -99,9 +99,17 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
 
     /// <summary>
     /// Look up the shop in the active set's Shops.json and parse the
-    /// <c>Assigned To</c> string ("Room {map}/{room}"). Returns (0,0)
-    /// on any miss / parse failure.
+    /// FIRST <c>Room {map}/{room}</c> token in its <c>Assigned To</c>
+    /// field. Returns (0,0) on any miss — including when the field is
+    /// <c>\x00</c> (unassigned, e.g. an Inn) or doesn't start with
+    /// <c>"Room "</c>.
     /// </summary>
+    /// <remarks>
+    /// Some shops (Bank of Godfrey, multi-branch chains) carry a
+    /// comma-separated list of rooms — <c>"Room 1/297, Room 6/1334"</c>.
+    /// We take the first token; the dialog only jumps to one room
+    /// anyway, and the rest are accessible via the Rooms tab's search.
+    /// </remarks>
     private (int Map, int Room) ReadAssignedRoom(int shopNumber)
     {
         JsonDocument? doc = _cache.GetRawTable("Shops");
@@ -115,8 +123,13 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (!el.TryGetProperty("Assigned To", out JsonElement assignedEl)) return (0, 0);
             if (assignedEl.ValueKind != JsonValueKind.String) return (0, 0);
             string assigned = assignedEl.GetString() ?? string.Empty;
-            if (!assigned.StartsWith("Room ", StringComparison.Ordinal)) return (0, 0);
-            string remainder = assigned[5..].Trim();
+
+            // Take just the FIRST "Room M/R" token from a comma-separated
+            // list. Multi-branch shops (Bank of Godfrey is "Room 1/297,
+            // Room 6/1334") would otherwise fail the int.TryParse.
+            string firstToken = assigned.Split(',', 2)[0].Trim();
+            if (!firstToken.StartsWith("Room ", StringComparison.Ordinal)) return (0, 0);
+            string remainder = firstToken[5..].Trim();
             int slash = remainder.IndexOf('/');
             if (slash <= 0) return (0, 0);
             if (!int.TryParse(remainder[..slash], out int mapNo)) return (0, 0);

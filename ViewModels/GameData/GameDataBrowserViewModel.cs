@@ -241,22 +241,38 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     /// <summary>
     /// Route a section's <see cref="GameDataSectionViewModel.NavigationRequested"/>
     /// event to the named target: activate the target tab, then defer
-    /// the row-selection until the tab's rows have loaded. The target's
+    /// the row-selection one dispatcher tick so the DataGrid has a chance
+    /// to swap views before we touch SelectedItem. The target's
     /// <see cref="Tables.GameDataTableSectionViewModel.SelectRowMatching"/>
     /// queues the predicate when called before the rows materialise.
     /// </summary>
+    /// <remarks>
+    /// Switching the visible section first matters for a re-selection in
+    /// the warm-load path: setting <c>SelectedRow</c> while the target
+    /// tab is still hidden lets the DataGrid skip applying the new
+    /// selection visual when the tab eventually shows (Avalonia's
+    /// virtualised DataGrid doesn't always realise a row container for
+    /// the new SelectedItem if the previous SelectedItem was already
+    /// in view from a prior navigation).
+    /// </remarks>
     private void OnNavigationRequested(NavigationRequest req)
     {
         GameDataSectionViewModel? target =
             Sections.FirstOrDefault(s => string.Equals(s.Id, req.TargetSectionId, StringComparison.OrdinalIgnoreCase));
         if (target is null) return;
 
-        // Queue the row predicate BEFORE activating the section so the
-        // section's LoadAsync continuation finds the pending selector
-        // and applies it without a race window.
-        if (req.RowSelector is not null && target is Tables.GameDataTableSectionViewModel table)
-            table.SelectRowMatching(req.RowSelector);
-
         SelectedSection = target;
+
+        if (req.RowSelector is not null && target is Tables.GameDataTableSectionViewModel table)
+        {
+            // Defer past the tab-swap layout pass. Background priority
+            // is low enough that Avalonia's section-switch render runs
+            // first; SelectRowMatching either fires immediately (warm
+            // load) or queues the predicate for LoadAsync's
+            // continuation (cold load).
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => table.SelectRowMatching(req.RowSelector),
+                Avalonia.Threading.DispatcherPriority.Background);
+        }
     }
 }
