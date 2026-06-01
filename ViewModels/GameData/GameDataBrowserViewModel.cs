@@ -228,7 +228,35 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         Sections.Add(new TextBlocksSectionViewModel(_gameData, _resolver));
         Sections.Add(new InfoSectionViewModel(_gameData, _resolver));
 
+        // Hook every section's NavigationRequested event so cross-section
+        // jumps (e.g. Shops → Rooms double-click) can route through the
+        // browser. Wire LAST so every section is in Sections first.
+        foreach (GameDataSectionViewModel section in Sections)
+            section.NavigationRequested += OnNavigationRequested;
+
         void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
+    }
+
+    /// <summary>
+    /// Route a section's <see cref="GameDataSectionViewModel.NavigationRequested"/>
+    /// event to the named target: activate the target tab, then defer
+    /// the row-selection until the tab's rows have loaded. The target's
+    /// <see cref="Tables.GameDataTableSectionViewModel.SelectRowMatching"/>
+    /// queues the predicate when called before the rows materialise.
+    /// </summary>
+    private void OnNavigationRequested(NavigationRequest req)
+    {
+        GameDataSectionViewModel? target =
+            Sections.FirstOrDefault(s => string.Equals(s.Id, req.TargetSectionId, StringComparison.OrdinalIgnoreCase));
+        if (target is null) return;
+
+        // Queue the row predicate BEFORE activating the section so the
+        // section's LoadAsync continuation finds the pending selector
+        // and applies it without a race window.
+        if (req.RowSelector is not null && target is Tables.GameDataTableSectionViewModel table)
+            table.SelectRowMatching(req.RowSelector);
+
+        SelectedSection = target;
     }
 }

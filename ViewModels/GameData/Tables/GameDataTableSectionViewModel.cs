@@ -215,6 +215,53 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         ApplyFilter();
         IsLoaded = true;
         OnPropertyChanged(nameof(StatusText));
+
+        // Cross-section navigation might have queued a selection while
+        // rows were still loading (Shops → Rooms double-click hits this
+        // path). Apply it now that AllRows is materialised.
+        if (_pendingRowSelector is { } selector)
+        {
+            _pendingRowSelector = null;
+            ApplyRowSelector(selector);
+        }
+    }
+
+    /// <summary>
+    /// Pending row predicate from a cross-section navigation request
+    /// that arrived before this section had loaded its rows. Cleared
+    /// after <see cref="LoadAsync"/> applies it.
+    /// </summary>
+    private Func<GameDataRow, bool>? _pendingRowSelector;
+
+    /// <summary>
+    /// Select the first row matching <paramref name="predicate"/>.
+    /// Queues the predicate when rows haven't loaded yet — the
+    /// selection applies as soon as <see cref="LoadAsync"/> finishes.
+    /// </summary>
+    public void SelectRowMatching(Func<GameDataRow, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        if (!IsLoaded || AllRows.Count == 0)
+        {
+            _pendingRowSelector = predicate;
+            return;
+        }
+        ApplyRowSelector(predicate);
+    }
+
+    private void ApplyRowSelector(Func<GameDataRow, bool> predicate)
+    {
+        // Prefer matches that survive the current filter; fall back to
+        // the full row set when none do so the navigation never lands
+        // on "no selection" with the row sitting just past the filter.
+        foreach (GameDataRow row in FilteredRows)
+        {
+            if (predicate(row)) { SelectedRow = row; return; }
+        }
+        foreach (GameDataRow row in AllRows)
+        {
+            if (predicate(row)) { SelectedRow = row; return; }
+        }
     }
 
     partial void OnSearchTextChanged(string value)
