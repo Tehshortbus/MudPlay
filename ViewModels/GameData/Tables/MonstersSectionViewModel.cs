@@ -270,7 +270,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
 
             // Abilities — iterate Abil-0..9, friendly labels via
             // AbilityNames. Code 146 = "Guarded by" splits into its
-            // own row with monster-name resolution.
+            // own row with monster-name resolution. Values render
+            // signed ("+5" / "-50") so resist-style abilities read
+            // unambiguously vs MME's display.
             List<string> abilities = new();
             List<int>    guards    = new();
             for (int i = 0; i < 10; i++)
@@ -284,7 +286,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                     continue;
                 }
                 string label = AbilityNames.GetName(code) ?? $"Abil{code}";
-                abilities.Add(val == 0 ? label : $"{label} {val}");
+                abilities.Add(val == 0 ? label : $"{label} {FormatSigned(val)}");
             }
             if (abilities.Count > 0)
                 AddRow(kv, "Abilities", string.Join(", ", abilities));
@@ -310,35 +312,105 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 shown++;
             }
 
-            // Attacks 0..4 — only when AttName is non-empty.
-            for (int i = 0, shown = 0; i < 5; i++)
+            // ----- Mob's Attacks (each AttType-N in 1..3 with Att%>0
+            // gets its own header + sub-rows) -----
+            //
+            // Format mirrors MME's PullMonsterDetail attack rendering:
+            //
+            //   Mob's Attacks         {Energy} energy/round
+            //   (20%) claws           Min-Max: 50-90
+            //                         Accuracy: 60
+            //                         Energy: 250 (Max 4x/round)
+            //                         Hit Spell: poison cloud      (when AttHitSpell > 0)
+            //   (15%) Cast Fireball   Spell: fireball lvl 50
+            //                         Success %: 75
+            //                         Energy: 300 (Max 3x/round)
+            //
+            // AttType 1 (normal) / 3 (rob) → Min-Max + Accuracy fields.
+            // AttType 2 (spell)            → AttAcc holds the spell id,
+            //                                 AttMax holds the cast level,
+            //                                 AttMin holds the success %.
+            //
+            // Per-attack percent uses AttTrue% when present (the actual
+            // probability) and falls back to Att% otherwise (the
+            // cumulative-threshold value MME uses).
+            int monsterEnergy = ReadInt(el, "Energy");
+            bool hasAttacks = false;
+            for (int i = 0; i < 5; i++)
             {
-                string attName = ReadString(el, $"AttName-{i}");
-                if (string.IsNullOrWhiteSpace(attName)) continue;
-                int min = ReadInt(el, $"AttMin-{i}");
-                int max = ReadInt(el, $"AttMax-{i}");
-                int acc = ReadInt(el, $"AttAcc-{i}");
-                int pct = ReadInt(el, $"Att%-{i}");
-                string row = $"{attName}: {min}-{max} dmg";
-                if (acc > 0) row += $", {acc} acc";
-                if (pct > 0) row += $", {pct}%";
-                AddRow(kv, shown == 0 ? "Attacks" : string.Empty, row);
-                shown++;
+                int at = ReadInt(el, $"AttType-{i}");
+                if (at >= 1 && at <= 3 && ReadInt(el, $"Att%-{i}") > 0) { hasAttacks = true; break; }
+                if (ReadInt(el, $"MidSpell-{i}") > 0)                  { hasAttacks = true; break; }
+            }
+            if (hasAttacks)
+            {
+                AddRow(kv, "Mob's Attacks",
+                    monsterEnergy > 0
+                        ? $"{monsterEnergy:N0} energy/round".Replace(",", ",")
+                        : string.Empty);
+
+                for (int i = 0; i < 5; i++)
+                {
+                    int attType = ReadInt(el, $"AttType-{i}");
+                    int attPct  = ReadInt(el, $"Att%-{i}");
+                    if (attType < 1 || attType > 3 || attPct <= 0) continue;
+
+                    string attName = ReadString(el, $"AttName-{i}").Trim();
+                    int attEnergy  = ReadInt(el, $"AttEnergy-{i}");
+                    int hitSpell   = ReadInt(el, $"AttHitSpell-{i}");
+                    int trueRound  = (int)Math.Round(ReadDouble(el, $"AttTrue%-{i}"));
+                    int displayPct = trueRound > 0 ? trueRound : attPct;
+
+                    string header = string.IsNullOrEmpty(attName)
+                        ? $"({displayPct}%) Attack {i + 1}"
+                        : $"({displayPct}%) {attName}";
+
+                    if (attType == 1 || attType == 3)
+                    {
+                        int min = ReadInt(el, $"AttMin-{i}");
+                        int max = ReadInt(el, $"AttMax-{i}");
+                        int acc = ReadInt(el, $"AttAcc-{i}");
+                        AddRow(kv, header, $"Min-Max: {min}-{max}");
+                        AddRow(kv, string.Empty, $"Accuracy: {acc}");
+                        AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
+                        if (hitSpell > 0)
+                            AddRow(kv, string.Empty,
+                                $"Hit Spell: {LookupSpellName(hitSpell) ?? $"Spell #{hitSpell}"}");
+                    }
+                    else // attType == 2 (spell-attack)
+                    {
+                        int spellId   = ReadInt(el, $"AttAcc-{i}");
+                        int spellLvl  = ReadInt(el, $"AttMax-{i}");
+                        int successPc = ReadInt(el, $"AttMin-{i}");
+                        string spell  = LookupSpellName(spellId) ?? $"Spell #{spellId}";
+                        AddRow(kv, header,
+                            spellLvl > 0 ? $"Spell: {spell} lvl {spellLvl}" : $"Spell: {spell}");
+                        AddRow(kv, string.Empty, $"Success %: {successPc}");
+                        AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
+                        if (hitSpell > 0)
+                            AddRow(kv, string.Empty,
+                                $"Hit Spell: {LookupSpellName(hitSpell) ?? $"Spell #{hitSpell}"}");
+                    }
+                }
             }
 
-            // Mid Spells 0..4 — combat-cast spells the monster fires
-            // between attacks.
+            // ----- Between Rounds (formerly Mid Spells) -----
+            // MidSpell% is stored as a cumulative threshold across the 5
+            // slots (slot 0's value is its raw chance; slot N's is the
+            // running sum). Per MME, the display shows the DELTA so each
+            // row reads as the actual chance for that spell to fire.
+            int cumulative = 0;
             for (int i = 0, shown = 0; i < 5; i++)
             {
                 int spellId = ReadInt(el, $"MidSpell-{i}");
                 if (spellId == 0) continue;
-                int pct = ReadInt(el, $"MidSpell%-{i}");
+                int threshold = ReadInt(el, $"MidSpell%-{i}");
+                int delta = threshold - cumulative;
+                cumulative = threshold;
                 int lvl = ReadInt(el, $"MidSpellLVL-{i}");
                 string spellName = LookupSpellName(spellId) ?? $"Spell #{spellId}";
-                string row = spellName;
-                if (lvl > 0) row += $" lvl {lvl}";
-                if (pct > 0) row += $" ({pct}%)";
-                AddRow(kv, shown == 0 ? "Mid Spells" : string.Empty, row);
+                string row = lvl > 0 ? $"({delta}%) [{spellName}, lvl {lvl}]" : $"({delta}%) [{spellName}]";
+                AddRow(kv, shown == 0 ? "Between Rounds" : string.Empty, row);
                 shown++;
             }
 
@@ -353,6 +425,25 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     {
         if (!el.TryGetProperty(field, out JsonElement v)) return 0;
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
+    }
+
+    private static double ReadDouble(JsonElement el, string field)
+    {
+        if (!el.TryGetProperty(field, out JsonElement v)) return 0d;
+        return v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) ? d : 0d;
+    }
+
+    /// <summary>"+5" / "-50" / "0" — used by signed-value ability rows.</summary>
+    private static string FormatSigned(int n) => n > 0
+        ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>"Energy: 250 (Max 4x/round)" — divides monster total by per-attack cost.</summary>
+    private static string FormatEnergyRow(int attEnergy, int monsterEnergy)
+    {
+        if (attEnergy <= 0) return $"Energy: {attEnergy}";
+        if (monsterEnergy <= 0) return $"Energy: {attEnergy}";
+        return $"Energy: {attEnergy} (Max {monsterEnergy / attEnergy}x/round)";
     }
 
     private static string ReadString(JsonElement el, string field)
