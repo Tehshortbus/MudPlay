@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="780"
+        mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="780"
         x:Class="FujinTerm.Views.GameData.Edit.MonsterEditDialog"
         x:DataType="vm:MonsterEditDialogViewModel"
         Title="{Binding Title}"
-        Width="820" Height="780"
+        Width="920" Height="780"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -39,8 +39,12 @@
             <!-- ===== Two panes: editable left + read-only MDB right =====
                  The middle column hosts a GridSplitter — drag to rebalance the
                  two side widths. The ratio persists per character profile via
-                 SplitterLayoutStore (id = "MonsterEditDialog"). -->
-            <Grid Grid.Row="0" x:Name="PanesGrid" ColumnDefinitions="*,6,*">
+                 SplitterLayoutStore (id = "MonsterEditDialog"). Initial split
+                 is skewed toward the left (1.3* / 1*) — the editable side
+                 carries the Monster / Details / Attack-Priority + Options /
+                 Combat-Messages stack which needs more room than a true
+                 50/50 split would give it. -->
+            <Grid Grid.Row="0" x:Name="PanesGrid" ColumnDefinitions="1.3*,6,*">
 
                 <!-- Editable -->
                 <Border Grid.Column="0"
@@ -49,8 +53,12 @@
                         Margin="0,0,8,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="6">
+                            <!-- Name + Use — left-aligned, value column fixed
+                                 at 280 so they don't track the splitter. -->
                             <TextBlock Classes="SectionHeader" Text="Monster"/>
-                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                            <Grid ColumnDefinitions="110,280" RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
                                 <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Use"/>
@@ -60,10 +68,15 @@
                                            HorizontalAlignment="Stretch"/>
                             </Grid>
 
+                            <!-- Details — left-aligned grid, fixed value
+                                 column widths so the Relationship dropdown
+                                 + Override spell rows don't stretch with
+                                 the splitter. -->
                             <TextBlock Classes="SectionHeader" Text="Details"/>
-                            <Grid ColumnDefinitions="160,*,8,Auto,Auto"
+                            <Grid ColumnDefinitions="160,280,8,Auto,64"
                                   RowDefinitions="Auto,Auto,Auto"
-                                  ColumnSpacing="8" RowSpacing="6">
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
 
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Relationship"/>
                                 <ComboBox  Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="4"
@@ -75,17 +88,22 @@
                                            ToolTip.Tip="Spell.Number to cast on this monster before melee — takes priority over the global Combat-tab pre-attack."/>
                                 <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding PreAttackSpellId, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="1" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}" Width="64"/>
+                                <TextBox   Grid.Row="1" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}"/>
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Override Attack Spell"
                                            ToolTip.Tip="Spell.Number to cast as the primary attack on this monster — takes priority over the global Combat-tab attack spell."/>
                                 <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding AttackSpellId, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}" Width="64"/>
+                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}"/>
                             </Grid>
 
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="14" Margin="0,8,0,0">
-                                <Border Grid.Column="0"
+                            <!-- Attack Priority + Options border boxes —
+                                 fixed widths + left-aligned so they sit
+                                 cleanly inside the pane instead of
+                                 stretching all the way to the splitter. -->
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="14"
+                                  HorizontalAlignment="Left" Margin="0,8,0,0">
+                                <Border Grid.Column="0" Width="220"
                                         BorderBrush="{StaticResource ChromeBorderBrush}"
                                         BorderThickness="1" CornerRadius="3" Padding="8">
                                     <StackPanel>
@@ -95,7 +113,7 @@
                                                   HorizontalAlignment="Stretch"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1"
+                                <Border Grid.Column="1" Width="220"
                                         BorderBrush="{StaticResource ChromeBorderBrush}"
                                         BorderThickness="1" CornerRadius="3" Padding="8">
                                     <StackPanel>
