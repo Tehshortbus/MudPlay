@@ -208,29 +208,35 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 otherInfo.Add(new KeyValuePair<string, string>("Uses Per Day",
                     useCount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
-            // Weapon-only block.
+            // Weapon-only block — each sub-row is suppressed when its
+            // underlying field is zero, so weapons without Min/Max
+            // damage or Speed don't carry empty placeholder rows.
             if (itemType == 1)
             {
-                otherInfo.Add(new KeyValuePair<string, string>("Weapon Type",
-                    FormatWeaponTypeForDialog(ReadString(el, "WeaponType"))));
-                otherInfo.Add(new KeyValuePair<string, string>("Weapon Damage",
-                    FormatRange(ReadString(el, "Min"), ReadString(el, "Max"))));
-                otherInfo.Add(new KeyValuePair<string, string>("Weapon Speed",
-                    NoneIfZero(ReadString(el, "Speed"))));
+                AddIfPresent(otherInfo, "Weapon Type",
+                    FormatWeaponTypeOrEmpty(ReadInt(el, "WeaponType")));
+                AddIfPresent(otherInfo, "Weapon Damage",
+                    FormatRangeOrEmpty(ReadInt(el, "Min"), ReadInt(el, "Max")));
+                AddIfPresent(otherInfo, "Weapon Speed",
+                    ReadInt(el, "Speed") is int s and > 0
+                        ? s.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : string.Empty);
             }
             else if (itemType == 0)
             {
-                otherInfo.Add(new KeyValuePair<string, string>("Armour Type",
-                    MmudEnums.FormatArmourType(ReadString(el, "ArmourType")) ?? "None"));
+                AddIfPresent(otherInfo, "Armour Type",
+                    FormatArmourTypeOrEmpty(ReadInt(el, "ArmourType")));
             }
 
-            // Common stat block.
-            otherInfo.Add(new KeyValuePair<string, string>("Accuracy Bonus",
-                FormatSignedOrNone(ReadInt(el, "Accy"))));
-            otherInfo.Add(new KeyValuePair<string, string>("AC Bonus",
-                FormatAcBonus(el)));
-            otherInfo.Add(new KeyValuePair<string, string>("Required Strength",
-                NoneIfZero(ReadString(el, "StrReq"))));
+            // Common stat block. Each row is suppressed entirely when
+            // its source field is zero — the dialog hides "None"
+            // requirements rather than rendering them as visual noise.
+            AddIfPresent(otherInfo, "Accuracy Bonus", FormatSignedOrEmpty(ReadInt(el, "Accy")));
+            AddIfPresent(otherInfo, "AC Bonus",       FormatAcBonusOrEmpty(el));
+            int strReq = ReadInt(el, "StrReq");
+            if (strReq > 0)
+                AddIfPresent(otherInfo, "Required Strength",
+                    strReq.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             // Class restrictions — "Also Used By: Mage" etc. One row per
             // non-zero ClassRest-N (10 slots).
@@ -329,32 +335,57 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
         : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>Like <see cref="FormatSigned"/> but renders 0 as "None".</summary>
-    private static string FormatSignedOrNone(int n) => n == 0 ? "None" : FormatSigned(n);
+    /// <summary>Signed value, or empty when zero — used by the "skip when None" row helpers.</summary>
+    private static string FormatSignedOrEmpty(int n) => n == 0 ? string.Empty : FormatSigned(n);
 
-    /// <summary>MegaMUD's Weapon-Type labels use "2-Handed Sharp" not "2H Sharp".</summary>
-    private static string FormatWeaponTypeForDialog(string raw) => raw switch
+    /// <summary>
+    /// MegaMUD's Weapon-Type labels use "2-Handed Sharp" not "2H Sharp".
+    /// Returns empty when the WeaponType code is 0 (i.e. not a weapon /
+    /// no weapon-class assigned) so the caller suppresses the row.
+    /// </summary>
+    private static string FormatWeaponTypeOrEmpty(int code) => code switch
     {
-        "0" => "1-Handed Blunt",
-        "1" => "2-Handed Blunt",
-        "2" => "1-Handed Sharp",
-        "3" => "2-Handed Sharp",
-        _   => MmudEnums.FormatWeaponType(raw) ?? "None",
+        0 => string.Empty,
+        1 => "2-Handed Blunt",
+        2 => "1-Handed Sharp",
+        3 => "2-Handed Sharp",
+        _ => MmudEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
     };
+
+    /// <summary>
+    /// Armour-Type label, or empty when 0. Note the stock data has
+    /// ArmourType=0 mapping to "Natural" in <see cref="MmudEnums"/>; for
+    /// the dialog we treat 0 as "no armour type" → suppress the row,
+    /// matching the user's preference to hide None-valued requirements.
+    /// </summary>
+    private static string FormatArmourTypeOrEmpty(int code) => code == 0
+        ? string.Empty
+        : MmudEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
+
+    /// <summary>"5-12" pair when either is non-zero, or empty when both are zero.</summary>
+    private static string FormatRangeOrEmpty(int min, int max) =>
+        (min == 0 && max == 0) ? string.Empty : $"{min}-{max}";
+
+    /// <summary>AC Bonus in MegaMUD's slash-pair form (ArmourClass ÷ 10), or empty when both are zero.</summary>
+    private static string FormatAcBonusOrEmpty(JsonElement el)
+    {
+        int ac = ReadInt(el, "ArmourClass");
+        int dr = ReadInt(el, "DamageResist");
+        if (ac == 0 && dr == 0) return string.Empty;
+        return $"{ac / 10}/{dr / 10}";
+    }
+
+    /// <summary>Add a (label, value) row only when value is non-empty. Centralises the None-suppression rule.</summary>
+    private static void AddIfPresent(List<KeyValuePair<string, string>> list, string label, string value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            list.Add(new KeyValuePair<string, string>(label, value));
+    }
 
     private static int ReadInt(JsonElement el, string field)
     {
         if (!el.TryGetProperty(field, out JsonElement v)) return 0;
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
-    }
-
-    /// <summary>"5-12" pair display; "None" when both are zero / missing.</summary>
-    private static string FormatRange(string min, string max)
-    {
-        bool minZero = string.IsNullOrWhiteSpace(min) || min == "0";
-        bool maxZero = string.IsNullOrWhiteSpace(max) || max == "0";
-        if (minZero && maxZero) return "None";
-        return $"{(minZero ? "0" : min)}-{(maxZero ? "0" : max)}";
     }
 
     /// <summary>Look up a spell's Name by its Number; falls back to the raw id when absent.</summary>
@@ -390,29 +421,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         };
     }
 
-    private static string NoneIfZero(string raw)
-        => string.IsNullOrWhiteSpace(raw) || raw == "0" ? "None" : raw;
-
     /// <summary>Renders "5 Silver" / "1 Gold" from the (Price, Currency) pair.</summary>
     private static string FormatPrice(JsonElement el)
     {
         string price = ReadString(el, "Price");
-        if (string.IsNullOrWhiteSpace(price) || price == "0") return "None";
+        if (string.IsNullOrWhiteSpace(price) || price == "0") return "Free";
         string currency = MmudEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
         return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
-    }
-
-    /// <summary>
-    /// MegaMUD's slash-pair AC display, divided by 10 to match the dialog
-    /// convention (stock stores ArmourClass=20 → "2/0", ArmourClass=60 →
-    /// "6/0"). Both zero / missing → "None".
-    /// </summary>
-    private static string FormatAcBonus(JsonElement el)
-    {
-        int ac = ReadInt(el, "ArmourClass");
-        int dr = ReadInt(el, "DamageResist");
-        if (ac == 0 && dr == 0) return "None";
-        return $"{ac / 10}/{dr / 10}";
     }
 
     /// <summary>
