@@ -138,16 +138,29 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     /// price, type label, slot label, bought/sold cross-reference).
     /// </summary>
     /// <remarks>
-    /// "Other Info" is type-aware — mirrors MegaMUD's behaviour where the
-    /// right-pane fields vary by ItemType. Weapon-only fields (Speed /
-    /// damage range / Weapon Type) only appear for weapons; Armour-only
-    /// fields (Armour Type) only appear for armour; the
-    /// <c>Abil-N / AbilVal-N</c> pairs (0..19) are iterated and rendered
-    /// with their <see cref="AbilityNames"/> label so bonuses like
-    /// "Magical: 1" / "LearnSp: burning aura" appear inline without
-    /// hardcoding each one. <c>LearnSpell</c> (ability code 42) gets
-    /// special-cased to look the value up as a Spells.Number and render
-    /// the spell's Name instead of the raw id.
+    /// "Other Info" mirrors MegaMUD's Game Item Details right-pane ordering
+    /// (verified against stock items 172 / 203 / 283 / 304 / 438 / 741 /
+    /// 784). Layout — anything unset is suppressed unless MegaMUD shows
+    /// the row even when empty (in which case we render "None"):
+    /// <list type="number">
+    ///   <item>WCC No</item>
+    ///   <item>Game Max (from <c>Limit</c>) — when &gt; 0</item>
+    ///   <item>Uses Per Day (from <c>UseCount</c>) — when &gt; 0 (-1 / 0 suppressed)</item>
+    ///   <item>Weapon block (<c>ItemType==Weapon</c>): Weapon Type, Weapon Damage, Weapon Speed</item>
+    ///   <item>Armour block (<c>ItemType==Armour</c>): Armour Type</item>
+    ///   <item>Accuracy Bonus / AC Bonus / Required Strength — always</item>
+    ///   <item>Also Used By — one row per non-zero <c>ClassRest-N</c></item>
+    ///   <item>Negates — one row per non-zero <c>NegateSpell-N</c> (resolved to Spells.Name)</item>
+    ///   <item>Ability rows — one per <c>Abil-N</c> with code &gt; 0, even when AbilVal is 0
+    ///         (so "Del@Maint: 0" surfaces). Stat-bonus codes render signed (+5);
+    ///         value/threshold codes render raw. <c>LearnSpell</c> + <c>CastSpell</c>
+    ///         resolve their values to Spells.Name.</item>
+    ///   <item>Dropped By — comma-joined Monsters parsed from <c>Obtained From</c>.</item>
+    /// </list>
+    /// AC Bonus follows MegaMUD's convention of <c>ArmourClass/10</c> + "/" +
+    /// <c>DamageResist/10</c> (stock stores ArmourClass=20 → "2/0").
+    /// Bought/sold (left pane) picks the FIRST shop reference from
+    /// <c>Obtained From</c> and resolves it to <c>Shop.Name</c>.
     /// </remarks>
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
@@ -171,73 +184,163 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
             int itemType = ReadInt(el, "ItemType");
             int worn     = ReadInt(el, "Worn");
+            string obtainedFrom = ReadString(el, "Obtained From");
 
-            // Details-section derived strings.
+            // ----- Details section (left pane) -----
             weight       = ReadString(el, "Encum");
             price        = FormatPrice(el);
             itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
             bodyLocation = worn == 0 ? "None" : (MmudEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
-            boughtSold   = ResolveShops(ReadString(el, "Obtained From"));
+            boughtSold   = ResolveFirstShop(obtainedFrom);
 
-            // ----- Other Info pane: type-aware ordering -----
+            // ----- Other Info pane (right pane) -----
             otherInfo.Add(new KeyValuePair<string, string>("WCC No", wccNoStr));
+
+            int limit = ReadInt(el, "Limit");
+            if (limit > 0)
+                otherInfo.Add(new KeyValuePair<string, string>("Game Max", limit.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+            // Uses Per Day — only when positive. -1 (unlimited / "use
+            // ability with no limit") is suppressed entirely, matching
+            // MegaMUD; 0 is suppressed (not applicable).
+            int useCount = ReadInt(el, "UseCount");
+            if (useCount > 0)
+                otherInfo.Add(new KeyValuePair<string, string>("Uses Per Day",
+                    useCount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
             // Weapon-only block.
             if (itemType == 1)
             {
                 otherInfo.Add(new KeyValuePair<string, string>("Weapon Type",
-                    MmudEnums.FormatWeaponType(ReadString(el, "WeaponType")) ?? "None"));
-                otherInfo.Add(new KeyValuePair<string, string>("Damage",
+                    FormatWeaponTypeForDialog(ReadString(el, "WeaponType"))));
+                otherInfo.Add(new KeyValuePair<string, string>("Weapon Damage",
                     FormatRange(ReadString(el, "Min"), ReadString(el, "Max"))));
-                otherInfo.Add(new KeyValuePair<string, string>("Speed",
+                otherInfo.Add(new KeyValuePair<string, string>("Weapon Speed",
                     NoneIfZero(ReadString(el, "Speed"))));
             }
-
-            // Armour-only block.
-            if (itemType == 0)
+            else if (itemType == 0)
             {
                 otherInfo.Add(new KeyValuePair<string, string>("Armour Type",
                     MmudEnums.FormatArmourType(ReadString(el, "ArmourType")) ?? "None"));
             }
 
-            // Consumables — Scroll / Food / Drink / Light / Special — list
-            // "Uses Per Day" (MegaMUD's user-facing name for UseCount).
-            // -1 = unlimited; 0 = not applicable; positive = print as-is.
-            string uc = ReadString(el, "UseCount");
-            if (uc is not (null or "" or "0"))
-            {
-                otherInfo.Add(new KeyValuePair<string, string>("Uses Per Day",
-                    uc == "-1" ? "Unlimited" : uc));
-            }
-
-            // Common stat fields — shown for every item type. "None" when
-            // unset so the row stays present (useful for at-a-glance
-            // visual parity with MegaMUD).
+            // Common stat block.
             otherInfo.Add(new KeyValuePair<string, string>("Accuracy Bonus",
-                NoneIfZero(ReadString(el, "Accy"))));
+                FormatSignedOrNone(ReadInt(el, "Accy"))));
             otherInfo.Add(new KeyValuePair<string, string>("AC Bonus",
                 FormatAcBonus(el)));
             otherInfo.Add(new KeyValuePair<string, string>("Required Strength",
                 NoneIfZero(ReadString(el, "StrReq"))));
 
-            // Ability pairs — Abil-0..19 / AbilVal-0..19. Each non-zero
-            // code becomes one row labelled with its AbilityNames mapping
-            // (e.g. "Magical: 1", "Strength: +5"). LearnSpell (code 42)
-            // resolves the AbilVal to a Spells.Name lookup so the row
-            // reads "LearnSpell: burning aura" rather than "LearnSpell: 71".
+            // Class restrictions — "Also Used By: Mage" etc. One row per
+            // non-zero ClassRest-N (10 slots).
+            for (int i = 0; i < 10; i++)
+            {
+                int classId = ReadInt(el, $"ClassRest-{i}");
+                if (classId == 0) continue;
+                otherInfo.Add(new KeyValuePair<string, string>("Also Used By",
+                    ResolveClassName(classId)));
+            }
+
+            // Negated spells — one row per non-zero NegateSpell-N (10 slots).
+            for (int i = 0; i < 10; i++)
+            {
+                int spellId = ReadInt(el, $"NegateSpell-{i}");
+                if (spellId == 0) continue;
+                otherInfo.Add(new KeyValuePair<string, string>("Negates",
+                    ResolveSpellName(spellId)));
+            }
+
+            // Ability pairs — Abil-0..19 / AbilVal-0..19. Render each
+            // non-zero code (even when value is 0 — that's how MegaMUD
+            // surfaces "Del@Maint: 0"). Code 42 (LearnSpell) and 43
+            // (CastSpell) resolve their values to spell names; code 59
+            // (ClassOK) resolves to a class name. Stat-bonus codes get
+            // signed display ("+5"), threshold/value codes render raw.
             for (int i = 0; i < 20; i++)
             {
                 int code = ReadInt(el, $"Abil-{i}");
                 if (code == 0) continue;
                 int val = ReadInt(el, $"AbilVal-{i}");
-                string label = AbilityNames.GetName(code) ?? $"Abil{code}";
-                string value = code == 42 ? ResolveSpellName(val) : val.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                string label = AbilityLabelForDialog(code);
+                string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
             }
+
+            // Dropped By — extract Monster #N(X%) tokens, resolve each
+            // to its Monsters.Name, comma-join. Skip when the item has
+            // no Monster references in Obtained From.
+            string droppedBy = ResolveDroppedBy(obtainedFrom);
+            if (!string.IsNullOrEmpty(droppedBy))
+                otherInfo.Add(new KeyValuePair<string, string>("Dropped By", droppedBy));
+
             break;
         }
         return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
     }
+
+    // ----- Ability-row formatting helpers -----
+
+    /// <summary>
+    /// Per-code label override for the dialog. AbilityNames is the canonical
+    /// table; this dictionary swaps in MegaMUD-display names where they differ
+    /// (e.g. ability 43 stores as "CastSpell" but MegaMUD's dialog shows
+    /// "CastsSp"). Codes not listed fall through to <see cref="AbilityNames"/>.
+    /// </summary>
+    private static readonly Dictionary<int, string> AbilityLabelOverrides = new()
+    {
+        [43]  = "CastsSp",
+        [59]  = "ClassOk",
+        [70]  = "Spellcasting",
+        [114] = "%Spell",
+        [119] = "Del@Maint",
+        [145] = "ManaRgn",
+    };
+
+    /// <summary>
+    /// Ability codes whose value is a stat bonus and should render signed
+    /// ("+5") rather than raw ("5"). The remainder render raw — they encode
+    /// thresholds, counts, ids, etc. where a sign would be misleading.
+    /// </summary>
+    private static readonly HashSet<int> SignedAbilityCodes = new()
+    {
+        1, 2, 3, 4, 5, 7, 8, 17, 18, 22, 27, 29, 30, 31, 32, 33,
+        34, 36, 37, 38, 39, 40, 41, 44, 45, 46, 47, 48, 49, 51,
+        58, 65, 66, 67, 68, 69, 70, 145, 187,
+    };
+
+    private string AbilityLabelForDialog(int code)
+    {
+        if (AbilityLabelOverrides.TryGetValue(code, out string? overridden)) return overridden;
+        return AbilityNames.GetName(code) ?? $"Abil{code}";
+    }
+
+    private string AbilityValueForDialog(int code, int rawValue) => code switch
+    {
+        42 => ResolveSpellName(rawValue),  // LearnSpell — value is a Spells.Number
+        43 => ResolveSpellName(rawValue),  // CastSpell  — same
+        59 => ResolveClassName(rawValue),  // ClassOK    — value is a Classes.Number
+        _  => SignedAbilityCodes.Contains(code)
+              ? FormatSigned(rawValue)
+              : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    private static string FormatSigned(int n) => n > 0
+        ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Like <see cref="FormatSigned"/> but renders 0 as "None".</summary>
+    private static string FormatSignedOrNone(int n) => n == 0 ? "None" : FormatSigned(n);
+
+    /// <summary>MegaMUD's Weapon-Type labels use "2-Handed Sharp" not "2H Sharp".</summary>
+    private static string FormatWeaponTypeForDialog(string raw) => raw switch
+    {
+        "0" => "1-Handed Blunt",
+        "1" => "2-Handed Blunt",
+        "2" => "1-Handed Sharp",
+        "3" => "2-Handed Sharp",
+        _   => MmudEnums.FormatWeaponType(raw) ?? "None",
+    };
 
     private static int ReadInt(JsonElement el, string field)
     {
@@ -252,56 +355,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         bool maxZero = string.IsNullOrWhiteSpace(max) || max == "0";
         if (minZero && maxZero) return "None";
         return $"{(minZero ? "0" : min)}-{(maxZero ? "0" : max)}";
-    }
-
-    /// <summary>
-    /// Items.json's "Obtained From" carries shop references as
-    /// "Shop #N, Shop #M, ..." — resolve each #N to "Shop.Name" via the
-    /// active set's Shops.json. Falls back to the raw text when the
-    /// Shops table isn't loaded or a shop isn't found.
-    /// </summary>
-    private string ResolveShops(string obtainedFrom)
-    {
-        if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
-        JsonDocument? shopsDoc = _cache.GetRawTable("Shops");
-        if (shopsDoc is null) return obtainedFrom;
-
-        // Build a quick id → name map for any tokens of the form "Shop #N".
-        Dictionary<int, string> shopNames = new();
-        foreach (string token in obtainedFrom.Split(','))
-        {
-            string trimmed = token.Trim();
-            if (!trimmed.StartsWith("Shop #", StringComparison.Ordinal)) continue;
-            if (int.TryParse(trimmed.AsSpan(6), out int id)) shopNames[id] = string.Empty;
-        }
-        if (shopNames.Count == 0) return obtainedFrom;
-
-        foreach (JsonElement el in shopsDoc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
-            if (numProp.ValueKind != JsonValueKind.Number) continue;
-            int shopNum = numProp.GetInt32();
-            if (!shopNames.ContainsKey(shopNum)) continue;
-            shopNames[shopNum] = ReadString(el, "Name");
-        }
-
-        List<string> parts = new();
-        foreach (string token in obtainedFrom.Split(','))
-        {
-            string trimmed = token.Trim();
-            if (trimmed.StartsWith("Shop #", StringComparison.Ordinal)
-                && int.TryParse(trimmed.AsSpan(6), out int id)
-                && shopNames.TryGetValue(id, out string? name)
-                && !string.IsNullOrEmpty(name))
-            {
-                parts.Add(name);
-            }
-            else if (trimmed.Length > 0)
-            {
-                parts.Add(trimmed);
-            }
-        }
-        return string.Join(", ", parts);
     }
 
     /// <summary>Look up a spell's Name by its Number; falls back to the raw id when absent.</summary>
@@ -349,15 +402,109 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
     }
 
-    /// <summary>"{ArmourClass}/{DamageResist}" — MegaMUD's slash-pair display.</summary>
+    /// <summary>
+    /// MegaMUD's slash-pair AC display, divided by 10 to match the dialog
+    /// convention (stock stores ArmourClass=20 → "2/0", ArmourClass=60 →
+    /// "6/0"). Both zero / missing → "None".
+    /// </summary>
     private static string FormatAcBonus(JsonElement el)
     {
-        string ac = ReadString(el, "ArmourClass");
-        string dr = ReadString(el, "DamageResist");
-        bool acZero = string.IsNullOrWhiteSpace(ac) || ac == "0";
-        bool drZero = string.IsNullOrWhiteSpace(dr) || dr == "0";
-        if (acZero && drZero) return "None";
-        return $"{(acZero ? "0" : ac)}/{(drZero ? "0" : dr)}";
+        int ac = ReadInt(el, "ArmourClass");
+        int dr = ReadInt(el, "DamageResist");
+        if (ac == 0 && dr == 0) return "None";
+        return $"{ac / 10}/{dr / 10}";
+    }
+
+    /// <summary>
+    /// Bought/sold (left pane) picks the FIRST shop reference in
+    /// <c>Obtained From</c> and renders the shop's <c>Name</c>. Falls back
+    /// to empty when the field has no shop tokens or the Shops table isn't
+    /// loaded. Accepts both <c>"Shop #N"</c> and <c>"Shop(sell) #N"</c>
+    /// token formats.
+    /// </summary>
+    private string ResolveFirstShop(string obtainedFrom)
+    {
+        if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+        foreach (string token in obtainedFrom.Split(','))
+        {
+            string trimmed = token.Trim();
+            int hash = trimmed.IndexOf('#');
+            if (hash < 0) continue;
+            if (!trimmed.StartsWith("Shop", StringComparison.Ordinal)) continue;
+            // Strip a trailing "(N%)" / "(sell)" tail before parsing.
+            string numText = trimmed[(hash + 1)..];
+            int paren = numText.IndexOf('(');
+            if (paren >= 0) numText = numText[..paren];
+            if (!int.TryParse(numText.Trim(), out int shopId)) continue;
+            return LookupShopName(shopId) ?? trimmed;
+        }
+        return string.Empty;
+    }
+
+    /// <summary>Comma-joined list of monster names parsed from Obtained From's "Monster #N(X%)" tokens.</summary>
+    private string ResolveDroppedBy(string obtainedFrom)
+    {
+        if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+        List<string> names = new();
+        foreach (string token in obtainedFrom.Split(','))
+        {
+            string trimmed = token.Trim();
+            if (!trimmed.StartsWith("Monster #", StringComparison.Ordinal)) continue;
+            string rest = trimmed[9..]; // skip "Monster #"
+            int paren = rest.IndexOf('(');
+            string numText = paren >= 0 ? rest[..paren] : rest;
+            if (!int.TryParse(numText.Trim(), out int monsterId)) continue;
+            string? name = LookupMonsterName(monsterId);
+            if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
+        }
+        return string.Join(", ", names);
+    }
+
+    private string? LookupShopName(int shopId)
+    {
+        JsonDocument? doc = _cache.GetRawTable("Shops");
+        if (doc is null) return null;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
+            if (n.ValueKind != JsonValueKind.Number) continue;
+            if (n.GetInt32() != shopId) continue;
+            string name = ReadString(el, "Name");
+            return string.IsNullOrEmpty(name) ? null : name;
+        }
+        return null;
+    }
+
+    private string? LookupMonsterName(int monsterId)
+    {
+        JsonDocument? doc = _cache.GetRawTable("Monsters");
+        if (doc is null) return null;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
+            if (n.ValueKind != JsonValueKind.Number) continue;
+            if (n.GetInt32() != monsterId) continue;
+            string name = ReadString(el, "Name");
+            return string.IsNullOrEmpty(name) ? null : name;
+        }
+        return null;
+    }
+
+    /// <summary>Classes.Number → Classes.Name; falls back to "Class N" when absent.</summary>
+    private string ResolveClassName(int classId)
+    {
+        if (classId == 0) return "None";
+        JsonDocument? doc = _cache.GetRawTable("Classes");
+        if (doc is null) return $"Class {classId}";
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
+            if (n.ValueKind != JsonValueKind.Number) continue;
+            if (n.GetInt32() != classId) continue;
+            string name = ReadString(el, "Name");
+            return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
+        }
+        return $"Class {classId}";
     }
 
     /// <summary>Bundle returned by <see cref="BuildMdbView"/>.</summary>

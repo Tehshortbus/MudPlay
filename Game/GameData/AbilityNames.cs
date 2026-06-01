@@ -45,7 +45,13 @@ public static class AbilityNames
         { 61, "AffectExit" },        { 62, "AlterEvilChance" }, { 63, "AlterExperience" },
         { 64, "AddCP" },             { 65, "Rsto" },            { 66, "Rlit" },
         { 67, "Quickness" },         { 68, "Slowness" },        { 69, "MaxMana" },
-        { 70, "SpellCasting" },      { 170, "Sleep" },          { 171, "Invisibility" },
+        { 70, "SpellCasting" },
+        // Item-data extras surfaced by MegaMUD's Game Item Details
+        // (verified against stock items 172 / 203 / 283 / 304 / 741 / 784).
+        { 86, "Quality" },           { 114, "PercentSpell" },
+        { 119, "DelAtMaint" },       { 121, "Recharge" },
+        { 135, "MinLevel" },         { 145, "ManaRgn" },
+        { 170, "Sleep" },          { 171, "Invisibility" },
         { 172, "SeeInvisible" },     { 173, "Scry" },           { 174, "StealMana" },
         { 175, "StealHPToMP" },      { 176, "StealMPToHP" },    { 177, "SpellColours" },
         { 178, "ShadowForm" },       { 179, "FindTrapsValue" }, { 180, "PicklocksValue" },
