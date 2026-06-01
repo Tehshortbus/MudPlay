@@ -55,6 +55,17 @@ public partial class ConversationWindow : Window
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        // Macro lookup first — same dispatch path the terminal canvas
+        // uses, so a user-bound chord (F1, numpad direction, Ctrl+letter)
+        // fires its command at the wire instead of typing characters
+        // into this input field.
+        if (FujinTerm.Services.AppServices.Current.MacroDispatcher
+                .TryHandleKey(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.Enter && e.Key != Key.Return) return;
         if (DataContext is not ConversationViewModel vm) return;
         if (vm.SendInputCommand.CanExecute(null))

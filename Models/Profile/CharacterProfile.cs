@@ -32,24 +32,11 @@ public sealed class CharacterProfile
     public string? BbsName { get; set; }
 
     /// <summary>
-    /// Game-data set this character expects. On profile load the
-    /// <c>GameDataCache</c> (Phase 5) switches to this set; if the user
-    /// manually switches sets later this field is rewritten and persisted.
-    /// </summary>
-    public string? ActiveGameDataSet { get; set; }
-
-    /// <summary>
     /// Per-tab settings deltas at the Character tier — same shape as
     /// <see cref="Settings.GlobalSettings.Settings"/>. Anything the user
     /// pinned to "only for this character."
     /// </summary>
     public Dictionary<string, JsonElement>? Settings { get; set; }
-
-    /// <summary>
-    /// Per-record game-data overrides at the Character tier. Same shape as
-    /// <see cref="Settings.GlobalSettings.GameDataOverrides"/>.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 
     /// <summary>
     /// User-defined incoming-text triggers. Per-character so the
@@ -71,15 +58,6 @@ public sealed class CharacterProfile
     public List<GameData.Alias>? Aliases { get; set; }
 
     /// <summary>
-    /// User-authored room favourites with their folder-path hierarchy.
-    /// Per-character; loaded into <see cref="Services.FavoritesManager"/>
-    /// on profile load. Phase 5 PR 5.25's starter bundle layers
-    /// pre-seeded defaults from the active game-data set on top of
-    /// whatever's stored here.
-    /// </summary>
-    public List<GameData.Favorite>? Favorites { get; set; }
-
-    /// <summary>
     /// User-defined keybinds. Per-character; loaded into
     /// <see cref="Services.MacroStore"/> on profile load. The Phase 10
     /// MacroManager engine intercepts keystrokes on TerminalControl +
@@ -87,6 +65,32 @@ public sealed class CharacterProfile
     /// command in place of the raw key.
     /// </summary>
     public List<GameData.Macro>? Macros { get; set; }
+
+    /// <summary>
+    /// Per-character keybindings for built-in app actions (toolbar +
+    /// menu shortcuts). Sparse — only entries the user has overridden
+    /// from the seed defaults get persisted. <see cref="Services.KeybindingStore"/>
+    /// fills in the rest from <c>KeybindingStore.DefaultBindings</c>
+    /// on load, and prunes back to non-defaults at save time so a
+    /// fresh profile that never touched the keybind editor leaves this
+    /// <c>null</c>.
+    /// </summary>
+    public Dictionary<BuiltInAction, KeyChord>? BuiltInKeybindings { get; set; }
+
+    /// <summary>
+    /// Per-player customisations the loaded character has authored —
+    /// remote-command permissions, auto-party toggles, the
+    /// don't-auto-delete flag, notes. Keyed by player display name
+    /// (case-insensitive on read). <b>Only non-default entries are
+    /// persisted</b>: a fresh profile that's never opened the player
+    /// edit dialog leaves this <c>null</c>, and pristine
+    /// "all unchecked" entries are pruned at save time.
+    /// Per-BBS observation rows live separately at
+    /// <c>Data/BBS/{name}/players.json</c> so a customisation on
+    /// character A doesn't leak into character B even when both play
+    /// the same BBS.
+    /// </summary>
+    public Dictionary<string, GameData.PlayerCustomization>? PlayerCustomizations { get; set; }
 
     /// <summary>
     /// Persisted floating-panel layouts keyed by panel id. Populated by
@@ -113,4 +117,15 @@ public sealed class CharacterProfile
     /// saved position once they've actually moved / resized a window.
     /// </summary>
     public Dictionary<string, WindowBounds>? WindowBounds { get; set; }
+
+    /// <summary>
+    /// Persisted left-pane proportions for resizable two-pane dialogs
+    /// keyed by stable id (e.g. <c>"MonsterEditDialog"</c>). Each value
+    /// is the fraction (0.0–1.0) of the splittable area occupied by the
+    /// LEFT pane at the user's last close. Populated by
+    /// <see cref="Services.SplitterLayoutStore"/> on profile save and
+    /// applied on every dialog open. <c>null</c> / missing entries mean
+    /// "use the XAML defaults".
+    /// </summary>
+    public Dictionary<string, double>? SplitterRatios { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FujinTerm.Models.Profile;
@@ -12,27 +13,66 @@ namespace FujinTerm.Services;
 /// clears remove an override at a tier so the next-lower tier shows through.
 /// </summary>
 /// <remarks>
-/// Storage model: each writable tier file (<see cref="GlobalSettings"/>,
-/// <see cref="BbsProfile"/>, <see cref="CharacterProfile"/>) carries a
-/// <c>Settings</c> dictionary keyed by tab name and a <c>GameDataOverrides</c>
-/// dictionary keyed by table → record-id. Values are partial JSON — only the
-/// fields the user actually overrode at that tier. This resolver overlays
-/// those partial blobs onto a base DTO produced from <c>new T()</c> (the
-/// Defaults tier for settings) and deserializes the result. Two JSON
-/// round-trips per resolve; cache when the cost shows up in profiling.
+/// Storage model:
+/// <list type="bullet">
+///   <item>
+///   <b>Settings</b> live inline as a tab-keyed dictionary on each tier's
+///   primary JSON (<see cref="GlobalSettings.Settings"/> /
+///   <see cref="BbsProfile.Settings"/> / <see cref="CharacterProfile.Settings"/>).
+///   The resolver overlays them onto a base DTO produced from <c>new T()</c>
+///   for the Defaults tier.
+///   </item>
+///   <item>
+///   <b>Game-data record overrides</b> live in <b>per-set side-files</b>
+///   inside the tier's folder — <c>{table}_overrides.{set}.json</c>,
+///   one file per (table × game-data set) pair. Avoids monolithic blobs
+///   and lets users compare overrides between realms (e.g.
+///   <c>monster_overrides.v1.11p.json</c> vs
+///   <c>monster_overrides.paradigm.json</c>) side-by-side.
+///   </item>
+/// </list>
 /// </remarks>
 public sealed class SettingsResolver
 {
     private readonly SettingsService _settings;
     private readonly BbsProfileStore _bbsStore;
     private readonly ProfileService _profile;
+    private readonly Func<string?>? _activeSetProvider;
     private BbsProfile? _activeBbs;
 
-    public SettingsResolver(SettingsService settings, BbsProfileStore bbsStore, ProfileService profile)
+    /// <summary>
+    /// Per-path cache of override side-files. Keyed by the absolute
+    /// path returned from <see cref="AppPaths.OverrideFile"/>; value
+    /// is <c>null</c> when the file is absent or empty so we can
+    /// distinguish "checked, missing" from "not yet checked." Without
+    /// this cache the Game Data Browser triggered ~N rows × 3 tiers
+    /// disk reads per table on open — 10s of thousands of stat() calls.
+    /// Invalidated by <see cref="WriteGameDataAt"/> /
+    /// <see cref="ClearGameDataAt"/>, which mutate the same path.
+    /// </summary>
+    private readonly Dictionary<string, Dictionary<string, JsonElement>?> _overrideCache =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Guards <see cref="_overrideCache"/>. The Game Data Browser now
+    /// runs each tab's row-build on <see cref="System.Threading.Tasks.Task.Run"/>,
+    /// so two activations in quick succession can hit the resolver
+    /// concurrently from different threads. Plain <see cref="Dictionary{TKey,TValue}"/>
+    /// isn't safe under concurrent read+write, so reads and writes lock
+    /// on this object.
+    /// </summary>
+    private readonly object _overrideCacheLock = new();
+
+    public SettingsResolver(
+        SettingsService settings,
+        BbsProfileStore bbsStore,
+        ProfileService profile,
+        Func<string?>? activeSetProvider = null)
     {
         _settings = settings;
         _bbsStore = bbsStore;
         _profile = profile;
+        _activeSetProvider = activeSetProvider;
 
         _profile.ProfileLoaded += OnProfileLoaded;
         _profile.ProfileClosed += OnProfileClosed;
@@ -132,21 +172,52 @@ public sealed class SettingsResolver
         }
     }
 
-    // ----- Game-data record overrides (string-keyed) ---------------------
+    // ----- Game-data record overrides (per-set side-files) ---------------
+
+    /// <summary>
+    /// Fired after a successful <see cref="WriteGameDataAt{T}"/> or a
+    /// <see cref="ClearGameDataAt"/> that actually removed an override.
+    /// Payload identifies the (table, recordId, tier) that was mutated.
+    /// </summary>
+    /// <remarks>
+    /// Phase 13 automation engines that cache typed model collections
+    /// from a game-data table — RoomGraphManager, MessageStore-style
+    /// catalogues, AutoLairScheduler's per-monster respawn map, etc. —
+    /// subscribe here and either reload the affected record (via
+    /// <see cref="ResolveGameData{T}"/>) or invalidate their whole table
+    /// cache when an edit lands. Engines that re-resolve on every use
+    /// don't need to subscribe — the resolver's own per-file cache is
+    /// already coherent with disk by the time this fires.
+    ///
+    /// Currently consumed by: nothing (Phase 13 engines don't exist
+    /// yet). The wire is here so those engines can plug in without
+    /// retrofitting the write paths.
+    /// </remarks>
+    public event Action<GameDataChange>? GameDataChanged;
 
     /// <summary>
     /// Resolve a single game-data record (e.g. a Spell or Item) across all
     /// four tiers. The Defaults tier for game data is the imported MDB → JSON
     /// set under <c>Data/game data/{set}/</c>; resolver consumers supply that
-    /// base via <paramref name="defaultsRecord"/>.
+    /// base via <paramref name="defaultsRecord"/>. Higher-tier overrides come
+    /// from per-set side-files (<c>{table}_overrides.{set}.json</c>).
     /// </summary>
     public T ResolveGameData<T>(string table, string recordId, T defaultsRecord) where T : class, new()
     {
         JsonObject merged = ToJsonObject(defaultsRecord);
 
-        Overlay(merged, GetGameDataDelta(_settings.Current.GameDataOverrides, table, recordId));
-        Overlay(merged, GetGameDataDelta(_activeBbs?.GameDataOverrides,        table, recordId));
-        Overlay(merged, GetGameDataDelta(_profile.Current?.GameDataOverrides,  table, recordId));
+        string? set = _activeSetProvider?.Invoke();
+        if (set is null)
+        {
+            // No active set → no per-set override files to read.
+            return JsonSerializer.Deserialize<T>(merged.ToJsonString(), JsonStore.Options)
+                ?? throw new InvalidOperationException(
+                    $"ResolveGameData<{typeof(T).Name}>('{table}', '{recordId}') produced null.");
+        }
+
+        Overlay(merged, ReadOverride(SettingsTier.Global,    null,                          table, set, recordId));
+        Overlay(merged, ReadOverride(SettingsTier.Bbs,       _activeBbs?.Name,              table, set, recordId));
+        Overlay(merged, ReadOverride(SettingsTier.Character, _profile.CurrentProfileName,   table, set, recordId));
 
         return JsonSerializer.Deserialize<T>(merged.ToJsonString(), JsonStore.Options)
             ?? throw new InvalidOperationException(
@@ -156,71 +227,59 @@ public sealed class SettingsResolver
     /// <summary>
     /// Write <paramref name="value"/> as the override for record
     /// <paramref name="recordId"/> in <paramref name="table"/> at the
-    /// specified tier.
+    /// specified tier. Lands in the per-set side-file for the currently
+    /// active game-data set.
     /// </summary>
     public void WriteGameDataAt<T>(SettingsTier tier, string table, string recordId, T value) where T : class
     {
         if (value is null) throw new ArgumentNullException(nameof(value));
+        string set = RequireActiveSet();
+        string scope = ResolveScopeName(tier);
         JsonElement asJson = JsonSerializer.SerializeToElement(value, JsonStore.Options);
 
-        switch (tier)
-        {
-            case SettingsTier.Defaults:
-                throw new InvalidOperationException("Defaults tier is read-only.");
-
-            case SettingsTier.Global:
-                SetGameDataOverride(
-                    _settings.Current.GameDataOverrides ??= new(),
-                    table, recordId, asJson);
-                _settings.Save();
-                break;
-
-            case SettingsTier.Bbs:
-                BbsProfile bbs = RequireActiveBbs();
-                SetGameDataOverride(
-                    bbs.GameDataOverrides ??= new(),
-                    table, recordId, asJson);
-                _bbsStore.Save(bbs);
-                break;
-
-            case SettingsTier.Character:
-                CharacterProfile chr = RequireLoadedProfile();
-                SetGameDataOverride(
-                    chr.GameDataOverrides ??= new(),
-                    table, recordId, asJson);
-                _profile.Save();
-                break;
-        }
+        Dictionary<string, JsonElement> records = LoadOverrideFile(tier, scope, table, set);
+        records[recordId] = asJson;
+        SaveOverrideFile(tier, scope, table, set, records);
+        GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
     }
 
     /// <summary>
     /// Remove the game-data override for <paramref name="recordId"/> in
-    /// <paramref name="table"/> at the specified tier.
+    /// <paramref name="table"/> at the specified tier. No-op when the
+    /// side-file or record is absent.
     /// </summary>
     public void ClearGameDataAt(SettingsTier tier, string table, string recordId)
     {
-        switch (tier)
+        string? set = _activeSetProvider?.Invoke();
+        if (set is null) return;
+        string scope = ResolveScopeName(tier);
+
+        Dictionary<string, JsonElement> records = LoadOverrideFile(tier, scope, table, set);
+        if (records.Remove(recordId))
         {
-            case SettingsTier.Defaults:
-                throw new InvalidOperationException("Defaults tier is read-only.");
-
-            case SettingsTier.Global:
-                if (RemoveGameDataOverride(_settings.Current.GameDataOverrides, table, recordId))
-                    _settings.Save();
-                break;
-
-            case SettingsTier.Bbs:
-                if (_activeBbs is { } bbs &&
-                    RemoveGameDataOverride(bbs.GameDataOverrides, table, recordId))
-                    _bbsStore.Save(bbs);
-                break;
-
-            case SettingsTier.Character:
-                if (_profile.Current is { } chr &&
-                    RemoveGameDataOverride(chr.GameDataOverrides, table, recordId))
-                    _profile.Save();
-                break;
+            SaveOverrideFile(tier, scope, table, set, records);
+            GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
         }
+    }
+
+    /// <summary>
+    /// Which tier owns the highest-priority override for the given
+    /// record, or <see cref="SettingsTier.Defaults"/> when no tier has
+    /// an override. Used by the Game Data Browser's "Use" column to
+    /// label each row with the tier its current values come from.
+    /// </summary>
+    public SettingsTier GetGameDataSourceTier(string table, string recordId)
+    {
+        string? set = _activeSetProvider?.Invoke();
+        if (set is null) return SettingsTier.Defaults;
+
+        if (ReadOverride(SettingsTier.Character, _profile.CurrentProfileName, table, set, recordId) is not null)
+            return SettingsTier.Character;
+        if (ReadOverride(SettingsTier.Bbs, _activeBbs?.Name, table, set, recordId) is not null)
+            return SettingsTier.Bbs;
+        if (ReadOverride(SettingsTier.Global, null, table, set, recordId) is not null)
+            return SettingsTier.Global;
+        return SettingsTier.Defaults;
     }
 
     // ----- Active-BBS tracking -------------------------------------------
@@ -241,6 +300,81 @@ public sealed class SettingsResolver
     private CharacterProfile RequireLoadedProfile() => _profile.Current
         ?? throw new InvalidOperationException(
             "Cannot write to Character tier: no profile loaded.");
+
+    private string RequireActiveSet() => _activeSetProvider?.Invoke()
+        ?? throw new InvalidOperationException(
+            "Cannot write game-data override: no active game-data set.");
+
+    private string ResolveScopeName(SettingsTier tier) => tier switch
+    {
+        SettingsTier.Defaults  => throw new InvalidOperationException("Defaults tier is read-only."),
+        SettingsTier.Global    => string.Empty,
+        SettingsTier.Bbs       => _activeBbs?.Name ?? throw new InvalidOperationException(
+                                       "Cannot write to BBS tier: no active BBS."),
+        SettingsTier.Character => _profile.CurrentProfileName ?? throw new InvalidOperationException(
+                                       "Cannot write to Character tier: no named profile loaded."),
+        _ => throw new ArgumentOutOfRangeException(nameof(tier)),
+    };
+
+    // ----- Override file I/O ---------------------------------------------
+
+    private JsonElement? ReadOverride(
+        SettingsTier tier,
+        string? scope,
+        string table,
+        string set,
+        string recordId)
+    {
+        // Skip tiers that don't have a usable scope (e.g. BBS tier
+        // when no BBS is pinned, Char tier when no named profile).
+        if (tier != SettingsTier.Global && string.IsNullOrEmpty(scope)) return null;
+
+        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        Dictionary<string, JsonElement>? records = GetCachedOverrideFile(path);
+        if (records is null) return null;
+        return records.TryGetValue(recordId, out JsonElement v) ? v : null;
+    }
+
+    private Dictionary<string, JsonElement> LoadOverrideFile(
+        SettingsTier tier, string scope, string table, string set)
+    {
+        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        return GetCachedOverrideFile(path) ?? new();
+    }
+
+    private void SaveOverrideFile(
+        SettingsTier tier, string scope, string table, string set,
+        Dictionary<string, JsonElement> records)
+    {
+        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        JsonStore.Save(path, records);
+        // Stash the freshly-written contents so subsequent reads don't
+        // hit disk and so the in-memory cache stays in sync with the
+        // file we just produced.
+        lock (_overrideCacheLock)
+        {
+            _overrideCache[path] = records.Count == 0 ? null : records;
+        }
+    }
+
+    private Dictionary<string, JsonElement>? GetCachedOverrideFile(string path)
+    {
+        lock (_overrideCacheLock)
+        {
+            if (_overrideCache.TryGetValue(path, out Dictionary<string, JsonElement>? cached))
+                return cached;
+        }
+        // Load outside the lock so a slow disk read doesn't block other
+        // threads checking unrelated paths. A race where two threads load
+        // the same file is benign — same bytes either way.
+        Dictionary<string, JsonElement>? loaded = JsonStore.Load<Dictionary<string, JsonElement>>(path);
+        lock (_overrideCacheLock)
+        {
+            _overrideCache[path] = loaded;
+        }
+        return loaded;
+    }
 
     // ----- Merge plumbing ------------------------------------------------
 
@@ -268,38 +402,15 @@ public sealed class SettingsResolver
             merged[prop.Name] = JsonNode.Parse(prop.Value.GetRawText());
         }
     }
-
-    private static JsonElement? GetGameDataDelta(
-        Dictionary<string, Dictionary<string, JsonElement>>? overrides,
-        string table,
-        string recordId)
-    {
-        if (overrides is null) return null;
-        if (!overrides.TryGetValue(table, out var records)) return null;
-        return records.TryGetValue(recordId, out var rec) ? rec : null;
-    }
-
-    private static void SetGameDataOverride(
-        Dictionary<string, Dictionary<string, JsonElement>> overrides,
-        string table,
-        string recordId,
-        JsonElement value)
-    {
-        if (!overrides.TryGetValue(table, out var records))
-        {
-            records = new();
-            overrides[table] = records;
-        }
-        records[recordId] = value;
-    }
-
-    private static bool RemoveGameDataOverride(
-        Dictionary<string, Dictionary<string, JsonElement>>? overrides,
-        string table,
-        string recordId)
-    {
-        if (overrides is null) return false;
-        if (!overrides.TryGetValue(table, out var records)) return false;
-        return records.Remove(recordId);
-    }
 }
+
+/// <summary>
+/// Payload for <see cref="SettingsResolver.GameDataChanged"/>. Identifies
+/// the table + record + tier whose override was just written or cleared
+/// so subscribers can decide between a targeted reload (one record) or
+/// a full table cache invalidation.
+/// </summary>
+/// <param name="Table">Game-data table name (e.g. <c>"Monsters"</c>, <c>"Items"</c>).</param>
+/// <param name="RecordId">Primary-key string of the affected record.</param>
+/// <param name="Tier">Tier the override was written at / cleared from.</param>
+public readonly record struct GameDataChange(string Table, string RecordId, SettingsTier Tier);

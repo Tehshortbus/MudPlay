@@ -26,6 +26,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Defaults/ ships app-default seed data alongside the executable
+         (Messages catalogues per game-data set, the trigger seed list,
+         and any future per-tab defaults). Copied to bin/ on every
+         build so MessageStore / TriggerEngine can load them on first
+         launch when the per-character / per-set file doesn't exist
+         yet. NOT embedded as a resource — kept as loose files so
+         users can hand-edit them outside the build. -->
+    <Content Include="Defaults\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- FujinTerm.Tests lives at the repo root as a sibling project. Without
          these exclusions the SDK's default Compile glob would pull every
          test file into the app assembly. -->
@@ -44,6 +57,9 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.2" />
+    <!-- DataGrid widget — first-party Avalonia control shipped as a
+         separate package; powers the Game Data Browser tables. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
     <!-- Diagnostics overlay (F12 dev tools) — only pulled in for Debug
          builds so Release ships without it. -->
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
@@ -52,10 +68,13 @@
     </PackageReference>
     <!-- Source-generated MVVM helpers ([ObservableProperty], [RelayCommand]). -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
-    <!-- OLE DB stack for the Phase 5 MdbImporter — System.Data.OleDb is no
-         longer in the BCL on .NET Core / .NET 5+. Native Windows or Linux
-         via Wine + the ACE redistributable. -->
-    <PackageReference Include="System.Data.OleDb" Version="9.0.0" />
+    <!-- Pure-managed Jet (.mdb / .accdb) reader for the Phase 5 MdbImporter.
+         Vendored in Vendor/JetDatabaseReader/ rather than pulled from the
+         NuGet so we can patch a false-positive encryption-flag check that
+         rejects MajorMUD-distribution MDBs. See that folder's README for
+         the patch detail. The vendored source's only runtime dep is
+         System.Text.Encoding.CodePages — bundled in .NET 10's framework,
+         so no PackageReference needed. -->
   </ItemGroup>
 
 </Project>

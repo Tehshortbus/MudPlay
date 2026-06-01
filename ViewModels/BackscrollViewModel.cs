@@ -37,6 +37,13 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private int _lastMatchIndex = -1;
     private string _lastMatchSearchText = string.Empty;
+    // Coalesces many ScreenUpdated events into a single RefreshLiveTail per
+    // dispatcher tick — without this, every byte echoed during typing fires
+    // a full live-tail refresh (which fires ~25 row replacements in Rows,
+    // each of which fires CollectionChanged on the SelectableTranscript +
+    // TimestampGutter, each of which walks every row to rebuild inlines).
+    // The compounding made typing visibly laggy while Backscroll was open.
+    private bool _refreshScheduled;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
 
@@ -100,7 +107,13 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     private void OnScreenUpdated()
     {
-        Dispatcher.UIThread.Post(RefreshLiveTail);
+        if (_refreshScheduled) return;
+        _refreshScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _refreshScheduled = false;
+            RefreshLiveTail();
+        });
     }
 
     /// <summary>

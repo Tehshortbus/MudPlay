@@ -37,6 +37,17 @@ public partial class MainWindowViewModel : ObservableObject
     private LoginAutomator? _automator;
     private Action<PromptObservation>? _loginKillSwitch;
     private CancellationTokenSource? _cleanupReconnectCts;
+    // Counts reactive reconnect arms in a row (carrier-lost / no-response).
+    // Resets to 0 on a successful Connect or any user-initiated disconnect /
+    // connect — so the (REDIAL m/N) hint in the armed status only reflects
+    // the current uninterrupted disconnect cycle.
+    private int _reactiveReconnectCount;
+    // GC root for the who-list parser — it subscribes to LineExtractor
+    // in its ctor and stays alive as long as MainWindowViewModel does.
+    private readonly Game.WhoListParser _whoListParser;
+    // GC root for the look-on-player parser — sibling to the who-list
+    // parser; populates race / class / equipment from `look <player>`.
+    private readonly Game.LookParser _lookParser;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -107,6 +118,19 @@ public partial class MainWindowViewModel : ObservableObject
         : ResolveActiveBbs()?.Name;
 
     /// <summary>
+    /// Optional URL field on the active BBS's <see cref="BbsProfile.WebsiteUrl"/>.
+    /// Drives the Help → BBS site menu item's enable state + the actual launch.
+    /// Quick Connect targets have no website (Quick Connect bypasses the
+    /// BBS profile store entirely), so this is <c>null</c> in that case.
+    /// </summary>
+    public string? BbsWebsiteUrl => _quickConnectTarget is null
+        ? ResolveActiveBbs()?.WebsiteUrl
+        : null;
+
+    /// <summary>True when <see cref="BbsWebsiteUrl"/> looks launch-able — gates the Help menu item.</summary>
+    public bool HasBbsWebsite => !string.IsNullOrWhiteSpace(BbsWebsiteUrl);
+
+    /// <summary>
     /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
     /// is loaded the placeholder <c>{default}</c> stands in; when no
     /// BBS is selected <c>{No BBS}</c> stands in. Both slots always
@@ -132,12 +156,14 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDisconnected))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnected;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
@@ -148,13 +174,24 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsIdle => !IsConnected && !IsConnecting;
 
     /// <summary>
+    /// True when an auto-reconnect is armed but hasn't fired yet — covers
+    /// both the predictive cleanup scheduler and the reactive carrier-lost
+    /// path. Drives the toolbar / menu's Connect label so a re-press
+    /// cancels the pending redial instead of immediately dialling.
+    /// </summary>
+    public bool IsReconnectPending
+        => _cleanupReconnectCts is not null && !IsConnected && !IsConnecting;
+
+    /// <summary>
     /// Header text for the single Connect ↔ Disconnect menu entry / button
-    /// tooltip. Three-state cycle: Idle → "Connect" → Connecting → "Cancel
-    /// connect" → Connected → "Disconnect".
+    /// tooltip. Four-state cycle: ReconnectPending → "Cancel reconnect" →
+    /// Idle → "Connect" → Connecting → "Cancel connect" → Connected →
+    /// "Disconnect".
     /// </summary>
     public string ConnectionLabel
         => IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
+         : IsReconnectPending ? "Cancel reconnect"
          : "Connect";
 
     /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
@@ -265,7 +302,7 @@ public partial class MainWindowViewModel : ObservableObject
         };
         RebuildRecentProfiles();
         SyncProfileMenuState();
-        AppServices.Current.Profile.ProfileLoaded += _ => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileLoaded += OnProfileLoadedForConnect;
         AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
         // ProfileMutated fires from BbsSectionViewModel.Apply after the
         // BBS pin has been stamped onto the profile — works for both
@@ -290,11 +327,15 @@ public partial class MainWindowViewModel : ObservableObject
         // moves.
         AppServices.Current.Display.PropertyChanged += OnDisplayChanged;
 
-        // Seed the File → Game Data → Active set menu and keep it in
-        // sync with the GameDataCache so newly-imported sets appear
-        // immediately.
+        // Seed the File → Game Data → Active set menu. Rebuild on every
+        // signal that could change which row carries the checkmark:
+        // a different set is now active, a different BBS got pinned,
+        // a profile re-mutated (BBS rename), or a fresh profile loaded.
         RebuildGameDataSetsMenu();
         AppServices.Current.GameData.ActiveSetChanged += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.BbsPinApplied      += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.ProfileMutated     += _ => RebuildGameDataSetsMenu();
+        AppServices.Current.Profile.ProfileLoaded      += _ => RebuildGameDataSetsMenu();
 
         // Apply the loaded profile's persisted scrollback size now — the
         // buffer was constructed with the default; AppServices already
@@ -313,6 +354,43 @@ public partial class MainWindowViewModel : ObservableObject
         // Every emitted line fans out through the central MessageRouter so
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
+
+        // who-list observer: subscribes to LineExtractor on its own
+        // (the table is multi-line — needs state, doesn't fit
+        // MessageRouter's stateless dispatch). Feeds every observed
+        // player into PlayerDatabase.
+        _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
+        _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
+
+        // Macro dispatcher needs a wire-send callback before it can fire.
+        // TerminalControl + ConversationWindow's input both call into the
+        // dispatcher on KeyDown — without a sender bound, the call returns
+        // false and the keystroke falls through to normal handling.
+        AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
+
+        // Trigger engine subscribes to the LineExtractor for game-message
+        // dispatch (chat + system-log subscriptions wired in its ctor) and
+        // borrows the same wire sender so a fired trigger's Response goes
+        // through the canonical SendUserInput path.
+        AppServices.Current.Triggers.AttachLineExtractor(Lines);
+        AppServices.Current.Triggers.SetSender(SendUserInput);
+
+        // Refresh every menu's InputGesture text + the toolbar button
+        // tooltips on rebind. Each gesture label property reads through
+        // to KeybindingStore.Get(...) so PropertyChanged on all of them
+        // is enough to update the menu; toolbar tooltips are baked into
+        // ToolbarButtonItem at row-build time, so we re-run RebuildToolbarItems
+        // to pick up the new label. BindingsReloaded covers the bulk
+        // profile-load / -close path so the just-loaded chords surface
+        // immediately without waiting for the user to rebind.
+        AppServices.Current.Keybindings.BindingChanged  += _ => OnKeybindsChanged();
+        AppServices.Current.Keybindings.BindingsReloaded += OnKeybindsChanged;
+
+        void OnKeybindsChanged()
+        {
+            RefreshKeybindLabels();
+            RebuildToolbarItems();
+        }
 
         // The emulator emits replies (DSR, DA) it needs sent back to the
         // host; forward those onto the live telnet connection if any.
@@ -358,8 +436,21 @@ public partial class MainWindowViewModel : ObservableObject
             if (entry is null) continue;
 
             ICommand? command = GetType().GetProperty(entry.CommandName)?.GetValue(this) as ICommand;
+
+            // Live shortcut hint: if the action id parses as a BuiltInAction,
+            // pull the current binding from KeybindingStore so a user rebind
+            // (Settings → Toolbar → Change keybind…) updates the tooltip
+            // immediately. Otherwise (ToggleCapture, ActionGetAll, …) fall
+            // back to the catalogue's hardcoded hint.
+            string? liveHint =
+                Enum.TryParse(entry.ActionId, ignoreCase: false, out Models.Profile.BuiltInAction parsedAction)
+                    ? AppServices.Current.Keybindings.Get(parsedAction) is { IsEmpty: false } live
+                        ? live.Label
+                        : null
+                    : entry.ShortcutHint;
+
             string tooltip = entry.Tooltip
-                          ?? (entry.ShortcutHint is null ? entry.Label : $"{entry.Label} ({entry.ShortcutHint})");
+                          ?? (liveHint is null ? entry.Label : $"{entry.Label} ({liveHint})");
 
             // Connect button is the one row with a dual-icon (plug / unplug)
             // visual; everything else uses a single static glyph.
@@ -499,9 +590,17 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (IsConnected)        { await DisconnectInternalAsync();   return; }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
-        // User clicking Connect overrides any pending cleanup-reconnect
-        // schedule — they explicitly want to dial now.
-        CancelCleanupReconnect("user clicked Connect");
+        // Auto-reconnect armed (predictive cleanup OR reactive carrier-lost):
+        // first click cancels the pending redial — the user is opting out of
+        // the loop, not asking to dial immediately. They can click again to
+        // dial if that's what they actually wanted.
+        if (IsReconnectPending)
+        {
+            _reactiveReconnectCount = 0;
+            CancelCleanupReconnect("user clicked Cancel reconnect");
+            return;
+        }
+        _reactiveReconnectCount = 0;
         await ConnectWithRetriesAsync();
     }
 
@@ -513,6 +612,7 @@ public partial class MainWindowViewModel : ObservableObject
         // the carrier-lost auto-reconnect.
         _userInitiatedDisconnect = true;
         _lastDisconnectCause = DisconnectCause.UserInitiated;
+        _reactiveReconnectCount = 0;
 
         TelnetClient? t = _telnet;
         _telnet = null;
@@ -773,13 +873,14 @@ public partial class MainWindowViewModel : ObservableObject
 
         CancelCleanupReconnect(reason: null);
         _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
         string when = reconnectAt.LocalDateTime.ToString("HH:mm:ss");
         int minutes = (int)delay.TotalMinutes;
         int seconds = delay.Seconds;
         WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s).]",
+            $"[AUTO-RECONNECT ARMED — DIALING AT {when} (IN {minutes}m{seconds:D2}s). PRESS CONNECT TO CANCEL.]",
             TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Cleanup",
             $"Reconnect scheduled at {when} — warning observed at " +
@@ -794,6 +895,7 @@ public partial class MainWindowViewModel : ObservableObject
                 if (IsConnected || IsConnecting) return;
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
                 AppServices.Current.Cleanup.Reset();
                 _ = ConnectWithRetriesAsync();
             });
@@ -806,11 +908,23 @@ public partial class MainWindowViewModel : ObservableObject
         try { _cleanupReconnectCts.Cancel(); } catch { }
         _cleanupReconnectCts.Dispose();
         _cleanupReconnectCts = null;
+        NotifyReconnectPendingChanged();
         if (reason is not null)
         {
             AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
             WriteTerminalStatus("[AUTO-RECONNECT CANCELLED.]", TerminalStatusKind.Notice);
         }
+    }
+
+    /// <summary>
+    /// Fires PropertyChanged for the bindings that depend on whether a
+    /// reconnect is armed. Called from every site that flips the CTS
+    /// between null and an instance so the toolbar / menu label updates.
+    /// </summary>
+    private void NotifyReconnectPendingChanged()
+    {
+        OnPropertyChanged(nameof(IsReconnectPending));
+        OnPropertyChanged(nameof(ConnectionLabel));
     }
 
     /// <summary>
@@ -866,20 +980,37 @@ public partial class MainWindowViewModel : ObservableObject
         };
         if (!shouldRetry) return;
 
+        // Redial budget — same MaxRedials knob the in-flight retry loop
+        // uses. Stop arming once we've burned through it; the user can
+        // still click Connect manually.
+        int maxRedials = Math.Max(1, bbs.MaxRedials);
+        _reactiveReconnectCount++;
+        if (_reactiveReconnectCount > maxRedials)
+        {
+            WriteTerminalStatus(
+                $"[AUTO-RECONNECT GAVE UP AFTER {maxRedials} REDIAL{(maxRedials == 1 ? "" : "S")}.]",
+                TerminalStatusKind.Error);
+            AppServices.Current.Log.Error("Reconnect",
+                $"Reactive reconnect budget exhausted ({maxRedials}).");
+            _reactiveReconnectCount = 0;
+            return;
+        }
+
         TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
         _cleanupReconnectCts?.Cancel();
         _cleanupReconnectCts?.Dispose();
         _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
         string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
             ? "no response"
             : "carrier lost";
         WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}) — DIALING IN {(int)delay.TotalSeconds}s.]",
+            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {(int)delay.TotalSeconds}s. PRESS CONNECT TO CANCEL.]",
             TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Reconnect",
-            $"Reactive reconnect scheduled ({reasonLabel}) in {(int)delay.TotalSeconds}s.");
+            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {(int)delay.TotalSeconds}s.");
 
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
@@ -889,6 +1020,7 @@ public partial class MainWindowViewModel : ObservableObject
                 if (IsConnected || IsConnecting) return;
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
                 _ = ConnectWithRetriesAsync();
             });
         }, TaskScheduler.Default);
@@ -907,19 +1039,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// BBSes saved on disk.
     /// </summary>
     private static BbsProfile? ResolveActiveBbs()
-    {
-        string? name = AppServices.Current.Profile.Current?.BbsName;
-        if (!string.IsNullOrEmpty(name))
-        {
-            BbsProfile? pinned = AppServices.Current.Bbs.Get(name);
-            if (pinned is not null) return pinned;
-        }
-
-        string? first = AppServices.Current.Bbs.ListNames()
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        return first is null ? null : AppServices.Current.Bbs.Get(first);
-    }
+        => AppServices.Current.ResolveActiveBbs();
 
     private void RefreshBbsBindings()
     {
@@ -928,6 +1048,45 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveBbsName));
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(CanConnect));
+        OnPropertyChanged(nameof(BbsWebsiteUrl));
+        OnPropertyChanged(nameof(HasBbsWebsite));
+    }
+
+    /// <summary>
+    /// ProfileLoaded handler that wires in the Settings → General
+    /// "Auto-connect when profile loads" toggle. Runs the original
+    /// post-load refresh chain first, then — only when not already
+    /// connected/connecting, the loaded profile has a usable BBS pin,
+    /// and the GeneralSettings.AutoConnect flag is on — kicks off
+    /// <see cref="ConnectWithRetriesAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// async void is intentional: ProfileLoaded is an Action&lt;CharacterProfile&gt;
+    /// event and we want fire-and-forget on the connect attempt so the
+    /// caller (typically File → Open profile) doesn't block on the
+    /// retry loop. The connect path already self-marshals UI updates
+    /// and never throws to the caller.
+    /// </remarks>
+    private async void OnProfileLoadedForConnect(Models.Profile.CharacterProfile _)
+    {
+        ClearQuickConnect();
+        SyncProfileMenuState();
+        RefreshBbsBindings();
+
+        if (IsConnected || IsConnecting) return;
+
+        Models.Profile.GeneralSettings general =
+            AppServices.Current.Resolver.Resolve<Models.Profile.GeneralSettings>("General");
+        if (!general.AutoConnect) return;
+
+        // No usable BBS resolves → silently skip. Explicit Connect prints
+        // the "no BBS selected" guidance; the auto-connect path doesn't
+        // need to be noisy about something the user didn't manually trigger.
+        if (ResolveActiveBbs() is null) return;
+        if (string.IsNullOrWhiteSpace(Host) || Port <= 0) return;
+
+        AppServices.Current.Log.Info("Connect", "Auto-connect on profile load — General → Auto-connect is on.");
+        await ConnectWithRetriesAsync();
     }
 
     /// <summary>
@@ -997,10 +1156,12 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 IsConnected = true;
-                // Fresh session — drop any cleanup warning carried over
-                // and clear any pending auto-reconnect schedule (which
-                // would be redundant now that we're connected anyway).
+                // Fresh session — drop any cleanup warning carried over,
+                // clear any pending auto-reconnect schedule, and reset the
+                // reactive-redial counter so the next disconnect cycle
+                // starts from 1/N again.
                 AppServices.Current.Cleanup.Reset();
+                _reactiveReconnectCount = 0;
                 CancelCleanupReconnect("connected");
             });
         };
@@ -1109,6 +1270,25 @@ public partial class MainWindowViewModel : ObservableObject
     public void SendUserText(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
+
+        // Alias check first — first-word match, case-insensitive. When
+        // an enabled alias's name matches, the engine returns the
+        // multi-step expansion + we send each step in place of the raw
+        // text. No match → fall through to the verbatim send below.
+        // This is the only surface aliases fire from today; the
+        // terminal canvas is char-by-char and would need client-side
+        // line-mode to participate — explicitly out of scope for now.
+        if (AppServices.Current.Aliases.TryExpand(text, out IReadOnlyList<string> steps))
+        {
+            foreach (string step in steps)
+            {
+                if (LooksLikeHealShapedCommand(step))
+                    AppServices.Current.Regen.RecordArtifact();
+                byte[] stepBytes = System.Text.Encoding.Latin1.GetBytes(step + "\r\n");
+                SendUserInput(stepBytes);
+            }
+            return;
+        }
 
         if (LooksLikeHealShapedCommand(text))
         {
@@ -1380,23 +1560,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenProfileAsync()
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
+        ProfileService profile = AppServices.Current.Profile;
+        FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel vm =
+            new(profile.ListNames());
 
-        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
-        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open profile",
-            AllowMultiple = false,
-            SuggestedStartLocation = profilesFolder,
-            FileTypeFilter = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
-        });
-        if (files.Count == 0) return;
+        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, string>(vm);
+        if (string.IsNullOrEmpty(name)) return;
 
-        string name = Path.GetFileNameWithoutExtension(files[0].Name);
         try
         {
-            AppServices.Current.Profile.Load(name);
+            profile.Load(name);
             PromoteRecent(name);
             SyncProfileMenuState();
         }
@@ -1433,26 +1607,15 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Log.Warn("Profile", "Nothing to save — no profile loaded.");
             return;
         }
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
 
-        IStorageFolder? profilesFolder = await main.StorageProvider.TryGetFolderFromPathAsync(AppPaths.ProfilesDir);
-        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Save profile as",
-            SuggestedStartLocation = profilesFolder,
-            SuggestedFileName = profile.CurrentProfileName ?? "character",
-            DefaultExtension = "json",
-            FileTypeChoices = [new FilePickerFileType("Character profile (.json)") { Patterns = ["*.json"] }],
-            ShowOverwritePrompt = true,
-        });
-        if (file is null) return;
+        FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel vm = new(
+            suggestedName: profile.CurrentProfileName ?? "character",
+            exists:        profile.Exists);
 
-        // Profile names map to files under Data/profiles/{name}.json. If the
-        // picker landed somewhere else we still pull just the basename and
-        // write into Data/profiles — keeps ProfileService's layout invariant.
-        string name = Path.GetFileNameWithoutExtension(file.Name);
+        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel, string>(vm);
         if (string.IsNullOrWhiteSpace(name)) return;
+
         profile.SaveAs(name);
         PromoteRecent(name);
         SyncProfileMenuState();
@@ -1621,8 +1784,12 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Triggers,
                 AppServices.Current.Aliases,
                 AppServices.Current.Players,
-                AppServices.Current.Favorites,
-                AppServices.Current.Macros),
+                AppServices.Current.Macros,
+                AppServices.Current.Messages,
+                AppServices.Current.MonsterMessages,
+                AppServices.Current.Resolver,
+                AppServices.Current.Dialogs,
+                AppServices.Current.Keybindings),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;
@@ -1633,7 +1800,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// Items bound to File → Game Data → Active set. Each entry has a
     /// checkbox-style header (checked = currently active set) and a
     /// command that flips <see cref="GameDataCache.ActiveSet"/> + writes
-    /// the loaded profile's <c>ActiveGameDataSet</c> field.
+    /// the resolved BBS's <see cref="BbsProfile.ActiveGameDataSet"/>
+    /// field (falling back to <c>GlobalSettings.DefaultGameDataSet</c>
+    /// when no BBS is pinned).
     /// </summary>
     public ObservableCollection<GameDataSetMenuItem> GameDataSets { get; } = new();
 
@@ -1650,14 +1819,29 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Flip the active set and persist the user's choice. Active set is
+    /// a BBS-scoped setting (every character on the same realm shares
+    /// the same MajorMUD MDB); we write to the resolved BBS profile
+    /// when one is pinned, else fall through to global settings so the
+    /// menu still works before any BBS is configured.
+    /// </summary>
     private void SwitchActiveGameDataSet(string setName)
     {
         AppServices.Current.GameData.SwitchSet(setName);
-        if (AppServices.Current.Profile.Current is { } profile)
+
+        BbsProfile? bbs = ResolveActiveBbs();
+        if (bbs is not null)
         {
-            profile.ActiveGameDataSet = setName;
-            AppServices.Current.Profile.Save();
+            bbs.ActiveGameDataSet = setName;
+            AppServices.Current.Bbs.Save(bbs);
         }
+        else
+        {
+            AppServices.Current.Settings.Current.DefaultGameDataSet = setName;
+            AppServices.Current.Settings.Save();
+        }
+
         RebuildGameDataSetsMenu();
     }
 
@@ -1685,17 +1869,21 @@ public partial class MainWindowViewModel : ObservableObject
 
         string path = files[0].Path.LocalPath;
         MdbImporter importer = new();
+        // Per-table errors go to the Program Log only — the terminal
+        // gets a single summary line after the import finishes, with
+        // counts sourced from MdbImportResult.TablesSkipped (so we
+        // don't keep a separate UI counter in sync with the worker).
         importer.OnStatusChanged += s => AppServices.Current.Log.Info("MDB", s);
-        importer.OnError += s => AppServices.Current.Log.Error("MDB", s);
+        importer.OnError         += s => AppServices.Current.Log.Error("MDB", s);
 
         WriteTerminalStatus("[MDB IMPORT STARTED]", TerminalStatusKind.Notice);
-        var (success, message, folder) = await importer.ImportAsync(path);
-        AppServices.Current.Log.Info("MDB", message);
+        MdbImportResult result = await importer.ImportAsync(path);
+        AppServices.Current.Log.Info("MDB", result.Message);
 
-        if (success)
+        if (result.Success)
         {
-            WriteTerminalStatus($"[MDB IMPORT COMPLETE: {folder}]", TerminalStatusKind.Notice);
-            SwitchActiveGameDataSet(folder);
+            WriteTerminalStatus(BuildMdbCompleteStatus(result), TerminalStatusKindFor(result));
+            SwitchActiveGameDataSet(result.FolderName);
         }
         else
         {
@@ -1704,50 +1892,39 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// File → Game Data → Import Spell Messages… — parses a MegaMUD
-    /// spell-message JSON file via the Phase 5 PR 5.8 importer and
-    /// writes it into the active game-data set's
-    /// <c>SpellMessages.json</c>. Conflict-resolution wiring against
-    /// the existing file ships with the spell-messages editor PR; this
-    /// command currently does an overwrite-on-conflict write.
+    /// Compose the terminal-status line for a successful MDB import.
+    /// Carries entry + table totals plus a format-tag derived from the
+    /// MajorMUD MDB shape: 9 user tables = old realm format, 10 = new
+    /// format. Anything else (or any per-table skips) flips the line
+    /// red so the user notices the structural drift.
     /// </summary>
-    [RelayCommand]
-    private async Task ImportSpellMessagesAsync()
+    private static string BuildMdbCompleteStatus(MdbImportResult r)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
+        string entries = $"{r.RowsImported:N0} entries";
 
-        if (AppServices.Current.GameData.ActiveSet is null)
-        {
-            WriteTerminalStatus("[NO ACTIVE GAME-DATA SET — IMPORT AN MDB FIRST OR SWITCH SETS]", TerminalStatusKind.Error);
-            return;
-        }
+        string tablesPart = r.TablesSkipped == 0
+            ? $"{r.TablesImported} tables"
+            : $"{r.TablesImported}/{r.TablesFound} tables ({r.TablesSkipped} skipped)";
 
-        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        string formatTag = r.TablesFound switch
         {
-            Title = "Pick a spell-messages JSON file",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Spell messages (.json)") { Patterns = new[] { "*.json" } },
-            },
-        });
-        if (files.Count == 0) return;
+            9  => " (old format)",
+            10 => " (new format)",
+            _  => " — UNEXPECTED TABLE COUNT",   // < 9 or > 10
+        };
 
-        try
-        {
-            var rows = await SpellMessageImporter.ParseAsync(files[0].Path.LocalPath);
-            SpellMessageImporter importer = new(AppServices.Current.GameData);
-            await importer.WriteAsync(rows);
-            WriteTerminalStatus($"[SPELL MESSAGES IMPORTED: {rows.Count} rows]", TerminalStatusKind.Notice);
-            AppServices.Current.Log.Info("SpellMessages", $"Imported {rows.Count} rows into {AppServices.Current.GameData.ActiveSet}.");
-        }
-        catch (Exception ex)
-        {
-            WriteTerminalStatus("[SPELL MESSAGES IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
-            AppServices.Current.Log.Error("SpellMessages", $"Import failed: {ex.Message}");
-        }
+        // The "see Program Log" hint fires whenever the user has reason
+        // to dig in — skipped tables OR a wrong-shape MDB.
+        bool needsLogPointer = r.TablesSkipped > 0 || r.TablesFound < 9 || r.TablesFound > 10;
+        string logHint = needsLogPointer ? " — see Program Log" : string.Empty;
+
+        return $"[MDB IMPORT COMPLETE: {r.FolderName} — {tablesPart}{formatTag}, {entries}{logHint}]";
     }
+
+    private static TerminalStatusKind TerminalStatusKindFor(MdbImportResult r)
+        => (r.TablesSkipped > 0 || r.TablesFound < 9 || r.TablesFound > 10)
+           ? TerminalStatusKind.Error
+           : TerminalStatusKind.Notice;
 
     [RelayCommand]
     private void OpenNavigation()
@@ -1883,21 +2060,6 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
-    /// <summary>Help → Help topics… Opens the dev <c>docs/</c> folder when present.</summary>
-    [RelayCommand]
-    private void OpenHelpTopics()
-    {
-        string? docs = AppInfo.TryFindDocsFolder();
-        if (docs is not null)
-        {
-            ShellLaunch.OpenPath(docs);
-            return;
-        }
-        // Shipped builds don't carry docs/ — fall back to the repo readme.
-        if (!ShellLaunch.OpenUrl(AppInfo.RepoUrl))
-            AppServices.Current.Log.Warn("Help", "Could not open help.");
-    }
-
     [RelayCommand]
     private void OpenMajorMudWiki() => ShellLaunch.OpenUrl(AppInfo.MajorMudWikiUrl);
 
@@ -1905,40 +2067,26 @@ public partial class MainWindowViewModel : ObservableObject
     private void OpenMajorMudReddit() => ShellLaunch.OpenUrl(AppInfo.MajorMudRedditUrl);
 
     [RelayCommand]
-    private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
+    private void OpenMudInfo() => ShellLaunch.OpenUrl(AppInfo.MudInfoUrl);
 
-    /// <summary>Help → Keyboard shortcuts… Opens a modeless info dialog.</summary>
+    /// <summary>
+    /// Help → BBS site. Opens the active BBS's <see cref="BbsProfile.WebsiteUrl"/>
+    /// in the OS default browser. Silently no-ops when no URL is set —
+    /// the menu item's <see cref="HasBbsWebsite"/> binding keeps it
+    /// disabled in that state, but we guard here too in case the user
+    /// triggered it some other way.
+    /// </summary>
     [RelayCommand]
-    private void OpenKeyboardShortcuts()
-        => ShowInfoDialog("Keyboard shortcuts — FujinTerm",
-            """
-            Connect / Disconnect (toggle) ... Ctrl+K
-            Quit ............................ Ctrl+Q
+    private void OpenBbsWebsite()
+    {
+        string? url = BbsWebsiteUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!ShellLaunch.OpenUrl(url))
+            AppServices.Current.Log.Warn("Help", $"Could not open BBS website: {url}");
+    }
 
-            View
-              Conversation .................. F2  (wired Phase 2)
-              Party ......................... F3  (wired Phase 6)
-              Player Workshop ............... F4  (wired Phase 9)
-              Navigation .................... F5  (wired Phase 7)
-              Spell Book .................... F7  (wired Phase 9)
-              Backscroll .................... F10 (wired Phase 1)
-              Session Stats ................. F11 (wired Phase 8)
-              Settings ...................... Ctrl+,  (Phase 4)
-
-            Tools
-              Program Log ................... F9  (wired Phase 1)
-              Wire Inspector ................ (no shortcut — toolbar / menu)
-
-            Game Data
-              Browser ....................... Ctrl+G  (Phase 5)
-
-            File
-              New / Open / Save profile ..... Ctrl+N / Ctrl+O / Ctrl+S  (Phase 4)
-
-            Help topics ..................... F1  (this dialog's neighbor)
-
-            More entries land as each phase wires its feature.
-            """);
+    [RelayCommand]
+    private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
 
     /// <summary>Help → License… Project + third-party license summary.</summary>
     [RelayCommand]
@@ -1952,11 +2100,59 @@ public partial class MainWindowViewModel : ObservableObject
 
               • Avalonia UI                — MIT
               • CommunityToolkit.Mvvm       — MIT
-              • System.Data.OleDb           — MIT (Phase 5 MDB import)
+              • JetDatabaseReader           — MIT (Phase 5 MDB import)
 
             Other dependencies arrive with their respective phases; their
             licenses will appear here once they're added.
             """);
+
+    // ----- Live-bound input-gesture labels for menu items ---------------
+    // Each property reads the current chord for one BuiltInAction.
+    // Refreshed in bulk by RefreshKeybindLabels() when KeybindingStore
+    // fires BindingChanged. The XAML menu items bind their InputGesture
+    // to these — so rebinding through the context-menu editor updates
+    // every menu's shortcut display immediately.
+
+    public string ConversationGesture     => GetGesture(Models.Profile.BuiltInAction.OpenConversation);
+    public string PartyGesture            => GetGesture(Models.Profile.BuiltInAction.OpenParty);
+    public string WorkshopGesture         => GetGesture(Models.Profile.BuiltInAction.OpenWorkshop);
+    public string NavigationGesture       => GetGesture(Models.Profile.BuiltInAction.OpenNavigation);
+    public string SpellBookGesture        => GetGesture(Models.Profile.BuiltInAction.OpenSpellBook);
+    public string LogPaneGesture          => GetGesture(Models.Profile.BuiltInAction.OpenLogPane);
+    public string BackscrollGesture       => GetGesture(Models.Profile.BuiltInAction.OpenBackscroll);
+    public string SessionStatsGesture     => GetGesture(Models.Profile.BuiltInAction.OpenSessionStats);
+    public string SettingsGesture         => GetGesture(Models.Profile.BuiltInAction.OpenSettings);
+    public string GameDataBrowserGesture  => GetGesture(Models.Profile.BuiltInAction.OpenGameDataBrowser);
+    public string ToggleConnectionGesture => GetGesture(Models.Profile.BuiltInAction.ToggleConnection);
+    public string NewProfileGesture       => GetGesture(Models.Profile.BuiltInAction.NewProfile);
+    public string OpenProfileGesture      => GetGesture(Models.Profile.BuiltInAction.OpenProfile);
+    public string SaveProfileGesture      => GetGesture(Models.Profile.BuiltInAction.SaveProfile);
+    public string SaveProfileAsGesture    => GetGesture(Models.Profile.BuiltInAction.SaveProfileAs);
+    public string QuitGesture             => GetGesture(Models.Profile.BuiltInAction.Quit);
+
+    private static string GetGesture(Models.Profile.BuiltInAction action)
+        => AppServices.Current.Keybindings.Get(action).Label;
+
+    /// <summary>Fire PropertyChanged for every *Gesture label so menus refresh after a rebind.</summary>
+    private void RefreshKeybindLabels()
+    {
+        OnPropertyChanged(nameof(ConversationGesture));
+        OnPropertyChanged(nameof(PartyGesture));
+        OnPropertyChanged(nameof(WorkshopGesture));
+        OnPropertyChanged(nameof(NavigationGesture));
+        OnPropertyChanged(nameof(SpellBookGesture));
+        OnPropertyChanged(nameof(LogPaneGesture));
+        OnPropertyChanged(nameof(BackscrollGesture));
+        OnPropertyChanged(nameof(SessionStatsGesture));
+        OnPropertyChanged(nameof(SettingsGesture));
+        OnPropertyChanged(nameof(GameDataBrowserGesture));
+        OnPropertyChanged(nameof(ToggleConnectionGesture));
+        OnPropertyChanged(nameof(NewProfileGesture));
+        OnPropertyChanged(nameof(OpenProfileGesture));
+        OnPropertyChanged(nameof(SaveProfileGesture));
+        OnPropertyChanged(nameof(SaveProfileAsGesture));
+        OnPropertyChanged(nameof(QuitGesture));
+    }
 
     /// <summary>Help → About FujinTerm.</summary>
     [RelayCommand]

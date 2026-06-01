@@ -1,83 +1,121 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.Specialized;
+using System.Globalization;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
+using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
 /// Game Data Browser → Players tab. Surfaces the rows held by
-/// <see cref="PlayerDatabase"/>. Unlike the MDB-derived tabs, the
-/// data source is observation + manual edits, not an imported table.
+/// <see cref="PlayerDatabase"/>. Engine-backed; reloads on every
+/// <see cref="System.Collections.ObjectModel.ObservableCollection{T}.CollectionChanged"/>
+/// from the database so the grid mirrors live observations. Double-click
+/// a row to open <see cref="PlayerEditDialogViewModel"/> for the
+/// behavior toggles + 12-category remote-control bitmask.
 /// </summary>
-public sealed partial class PlayersSectionViewModel : GameDataSectionViewModel
+public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly PlayerDatabase _db;
-    private Control? _view;
+    private readonly DialogService? _dialogs;
 
     public override string Id => "players";
     public override string Title => "Players";
 
-    public ObservableCollection<PlayerRecord> All => _db.Players;
-    public ObservableCollection<PlayerRecord> Filtered { get; } = new();
+    public override IReadOnlyList<string> Columns { get; } = new[]
+    {
+        "Given Name", "Family Name", "@'s", "Last Seen",
+    };
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private PlayerRecord? _selected;
+    public override string SearchKeyColumn => "Given Name";
 
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new PlayersSectionView { DataContext = this };
+    /// <summary>Engine-backed (BBS-tier observations + Char-tier customisations) — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
+    public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "player", "name", "class", "race", "alignment",
+        Title, "player", "name", "remote", "@", "permissions",
     };
 
-    public string StatusText
-    {
-        get
-        {
-            int total = All.Count;
-            int visible = Filtered.Count;
-            string countText = total == visible ? $"{total} players" : $"{visible} / {total} players";
-            string selection = Selected is null ? "" : $"  ·  {Selected.Name}";
-            return countText + selection;
-        }
-    }
+    public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
 
-    public PlayersSectionViewModel(PlayerDatabase db)
+    // Stored as a field so Dispose can detach — the database singleton
+    // otherwise pins every section VM ever created across browser opens.
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
+    public PlayersSectionViewModel(PlayerDatabase db, DialogService? dialogs = null)
     {
         ArgumentNullException.ThrowIfNull(db);
         _db = db;
-        _db.Players.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
+        _dialogs = dialogs;
+        _handler = (_, _) => Reload();
+        _db.Players.CollectionChanged += _handler;
+        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        Reload();
     }
 
-    partial void OnSearchTextChanged(string value)
+    public override void Dispose()
     {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
+        _db.Players.CollectionChanged -= _handler;
+        base.Dispose();
     }
 
-    private void ApplyFilter()
+    protected override void PopulateRows(IList<GameDataRow> rows)
     {
-        Filtered.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (PlayerRecord p in All)
+        foreach (PlayerRecord p in _db.Players)
         {
-            if (filter.Length == 0 ||
-                p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                (p.Class?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (p.Race?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                Filtered.Add(p);
+                ["Given Name"]  = p.GivenName,
+                ["Family Name"] = p.FamilyName,
+                ["@'s"]         = RemoteControlsLabel(p.RemoteControls),
+                ["Last Seen"]   = p.LastSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+            };
+            rows.Add(GameDataRow.FromDictionary(dict, Columns));
+        }
+    }
+
+    /// <summary>"None" / "Some" / "All" summary of the remote-control bitmask for the table cell.</summary>
+    private static string RemoteControlsLabel(PlayerRemoteControls rc)
+    {
+        if (rc == PlayerRemoteControls.None) return "None";
+        if (rc == PlayerRemoteControls.All)  return "All";
+        return "Some";
+    }
+
+    private async Task OpenEditAsync(GameDataRow? row)
+    {
+        if (row is null || _dialogs is null) return;
+        string given  = row.Get("Given Name") ?? string.Empty;
+        string family = row.Get("Family Name") ?? string.Empty;
+        string displayName = string.IsNullOrEmpty(family) ? given : $"{given} {family}";
+        if (string.IsNullOrEmpty(displayName)) return;
+
+        // Locate the live record by display name. Case-insensitive match
+        // — mirrors the database's lookup contract.
+        PlayerRecord? record = null;
+        foreach (PlayerRecord p in _db.Players)
+        {
+            if (string.Equals(p.DisplayName, displayName, StringComparison.OrdinalIgnoreCase))
+            {
+                record = p;
+                break;
             }
         }
-        OnPropertyChanged(nameof(StatusText));
+        if (record is null) return;
+
+        PlayerEditDialogViewModel vm = new(record);
+        PlayerEditResult? result = await _dialogs.OpenWindowAsync<PlayerEditDialogViewModel, PlayerEditResult>(vm);
+        if (result is null) return;
+
+        // Save only the customization slice — observed fields stay
+        // observation-only and never get stomped by the dialog.
+        _db.EditCustomization(result.OriginalDisplayName, result.Updated.ToCustomization());
+        Reload();
     }
 }

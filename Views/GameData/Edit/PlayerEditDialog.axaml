@@ -1,0 +1,161 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="670"
+        x:Class="FujinTerm.Views.GameData.Edit.PlayerEditDialog"
+        x:DataType="vm:PlayerEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="560" Height="670"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <!-- ===== Behavior toggles ===== -->
+            <StackPanel Grid.Row="0" Spacing="3">
+                <TextBlock Classes="SectionHeader" Text="Behavior"/>
+                <CheckBox Content="Invite to party if seen"
+                          IsChecked="{Binding InviteToPartyIfSeen, Mode=TwoWay}"
+                          ToolTip.Tip="Auto-send a party invite when our character spots this player in the room."/>
+                <CheckBox Content="Join party if invited"
+                          IsChecked="{Binding JoinPartyIfInvited, Mode=TwoWay}"
+                          ToolTip.Tip="Auto-accept party invites coming from this player."/>
+                <CheckBox Content="Don't auto-delete this player"
+                          IsChecked="{Binding DontAutoDelete, Mode=TwoWay}"
+                          ToolTip.Tip="Skip this record during the periodic cleanup of stale players (Settings → General)."/>
+            </StackPanel>
+
+            <!-- ===== Remote controls + observation footer ===== -->
+            <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="14">
+
+                <!-- Left: Allowed Remote Control (12 checkboxes + All) -->
+                <Border Grid.Column="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10">
+                    <Grid RowDefinitions="Auto,*">
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Allowed Remote Control"/>
+                            <Button Grid.Column="1"
+                                    Content="All"
+                                    Command="{Binding ToggleAllCommand}"
+                                    Padding="8,2" Margin="0,2,0,4"
+                                    ToolTip.Tip="Toggle every category at once."/>
+                        </Grid>
+                        <!-- ScrollViewer + tighter padding so all 12 categories
+                             stay reachable even if a future addition pushes the
+                             content past the dialog's natural height. -->
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="2">
+                                <CheckBox Content="Query version"        IsChecked="{Binding RcQueryVersion, Mode=TwoWay}"/>
+                                <CheckBox Content="Query experience"     IsChecked="{Binding RcQueryExperience, Mode=TwoWay}"/>
+                                <CheckBox Content="Query health/status"  IsChecked="{Binding RcQueryHealthStatus, Mode=TwoWay}"/>
+                                <CheckBox Content="Query location"       IsChecked="{Binding RcQueryLocation, Mode=TwoWay}"/>
+                                <CheckBox Content="Query inventory"      IsChecked="{Binding RcQueryInventory, Mode=TwoWay}"/>
+                                <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"/>
+                                <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"/>
+                                <CheckBox Content="Execute commands"     IsChecked="{Binding RcExecuteCommands, Mode=TwoWay}"/>
+                                <CheckBox Content="Hangup/disconnect"    IsChecked="{Binding RcHangupDisconnect, Mode=TwoWay}"/>
+                                <CheckBox Content="Alter settings"       IsChecked="{Binding RcAlterSettings, Mode=TwoWay}"/>
+                                <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"/>
+                                <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Right: observation footer (read-only) -->
+                <Border Grid.Column="1"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="SectionHeader" Text="Observed"/>
+                        <Grid ColumnDefinitions="90,*" RowSpacing="3"
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Class"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ClassText, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       ToolTip.Tip="From @health observation when available; otherwise inferred from the in-game title."/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Race"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Race, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Alignment"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Alignment, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Title"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ObservedTitle, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Level"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LevelText, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       ToolTip.Tip="Title-derived range; exact level appears once @level / @exp remotes land."/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Gang"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Gang, TargetNullValue='—'}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Role"
+                                       IsVisible="{Binding HasRole}"/>
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding Role}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                       IsVisible="{Binding HasRole}"/>
+                            <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="First seen"/>
+                            <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding FirstSeenText}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                            <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Last seen"/>
+                            <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding LastSeenText}"
+                                       Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                        </Grid>
+
+                        <!-- Equipment loadout (from `look <player>`). Hidden when
+                             no look has ever been performed; shows "(none)" when
+                             the loadout was explicitly empty (player naked). -->
+                        <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                BorderThickness="0,1,0,0" Padding="0,6,0,0">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="FieldLabel" Text="Equipment"/>
+                                <TextBlock Text="—"
+                                           Foreground="{StaticResource ChromeFgBrush}" FontSize="11"
+                                           IsVisible="{Binding !HasEquipment}"/>
+                                <ItemsControl ItemsSource="{Binding EquipmentLines}"
+                                              IsVisible="{Binding HasEquipment}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       FontSize="11"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"   IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

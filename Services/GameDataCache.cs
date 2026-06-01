@@ -39,10 +39,13 @@ namespace FujinTerm.Services;
 /// <para>
 /// Wiring (Phase 0 PR 0.2 event protocol): <see cref="AppServices"/>
 /// constructs the cache and subscribes it to
-/// <see cref="ProfileService.ProfileLoaded"/> so the per-character
-/// <see cref="Models.Profile.CharacterProfile.ActiveGameDataSet"/>
-/// drives the switch automatically. Manual switches via the eventual
-/// Game Data menu write back to the loaded profile (Phase 5 PR 5.22).
+/// <see cref="ProfileService.ProfileLoaded"/> +
+/// <see cref="ProfileService.BbsPinApplied"/> so the pinned BBS's
+/// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> drives
+/// the switch automatically (falling back to
+/// <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/>
+/// when no BBS is pinned). Manual switches via the File → Game Data
+/// → Active set menu write back to the resolved BBS profile.
 /// </para>
 /// </remarks>
 public sealed class GameDataCache
@@ -63,6 +66,15 @@ public sealed class GameDataCache
     /// cache.
     /// </summary>
     public event Action<string?>? ActiveSetChanged;
+
+    /// <summary>
+    /// Optional log sink — when set (production wires
+    /// <see cref="AppServices.Log"/> after construction), every
+    /// <see cref="SwitchSet"/> emits an Info entry naming the
+    /// outgoing + incoming set so the user can verify swap success
+    /// in the program log. Tests leave it null.
+    /// </summary>
+    public LogService? Log { get; set; }
 
     public GameDataCache() : this(AppPaths.GameDataRoot) { }
 
@@ -124,8 +136,17 @@ public sealed class GameDataCache
 
         if (string.Equals(ActiveSet, setName, StringComparison.OrdinalIgnoreCase)) return;
 
+        string? outgoing = ActiveSet;
         EvictAll();
         ActiveSet = setName;
+        Log?.Log(LogSeverity.Info, "GameData",
+            (outgoing, setName) switch
+            {
+                (null, null)       => "No active game data set.",
+                (null, not null)   => $"Loaded game data set '{setName}'.",
+                (not null, null)   => $"Unloaded game data set '{outgoing}' (no set active).",
+                (not null, not null) => $"Swapped game data set '{outgoing}' → '{setName}'.",
+            });
         ActiveSetChanged?.Invoke(setName);
     }
 
@@ -172,6 +193,30 @@ public sealed class GameDataCache
     {
         doc = GetRawTable(tableName);
         return doc is not null;
+    }
+
+    /// <summary>
+    /// Lookup the <c>Name</c> field of the row in
+    /// <paramref name="tableName"/> whose <c>Number</c> field equals
+    /// <paramref name="number"/>. Returns <c>null</c> when the table
+    /// isn't in the active set, the row isn't found, or either field
+    /// is missing on the matched row. Used by edit dialogs to render
+    /// <see cref="Models.GameData.GameDataLink"/> back-references as
+    /// human-readable labels.
+    /// </summary>
+    public string? FindNameByNumber(string tableName, int number)
+    {
+        JsonDocument? doc = GetRawTable(tableName);
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out JsonElement numEl)) continue;
+            if (numEl.ValueKind != JsonValueKind.Number) continue;
+            if (!numEl.TryGetInt32(out int rowNum) || rowNum != number) continue;
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)) return null;
+            return nameEl.GetString();
+        }
+        return null;
     }
 
     /// <summary>

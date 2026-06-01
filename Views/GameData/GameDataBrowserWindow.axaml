@@ -34,19 +34,45 @@
             <!-- ===== Main: sidebar + content ===== -->
             <Grid Grid.Row="0" ColumnDefinitions="220,*">
 
-                <!-- Sidebar -->
+                <!-- Sidebar: two ListBoxes (engine-backed on top, MDB
+                     tables below) separated by a thin rule. Both
+                     bind their SelectedItem to the same VM property,
+                     so clicking in one clears the other automatically. -->
                 <Border Grid.Column="0"
                         Background="{StaticResource ChromeBgSunkenBrush}"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="0,0,1,0">
-                    <Grid RowDefinitions="Auto,Auto,*">
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
                         <TextBlock Grid.Row="0" Classes="SidebarHeader" Text="Tables + editors"/>
                         <TextBox  Grid.Row="1"
                                   Margin="8,0,8,6"
                                   PlaceholderText="Search…"
                                   Text="{Binding SearchText, Mode=TwoWay}"/>
+
+                        <!-- Engine-backed sections (user-defined / observation). -->
                         <ListBox  Grid.Row="2"
-                                  ItemsSource="{Binding VisibleSections}"
+                                  ItemsSource="{Binding EngineSections}"
+                                  SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
+                                  Background="Transparent"
+                                  BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GameDataSectionViewModel">
+                                    <TextBlock Classes="SectionTitle" Text="{Binding Title}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- Group separator. -->
+                        <Border Grid.Row="3"
+                                Height="1"
+                                Margin="12,8"
+                                Background="{StaticResource ChromeBorderBrush}"/>
+
+                        <TextBlock Grid.Row="4" Classes="SidebarHeader" Text="Imported tables"/>
+
+                        <!-- MDB-derived JSON tables. -->
+                        <ListBox  Grid.Row="5"
+                                  ItemsSource="{Binding TableSections}"
                                   SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
                                   Background="Transparent"
                                   BorderThickness="0">

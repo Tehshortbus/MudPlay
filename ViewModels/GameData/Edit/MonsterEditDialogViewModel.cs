@@ -1,0 +1,298 @@
+using System.Collections.Generic;
+using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Models.GameData;
+using FujinTerm.Services;
+
+namespace FujinTerm.ViewModels.GameData.Edit;
+
+/// <summary>
+/// View-model for the Game Data Browser → Monsters tab's per-record
+/// edit dialog. Surfaces the editable overlay fields (Use-tier, Name,
+/// Relationship, Priority, override spell slots, NotHostile /
+/// DontBackstab) plus the per-monster combat-message bundle (9
+/// perspective lines + flavor prefixes) the combat manager will use
+/// to recognise lines this monster produces in play.
+/// </summary>
+/// <remarks>
+/// The Messages section binds to a <see cref="MonsterMessageRecord"/>
+/// looked up by monster Number. Each of the 9 line fields is a
+/// multi-line textbox where every non-empty line is one variant
+/// pattern (matches the wcc seed shape — e.g. guardsman has 2 hit
+/// variants "slash" + "all-out slash"; dragon has 4 body-part hit
+/// variants). FlavorPrefixes is a single comma-separated textbox
+/// where the literal token <c>(no prefix)</c> represents the
+/// <see cref="MonsterMessageRecord.AllowNoPrefix"/> flag.
+/// </remarks>
+public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDialogViewModel<MonsterEditResult>
+{
+    public event Action<MonsterEditResult?>? CloseRequested;
+
+    /// <summary>Sentinel string used in the FlavorPrefixes CSV to represent the AllowNoPrefix flag.</summary>
+    public const string NoPrefixSentinel = "(no prefix)";
+
+    public string WccNoStr { get; }
+    public int    MonsterNumber { get; }
+
+    private readonly MonsterMessageRecord? _originalMessages;
+
+    [ObservableProperty] private string _name = string.Empty;
+    [ObservableProperty] private SettingsTier _useTier = SettingsTier.Character;
+
+    [ObservableProperty] private MonsterRelationship _relationship = MonsterRelationship.Enemy;
+    [ObservableProperty] private MonsterAttackPriority _priority = MonsterAttackPriority.Normal;
+
+    [ObservableProperty] private string _preAttackSpellId = string.Empty;
+    [ObservableProperty] private string _preAttackCount = string.Empty;
+    [ObservableProperty] private string _attackSpellId = string.Empty;
+    [ObservableProperty] private string _attackCount = string.Empty;
+
+    [ObservableProperty] private bool _notHostile;
+    [ObservableProperty] private bool _dontBackstab;
+
+    // ----- Messages section (9 line slots + flavor) -----
+    // Each line field is one variant per line in a multi-line textbox.
+    [ObservableProperty] private string _hitYouText           = string.Empty;
+    [ObservableProperty] private string _hitOtherText         = string.Empty;
+    [ObservableProperty] private string _deathLineText        = string.Empty;
+    [ObservableProperty] private string _armorBlockYouText    = string.Empty;
+    [ObservableProperty] private string _armorBlockOtherText  = string.Empty;
+    [ObservableProperty] private string _dodgeYouText         = string.Empty;
+    [ObservableProperty] private string _dodgeOtherText       = string.Empty;
+    [ObservableProperty] private string _missYouText          = string.Empty;
+    [ObservableProperty] private string _missOtherText        = string.Empty;
+
+    /// <summary>
+    /// Comma-separated flavor list. Literal token <c>(no prefix)</c>
+    /// (case-insensitive) in the list represents the
+    /// <see cref="MonsterMessageRecord.AllowNoPrefix"/> flag — e.g.
+    /// giant rat renders as <c>"nasty, angry, large, fat, thin, big, small, (no prefix)"</c>.
+    /// </summary>
+    [ObservableProperty] private string _flavorPrefixesCsv = string.Empty;
+
+    public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
+
+    public IReadOnlyList<MonsterRelationship> AvailableRelationships { get; } =
+        Enum.GetValues<MonsterRelationship>().ToArray();
+
+    public IReadOnlyList<MonsterAttackPriority> AvailablePriorities { get; } =
+        Enum.GetValues<MonsterAttackPriority>().ToArray();
+
+    public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
+        Enum.GetValues<SettingsTier>().ToArray();
+
+    public string Title => $"Monster — {(Name.Length > 0 ? Name : $"#{WccNoStr}")}";
+
+    public MonsterEditDialogViewModel(
+        string wccNoStr,
+        string mdbName,
+        MonsterOverlay? existing,
+        SettingsTier currentTier,
+        IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
+        MonsterMessageRecord? messages = null)
+    {
+        WccNoStr      = wccNoStr;
+        MonsterNumber = int.TryParse(wccNoStr, out int n) ? n : 0;
+        Name          = existing?.Name ?? mdbName;
+        UseTier       = currentTier;
+        MdbInfo       = mdbInfo;
+        _originalMessages = messages;
+
+        Relationship = existing?.Relationship ?? MonsterRelationship.Enemy;
+        Priority     = existing?.Priority     ?? MonsterAttackPriority.Normal;
+
+        PreAttackSpellId = (existing?.OverridePreAttackSpellId is { } pi) ? pi.ToString() : string.Empty;
+        PreAttackCount   = (existing?.OverridePreAttackCount   is { } pc) ? pc.ToString() : string.Empty;
+        AttackSpellId    = (existing?.OverrideAttackSpellId    is { } ai) ? ai.ToString() : string.Empty;
+        AttackCount      = (existing?.OverrideAttackCount      is { } ac) ? ac.ToString() : string.Empty;
+
+        NotHostile   = existing?.NotHostile   ?? false;
+        DontBackstab = existing?.DontBackstab ?? false;
+
+        // Hydrate the Messages section.
+        if (messages is not null)
+        {
+            HitYouText          = JoinLines(messages.HitYou);
+            HitOtherText        = JoinLines(messages.HitOther);
+            DeathLineText       = JoinLines(messages.DeathLine);
+            ArmorBlockYouText   = JoinLines(messages.ArmorBlockYou);
+            ArmorBlockOtherText = JoinLines(messages.ArmorBlockOther);
+            DodgeYouText        = JoinLines(messages.DodgeYou);
+            DodgeOtherText      = JoinLines(messages.DodgeOther);
+            MissYouText         = JoinLines(messages.MissYou);
+            MissOtherText       = JoinLines(messages.MissOther);
+            FlavorPrefixesCsv   = BuildFlavorCsv(messages.FlavorPrefixes, messages.AllowNoPrefix);
+        }
+    }
+
+    [RelayCommand]
+    private void Save()
+    {
+        MonsterOverlay overlay = new()
+        {
+            Name                     = string.IsNullOrWhiteSpace(Name) ? null : Name,
+            Relationship             = Relationship,
+            Priority                 = Priority,
+            OverridePreAttackSpellId = ParseNullableInt(PreAttackSpellId),
+            OverridePreAttackCount   = ParseNullableInt(PreAttackCount),
+            OverrideAttackSpellId    = ParseNullableInt(AttackSpellId),
+            OverrideAttackCount      = ParseNullableInt(AttackCount),
+            NotHostile               = NotHostile,
+            DontBackstab             = DontBackstab,
+        };
+
+        // Build the message record. Even when there were no original
+        // messages (user is authoring from scratch for a never-seeded
+        // monster), produce a record IF the user filled in any field
+        // OR any flavor prefix. An entirely-blank section returns
+        // null so the consumer can skip the upsert.
+        MonsterMessageRecord? updatedMessages = BuildUpdatedMessages();
+
+        CloseRequested?.Invoke(new MonsterEditResult(WccNoStr, overlay, UseTier, updatedMessages, _originalMessages));
+    }
+
+    [RelayCommand]
+    private void Cancel() => CloseRequested?.Invoke(null);
+
+    private MonsterMessageRecord? BuildUpdatedMessages()
+    {
+        IReadOnlyList<string> hitYou        = SplitLines(HitYouText);
+        IReadOnlyList<string> hitOther      = SplitLines(HitOtherText);
+        IReadOnlyList<string> deathLine     = SplitLines(DeathLineText);
+        IReadOnlyList<string> armorYou      = SplitLines(ArmorBlockYouText);
+        IReadOnlyList<string> armorOther    = SplitLines(ArmorBlockOtherText);
+        IReadOnlyList<string> dodgeYou      = SplitLines(DodgeYouText);
+        IReadOnlyList<string> dodgeOther    = SplitLines(DodgeOtherText);
+        IReadOnlyList<string> missYou       = SplitLines(MissYouText);
+        IReadOnlyList<string> missOther     = SplitLines(MissOtherText);
+        (IReadOnlyList<string> prefixes, bool allowNoPrefix) = ParseFlavorCsv(FlavorPrefixesCsv);
+
+        // Drop the record entirely when every field is empty AND there
+        // was no original — saves a no-op write to the per-set file.
+        bool anyContent =
+            hitYou.Count + hitOther.Count + deathLine.Count +
+            armorYou.Count + armorOther.Count +
+            dodgeYou.Count + dodgeOther.Count +
+            missYou.Count + missOther.Count +
+            prefixes.Count > 0 || allowNoPrefix;
+
+        if (!anyContent && _originalMessages is null) return null;
+
+        return new MonsterMessageRecord(
+            Id:               ComputeId(Name, hitYou, hitOther, deathLine, armorYou, armorOther,
+                                        dodgeYou, dodgeOther, missYou, missOther,
+                                        prefixes, allowNoPrefix),
+            Name:             Name,
+            HitYou:           hitYou,
+            HitOther:         hitOther,
+            DeathLine:        deathLine,
+            ArmorBlockYou:    armorYou,
+            ArmorBlockOther:  armorOther,
+            DodgeYou:         dodgeYou,
+            DodgeOther:       dodgeOther,
+            MissYou:          missYou,
+            MissOther:        missOther,
+            FlavorPrefixes:   prefixes,
+            AllowNoPrefix:    allowNoPrefix,
+            Links:            new[] { new GameDataLink("Monsters", MonsterNumber) });
+    }
+
+    /// <summary>SHA1 of all editable content joined; matches the offline generator's id rule.</summary>
+    private static string ComputeId(
+        string name,
+        IReadOnlyList<string> hitYou,    IReadOnlyList<string> hitOther,    IReadOnlyList<string> death,
+        IReadOnlyList<string> armorYou,  IReadOnlyList<string> armorOther,
+        IReadOnlyList<string> dodgeYou,  IReadOnlyList<string> dodgeOther,
+        IReadOnlyList<string> missYou,   IReadOnlyList<string> missOther,
+        IReadOnlyList<string> prefixes,  bool allowNoPrefix)
+    {
+        IEnumerable<string> all =
+            hitYou.Concat(hitOther).Concat(death)
+                .Concat(armorYou).Concat(armorOther)
+                .Concat(dodgeYou).Concat(dodgeOther)
+                .Concat(missYou).Concat(missOther)
+                .Concat(prefixes)
+                .Append(allowNoPrefix ? "1" : "0");
+        string blob = name + "|" + string.Join("|", all);
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(blob));
+        System.Text.StringBuilder sb = new(16);
+        for (int i = 0; i < 8; i++)
+            sb.Append(hash[i].ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        return sb.ToString();
+    }
+
+    /// <summary>Multi-line text → list of non-empty trimmed lines.</summary>
+    public static IReadOnlyList<string> SplitLines(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
+        return text.Replace("\r\n", "\n").Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+    }
+
+    /// <summary>List of lines → newline-joined string for the textbox.</summary>
+    public static string JoinLines(IReadOnlyList<string> lines)
+        => lines is { Count: > 0 } ? string.Join("\n", lines) : string.Empty;
+
+    /// <summary>
+    /// CSV "nasty, angry, (no prefix)" → (["nasty","angry"], true).
+    /// The <see cref="NoPrefixSentinel"/> token (case-insensitive)
+    /// sets the AllowNoPrefix flag and is dropped from the prefix
+    /// list. Empty entries skipped; duplicates removed (first-wins).
+    /// </summary>
+    public static (IReadOnlyList<string> Prefixes, bool AllowNoPrefix) ParseFlavorCsv(string csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return (Array.Empty<string>(), false);
+        List<string> prefixes = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        bool allowNoPrefix = false;
+        foreach (string part in csv.Split(','))
+        {
+            string token = part.Trim();
+            if (token.Length == 0) continue;
+            if (string.Equals(token, NoPrefixSentinel, StringComparison.OrdinalIgnoreCase))
+            {
+                allowNoPrefix = true;
+                continue;
+            }
+            if (seen.Add(token)) prefixes.Add(token);
+        }
+        return (prefixes, allowNoPrefix);
+    }
+
+    /// <summary>List of prefixes + AllowNoPrefix flag → display CSV with the sentinel appended when the flag is set.</summary>
+    public static string BuildFlavorCsv(IReadOnlyList<string> prefixes, bool allowNoPrefix)
+    {
+        IEnumerable<string> parts = prefixes ?? Array.Empty<string>();
+        if (allowNoPrefix) parts = parts.Concat(new[] { NoPrefixSentinel });
+        return string.Join(", ", parts);
+    }
+
+    private static int? ParseNullableInt(string? text)
+        => int.TryParse(text, out int n) ? n : null;
+}
+
+/// <summary>Returned by <see cref="MonsterEditDialogViewModel"/> on Save.</summary>
+/// <param name="WccNoStr">The monster's WCC No as a string — primary key for the overlay write.</param>
+/// <param name="Overlay">The user's edited overlay payload.</param>
+/// <param name="Tier">The tier the overlay should be written at.</param>
+/// <param name="UpdatedMessages">
+/// The user's edited monster-message record, or <c>null</c> when the
+/// Messages section was entirely blank and no original record existed.
+/// Consumer upserts via <see cref="MonsterMessageStore.Replace(string, MonsterMessageRecord)"/>
+/// using <see cref="OriginalMessages"/>?.Id as the replace key.
+/// </param>
+/// <param name="OriginalMessages">
+/// The record loaded at dialog-open time, or <c>null</c> if no record
+/// existed for this monster. Carried in the result so the consumer
+/// can do an Id-keyed replace even when the user's edits flipped the
+/// projected Id.
+/// </param>
+public sealed record MonsterEditResult(
+    string                WccNoStr,
+    MonsterOverlay        Overlay,
+    SettingsTier          Tier,
+    MonsterMessageRecord? UpdatedMessages = null,
+    MonsterMessageRecord? OriginalMessages = null);

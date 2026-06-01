@@ -16,25 +16,10 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+K" Command="{Binding ToggleConnectionCommand}"/>
-        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProfileCommand}"/>
-        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProfileAsCommand}"/>
-        <KeyBinding Gesture="Ctrl+Q" Command="{Binding QuitCommand}"/>
-        <KeyBinding Gesture="F1"     Command="{Binding OpenHelpTopicsCommand}"/>
-        <KeyBinding Gesture="F2"     Command="{Binding OpenConversationCommand}"/>
-        <KeyBinding Gesture="F3"     Command="{Binding OpenPartyCommand}"/>
-        <KeyBinding Gesture="F4"     Command="{Binding OpenWorkshopCommand}"/>
-        <KeyBinding Gesture="F5"     Command="{Binding OpenNavigationCommand}"/>
-        <KeyBinding Gesture="F7"     Command="{Binding OpenSpellBookCommand}"/>
-        <KeyBinding Gesture="F9"     Command="{Binding OpenLogPaneCommand}"/>
-        <KeyBinding Gesture="F10"    Command="{Binding OpenBackscrollCommand}"/>
-        <KeyBinding Gesture="F11"    Command="{Binding OpenSessionStatsCommand}"/>
-        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
-        <KeyBinding Gesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
-    </Window.KeyBindings>
+    <!-- KeyBindings are wired in code-behind from KeybindingStore so the
+         per-character rebind UI takes effect at runtime — see
+         GlobalHotkeys.AttachMain in MainWindow.axaml.cs. -->
+
 
     <DockPanel LastChildFill="True">
 
@@ -44,15 +29,15 @@
             <MenuItem Header="_File">
                 <MenuItem Header="{Binding ConnectionLabel}"
                           Command="{Binding ToggleConnectionCommand}"
-                          InputGesture="Ctrl+K"/>
+                          InputGesture="{Binding ToggleConnectionGesture}"/>
                 <MenuItem Header="_Quick Connect…" Command="{Binding OpenQuickConnectCommand}"/>
                 <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
                 <Separator/>
-                <MenuItem Header="_New profile…"  InputGesture="Ctrl+N"       Command="{Binding NewProfileCommand}"/>
-                <MenuItem Header="_Open profile…" InputGesture="Ctrl+O"       Command="{Binding OpenProfileCommand}"/>
-                <MenuItem Header="{Binding SaveProfileLabel}"  InputGesture="Ctrl+S"
+                <MenuItem Header="_New profile…"  InputGesture="{Binding NewProfileGesture}"       Command="{Binding NewProfileCommand}"/>
+                <MenuItem Header="_Open profile…" InputGesture="{Binding OpenProfileGesture}"       Command="{Binding OpenProfileCommand}"/>
+                <MenuItem Header="{Binding SaveProfileLabel}"  InputGesture="{Binding SaveProfileGesture}"
                           Command="{Binding SaveProfileCommand}"/>
-                <MenuItem Header="Save profile as…" InputGesture="Ctrl+Shift+S"
+                <MenuItem Header="Save profile as…" InputGesture="{Binding SaveProfileAsGesture}"
                           Command="{Binding SaveProfileAsCommand}"/>
                 <Separator IsVisible="{Binding HasRecents}"/>
                 <MenuItem Header="{Binding Recent0, StringFormat='_1)  {0}'}"
@@ -76,19 +61,19 @@
                           Command="{Binding OpenRecentProfileCommand}"
                           CommandParameter="{Binding Recent4}"/>
                 <Separator/>
-                <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="Ctrl+Q"/>
+                <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="{Binding QuitGesture}"/>
             </MenuItem>
 
             <MenuItem Header="_View">
-                <MenuItem Header="Settings…"     InputGesture="Ctrl+," Command="{Binding OpenSettingsCommand}"/>
+                <MenuItem Header="Settings…"     InputGesture="{Binding SettingsGesture}" Command="{Binding OpenSettingsCommand}"/>
                 <Separator/>
-                <MenuItem Header="Conversation"  InputGesture="F2"  Command="{Binding OpenConversationCommand}"/>
-                <MenuItem Header="Party"         InputGesture="F3"  Command="{Binding OpenPartyCommand}"/>
-                <MenuItem Header="Player Workshop" InputGesture="F4" Command="{Binding OpenWorkshopCommand}"/>
-                <MenuItem Header="Navigation"      InputGesture="F5" Command="{Binding OpenNavigationCommand}"/>
-                <MenuItem Header="Spell Book"    InputGesture="F7"  Command="{Binding OpenSpellBookCommand}"/>
-                <MenuItem Header="Backscroll"    InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
-                <MenuItem Header="Session Stats" InputGesture="F11" Command="{Binding OpenSessionStatsCommand}"/>
+                <MenuItem Header="Conversation"  InputGesture="{Binding ConversationGesture}"  Command="{Binding OpenConversationCommand}"/>
+                <MenuItem Header="Party"         InputGesture="{Binding PartyGesture}"  Command="{Binding OpenPartyCommand}"/>
+                <MenuItem Header="Player Workshop" InputGesture="{Binding WorkshopGesture}" Command="{Binding OpenWorkshopCommand}"/>
+                <MenuItem Header="Navigation"      InputGesture="{Binding NavigationGesture}" Command="{Binding OpenNavigationCommand}"/>
+                <MenuItem Header="Spell Book"    InputGesture="{Binding SpellBookGesture}"  Command="{Binding OpenSpellBookCommand}"/>
+                <MenuItem Header="Backscroll"    InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
+                <MenuItem Header="Session Stats" InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
@@ -125,40 +110,17 @@
                 <!-- Corpse-recovery actions land here when Phase 9 DEATH ships. -->
             </MenuItem>
 
-            <MenuItem Header="_Game Data">
-                <MenuItem Header="Active set"
-                          ItemsSource="{Binding GameDataSets}">
-                    <MenuItem.Styles>
-                        <Style Selector="MenuItem">
-                            <Setter Property="ToggleType" Value="CheckBox"/>
-                        </Style>
-                    </MenuItem.Styles>
-                    <MenuItem.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Name}"/>
-                        </DataTemplate>
-                    </MenuItem.ItemTemplate>
-                    <MenuItem.ItemContainerTheme>
-                        <ControlTheme x:DataType="vm:GameDataSetMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="Header"    Value="{Binding Name}"/>
-                            <Setter Property="IsChecked" Value="{Binding IsActive}"/>
-                            <Setter Property="ToggleType" Value="CheckBox"/>
-                            <Setter Property="Command"   Value="{Binding SwitchCommand}"/>
-                        </ControlTheme>
-                    </MenuItem.ItemContainerTheme>
-                </MenuItem>
-                <Separator/>
-                <MenuItem Header="Open Browser…"          InputGesture="Ctrl+G" Command="{Binding OpenGameDataBrowserCommand}"/>
-                <Separator/>
-                <MenuItem Header="Import .mdb…"           Command="{Binding ImportMdbCommand}"/>
-                <MenuItem Header="Import Spell Messages…" Command="{Binding ImportSpellMessagesCommand}"/>
-                <MenuItem Header="Import loops (MegaMUD .mp)…" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (MpFileImporter)"/>
-            </MenuItem>
+            <!-- Game Data: dynamic set list at the top (rebuilt from
+                 code-behind whenever GameDataSets changes), then the
+                 static actions. Inline sets + inline static items can't
+                 coexist via XAML binding on a single MenuItem, so the
+                 items collection is composed in code. -->
+            <MenuItem x:Name="GameDataMenu" Header="_Game Data"/>
 
             <MenuItem Header="_Tools">
                 <MenuItem Header="{Binding CaptureMenuLabel}"  Command="{Binding ToggleDumpCommand}"/>
                 <Separator/>
-                <MenuItem Header="Program Log…" InputGesture="F9" Command="{Binding OpenLogPaneCommand}"/>
+                <MenuItem Header="Program Log…" InputGesture="{Binding LogPaneGesture}" Command="{Binding OpenLogPaneCommand}"/>
                 <MenuItem Header="Wire Inspector…"             Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
                 <MenuItem Header="Export chatlog…"             Command="{Binding ExportChatlogCommand}"/>
@@ -167,12 +129,17 @@
             </MenuItem>
 
             <MenuItem Header="_Help">
-                <MenuItem Header="Help topics…"        InputGesture="F1" Command="{Binding OpenHelpTopicsCommand}"/>
-                <MenuItem Header="Keyboard shortcuts…" Command="{Binding OpenKeyboardShortcutsCommand}"/>
+                <MenuItem Header="Help topics…"
+                          IsEnabled="False"
+                          ToolTip.Tip="Old-school help browser lands in a later phase."/>
                 <Separator/>
                 <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
                 <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
-                <MenuItem Header="BBS site ↗" IsEnabled="False" ToolTip.Tip="Wired in Phase 4 (BBS profile field)"/>
+                <MenuItem Header="MudInfo.net ↗"        Command="{Binding OpenMudInfoCommand}"/>
+                <MenuItem Header="BBS site ↗"
+                          Command="{Binding OpenBbsWebsiteCommand}"
+                          IsEnabled="{Binding HasBbsWebsite}"
+                          ToolTip.Tip="{Binding BbsWebsiteUrl, FallbackValue='Set a Website URL on the active BBS (Settings → BBS) to enable.', TargetNullValue='Set a Website URL on the active BBS (Settings → BBS) to enable.'}"/>
                 <Separator/>
                 <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
@@ -209,7 +176,9 @@
                                      only entry that swaps between two
                                      icons (plug ↔ unplug) — controlled by
                                      ShowAlternate, which the VM flips when
-                                     IsConnected changes. -->
+                                     IsConnected changes. Rebinding the
+                                     keybind lives in Settings → Toolbar
+                                     (per-row "Change keybind…" button). -->
                                 <Button Classes="ToolbarBtn"
                                         Classes.Active="{Binding IsActive}"
                                         Classes.Danger="{Binding IsDanger}"
@@ -302,9 +271,9 @@
                              sense from a right-click on the canvas. The full
                              six-group mirror of the menu bar can land later
                              alongside selection support. -->
-                        <MenuItem Header="Open Player Workshop" InputGesture="F4"  Command="{Binding OpenWorkshopCommand}"/>
-                        <MenuItem Header="Open Log pane"        InputGesture="F9"  Command="{Binding OpenLogPaneCommand}"/>
-                        <MenuItem Header="Open Backscroll"      InputGesture="F10" Command="{Binding OpenBackscrollCommand}"/>
+                        <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"  Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Log pane"        InputGesture="{Binding LogPaneGesture}"  Command="{Binding OpenLogPaneCommand}"/>
+                        <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>

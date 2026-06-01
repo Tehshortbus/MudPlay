@@ -1,0 +1,354 @@
+using System.Collections.Generic;
+using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Models.GameData;
+using FujinTerm.Services;
+
+namespace FujinTerm.ViewModels.GameData.Edit;
+
+/// <summary>
+/// View-model for the Game Data Browser → Messages tab's per-record
+/// edit dialog. Edits one <see cref="MessageRecord"/> end-to-end:
+/// Name / Use-tier / five perspective line slots (Caster / Target /
+/// Witness / Applied + AppliedEndsWith / Stat-line) / Action /
+/// Effects flags / Response / Links. Commits on Save (Defaults tier
+/// writes back to <see cref="MessageStore"/>; other tiers are stubbed
+/// for the future <see cref="SettingsResolver.WriteGameDataAt"/>
+/// path) or discards on Cancel.
+/// </summary>
+/// <remarks>
+/// Validation runs live — <see cref="StatusMessage"/> + <see cref="HasError"/>
+/// flag the dialog when Name is blank, when no perspective line has any text
+/// (record would carry no matchable content), or when the projected Id
+/// would collide with another existing record's identity tuple. Save is
+/// gated on no errors.
+/// </remarks>
+public sealed partial class MessageEditDialogViewModel : ObservableObject, IDialogViewModel<MessageEditResult>
+{
+    public event Action<MessageEditResult?>? CloseRequested;
+
+    private readonly MessageRecord _original;
+    private readonly IReadOnlyCollection<MessageRecord> _existingRecords;
+    private readonly bool _isNew;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _name = string.Empty;
+
+    [ObservableProperty] private SettingsTier _useTier = SettingsTier.Defaults;
+
+    // ----- Five perspective line slots -----
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _casterMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _targetMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _witnessMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _appliedMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _appliedEndsWith = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _statusLineMessage = string.Empty;
+
+    /// <summary>
+    /// Verbatim response field — stored exactly as MegaMUD's UI would
+    /// display it, including literal <c>^M</c> separators. No splitting
+    /// happens here; the runtime consumer (Phase 13) interprets
+    /// <c>^M</c> / CR as multi-step boundaries when actually sending.
+    /// </summary>
+    [ObservableProperty] private string _response = string.Empty;
+    [ObservableProperty] private MessageAction _action = MessageAction.Ignore;
+
+    // Typed effect flags — bound to checkboxes in the dialog. Twelve
+    // bits surfaced; the three MegaMUD-specific find-mode flags are
+    // NOT exposed in the UI (the importer strips them at read time).
+    [ObservableProperty] private bool _flagBlinded;
+    [ObservableProperty] private bool _flagConfused;
+    [ObservableProperty] private bool _flagPoisoned;
+    [ObservableProperty] private bool _flagLosingHp;
+    [ObservableProperty] private bool _flagMovementPrevented;
+    [ObservableProperty] private bool _flagAttackPrevented;
+    [ObservableProperty] private bool _flagDiseased;
+    [ObservableProperty] private bool _flagHpRegenerating;
+    [ObservableProperty] private bool _flagManaRegenerating;
+    [ObservableProperty] private bool _flagEndsCombat;
+    [ObservableProperty] private bool _flagLastActionFailed;
+    [ObservableProperty] private bool _flagDisabled;
+
+    public IReadOnlyList<MessageAction> AvailableActions { get; } =
+        Enum.GetValues<MessageAction>().ToArray();
+
+    public IReadOnlyList<TierOption> AvailableTiers { get; } = new[]
+    {
+        new TierOption(SettingsTier.Defaults,  "Defaults"),
+        new TierOption(SettingsTier.Global,    "Global"),
+        new TierOption(SettingsTier.Bbs,       "BBS"),
+        new TierOption(SettingsTier.Character, "Character"),
+    };
+
+    /// <summary>Editable Links list — see <see cref="LinkRow"/> for shape.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<LinkRow> LinkRows { get; } = new();
+
+    public IReadOnlyList<string> LinkTables { get; } = new[] { "Spells", "Items", "Monsters" };
+
+    [ObservableProperty] private string _addLinkTable = "Spells";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AddLinkStatus))]
+    private string _addLinkNumber = string.Empty;
+
+    public string AddLinkStatus
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(AddLinkNumber)) return "Pick a table + type a Number to add a link.";
+            if (!int.TryParse(AddLinkNumber, out int n)) return $"'{AddLinkNumber}' is not a number.";
+            string? name = _cache?.FindNameByNumber(AddLinkTable, n);
+            return name is null
+                ? $"{AddLinkTable}#{n} — no row with that Number in the active set."
+                : $"Will add: {AddLinkTable}#{n} — {name}";
+        }
+    }
+
+    private readonly GameDataCache? _cache;
+
+    public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
+
+    /// <summary>
+    /// The Id the record would have at save time given the current Name +
+    /// all five line slots. Surfaced under the Name field so the user can
+    /// see the identity tuple updating live + spot collisions before Save.
+    /// </summary>
+    public string ProjectedId
+        => MessageRecord.ComputeId(
+            Name              ?? string.Empty,
+            CasterMessage     ?? string.Empty,
+            TargetMessage     ?? string.Empty,
+            WitnessMessage    ?? string.Empty,
+            AppliedMessage    ?? string.Empty,
+            AppliedEndsWith   ?? string.Empty,
+            StatusLineMessage ?? string.Empty);
+
+    private string? GetValidationError()
+    {
+        if (string.IsNullOrWhiteSpace(Name)) return "Name is required.";
+        bool hasAnyLine =
+            !string.IsNullOrWhiteSpace(CasterMessage)     ||
+            !string.IsNullOrWhiteSpace(TargetMessage)     ||
+            !string.IsNullOrWhiteSpace(WitnessMessage)    ||
+            !string.IsNullOrWhiteSpace(AppliedMessage)    ||
+            !string.IsNullOrWhiteSpace(StatusLineMessage);
+        if (!hasAnyLine) return "At least one perspective line (Caster / Target / Witness / Applied / Stat-line) is required.";
+        if (FindDuplicate() is { } dup)
+            return $"Another record already has this identity (Name + all five lines): '{dup.Name}'.";
+        return null;
+    }
+
+    private MessageRecord? FindDuplicate()
+    {
+        string projected = ProjectedId;
+        foreach (MessageRecord r in _existingRecords)
+        {
+            if (!_isNew && string.Equals(r.Id, _original.Id, StringComparison.Ordinal)) continue;
+            if (string.Equals(r.Id, projected, StringComparison.Ordinal)) return r;
+        }
+        return null;
+    }
+
+    public bool HasError => GetValidationError() is not null;
+    public bool CanSave  => !HasError;
+
+    public string StatusMessage
+    {
+        get
+        {
+            string? err = GetValidationError();
+            if (err is not null) return err;
+            return $"Id: {ProjectedId}  (identity = Name + all five lines)";
+        }
+    }
+
+    public MessageEditDialogViewModel(
+        MessageRecord original,
+        SettingsTier currentTier,
+        IReadOnlyCollection<MessageRecord> existingRecords,
+        bool isNew,
+        GameDataCache? cache = null)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(existingRecords);
+        _original        = original;
+        _existingRecords = existingRecords;
+        _isNew           = isNew;
+        _cache           = cache;
+
+        if (original.Links is { Count: > 0 } links)
+        {
+            foreach (GameDataLink link in links)
+            {
+                string? name = cache?.FindNameByNumber(link.Table, link.Number);
+                LinkRows.Add(new LinkRow(link.Table, link.Number, name));
+            }
+        }
+
+        Name              = original.Name;
+        UseTier           = currentTier;
+        CasterMessage     = original.CasterMessage;
+        TargetMessage     = original.TargetMessage;
+        WitnessMessage    = original.WitnessMessage;
+        AppliedMessage    = original.AppliedMessage;
+        AppliedEndsWith   = original.AppliedEndsWith;
+        StatusLineMessage = original.StatusLineMessage;
+        Response          = original.Response;
+        Action            = original.Action;
+
+        FlagBlinded           = original.Flags.HasFlag(MessageFlags.Blinded);
+        FlagConfused          = original.Flags.HasFlag(MessageFlags.Confused);
+        FlagPoisoned          = original.Flags.HasFlag(MessageFlags.Poisoned);
+        FlagLosingHp          = original.Flags.HasFlag(MessageFlags.LosingHp);
+        FlagMovementPrevented = original.Flags.HasFlag(MessageFlags.MovementPrevented);
+        FlagAttackPrevented   = original.Flags.HasFlag(MessageFlags.AttackPrevented);
+        FlagDiseased          = original.Flags.HasFlag(MessageFlags.Diseased);
+        FlagHpRegenerating    = original.Flags.HasFlag(MessageFlags.HpRegenerating);
+        FlagManaRegenerating  = original.Flags.HasFlag(MessageFlags.ManaRegenerating);
+        FlagEndsCombat        = original.Flags.HasFlag(MessageFlags.EndsCombat);
+        FlagLastActionFailed  = original.Flags.HasFlag(MessageFlags.LastActionFailed);
+        FlagDisabled          = original.Flags.HasFlag(MessageFlags.Disabled);
+    }
+
+    [RelayCommand]
+    private void Save()
+    {
+        if (!CanSave) return;
+        MessageFlags typed = AssembleFlags();
+        ushort reservedBits = (ushort)(_original.RawFlagsHex & ReservedBitsMask);
+        ushort raw = (ushort)((ushort)typed | reservedBits);
+
+        MessageRecord updated = new(
+            Id:                MessageRecord.ComputeId(
+                                   Name, CasterMessage, TargetMessage, WitnessMessage,
+                                   AppliedMessage, AppliedEndsWith, StatusLineMessage),
+            Name:              Name,
+            Action:            Action,
+            Flags:             typed,
+            RawFlagsHex:       raw,
+            Response:          Response ?? string.Empty,
+            CasterMessage:     CasterMessage     ?? string.Empty,
+            TargetMessage:     TargetMessage     ?? string.Empty,
+            WitnessMessage:    WitnessMessage    ?? string.Empty,
+            AppliedMessage:    AppliedMessage    ?? string.Empty,
+            AppliedEndsWith:   AppliedEndsWith   ?? string.Empty,
+            StatusLineMessage: StatusLineMessage ?? string.Empty,
+            Links:             LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
+
+        CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
+    }
+
+    [RelayCommand]
+    private void Cancel() => CloseRequested?.Invoke(null);
+
+    [RelayCommand]
+    private void AddLink()
+    {
+        if (!int.TryParse(AddLinkNumber, out int n)) return;
+        foreach (LinkRow existing in LinkRows)
+        {
+            if (string.Equals(existing.Table, AddLinkTable, StringComparison.Ordinal) &&
+                existing.Number == n)
+                return;
+        }
+        string? name = _cache?.FindNameByNumber(AddLinkTable, n);
+        LinkRows.Add(new LinkRow(AddLinkTable, n, name));
+        AddLinkNumber = string.Empty;
+    }
+
+    [RelayCommand]
+    private void RemoveLink(LinkRow? row)
+    {
+        if (row is null) return;
+        LinkRows.Remove(row);
+    }
+
+    private MessageFlags AssembleFlags()
+    {
+        MessageFlags f = MessageFlags.None;
+        if (FlagBlinded)           f |= MessageFlags.Blinded;
+        if (FlagConfused)          f |= MessageFlags.Confused;
+        if (FlagPoisoned)          f |= MessageFlags.Poisoned;
+        if (FlagLosingHp)          f |= MessageFlags.LosingHp;
+        if (FlagMovementPrevented) f |= MessageFlags.MovementPrevented;
+        if (FlagAttackPrevented)   f |= MessageFlags.AttackPrevented;
+        if (FlagDiseased)          f |= MessageFlags.Diseased;
+        if (FlagHpRegenerating)    f |= MessageFlags.HpRegenerating;
+        if (FlagManaRegenerating)  f |= MessageFlags.ManaRegenerating;
+        if (FlagEndsCombat)        f |= MessageFlags.EndsCombat;
+        if (FlagLastActionFailed)  f |= MessageFlags.LastActionFailed;
+        if (FlagDisabled)          f |= MessageFlags.Disabled;
+        return f;
+    }
+
+    /// <summary>
+    /// Single bit preserved across save — the reserved 0x0800 the legacy
+    /// MegaMUD format defines but doesn't otherwise use. Anything outside
+    /// the typed-flag mask is stripped on save.
+    /// </summary>
+    private const ushort ReservedBitsMask = 0x0800;
+}
+
+/// <summary>
+/// Result returned from <see cref="MessageEditDialogViewModel"/> on Save.
+/// </summary>
+public sealed record MessageEditResult(
+    MessageRecord Original,
+    MessageRecord Updated,
+    SettingsTier  Tier);
+
+/// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
+public sealed record TierOption(SettingsTier Value, string Label);
+
+/// <summary>
+/// One row in <see cref="MessageEditDialogViewModel.LinkRows"/> —
+/// pairs the back-reference's raw <c>(Table, Number)</c> with the
+/// game-data row's display Name resolved at dialog-open time.
+/// </summary>
+public sealed record LinkRow(string Table, int Number, string? DisplayName)
+{
+    public string Label => DisplayName is null
+        ? $"{Table}#{Number} (unknown)"
+        : $"{Table}#{Number} — {DisplayName}";
+}

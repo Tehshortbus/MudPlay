@@ -16,6 +16,17 @@ public sealed class BbsProfile
     /// <summary>Display name + filename key for this BBS.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Imported game-data set folder this BBS uses by default. Tracked
+    /// at BBS scope (not per character) because every character on the
+    /// same realm shares the same MajorMUD MDB, and switching realms
+    /// almost always means switching BBSes. The folder name is one of
+    /// the subdirectories under <see cref="AppPaths.GameDataRoot"/>.
+    /// <c>null</c> falls back to <c>GlobalSettings.DefaultGameDataSet</c>.
+    /// Surfaced + writable via the File → Game Data → Active set menu.
+    /// </summary>
+    public string? ActiveGameDataSet { get; set; }
+
     /// <summary>Hostname or IP address the Telnet client connects to.</summary>
     public string Host { get; set; } = string.Empty;
 
@@ -107,10 +118,4 @@ public sealed class BbsProfile
     /// to "only for this BBS."
     /// </summary>
     public Dictionary<string, JsonElement>? Settings { get; set; }
-
-    /// <summary>
-    /// Per-record game-data overrides at the BBS tier. Same shape as
-    /// <see cref="GlobalSettings.GameDataOverrides"/>.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }

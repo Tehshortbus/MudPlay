@@ -19,3 +19,16 @@ public enum SettingsTier
     /// <summary>"only for this character" — <c>Data/profiles/{name}.json</c>.</summary>
     Character = 3,
 }
+
+/// <summary>Short labels for the Game Data Browser "Use" column — MegaMUD parity (<c>Def</c> / <c>Glob</c> / <c>BBS</c> / <c>Char</c>).</summary>
+public static class SettingsTierExtensions
+{
+    public static string ToShortLabel(this SettingsTier tier) => tier switch
+    {
+        SettingsTier.Defaults  => "Def",
+        SettingsTier.Global    => "Glob",
+        SettingsTier.Bbs       => "BBS",
+        SettingsTier.Character => "Char",
+        _ => tier.ToString(),
+    };
+}

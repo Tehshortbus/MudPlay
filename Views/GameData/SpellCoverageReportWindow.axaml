@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData"
+        xmlns:svc="using:FujinTerm.Services"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.GameData.SpellCoverageReportWindow"
+        x:DataType="vm:SpellCoverageReportViewModel"
+        Title="{Binding WindowTitle}"
+        Width="800" Height="540"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <!-- Header — summary + refresh / export buttons. -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding SummaryText}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1"
+                        Content="Export"
+                        Command="{Binding ExportCommand}"
+                        ToolTip.Tip="Save the listed missing spells as a tab-separated text file (# / Name / Classes / Casted By / Learned From)."
+                        MinWidth="80"/>
+                <Button Grid.Column="2"
+                        Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        MinWidth="80"/>
+            </Grid>
+
+            <!-- Unanchored spells grid. Read-only — users add coverage
+                 via the Messages tab's edit dialog. -->
+            <DataGrid Grid.Row="1"
+                      ItemsSource="{Binding RowsView}"
+                      IsReadOnly="True"
+                      AutoGenerateColumns="False"
+                      CanUserSortColumns="True"
+                      CanUserResizeColumns="True"
+                      CanUserReorderColumns="False"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <!-- ReflectionBinding: column bindings resolve against the row item
+                         (UnanchoredSpell), not the window's DataContext. With a non-generic
+                         DataGridCollectionView wrapping Rows, Avalonia's compiled-binding
+                         pass can't infer the item type, so we fall back to reflection here. -->
+                    <DataGridTextColumn Header="#"            Binding="{ReflectionBinding Number}"      SortMemberPath="Number"      Width="60"/>
+                    <DataGridTextColumn Header="Name"         Binding="{ReflectionBinding Name}"        SortMemberPath="Name"        Width="220"/>
+                    <DataGridTextColumn Header="Classes"      Binding="{ReflectionBinding Classes}"     SortMemberPath="Classes"     Width="160"/>
+                    <DataGridTextColumn Header="Casted By"    Binding="{ReflectionBinding CastedBy}"    SortMemberPath="CastedBy"    Width="*"/>
+                    <DataGridTextColumn Header="Learned From" Binding="{ReflectionBinding LearnedFrom}" SortMemberPath="LearnedFrom" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Footer hint. -->
+            <TextBlock Grid.Row="2"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Text="Double-click a row to open the Message editor pre-filled with that spell's link. The audit re-runs on every Message change + every game-data set switch."/>
+        </Grid>
+    </Border>
+</Window>

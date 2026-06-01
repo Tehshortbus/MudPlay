@@ -1,35 +1,166 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
 /// <summary>
-/// In-memory cache of the loaded character's
-/// <see cref="Models.GameData.Macro"/> entries. PR 5.22 ships the
-/// listing surface; the Phase 10 MacroManager engine that intercepts
-/// keystrokes and dispatches commands subscribes to the same store
-/// at runtime.
+/// In-memory store of the loaded character's
+/// <see cref="Models.GameData.Macro"/> entries. Owns the merge / save
+/// path against <see cref="CharacterProfile.Macros"/> + exposes lookup
+/// + conflict-check helpers used by the edit dialog and the future
+/// Phase 10 <c>MacroManager</c> dispatch engine.
 /// </summary>
 public sealed class MacroStore
 {
+    private readonly ProfileService? _profile;
+
     /// <summary>The loaded character's macros — empty when no profile is active.</summary>
     public ObservableCollection<Macro> Macros { get; } = new();
 
     public MacroStore(ProfileService profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
         profile.ProfileLoaded += LoadFrom;
         profile.ProfileClosed += Clear;
+        profile.ProfileSaving += SnapshotForSave;
         if (profile.Current is { } current) LoadFrom(current);
     }
+
+    /// <summary>Parameterless ctor for tests / in-memory scenarios — no profile persistence.</summary>
+    public MacroStore() { }
+
+    /// <summary>Insert a new macro and persist. No duplicate-key check here — call <see cref="FindMatch"/> first.</summary>
+    public void Add(Macro macro)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+        Macros.Add(macro);
+        _profile?.Save();
+    }
+
+    /// <summary>
+    /// Replace an existing macro identified by reference. Persists. No-op
+    /// if the original isn't in the list.
+    /// </summary>
+    public bool Replace(Macro original, Macro updated)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(updated);
+        int index = Macros.IndexOf(original);
+        if (index < 0) return false;
+        Macros[index] = updated;
+        _profile?.Save();
+        return true;
+    }
+
+    /// <summary>Remove a macro by reference. Persists. <c>false</c> if not found.</summary>
+    public bool Remove(Macro macro)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+        bool removed = Macros.Remove(macro);
+        if (removed) _profile?.Save();
+        return removed;
+    }
+
+    /// <summary>
+    /// Find an enabled macro whose chord matches the supplied key combo.
+    /// Used by the runtime dispatch path (Phase 10) when a keystroke
+    /// fires on TerminalControl / ConversationWindow's input.
+    /// </summary>
+    public Macro? FindMatch(string key, bool ctrl, bool shift, bool alt)
+    {
+        foreach (Macro m in Macros)
+            if (m.Matches(key, ctrl, shift, alt)) return m;
+        return null;
+    }
+
+    /// <summary>
+    /// True when another macro already binds the supplied chord.
+    /// Optionally excludes a single macro from the check (so editing
+    /// an existing macro without changing its chord doesn't flag
+    /// itself as a duplicate of itself).
+    /// </summary>
+    public bool IsDuplicate(string key, bool ctrl, bool shift, bool alt, Macro? excluding = null)
+    {
+        foreach (Macro m in Macros)
+        {
+            if (ReferenceEquals(m, excluding)) continue;
+            if (m.Ctrl  != ctrl)  continue;
+            if (m.Shift != shift) continue;
+            if (m.Alt   != alt)   continue;
+            if (string.Equals(m.Key, key, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Split a macro's <see cref="Macro.Command"/> into the individual
+    /// lines it should send to the server — on either <c>^M</c>
+    /// (literal caret-M) or <c>;</c>. Same multi-step convention every
+    /// other place in the app uses (login automator, triggers,
+    /// aliases). Empty / whitespace-only fragments are dropped so a
+    /// trailing separator doesn't fire an empty line.
+    /// </summary>
+    public static IReadOnlyList<string> SplitCommandSteps(string? command)
+    {
+        if (string.IsNullOrEmpty(command)) return Array.Empty<string>();
+        // Split on `^M` (literal) OR `;`. ^M is two characters so we
+        // pre-substitute it with `;` before the single-char split.
+        string normalized = command.Replace("^M", ";", StringComparison.Ordinal);
+        string[] parts = normalized.Split(';');
+        List<string> steps = new(parts.Length);
+        foreach (string p in parts)
+        {
+            string trimmed = p.Trim();
+            if (trimmed.Length > 0) steps.Add(trimmed);
+        }
+        return steps;
+    }
+
+    /// <summary>
+    /// Default numpad macros every new profile gets so the user can
+    /// walk around immediately. Adapted from MudProxyViewer +
+    /// megamind's hardcoded numpad → direction convention.
+    /// </summary>
+    public static IReadOnlyList<Macro> DefaultMacros() => new[]
+    {
+        new Macro(Key: "NumPad8", Ctrl: false, Shift: false, Alt: false, Command: "n",  Enabled: true),
+        new Macro(Key: "NumPad2", Ctrl: false, Shift: false, Alt: false, Command: "s",  Enabled: true),
+        new Macro(Key: "NumPad4", Ctrl: false, Shift: false, Alt: false, Command: "w",  Enabled: true),
+        new Macro(Key: "NumPad6", Ctrl: false, Shift: false, Alt: false, Command: "e",  Enabled: true),
+        new Macro(Key: "NumPad9", Ctrl: false, Shift: false, Alt: false, Command: "ne", Enabled: true),
+        new Macro(Key: "NumPad7", Ctrl: false, Shift: false, Alt: false, Command: "nw", Enabled: true),
+        new Macro(Key: "NumPad3", Ctrl: false, Shift: false, Alt: false, Command: "se", Enabled: true),
+        new Macro(Key: "NumPad1", Ctrl: false, Shift: false, Alt: false, Command: "sw", Enabled: true),
+        new Macro(Key: "NumPad0", Ctrl: false, Shift: false, Alt: false, Command: "u",  Enabled: true),
+        new Macro(Key: "Decimal", Ctrl: false, Shift: false, Alt: false, Command: "d",  Enabled: true),
+    };
+
+    // ----- Profile sync ---------------------------------------------------
 
     private void LoadFrom(CharacterProfile profile)
     {
         Macros.Clear();
-        if (profile.Macros is null) return;
-        foreach (Macro m in profile.Macros) Macros.Add(m);
+        if (profile.Macros is { Count: > 0 } stored)
+        {
+            foreach (Macro m in stored) Macros.Add(m);
+        }
+        else
+        {
+            // Fresh / never-saved profile: seed numpad directional macros so
+            // the user can move the moment they connect.
+            foreach (Macro m in DefaultMacros()) Macros.Add(m);
+        }
     }
 
     private void Clear() => Macros.Clear();
+
+    /// <summary>Snapshot the live list onto the profile DTO right before save.</summary>
+    private void SnapshotForSave(CharacterProfile profile)
+    {
+        profile.Macros = Macros.Count == 0 ? null : Macros.ToList();
+    }
 }

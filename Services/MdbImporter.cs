@@ -1,16 +1,8 @@
 using System.Data;
-using System.Data.OleDb;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-
-// OLE DB is annotated [SupportedOSPlatform("windows")] in the BCL, but
-// our design hosts ACE under Wine on Linux too — see
-// MDB-Import-Implementation-Guide.md §1 and the IsAceInstalled() guard
-// below, which returns a helpful message instead of throwing when no
-// ACE provider is registered. CA1416 fires on every OleDb* type
-// touched here; suppress in this file only.
-#pragma warning disable CA1416
+using JetDatabaseReader;
 
 namespace FujinTerm.Services;
 
@@ -19,24 +11,14 @@ namespace FujinTerm.Services;
 /// <c>.accdb</c> database into a folder of JSON files (one per table)
 /// under <see cref="AppPaths.GameDataRoot"/>. Each subfolder of
 /// <c>Data/game data/</c> becomes a switchable "game-data set" the
-/// later <c>GameDataCache</c> can activate (Phase 5 PR 5.2).
+/// <see cref="GameDataCache"/> can activate.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Requires the Microsoft Access Database Engine (ACE) redistributable
-/// at matching process bitness. On Linux the redist must be installed
-/// inside the Wine prefix used to host this process — native Linux
-/// OLE DB does not exist. The <see cref="IsAceInstalled"/> /
-/// <see cref="GetAceNotInstalledMessage"/> pair surfaces a helpful
-/// message when the redist is missing instead of failing with a raw
-/// COM error.
-/// </para>
-/// <para>
-/// Wine compatibility note: this class probes ACE via
-/// <see cref="System.Type.GetTypeFromProgID(string)"/> rather than
-/// <c>OleDbEnumerator.GetRootEnumerator</c> because Wine's
-/// <c>oledb32.dll</c> enumerator returns nothing even when ACE is
-/// correctly registered. See <c>MDB-Import-Implementation-Guide.md</c>.
+/// Backed by <see cref="AccessReader"/> from JetDatabaseReader — a
+/// pure-managed Jet3 / Jet4 / ACCDB reader. No native dependencies, no
+/// OLE DB / ACE / ODBC / Wine: the same binary reads Jet on Windows,
+/// Linux, and macOS.
 /// </para>
 /// <para>
 /// "Every user table" means every table the database exposes — the
@@ -84,44 +66,6 @@ public sealed class MdbImporter
     public string GetSubfolderPath(string folderName)
         => Path.Combine(GameDataRoot, folderName);
 
-    // ----- ACE detection (Wine-compatible) ----------------------------------
-
-    /// <summary>
-    /// Probe the registry for the highest-versioned ACE OLE DB ProgID
-    /// installed. Versions 16.0 / 15.0 / 14.0 / 12.0 cover the 2007 →
-    /// 2016 redistributables.
-    /// </summary>
-    /// <returns>The ProgID string (e.g. <c>"Microsoft.ACE.OLEDB.16.0"</c>), or <c>null</c> if none is registered.</returns>
-    private static string? GetAceProgId()
-    {
-        foreach (string version in new[] { "16.0", "15.0", "14.0", "12.0" })
-        {
-            string progId = $"Microsoft.ACE.OLEDB.{version}";
-            if (Type.GetTypeFromProgID(progId) is not null) return progId;
-        }
-        return null;
-    }
-
-    /// <summary>True when ACE OLE DB is registered at this process's bitness.</summary>
-    public static bool IsAceInstalled() => GetAceProgId() is not null;
-
-    /// <summary>
-    /// User-facing message explaining how to install ACE — used by both
-    /// the early-exit guard in <see cref="ImportAsync"/> and by the
-    /// import-dialog UX (Phase 5 PR 5.3+) to display when the user
-    /// picks Import .mdb… on a host that doesn't have ACE.
-    /// </summary>
-    public static string GetAceNotInstalledMessage() =>
-        "Microsoft Access Database Engine (ACE) is not installed.\n\n" +
-        "ACE is a free Microsoft component required to read .mdb / .accdb files.\n\n" +
-        "To install:\n" +
-        "1. Download from: https://www.microsoft.com/en-us/download/details.aspx?id=54920\n" +
-        "2. Choose the bitness that matches THIS application (32-bit or 64-bit).\n" +
-        "   Mismatched bitness is the most common cause of \"not installed\" even after install.\n" +
-        "3. Run the installer.\n" +
-        "4. Restart the application.\n\n" +
-        "On Linux, install ACE inside the Wine prefix used to host FujinTerm.";
-
     // ----- Import entry point ----------------------------------------------
 
     /// <summary>
@@ -131,49 +75,51 @@ public sealed class MdbImporter
     /// <param name="mdbFilePath">Absolute path to the <c>.mdb</c> / <c>.accdb</c> file.</param>
     /// <param name="targetSubfolder">
     /// Subfolder name under <see cref="GameDataRoot"/>. Defaults to the
-    /// file's basename. The Phase 5 PR 5.4+ import dialog feeds the
+    /// file's basename. The Phase 5 import-conflict dialog feeds the
     /// user's chosen set name here.
     /// </param>
-    /// <param name="cancellationToken">Cancellation propagated to OLE DB reads + file writes.</param>
+    /// <param name="cancellationToken">Cancellation propagated to row reads + file writes.</param>
     /// <returns>
-    /// <c>success</c> = true when ACE was found, the connection opened,
-    /// and every reachable table was written (per-table read errors are
-    /// reported via <see cref="OnError"/> but do not flip success false).
-    /// <c>message</c> is a human-readable summary safe to show in a
-    /// dialog. <c>folderName</c> is the on-disk subfolder name written
-    /// to — empty string on failure.
+    /// An <see cref="MdbImportResult"/> carrying success, the on-disk
+    /// folder name, a human-readable message safe to show in a dialog,
+    /// and counts (tables found / imported / skipped, plus total rows
+    /// imported). Counts are zero on failure paths; the message field
+    /// always carries enough detail to surface in the Program Log.
     /// </returns>
-    public async Task<(bool success, string message, string folderName)> ImportAsync(
+    public async Task<MdbImportResult> ImportAsync(
         string mdbFilePath,
         string? targetSubfolder = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(mdbFilePath))
-            return (false, $"Database file not found: {mdbFilePath}", string.Empty);
-
-        string? aceProgId = GetAceProgId();
-        if (aceProgId is null)
-            return (false, GetAceNotInstalledMessage(), string.Empty);
+            return MdbImportResult.Failure($"Database file not found: {mdbFilePath}");
 
         string folderName = targetSubfolder ?? Path.GetFileNameWithoutExtension(mdbFilePath);
         string outputPath = Path.Combine(GameDataRoot, folderName);
         Directory.CreateDirectory(outputPath);
 
-        // Pick whichever ACE version actually answered the probe — hard-
-        // coding 12.0 would break on systems that only have the 2016
-        // redist installed.
-        string connectionString = $"Provider={aceProgId};Data Source={mdbFilePath};Mode=Read;";
+        // Reader runs synchronously off the calling thread; hop to a
+        // worker so the UI stays responsive during large imports.
+        return await Task.Run(() => ImportCore(mdbFilePath, folderName, outputPath, cancellationToken),
+                              cancellationToken);
+    }
 
+    private async Task<MdbImportResult> ImportCore(
+        string mdbFilePath,
+        string folderName,
+        string outputPath,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            using OleDbConnection connection = new(connectionString);
-            await connection.OpenAsync(cancellationToken);
-            OnStatusChanged?.Invoke("Connected to database…");
+            using AccessReader reader = AccessReader.Open(mdbFilePath);
+            OnStatusChanged?.Invoke("Opened database…");
 
-            IReadOnlyList<string> tables = GetUserTables(connection);
+            IReadOnlyList<string> tables = FilterUserTables(reader.ListTables());
             OnStatusChanged?.Invoke($"Found {tables.Count} user tables");
 
             int tablesDone = 0;
+            int totalRows = 0;
             List<string> imported = new();
             List<string> skipped = new();
             OnProgressChanged?.Invoke(0, tables.Count);
@@ -185,7 +131,8 @@ public sealed class MdbImporter
 
                 try
                 {
-                    int rowCount = await ExportTableAsync(connection, tableName, outputPath, cancellationToken);
+                    int rowCount = await ExportTableAsync(reader, tableName, outputPath, cancellationToken);
+                    totalRows += rowCount;
                     imported.Add($"{tableName} ({rowCount} rows)");
                 }
                 catch (Exception ex)
@@ -204,54 +151,53 @@ public sealed class MdbImporter
             if (skipped.Count > 0)
                 message += $"\n\nSkipped {skipped.Count}:\n" +
                            string.Join("\n", skipped.Select(t => $"  ⚠ {t}"));
-            message += $"\n\nOutput: {outputPath}";
+            message += $"\n\nTotal rows imported: {totalRows:N0}\nOutput: {outputPath}";
 
-            return (true, message, folderName);
-        }
-        catch (OleDbException ex)
-        {
-            return (false, TranslateOleDbException(ex, mdbFilePath), string.Empty);
+            return new MdbImportResult(
+                Success: true,
+                Message: message,
+                FolderName: folderName,
+                TablesFound: tables.Count,
+                TablesImported: imported.Count,
+                TablesSkipped: skipped.Count,
+                RowsImported: totalRows);
         }
         catch (OperationCanceledException)
         {
-            return (false, "Import was cancelled.", string.Empty);
+            return MdbImportResult.Failure("Import was cancelled.");
         }
         catch (UnauthorizedAccessException)
         {
-            return (false,
+            return MdbImportResult.Failure(
                 $"Permission denied opening: {mdbFilePath}\n" +
-                "Move the file to a folder where you have full read/write access.",
-                string.Empty);
+                "Move the file to a folder where you have full read/write access.");
         }
         catch (IOException ex) when (IsFileLockIOException(ex))
         {
-            return (false,
+            return MdbImportResult.Failure(
                 $"File is locked by another process: {mdbFilePath}\n" +
-                "Close any program that may have it open and try again.",
-                string.Empty);
+                "Close any program that may have it open and try again.");
+        }
+        catch (FileNotFoundException)
+        {
+            return MdbImportResult.Failure($"Database file not found: {mdbFilePath}");
         }
         catch (Exception ex)
         {
-            return (false, $"Unexpected error: {ex.Message}", string.Empty);
+            return MdbImportResult.Failure($"Could not read database: {mdbFilePath}\n\n{ex.Message}");
         }
     }
 
     // ----- Table enumeration -----------------------------------------------
 
-    private static IReadOnlyList<string> GetUserTables(OleDbConnection connection)
+    private static IReadOnlyList<string> FilterUserTables(IReadOnlyList<string> names)
     {
-        object?[] restrictions = new object?[] { null, null, null, "TABLE" };
-        DataTable? schema = connection.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, restrictions!);
-        List<string> tables = new();
-        if (schema is null) return tables;
-
-        foreach (DataRow row in schema.Rows)
+        List<string> tables = new(names.Count);
+        foreach (string name in names)
         {
-            string? name = row["TABLE_NAME"]?.ToString();
             if (string.IsNullOrEmpty(name)) continue;
-            // MSys* are Access metadata — ACE throws "no read permission".
+            // MSys* are Access metadata; ~TMP* are orphaned temp tables.
             if (name.StartsWith("MSys", StringComparison.OrdinalIgnoreCase)) continue;
-            // ~TMP* are orphaned temp tables from crashed Access sessions.
             if (name.StartsWith('~')) continue;
             tables.Add(name);
         }
@@ -262,34 +208,34 @@ public sealed class MdbImporter
     // ----- Per-table export -------------------------------------------------
 
     private async Task<int> ExportTableAsync(
-        OleDbConnection connection,
+        AccessReader reader,
         string tableName,
         string outputPath,
         CancellationToken cancellationToken)
     {
-        // Bracket-quote the table name so spaces and reserved words work.
-        using OleDbCommand countCommand = new($"SELECT COUNT(*) FROM [{tableName}]", connection);
-        int totalRows = Convert.ToInt32(await countCommand.ExecuteScalarAsync(cancellationToken));
+        // ReadTable returns a typed DataTable — column.DataType is the
+        // CLR mapping (int / decimal / DateTime / string / byte[] / etc.).
+        DataTable dt = reader.ReadTable(tableName);
+        int totalRows = dt.Rows.Count;
         OnStatusChanged?.Invoke($"  {totalRows} rows");
 
-        using OleDbCommand command = new($"SELECT * FROM [{tableName}]", connection);
-        using OleDbDataReader reader = (OleDbDataReader)await command.ExecuteReaderAsync(cancellationToken);
+        string[] columns = new string[dt.Columns.Count];
+        for (int i = 0; i < dt.Columns.Count; i++)
+            columns[i] = dt.Columns[i].ColumnName;
 
-        string[] columns = new string[reader.FieldCount];
-        for (int i = 0; i < reader.FieldCount; i++)
-            columns[i] = reader.GetName(i);
-
-        List<Dictionary<string, object?>> rows = new(capacity: Math.Max(16, totalRows));
+        List<Dictionary<string, object?>> rows = new(capacity: totalRows);
         int rowsDone = 0;
         int lastReportedPercent = 0;
 
-        while (await reader.ReadAsync(cancellationToken))
+        foreach (DataRow dr in dt.Rows)
         {
-            Dictionary<string, object?> row = new(reader.FieldCount);
-            for (int i = 0; i < reader.FieldCount; i++)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Dictionary<string, object?> row = new(columns.Length, StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < columns.Length; i++)
             {
-                object value = reader.GetValue(i);
-                row[columns[i]] = value == DBNull.Value ? null : value;
+                object cell = dr[i];
+                row[columns[i]] = cell is DBNull ? null : NormalizeValue(cell);
             }
             rows.Add(row);
             rowsDone++;
@@ -314,6 +260,17 @@ public sealed class MdbImporter
         return rows.Count;
     }
 
+    // Marshal Jet column types to JSON-friendly primitives. Most values
+    // already come through as .NET primitives; byte[] (OLE / binary
+    // columns) gets base64'd so it round-trips through JSON cleanly,
+    // and DateTime serializes as ISO 8601 round-trip "O" format.
+    private static object? NormalizeValue(object value) => value switch
+    {
+        byte[] bytes => Convert.ToBase64String(bytes),
+        DateTime dt => dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+        _ => value,
+    };
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
@@ -333,33 +290,6 @@ public sealed class MdbImporter
         return string.IsNullOrEmpty(safe) ? "_unnamed" : safe;
     }
 
-    // ----- Error translation -----------------------------------------------
-
-    private static string TranslateOleDbException(OleDbException ex, string mdbFilePath)
-    {
-        string lower = ex.Message.ToLowerInvariant();
-
-        if (lower.Contains("not a valid path") || lower.Contains("could not find file"))
-            return $"Could not open database: {mdbFilePath}\n" +
-                   "Verify the file exists and is a valid Access database.";
-
-        if (lower.Contains("not registered"))
-            return GetAceNotInstalledMessage();
-
-        if (IsFileLockMessage(lower))
-            return $"Database file is locked or permission-restricted: {mdbFilePath}\n\n" +
-                   "Close any program that has it open, or copy it to a folder where " +
-                   "you have full read/write permissions.";
-
-        return $"Database error: {ex.Message}";
-    }
-
-    private static bool IsFileLockMessage(string lower)
-        => lower.Contains("could not lock file") || lower.Contains("cannot open") ||
-           lower.Contains("exclusive") || lower.Contains("locked") ||
-           lower.Contains("permission") || lower.Contains("denied") ||
-           lower.Contains("used by another process") || lower.Contains("locking violation");
-
     private static bool IsFileLockIOException(IOException ex)
     {
         string lower = ex.Message.ToLowerInvariant();
@@ -367,4 +297,31 @@ public sealed class MdbImporter
                lower.Contains("used by another process") ||
                lower.Contains("sharing violation");
     }
+}
+
+/// <summary>
+/// Outcome of one <see cref="MdbImporter.ImportAsync"/> invocation. The
+/// caller uses the counts to compose status text and to recognise the
+/// MajorMUD MDB shape (9 user tables = old realm format, 10 = new
+/// format; anything less is a malformed / truncated MDB).
+/// </summary>
+/// <param name="Success">True when the database opened and every reachable table was at least attempted.</param>
+/// <param name="Message">Multi-line summary safe for the Program Log.</param>
+/// <param name="FolderName">On-disk subfolder under <see cref="AppPaths.GameDataRoot"/> the JSON landed in; empty on failure.</param>
+/// <param name="TablesFound">User tables enumerated from the MDB (MSys* + ~tmp filtered out).</param>
+/// <param name="TablesImported">Tables successfully written to JSON.</param>
+/// <param name="TablesSkipped">Tables that the importer attempted but a per-table error aborted (see <see cref="MdbImporter.OnError"/> for the reasons).</param>
+/// <param name="RowsImported">Sum of rows across every imported table.</param>
+public readonly record struct MdbImportResult(
+    bool   Success,
+    string Message,
+    string FolderName,
+    int    TablesFound,
+    int    TablesImported,
+    int    TablesSkipped,
+    int    RowsImported)
+{
+    /// <summary>Build a failure result. All counts zero, folder name empty.</summary>
+    public static MdbImportResult Failure(string message)
+        => new(false, message, string.Empty, 0, 0, 0, 0);
 }

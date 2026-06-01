@@ -38,10 +38,22 @@ public sealed class GlobalSettings
     public const int RecentProfilesLimit = 5;
 
     /// <summary>
-    /// Default game-data set name used when no character profile is loaded.
-    /// Once a profile is loaded its own <c>ActiveGameDataSet</c> takes over.
+    /// Fallback game-data set name used when no BBS is pinned (or the
+    /// pinned BBS has no <c>ActiveGameDataSet</c> of its own). Once a
+    /// BBS is pinned its setting takes over via the resolution chain
+    /// in <see cref="Services.AppServices"/>.
     /// </summary>
     public string? DefaultGameDataSet { get; set; }
+
+    /// <summary>
+    /// Auto-cleanup window for the Players table (see
+    /// <see cref="Services.PlayerDatabase.PurgeStale"/>). Records whose
+    /// <c>LastSeenUtc</c> falls outside this window get dropped at
+    /// startup so the table doesn't accumulate one-shot tourists from
+    /// every session. Per-record <c>DontAutoDelete</c> opts out.
+    /// <c>0</c> or negative disables auto-cleanup entirely.
+    /// </summary>
+    public int PlayerCleanupDays { get; set; } = 90;
 
     /// <summary>
     /// Per-tab settings deltas — keyed by tab name (Health / Combat / Talk /
@@ -50,11 +62,4 @@ public sealed class GlobalSettings
     /// merges these across all four tiers.
     /// </summary>
     public Dictionary<string, JsonElement>? Settings { get; set; }
-
-    /// <summary>
-    /// Per-record game-data overrides at the Global tier, keyed by
-    /// <c>table-name → record-id → partial record</c>. Empty by default;
-    /// populated when users edit a record at "for all characters" scope.
-    /// </summary>
-    public Dictionary<string, Dictionary<string, JsonElement>>? GameDataOverrides { get; set; }
 }
