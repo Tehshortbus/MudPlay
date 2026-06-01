@@ -51,13 +51,6 @@ public static class AppPaths
     public static string LogsDir { get; }
 
     /// <summary>
-    /// Per-game-data-set Messages/Responses catalogues, one JSON file
-    /// per imported set (paired with the folder name under
-    /// <see cref="GameDataRoot"/>).
-    /// </summary>
-    public static string MessagesDir { get; }
-
-    /// <summary>
     /// App-shipped fallback defaults, alongside the executable.
     /// Read-only at runtime; populated by the build pipeline.
     /// </summary>
@@ -113,7 +106,6 @@ public static class AppPaths
 
         GameDataRoot       = Path.Combine(DataRoot, "game data");
         GlobalSettingsFile = Path.Combine(DataRoot, "Global", "global.json");
-        MessagesDir        = Path.Combine(DataRoot, "Global", "Messages");
         BbsDir             = Path.Combine(DataRoot, "BBS");
         ProfilesDir        = Path.Combine(DataRoot, "profiles");
         LogsDir            = Path.Combine(DataRoot, "Logs");
@@ -128,7 +120,6 @@ public static class AppPaths
         Directory.CreateDirectory(DataRoot);
         Directory.CreateDirectory(GameDataRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(GlobalSettingsFile)!);
-        Directory.CreateDirectory(MessagesDir);
         Directory.CreateDirectory(BbsDir);
         Directory.CreateDirectory(ProfilesDir);
         Directory.CreateDirectory(LogsDir);
@@ -143,17 +134,6 @@ public static class AppPaths
     /// </summary>
     public static string MessagesFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "messages.json");
-
-    /// <summary>
-    /// Legacy pre-migration Messages file location. <see cref="MessageStore"/>
-    /// reads this as a fallback when the new <see cref="MessagesFile"/>
-    /// doesn't exist yet, so any pre-existing per-set catalogue auto-
-    /// migrates forward on the next Save. Safe to delete the
-    /// <c>Data/Global/Messages/</c> tree once every active set has
-    /// been re-saved.
-    /// </summary>
-    public static string LegacyMessagesFile(string setName) =>
-        Path.Combine(MessagesDir, setName + ".json");
 
     /// <summary>
     /// Per-set Monster Messages catalogue file — one combat-line bundle

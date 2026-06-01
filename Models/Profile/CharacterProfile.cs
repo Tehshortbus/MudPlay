@@ -58,15 +58,6 @@ public sealed class CharacterProfile
     public List<GameData.Alias>? Aliases { get; set; }
 
     /// <summary>
-    /// User-authored room favourites with their folder-path hierarchy.
-    /// Per-character; loaded into <see cref="Services.FavoritesManager"/>
-    /// on profile load. Phase 5 PR 5.25's starter bundle layers
-    /// pre-seeded defaults from the active game-data set on top of
-    /// whatever's stored here.
-    /// </summary>
-    public List<GameData.Favorite>? Favorites { get; set; }
-
-    /// <summary>
     /// User-defined keybinds. Per-character; loaded into
     /// <see cref="Services.MacroStore"/> on profile load. The Phase 10
     /// MacroManager engine intercepts keystrokes on TerminalControl +
