@@ -62,12 +62,13 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly MessageStore? _messages;
     private readonly MonsterMessageStore? _monsterMessages;
     private readonly MonsterOverlaySeedStore? _monsterOverlaySeed;
+    private readonly ItemOverlaySeedStore? _itemOverlaySeed;
     private readonly SettingsResolver? _resolver;
     private readonly DialogService? _dialogs;
     private readonly KeybindingStore? _keybindings;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -78,6 +79,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         MessageStore? messages = null,
         MonsterMessageStore? monsterMessages = null,
         MonsterOverlaySeedStore? monsterOverlaySeed = null,
+        ItemOverlaySeedStore? itemOverlaySeed = null,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         KeybindingStore? keybindings = null,
@@ -92,6 +94,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _messages = messages;
         _monsterMessages = monsterMessages;
         _monsterOverlaySeed = monsterOverlaySeed;
+        _itemOverlaySeed = itemOverlaySeed;
         _resolver = resolver;
         _dialogs = dialogs;
         _keybindings = keybindings;
@@ -218,7 +221,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- MDB-derived (bottom group) ---------------------------------
 
         Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed));
-        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));

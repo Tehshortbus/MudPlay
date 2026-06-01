@@ -1788,6 +1788,7 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Messages,
                 AppServices.Current.MonsterMessages,
                 AppServices.Current.MonsterOverlaySeed,
+                AppServices.Current.ItemOverlaySeed,
                 AppServices.Current.Resolver,
                 AppServices.Current.Dialogs,
                 AppServices.Current.Keybindings),

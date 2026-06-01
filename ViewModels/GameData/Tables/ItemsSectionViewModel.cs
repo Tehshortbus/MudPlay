@@ -31,6 +31,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private readonly GameDataCache _cache;
     private readonly DialogService? _dialogs;
     private readonly SettingsResolver? _resolverRef;
+    private readonly ItemOverlaySeedStore? _overlaySeed;
 
     public override string Id => "items";
     public override string Title => "Items";
@@ -81,12 +82,14 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     public ItemsSectionViewModel(
         GameDataCache cache,
         SettingsResolver? resolver = null,
-        DialogService? dialogs = null)
+        DialogService? dialogs = null,
+        ItemOverlaySeedStore? overlaySeed = null)
         : base(cache, resolver)
     {
         _cache = cache;
         _dialogs = dialogs;
         _resolverRef = resolver;
+        _overlaySeed = overlaySeed;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
     }
 
@@ -96,13 +99,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         string? wcc = row.Get("Number");
         if (string.IsNullOrEmpty(wcc)) return;
 
-        // 4-tier merged overlay — Char → BBS → Global → Defaults. Defaults
-        // baseline is currently a blank ItemOverlay; once the items.md
-        // decoder + ItemOverlaySeedStore land (follow-on commit) the
-        // baseline switches to the realm-flavoured seed lookup.
+        // 4-tier merged overlay — Char → BBS → Global → Defaults. The
+        // Defaults-tier baseline comes from the realm-flavoured
+        // ItemOverlaySeedStore (decoded from Items.md), so the dialog
+        // opens showing exactly what the runtime engines will see for
+        // this item before any user override.
+        ItemOverlay seedDefaults =
+            (_overlaySeed is not null && int.TryParse(wcc, out int seedNum))
+                ? _overlaySeed.GetOverlay(seedNum)
+                : new ItemOverlay();
         ItemOverlay existing = _resolverRef?.ResolveGameData<ItemOverlay>(
-            "Items", wcc, new ItemOverlay())
-            ?? new ItemOverlay();
+            "Items", wcc, seedDefaults)
+            ?? seedDefaults;
 
         // MDB-derived display fields that don't roundtrip through the
         // overlay — the dialog renders them as read-only.
