@@ -191,7 +191,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             price        = FormatPrice(el);
             itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
             bodyLocation = worn == 0 ? "None" : (MmudEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
-            boughtSold   = ResolveFirstShop(obtainedFrom);
+            boughtSold   = ResolveBoughtSold(obtainedFrom);
 
             // ----- Other Info pane (right pane) -----
             otherInfo.Add(new KeyValuePair<string, string>("WCC No", wccNoStr));
@@ -451,29 +451,110 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     }
 
     /// <summary>
-    /// Bought/sold (left pane) picks the FIRST shop reference in
-    /// <c>Obtained From</c> and renders the shop's <c>Name</c>. Falls back
-    /// to empty when the field has no shop tokens or the Shops table isn't
-    /// loaded. Accepts both <c>"Shop #N"</c> and <c>"Shop(sell) #N"</c>
-    /// token formats.
+    /// Bought/sold: enumerate every <c>Shop #N</c> / <c>Shop(flag) #N</c>
+    /// reference in <c>Obtained From</c>, look each shop's host room up
+    /// via <c>Shops.AssignedTo</c> + <c>Rooms.json</c>, and render one
+    /// line per shop in the form:
+    /// <code>
+    ///   {RoomName}              - {map}/{room}
+    ///   {RoomName} (SELL)       - {map}/{room}      // for Shop(sell) #N
+    ///   {RoomName} (NO GEN)     - {map}/{room}      // for Shop(nogen) #N
+    /// </code>
+    /// Plain <c>Shop #N</c> (no flag) is normal buy + sell, no suffix.
+    /// Falls back to the raw shop token when the shop / room isn't in
+    /// the active set.
     /// </summary>
-    private string ResolveFirstShop(string obtainedFrom)
+    private string ResolveBoughtSold(string obtainedFrom)
     {
         if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+        List<string> lines = new();
         foreach (string token in obtainedFrom.Split(','))
         {
             string trimmed = token.Trim();
-            int hash = trimmed.IndexOf('#');
-            if (hash < 0) continue;
             if (!trimmed.StartsWith("Shop", StringComparison.Ordinal)) continue;
-            // Strip a trailing "(N%)" / "(sell)" tail before parsing.
-            string numText = trimmed[(hash + 1)..];
+
+            // Extract optional flag (e.g. "sell" from "Shop(sell) #89")
+            // and the numeric id.
+            int hashIdx = trimmed.IndexOf('#');
+            if (hashIdx < 0) continue;
+            string prefix = trimmed[..hashIdx];          // "Shop", "Shop(sell)", "Shop(nogen)"
+            string numText = trimmed[(hashIdx + 1)..].TrimStart();
             int paren = numText.IndexOf('(');
             if (paren >= 0) numText = numText[..paren];
             if (!int.TryParse(numText.Trim(), out int shopId)) continue;
-            return LookupShopName(shopId) ?? trimmed;
+
+            string? flag = ExtractShopFlag(prefix);
+
+            // Resolve shop → room.
+            (string? roomName, int mapNo, int roomNo) = LookupShopRoom(shopId);
+            string suffix = flag is null ? string.Empty : $" ({flag.ToUpperInvariant()})";
+            string locator = mapNo > 0 ? $"{mapNo}/{roomNo}" : "?";
+            string name = string.IsNullOrEmpty(roomName) ? $"Shop #{shopId}" : roomName;
+
+            lines.Add($"{name}{suffix} - {locator}");
         }
-        return string.Empty;
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>"Shop" → null; "Shop(sell)" → "sell"; "Shop(nogen)" → "no gen".</summary>
+    private static string? ExtractShopFlag(string prefix)
+    {
+        int open = prefix.IndexOf('(');
+        if (open < 0) return null;
+        int close = prefix.IndexOf(')', open + 1);
+        if (close <= open + 1) return null;
+        string raw = prefix[(open + 1)..close].Trim();
+        // Friendly-ify the few known flags; leave anything else as the raw token.
+        return raw switch
+        {
+            "sell"  => "SELL",
+            "nogen" => "NO GEN",
+            _        => raw,
+        };
+    }
+
+    /// <summary>
+    /// Resolves a Shop.Number → (Room.Name, map, room) via the active set's
+    /// Shops.json (AssignedTo = "Room {map}/{room}") + Rooms.json. Returns
+    /// (null, 0, 0) when any lookup misses.
+    /// </summary>
+    private (string? RoomName, int Map, int Room) LookupShopRoom(int shopId)
+    {
+        JsonDocument? shopsDoc = _cache.GetRawTable("Shops");
+        if (shopsDoc is null) return (null, 0, 0);
+
+        string? assigned = null;
+        foreach (JsonElement el in shopsDoc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
+            if (n.ValueKind != JsonValueKind.Number) continue;
+            if (n.GetInt32() != shopId) continue;
+            assigned = ReadString(el, "Assigned To");
+            break;
+        }
+        if (string.IsNullOrWhiteSpace(assigned)) return (null, 0, 0);
+
+        // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334").
+        if (!assigned.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
+        string remainder = assigned[5..].Trim();
+        int slash = remainder.IndexOf('/');
+        if (slash <= 0) return (null, 0, 0);
+        if (!int.TryParse(remainder[..slash], out int mapNo)) return (null, 0, 0);
+        if (!int.TryParse(remainder[(slash + 1)..], out int roomNo)) return (null, 0, 0);
+
+        JsonDocument? roomsDoc = _cache.GetRawTable("Rooms");
+        if (roomsDoc is null) return (null, mapNo, roomNo);
+
+        foreach (JsonElement el in roomsDoc.RootElement.EnumerateArray())
+        {
+            if (!el.TryGetProperty("Map Number",  out JsonElement m)) continue;
+            if (!el.TryGetProperty("Room Number", out JsonElement r)) continue;
+            if (m.ValueKind != JsonValueKind.Number || r.ValueKind != JsonValueKind.Number) continue;
+            if (m.GetInt32() != mapNo || r.GetInt32() != roomNo) continue;
+            string name = ReadString(el, "Name");
+            return (string.IsNullOrEmpty(name) ? null : name, mapNo, roomNo);
+        }
+        return (null, mapNo, roomNo);
     }
 
     /// <summary>Comma-joined list of monster names parsed from Obtained From's "Monster #N(X%)" tokens.</summary>
@@ -493,21 +574,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
         }
         return string.Join(", ", names);
-    }
-
-    private string? LookupShopName(int shopId)
-    {
-        JsonDocument? doc = _cache.GetRawTable("Shops");
-        if (doc is null) return null;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
-            if (n.ValueKind != JsonValueKind.Number) continue;
-            if (n.GetInt32() != shopId) continue;
-            string name = ReadString(el, "Name");
-            return string.IsNullOrEmpty(name) ? null : name;
-        }
-        return null;
     }
 
     private string? LookupMonsterName(int monsterId)
