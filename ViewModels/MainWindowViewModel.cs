@@ -1926,64 +1926,6 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
-    /// <summary>
-    /// File → Game Data → Import Messages (MegaMUD .md)… — parses a
-    /// MegaMUD <c>messages.md</c> legacy text file via
-    /// <see cref="MegaMudMessagesImporter"/> and writes the rows into
-    /// <see cref="MessageStore"/>, persisting to
-    /// <c>Data/Global/Messages/{active-set}.json</c>. Overwrite-on-
-    /// conflict for now; per-record conflict-dialog wiring lands with
-    /// the Message edit dialog work.
-    /// </summary>
-    [RelayCommand]
-    private async Task ImportMegaMudMessagesAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-
-        if (AppServices.Current.GameData.ActiveSet is null)
-        {
-            WriteTerminalStatus("[NO ACTIVE GAME-DATA SET — IMPORT AN MDB FIRST OR SWITCH SETS]", TerminalStatusKind.Error);
-            return;
-        }
-
-        IReadOnlyList<IStorageFile> files = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Pick a MegaMUD messages.md file",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("MegaMUD messages (.md)") { Patterns = new[] { "*.md" } },
-                new FilePickerFileType("All files") { Patterns = new[] { "*.*" } },
-            },
-        });
-        if (files.Count == 0) return;
-
-        try
-        {
-            MessageImportResult parsed = MegaMudMessagesImporter.Parse(files[0].Path.LocalPath);
-            AppServices.Current.Messages.Replace(parsed.Messages);
-
-            foreach (MessageImportFailure f in parsed.Failures)
-                AppServices.Current.Log.Warn("MegaMudMessages",
-                    $"Line {f.LineNumber}: {f.Reason} (raw: {f.RawLine})");
-
-            string set = AppServices.Current.GameData.ActiveSet ?? "(no set)";
-            string kind = parsed.Failures.Count == 0 ? "[MESSAGES IMPORT COMPLETE" : "[MESSAGES IMPORT COMPLETED WITH WARNINGS";
-            string suffix = parsed.Failures.Count == 0 ? "" : $" — {parsed.Failures.Count} skipped, see Program Log";
-            WriteTerminalStatus(
-                $"{kind}: {parsed.Messages.Count} records into {set}{suffix}]",
-                parsed.Failures.Count == 0 ? TerminalStatusKind.Notice : TerminalStatusKind.Error);
-            AppServices.Current.Log.Info("MegaMudMessages",
-                $"Imported {parsed.Messages.Count} records into {set} (failures: {parsed.Failures.Count}).");
-        }
-        catch (Exception ex)
-        {
-            WriteTerminalStatus("[MESSAGES IMPORT FAILED — see Program Log]", TerminalStatusKind.Error);
-            AppServices.Current.Log.Error("MegaMudMessages", $"Import failed: {ex.Message}");
-        }
-    }
-
     [RelayCommand]
     private void OpenNavigation()
         => OpenPlaceholder(
