@@ -206,13 +206,6 @@ public sealed class AppServices
     public PlayerDatabase Players { get; }
 
     /// <summary>
-    /// Loaded character's <see cref="Models.GameData.Favorite"/>
-    /// shortcuts. Phase 7 Goto / Loop dialogs consume the list as the
-    /// left-rail sidebar.
-    /// </summary>
-    public FavoritesManager Favorites { get; }
-
-    /// <summary>
     /// Loaded character's <see cref="Models.GameData.Macro"/> store.
     /// Surfaced by the Game Data Browser → Macros tab; the Phase 10
     /// MacroManager engine intercepts keystrokes and dispatches from
@@ -238,9 +231,10 @@ public sealed class AppServices
     public KeybindingStore Keybindings { get; }
 
     /// <summary>
-    /// Active game-data set's Messages/Responses catalogue. Imported
-    /// from a MegaMUD <c>messages.md</c> file, persisted alongside
-    /// the set under <c>Data/Global/Messages/{set-name}.json</c>.
+    /// Active game-data set's Messages/Responses catalogue. Seeded
+    /// from the wcc-derived JSON at <c>Data/Global/Messages.seed.json</c>
+    /// (bootstrapped from the bundled <c>Defaults/</c> copy on first
+    /// launch), persisted per set at <c>Data/game data/{set}/messages.json</c>.
     /// Surfaced by the Game Data Browser → Messages tab; the Phase 13
     /// HealthManager / CastingDirector consume the same catalogue at
     /// runtime to gate on observed conditions.
@@ -349,7 +343,6 @@ public sealed class AppServices
         Regen = new Game.RegenTracker(PlayerState);
         Triggers = new TriggerEngine(Profile, Chat, Log);
         Aliases = new AliasEngine(Profile);
-        Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
         MacroDispatcher = new MacroDispatcher(Macros);
         Keybindings = new KeybindingStore(Profile);

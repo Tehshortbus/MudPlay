@@ -19,10 +19,11 @@ namespace FujinTerm.Models.GameData;
 /// <para>
 /// Storage parallels <see cref="MessageRecord"/>: per-set runtime file
 /// at <c>Data/game data/{set}/monster-messages.json</c>, universal seed
-/// at <c>Defaults/MonsterMessages.seed.json</c> (generated offline from
-/// the wcc <c>monster-messages.json</c> export). The seed is never
-/// written to; user edits write the per-set file (creating it on first
-/// save).
+/// at <c>Data/Global/MonsterMessages.seed.json</c> (user-writable;
+/// bootstrapped from the bundled <c>Defaults/</c> copy on first launch,
+/// generated offline from the wcc <c>monster-messages.json</c> export).
+/// The seed is never written to; user edits write the per-set file
+/// (creating it on first save).
 /// </para>
 /// <para>
 /// Each of the nine line fields is a <c>List&lt;string&gt;</c> of

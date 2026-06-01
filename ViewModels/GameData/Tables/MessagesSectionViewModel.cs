@@ -13,9 +13,10 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <summary>
 /// Game Data Browser → Messages tab. Surfaces the active game-data
 /// set's Messages/Responses catalogue from <see cref="MessageStore"/>.
-/// Records are paired per set: importing a MegaMUD <c>messages.md</c>
-/// file lands as <c>Data/Global/Messages/{set-name}.json</c>, and
-/// switching the active set swaps the catalogue in real time.
+/// Records are paired per set: seeded from the wcc-derived universal
+/// seed (<c>Data/Global/Messages.seed.json</c>), persisted per set at
+/// <c>Data/game data/{set}/messages.json</c> on first edit. Switching
+/// the active set swaps the catalogue in real time.
 /// </summary>
 public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {

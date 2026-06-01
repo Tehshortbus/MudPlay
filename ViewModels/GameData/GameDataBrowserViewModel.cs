@@ -208,8 +208,9 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
             Sections.Add(new MessagesSectionViewModel(_messages, _dialogs, _resolver, _gameData));
         else
             AddPlaceholder("messages", "Messages", "Phase 5",
-                "Per-set Messages/Responses catalogue. Imported from a MegaMUD messages.md file and " +
-                "saved alongside the active game-data set under Data/Global/Messages/.");
+                "Per-set Messages/Responses catalogue. Seeded from the wcc-derived JSON at " +
+                "Data/Global/Messages.seed.json; per-set edits persist at " +
+                "Data/game data/{set}/messages.json.");
 
         // ----- MDB-derived (bottom group) ---------------------------------
 

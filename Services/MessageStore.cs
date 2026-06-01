@@ -7,16 +7,17 @@ namespace FujinTerm.Services;
 /// <summary>
 /// In-memory cache of the Messages/Responses catalogue for the
 /// <see cref="GameDataCache.ActiveSet"/>. Records are paired with the
-/// active game-data set on disk — initially imported from a MegaMUD
-/// <c>messages.md</c> file and saved to
-/// <c>Data/Global/Messages/{set-name}.json</c> so each realm's
-/// catalogue ships alongside the realm's MDB tables.
+/// active game-data set on disk at
+/// <c>Data/game data/{set}/messages.json</c>, falling back to the
+/// universal wcc-derived seed at <c>Data/Global/Messages.seed.json</c>
+/// (bootstrapped from the bundled <c>Defaults/</c> copy on first
+/// launch).
 /// </summary>
 /// <remarks>
 /// Wiring: <see cref="AppServices"/> subscribes the store to
 /// <see cref="GameDataCache.ActiveSetChanged"/> — on every set switch
 /// the file at <see cref="AppPaths.MessagesFile"/> is reloaded
-/// (missing file ⇒ empty catalogue). The Game Data Browser →
+/// (missing file ⇒ falls through to the seed). The Game Data Browser →
 /// Messages tab binds the live <see cref="Messages"/> collection.
 /// </remarks>
 public sealed class MessageStore
@@ -47,14 +48,12 @@ public sealed class MessageStore
     /// <list type="number">
     ///   <item>Per-set file <see cref="AppPaths.MessagesFile"/>
     ///     (<c>Data/game data/{set}/messages.json</c>) — the canonical
-    ///     persisted state since the per-set-folder migration.</item>
-    ///   <item>Legacy <see cref="AppPaths.LegacyMessagesFile"/>
-    ///     (<c>Data/Global/Messages/{set}.json</c>) — read-only
-    ///     fallback so pre-migration installs keep working. First
-    ///     subsequent <see cref="Save"/> writes the new location.</item>
+    ///     persisted state once a user has edited.</item>
     ///   <item>Universal seed <see cref="AppPaths.DefaultMessagesSeedFile"/>
-    ///     — applies to every set; the message text is universal
-    ///     across MajorMUD realms.</item>
+    ///     (<c>Data/Global/Messages.seed.json</c>) — applies to every
+    ///     set; the message text is universal across MajorMUD realms.
+    ///     Bootstrapped from the bundled <c>Defaults/</c> copy on
+    ///     first launch via <see cref="AppPaths.EnsureGlobalSeedsBootstrapped"/>.</item>
     /// </list>
     /// The seed itself is never written.
     /// </summary>
@@ -65,7 +64,6 @@ public sealed class MessageStore
         if (string.IsNullOrWhiteSpace(setName)) return;
 
         if (TryLoadInto(AppPaths.MessagesFile(setName))) return;
-        if (TryLoadInto(AppPaths.LegacyMessagesFile(setName))) return;
         TryLoadInto(AppPaths.DefaultMessagesSeedFile);
     }
 

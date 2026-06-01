@@ -18,10 +18,11 @@ namespace FujinTerm.Models.GameData;
 /// <para>
 /// Storage lives alongside the active game-data set at
 /// <c>Data/game data/{set}/messages.json</c> with the universal seed
-/// at <c>Defaults/Messages.seed.json</c>. The seed is generated from
-/// the wcc-export <c>spell-messages.json</c> via the offline
-/// <c>gen_wcc_seed.py</c> script; user edits write back to the per-set
-/// file (creating it on first save).
+/// at <c>Data/Global/Messages.seed.json</c> (user-writable; bootstrapped
+/// from the bundled <c>Defaults/</c> copy on first launch). The seed is
+/// generated from the wcc-export <c>spell-messages.json</c> via the
+/// offline <c>gen_wcc_seed.py</c> script; user edits write back to the
+/// per-set file (creating it on first save).
 /// </para>
 /// <para>
 /// Identity rule: <see cref="Id"/> is <c>SHA1(Name | CasterMessage |
