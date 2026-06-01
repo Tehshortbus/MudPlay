@@ -80,20 +80,19 @@ public sealed class MdbImporter
     /// </param>
     /// <param name="cancellationToken">Cancellation propagated to row reads + file writes.</param>
     /// <returns>
-    /// <c>success</c> = true when the database opened and every reachable
-    /// table was written (per-table read errors are reported via
-    /// <see cref="OnError"/> but do not flip success false).
-    /// <c>message</c> is a human-readable summary safe to show in a
-    /// dialog. <c>folderName</c> is the on-disk subfolder name written
-    /// to — empty string on failure.
+    /// An <see cref="MdbImportResult"/> carrying success, the on-disk
+    /// folder name, a human-readable message safe to show in a dialog,
+    /// and counts (tables found / imported / skipped, plus total rows
+    /// imported). Counts are zero on failure paths; the message field
+    /// always carries enough detail to surface in the Program Log.
     /// </returns>
-    public async Task<(bool success, string message, string folderName)> ImportAsync(
+    public async Task<MdbImportResult> ImportAsync(
         string mdbFilePath,
         string? targetSubfolder = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(mdbFilePath))
-            return (false, $"Database file not found: {mdbFilePath}", string.Empty);
+            return MdbImportResult.Failure($"Database file not found: {mdbFilePath}");
 
         string folderName = targetSubfolder ?? Path.GetFileNameWithoutExtension(mdbFilePath);
         string outputPath = Path.Combine(GameDataRoot, folderName);
@@ -105,7 +104,7 @@ public sealed class MdbImporter
                               cancellationToken);
     }
 
-    private async Task<(bool success, string message, string folderName)> ImportCore(
+    private async Task<MdbImportResult> ImportCore(
         string mdbFilePath,
         string folderName,
         string outputPath,
@@ -120,6 +119,7 @@ public sealed class MdbImporter
             OnStatusChanged?.Invoke($"Found {tables.Count} user tables");
 
             int tablesDone = 0;
+            int totalRows = 0;
             List<string> imported = new();
             List<string> skipped = new();
             OnProgressChanged?.Invoke(0, tables.Count);
@@ -132,6 +132,7 @@ public sealed class MdbImporter
                 try
                 {
                     int rowCount = await ExportTableAsync(reader, tableName, outputPath, cancellationToken);
+                    totalRows += rowCount;
                     imported.Add($"{tableName} ({rowCount} rows)");
                 }
                 catch (Exception ex)
@@ -150,37 +151,40 @@ public sealed class MdbImporter
             if (skipped.Count > 0)
                 message += $"\n\nSkipped {skipped.Count}:\n" +
                            string.Join("\n", skipped.Select(t => $"  ⚠ {t}"));
-            message += $"\n\nOutput: {outputPath}";
+            message += $"\n\nTotal rows imported: {totalRows:N0}\nOutput: {outputPath}";
 
-            return (true, message, folderName);
+            return new MdbImportResult(
+                Success: true,
+                Message: message,
+                FolderName: folderName,
+                TablesFound: tables.Count,
+                TablesImported: imported.Count,
+                TablesSkipped: skipped.Count,
+                RowsImported: totalRows);
         }
         catch (OperationCanceledException)
         {
-            return (false, "Import was cancelled.", string.Empty);
+            return MdbImportResult.Failure("Import was cancelled.");
         }
         catch (UnauthorizedAccessException)
         {
-            return (false,
+            return MdbImportResult.Failure(
                 $"Permission denied opening: {mdbFilePath}\n" +
-                "Move the file to a folder where you have full read/write access.",
-                string.Empty);
+                "Move the file to a folder where you have full read/write access.");
         }
         catch (IOException ex) when (IsFileLockIOException(ex))
         {
-            return (false,
+            return MdbImportResult.Failure(
                 $"File is locked by another process: {mdbFilePath}\n" +
-                "Close any program that may have it open and try again.",
-                string.Empty);
+                "Close any program that may have it open and try again.");
         }
         catch (FileNotFoundException)
         {
-            return (false, $"Database file not found: {mdbFilePath}", string.Empty);
+            return MdbImportResult.Failure($"Database file not found: {mdbFilePath}");
         }
         catch (Exception ex)
         {
-            return (false,
-                $"Could not read database: {mdbFilePath}\n\n{ex.Message}",
-                string.Empty);
+            return MdbImportResult.Failure($"Could not read database: {mdbFilePath}\n\n{ex.Message}");
         }
     }
 
@@ -293,4 +297,31 @@ public sealed class MdbImporter
                lower.Contains("used by another process") ||
                lower.Contains("sharing violation");
     }
+}
+
+/// <summary>
+/// Outcome of one <see cref="MdbImporter.ImportAsync"/> invocation. The
+/// caller uses the counts to compose status text and to recognise the
+/// MajorMUD MDB shape (9 user tables = old realm format, 10 = new
+/// format; anything less is a malformed / truncated MDB).
+/// </summary>
+/// <param name="Success">True when the database opened and every reachable table was at least attempted.</param>
+/// <param name="Message">Multi-line summary safe for the Program Log.</param>
+/// <param name="FolderName">On-disk subfolder under <see cref="AppPaths.GameDataRoot"/> the JSON landed in; empty on failure.</param>
+/// <param name="TablesFound">User tables enumerated from the MDB (MSys* + ~tmp filtered out).</param>
+/// <param name="TablesImported">Tables successfully written to JSON.</param>
+/// <param name="TablesSkipped">Tables that the importer attempted but a per-table error aborted (see <see cref="MdbImporter.OnError"/> for the reasons).</param>
+/// <param name="RowsImported">Sum of rows across every imported table.</param>
+public readonly record struct MdbImportResult(
+    bool   Success,
+    string Message,
+    string FolderName,
+    int    TablesFound,
+    int    TablesImported,
+    int    TablesSkipped,
+    int    RowsImported)
+{
+    /// <summary>Build a failure result. All counts zero, folder name empty.</summary>
+    public static MdbImportResult Failure(string message)
+        => new(false, message, string.Empty, 0, 0, 0, 0);
 }

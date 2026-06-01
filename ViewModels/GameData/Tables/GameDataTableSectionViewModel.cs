@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Services;
 using FujinTerm.Views.GameData.Tables;
@@ -10,70 +11,210 @@ using FujinTerm.Views.GameData.Tables;
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
-/// Shared base for every per-table tab in the Game Data Browser. Loads
-/// the active set's table from <see cref="GameDataCache"/>, normalises
-/// each row to a string-string dictionary keyed by column name, and
-/// exposes a search-filtered view plus a selected-row slot. Subclasses
-/// supply the table name + the column list to display + the search-key
-/// column; the shared view (<see cref="GameDataTableSectionView"/>)
-/// renders the result.
+/// Shared, source-agnostic base for every per-table tab in the Game
+/// Data Browser. Owns the column list, the all-rows / filtered-rows
+/// observable pair, the selected-row slot, the search box, and the
+/// DataGrid view. Subclasses supply rows via <see cref="PopulateRows"/>
+/// — JSON-backed tabs pull from <see cref="GameDataCache"/> (see
+/// <see cref="JsonTableSectionViewModel"/>), engine-backed tabs
+/// (Triggers / Aliases / Players / Macros / Messages) pull from their
+/// runtime services.
 /// </summary>
-/// <remarks>
-/// PR 5.5 introduces this base alongside the first concrete consumer
-/// (Monsters). Every subsequent per-table PR (5.6 / 5.7 / 5.12-5.18 /
-/// 5.20-5.22) is just a ~30-line subclass — table name + columns +
-/// search key, plus the section's Id / Title / SearchableLabels.
-/// </remarks>
 public abstract partial class GameDataTableSectionViewModel : GameDataSectionViewModel
 {
-    private readonly GameDataCache _cache;
+    /// <summary>Trailing virtual column name shown on every grid — see <see cref="GameDataRow.SourceTier"/>.</summary>
+    public const string UseColumnName = "Use";
+
     private Control? _view;
 
-    /// <summary>Underlying table name in the active set (e.g. <c>"Monsters"</c>).</summary>
-    protected abstract string TableName { get; }
-
     /// <summary>
-    /// Columns to surface, in display order. Search hits, sort, and
-    /// the right-pane row view all key off this list.
+    /// Data columns in display order. Search hits, sort, and the
+    /// right-pane row view all key off this list. The virtual
+    /// <see cref="UseColumnName"/> tier column gets appended
+    /// automatically by <see cref="DisplayColumns"/>.
     /// </summary>
     public abstract IReadOnlyList<string> Columns { get; }
 
-    /// <summary>Column the search box filters against (substring match).</summary>
+    /// <summary>
+    /// Columns rendered in the DataGrid: data columns + the trailing
+    /// "Use" tier column (when applicable). The view's column builder
+    /// reads from this.
+    /// </summary>
+    public IReadOnlyList<string> DisplayColumns => ShowUseColumn
+        ? Columns.Concat(new[] { UseColumnName }).ToArray()
+        : Columns;
+
+    /// <summary>
+    /// True when the trailing virtual "Use" tier column should render.
+    /// MDB-overlay tables (Monsters / Items / Spells / Messages) keep it
+    /// — the tier badge tells the user which layer owns each row.
+    /// Engine-backed tables (Macros / Triggers / Aliases / Players)
+    /// hide it: every row lives at one tier so the badge would always
+    /// read the same value and just adds visual noise.
+    /// </summary>
+    public virtual bool ShowUseColumn => true;
+
+    /// <summary>Column the search box filters against by default (kept for status-bar display only).</summary>
     public abstract string SearchKeyColumn { get; }
 
-    /// <summary>Every row loaded from the active set, original order.</summary>
-    public ObservableCollection<GameDataRow> AllRows { get; } = new();
+    /// <summary>
+    /// Optional muted-info banner shown directly under the tab header
+    /// — used by sections that need a one-liner note for the user
+    /// (e.g. Aliases: "fires from the Conversation window's input
+    /// field only"). <c>null</c> hides the banner row.
+    /// </summary>
+    public virtual string? BannerText => null;
+
+    /// <summary>
+    /// Optional per-column display formatters. Keys are column names in
+    /// <see cref="Columns"/>; values transform the raw cell string into
+    /// the human-readable form rendered in the grid (e.g. <c>1 → "Weapon"</c>,
+    /// <c>5 → "Feet"</c>). Subclasses opt in by overriding; the search
+    /// filter still runs against the raw value so numeric codes are
+    /// findable both ways.
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, Func<string?, string?>>? ColumnFormatters => null;
+
+    /// <summary>Every row loaded from the source, original order.</summary>
+    /// <remarks>
+    /// Set in one shot on <see cref="Reload"/> rather than appended row-by-row
+    /// so the DataGrid sees a single PropertyChanged + re-bind instead of N
+    /// CollectionChanged events. Critical at 27k-row table sizes (Rooms in
+    /// MajorMUD v1.11p), where per-row notifications were the hot loop.
+    /// </remarks>
+    private ObservableCollection<GameDataRow> _allRows = new();
+    public ObservableCollection<GameDataRow> AllRows
+    {
+        get => _allRows;
+        private set => SetProperty(ref _allRows, value);
+    }
 
     /// <summary>Rows that survive the current <see cref="SearchText"/> filter.</summary>
-    public ObservableCollection<GameDataRow> FilteredRows { get; } = new();
+    private ObservableCollection<GameDataRow> _filteredRows = new();
+    public ObservableCollection<GameDataRow> FilteredRows
+    {
+        get => _filteredRows;
+        private set => SetProperty(ref _filteredRows, value);
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private GameDataRow? _selectedRow;
 
+    /// <summary>
+    /// Live mirror of the DataGrid's multi-selection set. The view's
+    /// code-behind syncs this whenever <c>RowsGrid.SelectionChanged</c>
+    /// fires (Avalonia's DataGrid exposes SelectedItems as a non-bindable
+    /// IList, so the sync is imperative). RemoveSelected handlers
+    /// iterate this set instead of just <see cref="SelectedRow"/> so
+    /// Ctrl-/Shift-selecting multiple rows + clicking Remove drops them
+    /// all in one go.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<GameDataRow> SelectedRows { get; } = new();
+
     [ObservableProperty] private string _searchText = string.Empty;
 
     public override Control View => _view ??= new GameDataTableSectionView { DataContext = this };
 
-    /// <summary>Bottom-strip status — row count + selected row pointer.</summary>
+    /// <summary>
+    /// Bottom-strip status. Shows the 1-based position of the selected
+    /// row out of the table total when something is selected
+    /// (<c>"5 of 240 rows"</c>); otherwise just the row count, with the
+    /// filtered / unfiltered split (<c>"3 / 240 rows"</c> when a search
+    /// filter is active, <c>"240 rows"</c> otherwise).
+    /// </summary>
     public string StatusText
     {
         get
         {
             int total = AllRows.Count;
             int visible = FilteredRows.Count;
-            string countText = total == visible ? $"{total} rows" : $"{visible} / {total} rows";
-            string selection = SelectedRow is null ? "" : $"  ·  {SearchKeyColumn} = {SelectedRow.Get(SearchKeyColumn)}";
-            return countText + selection;
+
+            if (SelectedRow is not null)
+            {
+                int index = FilteredRows.IndexOf(SelectedRow);
+                if (index >= 0) return $"{index + 1} of {total} rows";
+            }
+
+            return total == visible ? $"{total} rows" : $"{visible} / {total} rows";
         }
     }
 
-    protected GameDataTableSectionViewModel(GameDataCache cache)
+    /// <summary>
+    /// Subclass hook: append every visible row to <paramref name="rows"/>.
+    /// Called on the first activation (see <see cref="OnActivated"/>) and
+    /// on every <see cref="Reload"/> trigger. Use <see cref="IList{T}"/>
+    /// (not <see cref="ObservableCollection{T}"/>) so the row-build can
+    /// run against a plain <see cref="List{T}"/> — caller wraps the
+    /// finished list in a fresh ObservableCollection once for the
+    /// bulk-replace.
+    /// </summary>
+    protected abstract void PopulateRows(IList<GameDataRow> rows);
+
+    /// <summary>
+    /// Called by <see cref="GameDataBrowserViewModel"/> whenever this
+    /// section becomes the selected one. Lets expensive sections
+    /// (10k+ rows of MDB-derived JSON) defer their parse + row-build
+    /// work until the user actually opens the tab. Base implementation
+    /// is a no-op; <see cref="JsonTableSectionViewModel"/> overrides to
+    /// trigger the first load.
+    /// </summary>
+    public virtual void OnActivated() { }
+
+    /// <summary>
+    /// True once <see cref="Reload"/> or <see cref="LoadAsync"/> has
+    /// completed at least once. Subclasses that re-react to source
+    /// changes (set switch, profile reload) check this to skip work
+    /// for cold tabs the user has never opened.
+    /// </summary>
+    protected bool IsLoaded { get; private set; }
+
+    /// <summary>
+    /// Rebuild <see cref="AllRows"/> + <see cref="FilteredRows"/> from
+    /// the source and reapply the filter. Builds a fresh
+    /// <see cref="List{T}"/> via <see cref="PopulateRows"/>, wraps it in
+    /// a new <see cref="ObservableCollection{T}"/>, and assigns to the
+    /// properties — one PropertyChanged each instead of N
+    /// CollectionChanged events. Subclasses call this when their source
+    /// changes (set switch, engine CollectionChanged, profile reload).
+    /// </summary>
+    protected void Reload()
     {
-        ArgumentNullException.ThrowIfNull(cache);
-        _cache = cache;
-        _cache.ActiveSetChanged += _ => Reload();
-        Reload();
+        SelectedRow = null;
+        List<GameDataRow> rows = new();
+        PopulateRows(rows);
+        AllRows = new ObservableCollection<GameDataRow>(rows);
+        ApplyFilter();
+        IsLoaded = true;
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    /// <summary>
+    /// Async variant of <see cref="Reload"/>: row-build runs on a worker
+    /// thread, then bulk-replace <see cref="AllRows"/> back on the UI
+    /// thread once the parse is done. Keeps the UI responsive on big
+    /// tables (Rooms reaches 27k+ rows in MajorMUD v1.11p, more on
+    /// custom-edit realms). <see cref="JsonTableSectionViewModel.OnActivated"/>
+    /// fires this through the dispatcher post; tests can <c>await</c>
+    /// it directly for deterministic completion.
+    /// </summary>
+    internal async Task LoadAsync()
+    {
+        List<GameDataRow> rows = await Task.Run(() =>
+        {
+            List<GameDataRow> list = new();
+            PopulateRows(list);
+            return list;
+        });
+        // Task.Run resumes the continuation on the captured
+        // SynchronizationContext (Avalonia dispatcher in app context,
+        // none in tests — either way the property writes happen on a
+        // single thread per call).
+        SelectedRow = null;
+        AllRows = new ObservableCollection<GameDataRow>(rows);
+        ApplyFilter();
+        IsLoaded = true;
+        OnPropertyChanged(nameof(StatusText));
     }
 
     partial void OnSearchTextChanged(string value)
@@ -82,41 +223,137 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         OnPropertyChanged(nameof(StatusText));
     }
 
-    private void Reload()
-    {
-        AllRows.Clear();
-        FilteredRows.Clear();
-        SelectedRow = null;
-
-        JsonDocument? doc = _cache.GetRawTable(TableName);
-        if (doc is null) { OnPropertyChanged(nameof(StatusText)); return; }
-
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            AllRows.Add(GameDataRow.FromJson(el, Columns));
-        }
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
     private void ApplyFilter()
     {
-        FilteredRows.Clear();
         string filter = (SearchText ?? string.Empty).Trim();
+        if (filter.Length == 0)
+        {
+            // Unfiltered — alias the AllRows collection directly so the
+            // DataGrid sees identical content with zero extra allocation.
+            // Both collections are treated as immutable snapshots between
+            // Reloads, so sharing is safe.
+            FilteredRows = AllRows;
+            return;
+        }
 
+        List<GameDataRow> matched = new();
         foreach (GameDataRow row in AllRows)
         {
-            if (filter.Length == 0 ||
-                (row.Get(SearchKeyColumn)?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
+            if (RowMatches(row, filter))
+                matched.Add(row);
+        }
+        FilteredRows = new ObservableCollection<GameDataRow>(matched);
+    }
+
+    /// <summary>
+    /// A row matches the filter when *any* column's raw value contains
+    /// the filter substring (case-insensitive). Raw values drive the
+    /// match so numeric codes (e.g. <c>1</c>) are findable even when
+    /// the grid renders them via a formatter (<c>"Weapon"</c>).
+    /// </summary>
+    private bool RowMatches(GameDataRow row, string filter)
+    {
+        foreach (string column in Columns)
+        {
+            string? value = row.Get(column);
+            if (value is not null && value.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        // Also match against the Use-tier short label so the user can
+        // filter by tier (e.g. typing "Char" surfaces every overridden row).
+        return row.SourceTier.ToShortLabel().Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+/// <summary>
+/// Concrete base for MDB-derived tabs. Loads its rows from
+/// <see cref="GameDataCache"/>'s active set on construction and on
+/// every <see cref="GameDataCache.ActiveSetChanged"/>. Subclasses
+/// supply <see cref="TableName"/> + <see cref="GameDataTableSectionViewModel.Columns"/> +
+/// <see cref="GameDataTableSectionViewModel.SearchKeyColumn"/>.
+/// </summary>
+public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
+{
+    private readonly GameDataCache _cache;
+    private readonly SettingsResolver? _resolver;
+
+    /// <summary>Underlying table name in the active set (e.g. <c>"Monsters"</c>).</summary>
+    protected abstract string TableName { get; }
+
+    /// <summary>
+    /// Column whose value identifies the record for tier-override
+    /// lookup (default: the primary-key column, typically <c>"Number"</c>
+    /// on MajorMUD MDB tables). Subclasses can override if the table's
+    /// natural key isn't <c>"Number"</c>.
+    /// </summary>
+    protected virtual string OverrideKeyColumn => "Number";
+
+    // Stored as a field so Dispose can unsubscribe — without this the
+    // GameDataCache singleton's event roots every JsonTableSectionViewModel
+    // ever created (leaking section VMs + their cached row collections +
+    // their lazy-built Views across every browser open).
+    private readonly Action<string?> _activeSetHandler;
+
+    protected JsonTableSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        _cache = cache;
+        _resolver = resolver;
+        // ActiveSetChanged invalidates whatever was loaded — but we only
+        // re-parse if the tab has already been opened. Tabs that have never
+        // been activated stay un-loaded until first activation, dodging the
+        // upfront 10-tables-times-thousands-of-rows parse on browser open.
+        _activeSetHandler = _ =>
+        {
+            if (IsLoaded) Reload();
+        };
+        _cache.ActiveSetChanged += _activeSetHandler;
+        // NOTE: ctor does NOT call Reload() — that's lazy via OnActivated.
+    }
+
+    public override void Dispose()
+    {
+        _cache.ActiveSetChanged -= _activeSetHandler;
+        base.Dispose();
+    }
+
+    public override void OnActivated()
+    {
+        if (IsLoaded) return;
+        // Defer to the next dispatcher tick so the parse runs *after* the
+        // ContentControl constructs our View and the DataGrid builds its
+        // columns (DataContextChanged handler in code-behind). Without
+        // the defer, rows would arrive on a 0-column grid and never
+        // materialise — the tab would render blank on first activation.
+        // LoadAsync flips IsLoaded once the rows land.
+        Dispatcher.UIThread.Post(() => _ = LoadAsync());
+    }
+
+    protected override void PopulateRows(IList<GameDataRow> rows)
+    {
+        JsonDocument? doc = _cache.GetRawTable(TableName);
+        if (doc is null) return;
+
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters);
+            // Per-row tier resolution: look up the record by its primary
+            // key column value (typically Number) and ask the resolver
+            // which tier owns the highest-priority override, if any.
+            if (_resolver is not null)
             {
-                FilteredRows.Add(row);
+                string? key = row.Get(OverrideKeyColumn);
+                if (!string.IsNullOrEmpty(key))
+                    row.SourceTier = _resolver.GetGameDataSourceTier(TableName, key);
             }
+            rows.Add(row);
         }
     }
 }
 
 /// <summary>
-/// One row loaded from a game-data JSON table. Holds the column-name →
+/// One row loaded from a game-data source. Holds the column-name →
 /// string-rendered-value dictionary. Numbers / nulls / nested objects
 /// are all collapsed to strings at parse time so the view only has to
 /// deal with one shape.
@@ -125,7 +362,28 @@ public sealed class GameDataRow
 {
     private readonly IReadOnlyDictionary<string, string?> _values;
 
+    /// <summary>Data cells in display order; the trailing "Use" virtual cell is appended by the view.</summary>
     public IReadOnlyList<GameDataCell> Cells { get; }
+
+    /// <summary>
+    /// Highest-priority tier that owns this record. Drives the Game
+    /// Data Browser's "Use" column label and the edit dialog's "Use:"
+    /// dropdown initial value.
+    /// </summary>
+    public SettingsTier SourceTier { get; set; } = SettingsTier.Defaults;
+
+    /// <summary>Short tier label rendered in the virtual "Use" column.</summary>
+    public string UseLabel => SourceTier.ToShortLabel();
+
+    /// <summary>
+    /// Opaque per-section payload — used by sections (e.g. Messages)
+    /// that need a direct handle back to the source record after the
+    /// user double-clicks. Lets the section avoid the Id-from-cells
+    /// dance when display columns don't include the identity fields
+    /// (the Messages table shows "Lines/Preview" summaries, not the
+    /// raw message text the Id is hashed from).
+    /// </summary>
+    public object? Tag { get; set; }
 
     private GameDataRow(IReadOnlyDictionary<string, string?> values, IReadOnlyList<GameDataCell> cells)
     {
@@ -140,18 +398,53 @@ public sealed class GameDataRow
     /// <summary>
     /// Build a row from a JSON element. Columns missing from the source
     /// render as <c>null</c> in the resulting row so subclasses see a
-    /// uniform shape regardless of schema drift.
+    /// uniform shape regardless of schema drift. The raw cell value
+    /// drives <see cref="Get"/> (so search/filter sees the underlying
+    /// data) while the optional <paramref name="formatters"/> map shapes
+    /// the *displayed* value in <see cref="Cells"/>.
     /// </summary>
-    public static GameDataRow FromJson(JsonElement element, IReadOnlyList<string> columns)
+    public static GameDataRow FromJson(
+        JsonElement element,
+        IReadOnlyList<string> columns,
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
     {
         Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
         List<GameDataCell> cells = new(columns.Count);
 
         foreach (string column in columns)
         {
-            string? value = ReadValue(element, column);
-            values[column] = value;
-            cells.Add(new GameDataCell(column, value));
+            string? raw = ReadValue(element, column);
+            values[column] = raw;
+            string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
+                ? fmt(raw)
+                : raw;
+            cells.Add(new GameDataCell(column, display));
+        }
+        return new GameDataRow(values, cells);
+    }
+
+    /// <summary>
+    /// Build a row from an arbitrary column-name → raw-value dictionary
+    /// (engine-backed tabs that don't have an MDB JSON source). The same
+    /// formatter contract as <see cref="FromJson"/> applies — formatted
+    /// strings render in the grid, raw strings drive search.
+    /// </summary>
+    public static GameDataRow FromDictionary(
+        IReadOnlyDictionary<string, string?> source,
+        IReadOnlyList<string> columns,
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
+    {
+        Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
+        List<GameDataCell> cells = new(columns.Count);
+
+        foreach (string column in columns)
+        {
+            source.TryGetValue(column, out string? raw);
+            values[column] = raw;
+            string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
+                ? fmt(raw)
+                : raw;
+            cells.Add(new GameDataCell(column, display));
         }
         return new GameDataRow(values, cells);
     }

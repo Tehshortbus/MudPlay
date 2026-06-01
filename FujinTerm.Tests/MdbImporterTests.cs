@@ -70,11 +70,15 @@ public sealed class MdbImporterTests
         MdbImporter importer = new();
         string bogus = Path.Combine(Path.GetTempPath(), "definitely-not-a-real-file-12345.mdb");
 
-        var (success, message, folder) = await importer.ImportAsync(bogus);
+        MdbImportResult result = await importer.ImportAsync(bogus);
 
-        Assert.False(success);
-        Assert.Contains("not found", message, System.StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(string.Empty, folder);
+        Assert.False(result.Success);
+        Assert.Contains("not found", result.Message, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(string.Empty, result.FolderName);
+        Assert.Equal(0, result.TablesFound);
+        Assert.Equal(0, result.TablesImported);
+        Assert.Equal(0, result.TablesSkipped);
+        Assert.Equal(0, result.RowsImported);
     }
 
     [Theory]

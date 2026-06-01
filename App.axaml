@@ -26,6 +26,9 @@
              classes (Menu.Chrome, Border.Toolbar, Button.ToolbarBtn, etc.) so
              unscoped controls keep the Fluent baseline. -->
         <FluentTheme />
+        <!-- DataGrid ships its theme separately from FluentTheme; without
+             this the Game Data Browser grids render with no chrome. -->
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
         <StyleInclude Source="avares://FujinTerm/Themes/Controls.axaml"/>
     </Application.Styles>
 </Application>

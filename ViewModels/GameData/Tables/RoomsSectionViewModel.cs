@@ -6,10 +6,18 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <summary>
 /// Game Data Browser → Rooms tab. Renders the imported MajorMUD
 /// <c>Rooms</c> table — fuel for the Phase 7 RoomGraphManager (seeded
-/// from Rooms + Paths at import time) and the Workshop's room name
-/// lookups.
+/// from Rooms + the embedded N / S / E / W / NE / NW / SE / SW / U / D
+/// exit fields at import time) and the Workshop's room-name lookups.
 /// </summary>
-public sealed class RoomsSectionViewModel : GameDataTableSectionViewModel
+/// <remarks>
+/// MajorMUD MDBs store room exits *inline* on the Rooms row — there's
+/// no separate Paths table — so each direction is a column carrying the
+/// destination room number (or 0 / blank for a wall). The listing
+/// surfaces the most diagnostic fields plus the four cardinal exits;
+/// the per-room editor (Phase 5 follow-up) will show the full schema
+/// including all eight horizontal exits plus up / down.
+/// </remarks>
+public sealed class RoomsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "rooms";
     public override string Title => "Rooms";
@@ -18,21 +26,23 @@ public sealed class RoomsSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Id",
+        "Map Number",
+        "Room Number",
         "Name",
-        "ShortName",
-        "Area",
-        "ShopId",
         "Light",
-        "Special",
+        "Shop",
+        "NPC",
+        "CMD",
+        "Lair",
+        "N", "S", "E", "W",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "room", "area", "shop",
+        Title, "room", "map", "area", "shop", "lair", "exit",
     };
 
-    public RoomsSectionViewModel(GameDataCache cache) : base(cache) { }
+    public RoomsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

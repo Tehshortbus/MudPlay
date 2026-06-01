@@ -1,90 +1,177 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.Specialized;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
+using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
 /// Game Data Browser → Triggers tab. Surfaces the active character's
-/// user-defined triggers from <see cref="TriggerEngine"/>. Unlike the
-/// MDB-derived tabs, the data source here is the loaded
-/// <see cref="Models.Profile.CharacterProfile"/>, not
-/// <see cref="GameDataCache"/>.
+/// user-defined triggers from <see cref="TriggerEngine"/>. Editable —
+/// double-click a row opens the <see cref="TriggerEditDialogViewModel"/>;
+/// save routes through <see cref="TriggerEngine.Replace"/>.
 /// </summary>
-/// <remarks>
-/// PR 5.10 ships the listing surface; the editor dialog opened from
-/// row double-click lands once every table's listing is in place.
-/// </remarks>
-public sealed partial class TriggersSectionViewModel : GameDataSectionViewModel
+public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly TriggerEngine _engine;
-    private Control? _view;
+    private readonly DialogService? _dialogs;
+
+    /// <summary>
+    /// Per-rebuild side table mapping the displayed <see cref="GameDataRow"/>
+    /// back to the engine's live <see cref="Trigger"/> instance. The
+    /// engine has no natural key (Name isn't constrained unique), and
+    /// post-filter row indices don't map to engine indices, so we
+    /// remember the reference at populate time.
+    /// </summary>
+    private readonly Dictionary<GameDataRow, Trigger> _rowToTrigger = new();
 
     public override string Id => "triggers";
     public override string Title => "Triggers";
 
-    public ObservableCollection<Trigger> AllTriggers => _engine.Triggers;
+    public override IReadOnlyList<string> Columns { get; } = new[]
+    {
+        "Enabled", "Name", "Location", "Scope", "Match", "Pattern", "Response",
+    };
 
-    public ObservableCollection<Trigger> FilteredTriggers { get; } = new();
+    public override string SearchKeyColumn => "Name";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private Trigger? _selectedTrigger;
-
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new TriggersSectionView { DataContext = this };
+    /// <summary>Engine-backed table — every row lives only at the Char tier, so the "Use" badge would always read the same value.</summary>
+    public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "trigger", "pattern", "match",
+        Title, "trigger", "pattern", "match", "response",
     };
 
-    public string StatusText
-    {
-        get
-        {
-            int total = AllTriggers.Count;
-            int visible = FilteredTriggers.Count;
-            string countText = total == visible ? $"{total} triggers" : $"{visible} / {total} triggers";
-            string selection = SelectedTrigger is null ? "" : $"  ·  {SelectedTrigger.Name}";
-            return countText + selection;
-        }
-    }
+    public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
 
-    public TriggersSectionViewModel(TriggerEngine engine)
+    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand  => RemoveSelectedCommand;
+
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
+    public TriggersSectionViewModel(TriggerEngine engine, DialogService? dialogs = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         _engine = engine;
-        _engine.Triggers.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
-    }
+        _dialogs = dialogs;
+        _handler = (_, _) => Reload();
+        _engine.Triggers.CollectionChanged += _handler;
 
-    partial void OnSearchTextChanged(string value)
-    {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
+        OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
 
-    private void ApplyFilter()
-    {
-        FilteredTriggers.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (Trigger t in AllTriggers)
+        PropertyChanged += (_, e) =>
         {
-            if (filter.Length == 0 ||
-                t.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                t.Pattern.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            {
-                FilteredTriggers.Add(t);
-            }
-        }
-        OnPropertyChanged(nameof(StatusText));
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
+        Reload();
     }
+
+    public override void Dispose()
+    {
+        _engine.Triggers.CollectionChanged -= _handler;
+        base.Dispose();
+    }
+
+    protected override void PopulateRows(IList<GameDataRow> rows)
+    {
+        _rowToTrigger.Clear();
+        foreach (Trigger t in _engine.Triggers)
+        {
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Enabled"]  = t.Enabled ? "✓" : "",
+                ["Name"]     = t.Name,
+                ["Location"] = FormatLocation(t.Location),
+                ["Scope"]    = FormatScope(t.Scope),
+                ["Match"]    = t.MatchType.ToString(),
+                ["Pattern"]  = t.Pattern,
+                ["Response"] = string.IsNullOrEmpty(t.Response) ? "(CR)" : t.Response,
+            };
+            GameDataRow row = GameDataRow.FromDictionary(dict, Columns);
+            _rowToTrigger[row] = t;
+            rows.Add(row);
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        Trigger blank = new(
+            Name:      string.Empty,
+            Enabled:   true,
+            Scope:     TriggerScope.GameMessages,
+            MatchType: TriggerMatchType.Literal,
+            Pattern:   string.Empty,
+            Response:  string.Empty);
+        TriggerEditDialogViewModel vm = new(blank, isNew: true);
+        Trigger? created = await _dialogs.OpenWindowAsync<TriggerEditDialogViewModel, Trigger>(vm);
+        if (created is null) return;
+        _engine.Add(created);
+    }
+
+    private void RemoveSelected()
+    {
+        // Snapshot the multi-selection before mutating the engine —
+        // Remove triggers Reload which clears SelectedRows mid-loop.
+        List<Trigger> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            if (_rowToTrigger.TryGetValue(row, out Trigger? t)) targets.Add(t);
+        }
+        foreach (Trigger t in targets) _engine.Remove(t);
+    }
+
+    private async Task OpenEditAsync(GameDataRow? row)
+    {
+        if (row is null || _dialogs is null) return;
+        if (!_rowToTrigger.TryGetValue(row, out Trigger? original)) return;
+
+        TriggerEditDialogViewModel vm = new(original, isNew: false);
+        Trigger? updated = await _dialogs.OpenWindowAsync<TriggerEditDialogViewModel, Trigger>(vm);
+        if (updated is null) return;
+        _engine.Replace(original, updated);
+    }
+
+    /// <summary>
+    /// Friendly column label for the scope enum — the underlying values
+    /// are PascalCase (<c>GameMessages</c>, <c>ChatTelepath</c>) which
+    /// reads awkwardly in a table.
+    /// </summary>
+    private static string FormatScope(TriggerScope scope) => scope switch
+    {
+        TriggerScope.GameMessages  => "Game messages",
+        TriggerScope.ChatAny       => "Chat (any)",
+        TriggerScope.ChatSay       => "Say",
+        TriggerScope.ChatYell      => "Yell",
+        TriggerScope.ChatGossip    => "Gossip",
+        TriggerScope.ChatTelepath  => "Telepath",
+        TriggerScope.ChatGangpath  => "Gangpath",
+        TriggerScope.ChatBroadcast => "Broadcast",
+        TriggerScope.SystemLog     => "System log",
+        _                          => scope.ToString(),
+    };
+
+    /// <summary>Friendly column label for the storage-location enum.</summary>
+    private static string FormatLocation(TriggerLocation loc) => loc switch
+    {
+        TriggerLocation.GameData => "Game data",
+        TriggerLocation.Profile  => "Profile",
+        _                        => loc.ToString(),
+    };
 }

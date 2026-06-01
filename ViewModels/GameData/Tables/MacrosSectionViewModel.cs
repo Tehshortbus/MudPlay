@@ -1,81 +1,157 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Avalonia.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.Specialized;
+using System.Windows.Input;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
-using FujinTerm.Views.GameData.Tables;
+using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
 /// <summary>
-/// Game Data Browser → Macros tab. Read-only listing of the loaded
-/// character's keybinds from <see cref="MacroStore"/>. Per master
-/// plan, double-click a row opens the Phase 10 MacroEditDialog —
-/// wiring lands in Phase 10 PR 10.3 once that dialog exists.
+/// Game Data Browser → Macros tab. Surfaces the loaded character's
+/// keybinds from <see cref="MacroStore"/>. Editable — double-click a
+/// row opens the <see cref="MacroEditDialogViewModel"/>; save routes
+/// through <see cref="MacroStore.Replace"/>.
 /// </summary>
-public sealed partial class MacrosSectionViewModel : GameDataSectionViewModel
+public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly MacroStore _store;
-    private Control? _view;
+    private readonly DialogService? _dialogs;
+    private readonly KeybindingStore? _keybindings;
 
     public override string Id => "macros";
     public override string Title => "Macros";
 
-    public ObservableCollection<Macro> All => _store.Macros;
-    public ObservableCollection<Macro> Filtered { get; } = new();
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText))]
-    private Macro? _selected;
-
-    [ObservableProperty] private string _searchText = string.Empty;
-
-    public override Control View => _view ??= new MacrosSectionView { DataContext = this };
-
-    public override IEnumerable<string> SearchableLabels => new[] { Title, "macro", "key", "keybind" };
-
-    public string StatusText
+    public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        get
-        {
-            int total = All.Count;
-            int visible = Filtered.Count;
-            string countText = total == visible ? $"{total} macros" : $"{visible} / {total} macros";
-            string selection = Selected is null ? "" : $"  ·  {Selected.Name}";
-            return countText + selection;
-        }
-    }
+        "Enabled", "Key", "Command",
+    };
 
-    public MacrosSectionViewModel(MacroStore store)
+    public override string SearchKeyColumn => "Command";
+
+    /// <summary>Engine-backed table — every row lives only at the Char tier, so the "Use" badge would always read the same value and just adds noise.</summary>
+    public override bool ShowUseColumn => false;
+
+    public override IEnumerable<string> SearchableLabels => new[]
+    {
+        Title, "macro", "key", "keybind", "shortcut",
+    };
+
+    public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
+
+    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand  => RemoveSelectedCommand;
+
+    private readonly NotifyCollectionChangedEventHandler _handler;
+
+    public MacrosSectionViewModel(MacroStore store, DialogService? dialogs = null, KeybindingStore? keybindings = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;
-        _store.Macros.CollectionChanged += (_, _) => ApplyFilter();
-        ApplyFilter();
-    }
+        _dialogs = dialogs;
+        _keybindings = keybindings;
+        _handler = (_, _) => Reload();
+        _store.Macros.CollectionChanged += _handler;
+        OpenEditAsyncCommand   = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand        = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand  = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
 
-    partial void OnSearchTextChanged(string value)
-    {
-        ApplyFilter();
-        OnPropertyChanged(nameof(StatusText));
-    }
-
-    private void ApplyFilter()
-    {
-        Filtered.Clear();
-        string filter = (SearchText ?? string.Empty).Trim();
-
-        foreach (Macro m in All)
+        // The Remove button's CanExecute depends on the current SelectedRow —
+        // re-evaluate every time the selection changes.
+        PropertyChanged += (_, e) =>
         {
-            if (filter.Length == 0 ||
-                m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                m.Command.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                m.Key.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
+        Reload();
+    }
+
+    public override void Dispose()
+    {
+        _store.Macros.CollectionChanged -= _handler;
+        base.Dispose();
+    }
+
+    protected override void PopulateRows(IList<GameDataRow> rows)
+    {
+        foreach (Macro m in _store.Macros)
+        {
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                Filtered.Add(m);
+                ["Enabled"] = m.Enabled ? "✓" : "",
+                ["Key"]     = m.KeyChordLabel,
+                ["Command"] = m.Command,
+            };
+            rows.Add(GameDataRow.FromDictionary(dict, Columns));
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        // Seed a blank macro — the dialog forces the user to pick a key
+        // before save (CanSave gates the Save button on a valid chord).
+        Macro blank = new(Key: string.Empty, Ctrl: false, Shift: false, Alt: false,
+                          Command: string.Empty, Enabled: true);
+        if (_keybindings is null) return;
+        MacroEditDialogViewModel vm = new(blank, _store, _keybindings);
+        Macro? created = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
+        if (created is null) return;
+        _store.Add(created);
+        Reload();
+    }
+
+    private void RemoveSelected()
+    {
+        List<Macro> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            string? chord = row.Get("Key");
+            if (string.IsNullOrEmpty(chord)) continue;
+            foreach (Macro m in _store.Macros)
+            {
+                if (m.KeyChordLabel == chord) { targets.Add(m); break; }
             }
         }
-        OnPropertyChanged(nameof(StatusText));
+        if (targets.Count == 0) return;
+        foreach (Macro t in targets) _store.Remove(t);
+        Reload();
+    }
+
+    private async Task OpenEditAsync(GameDataRow? row)
+    {
+        if (row is null || _dialogs is null) return;
+        string? chord = row.Get("Key");
+        if (string.IsNullOrEmpty(chord)) return;
+
+        // Locate the live record by chord — IsDuplicate already
+        // prevents two macros sharing one chord at save time.
+        Macro? original = null;
+        foreach (Macro m in _store.Macros)
+        {
+            if (m.KeyChordLabel == chord)
+            {
+                original = m;
+                break;
+            }
+        }
+        if (original is null) return;
+
+        if (_keybindings is null) return;
+        MacroEditDialogViewModel vm = new(original, _store, _keybindings);
+        Macro? updated = await _dialogs.OpenWindowAsync<MacroEditDialogViewModel, Macro>(vm);
+        if (updated is null) return;
+
+        _store.Replace(original, updated);
+        Reload();
     }
 }

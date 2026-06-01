@@ -262,6 +262,19 @@ public sealed class TerminalControl : Control
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        // Macro first — if the chord matches a user-defined keybind,
+        // fire it via the dispatcher and consume the event so neither
+        // MapKey nor OnTextInput see the keystroke. The dispatcher
+        // returns false when no macro matches OR no sender is bound
+        // yet (pre-telnet-connection), letting us fall through to the
+        // regular terminal path.
+        if (FujinTerm.Services.AppServices.Current.MacroDispatcher
+                .TryHandleKey(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Map special keys to escape sequences first; printable text is
         // delivered through OnTextInput instead.
         var bytes = MapKey(e);

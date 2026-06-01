@@ -13,21 +13,6 @@
             <Setter Property="FontSize" Value="{StaticResource FontSizeLg}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
-        <Style Selector="TextBlock.ColumnHeader">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,16,0"/>
-            <Setter Property="MinWidth" Value="80"/>
-        </Style>
-        <Style Selector="TextBlock.Cell">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
-            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
-            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
-            <Setter Property="Margin" Value="0,0,16,0"/>
-            <Setter Property="MinWidth" Value="80"/>
-            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-        </Style>
         <Style Selector="TextBlock.StatusText">
             <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
@@ -39,60 +24,45 @@
         <!-- Tab header. -->
         <TextBlock Grid.Row="0" Classes="Header" Text="{Binding Title}"/>
 
-        <!-- Search box. -->
-        <TextBox Grid.Row="1"
-                 Text="{Binding SearchText, Mode=TwoWay}"
-                 PlaceholderText="Filter…"
-                 Width="320" HorizontalAlignment="Left"/>
-
-        <!-- Column header row. -->
-        <ScrollViewer Grid.Row="2"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Columns}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                        <TextBlock Classes="ColumnHeader" Text="{Binding}"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
-
-        <!-- Row list. Horizontal scroll on wide tables. -->
-        <Border Grid.Row="3"
+        <!-- Optional muted banner — collapses when the VM doesn't set BannerText. -->
+        <Border Grid.Row="1"
+                Padding="10,6"
                 BorderBrush="{StaticResource ChromeBorderBrush}"
                 BorderThickness="1"
-                Background="{StaticResource ChromeBgSunkenBrush}">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto">
-                <ListBox ItemsSource="{Binding FilteredRows}"
-                         SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
-                         Background="Transparent"
-                         BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:GameDataRow">
-                            <ItemsControl ItemsSource="{Binding Cells}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:GameDataCell">
-                                        <TextBlock Classes="Cell" Text="{Binding Value}"/>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </ScrollViewer>
+                CornerRadius="3"
+                IsVisible="{Binding BannerText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding BannerText}"
+                       Classes="StatusText"
+                       TextWrapping="Wrap"/>
         </Border>
+
+        <!-- Search box + Add/Remove buttons (Add/Remove only render
+             when the section implements IEditableTableSectionViewModel
+             with non-null AddCommand / RemoveCommand — wired in
+             code-behind via FindControl). -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+            <TextBox Text="{Binding SearchText, Mode=TwoWay}"
+                     PlaceholderText="Filter…"
+                     Width="320"/>
+            <Button x:Name="AddButton"    Content="Add"    IsVisible="False"/>
+            <Button x:Name="RemoveButton" Content="Remove" IsVisible="False"/>
+        </StackPanel>
+
+        <!-- Tabular row grid. Columns are populated in code-behind from
+             the VM's Columns list so they auto-size and align with their
+             headers. -->
+        <DataGrid Grid.Row="3"
+                  x:Name="RowsGrid"
+                  ItemsSource="{Binding FilteredRows}"
+                  SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                  SelectionMode="Extended"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="True"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="False"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto"/>
 
         <!-- Footer status -->
         <TextBlock Grid.Row="4" Classes="StatusText" Text="{Binding StatusText}"/>

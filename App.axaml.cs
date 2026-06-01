@@ -44,6 +44,72 @@ public partial class App : Application
             // .mp paths, favourites) routes its row-level conflicts through
             // this one window via DialogService.OpenWindowAsync.
             AppServices.Current.Dialogs.RegisterWindow<ImportConflictViewModel, ImportConflictWindow>();
+
+            // Phase 5 per-record edit dialogs — Messages tab + Monsters tab.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MessageEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MessageEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MonsterEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MonsterEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.PlayerEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.PlayerEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.MacroEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.MacroEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.TriggerEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.TriggerEditDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.AliasEditDialogViewModel,
+                FujinTerm.Views.GameData.Edit.AliasEditDialog>();
+
+            // Per-action keybind rebind dialog — opened from any
+            // toolbar button or menu item that owns a BuiltInAction.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Keybind.KeybindEditDialogViewModel,
+                FujinTerm.Views.Keybind.KeybindEditDialog>();
+
+            // File → Open profile / Save profile as — custom modeless dialogs
+            // replacing the platform file pickers (the per-folder layout means
+            // profiles live as subfolders, not flat .json files).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel,
+                FujinTerm.Views.Profile.ProfilePickerDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel,
+                FujinTerm.Views.Profile.ProfileNameInputDialog>();
+
+            // Settings → General → "Change data directory" confirm + execute dialog.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
+                FujinTerm.Views.Settings.DataDirectoryRelocateDialog>();
+
+            // Register the LogPane double-click handler for the spell-
+            // coverage auditor's summary entries. Opening reuses any
+            // already-open window (single-instance) so repeated
+            // double-clicks just focus the existing detail surface
+            // instead of stacking new ones.
+            FujinTerm.Views.GameData.SpellCoverageReportWindow? coverageWindow = null;
+            AppServices.Current.Log.RegisterDetailHandler(
+                FujinTerm.Services.SpellCoverageAuditor.LogSource,
+                () =>
+                {
+                    if (coverageWindow is not null && coverageWindow.IsVisible)
+                    {
+                        coverageWindow.Activate();
+                        return;
+                    }
+                    var vm = new FujinTerm.ViewModels.GameData.SpellCoverageReportViewModel(
+                        AppServices.Current.SpellCoverage);
+                    coverageWindow = new FujinTerm.Views.GameData.SpellCoverageReportWindow
+                    {
+                        DataContext = vm,
+                    };
+                    coverageWindow.Closed += (_, _) => coverageWindow = null;
+                    coverageWindow.Show(desktop.MainWindow!);
+                });
         }
 
         base.OnFrameworkInitializationCompleted();

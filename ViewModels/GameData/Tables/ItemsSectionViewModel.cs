@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
@@ -10,11 +11,16 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// auto-deposit math, and ability-effect tooltips throughout.
 /// </summary>
 /// <remarks>
-/// Ability columns (<c>Ab1</c>-<c>Ab10</c>) render as raw integers
-/// until Phase 5 PR 5.19 adds the <c>AbilityNames</c> helper; consumers
-/// that need human-readable labels swap then.
+/// Column names mirror the MajorMUD MDB schema verbatim (per
+/// <c>data-v1.11p.mdb</c>): <c>Number</c> is the canonical item ID,
+/// <c>Encum</c> is encumbrance, <c>Accy</c> is to-hit modifier,
+/// <c>StrReq</c> is strength prerequisite. Numeric enum cells
+/// (<c>ItemType</c>, <c>Worn</c>, <c>WeaponType</c>, <c>ArmourType</c>,
+/// <c>Currency</c>) are formatted via <see cref="MmudEnums"/> so the
+/// grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather than the
+/// raw integers.
 /// </remarks>
-public sealed class ItemsSectionViewModel : GameDataTableSectionViewModel
+public sealed class ItemsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "items";
     public override string Title => "Items";
@@ -23,24 +29,41 @@ public sealed class ItemsSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Id",
+        "Number",
         "Name",
         "ItemType",
-        "Slot",
-        "Weight",
-        "Damage",
-        "AC",
+        "Worn",
+        "WeaponType",
+        "ArmourType",
+        "Min",
+        "Max",
+        "ArmourClass",
+        "DamageResist",
+        "Speed",
+        "Accy",
+        "StrReq",
+        "Encum",
         "Price",
-        "Ab1Code",
-        "Ab1Pow",
+        "Currency",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "item", "weapon", "armor", "slot", "weight", "price", "ability",
+        Title, "item", "weapon", "armor", "armour", "worn", "slot",
+        "encumbrance", "price", "currency", "ability",
     };
 
-    public ItemsSectionViewModel(GameDataCache cache) : base(cache) { }
+    protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
+        new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ItemType"]   = MmudEnums.FormatItemType,
+            ["Worn"]       = MmudEnums.FormatWornSlot,
+            ["WeaponType"] = MmudEnums.FormatWeaponType,
+            ["ArmourType"] = MmudEnums.FormatArmourType,
+            ["Currency"]   = MmudEnums.FormatCurrency,
+        };
+
+    public ItemsSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

@@ -1,0 +1,97 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="440"
+        x:Class="FujinTerm.Views.GameData.Edit.AliasEditDialog"
+        x:DataType="vm:AliasEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="560" Height="440"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.MutedHint">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+            <!-- ===== Name + Enabled ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="100,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name"/>
+                <TextBox   Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="12"
+                           ToolTip.Tip="First-word match (case-insensitive). Whitespace and chat-channel collisions are rejected."/>
+                <CheckBox  Grid.Column="2" Content="Enabled"
+                           IsChecked="{Binding Enabled, Mode=TwoWay}"
+                           Margin="12,0,0,0"/>
+            </Grid>
+
+            <!-- Live status / error line. Muted when valid, red when not. -->
+            <TextBlock Grid.Row="1"
+                       Margin="108,0,0,0"
+                       Text="{Binding StatusMessage}"
+                       Classes="MutedHint"
+                       IsVisible="{Binding !HasError}"/>
+            <TextBlock Grid.Row="1"
+                       Margin="108,0,0,0"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE06D6D" FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}"/>
+
+            <!-- ===== Expansion ===== -->
+            <TextBlock Grid.Row="2" Classes="SectionHeader" Text="Expansion"/>
+
+            <!-- Placeholder-hint row — collapses when the expansion uses no {N}. -->
+            <Grid Grid.Row="3" ColumnDefinitions="100,*" ColumnSpacing="8"
+                  IsVisible="{Binding PlaceholderHints, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Placeholders"/>
+                <TextBlock Grid.Column="1" Text="{Binding PlaceholderHints}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"
+                           ToolTip.Tip="These positional placeholders bind to the words you type after the alias name. {0} = the whole rest of the line; {N≥1} = the Nth whitespace-split token."/>
+            </Grid>
+
+            <!-- ===== Expansion text + footer ===== -->
+            <Grid Grid.Row="4" RowDefinitions="*,Auto" RowSpacing="3">
+                <TextBox Grid.Row="0"
+                         Text="{Binding Expansion, Mode=TwoWay}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         FontFamily="{StaticResource FontMono}"
+                         FontSize="12"
+                         MinHeight="100"
+                         ToolTip.Tip="Text sent to the game when the alias fires. {0} substitutes the whole rest of the typed line. {1}, {2}… substitute positional tokens. ^M or ; splits into multiple lines."/>
+                <TextBlock Grid.Row="1"
+                           Classes="MutedHint"
+                           Text="{}{0} = whole rest of typed line.  {N≥1} = Nth whitespace-split token.  ^M or ; splits multi-line."/>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+                <Button Content="Save"   Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding CanSave}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

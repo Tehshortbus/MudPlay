@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Tables;
 using Xunit;
@@ -40,23 +41,28 @@ public sealed class GameDataTableSectionTests : IDisposable
     }
 
     [Fact]
-    public void Reload_PopulatesRowsFromActiveSet()
+    public async Task Reload_PopulatesRowsFromActiveSet()
     {
         SeedMonsters("v1.11p",
-            "[{\"Id\":1,\"Name\":\"Goblin\",\"Level\":1,\"Hp\":10}," +
-             "{\"Id\":2,\"Name\":\"Orc\",\"Level\":3,\"Hp\":25}]");
+            "[{\"Number\":1,\"Name\":\"Goblin\",\"HP\":10,\"EXP\":3}," +
+             "{\"Number\":2,\"Name\":\"Orc\",\"HP\":25,\"EXP\":10}]");
 
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        // Lazy-load: rows materialise on first activation. Bypass the
+        // dispatcher-Post deferral OnActivated uses in app context — call
+        // LoadAsync directly so the awaiter surfaces completion before
+        // the asserts run.
+        await vm.LoadAsync();
 
         Assert.Equal(2, vm.AllRows.Count);
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
-        Assert.Equal("1",      vm.AllRows[0].Get("Level"));
+        Assert.Equal("10",     vm.AllRows[0].Get("HP"));
         Assert.Equal("Orc",    vm.AllRows[1].Get("Name"));
     }
 
     [Fact]
-    public void SearchText_FiltersByNameColumn()
+    public async Task SearchText_FiltersByNameColumn()
     {
         SeedMonsters("v1.11p",
             "[{\"Id\":1,\"Name\":\"Goblin Warrior\"}," +
@@ -64,6 +70,7 @@ public sealed class GameDataTableSectionTests : IDisposable
              "{\"Id\":3,\"Name\":\"Orc Chieftain\"}]");
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        await vm.LoadAsync();
 
         vm.SearchText = "goblin";
 
@@ -72,24 +79,29 @@ public sealed class GameDataTableSectionTests : IDisposable
     }
 
     [Fact]
-    public void MissingColumn_RendersAsNull()
+    public async Task MissingColumn_RendersAsNull()
     {
-        SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]"); // no Level / Hp
+        SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]"); // no HP / EXP
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        await vm.LoadAsync();
 
-        Assert.Null(vm.AllRows[0].Get("Level"));
-        Assert.Null(vm.AllRows[0].Get("Hp"));
+        Assert.Null(vm.AllRows[0].Get("HP"));
+        Assert.Null(vm.AllRows[0].Get("EXP"));
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
     }
 
     [Fact]
-    public void ActiveSetChanged_ReloadsRows()
+    public async Task ActiveSetChanged_ReloadsRows()
     {
         SeedMonsters("v1.11p", "[{\"Name\":\"Goblin\"}]");
         SeedMonsters("paradigm-1.8.5", "[{\"Name\":\"Skeleton\"},{\"Name\":\"Zombie\"}]");
 
         MonstersSectionViewModel vm = new(_cache);
+        // Activation marks the tab as "loaded" — subsequent ActiveSetChanged
+        // events trigger a reload. Without activation the section stays cold
+        // (the lazy-load contract) and set switches would no-op.
+        await vm.LoadAsync();
 
         _cache.SwitchSet("v1.11p");
         Assert.Single(vm.AllRows);
@@ -99,27 +111,29 @@ public sealed class GameDataTableSectionTests : IDisposable
     }
 
     [Fact]
-    public void GameDataRow_CollapsesAllJsonValueKindsToStrings()
+    public async Task GameDataRow_CollapsesAllJsonValueKindsToStrings()
     {
         SeedMonsters("v1.11p",
-            "[{\"Name\":\"Goblin\",\"Level\":5,\"IsBoss\":true,\"Notes\":null}]");
+            "[{\"Name\":\"Goblin\",\"HP\":5,\"Undead\":true,\"GreetTXT\":null}]");
         _cache.SwitchSet("v1.11p");
 
         MonstersSectionViewModel vm = new(_cache);
+        await vm.LoadAsync();
 
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
-        Assert.Equal("5",      vm.AllRows[0].Get("Level"));
-        // IsBoss + Notes aren't in the Monsters column list so they don't appear.
-        Assert.DoesNotContain(vm.AllRows[0].Cells, c => c.Column == "IsBoss");
+        Assert.Equal("5",      vm.AllRows[0].Get("HP"));
+        // GreetTXT isn't in the Monsters column list so it doesn't appear.
+        Assert.DoesNotContain(vm.AllRows[0].Cells, c => c.Column == "GreetTXT");
     }
 
     [Fact]
-    public void StatusText_ShowsCountAndFilteredCount()
+    public async Task StatusText_ShowsCountAndFilteredCount()
     {
         SeedMonsters("v1.11p",
             "[{\"Name\":\"Goblin\"},{\"Name\":\"Orc\"},{\"Name\":\"Skeleton\"}]");
         _cache.SwitchSet("v1.11p");
         MonstersSectionViewModel vm = new(_cache);
+        await vm.LoadAsync();
 
         Assert.Contains("3 rows", vm.StatusText);
 

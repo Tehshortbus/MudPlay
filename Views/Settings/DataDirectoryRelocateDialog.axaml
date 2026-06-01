@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Settings"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="340"
+        x:Class="FujinTerm.Views.Settings.DataDirectoryRelocateDialog"
+        x:DataType="vm:DataDirectoryRelocateDialogViewModel"
+        Title="Change data directory"
+        Width="540" Height="340"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.PathValue">
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="10">
+
+            <TextBlock Grid.Row="0"
+                       Text="Move FujinTerm's data folder to a new location."
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="12" FontWeight="SemiBold"/>
+
+            <TextBlock Grid.Row="1"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap">
+                Files are copied to the destination, verified, then the
+                source folder is removed. The app restarts at the new
+                location once the move completes.
+            </TextBlock>
+
+            <!-- Current path -->
+            <Grid Grid.Row="2" ColumnDefinitions="90,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="From"/>
+                <TextBlock Grid.Column="1" Classes="PathValue" Text="{Binding CurrentPath}"/>
+            </Grid>
+
+            <!-- Destination + Browse -->
+            <Grid Grid.Row="3" ColumnDefinitions="90,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="To"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding DestinationPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"
+                           IsEnabled="{Binding !IsBusy}"/>
+                <Button    Grid.Column="2"
+                           Name="BrowseButton"
+                           Content="Browse…"
+                           Click="OnBrowseClicked"
+                           IsEnabled="{Binding !IsBusy}"/>
+            </Grid>
+
+            <!-- Move summary -->
+            <Grid Grid.Row="4" ColumnDefinitions="90,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Moving"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14">
+                    <TextBlock Text="{Binding FileCountText}"
+                               Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                    <TextBlock Text="·" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                    <TextBlock Text="{Binding TotalSizeText}"
+                               Foreground="{StaticResource ChromeFgBrush}" FontSize="11"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Status / validation line -->
+            <TextBlock Grid.Row="5"
+                       VerticalAlignment="Top"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE06D6D"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}"/>
+
+            <!-- Buttons -->
+            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Move and restart"
+                        Command="{Binding MoveCommand}"
+                        IsEnabled="{Binding CanMove}"
+                        IsDefault="True" MinWidth="140"/>
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -15,7 +15,7 @@ public sealed class EventsSectionViewModel : StubSectionViewModel
     public override string Description =>
         "User-defined scheduled or lifecycle events — fire at a specific clock time, on a recurring cadence, or " +
         "on connection-state changes. Actions include sending a command, running a macro, playing a sound, " +
-        "showing a notification, walking somewhere, or starting / switching a loop.";
+        "walking somewhere, or starting / switching a loop.";
 
     public override IReadOnlyList<StubGroup> Groups { get; } = new[]
     {

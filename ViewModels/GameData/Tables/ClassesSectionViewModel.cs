@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
@@ -9,7 +10,14 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// tab's class filtering, and Phase 13 CastingDirector's
 /// class-specific cure-spell selection.
 /// </summary>
-public sealed class ClassesSectionViewModel : GameDataTableSectionViewModel
+/// <remarks>
+/// Column names mirror the MajorMUD MDB schema verbatim. <c>MinHits</c>
+/// / <c>MaxHits</c> bracket starting HP roll, <c>ExpTable</c> is the
+/// progression curve, <c>MageryLVL</c> is the cap on castable-spell
+/// level. <c>MageryType</c>, <c>WeaponType</c>, and <c>ArmourType</c>
+/// render via <see cref="MmudEnums"/>.
+/// </remarks>
+public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "classes";
     public override string Title => "Classes";
@@ -18,22 +26,32 @@ public sealed class ClassesSectionViewModel : GameDataTableSectionViewModel
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Id",
+        "Number",
         "Name",
-        "ShortName",
-        "HpPerLevel",
-        "MaPerLevel",
-        "ManaType",
-        "MaxLevel",
-        "Alignment",
+        "MinHits",
+        "MaxHits",
+        "ExpTable",
+        "MageryType",
+        "MageryLVL",
+        "WeaponType",
+        "ArmourType",
+        "CombatLVL",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "class", "warrior", "mage", "priest", "rogue", "monk",
+        Title, "class", "warrior", "mage", "priest", "rogue", "monk", "magery", "combat",
     };
 
-    public ClassesSectionViewModel(GameDataCache cache) : base(cache) { }
+    protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
+        new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MageryType"] = MmudEnums.FormatMagery,
+            ["WeaponType"] = MmudEnums.FormatClassWeaponType,
+            ["ArmourType"] = MmudEnums.FormatArmourType,
+        };
+
+    public ClassesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
 }

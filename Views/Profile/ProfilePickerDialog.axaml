@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Profile"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="420"
+        x:Class="FujinTerm.Views.Profile.ProfilePickerDialog"
+        x:DataType="vm:ProfilePickerDialogViewModel"
+        Title="Open profile"
+        Width="380" Height="420"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <TextBlock Grid.Row="0"
+                       Text="Pick a character profile to load."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"/>
+
+            <Border Grid.Row="1"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1" CornerRadius="3">
+                <Grid>
+                    <ListBox Name="ProfilesList"
+                             ItemsSource="{Binding Profiles}"
+                             SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                             DoubleTapped="OnRowDoubleTapped"
+                             IsVisible="{Binding HasProfiles}"/>
+                    <TextBlock Text="No saved profiles yet — use File → Save profile as… to create one."
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="11" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Margin="16"
+                               IsVisible="{Binding !HasProfiles}"/>
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Open"   Command="{Binding OpenCommand}"
+                        IsEnabled="{Binding HasSelection}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -35,6 +35,48 @@ public sealed class LogService
     /// <summary>Fired after each successful <see cref="Log"/> call, on the producer's thread.</summary>
     public event Action<LogEntry>? EntryAdded;
 
+    /// <summary>
+    /// Per-source double-click handler registry. The LogPane looks
+    /// up the handler by an entry's <see cref="LogEntry.Source"/>
+    /// and invokes it when the user double-clicks the row — lets a
+    /// service like <c>SpellCoverageAuditor</c> register
+    /// <c>"GameData/Coverage"</c> + open a detail window without the
+    /// LogPane needing to know what coverage even is. Keys are
+    /// matched ordinal-case-sensitive (same convention as the
+    /// entry's Source tag).
+    /// </summary>
+    private readonly Dictionary<string, Action> _detailHandlers = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Register a double-click handler for entries whose
+    /// <see cref="LogEntry.Source"/> matches <paramref name="source"/>.
+    /// Replaces any prior handler for that source (last one wins).
+    /// Idempotent at startup time.
+    /// </summary>
+    public void RegisterDetailHandler(string source, Action handler)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+        ArgumentNullException.ThrowIfNull(handler);
+        lock (_detailHandlers) { _detailHandlers[source] = handler; }
+    }
+
+    /// <summary>
+    /// Invoke the detail handler for <paramref name="source"/>, or
+    /// return <c>false</c> if no handler is registered. The LogPane's
+    /// double-click handler is the only caller today.
+    /// </summary>
+    public bool TryInvokeDetailHandler(string source)
+    {
+        if (string.IsNullOrEmpty(source)) return false;
+        Action? handler;
+        lock (_detailHandlers)
+        {
+            if (!_detailHandlers.TryGetValue(source, out handler)) return false;
+        }
+        handler();
+        return true;
+    }
+
     /// <summary>Maximum number of entries retained.</summary>
     public int Capacity { get; }
 

@@ -52,7 +52,7 @@
 
                 <TextBlock Classes="SectionHeader" Text="Directories"/>
 
-                <Grid ColumnDefinitions="120,*,Auto">
+                <Grid ColumnDefinitions="120,*,Auto,Auto">
                     <TextBlock Grid.Column="0" Text="Data files:"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeMd}"
@@ -63,11 +63,16 @@
                              FontFamily="{StaticResource FontMono}"
                              FontSize="{StaticResource FontSizeSm}"
                              VerticalAlignment="Center"
-                             ToolTip.Tip="Resolved per platform (XDG on Linux, %AppData% on Windows, Application Support on macOS). Not user-editable — set FUJINTERM_DATA to override."/>
+                             ToolTip.Tip="Defaults to the platform user-data path (XDG on Linux, %AppData% on Windows, Application Support on macOS). Use Change… to move the folder elsewhere — a tiny pointer file at the platform-config location remembers the new path on next launch."/>
                     <Button Grid.Column="2"
                             Content="Open Data folder…"
                             Command="{Binding OpenDataFolderCommand}"
                             Margin="8,0,0,0"/>
+                    <Button Grid.Column="3"
+                            Content="Change…"
+                            Command="{Binding ChangeDataFolderCommand}"
+                            Margin="8,0,0,0"
+                            ToolTip.Tip="Move every file under the data folder to a different location; the app restarts at the new path."/>
                 </Grid>
 
                 <TextBlock Classes="SectionHeader" Text="Initial"/>
@@ -131,12 +136,31 @@
                 <CheckBox Margin="0,8,0,0"
                           IsChecked="{Binding AutoConnect, Mode=TwoWay}"
                           Content="Auto-connect when profile loads"
-                          IsEnabled="False"
-                          ToolTip.Tip="Wired in Phase 4 PR 4.5 (BBS connection settings)."/>
+                          ToolTip.Tip="When checked, FujinTerm dials the profile's pinned BBS immediately after the profile loads (skipped if you're already connected or there's no BBS pinned yet)."/>
 
                 <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
                           Content="Backup profile when making changes"
                           ToolTip.Tip="Copy the existing profile JSON to {name}.json.bak before each save."/>
+
+                <TextBlock Classes="SectionHeader" Text="Player database"/>
+
+                <Grid ColumnDefinitions="180,90,*" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0" Text="Auto-delete after (days):"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Column="1"
+                                   Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
+                                   Minimum="0" Maximum="3650"
+                                   Increment="1" FormatString="0"
+                                   ShowButtonSpinner="True"
+                                   ToolTip.Tip="Stale Players-tab records get dropped at startup once they're older than this. 0 disables auto-cleanup. Per-player 'Don't auto-delete' opts records out individually."/>
+                    <TextBlock Grid.Column="2"
+                               Text="Global setting — applies to every character. 90 = MegaMUD default."
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                </Grid>
 
                 <!-- Two-column defaults grid. -->
                 <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">

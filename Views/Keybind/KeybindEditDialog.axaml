@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Keybind"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="260"
+        x:Class="FujinTerm.Views.Keybind.KeybindEditDialog"
+        x:DataType="vm:KeybindEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="520" Height="260"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
+
+            <!-- ===== Action header ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="100,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Action"/>
+                <TextBlock Grid.Column="1" Text="{Binding ActionLabel}"
+                           Foreground="{StaticResource ChromeFgBrush}" FontSize="12"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- ===== Capture row ===== -->
+            <Grid Grid.Row="1" ColumnDefinitions="100,Auto,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Key"/>
+                <Button    Grid.Column="1"
+                           Content="{Binding CaptureButtonText}"
+                           Command="{Binding StartCaptureCommand}"
+                           IsEnabled="{Binding !IsCapturing}"
+                           MinWidth="100"/>
+                <Border    Grid.Column="2"
+                           BorderBrush="{StaticResource ChromeBorderBrush}"
+                           BorderThickness="1" CornerRadius="3" Padding="8,6"
+                           VerticalAlignment="Center" MinHeight="30">
+                    <TextBlock Text="{Binding KeyDisplay}"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontFamily="{StaticResource FontMono}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                </Border>
+                <Button    Grid.Column="3"
+                           Content="Clear"
+                           Command="{Binding ClearCommand}"
+                           Margin="4,0,0,0"
+                           ToolTip.Tip="Leaves the action unbound — no keyboard shortcut until rebound."/>
+            </Grid>
+
+            <!-- Live status / error line. Muted preview when valid, red when forbidden. -->
+            <TextBlock Grid.Row="2"
+                       Text="{Binding StatusMessage}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding !HasError}"/>
+            <TextBlock Grid.Row="2"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE06D6D"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}"/>
+
+            <!-- Spacer takes Row 3 (RowDefinitions has *) so buttons sit at bottom. -->
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding CanSave}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

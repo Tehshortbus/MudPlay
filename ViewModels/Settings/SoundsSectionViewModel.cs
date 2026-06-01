@@ -15,8 +15,8 @@ public sealed class SoundsSectionViewModel : StubSectionViewModel
     public override string PhaseTag => "Phase 13 (audio backend picked at implementation time)";
     public override string Description =>
         "Per-event sound cues — alarm on a tell, ding on level-up, fanfare on rare drop, etc. The audio backend " +
-        "is selected when Phase 13 ships the first feature that actually plays a file (a Trigger action, an " +
-        "Event-fire, or a party-join notification).";
+        "is selected when Phase 13 ships the first feature that actually plays a file (a Trigger action or an " +
+        "Event-fire alert).";
 
     public override IReadOnlyList<StubGroup> Groups { get; } = new[]
     {

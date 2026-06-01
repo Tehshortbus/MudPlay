@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FujinTerm.Services;
 
@@ -13,12 +14,18 @@ internal static class JsonStore
     /// <summary>
     /// Serializer options shared by all stores. Indented for readable diffs;
     /// comments tolerated on load so users can annotate hand-edited files.
+    /// Enum values serialize as their member name (e.g. <c>"Ignore"</c>,
+    /// <c>"Poisoned, Confused"</c>) instead of the raw numeric backing —
+    /// hand-edits are far easier with names, and the converter still
+    /// accepts numeric values on read (<c>allowIntegerValues</c> defaults
+    /// to true) so any legacy file or generated payload keeps loading.
     /// </summary>
     public static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
         AllowTrailingCommas = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>

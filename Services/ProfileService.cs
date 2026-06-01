@@ -169,6 +169,7 @@ public sealed class ProfileService
         if (Current is null || CurrentProfileName is null) return;
         ProfileSaving?.Invoke(Current);
 
+        Directory.CreateDirectory(AppPaths.ProfileFolder(CurrentProfileName));
         string path = AppPaths.CharacterProfileFile(CurrentProfileName);
         if (backup && File.Exists(path))
         {
@@ -203,16 +204,25 @@ public sealed class ProfileService
         Current.Name = profileName;
         CurrentProfileName = profileName;
         ProfileSaving?.Invoke(Current);
+        Directory.CreateDirectory(AppPaths.ProfileFolder(profileName));
         JsonStore.Save(AppPaths.CharacterProfileFile(profileName), Current);
     }
 
-    /// <summary>Enumerate every saved profile filename (without <c>.json</c>).</summary>
+    /// <summary>
+    /// Enumerate every profile that has a primary <c>profile.json</c>
+    /// on disk. The folder name (= profile name) is yielded. Folders
+    /// missing a primary file are skipped — they aren't fully
+    /// initialised yet.
+    /// </summary>
     public IEnumerable<string> ListNames()
     {
         if (!Directory.Exists(AppPaths.ProfilesDir)) yield break;
-        foreach (string file in Directory.EnumerateFiles(AppPaths.ProfilesDir, "*.json"))
+        foreach (string folder in Directory.EnumerateDirectories(AppPaths.ProfilesDir))
         {
-            yield return Path.GetFileNameWithoutExtension(file);
+            string name = Path.GetFileName(folder);
+            if (string.IsNullOrEmpty(name)) continue;
+            if (!File.Exists(AppPaths.CharacterProfileFile(name))) continue;
+            yield return name;
         }
     }
 

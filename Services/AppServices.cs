@@ -58,6 +58,16 @@ public sealed class AppServices
     public WindowLayoutStore WindowLayouts { get; }
 
     /// <summary>
+    /// Per-character splitter-position memory for two-pane resizable
+    /// dialogs. Each dialog calls <see cref="SplitterLayoutStore.AttachGrid"/>
+    /// once during construction with a stable id + the Grid to manage;
+    /// the store handles restore-on-open and capture-on-close,
+    /// hydrating from <see cref="CharacterProfile.SplitterRatios"/> on
+    /// profile load and snapshotting back on save.
+    /// </summary>
+    public SplitterLayoutStore SplitterLayouts { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -159,12 +169,13 @@ public sealed class AppServices
     /// <summary>
     /// Live cache of imported MajorMUD game data. Loads JSON tables on
     /// demand from <c>Data/game data/{set}/</c>; the active set follows
-    /// the loaded character's
-    /// <see cref="Models.Profile.CharacterProfile.ActiveGameDataSet"/>
-    /// field. Per-tab consumers (Phase 5 PRs 5.5+) convert raw
-    /// <see cref="System.Text.Json.JsonDocument"/> rows into typed
-    /// model collections and call <c>EvictTable</c> to drop the raw
-    /// bytes.
+    /// the pinned BBS's
+    /// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> field
+    /// (falling back to <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/>
+    /// when no BBS is pinned). Per-tab consumers (Phase 5 PRs 5.5+)
+    /// convert raw <see cref="System.Text.Json.JsonDocument"/> rows into
+    /// typed model collections and call <c>EvictTable</c> to drop the
+    /// raw bytes.
     /// </summary>
     public GameDataCache GameData { get; } = new();
 
@@ -192,14 +203,7 @@ public sealed class AppServices
     /// parser that calls <c>RecordObservation</c> lives with Phase 6
     /// PartyManager.
     /// </summary>
-    public PlayerDatabase Players { get; } = new();
-
-    /// <summary>
-    /// Loaded character's <see cref="Models.GameData.Favorite"/>
-    /// shortcuts. Phase 7 Goto / Loop dialogs consume the list as the
-    /// left-rail sidebar.
-    /// </summary>
-    public FavoritesManager Favorites { get; }
+    public PlayerDatabase Players { get; }
 
     /// <summary>
     /// Loaded character's <see cref="Models.GameData.Macro"/> store.
@@ -208,6 +212,55 @@ public sealed class AppServices
     /// the same store.
     /// </summary>
     public MacroStore Macros { get; }
+
+    /// <summary>
+    /// Runtime keystroke → macro → wire-send bridge. Constructed up-
+    /// front; <see cref="MacroDispatcher.SetSender"/> gets bound from
+    /// <see cref="MainWindowViewModel"/> after the telnet client is
+    /// ready. Pre-binding, key handlers fall through to the normal
+    /// terminal path.
+    /// </summary>
+    public MacroDispatcher MacroDispatcher { get; }
+
+    /// <summary>
+    /// Per-character keybindings for built-in app actions (toolbar +
+    /// menu shortcuts). Sister service to <see cref="Macros"/> — both
+    /// contribute to the unified conflict-detection check so a chord
+    /// can never bind to both a macro and a built-in action.
+    /// </summary>
+    public KeybindingStore Keybindings { get; }
+
+    /// <summary>
+    /// Active game-data set's Messages/Responses catalogue. Seeded
+    /// from the wcc-derived JSON at <c>Data/Global/Messages.seed.json</c>
+    /// (bootstrapped from the bundled <c>Defaults/</c> copy on first
+    /// launch), persisted per set at <c>Data/game data/{set}/messages.json</c>.
+    /// Surfaced by the Game Data Browser → Messages tab; the Phase 13
+    /// HealthManager / CastingDirector consume the same catalogue at
+    /// runtime to gate on observed conditions.
+    /// </summary>
+    public MessageStore Messages { get; private set; } = null!;
+
+    /// <summary>
+    /// Active game-data set's Monster Messages catalogue — one record
+    /// per Monsters-table row, carrying the parser patterns for every
+    /// line a monster can produce in combat (HitYou / HitOther /
+    /// DeathLine / ArmorBlock / Dodge / Miss + flavor prefixes).
+    /// Generated offline from the wcc <c>monster-messages.json</c>
+    /// export joined on <c>Monsters.Number</c>; per-set edits land at
+    /// <c>Data/game data/{set}/monster-messages.json</c>.
+    /// </summary>
+    public MonsterMessageStore MonsterMessages { get; private set; } = null!;
+
+    /// <summary>
+    /// Background audit comparing player-facing spells in the active
+    /// set against the Messages catalogue's Links field — surfaces a
+    /// summary LogEntry per audit run so users know which spells
+    /// don't have a parser entry. Bound in <see cref="Initialize"/>
+    /// once <see cref="GameData"/> + <see cref="Messages"/> + the
+    /// <see cref="Log"/> sink are all live.
+    /// </summary>
+    public SpellCoverageAuditor SpellCoverage { get; private set; } = null!;
 
 
     /// <summary>
@@ -223,16 +276,35 @@ public sealed class AppServices
         // the Data/ tree on disk before anyone else needs it.
         _ = AppPaths.DataRoot;
 
+        // Copy any missing seed files from the bundled Defaults/ next to
+        // the exe into the user-writable Data/Global/ location. Runs
+        // once per launch; pre-existing Global seeds (user-edited or
+        // user-curated) are never overwritten.
+        AppPaths.EnsureGlobalSeedsBootstrapped();
+
         // Best-effort log rotation. Default retention window; Settings.Other
         // will surface a knob in Phase 4.
         DebugLogWriter.PruneOldLogs();
 
-        _current = new AppServices();
+        // One-shot migration: relocate legacy flat-file layouts
+        // (Data/BBS/{name}.json, Data/profiles/{name}.json) into the
+        // per-name folders the rest of the bootstrap now expects.
+        // Runs BEFORE any store touches disk; idempotent on
+        // already-migrated trees.
+        LogService bootstrapLog = new();
+        DataMigration.RunIfNeeded(bootstrapLog);
+
+        _current = new AppServices(bootstrapLog);
         return _current;
     }
 
-    private AppServices()
+    private AppServices(LogService bootstrapLog)
     {
+        Log = bootstrapLog;
+        // Late-bind the cache's log sink so SwitchSet emits the swap
+        // audit entries (load / unload / swap) without coupling the
+        // cache to AppServices construction order.
+        GameData.Log = bootstrapLog;
         Settings = new SettingsService();
         Profile = new ProfileService();
         Bbs = new BbsProfileStore();
@@ -240,12 +312,16 @@ public sealed class AppServices
         // Resolver subscribes to Profile events for active-BBS tracking; build
         // it before Load() below so it catches the auto-load's ProfileLoaded
         // (it also self-syncs from Profile.Current as a defensive fallback).
-        Resolver = new SettingsResolver(Settings, Bbs, Profile);
+        // The active-set provider lets game-data override I/O target the
+        // currently active MDB set's per-set side-files.
+        Resolver = new SettingsResolver(Settings, Bbs, Profile, () => GameData.ActiveSet);
 
         Dialogs = new DialogService();
-        Log = new LogService();
+        // Log already set by ctor parameter — bootstrap log carries the
+        // DataMigration entries from before AppServices was constructed.
         Panels = new FloatingPanelHost();
         WindowLayouts = new WindowLayoutStore(Profile);
+        SplitterLayouts = new SplitterLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 
@@ -265,10 +341,18 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
-        Triggers = new TriggerEngine(Profile);
+        Triggers = new TriggerEngine(Profile, Chat, Log);
         Aliases = new AliasEngine(Profile);
-        Favorites = new FavoritesManager(Profile);
         Macros = new MacroStore(Profile);
+        MacroDispatcher = new MacroDispatcher(Macros);
+        Keybindings = new KeybindingStore(Profile);
+        // PlayerDatabase: BBS-tier observations + Char-tier customisations.
+        // Wires its own subscriptions (ProfileLoaded / ProfileClosed /
+        // BbsPinApplied / ProfileSaving) so both layers track the
+        // active BBS + loaded character. Active-BBS delegate routes
+        // through ResolveActiveBbs so Quick Connect and the BBS pin
+        // resolution chain stay the single source of truth.
+        Players = new PlayerDatabase(Profile, ResolveActiveBbs);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
@@ -294,12 +378,46 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
 
-        // Bridge: follow the loaded character's preferred game-data set.
-        // Profile.ProfileLoaded fires before the rest of the per-character
-        // services react, so subscribers that key off ActiveSetChanged
-        // (Phase 5 PRs 5.5+) see the correct set when they re-pull.
-        Profile.ProfileLoaded += p => GameData.SwitchSet(p.ActiveGameDataSet);
-        Profile.ProfileClosed += () => GameData.SwitchSet(null);
+        // Bridge: follow the pinned BBS's preferred game-data set.
+        // Active set lives at BBS scope (every character on the same
+        // realm shares the same MDB). Resolution chain:
+        //   pinned BBS's ActiveGameDataSet
+        //     → GlobalSettings.DefaultGameDataSet
+        //       → null (no set active).
+        // Re-resolve on every signal that could change the answer:
+        // a fresh profile load, an explicit BBS pin from Settings →
+        // BBS Apply, a re-pin via ProfileMutated, and profile close.
+        Profile.ProfileLoaded  += _ => ApplyActiveGameDataSet();
+        Profile.BbsPinApplied  += _ => ApplyActiveGameDataSet();
+        Profile.ProfileMutated += _ => ApplyActiveGameDataSet();
+        Profile.ProfileClosed  += ApplyActiveGameDataSet;
+
+        // Messages catalogue is paired per game-data set on disk
+        // (Data/Global/Messages/{set-name}.json) — reload whenever the
+        // active set changes so the Browser tab and runtime engines
+        // see the right realm's catalogue.
+        Messages = new MessageStore(Log);
+        GameData.ActiveSetChanged += Messages.Load;
+        // Monster-message catalogue parallels the spell-message one —
+        // same per-set storage + universal seed fallback pattern.
+        MonsterMessages = new MonsterMessageStore(Log);
+        GameData.ActiveSetChanged += MonsterMessages.Load;
+        // Triggers split storage: GameData-scoped triggers live in the
+        // active set's per-set triggers.json; Profile-scoped triggers
+        // stay on CharacterProfile.Triggers. The engine reloads its
+        // GameData slice on every set switch — the Profile slice is
+        // owned by ProfileLoaded, wired inside TriggerEngine's ctor.
+        GameData.ActiveSetChanged += Triggers.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            Triggers.OnActiveSetChanged(GameData.ActiveSet);
+
+        // Coverage audit — fires on every set switch + every Messages
+        // CollectionChanged; emits a summary LogEntry tagged
+        // SpellCoverageAuditor.LogSource that the LogPane's
+        // double-click handler routes back into a detail window. The
+        // detail-handler registration itself lives in App startup
+        // (it needs DialogService to spawn the modeless window).
+        SpellCoverage = new SpellCoverageAuditor(GameData, Messages, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
@@ -310,6 +428,19 @@ public sealed class AppServices
         // Track which profile was last loaded so the future "auto-load last"
         // setting has a value to read.
         Profile.ProfileLoaded += OnProfileLoaded;
+
+        // Best-effort startup prune of the Players table — drops records the
+        // user hasn't seen in GlobalSettings.PlayerCleanupDays days
+        // (per-record DontAutoDelete opts out). The cleanup window is global
+        // and editable from Settings → General → Player database.
+        int cleanupDays = Settings.Current.PlayerCleanupDays;
+        if (cleanupDays > 0)
+        {
+            int removed = Players.PurgeStale(cleanupDays, DateTime.UtcNow);
+            if (removed > 0)
+                Log.Info("PlayerDatabase",
+                    $"Pruned {removed} stale player record(s) older than {cleanupDays} day(s).");
+        }
     }
 
     private void ApplyToolbarFromActiveProfile()
@@ -331,11 +462,49 @@ public sealed class AppServices
                ?? new Models.Profile.ToolbarSettings();
     }
 
+    /// <summary>
+    /// Resolve which BBS the runtime should treat as active. Pin on
+    /// the loaded character profile wins; otherwise fall back to the
+    /// first BBS alphabetically (a user on a blank draft with one
+    /// saved BBS should still get its connection info, display
+    /// settings, and ActiveGameDataSet applied without manual
+    /// intervention). Returns <c>null</c> only when there's no pin
+    /// AND zero BBSes saved on disk. Mirrors the resolution logic
+    /// the main window's title-bar / Connect button use, so the
+    /// game-data + display + cache layers see the same active BBS
+    /// the user sees in the chrome.
+    /// </summary>
+    public Models.Settings.BbsProfile? ResolveActiveBbs()
+    {
+        string? name = Profile.Current?.BbsName;
+        if (!string.IsNullOrEmpty(name))
+        {
+            Models.Settings.BbsProfile? pinned = Bbs.Get(name);
+            if (pinned is not null) return pinned;
+        }
+
+        string? first = Bbs.ListNames()
+            .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        return first is null ? null : Bbs.Get(first);
+    }
+
+    /// <summary>
+    /// Recompute the active game-data set from the BBS-pin chain and
+    /// flip <see cref="GameData"/> if it differs. Idempotent — the
+    /// cache short-circuits no-op switches so calling this on every
+    /// profile / BBS / mutate signal is cheap.
+    /// </summary>
+    private void ApplyActiveGameDataSet()
+    {
+        Models.Settings.BbsProfile? bbs = ResolveActiveBbs();
+        string? resolved = bbs?.ActiveGameDataSet ?? Settings.Current.DefaultGameDataSet;
+        GameData.SwitchSet(resolved);
+    }
+
     private void ApplyDisplayFromActiveBbs()
     {
-        string? bbsName = Profile.Current?.BbsName;
-        Models.Settings.BbsProfile? bbs = string.IsNullOrEmpty(bbsName) ? null : Bbs.Get(bbsName);
-        Models.Settings.BbsProfile values = bbs ?? new Models.Settings.BbsProfile();
+        Models.Settings.BbsProfile values = ResolveActiveBbs() ?? new Models.Settings.BbsProfile();
         Display.FontSize = values.FontSize;
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;

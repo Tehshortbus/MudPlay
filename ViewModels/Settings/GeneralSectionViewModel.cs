@@ -25,6 +25,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "General";
 
     private readonly ProfileService _profile;
+    private readonly SettingsService _globalSettings;
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -35,12 +36,13 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "General", "Data files", "Open Data folder",
+        "General", "Data files", "Open Data folder", "Change data directory",
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Combat", "Auto-Nuke",
         "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
+        "Player cleanup", "auto-delete players", "stale players",
     };
 
     public override Control View => _view ??= new GeneralSectionView { DataContext = this };
@@ -64,6 +66,20 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.DataRoot}");
     }
 
+    /// <summary>
+    /// Opens the "Change data directory" modeless dialog. On confirm the
+    /// dialog runs <see cref="DataRootRelocator"/> and restarts the app at
+    /// the new location; this method's task completes only on Cancel.
+    /// </summary>
+    [RelayCommand]
+    private async Task ChangeDataFolderAsync()
+    {
+        DataRootRelocator.MovePlan plan = DataRootRelocator.Plan();
+        DataDirectoryRelocateDialogViewModel vm = new(AppPaths.DataRoot, plan);
+        await AppServices.Current.Dialogs.OpenWindowAsync<
+            DataDirectoryRelocateDialogViewModel, bool>(vm);
+    }
+
     // ----- Initial task (three radios — mutual exclusion handled by GroupName) -----
     [ObservableProperty] private bool _isTaskDoNothing = true;
     [ObservableProperty] private bool _isTaskBeginLoop;
@@ -73,6 +89,18 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _defaultAutoLairName;
     [ObservableProperty] private bool _autoConnect;
     [ObservableProperty] private bool _backupOnSave;
+
+    /// <summary>
+    /// Auto-cleanup window for the Players table. Mirrors
+    /// <see cref="Models.Settings.GlobalSettings.PlayerCleanupDays"/> —
+    /// it's a Global-tier value (every character on the install shares
+    /// the same threshold), so Apply writes through to
+    /// <see cref="SettingsService"/> rather than the per-character
+    /// profile blob. 0 / negative disables the cleanup entirely (the
+    /// view's NumericUpDown clamps to 0..3650 so the user can't enter
+    /// nonsense values).
+    /// </summary>
+    [ObservableProperty] private int _playerCleanupDays = 90;
 
     /// <summary>
     /// Names of saved loop files available for the "Begin looping" picker.
@@ -112,9 +140,14 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _amAutoSearch;
 
     public GeneralSectionViewModel(ProfileService profile)
+        : this(profile, AppServices.Current.Settings) { }
+
+    public GeneralSectionViewModel(ProfileService profile, SettingsService globalSettings)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(globalSettings);
         _profile = profile;
+        _globalSettings = globalSettings;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
 
@@ -142,6 +175,16 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save(backup: BackupOnSave);
+
+        // PlayerCleanupDays lives at the Global tier (one threshold per
+        // install, not per character). Persist alongside the char-tier
+        // write so the user's single Apply commits both.
+        int sanitized = Math.Clamp(PlayerCleanupDays, 0, 3650);
+        if (_globalSettings.Current.PlayerCleanupDays != sanitized)
+        {
+            _globalSettings.Current.PlayerCleanupDays = sanitized;
+            _globalSettings.Save();
+        }
 
         ClearDirty();
     }
@@ -177,6 +220,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         DefaultAutoLairName  = dto.DefaultAutoLairName;
         AutoConnect          = dto.AutoConnect;
         BackupOnSave         = dto.BackupOnSave;
+        PlayerCleanupDays    = _globalSettings?.Current.PlayerCleanupDays ?? 90;
 
         AutoActionDefaults m = dto.ManualMode;
         MmAutoCombat   = m.AutoCombat;
@@ -264,6 +308,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnDefaultAutoLairNameChanged(string? value) => Dirty();
     partial void OnAutoConnectChanged(bool value)            => Dirty();
     partial void OnBackupOnSaveChanged(bool value)           => Dirty();
+    partial void OnPlayerCleanupDaysChanged(int value)       => Dirty();
     partial void OnMmAutoCombatChanged(bool value)           => Dirty();
     partial void OnMmAutoNukeChanged(bool value)             => Dirty();
     partial void OnMmAutoHealRestChanged(bool value)         => Dirty();

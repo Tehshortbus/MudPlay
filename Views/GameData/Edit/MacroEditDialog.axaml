@@ -1,0 +1,91 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="340"
+        x:Class="FujinTerm.Views.GameData.Edit.MacroEditDialog"
+        x:DataType="vm:MacroEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="520" Height="340"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
+
+            <!-- ===== Key chord (Capture button + read-only display) + Enabled ===== -->
+            <Grid Grid.Row="0" ColumnDefinitions="100,Auto,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Key"/>
+                <Button    Grid.Column="1"
+                           Content="{Binding CaptureButtonText}"
+                           Command="{Binding StartCaptureCommand}"
+                           IsEnabled="{Binding !IsCapturing}"
+                           MinWidth="100"/>
+                <Border    Grid.Column="2"
+                           BorderBrush="{StaticResource ChromeBorderBrush}"
+                           BorderThickness="1" CornerRadius="3" Padding="8,6"
+                           VerticalAlignment="Center" MinHeight="30">
+                    <TextBlock Text="{Binding KeyDisplay}"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontFamily="{StaticResource FontMono}"
+                               FontSize="12" VerticalAlignment="Center"/>
+                </Border>
+                <CheckBox  Grid.Column="3" Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Margin="12,0,0,0"/>
+            </Grid>
+
+            <!-- Live status / error line for the chord. Two TextBlocks
+                 stacked — muted preview when valid, red when forbidden /
+                 duplicate. IsVisible bindings split them apart. -->
+            <TextBlock Grid.Row="1"
+                       Text="{Binding StatusMessage}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding !HasError}"/>
+            <TextBlock Grid.Row="1"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE06D6D"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasError}"/>
+
+            <!-- ===== Command ===== -->
+            <TextBlock Grid.Row="2" Classes="SectionHeader" Text="Command"/>
+
+            <Grid Grid.Row="3" RowDefinitions="*,Auto" RowSpacing="4">
+                <TextBox Grid.Row="0"
+                         Text="{Binding Command, Mode=TwoWay}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         FontFamily="{StaticResource FontMono}"
+                         FontSize="12"
+                         MinHeight="80"
+                         ToolTip.Tip="Text sent to the game when the chord fires. Use ^M or ; to split into multiple lines — each fragment is sent as its own command (CR-terminated)."/>
+                <TextBlock Grid.Row="1"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Text="Multi-step: split on ^M or ; — each fragment fires as its own line."/>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Save"   Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding CanSave}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
