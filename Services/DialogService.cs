@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using FujinTerm.Views;
 
 namespace FujinTerm.Services;
 
@@ -107,5 +108,23 @@ public sealed class DialogService
 
         window.Show(_mainWindow);
         return tcs.Task;
+    }
+
+    /// <summary>
+    /// One-shot "show this text" affordance for ad-hoc notices (e.g.
+    /// "no associated Messages found" from a Spells double-click). Uses
+    /// the same <see cref="InfoDialog"/> as the About / License menu
+    /// entries but without the toggle-tracker — every call opens a
+    /// fresh window the user dismisses with Close. Returns silently
+    /// when the main window isn't set (matches the unit-test path).
+    /// </summary>
+    public void ShowInfo(string title, string body)
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        if (_mainWindow is null) return;
+
+        InfoDialog dlg = new();
+        dlg.Configure(title, body);
+        dlg.Show(_mainWindow);
     }
 }

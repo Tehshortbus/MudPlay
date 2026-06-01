@@ -148,12 +148,14 @@ public sealed class SpellCoverageAuditor
 
             int spellMagery    = ReadInt(row, "Magery");
             int spellMageryLvl = ReadInt(row, "MageryLVL");
+            bool hasLearnedFrom = !string.IsNullOrEmpty(learnedFromRaw);
             gaps.Add(new UnanchoredSpell(
                 Number:      number,
                 Name:        name,
                 CastedBy:    ResolveRefs(castedByRaw),
                 LearnedFrom: ResolveRefs(learnedFromRaw),
-                Classes:     ResolveClasses(ReadString(row, "Classes"), spellMagery, spellMageryLvl)));
+                Classes:     ResolveClasses(ReadString(row, "Classes"),
+                                            spellMagery, spellMageryLvl, hasLearnedFrom)));
         }
 
         gaps.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
@@ -245,6 +247,7 @@ public sealed class SpellCoverageAuditor
             string table = typeName switch
             {
                 "Monster" => "Monsters",
+                "NPC"     => "Monsters",  // NPCs share the Monsters table — flagged rows, not their own.
                 "Item"    => "Items",
                 "Spell"   => "Spells",
                 _         => string.Empty,  // future / unknown — pass through verbatim
@@ -256,13 +259,16 @@ public sealed class SpellCoverageAuditor
     }
 
     /// <summary>
-    /// Matches <c>"Monster #1234"</c> / <c>"Item #56"</c> /
-    /// <c>"Spell #9"</c> anywhere in a string. Trailing-digit-greedy
-    /// so multi-digit numbers don't get truncated, and the lookahead
-    /// guards against gluing into a longer identifier.
+    /// Matches <c>"Monster #1234"</c> / <c>"NPC #251"</c> /
+    /// <c>"Item #56"</c> / <c>"Spell #9"</c> anywhere in a string.
+    /// Trailing-digit-greedy so multi-digit numbers don't get
+    /// truncated, and the word-boundary tail guards against gluing
+    /// into a longer identifier. NPCs share the Monsters table — the
+    /// MDB labels NPC-flagged rows differently in spell references
+    /// but the row data lives in <c>Monsters.json</c>.
     /// </summary>
     private static readonly System.Text.RegularExpressions.Regex RefPattern = new(
-        @"\b(Monster|Item|Spell)\s*#\s*(\d+)\b",
+        @"\b(Monster|NPC|Item|Spell)\s*#\s*(\d+)\b",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
@@ -277,44 +283,54 @@ public sealed class SpellCoverageAuditor
 
     /// <summary>
     /// Resolve the spell's class-eligibility to a human-readable list
-    /// per the two-layer MajorMUD rules the user provided:
-    /// <list type="bullet">
-    ///   <item><b>Explicit class restriction overrides magery.</b>
+    /// per the three-layer MajorMUD rules the user provided:
+    /// <list type="number">
+    ///   <item><b>Explicit class restriction overrides everything.</b>
     ///     If <paramref name="raw"/> contains specific <c>(N)</c>
     ///     tokens (not <c>(*)</c>), only those classes can cast —
-    ///     magery is ignored.</item>
-    ///   <item>Otherwise (<c>(*)</c> or empty), the spell is gated
-    ///     by magery: a class can cast it when
+    ///     magery + learned-from are ignored.</item>
+    ///   <item><b>Player-path requires (*) OR a learned-from item.</b>
+    ///     Without explicit class tokens, a spell qualifies for the
+    ///     magery filter only when its Classes field is <c>(*)</c>
+    ///     (explicitly open to all) or its Learned From field has an
+    ///     item (the item teaches the spell, confirming player
+    ///     reach). Spells with empty Classes + empty Learned From
+    ///     are NPC-only even when the magery type/level happens to
+    ///     match a player class.</item>
+    ///   <item><b>Magery filter</b>: when the player path is
+    ///     confirmed (rule 2), a class can cast when
     ///     <c>class.MageryType == spell.Magery</c> AND
     ///     <c>class.MageryLVL &gt;= spell.MageryLVL</c>.</item>
     /// </list>
     /// Returns the resolved list (space-slash separated) or
-    /// <c>"(none)"</c> when no class meets either rule (typically an
-    /// NPC-only spell with no player route).
+    /// <c>"(none)"</c> when no player class meets the rules.
     /// </summary>
-    private string ResolveClasses(string? raw, int spellMagery, int spellMageryLvl)
+    private string ResolveClasses(string? raw, int spellMagery, int spellMageryLvl, bool hasLearnedFrom)
     {
         List<string> explicitClassNames = new();
+        bool hasStarMarker = false;
         if (!string.IsNullOrEmpty(raw))
         {
             foreach (System.Text.RegularExpressions.Match m in ClassPattern.Matches(raw))
             {
                 string token = m.Groups[1].Value;
-                if (token == "*") continue;
+                if (token == "*") { hasStarMarker = true; continue; }
                 if (!int.TryParse(token, out int n)) continue;
                 string? name = _cache.FindNameByNumber("Classes", n);
                 explicitClassNames.Add(name ?? $"Class #{n}");
             }
         }
 
-        // Explicit class restriction wins. Magery filter is ignored.
+        // Rule 1: explicit class restriction wins; magery is ignored.
         if (explicitClassNames.Count > 0)
             return string.Join(" / ", explicitClassNames);
 
-        // No explicit restriction → magery filter. spellMagery == 0
-        // means "no magery type at all"; no player class can cast
-        // it (Warriors / Witchunters / Ninjas / Thieves all have
-        // MageryType 0 too but the spell isn't magery-bound to them).
+        // Rule 2: no explicit restriction → require either the (*)
+        // marker OR a learned-from item to confirm a player path.
+        // Without either, the spell is NPC-only.
+        if (!hasStarMarker && !hasLearnedFrom) return "(none)";
+
+        // Rule 3: magery filter.
         if (spellMagery == 0) return "(none)";
 
         List<string> mageryClassNames = new();
@@ -379,6 +395,7 @@ public sealed class SpellCoverageAuditor
             string table = m.Groups[1].Value switch
             {
                 "Monster" => "Monsters",
+                "NPC"     => "Monsters",
                 "Item"    => "Items",
                 "Spell"   => "Spells",
                 _         => string.Empty,

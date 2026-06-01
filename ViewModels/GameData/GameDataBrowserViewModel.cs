@@ -60,12 +60,13 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly PlayerDatabase? _players;
     private readonly MacroStore? _macros;
     private readonly MessageStore? _messages;
+    private readonly MonsterMessageStore? _monsterMessages;
     private readonly SettingsResolver? _resolver;
     private readonly DialogService? _dialogs;
     private readonly KeybindingStore? _keybindings;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -74,6 +75,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         PlayerDatabase? players = null,
         MacroStore? macros = null,
         MessageStore? messages = null,
+        MonsterMessageStore? monsterMessages = null,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         KeybindingStore? keybindings = null,
@@ -86,6 +88,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _players = players;
         _macros = macros;
         _messages = messages;
+        _monsterMessages = monsterMessages;
         _resolver = resolver;
         _dialogs = dialogs;
         _keybindings = keybindings;
@@ -210,9 +213,9 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
         // ----- MDB-derived (bottom group) ---------------------------------
 
-        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs));
+        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages));
         Sections.Add(new ItemsSectionViewModel(_gameData, _resolver));
-        Sections.Add(new SpellsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
         Sections.Add(new ShopsSectionViewModel(_gameData, _resolver));

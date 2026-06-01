@@ -9,18 +9,20 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 
 /// <summary>
 /// View-model for the Game Data Browser → Messages tab's per-record
-/// edit dialog. Mirrors MegaMUD's "Game Message Details" dialog: editable
-/// Name / Use-tier / Message / EndsWith / Response, the 15-bit
-/// effect-flag checkboxes, and the 7-value Action radio. Commits on
-/// Save (Defaults tier writes back to <see cref="MessageStore"/>; other
-/// tiers go via <see cref="SettingsResolver.WriteGameDataAt"/>) or
-/// discards on Cancel.
+/// edit dialog. Edits one <see cref="MessageRecord"/> end-to-end:
+/// Name / Use-tier / five perspective line slots (Caster / Target /
+/// Witness / Applied + AppliedEndsWith / Stat-line) / Action /
+/// Effects flags / Response / Links. Commits on Save (Defaults tier
+/// writes back to <see cref="MessageStore"/>; other tiers are stubbed
+/// for the future <see cref="SettingsResolver.WriteGameDataAt"/>
+/// path) or discards on Cancel.
 /// </summary>
 /// <remarks>
 /// Validation runs live — <see cref="StatusMessage"/> + <see cref="HasError"/>
-/// flag the dialog when Name is blank or when the new record would collide
-/// with another existing message on the (Name, Message, EndsWith) identity
-/// tuple. Save is gated on no errors.
+/// flag the dialog when Name is blank, when no perspective line has any text
+/// (record would carry no matchable content), or when the projected Id
+/// would collide with another existing record's identity tuple. Save is
+/// gated on no errors.
 /// </remarks>
 public sealed partial class MessageEditDialogViewModel : ObservableObject, IDialogViewModel<MessageEditResult>
 {
@@ -28,7 +30,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     private readonly MessageRecord _original;
     private readonly IReadOnlyCollection<MessageRecord> _existingRecords;
-    /// <summary>True for "Add new message" flows; false when editing. Drives the title + the duplicate self-skip.</summary>
     private readonly bool _isNew;
 
     [ObservableProperty]
@@ -40,19 +41,49 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     [ObservableProperty] private SettingsTier _useTier = SettingsTier.Defaults;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [NotifyPropertyChangedFor(nameof(StatusMessage))]
-    [NotifyPropertyChangedFor(nameof(CanSave))]
-    private string _message = string.Empty;
+    // ----- Five perspective line slots -----
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
-    private string _endsWith = string.Empty;
+    private string _casterMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _targetMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _witnessMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _appliedMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _appliedEndsWith = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProjectedId))]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(StatusMessage))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _statusLineMessage = string.Empty;
 
     /// <summary>
     /// Verbatim response field — stored exactly as MegaMUD's UI would
@@ -64,10 +95,8 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty] private MessageAction _action = MessageAction.Ignore;
 
     // Typed effect flags — bound to checkboxes in the dialog. Twelve
-    // bits surfaced; the three MegaMUD-specific find-mode flags
-    // (FindInText, FindInConversations, UseWhenChasing) are NOT
-    // exposed in the UI — round-trip through RawFlagsHex preserves
-    // the bits on imported records.
+    // bits surfaced; the three MegaMUD-specific find-mode flags are
+    // NOT exposed in the UI (the importer strips them at read time).
     [ObservableProperty] private bool _flagBlinded;
     [ObservableProperty] private bool _flagConfused;
     [ObservableProperty] private bool _flagPoisoned;
@@ -84,11 +113,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public IReadOnlyList<MessageAction> AvailableActions { get; } =
         Enum.GetValues<MessageAction>().ToArray();
 
-    /// <summary>
-    /// (Value, Label) rows for the Use dropdown — explicit friendly
-    /// labels so <c>SettingsTier.Bbs</c> renders as <c>"BBS"</c>
-    /// instead of <c>"Bbs"</c>.
-    /// </summary>
     public IReadOnlyList<TierOption> AvailableTiers { get; } = new[]
     {
         new TierOption(SettingsTier.Defaults,  "Defaults"),
@@ -97,30 +121,17 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         new TierOption(SettingsTier.Character, "Character"),
     };
 
-    /// <summary>
-    /// Editable Links panel — each row is a (Table, Number) back-
-    /// reference resolved against the active game-data set to its
-    /// human display name. Add via <see cref="AddLinkCommand"/>;
-    /// remove a row via <see cref="RemoveLinkCommand"/>.
-    /// </summary>
+    /// <summary>Editable Links list — see <see cref="LinkRow"/> for shape.</summary>
     public System.Collections.ObjectModel.ObservableCollection<LinkRow> LinkRows { get; } = new();
 
-    /// <summary>Tables the Add-link picker dropdown offers (matches the resolver's coverage).</summary>
     public IReadOnlyList<string> LinkTables { get; } = new[] { "Spells", "Items", "Monsters" };
 
-    /// <summary>Selected table for the Add-link row at the bottom of the panel.</summary>
     [ObservableProperty] private string _addLinkTable = "Spells";
 
-    /// <summary>Number textbox content for the Add-link row.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AddLinkStatus))]
     private string _addLinkNumber = string.Empty;
 
-    /// <summary>
-    /// Helper text that previews what the Add-link row would resolve
-    /// to, or flags the row as invalid when the number doesn't parse
-    /// or doesn't exist in the active set.
-    /// </summary>
     public string AddLinkStatus
     {
         get
@@ -139,31 +150,35 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
     /// <summary>
-    /// The Id the record would have at save time given the current
-    /// Name / Message / EndsWith. Surfaced under the Name field so
-    /// the user can see the identity tuple updating live as they
-    /// type — and spot collisions before they hit Save.
+    /// The Id the record would have at save time given the current Name +
+    /// all five line slots. Surfaced under the Name field so the user can
+    /// see the identity tuple updating live + spot collisions before Save.
     /// </summary>
     public string ProjectedId
-        => MegaMudMessagesImporter.ComputeId(Name ?? string.Empty,
-                                              Message ?? string.Empty,
-                                              EndsWith ?? string.Empty);
+        => MegaMudMessagesImporter.ComputeId(
+            Name              ?? string.Empty,
+            CasterMessage     ?? string.Empty,
+            TargetMessage     ?? string.Empty,
+            WitnessMessage    ?? string.Empty,
+            AppliedMessage    ?? string.Empty,
+            AppliedEndsWith   ?? string.Empty,
+            StatusLineMessage ?? string.Empty);
 
-    /// <summary>Returns the first validation problem, or <c>null</c> when the record is savable.</summary>
     private string? GetValidationError()
     {
-        if (string.IsNullOrWhiteSpace(Name))    return "Name is required.";
-        if (string.IsNullOrWhiteSpace(Message)) return "Message pattern is required.";
+        if (string.IsNullOrWhiteSpace(Name)) return "Name is required.";
+        bool hasAnyLine =
+            !string.IsNullOrWhiteSpace(CasterMessage)     ||
+            !string.IsNullOrWhiteSpace(TargetMessage)     ||
+            !string.IsNullOrWhiteSpace(WitnessMessage)    ||
+            !string.IsNullOrWhiteSpace(AppliedMessage)    ||
+            !string.IsNullOrWhiteSpace(StatusLineMessage);
+        if (!hasAnyLine) return "At least one perspective line (Caster / Target / Witness / Applied / Stat-line) is required.";
         if (FindDuplicate() is { } dup)
-            return $"Another message already has this identity (Name + Message + EndsWith): '{dup.Name}'.";
+            return $"Another record already has this identity (Name + all five lines): '{dup.Name}'.";
         return null;
     }
 
-    /// <summary>
-    /// Scan the existing records for one whose Id matches the projected
-    /// Id of the current edit. Self-skips when editing (the original is
-    /// allowed to keep its own identity).
-    /// </summary>
     private MessageRecord? FindDuplicate()
     {
         string projected = ProjectedId;
@@ -178,14 +193,13 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public bool HasError => GetValidationError() is not null;
     public bool CanSave  => !HasError;
 
-    /// <summary>Status line — error reason (red) when invalid, hint (muted) when valid.</summary>
     public string StatusMessage
     {
         get
         {
             string? err = GetValidationError();
             if (err is not null) return err;
-            return $"Id: {ProjectedId}  (identity = Name + Message + EndsWith)";
+            return $"Id: {ProjectedId}  (identity = Name + all five lines)";
         }
     }
 
@@ -201,11 +215,8 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         _original        = original;
         _existingRecords = existingRecords;
         _isNew           = isNew;
+        _cache           = cache;
 
-        _cache = cache;
-        // Resolve each link to its display name via the active set.
-        // Missing cache (e.g. unit-test path) renders the rows with a
-        // null Name; the XAML hides those columns gracefully.
         if (original.Links is { Count: > 0 } links)
         {
             foreach (GameDataLink link in links)
@@ -215,15 +226,17 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
             }
         }
 
-        Name     = original.Name;
-        UseTier  = currentTier;
-        Message  = original.Message;
-        EndsWith = original.EndsWith;
-        // Verbatim — preserves literal `^M` text the same way MegaMUD does.
-        Response = original.Response;
-        Action   = original.Action;
+        Name              = original.Name;
+        UseTier           = currentTier;
+        CasterMessage     = original.CasterMessage;
+        TargetMessage     = original.TargetMessage;
+        WitnessMessage    = original.WitnessMessage;
+        AppliedMessage    = original.AppliedMessage;
+        AppliedEndsWith   = original.AppliedEndsWith;
+        StatusLineMessage = original.StatusLineMessage;
+        Response          = original.Response;
+        Action            = original.Action;
 
-        // Hydrate the typed flag checkboxes from the record's flags.
         FlagBlinded           = original.Flags.HasFlag(MessageFlags.Blinded);
         FlagConfused          = original.Flags.HasFlag(MessageFlags.Confused);
         FlagPoisoned          = original.Flags.HasFlag(MessageFlags.Poisoned);
@@ -243,26 +256,25 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     {
         if (!CanSave) return;
         MessageFlags typed = AssembleFlags();
-        // Only the 0x0800 reserved bit survives a save — anything
-        // else outside the typed-flag mask (notably the three
-        // dropped MegaMUD find-mode bits that may still linger on
-        // pre-cleanup records) gets scrubbed.
         ushort reservedBits = (ushort)(_original.RawFlagsHex & ReservedBitsMask);
         ushort raw = (ushort)((ushort)typed | reservedBits);
 
         MessageRecord updated = new(
-            Id:          MegaMudMessagesImporter.ComputeId(Name, Message, EndsWith),
-            Name:        Name,
-            Message:     Message,
-            EndsWith:    EndsWith,
-            Action:      Action,
-            Flags:       typed,
-            RawFlagsHex: raw,
-            Response:    Response ?? string.Empty,
-            // Build Links from the user's edits in the panel —
-            // strips the resolved DisplayName since the persisted
-            // record only carries (Table, Number).
-            Links:       LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
+            Id:                MegaMudMessagesImporter.ComputeId(
+                                   Name, CasterMessage, TargetMessage, WitnessMessage,
+                                   AppliedMessage, AppliedEndsWith, StatusLineMessage),
+            Name:              Name,
+            Action:            Action,
+            Flags:             typed,
+            RawFlagsHex:       raw,
+            Response:          Response ?? string.Empty,
+            CasterMessage:     CasterMessage     ?? string.Empty,
+            TargetMessage:     TargetMessage     ?? string.Empty,
+            WitnessMessage:    WitnessMessage    ?? string.Empty,
+            AppliedMessage:    AppliedMessage    ?? string.Empty,
+            AppliedEndsWith:   AppliedEndsWith   ?? string.Empty,
+            StatusLineMessage: StatusLineMessage ?? string.Empty,
+            Links:             LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
 
         CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
     }
@@ -270,12 +282,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
 
-    /// <summary>
-    /// Add the currently-pending (Table, Number) to the Links list.
-    /// Refuses when the number doesn't parse OR when the same
-    /// (Table, Number) is already in the list (duplicates would
-    /// just be noise — every link counts the same toward coverage).
-    /// </summary>
     [RelayCommand]
     private void AddLink()
     {
@@ -291,7 +297,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         AddLinkNumber = string.Empty;
     }
 
-    /// <summary>Remove a single Link row from the panel. Bound to the per-row X button.</summary>
     [RelayCommand]
     private void RemoveLink(LinkRow? row)
     {
@@ -318,68 +323,31 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     }
 
     /// <summary>
-    /// Bits the dialog actively edits. The only out-of-band bit
-    /// preserved on save is the legacy reserved 0x0800; the three
-    /// MegaMUD find-mode flags are dropped from the model entirely
-    /// (see <see cref="MessageFlags"/> remarks) and the importer
-    /// masks them at read time, so they never survive into a saved
-    /// record.
-    /// </summary>
-    private const ushort AllKnownFlagsMask =
-        (ushort)MessageFlags.Blinded           | (ushort)MessageFlags.Confused          |
-        (ushort)MessageFlags.Poisoned          | (ushort)MessageFlags.LosingHp          |
-        (ushort)MessageFlags.MovementPrevented | (ushort)MessageFlags.AttackPrevented   |
-        (ushort)MessageFlags.Diseased          | (ushort)MessageFlags.HpRegenerating    |
-        (ushort)MessageFlags.ManaRegenerating  | (ushort)MessageFlags.EndsCombat        |
-        (ushort)MessageFlags.LastActionFailed  | (ushort)MessageFlags.Disabled;
-
-    /// <summary>
-    /// Single bit preserved across save — the reserved 0x0800 bit
-    /// the legacy MegaMUD format defines but doesn't otherwise use.
-    /// Anything outside this and <see cref="AllKnownFlagsMask"/> is
-    /// stripped on save, which scrubs any stale FindInText / etc.
-    /// bits left on existing records from before the find-mode
-    /// drop.
+    /// Single bit preserved across save — the reserved 0x0800 the legacy
+    /// MegaMUD format defines but doesn't otherwise use. Anything outside
+    /// the typed-flag mask is stripped on save.
     /// </summary>
     private const ushort ReservedBitsMask = 0x0800;
 }
 
 /// <summary>
 /// Result returned from <see cref="MessageEditDialogViewModel"/> on Save.
-/// Carries both the original (for replacement matching) and the updated
-/// record, plus the tier the user chose to write at.
 /// </summary>
-/// <param name="Original">The record as it was before editing — used to find and replace the row in the underlying store.</param>
-/// <param name="Updated">The record carrying the user's edits.</param>
-/// <param name="Tier">The tier the user picked from the Use dropdown.
-/// Defaults tier writes back to <see cref="MessageStore"/>; other tiers
-/// land via <see cref="SettingsResolver.WriteGameDataAt"/> (wired in a
-/// later PR; today the editor only writes Defaults).</param>
 public sealed record MessageEditResult(
     MessageRecord Original,
     MessageRecord Updated,
     SettingsTier  Tier);
 
+/// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
+public sealed record TierOption(SettingsTier Value, string Label);
+
 /// <summary>
 /// One row in <see cref="MessageEditDialogViewModel.LinkRows"/> —
 /// pairs the back-reference's raw <c>(Table, Number)</c> with the
 /// game-data row's display Name resolved at dialog-open time.
-/// <see cref="DisplayName"/> is <c>null</c> when the row couldn't be
-/// found in the active set (stale link, no active set, table missing).
 /// </summary>
-/// <param name="Table">JSON file stem, e.g. <c>"Spells"</c>.</param>
-/// <param name="Number">Row's <c>Number</c> field.</param>
-/// <param name="DisplayName">Resolved Name; <c>null</c> on a stale link.</param>
-/// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
-public sealed record TierOption(SettingsTier Value, string Label);
-
 public sealed record LinkRow(string Table, int Number, string? DisplayName)
 {
-    /// <summary>
-    /// Compact one-line label rendered in the dialog. Looks like
-    /// <c>"Spells#14 — bless"</c> when the name resolves, or
-    /// <c>"Spells#14 (unknown)"</c> when it doesn't.
-    /// </summary>
     public string Label => DisplayName is null
         ? $"{Table}#{Number} (unknown)"
         : $"{Table}#{Number} — {DisplayName}";

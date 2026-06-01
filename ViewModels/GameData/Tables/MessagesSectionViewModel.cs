@@ -29,7 +29,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Name", "Action", "Message", "EndsWith",
+        "Name", "Action", "Lines", "Preview",
     };
 
     public override string SearchKeyColumn => "Name";
@@ -87,35 +87,52 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     {
         foreach (MessageRecord m in _store.Messages)
         {
+            // Lines column = compact tag string showing which perspective
+            // slots are populated, e.g. "C T W A•" (Caster+Target+Witness
+            // + Applied pair). Preview column = first non-empty line for
+            // a quick at-a-glance read.
+            string lines = BuildLineTags(m);
+            string preview = FirstNonEmptyLine(m);
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Name"]     = m.Name,
-                ["Action"]   = m.Action.ToString(),
-                ["Message"]  = m.Message,
-                ["EndsWith"] = m.EndsWith,
+                ["Name"]    = m.Name,
+                ["Action"]  = m.Action.ToString(),
+                ["Lines"]   = lines,
+                ["Preview"] = preview,
             };
             GameDataRow row = GameDataRow.FromDictionary(dict, Columns);
-            // Messages live at the per-set Defaults tier by default;
-            // record overrides at higher tiers go via SettingsResolver.
+            row.Tag = m;
             if (_resolver is not null)
                 row.SourceTier = _resolver.GetGameDataSourceTier("Messages", m.Id);
             rows.Add(row);
         }
     }
 
+    private static string BuildLineTags(MessageRecord m)
+    {
+        List<string> tags = new(5);
+        if (!string.IsNullOrEmpty(m.CasterMessage))     tags.Add("C");
+        if (!string.IsNullOrEmpty(m.TargetMessage))     tags.Add("T");
+        if (!string.IsNullOrEmpty(m.WitnessMessage))    tags.Add("W");
+        if (!string.IsNullOrEmpty(m.AppliedMessage))    tags.Add(string.IsNullOrEmpty(m.AppliedEndsWith) ? "A" : "A•");
+        if (!string.IsNullOrEmpty(m.StatusLineMessage)) tags.Add("S");
+        return string.Join(" ", tags);
+    }
+
+    private static string FirstNonEmptyLine(MessageRecord m)
+    {
+        if (!string.IsNullOrEmpty(m.CasterMessage))     return m.CasterMessage;
+        if (!string.IsNullOrEmpty(m.TargetMessage))     return m.TargetMessage;
+        if (!string.IsNullOrEmpty(m.WitnessMessage))    return m.WitnessMessage;
+        if (!string.IsNullOrEmpty(m.AppliedMessage))    return m.AppliedMessage;
+        if (!string.IsNullOrEmpty(m.StatusLineMessage)) return m.StatusLineMessage;
+        return string.Empty;
+    }
+
     private async Task OpenEditAsync(GameDataRow? row)
     {
         if (row is null || _dialogs is null) return;
-
-        // Match the row back to its source MessageRecord by Id —
-        // synthesised from the row's Name/Message/EndsWith fields,
-        // which is the same algorithm the importer uses.
-        string id = MegaMudMessagesImporter.ComputeId(
-            row.Get("Name")     ?? string.Empty,
-            row.Get("Message")  ?? string.Empty,
-            row.Get("EndsWith") ?? string.Empty);
-        MessageRecord? original = _store.Messages.FirstOrDefault(m => m.Id == id);
-        if (original is null) return;
+        if (row.Tag is not MessageRecord original) return;
 
         MessageEditDialogViewModel vm = new(
             original,
@@ -155,15 +172,19 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     {
         if (_dialogs is null) return;
         MessageRecord blank = new(
-            Id:          string.Empty,
-            Name:        string.Empty,
-            Message:     string.Empty,
-            EndsWith:    string.Empty,
-            Action:      MessageAction.Ignore,
-            Flags:       MessageFlags.None,
-            RawFlagsHex: 0,
-            Response:    string.Empty,
-            Links:       Array.Empty<GameDataLink>());
+            Id:                string.Empty,
+            Name:              string.Empty,
+            Action:            MessageAction.Ignore,
+            Flags:             MessageFlags.None,
+            RawFlagsHex:       0,
+            Response:          string.Empty,
+            CasterMessage:     string.Empty,
+            TargetMessage:     string.Empty,
+            WitnessMessage:    string.Empty,
+            AppliedMessage:    string.Empty,
+            AppliedEndsWith:   string.Empty,
+            StatusLineMessage: string.Empty,
+            Links:             Array.Empty<GameDataLink>());
 
         MessageEditDialogViewModel vm = new(
             blank,
@@ -179,14 +200,21 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     /// <summary>Remove the selected row's record from the store.</summary>
     private void RemoveSelected()
     {
-        if (SelectedRow is null) return;
-        string id = MegaMudMessagesImporter.ComputeId(
-            SelectedRow.Get("Name")     ?? string.Empty,
-            SelectedRow.Get("Message")  ?? string.Empty,
-            SelectedRow.Get("EndsWith") ?? string.Empty);
-        MessageRecord? target = _store.Messages.FirstOrDefault(m => m.Id == id);
-        if (target is null) return;
-        _store.Messages.Remove(target);
+        // Snapshot the multi-selection (or fall back to the single
+        // SelectedRow when nothing has been multi-selected) before
+        // mutating the store — Remove triggers CollectionChanged →
+        // Reload, which clears SelectedRows mid-loop and would
+        // truncate the operation.
+        List<MessageRecord> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            if (row.Tag is MessageRecord target) targets.Add(target);
+        }
+        if (targets.Count == 0) return;
+        foreach (MessageRecord t in targets) _store.Messages.Remove(t);
         _store.Save();
     }
 }

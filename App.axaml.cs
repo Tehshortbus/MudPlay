@@ -102,7 +102,8 @@ public partial class App : Application
                         return;
                     }
                     var vm = new FujinTerm.ViewModels.GameData.SpellCoverageReportViewModel(
-                        AppServices.Current.SpellCoverage);
+                        AppServices.Current.SpellCoverage,
+                        AppServices.Current.Log);
                     coverageWindow = new FujinTerm.Views.GameData.SpellCoverageReportWindow
                     {
                         DataContext = vm,

@@ -1,120 +1,87 @@
 namespace FujinTerm.Models.GameData;
 
 /// <summary>
-/// One "Messages/Responses" entry — a wire-line pattern paired with
-/// the engine behaviour it should flip. Covers conditions (blinded /
-/// poisoned / paralyzed / confused / diseased / regenerating-self /
-/// regenerating-target / etc.) and any other game message the user
-/// wants the runtime to react to. Distinct from
-/// <see cref="SpellMessage"/> which is always linked to a parent
-/// <c>SpellId</c>; message records are standalone.
+/// One "Messages/Responses" entry — a parser-pattern bundle paired with
+/// the engine reaction that fires when any of its lines match.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Surfaced + edited via the Game Data Browser → Messages tab.
-/// Initially imported from a MegaMUD <c>messages.md</c> file, then
-/// persisted alongside the active game-data set under
-/// <c>Data/Global/Messages/{set-name}.json</c> — paired with the
-/// game-data folder so each realm carries its own message catalogue.
+/// Spell-bound records carry up to five perspective-tagged lines (the
+/// same line shown from the caster, target, witness, buff-applied, and
+/// stat-line points of view) so the future combat manager can ask a
+/// targeted question — "what's the caster line for spell N?" —
+/// without scanning every record. Non-spell records (item procs,
+/// monster ability lines, condition messages, life-counter triggers)
+/// typically populate only the slot that semantically fits.
 /// </para>
 /// <para>
-/// Field shape matches MegaMUD's <c>messages.md</c> wire format so
-/// records round-trip cleanly between import and export. See
-/// <see cref="MessageAction"/> / <see cref="MessageFlags"/> for the
-/// encoding tables.
+/// Storage lives alongside the active game-data set at
+/// <c>Data/game data/{set}/messages.json</c> with the universal seed
+/// at <c>Defaults/Messages.seed.json</c>. The seed is generated from
+/// the wcc-export <c>spell-messages.json</c> via the offline
+/// <c>gen_wcc_seed.py</c> script; user edits write back to the per-set
+/// file (creating it on first save).
+/// </para>
+/// <para>
+/// Identity rule: <see cref="Id"/> is <c>SHA1(Name | CasterMessage |
+/// TargetMessage | WitnessMessage | AppliedMessage | AppliedEndsWith |
+/// StatusLineMessage)</c> truncated to 16 lowercase hex chars. Any
+/// edit to Name or any line text produces a new Id; the store's
+/// upsert logic uses the original-Id reference to replace in place.
 /// </para>
 /// </remarks>
-/// <param name="Id">
-/// Stable content hash <c>SHA1(Name | Message | EndsWith)</c> truncated
-/// to 16 lowercase hex chars. Lets the same record dedupe across
-/// imports / merges without relying on the user-editable
-/// <see cref="Name"/>.
-/// </param>
-/// <param name="Name">
-/// Stable display name shown in the Messages tab list (e.g.
-/// <c>"Poison applied"</c>). User-editable; the immutable identity is
-/// <see cref="Id"/>.
-/// </param>
-/// <param name="Message">
-/// Pattern that fires when the effect begins / is present. Required.
-/// </param>
-/// <param name="EndsWith">
-/// Optional pattern that fires when the effect expires. Empty string
-/// when the record has no end-pattern.
-/// </param>
-/// <param name="Action">
-/// The single high-level reaction the engine takes when the pattern
-/// fires. See <see cref="MessageAction"/>.
-/// </param>
-/// <param name="Flags">Typed view of the known flag bits.</param>
-/// <param name="RawFlagsHex">
-/// Full 16-bit flag word as stored in the legacy <c>messages.md</c>
-/// file. Preserves reserved-but-unknown bits (notably <c>0x0800</c>)
-/// so the record round-trips back to the file losslessly.
-/// </param>
-/// <param name="Response">
-/// Verbatim response field as the user typed it in MegaMUD — multiple
-/// commands separated by literal <c>^M</c> (two characters) and / or
-/// raw CR. Stored as a single string so the editor displays it
-/// identically to MegaMUD's "Game Message Details" dialog (no
-/// canonicalization, no early splitting). The runtime consumer
-/// (Phase 13) is the one that translates <c>^M</c> / CR into actual
-/// CR-terminated wire sends.
-/// </param>
-/// <param name="Links">
-/// Back-references to the game-data records this message is associated
-/// with — e.g. <c>(Spells, 14)</c> for <c>bless</c>, or
-/// <c>(Items, 119)</c> for the item that procs the message. A single
-/// message can carry multiple links (a shared "You feel lucky" line
-/// fires from every weapon + spell that grants bless). Empty when the
-/// message has no known game-data anchor. Populated at seed-generation
-/// time via case-insensitive Name match against the active set's
-/// Spells / Items / Monsters JSON; user-editable in the edit dialog.
-/// </param>
+/// <param name="Id">Stable content hash of (Name + all five lines).</param>
+/// <param name="Name">Display name shown in the Messages tab list — typically the spell name for spell-bound records.</param>
+/// <param name="Action">High-level engine reaction when any line matches. See <see cref="MessageAction"/>.</param>
+/// <param name="Flags">Typed view of the known flag bits. See <see cref="MessageFlags"/>.</param>
+/// <param name="RawFlagsHex">Full 16-bit flag word as stored in the legacy MegaMUD format — preserves reserved 0x0800.</param>
+/// <param name="Response">Verbatim response text (literal <c>^M</c> separators preserved).</param>
+/// <param name="CasterMessage">Line YOU see when YOU cast the spell / use the item / proc the effect.</param>
+/// <param name="TargetMessage">Line YOU see when the spell hits YOU (damage spells, instant debuffs).</param>
+/// <param name="WitnessMessage">Line YOU see when someone else casts on someone else (third-party).</param>
+/// <param name="AppliedMessage">Buff / debuff begin text — what YOU see when the effect starts on you. Paired with <see cref="AppliedEndsWith"/>.</param>
+/// <param name="AppliedEndsWith">Wear-off text — what YOU see when the buff / debuff applied to you expires. Only meaningful alongside a non-empty <see cref="AppliedMessage"/>.</param>
+/// <param name="StatusLineMessage">Entry in the player's <c>stat</c> active-effects list while the effect is on you.</param>
+/// <param name="Links">Back-references to the game-data rows this record is anchored to — usually one Spells#N for spell-bound records, possibly several when name-aliased variants share the same lines (e.g. priest + druid resist cold).</param>
 public sealed record MessageRecord(
     string                       Id,
     string                       Name,
-    string                       Message,
-    string                       EndsWith,
     MessageAction                Action,
     MessageFlags                 Flags,
     ushort                       RawFlagsHex,
     string                       Response,
+    string                       CasterMessage,
+    string                       TargetMessage,
+    string                       WitnessMessage,
+    string                       AppliedMessage,
+    string                       AppliedEndsWith,
+    string                       StatusLineMessage,
     IReadOnlyList<GameDataLink>? Links = null);
 
 /// <summary>
-/// One back-reference from a <see cref="MessageRecord"/> (or any
-/// other curated game-data row) to a record inside the active set's
-/// JSON tables. Minimal shape on purpose — the display name is
-/// looked up live from the current set so it never goes stale on a
-/// game-data update.
+/// One back-reference from a <see cref="MessageRecord"/> to a record
+/// inside the active set's JSON tables. Display name is resolved live
+/// from the current set so it never goes stale on a game-data update.
 /// </summary>
-/// <param name="Table">
-/// JSON file stem under <c>Data/game data/{set}/</c> — e.g.
-/// <c>"Spells"</c>, <c>"Items"</c>, <c>"Monsters"</c>,
-/// <c>"Rooms"</c>. Case-insensitive on resolution.
-/// </param>
-/// <param name="Number">
-/// The <c>Number</c> field on the target record. The active set's
-/// reader looks this up to render the display name; a stale or
-/// missing number renders as <c>"{Table}#{Number} (unknown)"</c>
-/// rather than breaking the UI.
-/// </param>
+/// <param name="Table">JSON file stem under <c>Data/game data/{set}/</c> — case-insensitive on resolution.</param>
+/// <param name="Number">The <c>Number</c> field on the target record.</param>
 public readonly record struct GameDataLink(
     string Table,
     int    Number);
 
 /// <summary>
-/// What the engine does when a message pattern fires. Values match the
-/// legacy MegaMUD <c>messages.md</c> action code (single decimal digit)
-/// so records round-trip without translation.
+/// What the engine does when any of the record's lines fires. Values
+/// match the legacy MegaMUD <c>messages.md</c> action code (single
+/// decimal digit) so records round-trip through that format without
+/// translation.
 /// </summary>
 public enum MessageAction
 {
     /// <summary>Note the match for logging; take no engine action.</summary>
     Ignore      = 0,
 
-    /// <summary>Re-poll the current room state (e.g. <c>look</c> / <c>par</c>) before the next decision.</summary>
+    /// <summary>Re-poll the current room state before the next decision.</summary>
     RecheckRoom = 1,
 
     /// <summary>Pause the action loop until the condition expires.</summary>
@@ -136,19 +103,16 @@ public enum MessageAction
 /// <summary>
 /// Typed view of the message flag bitfield. Values match the legacy
 /// MegaMUD <c>messages.md</c> 16-bit hex encoding so records round-trip
-/// without translation.
+/// through that format without translation.
 /// </summary>
 /// <remarks>
 /// Three MegaMUD-specific find-mode bits are deliberately omitted:
 /// <c>0x0100 FindInConversations</c>, <c>0x0400 FindInText</c>,
 /// <c>0x4000 UseWhenChasing</c>. They were stripped from the model
-/// per user direction — they're MegaMUD-internal UX hints that
-/// don't carry semantics in our consumption. The importer
-/// (<see cref="Services.MegaMudMessagesImporter.MaskKnown"/>) masks
-/// them out on read so they never enter the data; the only
-/// preserved-but-unknown bit is <c>0x0800</c> (reserved /
-/// undocumented in the legacy format), kept on
-/// <see cref="MessageRecord.RawFlagsHex"/>.
+/// per user direction. The importer masks them out on read so they
+/// never enter the data; the only preserved-but-unknown bit is
+/// <c>0x0800</c> (reserved / undocumented in the legacy format), kept
+/// on <see cref="MessageRecord.RawFlagsHex"/>.
 /// </remarks>
 [Flags]
 public enum MessageFlags : ushort

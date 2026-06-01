@@ -58,6 +58,16 @@ public sealed class AppServices
     public WindowLayoutStore WindowLayouts { get; }
 
     /// <summary>
+    /// Per-character splitter-position memory for two-pane resizable
+    /// dialogs. Each dialog calls <see cref="SplitterLayoutStore.AttachGrid"/>
+    /// once during construction with a stable id + the Grid to manage;
+    /// the store handles restore-on-open and capture-on-close,
+    /// hydrating from <see cref="CharacterProfile.SplitterRatios"/> on
+    /// profile load and snapshotting back on save.
+    /// </summary>
+    public SplitterLayoutStore SplitterLayouts { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -238,6 +248,17 @@ public sealed class AppServices
     public MessageStore Messages { get; private set; } = null!;
 
     /// <summary>
+    /// Active game-data set's Monster Messages catalogue — one record
+    /// per Monsters-table row, carrying the parser patterns for every
+    /// line a monster can produce in combat (HitYou / HitOther /
+    /// DeathLine / ArmorBlock / Dodge / Miss + flavor prefixes).
+    /// Generated offline from the wcc <c>monster-messages.json</c>
+    /// export joined on <c>Monsters.Number</c>; per-set edits land at
+    /// <c>Data/game data/{set}/monster-messages.json</c>.
+    /// </summary>
+    public MonsterMessageStore MonsterMessages { get; private set; } = null!;
+
+    /// <summary>
     /// Background audit comparing player-facing spells in the active
     /// set against the Messages catalogue's Links field — surfaces a
     /// summary LogEntry per audit run so users know which spells
@@ -260,6 +281,12 @@ public sealed class AppServices
         // Read any AppPaths member to fire its static constructor and create
         // the Data/ tree on disk before anyone else needs it.
         _ = AppPaths.DataRoot;
+
+        // Copy any missing seed files from the bundled Defaults/ next to
+        // the exe into the user-writable Data/Global/ location. Runs
+        // once per launch; pre-existing Global seeds (user-edited or
+        // user-curated) are never overwritten.
+        AppPaths.EnsureGlobalSeedsBootstrapped();
 
         // Best-effort log rotation. Default retention window; Settings.Other
         // will surface a knob in Phase 4.
@@ -300,6 +327,7 @@ public sealed class AppServices
         // DataMigration entries from before AppServices was constructed.
         Panels = new FloatingPanelHost();
         WindowLayouts = new WindowLayoutStore(Profile);
+        SplitterLayouts = new SplitterLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 
@@ -377,6 +405,10 @@ public sealed class AppServices
         // see the right realm's catalogue.
         Messages = new MessageStore(Log);
         GameData.ActiveSetChanged += Messages.Load;
+        // Monster-message catalogue parallels the spell-message one —
+        // same per-set storage + universal seed fallback pattern.
+        MonsterMessages = new MonsterMessageStore(Log);
+        GameData.ActiveSetChanged += MonsterMessages.Load;
         // Triggers split storage: GameData-scoped triggers live in the
         // active set's per-set triggers.json; Profile-scoped triggers
         // stay on CharacterProfile.Triggers. The engine reloads its

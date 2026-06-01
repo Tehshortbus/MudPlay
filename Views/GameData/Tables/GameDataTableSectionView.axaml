@@ -55,6 +55,7 @@
                   x:Name="RowsGrid"
                   ItemsSource="{Binding FilteredRows}"
                   SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                  SelectionMode="Extended"
                   IsReadOnly="True"
                   AutoGenerateColumns="False"
                   CanUserSortColumns="True"

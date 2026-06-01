@@ -126,4 +126,15 @@ public sealed class CharacterProfile
     /// saved position once they've actually moved / resized a window.
     /// </summary>
     public Dictionary<string, WindowBounds>? WindowBounds { get; set; }
+
+    /// <summary>
+    /// Persisted left-pane proportions for resizable two-pane dialogs
+    /// keyed by stable id (e.g. <c>"MonsterEditDialog"</c>). Each value
+    /// is the fraction (0.0–1.0) of the splittable area occupied by the
+    /// LEFT pane at the user's last close. Populated by
+    /// <see cref="Services.SplitterLayoutStore"/> on profile save and
+    /// applied on every dialog open. <c>null</c> / missing entries mean
+    /// "use the XAML defaults".
+    /// </summary>
+    public Dictionary<string, double>? SplitterRatios { get; set; }
 }

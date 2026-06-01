@@ -26,15 +26,19 @@ public sealed class MegaMudMessagesImporterTests
         Assert.Single(r.Messages);
         MessageRecord m = r.Messages[0];
         Assert.Equal("Poisoned", m.Name);
-        Assert.Equal("You feel sick.", m.Message);
-        Assert.Equal("The poison wears off.", m.EndsWith);
+        // Records with a non-empty EndsWith pair land on the Applied
+        // slot (buff/debuff lifecycle); the other perspective slots
+        // stay empty.
+        Assert.Equal("",                       m.CasterMessage);
+        Assert.Equal("",                       m.TargetMessage);
+        Assert.Equal("",                       m.WitnessMessage);
+        Assert.Equal("You feel sick.",         m.AppliedMessage);
+        Assert.Equal("The poison wears off.",  m.AppliedEndsWith);
+        Assert.Equal("",                       m.StatusLineMessage);
         Assert.Equal(MessageAction.WaitForEnd, m.Action);
-        Assert.Equal(MessageFlags.Poisoned, m.Flags);
-        Assert.Equal((ushort)0x0004, m.RawFlagsHex);
-        // Response is stored verbatim — exactly the bytes after the
-        // header's third colon. The runtime consumer (Phase 13)
-        // interprets ^M / CR as multi-step boundaries at send time.
-        Assert.Equal("cure poison", m.Response);
+        Assert.Equal(MessageFlags.Poisoned,    m.Flags);
+        Assert.Equal((ushort)0x0004,           m.RawFlagsHex);
+        Assert.Equal("cure poison",            m.Response);
     }
 
     [Fact]
@@ -53,8 +57,11 @@ public sealed class MegaMudMessagesImporterTests
         Assert.Empty(r.Failures);
         Assert.Equal(2, r.Messages.Count);
         Assert.Equal("Alert1", r.Messages[0].Name);
-        Assert.Equal("",        r.Messages[0].EndsWith);
-        Assert.Equal("Alert2", r.Messages[1].Name);
+        // Standalone records (no EndsWith pair) land on CasterMessage.
+        Assert.Equal("First message.", r.Messages[0].CasterMessage);
+        Assert.Equal("",               r.Messages[0].AppliedEndsWith);
+        Assert.Equal("Alert2",         r.Messages[1].Name);
+        Assert.Equal("Second message.", r.Messages[1].CasterMessage);
     }
 
     [Fact]

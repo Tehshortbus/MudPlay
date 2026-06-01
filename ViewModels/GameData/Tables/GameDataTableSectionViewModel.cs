@@ -101,6 +101,17 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private GameDataRow? _selectedRow;
 
+    /// <summary>
+    /// Live mirror of the DataGrid's multi-selection set. The view's
+    /// code-behind syncs this whenever <c>RowsGrid.SelectionChanged</c>
+    /// fires (Avalonia's DataGrid exposes SelectedItems as a non-bindable
+    /// IList, so the sync is imperative). RemoveSelected handlers
+    /// iterate this set instead of just <see cref="SelectedRow"/> so
+    /// Ctrl-/Shift-selecting multiple rows + clicking Remove drops them
+    /// all in one go.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<GameDataRow> SelectedRows { get; } = new();
+
     [ObservableProperty] private string _searchText = string.Empty;
 
     public override Control View => _view ??= new GameDataTableSectionView { DataContext = this };
@@ -363,6 +374,16 @@ public sealed class GameDataRow
 
     /// <summary>Short tier label rendered in the virtual "Use" column.</summary>
     public string UseLabel => SourceTier.ToShortLabel();
+
+    /// <summary>
+    /// Opaque per-section payload — used by sections (e.g. Messages)
+    /// that need a direct handle back to the source record after the
+    /// user double-clicks. Lets the section avoid the Id-from-cells
+    /// dance when display columns don't include the identity fields
+    /// (the Messages table shows "Lines/Preview" summaries, not the
+    /// raw message text the Id is hashed from).
+    /// </summary>
+    public object? Tag { get; set; }
 
     private GameDataRow(IReadOnlyDictionary<string, string?> values, IReadOnlyList<GameDataCell> cells)
     {

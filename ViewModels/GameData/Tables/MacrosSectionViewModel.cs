@@ -109,13 +109,21 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 
     private void RemoveSelected()
     {
-        if (SelectedRow is null) return;
-        string? chord = SelectedRow.Get("Key");
-        if (string.IsNullOrEmpty(chord)) return;
-        Macro? target = null;
-        foreach (Macro m in _store.Macros)
-            if (m.KeyChordLabel == chord) { target = m; break; }
-        if (target is not null) _store.Remove(target);
+        List<Macro> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            string? chord = row.Get("Key");
+            if (string.IsNullOrEmpty(chord)) continue;
+            foreach (Macro m in _store.Macros)
+            {
+                if (m.KeyChordLabel == chord) { targets.Add(m); break; }
+            }
+        }
+        if (targets.Count == 0) return;
+        foreach (Macro t in targets) _store.Remove(t);
         Reload();
     }
 

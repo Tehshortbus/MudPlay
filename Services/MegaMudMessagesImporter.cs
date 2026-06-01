@@ -219,23 +219,35 @@ public static class MegaMudMessagesImporter
 
     private static void Finalize(Partial p, string message, string endsWith, MessageImportResult result)
     {
-        string id = ComputeId(p.Name, message, endsWith);
-        // Strip the three dropped find-mode bits at import time so
-        // they never enter the data — RawFlagsHex now reflects only
-        // the kept bits + the reserved 0x0800. Links default to empty;
-        // the offline classifier populates them, and the edit dialog
-        // lets the user add / remove links by hand.
+        // The .md format has no perspective info, just (message, endsWith).
+        // Records with non-empty endsWith are buff/debuff lifecycle pairs
+        // → land on the Applied slot. Standalone records (no endsWith)
+        // are usually damage / system / proc lines from the player's
+        // perspective → land on CasterMessage. Users can re-tag via the
+        // editor.
+        bool hasPair = !string.IsNullOrEmpty(endsWith);
+        string casterMsg     = hasPair ? string.Empty : message;
+        string appliedMsg    = hasPair ? message     : string.Empty;
+        string appliedEnds   = hasPair ? endsWith    : string.Empty;
+        string id = ComputeId(p.Name, casterMsg, string.Empty, string.Empty, appliedMsg, appliedEnds, string.Empty);
+        // Strip the three dropped find-mode bits at import time so they
+        // never enter the data — RawFlagsHex now reflects only the
+        // kept bits + the reserved 0x0800.
         ushort retained = (ushort)(p.RawFlagsHex & RetainedBitsMask);
         result.Messages.Add(new MessageRecord(
-            Id:          id,
-            Name:        p.Name,
-            Message:     message,
-            EndsWith:    endsWith,
-            Action:      p.Action,
-            Flags:       (MessageFlags)(retained & KnownFlagsMask),
-            RawFlagsHex: retained,
-            Response:    p.Response,
-            Links:       Array.Empty<GameDataLink>()));
+            Id:                id,
+            Name:              p.Name,
+            Action:            p.Action,
+            Flags:             (MessageFlags)(retained & KnownFlagsMask),
+            RawFlagsHex:       retained,
+            Response:          p.Response,
+            CasterMessage:     casterMsg,
+            TargetMessage:     string.Empty,
+            WitnessMessage:    string.Empty,
+            AppliedMessage:    appliedMsg,
+            AppliedEndsWith:   appliedEnds,
+            StatusLineMessage: string.Empty,
+            Links:             Array.Empty<GameDataLink>()));
     }
 
     /// <summary>
@@ -261,15 +273,44 @@ public static class MegaMudMessagesImporter
 
     /// <summary>
     /// Stable content hash used as <see cref="MessageRecord.Id"/>.
-    /// SHA1 of <c>name|message|endsWith</c>, truncated to 16 lowercase hex chars.
+    /// SHA1 of all seven content fields joined by <c>|</c>, truncated
+    /// to 16 lowercase hex chars. The Name + every line text (caster /
+    /// target / witness / applied + applied-ends / stat-line) all
+    /// participate so any edit to any field flips the Id.
     /// </summary>
-    public static string ComputeId(string name, string message, string endsWith)
+    public static string ComputeId(
+        string name,
+        string casterMessage,
+        string targetMessage,
+        string witnessMessage,
+        string appliedMessage,
+        string appliedEndsWith,
+        string statusLineMessage)
     {
-        byte[] buf = Encoding.UTF8.GetBytes($"{name}|{message}|{endsWith}");
+        byte[] buf = Encoding.UTF8.GetBytes(
+            $"{name}|{casterMessage}|{targetMessage}|{witnessMessage}|{appliedMessage}|{appliedEndsWith}|{statusLineMessage}");
         byte[] hash = SHA1.HashData(buf);
         StringBuilder sb = new(16);
         for (int i = 0; i < 8; i++) sb.Append(hash[i].ToString("x2", CultureInfo.InvariantCulture));
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Convenience helper for callers that only have a (name, message,
+    /// endsWith) triple — same shape the legacy <c>messages.md</c>
+    /// parser worked with. Routes message into either Caster (no pair)
+    /// or Applied (with EndsWith pair).
+    /// </summary>
+    public static string ComputeId(string name, string message, string endsWith)
+    {
+        bool hasPair = !string.IsNullOrEmpty(endsWith);
+        return ComputeId(name,
+            casterMessage:     hasPair ? string.Empty : message,
+            targetMessage:     string.Empty,
+            witnessMessage:    string.Empty,
+            appliedMessage:    hasPair ? message     : string.Empty,
+            appliedEndsWith:   hasPair ? endsWith    : string.Empty,
+            statusLineMessage: string.Empty);
     }
 
     private enum State { ExpectHeader, ExpectMessage, ExpectEndsWith, ExpectBlank }

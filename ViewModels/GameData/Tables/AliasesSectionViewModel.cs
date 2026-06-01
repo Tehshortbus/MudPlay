@@ -126,9 +126,15 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
 
     private void RemoveSelected()
     {
-        if (SelectedRow is null) return;
-        if (!_rowToAlias.TryGetValue(SelectedRow, out Alias? target)) return;
-        _engine.Remove(target);
+        List<Alias> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            if (_rowToAlias.TryGetValue(row, out Alias? t)) targets.Add(t);
+        }
+        foreach (Alias t in targets) _engine.Remove(t);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)

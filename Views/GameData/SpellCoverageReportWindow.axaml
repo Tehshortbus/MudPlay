@@ -14,8 +14,8 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
 
-            <!-- Header — summary + refresh button. -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <!-- Header — summary + refresh / export buttons. -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0"
                            Text="{Binding SummaryText}"
                            Foreground="{StaticResource ChromeFgBrush}"
@@ -23,6 +23,11 @@
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
                 <Button Grid.Column="1"
+                        Content="Export to log"
+                        Command="{Binding ExportToLogCommand}"
+                        ToolTip.Tip="Dump every listed missing spell into the system log as individual entries (filterable under GameData/Coverage in the LogPane)."
+                        MinWidth="100"/>
+                <Button Grid.Column="2"
                         Content="Refresh"
                         Command="{Binding RefreshCommand}"
                         MinWidth="80"/>
@@ -31,7 +36,7 @@
             <!-- Unanchored spells grid. Read-only — users add coverage
                  via the Messages tab's edit dialog. -->
             <DataGrid Grid.Row="1"
-                      ItemsSource="{Binding Rows}"
+                      ItemsSource="{Binding RowsView}"
                       IsReadOnly="True"
                       AutoGenerateColumns="False"
                       CanUserSortColumns="True"
@@ -40,11 +45,15 @@
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="#"             Binding="{Binding Number}"      Width="60"/>
-                    <DataGridTextColumn Header="Name"          Binding="{Binding Name}"        Width="220"/>
-                    <DataGridTextColumn Header="Classes"       Binding="{Binding Classes}"     Width="120"/>
-                    <DataGridTextColumn Header="Casted By"     Binding="{Binding CastedBy}"    Width="*"/>
-                    <DataGridTextColumn Header="Learned From"  Binding="{Binding LearnedFrom}" Width="*"/>
+                    <!-- ReflectionBinding: column bindings resolve against the row item
+                         (UnanchoredSpell), not the window's DataContext. With a non-generic
+                         DataGridCollectionView wrapping Rows, Avalonia's compiled-binding
+                         pass can't infer the item type, so we fall back to reflection here. -->
+                    <DataGridTextColumn Header="#"            Binding="{ReflectionBinding Number}"      SortMemberPath="Number"      Width="60"/>
+                    <DataGridTextColumn Header="Name"         Binding="{ReflectionBinding Name}"        SortMemberPath="Name"        Width="220"/>
+                    <DataGridTextColumn Header="Classes"      Binding="{ReflectionBinding Classes}"     SortMemberPath="Classes"     Width="160"/>
+                    <DataGridTextColumn Header="Casted By"    Binding="{ReflectionBinding CastedBy}"    SortMemberPath="CastedBy"    Width="*"/>
+                    <DataGridTextColumn Header="Learned From" Binding="{ReflectionBinding LearnedFrom}" SortMemberPath="LearnedFrom" Width="*"/>
                 </DataGrid.Columns>
             </DataGrid>
 

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.GameData;
@@ -18,16 +19,27 @@ namespace FujinTerm.ViewModels.GameData;
 public sealed partial class SpellCoverageReportViewModel : ObservableObject
 {
     private readonly SpellCoverageAuditor _auditor;
+    private readonly LogService? _log;
 
     public ObservableCollection<UnanchoredSpell> Rows { get; } = new();
+
+    /// <summary>
+    /// Sortable view wrapper Avalonia's DataGrid needs to honor column-header
+    /// clicks. <see cref="ObservableCollection{T}"/> alone is not sortable by
+    /// the grid; wrapping in <see cref="DataGridCollectionView"/> hooks up the
+    /// SortMemberPath-driven comparer the grid expects.
+    /// </summary>
+    public DataGridCollectionView RowsView { get; }
 
     [ObservableProperty] private string _summaryText = "(no audit run yet)";
     [ObservableProperty] private string _windowTitle = "Spell coverage";
 
-    public SpellCoverageReportViewModel(SpellCoverageAuditor auditor)
+    public SpellCoverageReportViewModel(SpellCoverageAuditor auditor, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(auditor);
         _auditor = auditor;
+        _log     = log;
+        RowsView = new DataGridCollectionView(Rows);
         _auditor.ResultAvailable += OnResultAvailable;
         if (_auditor.Latest is { } current) OnResultAvailable(current);
     }
@@ -50,12 +62,44 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
     private void Refresh() => _auditor.Run();
 
     /// <summary>
-    /// Double-click drilldown — opens the Message edit dialog with
-    /// a fresh record whose Name is the spell's Name and whose Links
-    /// already point at <c>(Spells, spell.Number)</c>. The user fills
-    /// in Message / EndsWith / flags / Action / Response and saves;
-    /// the audit fires after the save and the spell disappears from
-    /// the table on the next Refresh.
+    /// Dump every currently-listed missing spell into the system log as
+    /// individual entries tagged with <see cref="SpellCoverageAuditor.LogSource"/>.
+    /// Useful for filtering / copy-pasting the unanchored list out of
+    /// the LogPane when working through coverage. A leading summary
+    /// line precedes the per-spell entries so the export is
+    /// self-bounded in the log.
+    /// </summary>
+    [RelayCommand]
+    private void ExportToLog()
+    {
+        if (_log is null) return;
+        CoverageResult? latest = _auditor.Latest;
+        string setName = latest?.SetName ?? "(no set)";
+        int considered = latest?.ConsideredCount ?? 0;
+
+        _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
+            $"=== Export: {Rows.Count} of {considered} unanchored spells from set '{setName}' ===");
+
+        foreach (UnanchoredSpell s in Rows)
+        {
+            string classes     = string.IsNullOrEmpty(s.Classes)     ? "(none)" : s.Classes!;
+            string castedBy    = string.IsNullOrEmpty(s.CastedBy)    ? "(none)" : s.CastedBy!;
+            string learnedFrom = string.IsNullOrEmpty(s.LearnedFrom) ? "(none)" : s.LearnedFrom!;
+            _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
+                $"Missing #{s.Number} {s.Name} | Classes: {classes} | Casted By: {castedBy} | Learned From: {learnedFrom}");
+        }
+
+        _log.Log(LogSeverity.Info, SpellCoverageAuditor.LogSource,
+            $"=== End export ({Rows.Count} entries) ===");
+    }
+
+    /// <summary>
+    /// Double-click drilldown — opens the Message edit dialog with a
+    /// fresh record whose Name is the spell's Name and whose Links
+    /// point at <c>(Spells, spell.Number)</c>. The user fills in the
+    /// 5 perspective line slots (caster / target / witness / applied
+    /// / stat-line), flags, and Action; on save the audit fires and
+    /// the spell drops off the unanchored list on the next refresh.
     /// </summary>
     [RelayCommand]
     private async Task CreateMessageForSpellAsync(UnanchoredSpell? spell)
@@ -65,28 +109,27 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         MessageStore  store   = AppServices.Current.Messages;
         GameDataCache cache   = AppServices.Current.GameData;
 
-        // Seed Links with every game-data entity that USES this
-        // spell in-play — every Monster under Casted By + every Item
-        // under Learned From. The Spell itself isn't linked: the user
-        // wants the message anchored to the thing the player actually
-        // encounters (the monster, the item), not the underlying
-        // mechanic. De-duped via HashSet so a row appearing in
-        // multiple fields doesn't double-link.
-        List<GameDataLink> links = new();
-        HashSet<(string, int)> seen = new();
-        AppendRefsFromSpellRow(cache, spell.Number, "Casted By",    links, seen);
-        AppendRefsFromSpellRow(cache, spell.Number, "Learned From", links, seen);
+        // Link directly to the spell row — the combat-engine target.
+        // Per user direction we no longer seed item / monster caster
+        // links here; those belonged to the old multi-link audit
+        // concept that's been superseded by the one-record-per-spell
+        // model.
+        List<GameDataLink> links = new() { new GameDataLink("Spells", spell.Number) };
 
         MessageRecord blank = new(
-            Id:          string.Empty,
-            Name:        spell.Name,
-            Message:     string.Empty,
-            EndsWith:    string.Empty,
-            Action:      MessageAction.Ignore,
-            Flags:       MessageFlags.None,
-            RawFlagsHex: 0,
-            Response:    string.Empty,
-            Links:       links);
+            Id:                string.Empty,
+            Name:              spell.Name,
+            Action:            MessageAction.Ignore,
+            Flags:             MessageFlags.None,
+            RawFlagsHex:       0,
+            Response:          string.Empty,
+            CasterMessage:     string.Empty,
+            TargetMessage:     string.Empty,
+            WitnessMessage:    string.Empty,
+            AppliedMessage:    string.Empty,
+            AppliedEndsWith:   string.Empty,
+            StatusLineMessage: string.Empty,
+            Links:             links);
 
         MessageEditDialogViewModel vm = new(
             blank,
@@ -98,8 +141,8 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
             .OpenWindowAsync<MessageEditDialogViewModel, MessageEditResult>(vm);
         if (result is null) return;
 
-        // Mirror MessagesSectionViewModel.ApplyResult so the same
-        // Id-based de-dup + Save semantics apply.
+        // Mirror MessagesSectionViewModel.ApplyResult — Id-keyed
+        // replace, else append, then save.
         int idx = -1;
         for (int i = 0; i < store.Messages.Count; i++)
         {
@@ -116,39 +159,4 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         _auditor.ResultAvailable -= OnResultAvailable;
     }
 
-    /// <summary>
-    /// Re-read the raw Spells row for <paramref name="spellNumber"/>
-    /// from the active set's cache, parse the <paramref name="fieldName"/>
-    /// for Monster/Item/Spell <c>#N</c> tokens, and append each as a
-    /// <see cref="GameDataLink"/> to <paramref name="links"/>. The
-    /// resolved display strings on <see cref="UnanchoredSpell"/> can't
-    /// be re-parsed (the resolver rewrote them to <c>"Name {N}"</c>
-    /// form which loses the original "Monster #" / "Item #" tag), so
-    /// we go back to the source.
-    /// </summary>
-    private static void AppendRefsFromSpellRow(
-        GameDataCache cache,
-        int spellNumber,
-        string fieldName,
-        List<GameDataLink> links,
-        HashSet<(string, int)> seen)
-    {
-        System.Text.Json.JsonDocument? doc = cache.GetRawTable("Spells");
-        if (doc is null) return;
-        foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
-        {
-            if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)) continue;
-            if (numEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
-            if (!numEl.TryGetInt32(out int n) || n != spellNumber) continue;
-            if (!row.TryGetProperty(fieldName, out System.Text.Json.JsonElement el)) return;
-            if (el.ValueKind != System.Text.Json.JsonValueKind.String) return;
-            string? raw = el.GetString();
-            foreach ((string table, int number) in SpellCoverageAuditor.ParseRefs(raw))
-            {
-                if (seen.Add((table, number)))
-                    links.Add(new GameDataLink(table, number));
-            }
-            return;
-        }
-    }
 }

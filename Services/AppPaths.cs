@@ -156,6 +156,31 @@ public static class AppPaths
         Path.Combine(MessagesDir, setName + ".json");
 
     /// <summary>
+    /// Per-set Monster Messages catalogue file — one combat-line bundle
+    /// per Monsters table row (HitYou / HitOther / DeathLine /
+    /// ArmorBlock / Dodge / Miss + flavor prefixes). Sits beside the
+    /// per-set spell <see cref="MessagesFile"/> so the realm's complete
+    /// parser dataset travels together.
+    /// </summary>
+    public static string MonsterMessagesFile(string setName) =>
+        Path.Combine(GameDataSetDir(setName), "monster-messages.json");
+
+    /// <summary>
+    /// User-writable MonsterMessages seed JSON, hosted in the XDG-resolved
+    /// <c>Data/Global/</c> folder. Acts as the fallback when the per-set
+    /// <see cref="MonsterMessagesFile"/> doesn't exist yet for a set.
+    /// Bootstrapped from <see cref="BundledMonsterMessagesSeedFile"/> on
+    /// first app launch if missing; the user can hand-edit it (or delete
+    /// it to re-bootstrap from the bundled copy).
+    /// </summary>
+    public static string DefaultMonsterMessagesSeedFile =>
+        Path.Combine(DataRoot, "Global", "MonsterMessages.seed.json");
+
+    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    public static string BundledMonsterMessagesSeedFile { get; } =
+        Path.Combine(AppContext.BaseDirectory, "Defaults", "MonsterMessages.seed.json");
+
+    /// <summary>
     /// Per-set Triggers file scoped inside the game-data set's folder.
     /// Stores only the <see cref="Models.GameData.TriggerLocation.GameData"/>-
     /// scoped triggers; <see cref="Models.GameData.TriggerLocation.Profile"/>-
@@ -165,27 +190,60 @@ public static class AppPaths
         Path.Combine(GameDataSetDir(setName), "triggers.json");
 
     /// <summary>
-    /// Path to the app-shipped Messages seed JSON — read-only, single
-    /// file shared across every game-data set. The catalogue's
-    /// message text (e.g. "You feel lucky") is universal across
-    /// MajorMUD realms; the <see cref="Models.GameData.GameDataLink"/>
-    /// numbers are paradigm-1.8.5-derived but still useful as a
-    /// starting point on other realms (the coverage auditor will
-    /// flag spells whose numbers don't match). <see cref="MessageStore"/>
-    /// falls back to this when the user's <see cref="MessagesFile"/>
-    /// doesn't exist for the active set.
+    /// <summary>
+    /// User-writable Messages seed JSON, hosted in the XDG-resolved
+    /// <c>Data/Global/</c> folder. Shared across every game-data set —
+    /// the catalogue's message text (e.g. "You feel lucky") is universal
+    /// across MajorMUD realms. <see cref="MessageStore"/> falls back to
+    /// this when the user's per-set <see cref="MessagesFile"/> doesn't
+    /// exist for the active set. Bootstrapped from
+    /// <see cref="BundledMessagesSeedFile"/> on first app launch if
+    /// missing; the user can hand-edit it (or delete it to re-bootstrap
+    /// from the bundled copy).
     /// </summary>
-    public static string DefaultMessagesSeedFile { get; } =
+    public static string DefaultMessagesSeedFile =>
+        Path.Combine(DataRoot, "Global", "Messages.seed.json");
+
+    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    public static string BundledMessagesSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "Messages.seed.json");
 
     /// <summary>
-    /// Path to the app-shipped default Triggers seed JSON — read-only.
-    /// <see cref="TriggerEngine"/> falls back to this when a freshly
-    /// loaded character profile has never persisted a Triggers list
-    /// (i.e. <c>CharacterProfile.Triggers</c> is <c>null</c>).
+    /// User-writable Triggers seed JSON, hosted in the XDG-resolved
+    /// <c>Data/Global/</c> folder. <see cref="TriggerEngine"/> falls
+    /// back to this when a set has no per-set <see cref="TriggersFile"/>.
+    /// Bootstrapped from <see cref="BundledTriggersSeedFile"/> on first
+    /// app launch if missing.
     /// </summary>
-    public static string DefaultTriggersSeedFile { get; } =
+    public static string DefaultTriggersSeedFile =>
+        Path.Combine(DataRoot, "Global", "Triggers.seed.json");
+
+    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    public static string BundledTriggersSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "Triggers.seed.json");
+
+    /// <summary>
+    /// Bootstrap missing seed files in <c>Data/Global/</c> by copying
+    /// from the bundled <c>Defaults/</c> next to the executable. Called
+    /// once during app startup. Pre-existing user-edited Global seeds
+    /// are never overwritten — to reset a seed, delete the Global copy
+    /// and the next launch re-bootstraps from the bundled source.
+    /// </summary>
+    public static void EnsureGlobalSeedsBootstrapped()
+    {
+        Directory.CreateDirectory(Path.Combine(DataRoot, "Global"));
+        TryCopySeed(BundledMessagesSeedFile,        DefaultMessagesSeedFile);
+        TryCopySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
+        TryCopySeed(BundledTriggersSeedFile,        DefaultTriggersSeedFile);
+    }
+
+    private static void TryCopySeed(string source, string destination)
+    {
+        if (File.Exists(destination)) return;
+        if (!File.Exists(source)) return;  // dev builds may lack the bundled file — just skip.
+        try { File.Copy(source, destination); }
+        catch { /* best-effort; if the copy fails the store falls through to an empty seed */ }
+    }
 
     /// <summary>Path to a single imported game-data set's directory.</summary>
     public static string GameDataSetDir(string setName) =>

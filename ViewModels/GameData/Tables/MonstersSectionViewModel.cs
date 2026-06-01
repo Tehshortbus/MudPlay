@@ -32,6 +32,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     private readonly GameDataCache _cache;
     private readonly DialogService? _dialogs;
     private readonly SettingsResolver? _resolverRef;
+    private readonly MonsterMessageStore? _monsterMessages;
 
     public override string Id => "monsters";
     public override string Title => "Monsters";
@@ -73,12 +74,17 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
 
-    public MonstersSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null, DialogService? dialogs = null)
+    public MonstersSectionViewModel(
+        GameDataCache cache,
+        SettingsResolver? resolver = null,
+        DialogService? dialogs = null,
+        MonsterMessageStore? monsterMessages = null)
         : base(cache, resolver)
     {
         _cache = cache;
         _dialogs = dialogs;
         _resolverRef = resolver;
+        _monsterMessages = monsterMessages;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
     }
 
@@ -103,12 +109,20 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             "Monsters", wcc, new MonsterOverlay())
             ?? new MonsterOverlay();
 
+        // Look up the existing monster-message record by Number so the
+        // Messages section in the dialog opens hydrated. Null when the
+        // store isn't wired or no record exists for this monster.
+        MonsterMessageRecord? existingMessages = null;
+        if (_monsterMessages is not null && int.TryParse(wcc, out int wccNum))
+            existingMessages = _monsterMessages.FindByMonsterNumber(wccNum);
+
         MonsterEditDialogViewModel vm = new(
             wccNoStr:    wcc,
             mdbName:     row.Get("Name") ?? string.Empty,
             existing:    existing,
             currentTier: row.SourceTier,
-            mdbInfo:     mdbInfo);
+            mdbInfo:     mdbInfo,
+            messages:    existingMessages);
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;
@@ -119,6 +133,19 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         SettingsTier tier = result.Tier == SettingsTier.Defaults ? SettingsTier.Character : result.Tier;
 
         _resolverRef?.WriteGameDataAt(tier, "Monsters", result.WccNoStr, result.Overlay);
+
+        // Apply the messages edit when present. Id-keyed replace using
+        // the original record's Id (so content edits that flip the
+        // projected Id still target the right slot); Upsert when no
+        // original existed (first-time authoring).
+        if (_monsterMessages is not null && result.UpdatedMessages is not null)
+        {
+            if (result.OriginalMessages is not null)
+                _monsterMessages.Replace(result.OriginalMessages.Id, result.UpdatedMessages);
+            else
+                _monsterMessages.Upsert(result.UpdatedMessages);
+        }
+
         Reload();
     }
 

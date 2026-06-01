@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="700"
+        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="820"
         x:Class="FujinTerm.Views.GameData.Edit.MessageEditDialog"
         x:DataType="vm:MessageEditDialogViewModel"
         Title="{Binding Title}"
-        Width="640" Height="700"
+        Width="660" Height="820"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -27,9 +27,9 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
 
-            <!-- ===== Header fields (Name / Use / Message / EndsWith / Response) ===== -->
+            <!-- ===== Header fields (Name / Use / 5 perspective lines + EndsWith pair / Response) ===== -->
             <Grid Grid.Row="0"
-                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="8" RowSpacing="6">
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
@@ -43,15 +43,33 @@
                            DisplayMemberBinding="{Binding Label}"
                            HorizontalAlignment="Stretch"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Message"/>
-                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding Message, Mode=TwoWay}"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Caster"
+                           ToolTip.Tip="Line YOU see when YOU cast / use / proc this."/>
+                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CasterMessage, Mode=TwoWay}"/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Ends with"/>
-                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding EndsWith, Mode=TwoWay}"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Target"
+                           ToolTip.Tip="Line YOU see when the spell hits / is cast on YOU."/>
+                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding TargetMessage, Mode=TwoWay}"/>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Response"
+                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Witness"
+                           ToolTip.Tip="Line YOU see when someone else casts on someone else."/>
+                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding WitnessMessage, Mode=TwoWay}"/>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Applied"
+                           ToolTip.Tip="Buff/debuff begin line YOU see when the effect starts on you."/>
+                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding AppliedMessage, Mode=TwoWay}"/>
+
+                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Wears off"
+                           ToolTip.Tip="Wear-off line YOU see when the buff/debuff above expires."/>
+                <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding AppliedEndsWith, Mode=TwoWay}"/>
+
+                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Stat-line"
+                           ToolTip.Tip="Entry in your `stat` active-effects list while affected."/>
+                <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding StatusLineMessage, Mode=TwoWay}"/>
+
+                <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Response"
                            VerticalAlignment="Top" Margin="0,6,0,0"/>
-                <TextBox   Grid.Row="4" Grid.Column="1"
+                <TextBox   Grid.Row="8" Grid.Column="1"
                            Text="{Binding Response, Mode=TwoWay}"
                            AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
                            FontFamily="{StaticResource FontMono}"

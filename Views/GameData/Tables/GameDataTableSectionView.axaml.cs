@@ -45,6 +45,21 @@ public partial class GameDataTableSectionView : UserControl
                 cmd.Execute(row);
             }
         };
+
+        // Sync multi-selection from the DataGrid into the VM's
+        // SelectedRows collection so Remove can act on every highlighted
+        // row, not just the keyboard-focused one. Avalonia exposes
+        // SelectedItems as a non-bindable IList — has to be wired
+        // imperatively.
+        RowsGrid.SelectionChanged += (_, _) =>
+        {
+            if (DataContext is not GameDataTableSectionViewModel vm) return;
+            vm.SelectedRows.Clear();
+            foreach (object? item in RowsGrid.SelectedItems)
+            {
+                if (item is GameDataRow row) vm.SelectedRows.Add(row);
+            }
+        };
     }
 
     /// <summary>

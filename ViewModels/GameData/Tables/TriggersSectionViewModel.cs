@@ -124,9 +124,17 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
 
     private void RemoveSelected()
     {
-        if (SelectedRow is null) return;
-        if (!_rowToTrigger.TryGetValue(SelectedRow, out Trigger? target)) return;
-        _engine.Remove(target);
+        // Snapshot the multi-selection before mutating the engine —
+        // Remove triggers Reload which clears SelectedRows mid-loop.
+        List<Trigger> targets = new();
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        foreach (GameDataRow row in selection)
+        {
+            if (_rowToTrigger.TryGetValue(row, out Trigger? t)) targets.Add(t);
+        }
+        foreach (Trigger t in targets) _engine.Remove(t);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
