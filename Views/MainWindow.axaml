@@ -75,6 +75,11 @@
                 <MenuItem Header="Backscroll"    InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
+                <MenuItem Header="Players"  Command="{Binding OpenGameDataPlayersCommand}"/>
+                <MenuItem Header="Macros"   Command="{Binding OpenGameDataMacrosCommand}"/>
+                <MenuItem Header="Triggers" Command="{Binding OpenGameDataTriggersCommand}"/>
+                <MenuItem Header="Aliases"  Command="{Binding OpenGameDataAliasesCommand}"/>
+                <Separator/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>
 

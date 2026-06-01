@@ -1770,12 +1770,55 @@ public partial class MainWindowViewModel : ObservableObject
     private FujinTerm.Views.GameData.GameDataBrowserWindow? _gameDataBrowser;
 
     [RelayCommand]
-    private void OpenGameDataBrowser()
+    private void OpenGameDataBrowser() => ShowGameDataBrowser(initialSectionId: null);
+
+    [RelayCommand] private void OpenGameDataPlayers()  => ShowGameDataBrowser("players");
+    [RelayCommand] private void OpenGameDataMacros()   => ShowGameDataBrowser("macros");
+    [RelayCommand] private void OpenGameDataTriggers() => ShowGameDataBrowser("triggers");
+    [RelayCommand] private void OpenGameDataAliases()  => ShowGameDataBrowser("aliases");
+
+    /// <summary>
+    /// Open the Game Data Browser, optionally pre-selected to a named
+    /// section. Toggles per the standard window-command rule
+    /// (CLAUDE.md): when the browser is already open re-press behavior
+    /// depends on what was requested —
+    /// <list type="bullet">
+    ///   <item>no section requested (toolbar / Ctrl+G) → close it.</item>
+    ///   <item>section requested AND already showing → close it.</item>
+    ///   <item>section requested AND different from current → switch
+    ///     the existing window's section, activate, do not respawn.</item>
+    /// </list>
+    /// Switching in place beats closing-and-respawning because it
+    /// preserves search state, scroll position, and any per-section
+    /// VM caches the user has primed.
+    /// </summary>
+    private void ShowGameDataBrowser(string? initialSectionId)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
-        if (_gameDataBrowser is { } existing) { existing.Close(); return; }
+        if (_gameDataBrowser is { } existing)
+        {
+            if (initialSectionId is null
+                || (existing.DataContext is FujinTerm.ViewModels.GameData.GameDataBrowserViewModel vm
+                    && string.Equals(vm.SelectedSection?.Id, initialSectionId, StringComparison.OrdinalIgnoreCase)))
+            {
+                existing.Close();
+                return;
+            }
+
+            if (existing.DataContext is FujinTerm.ViewModels.GameData.GameDataBrowserViewModel vmRoute)
+            {
+                FujinTerm.ViewModels.GameData.GameDataSectionViewModel? target =
+                    vmRoute.Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase));
+                if (target is not null) vmRoute.SelectedSection = target;
+                existing.Activate();
+                return;
+            }
+
+            existing.Close();
+            return;
+        }
 
         FujinTerm.Views.GameData.GameDataBrowserWindow window = new()
         {
@@ -1791,7 +1834,8 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.ItemOverlaySeed,
                 AppServices.Current.Resolver,
                 AppServices.Current.Dialogs,
-                AppServices.Current.Keybindings),
+                AppServices.Current.Keybindings,
+                initialSectionId),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;
