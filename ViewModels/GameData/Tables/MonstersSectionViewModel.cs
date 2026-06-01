@@ -489,10 +489,22 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     }
 
     // ----- Cross-reference helpers (Items / Spells / Monsters) -----
+    //
+    // Thin shims over GameDataCache.FindNameByNumber that add this VM's
+    // two stricter semantics: skip non-positive ids (zero is the "no
+    // link" sentinel) and treat empty/missing Name as null so callers
+    // get a single boolean check instead of having to also test for "".
 
-    private string? LookupItemName(int itemId)    => LookupNameByNumber("Items",    itemId);
-    private string? LookupSpellName(int spellId)  => LookupNameByNumber("Spells",   spellId);
-    private string? LookupMonsterName(int monNum) => LookupNameByNumber("Monsters", monNum);
+    private string? LookupItemName(int itemId)    => LookupName("Items",    itemId);
+    private string? LookupSpellName(int spellId)  => LookupName("Spells",   spellId);
+    private string? LookupMonsterName(int monNum) => LookupName("Monsters", monNum);
+
+    private string? LookupName(string table, int number)
+    {
+        if (number <= 0) return null;
+        string? name = _cache.FindNameByNumber(table, number);
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
 
     /// <summary>
     /// "{spell name} (effect)" — spell name with a brief effect descriptor
@@ -591,19 +603,4 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return $"{label} {min}-{max}";
     }
 
-    private string? LookupNameByNumber(string table, int number)
-    {
-        if (number <= 0) return null;
-        JsonDocument? doc = _cache.GetRawTable(table);
-        if (doc is null) return null;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
-            if (n.ValueKind != JsonValueKind.Number) continue;
-            if (n.GetInt32() != number) continue;
-            string name = ReadString(el, "Name");
-            return string.IsNullOrEmpty(name) ? null : name;
-        }
-        return null;
-    }
 }

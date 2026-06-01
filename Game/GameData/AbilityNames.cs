@@ -74,7 +74,7 @@ public static class AbilityNames
 
         // 101..150 — message slots / target restrictions / spell-only codes
         { 101, "ConfuseMsg" },          { 102, "RaceStealth" },        { 103, "ClassStealth" },
-        { 104, "DefenseModifier" },     { 105, "Accuracy2" },          { 106, "Accuracy" },
+        { 104, "DefenseModifier" },     { 105, "Accuracy2" },          { 106, "Accuracy3" },
         { 107, "BlindUser" },           { 108, "AffectsLivingOnly" },  { 109, "NonLiving" },
         { 110, "NotGood" },             { 111, "NotEvil" },            { 112, "NeutralOnly" },
         { 113, "NotNeutral" },          { 114, "%Spell" },             { 115, "DescMsg" },

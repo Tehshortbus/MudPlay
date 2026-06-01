@@ -398,18 +398,10 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private string ResolveSpellName(int spellNumber)
     {
         if (spellNumber == 0) return "None";
-        JsonDocument? spellsDoc = _cache.GetRawTable("Spells");
-        if (spellsDoc is null) return spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-        foreach (JsonElement el in spellsDoc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
-            if (numProp.ValueKind != JsonValueKind.Number) continue;
-            if (numProp.GetInt32() != spellNumber) continue;
-            string name = ReadString(el, "Name");
-            return string.IsNullOrEmpty(name) ? spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture) : name;
-        }
-        return spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string? name = _cache.FindNameByNumber("Spells", spellNumber);
+        return string.IsNullOrEmpty(name)
+            ? spellNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : name;
     }
 
     private static string ReadString(JsonElement el, string field)
@@ -564,34 +556,17 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
     private string? LookupMonsterName(int monsterId)
     {
-        JsonDocument? doc = _cache.GetRawTable("Monsters");
-        if (doc is null) return null;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
-            if (n.ValueKind != JsonValueKind.Number) continue;
-            if (n.GetInt32() != monsterId) continue;
-            string name = ReadString(el, "Name");
-            return string.IsNullOrEmpty(name) ? null : name;
-        }
-        return null;
+        if (monsterId <= 0) return null;
+        string? name = _cache.FindNameByNumber("Monsters", monsterId);
+        return string.IsNullOrEmpty(name) ? null : name;
     }
 
     /// <summary>Classes.Number → Classes.Name; falls back to "Class N" when absent.</summary>
     private string ResolveClassName(int classId)
     {
         if (classId == 0) return "None";
-        JsonDocument? doc = _cache.GetRawTable("Classes");
-        if (doc is null) return $"Class {classId}";
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-        {
-            if (!el.TryGetProperty("Number", out JsonElement n)) continue;
-            if (n.ValueKind != JsonValueKind.Number) continue;
-            if (n.GetInt32() != classId) continue;
-            string name = ReadString(el, "Name");
-            return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
-        }
-        return $"Class {classId}";
+        string? name = _cache.FindNameByNumber("Classes", classId);
+        return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
     }
 
     /// <summary>Bundle returned by <see cref="BuildMdbView"/>.</summary>

@@ -6,17 +6,20 @@ namespace FujinTerm.Tests;
 public sealed class AbilityNamesTests
 {
     [Theory]
-    [InlineData(1,    "Damage")]            // MME canonical (was "DamageNoMR")
+    [InlineData(1,    "Damage")]
     [InlineData(2,    "AC")]
-    [InlineData(17,   "Damage(-MR)")]       // MME spells this differently than our prior table
+    [InlineData(17,   "Damage(-MR)")]
     [InlineData(18,   "Heal")]
+    [InlineData(22,   "Accuracy")]
     [InlineData(34,   "Dodge")]
-    [InlineData(42,   "LearnSp")]           // MME abbreviates ("LearnSp" not "LearnSpell")
+    [InlineData(42,   "LearnSp")]
     [InlineData(43,   "CastsSp")]
     [InlineData(46,   "Strength")]
     [InlineData(78,   "Animal")]
     [InlineData(88,   "MaxHP")]
     [InlineData(97,   "GoodOnly")]
+    [InlineData(105,  "Accuracy2")]
+    [InlineData(106,  "Accuracy3")]
     [InlineData(116,  "BSAccu")]
     [InlineData(170,  "Sleep")]
     [InlineData(1001, "GrantThievery")]
