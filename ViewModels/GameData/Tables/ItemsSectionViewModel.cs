@@ -280,7 +280,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 // above (weapon block); suppress the duplicate here.
                 if (code == 116) continue;
                 int val = ReadInt(el, $"AbilVal-{i}");
-                string label = AbilityLabelForDialog(code);
+                string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
             }
@@ -300,22 +300,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     // ----- Ability-row formatting helpers -----
 
     /// <summary>
-    /// Per-code label override for the dialog. AbilityNames is the canonical
-    /// table; this dictionary swaps in MegaMUD-display names where they differ
-    /// (e.g. ability 43 stores as "CastSpell" but MegaMUD's dialog shows
-    /// "CastsSp"). Codes not listed fall through to <see cref="AbilityNames"/>.
-    /// </summary>
-    private static readonly Dictionary<int, string> AbilityLabelOverrides = new()
-    {
-        [43]  = "CastsSp",
-        [59]  = "ClassOk",
-        [70]  = "Spellcasting",
-        [114] = "%Spell",
-        [119] = "Del@Maint",
-        [145] = "ManaRgn",
-    };
-
-    /// <summary>
     /// Ability codes whose value is a stat bonus and should render signed
     /// ("+5") rather than raw ("5"). The remainder render raw — they encode
     /// thresholds, counts, ids, etc. where a sign would be misleading.
@@ -326,12 +310,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         34, 36, 37, 38, 39, 40, 41, 44, 45, 46, 47, 48, 49, 51,
         58, 65, 66, 67, 68, 69, 70, 145, 187,
     };
-
-    private string AbilityLabelForDialog(int code)
-    {
-        if (AbilityLabelOverrides.TryGetValue(code, out string? overridden)) return overridden;
-        return AbilityNames.GetName(code) ?? $"Abil{code}";
-    }
 
     private string AbilityValueForDialog(int code, int rawValue) => code switch
     {

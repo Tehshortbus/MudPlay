@@ -283,7 +283,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                     guards.Add(val);
                     continue;
                 }
-                string label = AbilityNames.GetName(code) ?? $"Abil{code}";
+                string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 abilities.Add(val == 0 ? label : $"{label} {FormatSigned(val)}");
             }
             if (abilities.Count > 0)
