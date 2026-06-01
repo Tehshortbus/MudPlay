@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
@@ -36,13 +37,14 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
         "WeaponType",
         "ArmourType",
         "CombatLVL",
+        "Abilities",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "class", "warrior", "mage", "priest", "rogue", "monk", "magery", "combat",
+        Title, "class", "warrior", "mage", "priest", "rogue", "monk", "magery", "combat", "ability",
     };
 
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
@@ -54,4 +56,16 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
         };
 
     public ClassesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
+
+    /// <summary>
+    /// Synthesise the "Abilities" column from each row's <c>Abil-N</c> /
+    /// <c>AbilVal-N</c> pairs so the grid shows every class skill at a
+    /// glance (e.g. Warrior → "Bash", Ninja → "Stealth, ShadowStealth, ..."
+    /// — whatever the MDB encodes).
+    /// </summary>
+    protected override IReadOnlyDictionary<string, string?> ComputeRowCells(JsonElement element)
+        => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Abilities"] = AbilityNames.SummarizeAbilities(element),
+        };
 }

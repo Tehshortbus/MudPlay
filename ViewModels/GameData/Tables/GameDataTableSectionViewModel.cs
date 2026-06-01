@@ -337,7 +337,11 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
         IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
-            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters);
+            // Sections may inject synthesised cells that aren't backed
+            // by a real MDB field (e.g. Races / Classes synthesise an
+            // "Abilities" column from Abil-N / AbilVal-N pairs).
+            IReadOnlyDictionary<string, string?>? computed = ComputeRowCells(el);
+            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters, computed);
             // Per-row tier resolution: look up the record by its primary
             // key column value (typically Number) and ask the resolver
             // which tier owns the highest-priority override, if any.
@@ -350,6 +354,16 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
             rows.Add(row);
         }
     }
+
+    /// <summary>
+    /// Optional per-row computed-cell hook. Returned values are merged
+    /// into the row, taking precedence over any same-named raw JSON
+    /// cell. Use this for columns that aren't backed by a real MDB
+    /// field — e.g. the Race / Class tabs synthesise an "Abilities"
+    /// column from each row's <c>Abil-N</c> / <c>AbilVal-N</c> pairs.
+    /// Default implementation returns <c>null</c> (no extras).
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element) => null;
 }
 
 /// <summary>
@@ -406,14 +420,21 @@ public sealed class GameDataRow
     public static GameDataRow FromJson(
         JsonElement element,
         IReadOnlyList<string> columns,
-        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null,
+        IReadOnlyDictionary<string, string?>? computedCells = null)
     {
         Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
         List<GameDataCell> cells = new(columns.Count);
 
         foreach (string column in columns)
         {
-            string? raw = ReadValue(element, column);
+            // Computed cells take precedence over raw JSON when present —
+            // sections use this to surface synthesised columns ("Abilities")
+            // that aren't backed by a real MDB field.
+            string? raw = computedCells is not null
+                          && computedCells.TryGetValue(column, out string? computed)
+                ? computed
+                : ReadValue(element, column);
             values[column] = raw;
             string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
                 ? fmt(raw)

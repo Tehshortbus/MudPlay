@@ -160,4 +160,47 @@ public static class AbilityNames
     /// </summary>
     public static string FormatId(int abilityId)
         => GetName(abilityId) ?? $"Unknown({abilityId})";
+
+    /// <summary>
+    /// Comma-joined summary of every non-zero <c>Abil-N</c> /
+    /// <c>AbilVal-N</c> pair on a JSON record. Used to surface a
+    /// human-readable rollup column for Race / Class rows in the
+    /// Game Data Browser (each row's awarded abilities at a glance).
+    /// </summary>
+    /// <param name="element">Source JSON object (Races / Classes / Items / etc. row).</param>
+    /// <param name="slots">Number of <c>Abil-N</c> slots to scan; defaults to 10.</param>
+    /// <returns>
+    /// <c>"Illu +80, RaceStealth, Crits +1, Accuracy3 +3"</c> — values
+    /// render signed when non-zero, name-only when the ability has no
+    /// magnitude (flag-style abilities). Empty string when no slots are
+    /// populated.
+    /// </returns>
+    public static string SummarizeAbilities(System.Text.Json.JsonElement element, int slots = 10)
+    {
+        List<string> parts = new();
+        for (int i = 0; i < slots; i++)
+        {
+            if (!element.TryGetProperty($"Abil-{i}", out System.Text.Json.JsonElement codeEl)) continue;
+            if (codeEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (!codeEl.TryGetInt32(out int code) || code == 0) continue;
+
+            int val = 0;
+            if (element.TryGetProperty($"AbilVal-{i}", out System.Text.Json.JsonElement valEl)
+                && valEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                && valEl.TryGetInt32(out int v))
+            {
+                val = v;
+            }
+
+            string? name = GetName(code);
+            if (name is null) continue;
+            if (val == 0)
+                parts.Add(name);
+            else if (val > 0)
+                parts.Add($"{name} +{val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            else
+                parts.Add($"{name} {val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        }
+        return string.Join(", ", parts);
+    }
 }
