@@ -253,6 +253,30 @@ public sealed class AppServices
     public MonsterMessageStore MonsterMessages { get; private set; } = null!;
 
     /// <summary>
+    /// Active set's MonsterOverlay seed — Defaults-tier baseline for
+    /// per-monster automation behavior (relationship / priority /
+    /// NotHostile / DontBackstab). Realm flavor is auto-picked from
+    /// the active set's <c>Info.json[0].Legit</c>; bundled seeds for
+    /// each realm ship at <c>Defaults/MonsterOverlay.{realm}.seed.json</c>
+    /// and bootstrap to the per-install <c>Data/Global/</c> copy at
+    /// startup. Consulted by Monsters-tab editing + (future) combat
+    /// engines via <see cref="MonsterOverlaySeedStore.GetOverlay(int)"/>.
+    /// </summary>
+    public MonsterOverlaySeedStore MonsterOverlaySeed { get; private set; } = null!;
+
+    /// <summary>
+    /// Active set's ItemOverlay seed — Defaults-tier baseline for
+    /// per-item automation behavior (9 Options flags + MinToKeep /
+    /// MaxToGet). Realm flavor is auto-picked from the active set's
+    /// <c>Info.json[0].Legit</c>; bundled seeds for each realm ship at
+    /// <c>Defaults/ItemOverlay.{realm}.seed.json</c> and bootstrap to
+    /// the per-install <c>Data/Global/</c> copy at startup. Consulted
+    /// by the Items tab editing + (future) loot / equipment engines
+    /// via <see cref="ItemOverlaySeedStore.GetOverlay(int)"/>.
+    /// </summary>
+    public ItemOverlaySeedStore ItemOverlaySeed { get; private set; } = null!;
+
+    /// <summary>
     /// Background audit comparing player-facing spells in the active
     /// set against the Messages catalogue's Links field — surfaces a
     /// summary LogEntry per audit run so users know which spells
@@ -402,6 +426,18 @@ public sealed class AppServices
         // same per-set storage + universal seed fallback pattern.
         MonsterMessages = new MonsterMessageStore(Log);
         GameData.ActiveSetChanged += MonsterMessages.Load;
+        // Realm-flavored seed for the per-monster overlay (Defaults
+        // tier). Switching sets reads the new Info.Legit and reloads
+        // the matching realm's seed; runtime consumers retrieve
+        // baselines via MonsterOverlaySeed.GetOverlay(number).
+        MonsterOverlaySeed = new MonsterOverlaySeedStore(Log);
+        GameData.ActiveSetChanged += MonsterOverlaySeed.Load;
+        // Realm-flavored seed for the per-item overlay (Defaults tier).
+        // Parallel of MonsterOverlaySeed — same Info.Legit-driven realm
+        // pick + per-set reload; consumers retrieve baselines via
+        // ItemOverlaySeed.GetOverlay(number).
+        ItemOverlaySeed = new ItemOverlaySeedStore(Log);
+        GameData.ActiveSetChanged += ItemOverlaySeed.Load;
         // Triggers split storage: GameData-scoped triggers live in the
         // active set's per-set triggers.json; Profile-scoped triggers
         // stay on CharacterProfile.Triggers. The engine reloads its

@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Text.Json;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
@@ -36,14 +38,26 @@ public sealed class RacesSectionViewModel : JsonTableSectionViewModel
         "mHEA", "xHEA",
         "mAGL", "xAGL",
         "mCHM", "xCHM",
+        "Abilities",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "race", "human", "elf", "dwarf", "hobbit", "gnome", "goblin", "orc",
+        Title, "race", "human", "elf", "dwarf", "hobbit", "gnome", "goblin", "orc", "racial",
     };
 
     public RacesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
+
+    /// <summary>
+    /// Synthesise the "Abilities" column from each row's <c>Abil-N</c> /
+    /// <c>AbilVal-N</c> pairs so the grid shows every racial perk at a
+    /// glance (e.g. Dark-Elf → "Illu +80, RaceStealth, Crits +1, Accuracy3 +3").
+    /// </summary>
+    protected override IReadOnlyDictionary<string, string?> ComputeRowCells(JsonElement element)
+        => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Abilities"] = AbilityNames.SummarizeAbilities(element),
+        };
 }

@@ -10,3 +10,4 @@ docs/
 *.suo
 [Tt]humbs.db
 .DS_Store
+tools/

@@ -215,6 +215,77 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         ApplyFilter();
         IsLoaded = true;
         OnPropertyChanged(nameof(StatusText));
+
+        // Cross-section navigation might have queued a selection while
+        // rows were still loading (Shops → Rooms double-click hits this
+        // path). Apply it now that AllRows is materialised.
+        if (_pendingRowSelector is { } selector)
+        {
+            _pendingRowSelector = null;
+            ApplyRowSelector(selector);
+        }
+    }
+
+    /// <summary>
+    /// Pending row predicate from a cross-section navigation request
+    /// that arrived before this section had loaded its rows. Cleared
+    /// after <see cref="LoadAsync"/> applies it.
+    /// </summary>
+    private Func<GameDataRow, bool>? _pendingRowSelector;
+
+    /// <summary>
+    /// Select the first row matching <paramref name="predicate"/>.
+    /// Queues the predicate when rows haven't loaded yet — the
+    /// selection applies as soon as <see cref="LoadAsync"/> finishes.
+    /// </summary>
+    public void SelectRowMatching(Func<GameDataRow, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        if (!IsLoaded || AllRows.Count == 0)
+        {
+            _pendingRowSelector = predicate;
+            return;
+        }
+        ApplyRowSelector(predicate);
+    }
+
+    /// <summary>
+    /// Fired after a programmatic <see cref="SelectRowMatching"/> lands on
+    /// a row. The view subscribes to bring the row into view (Avalonia
+    /// DataGrid doesn't auto-scroll on SelectedItem source changes — we
+    /// have to call ScrollIntoView explicitly).
+    /// </summary>
+    public event Action<GameDataRow>? ScrollToRowRequested;
+
+    private void ApplyRowSelector(Func<GameDataRow, bool> predicate)
+    {
+        // Prefer matches that survive the current filter; fall back to
+        // the full row set when none do so the navigation never lands
+        // on "no selection" with the row sitting just past the filter.
+        // When a match is found in AllRows but the filter is hiding it,
+        // clear the filter so the user actually sees the selected row.
+        foreach (GameDataRow row in FilteredRows)
+        {
+            if (predicate(row))
+            {
+                SelectedRow = row;
+                ScrollToRowRequested?.Invoke(row);
+                return;
+            }
+        }
+        foreach (GameDataRow row in AllRows)
+        {
+            if (predicate(row))
+            {
+                // Filter is hiding the row — clear it so the target is
+                // visible. The selection latches on the now-unfiltered
+                // row set.
+                if (!string.IsNullOrEmpty(SearchText)) SearchText = string.Empty;
+                SelectedRow = row;
+                ScrollToRowRequested?.Invoke(row);
+                return;
+            }
+        }
     }
 
     partial void OnSearchTextChanged(string value)
@@ -337,7 +408,11 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
         IReadOnlyDictionary<string, Func<string?, string?>>? formatters = ColumnFormatters;
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
-            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters);
+            // Sections may inject synthesised cells that aren't backed
+            // by a real MDB field (e.g. Races / Classes synthesise an
+            // "Abilities" column from Abil-N / AbilVal-N pairs).
+            IReadOnlyDictionary<string, string?>? computed = ComputeRowCells(el);
+            GameDataRow row = GameDataRow.FromJson(el, Columns, formatters, computed);
             // Per-row tier resolution: look up the record by its primary
             // key column value (typically Number) and ask the resolver
             // which tier owns the highest-priority override, if any.
@@ -350,6 +425,16 @@ public abstract class JsonTableSectionViewModel : GameDataTableSectionViewModel
             rows.Add(row);
         }
     }
+
+    /// <summary>
+    /// Optional per-row computed-cell hook. Returned values are merged
+    /// into the row, taking precedence over any same-named raw JSON
+    /// cell. Use this for columns that aren't backed by a real MDB
+    /// field — e.g. the Race / Class tabs synthesise an "Abilities"
+    /// column from each row's <c>Abil-N</c> / <c>AbilVal-N</c> pairs.
+    /// Default implementation returns <c>null</c> (no extras).
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element) => null;
 }
 
 /// <summary>
@@ -406,14 +491,21 @@ public sealed class GameDataRow
     public static GameDataRow FromJson(
         JsonElement element,
         IReadOnlyList<string> columns,
-        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null)
+        IReadOnlyDictionary<string, Func<string?, string?>>? formatters = null,
+        IReadOnlyDictionary<string, string?>? computedCells = null)
     {
         Dictionary<string, string?> values = new(StringComparer.OrdinalIgnoreCase);
         List<GameDataCell> cells = new(columns.Count);
 
         foreach (string column in columns)
         {
-            string? raw = ReadValue(element, column);
+            // Computed cells take precedence over raw JSON when present —
+            // sections use this to surface synthesised columns ("Abilities")
+            // that aren't backed by a real MDB field.
+            string? raw = computedCells is not null
+                          && computedCells.TryGetValue(column, out string? computed)
+                ? computed
+                : ReadValue(element, column);
             values[column] = raw;
             string? display = (formatters is not null && formatters.TryGetValue(column, out Func<string?, string?>? fmt))
                 ? fmt(raw)

@@ -7,13 +7,13 @@ namespace FujinTerm.Models.GameData;
 /// <remarks>
 /// <para>
 /// Surfaced + edited via the Game Data Browser → Messages tab.
-/// Spell-bound records carry up to five perspective-tagged lines (the
-/// same line shown from the caster, target, witness, buff-applied, and
-/// stat-line points of view) so the future combat manager can ask a
-/// targeted question — "what's the caster line for spell N?" —
-/// without scanning every record. Non-spell records (item procs,
-/// monster ability lines, condition messages, life-counter triggers)
-/// typically populate only the slot that semantically fits.
+/// Spell-bound records carry up to four perspective-tagged lines (the
+/// same line shown from the caster, target, witness, and buff-applied
+/// points of view) so the future combat manager can ask a targeted
+/// question — "what's the caster line for spell N?" — without scanning
+/// every record. Non-spell records (item procs, monster ability lines,
+/// condition messages, life-counter triggers) typically populate only
+/// the slot that semantically fits.
 /// </para>
 /// <para>
 /// Storage lives alongside the active game-data set at
@@ -26,13 +26,13 @@ namespace FujinTerm.Models.GameData;
 /// </para>
 /// <para>
 /// Identity rule: <see cref="Id"/> is <c>SHA1(Name | CasterMessage |
-/// TargetMessage | WitnessMessage | AppliedMessage | AppliedEndsWith |
-/// StatusLineMessage)</c> truncated to 16 lowercase hex chars. Any
-/// edit to Name or any line text produces a new Id; the store's
-/// upsert logic uses the original-Id reference to replace in place.
+/// TargetMessage | WitnessMessage | AppliedMessage | AppliedEndsWith)</c>
+/// truncated to 16 lowercase hex chars. Any edit to Name or any line
+/// text produces a new Id; the store's upsert logic uses the
+/// original-Id reference to replace in place.
 /// </para>
 /// </remarks>
-/// <param name="Id">Stable content hash of (Name + all five lines).</param>
+/// <param name="Id">Stable content hash of (Name + the four perspective lines + AppliedEndsWith).</param>
 /// <param name="Name">Display name shown in the Messages tab list — typically the spell name for spell-bound records.</param>
 /// <param name="Action">High-level engine reaction when any line matches. See <see cref="MessageAction"/>.</param>
 /// <param name="Flags">Typed view of the known flag bits. See <see cref="MessageFlags"/>.</param>
@@ -43,7 +43,6 @@ namespace FujinTerm.Models.GameData;
 /// <param name="WitnessMessage">Line YOU see when someone else casts on someone else (third-party).</param>
 /// <param name="AppliedMessage">Buff / debuff begin text — what YOU see when the effect starts on you. Paired with <see cref="AppliedEndsWith"/>.</param>
 /// <param name="AppliedEndsWith">Wear-off text — what YOU see when the buff / debuff applied to you expires. Only meaningful alongside a non-empty <see cref="AppliedMessage"/>.</param>
-/// <param name="StatusLineMessage">Entry in the player's <c>stat</c> active-effects list while the effect is on you.</param>
 /// <param name="Links">Back-references to the game-data rows this record is anchored to — usually one Spells#N for spell-bound records, possibly several when name-aliased variants share the same lines (e.g. priest + druid resist cold).</param>
 public sealed record MessageRecord(
     string                       Id,
@@ -57,12 +56,11 @@ public sealed record MessageRecord(
     string                       WitnessMessage,
     string                       AppliedMessage,
     string                       AppliedEndsWith,
-    string                       StatusLineMessage,
     IReadOnlyList<GameDataLink>? Links = null)
 {
     /// <summary>
     /// Stable content hash used as <see cref="Id"/>. SHA1 of every
-    /// identity field (Name + each of the five perspective line slots
+    /// identity field (Name + each of the four perspective line slots
     /// + the applied wear-off pair half), joined by <c>|</c>, truncated
     /// to 16 lowercase hex chars. Any edit to any field flips the Id;
     /// callers use the original-Id reference to find-and-replace the
@@ -74,11 +72,10 @@ public sealed record MessageRecord(
         string targetMessage,
         string witnessMessage,
         string appliedMessage,
-        string appliedEndsWith,
-        string statusLineMessage)
+        string appliedEndsWith)
     {
         byte[] buf = System.Text.Encoding.UTF8.GetBytes(
-            $"{name}|{casterMessage}|{targetMessage}|{witnessMessage}|{appliedMessage}|{appliedEndsWith}|{statusLineMessage}");
+            $"{name}|{casterMessage}|{targetMessage}|{witnessMessage}|{appliedMessage}|{appliedEndsWith}");
         byte[] hash = System.Security.Cryptography.SHA1.HashData(buf);
         System.Text.StringBuilder sb = new(16);
         for (int i = 0; i < 8; i++)

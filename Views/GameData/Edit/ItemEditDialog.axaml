@@ -1,0 +1,200 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="740"
+        x:Class="FujinTerm.Views.GameData.Edit.ItemEditDialog"
+        x:DataType="vm:ItemEditDialogViewModel"
+        Title="{Binding Title}"
+        Width="920" Height="740"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.MdbKey">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="TextBlock.MdbValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+        </Style>
+        <Style Selector="TextBox.ReadOnlyField">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="Background" Value="{StaticResource ChromeBgSunkenBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+
+            <!-- ===== Two panes: editable left + read-only MDB right =====
+                 Same shape as MonsterEditDialog — GridSplitter persists
+                 the column ratio per profile via SplitterLayoutStore
+                 (id = "ItemEditDialog"). The initial split is skewed
+                 toward the left (1.3* / 1*) because the editable side
+                 carries the Item / Options / Details boxes which need
+                 ~460px to render without clipping; a true 50/50 starts
+                 the dialog with the left content overlaying the
+                 splitter on first open. SplitterLayoutStore restores
+                 the user's last-dragged ratio over this default. -->
+            <Grid Grid.Row="0" x:Name="PanesGrid" ColumnDefinitions="1.3*,6,*">
+
+                <!-- Editable -->
+                <Border Grid.Column="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10"
+                        Margin="0,0,8,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="6">
+
+                            <!-- Item Name + Use tier — kept narrow and left-aligned
+                                 so they don't reach the splitter. -->
+                            <Grid ColumnDefinitions="110,280" RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Use"/>
+                                <ComboBox  Grid.Row="1" Grid.Column="1"
+                                           ItemsSource="{Binding AvailableTiers}"
+                                           SelectedItem="{Binding UseTier, Mode=TwoWay}"
+                                           HorizontalAlignment="Stretch"/>
+                            </Grid>
+
+                            <!-- Options — 9 checkboxes laid out in two columns.
+                                 Auto-equip + Can use to backstab dropped (auto-equip
+                                 is owned by the Equipment Manager section; backstab
+                                 eligibility is derived from ability code 116 at
+                                 combat time, not user-overridable here). -->
+                            <TextBlock Classes="SectionHeader" Text="Options" Margin="0,10,0,4"/>
+                            <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8"
+                                    HorizontalAlignment="Left">
+                                <Grid ColumnDefinitions="Auto,16,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <CheckBox Content="Auto-collect"         IsChecked="{Binding AutoCollect,     Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-discard"         IsChecked="{Binding AutoDiscard,     Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-find"            IsChecked="{Binding AutoFind,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-open"            IsChecked="{Binding AutoOpen,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-buy"             IsChecked="{Binding AutoBuy,         Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-sell (or stash)" IsChecked="{Binding AutoSell,        Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="2">
+                                        <CheckBox Content="Cannot be taken"      IsChecked="{Binding CannotBeTaken,   Mode=TwoWay}"/>
+                                        <CheckBox Content="Must have minimum"    IsChecked="{Binding MustHaveMinimum, Mode=TwoWay}"/>
+                                        <CheckBox Content="Loyal item"           IsChecked="{Binding LoyalItem,       Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Details — overlay-editable carry policy + read-only MDB
+                                 fields. Constrained to HorizontalAlignment=Left + fixed
+                                 column widths so the controls don't stretch toward the
+                                 splitter; matches the compact look of the Item /
+                                 Options sections above. -->
+                            <TextBlock Classes="SectionHeader" Text="Details" Margin="0,10,0,4"/>
+                            <Grid ColumnDefinitions="110,80,16,Auto,90"
+                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
+
+                                <!-- Row 0: Min. to keep | Weight -->
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. to keep"
+                                           ToolTip.Tip="Engines will not drop / discard below this count. Leave blank for none."/>
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding MinToKeep, Mode=TwoWay}"
+                                           PlaceholderText="None"/>
+                                <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldLabel" Text="Weight"/>
+                                <TextBox   Grid.Row="0" Grid.Column="4" Classes="ReadOnlyField" Text="{Binding Weight}"/>
+
+                                <!-- Row 1: Max to get | Price -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max to get"
+                                           ToolTip.Tip="Stop auto-acquiring at this count. Leave blank for 'All'."/>
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding MaxToGet, Mode=TwoWay}"
+                                           PlaceholderText="All"/>
+                                <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Price"/>
+                                <TextBox   Grid.Row="1" Grid.Column="4" Classes="ReadOnlyField" Text="{Binding Price}"/>
+
+                                <!-- Row 2: Item type (read-only display from MDB).
+                                     Spans Col 1..4 so the value field gets the full
+                                     width of the constrained Grid (still bounded by
+                                     HorizontalAlignment=Left on the outer Grid). -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Item type"/>
+                                <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4"
+                                           Classes="ReadOnlyField" Text="{Binding ItemTypeText}"/>
+
+                                <!-- Row 3: Body location (read-only display from MDB) -->
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Body location"/>
+                                <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4"
+                                           Classes="ReadOnlyField" Text="{Binding BodyLocation}"/>
+
+                                <!-- Row 4: Bought/sold — pure MDB-derived viewable display.
+                                     TextBlock (not a TextBox) so it's unambiguously
+                                     view-only — no input focus, no caret, no
+                                     editable-looking chrome. -->
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bought / sold"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="4"
+                                           Text="{Binding BoughtSold}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"/>
+                            </Grid>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Drag handle. -->
+                <GridSplitter Grid.Column="1"
+                              Width="6"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              ResizeDirection="Columns"
+                              ResizeBehavior="PreviousAndNext"
+                              Background="{StaticResource ChromeBorderBrush}"
+                              ShowsPreview="False"/>
+
+                <!-- Read-only MDB info -->
+                <Border Grid.Column="2"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10"
+                        Margin="8,0,0,0"
+                        Background="{StaticResource ChromeBgSunkenBrush}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Classes="SectionHeader" Text="Other Info (from MDB)"/>
+                            <ItemsControl ItemsSource="{Binding MdbInfo}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="140,*" Margin="0,1">
+                                            <TextBlock Grid.Column="0" Classes="MdbKey"   Text="{Binding Key}"/>
+                                            <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ===== Buttons ===== -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="OK"     Command="{Binding SaveCommand}"   IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>

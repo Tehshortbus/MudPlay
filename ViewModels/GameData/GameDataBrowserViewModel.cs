@@ -61,12 +61,14 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly MacroStore? _macros;
     private readonly MessageStore? _messages;
     private readonly MonsterMessageStore? _monsterMessages;
+    private readonly MonsterOverlaySeedStore? _monsterOverlaySeed;
+    private readonly ItemOverlaySeedStore? _itemOverlaySeed;
     private readonly SettingsResolver? _resolver;
     private readonly DialogService? _dialogs;
     private readonly KeybindingStore? _keybindings;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -76,6 +78,8 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         MacroStore? macros = null,
         MessageStore? messages = null,
         MonsterMessageStore? monsterMessages = null,
+        MonsterOverlaySeedStore? monsterOverlaySeed = null,
+        ItemOverlaySeedStore? itemOverlaySeed = null,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         KeybindingStore? keybindings = null,
@@ -89,6 +93,8 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _macros = macros;
         _messages = messages;
         _monsterMessages = monsterMessages;
+        _monsterOverlaySeed = monsterOverlaySeed;
+        _itemOverlaySeed = itemOverlaySeed;
         _resolver = resolver;
         _dialogs = dialogs;
         _keybindings = keybindings;
@@ -214,8 +220,8 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
         // ----- MDB-derived (bottom group) ---------------------------------
 
-        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages));
-        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver));
+        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
@@ -225,7 +231,51 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         Sections.Add(new TextBlocksSectionViewModel(_gameData, _resolver));
         Sections.Add(new InfoSectionViewModel(_gameData, _resolver));
 
+        // Hook every section's NavigationRequested event so cross-section
+        // jumps (e.g. Shops → Rooms double-click) can route through the
+        // browser. Wire LAST so every section is in Sections first.
+        foreach (GameDataSectionViewModel section in Sections)
+            section.NavigationRequested += OnNavigationRequested;
+
         void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
+    }
+
+    /// <summary>
+    /// Route a section's <see cref="GameDataSectionViewModel.NavigationRequested"/>
+    /// event to the named target: activate the target tab, then defer
+    /// the row-selection one dispatcher tick so the DataGrid has a chance
+    /// to swap views before we touch SelectedItem. The target's
+    /// <see cref="Tables.GameDataTableSectionViewModel.SelectRowMatching"/>
+    /// queues the predicate when called before the rows materialise.
+    /// </summary>
+    /// <remarks>
+    /// Switching the visible section first matters for a re-selection in
+    /// the warm-load path: setting <c>SelectedRow</c> while the target
+    /// tab is still hidden lets the DataGrid skip applying the new
+    /// selection visual when the tab eventually shows (Avalonia's
+    /// virtualised DataGrid doesn't always realise a row container for
+    /// the new SelectedItem if the previous SelectedItem was already
+    /// in view from a prior navigation).
+    /// </remarks>
+    private void OnNavigationRequested(NavigationRequest req)
+    {
+        GameDataSectionViewModel? target =
+            Sections.FirstOrDefault(s => string.Equals(s.Id, req.TargetSectionId, StringComparison.OrdinalIgnoreCase));
+        if (target is null) return;
+
+        SelectedSection = target;
+
+        if (req.RowSelector is not null && target is Tables.GameDataTableSectionViewModel table)
+        {
+            // Defer past the tab-swap layout pass. Background priority
+            // is low enough that Avalonia's section-switch render runs
+            // first; SelectRowMatching either fires immediately (warm
+            // load) or queues the predicate for LoadAsync's
+            // continuation (cold load).
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => table.SelectRowMatching(req.RowSelector),
+                Avalonia.Threading.DispatcherPriority.Background);
+        }
     }
 }
