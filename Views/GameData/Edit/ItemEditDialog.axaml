@@ -54,10 +54,11 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="6">
 
-                            <!-- Item header -->
-                            <TextBlock Classes="SectionHeader" Text="Item"/>
-                            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto"
-                                  ColumnSpacing="8" RowSpacing="6">
+                            <!-- Item Name + Use tier — kept narrow and left-aligned
+                                 so they don't reach the splitter. -->
+                            <Grid ColumnDefinitions="110,280" RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="8" RowSpacing="6"
+                                  HorizontalAlignment="Left">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
                                 <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Use"/>
@@ -67,11 +68,13 @@
                                            HorizontalAlignment="Stretch"/>
                             </Grid>
 
-                            <!-- Options — 11 checkboxes laid out in two columns. -->
+                            <!-- Options — 11 checkboxes laid out in two columns.
+                                 Left-aligned so the box doesn't expand to the splitter. -->
                             <TextBlock Classes="SectionHeader" Text="Options" Margin="0,10,0,4"/>
                             <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                                    BorderThickness="1" CornerRadius="3" Padding="8">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                                    BorderThickness="1" CornerRadius="3" Padding="8"
+                                    HorizontalAlignment="Left">
+                                <Grid ColumnDefinitions="Auto,16,Auto">
                                     <StackPanel Grid.Column="0" Spacing="2">
                                         <CheckBox Content="Auto-collect"        IsChecked="{Binding AutoCollect,      Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-discard"        IsChecked="{Binding AutoDiscard,      Mode=TwoWay}"/>
@@ -81,7 +84,7 @@
                                         <CheckBox Content="Auto-buy"            IsChecked="{Binding AutoBuy,          Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-sell (or stash)" IsChecked="{Binding AutoSell,         Mode=TwoWay}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="2">
+                                    <StackPanel Grid.Column="2" Spacing="2">
                                         <CheckBox Content="Cannot be taken"     IsChecked="{Binding CannotBeTaken,    Mode=TwoWay}"/>
                                         <CheckBox Content="Can use to backstab" IsChecked="{Binding CanUseToBackstab, Mode=TwoWay}"/>
                                         <CheckBox Content="Must have minimum"   IsChecked="{Binding MustHaveMinimum,  Mode=TwoWay}"/>
