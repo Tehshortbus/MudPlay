@@ -60,12 +60,18 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
     /// <summary>
     /// Synthesise the "Abilities" column from each row's <c>Abil-N</c> /
     /// <c>AbilVal-N</c> pairs so the grid shows every class skill at a
-    /// glance (e.g. Warrior → "Bash", Ninja → "Stealth, ShadowStealth, ..."
-    /// — whatever the MDB encodes).
+    /// glance (e.g. Warrior → "Bash", Ninja → "ClassStealth, FindTraps,
+    /// Dodge +25, Crits +10, ..." — whatever the MDB encodes).
+    /// Code 59 (ClassOk) is suppressed in class context: MME's
+    /// PullClassDetail explicitly skips it (its value on a class row
+    /// is internal / inert data — Druid is the only stock class with
+    /// an entry, AbilVal=74 with no user-facing meaning).
     /// </summary>
+    private static readonly int[] _skipInClassContext = { 59 };
+
     protected override IReadOnlyDictionary<string, string?> ComputeRowCells(JsonElement element)
         => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Abilities"] = AbilityNames.SummarizeAbilities(element),
+            ["Abilities"] = AbilityNames.SummarizeAbilities(element, skipCodes: _skipInClassContext),
         };
 }

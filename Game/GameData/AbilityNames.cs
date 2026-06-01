@@ -169,13 +169,24 @@ public static class AbilityNames
     /// </summary>
     /// <param name="element">Source JSON object (Races / Classes / Items / etc. row).</param>
     /// <param name="slots">Number of <c>Abil-N</c> slots to scan; defaults to 10.</param>
+    /// <param name="skipCodes">
+    /// Optional ability codes to omit from the rollup. Pass <c>{ 59 }</c>
+    /// for the Classes tab — code 59 (ClassOk) is meaningful as a
+    /// per-item class-restriction in the Items context but its value
+    /// on a class row itself is internal / inert data MME deliberately
+    /// hides (the only stock class with the entry is Druid with
+    /// <c>AbilVal=74</c>).
+    /// </param>
     /// <returns>
     /// <c>"Illu +80, RaceStealth, Crits +1, Accuracy3 +3"</c> — values
     /// render signed when non-zero, name-only when the ability has no
     /// magnitude (flag-style abilities). Empty string when no slots are
     /// populated.
     /// </returns>
-    public static string SummarizeAbilities(System.Text.Json.JsonElement element, int slots = 10)
+    public static string SummarizeAbilities(
+        System.Text.Json.JsonElement element,
+        int slots = 10,
+        IReadOnlyCollection<int>? skipCodes = null)
     {
         List<string> parts = new();
         for (int i = 0; i < slots; i++)
@@ -183,6 +194,7 @@ public static class AbilityNames
             if (!element.TryGetProperty($"Abil-{i}", out System.Text.Json.JsonElement codeEl)) continue;
             if (codeEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
             if (!codeEl.TryGetInt32(out int code) || code == 0) continue;
+            if (skipCodes is not null && skipCodes.Contains(code)) continue;
 
             int val = 0;
             if (element.TryGetProperty($"AbilVal-{i}", out System.Text.Json.JsonElement valEl)
