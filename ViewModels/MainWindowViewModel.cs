@@ -2165,8 +2165,14 @@ public partial class MainWindowViewModel : ObservableObject
             A modern Avalonia BBS terminal client with MajorMUD-aware features.
 
             Source: {AppInfo.RepoUrl}
+            License: MIT — see LICENSE in the project root for the full text.
 
             Built on .NET 10 + Avalonia 12 (CommunityToolkit.Mvvm source-gen).
+            Bundles JetDatabaseReader 2.2.0 (MIT) for pure-managed .mdb / .accdb
+            imports without Wine or mdbtools.
+
+            Help → Licenses… lists every third-party component shipped in
+            this build.
             """);
 
     /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>

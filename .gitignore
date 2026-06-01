@@ -10,4 +10,4 @@ docs/
 *.suo
 [Tt]humbs.db
 .DS_Store
-tools/mdb2-probes/
+tools/
