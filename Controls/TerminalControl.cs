@@ -80,6 +80,19 @@ public sealed class TerminalControl : Control
     private DispatcherTimer? _blinkTimer;
     private Action? _onBufferChanged;
 
+    // ----- Post-Enter "pending" overlay ---------------------------------
+    // Without this, hitting Enter clears the local buffer immediately,
+    // the overlay disappears, and the user sees a half-second of empty
+    // space before the server's echo arrives and repaints the line.
+    // We capture the flushed text + cursor position so the overlay
+    // continues to render at the SAME spot — when the server echoes
+    // back, the real cells underneath fill in with the same text and
+    // there's no visual transition. Cleared on the next screen
+    // update (which is almost always the echo itself).
+    private string? _pendingFlushText;
+    private int _pendingFlushRow;
+    private int _pendingFlushCol;
+
     public TerminalControl()
     {
         Focusable = true;
@@ -121,8 +134,18 @@ public sealed class TerminalControl : Control
     }
 
     // ScreenUpdated may fire on any thread; invalidation must happen on the
-    // UI thread.
-    private void OnScreenUpdated() => Dispatcher.UIThread.Post(InvalidateVisual);
+    // UI thread. Also clears the post-Enter pending overlay — the server
+    // just sent output (the most common case being the echo of the line
+    // we just submitted), so the cell grid behind the overlay is now
+    // accurate and the overlay can stop drawing.
+    private void OnScreenUpdated()
+    {
+        if (_pendingFlushText is not null)
+        {
+            _pendingFlushText = null;
+        }
+        Dispatcher.UIThread.Post(InvalidateVisual);
+    }
 
     // ScreenResized only fires on Emulator.Resize. Re-measure so the
     // canvas grows / shrinks to match the new cell grid.
@@ -223,16 +246,34 @@ public sealed class TerminalControl : Control
         // end of the overlay so the visual caret sits where the user's
         // next char will land. The cell grid behind it is unchanged —
         // when the user hits Enter and the server echoes the line
-        // back, the echo writes real cells over the overlay area
-        // (overlay is gone by then because the buffer is cleared).
+        // back, the echo writes real cells over the overlay area.
+        //
+        // Three render modes, in priority order:
+        //   1. Live buffer non-empty → draw at CURRENT cursor.
+        //   2. Live buffer empty but pending-flush captured → draw the
+        //      just-Enter'd text at its CAPTURED cursor, so the visual
+        //      stays seamless until the server's echo arrives.
+        //   3. Neither → no overlay; caret defaults to current cursor.
         int caretCol = screen.CursorX;
         int caretRow = screen.CursorY;
+        string? overlayText = null;
+        int overlayStartCol = screen.CursorX;
+        int overlayStartRow = screen.CursorY;
         if (InputBuffer is { Length: > 0 } buffer)
         {
-            string overlay = buffer.Text;
-            int col = screen.CursorX;
-            int row = screen.CursorY;
-            foreach (char ch in overlay)
+            overlayText = buffer.Text;
+        }
+        else if (_pendingFlushText is not null)
+        {
+            overlayText = _pendingFlushText;
+            overlayStartCol = _pendingFlushCol;
+            overlayStartRow = _pendingFlushRow;
+        }
+        if (overlayText is not null)
+        {
+            int col = overlayStartCol;
+            int row = overlayStartRow;
+            foreach (char ch in overlayText)
             {
                 if (col >= screen.Cols)
                 {
@@ -259,8 +300,16 @@ public sealed class TerminalControl : Control
                 context.DrawText(glyph, new Point(px, py));
                 col++;
             }
-            caretCol = col;
-            caretRow = row;
+            // Caret tracks the END of the LIVE buffer overlay (mode 1).
+            // For pending overlay (mode 2) the caret stays at the
+            // current cursor — the buffer is empty so the next typed
+            // char would land there, NOT at the end of the pending
+            // ghost text.
+            if (InputBuffer is { Length: > 0 })
+            {
+                caretCol = col;
+                caretRow = row;
+            }
         }
 
         // Cursor caret — a thin horizontal bar at the bottom of its cell,
@@ -364,7 +413,19 @@ public sealed class TerminalControl : Control
         {
             if (e.Key == Key.Enter)
             {
+                // Capture what we're flushing + where it's drawn so the
+                // pending-overlay path can keep it visible until the
+                // server's echo arrives. Skip the capture when the
+                // buffer is empty (lone-CR Enter has no visual to
+                // preserve) or when the emulator isn't ready yet.
+                if (buf.Length > 0 && Emulator is { } em)
+                {
+                    _pendingFlushText = buf.Text;
+                    _pendingFlushRow  = em.Screen.CursorY;
+                    _pendingFlushCol  = em.Screen.CursorX;
+                }
                 UserInput?.Invoke(buf.FlushBytes());
+                InvalidateVisual();
                 e.Handled = true;
                 return;
             }
