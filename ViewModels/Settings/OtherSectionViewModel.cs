@@ -118,10 +118,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// </summary>
     public IReadOnlyList<StubGroup> StubGroups { get; } = new[]
     {
-        new StubGroup("Locks, traps, walker behaviour", new[]
+        new StubGroup("Walker behaviour", new[]
         {
-            new StubField("Pick locks instead of bashing",   StubFieldKind.Check, "Phase 13 — walker prefers lockpicking when the skill is trained."),
-            new StubField("Attempt to disarm traps",         StubFieldKind.Check, "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
             new StubField("Auto-train",                      StubFieldKind.Check, "Phase 13 — auto-spend CP at a trainer when allocations are pending."),
             new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
@@ -135,6 +133,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Don't move unless sneaking",      StubFieldKind.Check, "Phase 7 — walker pause-gate when stealth drops."),
             // Removed per user direction: "Backwards if warning" (nonsense),
             // "Provide light in dimly lit rooms" (handled elsewhere).
+            // Lock / trap preference toggles moved down next to their
+            // matching retry-count pickers (see "Locks & traps" group).
         }),
         // Ignored ailments group graduated to a real wired section above
         // (rendered inline in OtherSectionView.axaml). Diseased added per
@@ -147,15 +147,23 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Bless while resting",  StubFieldKind.Check, "Phase 13 PR 13.D — CastingDirector recasts party-buffs during downtime."),
             new StubField("Bless during combat",  StubFieldKind.Check, "Phase 13 PR 13.D — extends bless casting into active rounds."),
         }),
-        new StubGroup("Retry counts", new[]
+        new StubGroup("Locks & traps", new[]
         {
             // Label = prose prefix, suffix = unit; the inline-numeric
             // row template renders "Attempt bash [picker] times" so
             // the picker is positioned exactly where the "N" was
             // written into the label before.
-            new StubField("Attempt bash",      StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash.",                     "times"),
-            new StubField("Attempt pick-lock", StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                           "times"),
-            new StubField("Attempt disarm",    StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
+            //
+            // Preference / gate toggles sit immediately after the
+            // pickers they relate to: "Pick locks instead of bashing"
+            // selects between the two retry counts above; "Attempt to
+            // disarm traps" gates whether the disarm retry count is
+            // ever consumed.
+            new StubField("Attempt bash",                  StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash.",                      "times"),
+            new StubField("Attempt pick-lock",             StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                            "times"),
+            new StubField("Pick locks instead of bashing", StubFieldKind.Check,   "Phase 13 — walker prefers lockpicking when the skill is trained."),
+            new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
+            new StubField("Attempt to disarm traps",       StubFieldKind.Check,   "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
         }),
         // Removed per user direction:
         // - "Command splitter character" (^M and ; are hardwired)
