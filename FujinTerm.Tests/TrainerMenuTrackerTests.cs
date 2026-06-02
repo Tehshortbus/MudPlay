@@ -78,14 +78,34 @@ public sealed class TrainerMenuTrackerTests
     }
 
     [Fact]
-    public void ChatLineContainingMenuText_DoesNotMatch()
+    public void ChatLineContainingMenuText_WithoutOutbound_DoesNotMatch()
     {
-        // The pattern is anchored — a chat line embedding the phrase
-        // can't trigger it.
+        // Chat line embedding the phrase — without an outbound
+        // `train stats` to arm the gate, the unanchored marker is
+        // ignored entirely.
         var (tracker, router, _) = Setup();
-        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
         Dispatch(router, "Foo gossips: did you see the Point Cost Chart");
         Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void ChatLineContainingMenuText_WithRecentOutbound_AcceptedTradeOff()
+    {
+        // Documented false-positive: within the 5 s post-`train stats`
+        // window, ANY line containing "Point Cost Chart" enters menu
+        // state. The marker is intentionally unanchored because the
+        // menu's first terminal row contains a side-by-side layout
+        // ("MAJOR MUD Character Creation" box on the left, "Point Cost
+        // Chart" panel on the right) — an anchored marker missed the
+        // emitted line entirely. The outbound-`train stats` gate is
+        // the load-bearing defence; the residual risk of a chat
+        // mention landing within 5 s of training is operationally
+        // zero, and the worst-case outcome is a wasted re-invite
+        // cycle (not damage).
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "Foo gossips: hey check the Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
     }
 
     [Fact]

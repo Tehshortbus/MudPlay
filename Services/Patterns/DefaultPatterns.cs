@@ -279,13 +279,18 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.MainMenuEnterRealm,
             @"^\[E\]\s*\.\s*Enter the Realm\b");
 
-        // Anchored marker for the train-stats menu's "Point Cost Chart"
-        // panel header. Anchored so a chat line like "Foo gossips: look at
-        // the Point Cost Chart" can't trigger it; gated further by
-        // TrainerMenuTracker which requires us to have just sent
-        // outbound `train stats` within the last few seconds.
+        // Marker for the train-stats menu's "Point Cost Chart" panel
+        // header. NOT anchored to line start/end — the panel sits in the
+        // upper-right of the menu and shares its terminal row with the
+        // left-side "MAJOR MUD Character Creation" box, so the
+        // LineExtractor emits a single row containing BOTH titles plus
+        // box-drawing chrome. Anchored matching missed entirely. The
+        // outbound-`train stats` gate in TrainerMenuTracker is the real
+        // defence against chat false positives — a chat line embedding
+        // "Point Cost Chart" within 5 s of someone sending `train stats`
+        // is essentially impossible in practice.
         yield return new RegexPattern(KnownPatterns.MenuTrainerStatsMarker,
-            @"^\s*Point Cost Chart\s*$");
+            @"Point Cost Chart");
 
         // ----- Suicide password flow patterns -----------------------------
         // All anchored to the line start so a chat / gossip line embedding

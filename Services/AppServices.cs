@@ -219,6 +219,17 @@ public sealed class AppServices
     /// </summary>
     public Game.Remote.SuicideHandler Suicide { get; private set; } = null!;
 
+    /// <summary>Snapshot of the most recent <c>stat</c>-screen parse. Written exclusively by <see cref="Stats"/>.</summary>
+    public Game.PlayerStats PlayerStats { get; } = new();
+
+    /// <summary>
+    /// Parses the in-game <c>stat</c> screen and writes every field
+    /// onto <see cref="PlayerStats"/>. Feeds
+    /// <see cref="RemoteCommands"/>'s LivesProvider so the
+    /// <c>@suicide</c> hard-block has a real value to gate against.
+    /// </summary>
+    public Game.StatParser Stats { get; private set; } = null!;
+
     /// <summary>
     /// Sends the configured <see cref="GameCommands.EntryCommand"/>
     /// when the MajorMUD main-menu screen is recognised at the tail
@@ -590,6 +601,15 @@ public sealed class AppServices
         // password to CharacterProfile.EncryptedSuicidePassword.
         SuicidePassword = new Game.SuicidePasswordTracker(
             Router, EngineGate, Profile, Passwords, Log);
+
+        // Stat-screen parser — populates PlayerStats from the in-game
+        // `stat` output. Feeds RemoteCommands.LivesProvider so the
+        // @suicide hard-block uses the real lives count once the user
+        // has typed `stat` at least once this session. Before that,
+        // LivesProvider returns null and the hard-block treats lives
+        // as unknown (= blocked) per spec.
+        Stats = new Game.StatParser(PlayerStats, Log);
+        RemoteCommands.LivesProvider = () => Stats.HasParsed ? PlayerStats.Lives : (int?)null;
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup.

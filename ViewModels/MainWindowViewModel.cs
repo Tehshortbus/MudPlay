@@ -367,6 +367,11 @@ public partial class MainWindowViewModel : ObservableObject
         // state machine needs the per-session LineExtractor. Same wiring
         // shape as TriggerEngine.AttachLineExtractor.
         AppServices.Current.Party.AttachLineExtractor(Lines);
+        // StatParser — same per-session LineExtractor binding so it can
+        // see the lines emitted by the `stat` screen. Writes every
+        // field onto AppServices.Current.PlayerStats; feeds
+        // RemoteCommandManager.LivesProvider for the @suicide gate.
+        AppServices.Current.Stats.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
@@ -1335,6 +1340,10 @@ public partial class MainWindowViewModel : ObservableObject
         // state, the next bytes the user types ARE the password. We
         // peek here (the bytes still flow to the server unchanged).
         AppServices.Current.SuicidePassword.ObserveOutbound(data);
+        // Stat-screen parser — gates on outbound `stat` so chat lines
+        // containing "Strength: 60" or similar can't bleed into the
+        // PlayerStats snapshot.
+        AppServices.Current.Stats.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }

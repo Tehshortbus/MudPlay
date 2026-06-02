@@ -80,7 +80,15 @@ public sealed class RemoteCommandManager : IDisposable
     /// the conservative default until the Phase 9 DEATH section wires
     /// up live-lives tracking.
     /// </summary>
-    public Func<int>? LivesProvider { get; set; }
+    /// <summary>
+    /// Live lives provider. Returns the current Lives count from the
+    /// most recent <c>stat</c>-screen parse, or <c>null</c> when no
+    /// stat screen has been observed yet (so the hard-block defaults
+    /// to blocked rather than trusting a stale value). Wired in
+    /// <see cref="Services.AppServices"/> as
+    /// <c>() => Stats.HasParsed ? PlayerStats.Lives : (int?)null</c>.
+    /// </summary>
+    public Func<int?>? LivesProvider { get; set; }
 
     /// <summary>
     /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
