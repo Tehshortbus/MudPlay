@@ -163,4 +163,55 @@ public sealed class RemoteCommandCatalogTests
             $"'{cmd}' missing from RemoteCommandCatalog.Map.");
         return c;
     }
+
+    // ===== PlayerEditDialog tooltips =====
+    //
+    // The Players-tab edit dialog renders one tooltip per Allowed Remote
+    // Control checkbox listing the @-commands each grants. The strings
+    // are precomputed from RemoteCommandCatalog so adding a wiki
+    // command auto-populates the tooltip — pin a sample category per
+    // checkbox so a future "let's simplify" edit can't quietly empty
+    // them out.
+
+    [Theory]
+    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@health")]
+    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@status")]
+    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@lives")]
+    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@par")]
+    [InlineData(PlayerRemoteControls.QueryLocation,     "@where")]
+    [InlineData(PlayerRemoteControls.QueryLocation,     "@who")]
+    [InlineData(PlayerRemoteControls.MovePlayer,        "@goto")]
+    [InlineData(PlayerRemoteControls.MovePlayer,        "@stop")]
+    [InlineData(PlayerRemoteControls.ExecuteCommands,   "@do")]
+    [InlineData(PlayerRemoteControls.ExecuteCommands,   "@get-all")]
+    [InlineData(PlayerRemoteControls.AlterSettings,     "@auto-combat")]
+    [InlineData(PlayerRemoteControls.AlterSettings,     "@reset")]
+    [InlineData(PlayerRemoteControls.HangupDisconnect,  "@hangup")]
+    [InlineData(PlayerRemoteControls.HangupDisconnect,  "@relog")]
+    [InlineData(PlayerRemoteControls.SysopCommands,     "@home")]
+    public void Tooltip_ForCategory_ListsExpectedCommand(PlayerRemoteControls category, string command)
+    {
+        ViewModels.GameData.Edit.PlayerEditDialogViewModel vm = new(
+            new PlayerRecord("Test", string.Empty, null, null, null, null, null, null,
+                             DateTime.UtcNow, DateTime.UtcNow));
+        string tip = category switch
+        {
+            PlayerRemoteControls.QueryVersion        => vm.RcQueryVersionTip,
+            PlayerRemoteControls.QueryExperience     => vm.RcQueryExperienceTip,
+            PlayerRemoteControls.QueryHealthStatus   => vm.RcQueryHealthStatusTip,
+            PlayerRemoteControls.QueryLocation       => vm.RcQueryLocationTip,
+            PlayerRemoteControls.QueryInventory      => vm.RcQueryInventoryTip,
+            PlayerRemoteControls.RequestInvite       => vm.RcRequestInviteTip,
+            PlayerRemoteControls.MovePlayer          => vm.RcMovePlayerTip,
+            PlayerRemoteControls.ExecuteCommands     => vm.RcExecuteCommandsTip,
+            PlayerRemoteControls.HangupDisconnect    => vm.RcHangupDisconnectTip,
+            PlayerRemoteControls.AlterSettings       => vm.RcAlterSettingsTip,
+            PlayerRemoteControls.DivertConversations => vm.RcDivertConversationsTip,
+            PlayerRemoteControls.SysopCommands       => vm.RcSysopCommandsTip,
+            _ => throw new InvalidOperationException($"Untested category {category}"),
+        };
+        Assert.Contains(command, tip);
+        Assert.Contains("Ticked grants", tip);
+        Assert.Contains("Unticked denies", tip);
+    }
 }

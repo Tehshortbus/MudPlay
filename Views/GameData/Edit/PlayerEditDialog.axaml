@@ -64,18 +64,30 @@
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="2">
-                                <CheckBox Content="Query version"        IsChecked="{Binding RcQueryVersion, Mode=TwoWay}"/>
-                                <CheckBox Content="Query experience"     IsChecked="{Binding RcQueryExperience, Mode=TwoWay}"/>
-                                <CheckBox Content="Query health/status"  IsChecked="{Binding RcQueryHealthStatus, Mode=TwoWay}"/>
-                                <CheckBox Content="Query location"       IsChecked="{Binding RcQueryLocation, Mode=TwoWay}"/>
-                                <CheckBox Content="Query inventory"      IsChecked="{Binding RcQueryInventory, Mode=TwoWay}"/>
-                                <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"/>
-                                <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"/>
-                                <CheckBox Content="Execute commands"     IsChecked="{Binding RcExecuteCommands, Mode=TwoWay}"/>
-                                <CheckBox Content="Hangup/disconnect"    IsChecked="{Binding RcHangupDisconnect, Mode=TwoWay}"/>
-                                <CheckBox Content="Alter settings"       IsChecked="{Binding RcAlterSettings, Mode=TwoWay}"/>
-                                <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"/>
-                                <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"/>
+                                <CheckBox Content="Query version"        IsChecked="{Binding RcQueryVersion, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQueryVersionTip}"/>
+                                <CheckBox Content="Query experience"     IsChecked="{Binding RcQueryExperience, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQueryExperienceTip}"/>
+                                <CheckBox Content="Query health/status"  IsChecked="{Binding RcQueryHealthStatus, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQueryHealthStatusTip}"/>
+                                <CheckBox Content="Query location"       IsChecked="{Binding RcQueryLocation, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQueryLocationTip}"/>
+                                <CheckBox Content="Query inventory"      IsChecked="{Binding RcQueryInventory, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQueryInventoryTip}"/>
+                                <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcRequestInviteTip}"/>
+                                <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcMovePlayerTip}"/>
+                                <CheckBox Content="Execute commands"     IsChecked="{Binding RcExecuteCommands, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcExecuteCommandsTip}"/>
+                                <CheckBox Content="Hangup/disconnect"    IsChecked="{Binding RcHangupDisconnect, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcHangupDisconnectTip}"/>
+                                <CheckBox Content="Alter settings"       IsChecked="{Binding RcAlterSettings, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcAlterSettingsTip}"/>
+                                <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcDivertConversationsTip}"/>
+                                <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcSysopCommandsTip}"/>
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
