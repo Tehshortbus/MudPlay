@@ -1,0 +1,151 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="760"
+             x:Class="FujinTerm.Views.Settings.OtherSectionView"
+             x:DataType="vm:OtherSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+        <Style Selector="TextBlock.FieldNote">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,2"/>
+        </Style>
+        <Style Selector="TextBlock.FieldSuffix">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+        <Style Selector="TextBlock.HelpText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="780" HorizontalAlignment="Left">
+
+            <!-- ============ Tab header ============ -->
+            <TextBlock Text="{Binding Title}"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+
+            <Border Padding="4,2"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    HorizontalAlignment="Left"
+                    Margin="0,4,0,4">
+                <TextBlock Text="{Binding PhaseTag}"
+                           Foreground="{StaticResource AccentAmberBrush}"
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"/>
+            </Border>
+
+            <TextBlock Text="{Binding Description}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="{StaticResource FontSizeMd}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"/>
+
+            <!-- ============ Remote-command safety (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Remote-command safety"/>
+
+            <Grid ColumnDefinitions="280,Auto,Auto,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel"
+                           Text="Block @suicide commands when lives ≤"
+                           ToolTip.Tip="Hard-blocks `@do suicide` and `@party suicide` while remaining lives are at or below this number. Default 3 — protects characters who haven't yet built up a lives buffer. Set to 0 to never block on lives (the engine still refuses when the live lives count is unknown)."/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding MaxSuicideLivesThreshold, Mode=TwoWay}"
+                               Minimum="0" Maximum="20"
+                               Increment="1"
+                               Width="100"
+                               ToolTip.Tip="Range 0..20. Threshold is inclusive — at exactly N lives the command is still blocked."/>
+                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="lives"/>
+            </Grid>
+            <TextBlock Classes="HelpText"
+                       Margin="0,4,0,0"
+                       Text="The engine separately refuses every @suicide command while the live lives count is unknown — the conservative default until the Phase 9 DEATH section wires up live-lives tracking. Until then this threshold is persisted-and-ready but the runtime behaviour is always-block."/>
+
+            <!-- ============ Inline stub catalog (Phase 7 / 11 / 13) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Skeleton rows — engines below ship in later phases"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Surface preview only — every row below is disabled. Hover for the phase / PR that will wire it. Rows are removed as their consumer engines wire through OtherSettings."/>
+
+            <ItemsControl ItemsSource="{Binding StubGroups}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StubGroup">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="SectionHeader"
+                                       Text="{Binding Header}"
+                                       IsVisible="{Binding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                            <ItemsControl ItemsSource="{Binding Fields}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StubField">
+                                        <Grid ColumnDefinitions="260,*,Auto"
+                                              Margin="0,3,0,3"
+                                              ToolTip.Tip="{Binding Tooltip}">
+
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="FieldLabel"
+                                                       Text="{Binding Label}"
+                                                       IsVisible="{Binding HasLabel}"/>
+
+                                            <CheckBox Grid.Column="0" Grid.ColumnSpan="3"
+                                                      IsEnabled="False"
+                                                      Content="{Binding Label}"
+                                                      IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
+                                            <NumericUpDown Grid.Column="1" IsEnabled="False"
+                                                           Value="0"
+                                                           Minimum="{Binding Min}"
+                                                           Maximum="{Binding Max}"
+                                                           Width="120"
+                                                           IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}"/>
+                                            <TextBox Grid.Column="1" IsEnabled="False"
+                                                     Width="220"
+                                                     IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}"/>
+                                            <TextBlock Grid.Column="1" Grid.ColumnSpan="2"
+                                                       Classes="FieldNote"
+                                                       Text="{Binding Label}"
+                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Note}}"/>
+
+                                            <TextBlock Grid.Column="2"
+                                                       Classes="FieldSuffix"
+                                                       Text="{Binding Suffix}"
+                                                       IsVisible="{Binding Suffix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

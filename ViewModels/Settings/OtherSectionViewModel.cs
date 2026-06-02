@@ -1,23 +1,78 @@
 using System.Collections.Generic;
+using System.Text.Json;
+using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Other" tab stub — the misc bucket per the master plan's filtered
-/// list of MegaMUD Other-1 / Other-2 toggles. Phase tags vary per item
-/// because the consumers live across phases 7, 8, and 13. "Show combat
-/// round totals" lives on the BBS + Display tab now, not here.
+/// "Other" tab — the misc bucket. Graduated from Phase-4 stub to wired
+/// section as soon as its first feature (suicide-lives threshold) was
+/// ready to plumb to the live engine. Future PRs add fields to
+/// <see cref="OtherSettings"/> and wire them through
+/// <see cref="ApplyToServices"/> the same way; the inline stub catalog
+/// (<see cref="StubGroups"/>) shrinks as each lands.
 /// </summary>
-public sealed class OtherSectionViewModel : StubSectionViewModel
+public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
 {
+    private const string TabKey = "Other";
+
+    private readonly ProfileService _profile;
+    private Control? _view;
+    private bool _suppressDirty;
+    private bool _dirty;
+
     public override string Id => "other";
     public override string Title => "Other";
-    public override string PhaseTag => "Phase 7 / 11 / 13 (per-toggle — see tooltips)";
-    public override string Description =>
-        "Catch-all for auto-action toggles, walker behaviour flags, log retention, and ignore-this-ailment knobs " +
-        "that don't fit the other tabs. Each toggle's tooltip names the owning phase / engine.";
+    public override bool IsDirty => _dirty;
 
-    public override IReadOnlyList<StubGroup> Groups { get; } = new[]
+    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    public bool HasProfile => _profile.Current is not null;
+
+    public string PhaseTag => "Phase 6 (suicide threshold) + Phases 7 / 11 / 13 (per-row tooltips)";
+
+    public string Description =>
+        "Catch-all for safety thresholds, walker behaviour flags, log retention, and ignore-this-ailment knobs " +
+        "that don't fit the other tabs. The suicide-threshold row at the top is wired into the Phase 6 remote " +
+        "engine; everything below is still skeleton — each toggle's tooltip names the owning phase.";
+
+    public override Control View => _view ??= new OtherSectionView { DataContext = this };
+
+    public override IEnumerable<string> SearchableLabels
+    {
+        get
+        {
+            yield return Title;
+            yield return "Suicide threshold";
+            yield return "Block @do suicide";
+            yield return "Lives";
+            foreach (StubGroup g in StubGroups)
+            foreach (StubField f in g.Fields)
+                yield return f.Label;
+        }
+    }
+
+    // ----- Wired (PR 6.x) -----
+
+    /// <summary>
+    /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
+    /// lives are ≤ this value. Range 0..20. Default 3 per the Phase 6
+    /// spec; pushed into the live engine on Apply + on profile load.
+    /// </summary>
+    [ObservableProperty] private int _maxSuicideLivesThreshold = 3;
+
+    // ----- Inline stub catalog (un-wired Phase 7 / 11 / 13 fields) -----
+
+    /// <summary>
+    /// The remaining un-wired Other-tab fields, rendered inline below
+    /// the wired group as disabled placeholders. Each entry's tooltip
+    /// names the owning phase; entries are removed from this list as
+    /// their consumer engines wire through <see cref="OtherSettings"/>.
+    /// </summary>
+    public IReadOnlyList<StubGroup> StubGroups { get; } = new[]
     {
         new StubGroup("Locks, traps, walker behaviour", new[]
         {
@@ -66,4 +121,99 @@ public sealed class OtherSectionViewModel : StubSectionViewModel
             new StubField("Debug log retention",            StubFieldKind.Numeric, "Phase 0 — prune Data/Logs/ entries older than this on app launch.", "days"),
         }),
     };
+
+    public OtherSectionViewModel() : this(AppServices.Current.Profile) { }
+
+    public OtherSectionViewModel(ProfileService profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+    }
+
+    public override void Apply()
+    {
+        if (_profile.Current is not { } profile) return;
+
+        OtherSettings dto = new()
+        {
+            MaxSuicideLivesThreshold = Math.Clamp(MaxSuicideLivesThreshold, 0, 20),
+        };
+
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        _profile.Save();
+
+        ApplyToServices(dto);
+        ClearDirty();
+    }
+
+    public override void Discard()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+    }
+
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
+    private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void ReloadAfterProfileSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
+    {
+        OtherSettings dto = ReadOrDefault();
+        MaxSuicideLivesThreshold = dto.MaxSuicideLivesThreshold;
+        ApplyToServices(dto);
+    }
+
+    private OtherSettings ReadOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new OtherSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new OtherSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<OtherSettings>(json) ?? new OtherSettings();
+        }
+        catch
+        {
+            return new OtherSettings();
+        }
+    }
+
+    private static void ApplyToServices(OtherSettings dto)
+    {
+        AppServices.Current.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+    }
+
+    // ----- IsDirty plumbing -----
+
+    private void ClearDirty()
+    {
+        _dirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    partial void OnMaxSuicideLivesThresholdChanged(int value) => MarkDirty();
+
+    private void MarkDirty()
+    {
+        if (_suppressDirty) return;
+        if (_dirty) return;
+        _dirty = true;
+        OnPropertyChanged(nameof(IsDirty));
+    }
 }
