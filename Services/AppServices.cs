@@ -204,6 +204,18 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Sends the configured <see cref="GameCommands.EntryCommand"/>
+    /// when the MajorMUD main-menu screen is recognised at the tail
+    /// end of the automated BBS-login sequence. Latched closed by
+    /// default — only briefly armed when <see cref="Services.LoginAutomator.LoggedIntoGame"/>
+    /// fires, so an in-game chat line that happens to look like the
+    /// menu (gossip / telepath / room description) can't trick the
+    /// engine into auto-entering when the player wanted to stay
+    /// out-of-realm.
+    /// </summary>
+    public Game.MainMenuEntryAutomation MainMenuEntry { get; }
+
+    /// <summary>
     /// Consumer of the per-player
     /// <see cref="Models.GameData.PlayerCustomization.InviteToPartyIfSeen"/>
     /// and
@@ -520,6 +532,12 @@ public sealed class AppServices
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands);
+        // Main-menu entry automation — armed by MainWindowVM when
+        // LoginAutomator.LoggedIntoGame fires; observes the
+        // MainMenuEnterRealm pattern and sends GameCommands.EntryCommand
+        // exactly once per arm. Closed by default so in-game chat
+        // matching the menu pattern can never trick it.
+        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

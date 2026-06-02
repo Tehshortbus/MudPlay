@@ -93,4 +93,10 @@ public static class KnownPatterns
     public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
     public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow
     public const string PartyDissolved            = "party.dissolved";              // "You are not in a party at the present time." — authoritative wipe
+
+    // ----- Main menu -----------------------------------------------------
+    // BBSes customise the banner version + realm name + prompt text, but
+    // the menu options themselves are stable across customisations.
+    // The "Enter the Realm" row is the universal main-menu signature.
+    public const string MainMenuEnterRealm = "menu.enter-realm";   // "[E] . Enter the Realm" — universal main-menu line
 }

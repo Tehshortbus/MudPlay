@@ -408,6 +408,10 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(SendUserInput);
+        // MainMenuEntryAutomation — same sender; armed below when
+        // LoginAutomator's LoggedIntoGame fires (only point in the
+        // session where the entry command is allowed to auto-fire).
+        AppServices.Current.MainMenuEntry.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
@@ -810,6 +814,13 @@ public partial class MainWindowViewModel : ObservableObject
         {
             AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
             DetachLoginKillSwitch();
+            // Arm the main-menu-entry automation NOW — the BBS-login
+            // sequence just completed, so we expect the MajorMUD main
+            // menu to render shortly. If it does, the engine sends the
+            // configured GameEntryCommand. If it doesn't render in the
+            // arm window, the latch closes — protects against in-game
+            // chat that happens to look like the menu line.
+            AppServices.Current.MainMenuEntry.Arm();
         };
         automator.Aborted += reason =>
         {

@@ -242,6 +242,15 @@ public static class DefaultPatterns
             @"^You are no longer following (?<player>\w+)\.?\s*$");
         yield return new RegexPattern(KnownPatterns.PartyDissolved,
             @"^You are not in a party at the present time\.?\s*$");
+
+        // ----- Main menu (BBS-customisable but options are stable) -----
+        // The "Enter the Realm" row is the universal signature — every
+        // BBS keeps the [E] option on the main menu even when banners,
+        // version strings and prompt text differ. The bracket-letter-
+        // period-space-text format is unique to the main menu (in-game
+        // status lines, room descriptions, chat etc. don't share it).
+        yield return new RegexPattern(KnownPatterns.MainMenuEnterRealm,
+            @"^\[E\]\s*\.\s*Enter the Realm\b");
     }
 
 }
