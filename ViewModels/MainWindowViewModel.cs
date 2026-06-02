@@ -1310,6 +1310,10 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public void SendUserInput(byte[] data)
     {
+        // Observe outbound for the trainer-menu watcher — it gates on
+        // the user's own `train stats` / `train` going out before
+        // accepting the "Point Cost Chart" marker as menu confirmation.
+        AppServices.Current.TrainerMenu.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }

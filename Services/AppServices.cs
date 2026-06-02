@@ -235,6 +235,16 @@ public sealed class AppServices
     public Game.AutoPartyManager AutoParty { get; }
 
     /// <summary>
+    /// Detects the in-game <c>train stats</c> menu round-trip so we can
+    /// refresh party state after the user returns to the realm. Armed
+    /// by observing outbound <c>train stats</c> on the wire-send path
+    /// (<see cref="ViewModels.MainWindowViewModel.SendUserInput"/> calls
+    /// <see cref="Game.TrainerMenuTracker.ObserveOutbound"/>) and
+    /// confirmed by the anchored <c>"Point Cost Chart"</c> marker.
+    /// </summary>
+    public Game.TrainerMenuTracker TrainerMenu { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -540,7 +550,12 @@ public sealed class AppServices
         // Wire-sender is bound by MainWindowViewModel once the telnet
         // client is up; pre-binding, the engine still observes events
         // but produces no wire output.
-        AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, Log);
+        // TrainerMenuTracker before AutoPartyManager so we can pass it
+        // in as a constructor dep — AutoParty subscribes to MenuExited
+        // to re-fire `invite` for any party member that the trainer-
+        // menu round-trip dropped from the follower's view.
+        TrainerMenu = new Game.TrainerMenuTracker(Router, PartyState, Log);
+        AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup.

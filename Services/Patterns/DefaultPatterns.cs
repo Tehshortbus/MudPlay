@@ -278,6 +278,14 @@ public static class DefaultPatterns
         // status lines, room descriptions, chat etc. don't share it).
         yield return new RegexPattern(KnownPatterns.MainMenuEnterRealm,
             @"^\[E\]\s*\.\s*Enter the Realm\b");
+
+        // Anchored marker for the train-stats menu's "Point Cost Chart"
+        // panel header. Anchored so a chat line like "Foo gossips: look at
+        // the Point Cost Chart" can't trigger it; gated further by
+        // TrainerMenuTracker which requires us to have just sent
+        // outbound `train stats` within the last few seconds.
+        yield return new RegexPattern(KnownPatterns.MenuTrainerStatsMarker,
+            @"^\s*Point Cost Chart\s*$");
     }
 
 }

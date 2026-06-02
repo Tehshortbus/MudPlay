@@ -42,6 +42,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly MessageRouter _router;
     private readonly PlayerDatabase _players;
     private readonly PartyState _party;
+    private readonly TrainerMenuTracker? _trainerMenu;
     private readonly LogService? _log;
     private Action<byte[]>? _wireSender;
     private readonly IDisposable _alsoHereSub;
@@ -125,14 +126,20 @@ public sealed class AutoPartyManager : IDisposable
     private Avalonia.Threading.DispatcherTimer? _nagTimer;
 
     public AutoPartyManager(MessageRouter router, PlayerDatabase players, PartyState party, LogService? log = null)
+        : this(router, players, party, trainerMenu: null, log) { }
+
+    public AutoPartyManager(MessageRouter router, PlayerDatabase players, PartyState party,
+                            TrainerMenuTracker? trainerMenu, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(party);
-        _router  = router;
-        _players = players;
-        _party   = party;
-        _log     = log;
+        _router      = router;
+        _players     = players;
+        _party       = party;
+        _trainerMenu = trainerMenu;
+        _log         = log;
+        if (_trainerMenu is not null) _trainerMenu.MenuExited += OnTrainerMenuExited;
 
         _alsoHereSub    = _router.Subscribe(KnownPatterns.RoomAlsoHere,        OnRoomAlsoHere);
         _partyInviteSub = _router.Subscribe(KnownPatterns.PartyInviteReceived, OnPartyInviteReceived);
@@ -268,6 +275,7 @@ public sealed class AutoPartyManager : IDisposable
         _followerRemovedSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
+        if (_trainerMenu is not null) _trainerMenu.MenuExited -= OnTrainerMenuExited;
         StopNagTimer();
     }
 
@@ -350,6 +358,57 @@ public sealed class AutoPartyManager : IDisposable
         // after JoinNagInitialDelay, then re-sends every JoinNagFrequency
         // until they join, telepath back, or JoinNagMaxTotal expires.
         StartNag(given, now);
+    }
+
+    /// <summary>
+    /// Trainer-menu exit hook — re-fire <c>invite</c> for every member
+    /// who was in the party when the menu opened but is no longer in
+    /// the roster (their follower-side view dissolved during our
+    /// absence even though the leader-side <c>[Invited]</c> slot is
+    /// still hot). Existing AutoPartyManager flows handle the rest:
+    /// the follower's <see cref="OnPartyInviteReceived"/> auto-accepts
+    /// if they have <see cref="PlayerCustomization.JoinPartyIfInvited"/>
+    /// set, and the @join nag escalation covers anyone who doesn't
+    /// auto-accept within the initial-delay window.
+    /// </summary>
+    private void OnTrainerMenuExited()
+    {
+        if (_trainerMenu is null) return;
+        if (_wireSender is null) return;
+        IReadOnlyList<string> snapshot = _trainerMenu.RosterAtMenuEntry;
+        if (snapshot.Count == 0) return;
+
+        DateTime now = NowProvider();
+        foreach (string fullName in snapshot)
+        {
+            string given = ExtractGiven(fullName);
+            if (string.IsNullOrEmpty(given)) continue;
+
+            // Already in our party? Nothing to do.
+            bool stillIn = false;
+            foreach (PartyMember m in _party.Members)
+            {
+                if (string.Equals(ExtractGiven(m.Name), given, StringComparison.OrdinalIgnoreCase))
+                { stillIn = true; break; }
+            }
+            if (stillIn) continue;
+
+            // Respect the uninvite-suppression map — if the user
+            // explicitly kicked them during the menu trip, don't
+            // re-add.
+            if (_recentlyUninvited.TryGetValue(given, out DateTime kickedAt)
+                && now - kickedAt < UninviteSuppression)
+                continue;
+
+            // Override the regular re-invite cooldown — the menu exit
+            // is a deliberate refresh signal, not the rapid room
+            // re-render the cooldown protects against.
+            _recentlyInvited[given] = now;
+            SendWire($"invite {given}");
+            _log?.Log(LogSeverity.Info, "AutoParty",
+                $"Re-invited {given} after trainer-menu exit.");
+            StartNag(given, now);
+        }
     }
 
     private void TryAutoAccept(string sender)

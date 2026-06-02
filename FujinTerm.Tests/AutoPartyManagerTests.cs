@@ -627,6 +627,70 @@ public sealed class AutoPartyManagerTests
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
+    // ===== Trainer-menu exit re-invite =====
+
+    [Fact]
+    public void TrainerMenuExited_ReInvitesDroppedRosterMembers()
+    {
+        // Simulate the full leader-side scenario: party of two, leader
+        // visits trainer-stats menu, comes back, follower's view has
+        // dissolved (so the row is gone from State.Members), but the
+        // [Invited] hold is still active server-side. AutoParty should
+        // see MenuExited and re-fire `invite Raijin` for the dropped
+        // roster name.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        PartyState party = new();
+        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
+        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
+        engine.SetWireSender(_ => { });
+
+        // Snapshot the roster the menu captured at entry — simulates
+        // "Raijin was in the party before we visited the trainer".
+        party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+        Assert.Contains("Raijin WuzHere", tracker.RosterAtMenuEntry);
+
+        // Drop Raijin to model the follower-view dissolution that
+        // happened while we were in the menu.
+        party.Members.Clear();
+        engine.LastSentForTests.Clear();
+
+        // Exit the menu — next in-game prompt fires MenuExited.
+        Dispatch(router, "[HP=33]:");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void TrainerMenuExited_StillInParty_DoesNotResendInvite()
+    {
+        // If the roster member never left State.Members across the
+        // menu trip, there's nothing to re-invite.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        PartyState party = new();
+        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
+        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
+        engine.SetWireSender(_ => { });
+
+        party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        engine.LastSentForTests.Clear();
+
+        Dispatch(router, "[HP=33]:");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
     [Fact]
     public void Uninvite_CancelsActiveNagInFlight()
     {

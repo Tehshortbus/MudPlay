@@ -105,4 +105,12 @@ public static class KnownPatterns
     // the menu options themselves are stable across customisations.
     // The "Enter the Realm" row is the universal main-menu signature.
     public const string MainMenuEnterRealm = "menu.enter-realm";   // "[E] . Enter the Realm" — universal main-menu line
+
+    // ----- Trainer menu marker (Phase 6 follow-up) ----------------------
+    // The "train stats" trainer screen has a "Point Cost Chart" panel
+    // header in the upper-right that doesn't appear in any other
+    // game-mode output. Combined with outbound-`train stats` gating
+    // in TrainerMenuTracker, this is our entry signal for the
+    // re-invite-after-trainer-menu flow.
+    public const string MenuTrainerStatsMarker = "menu.trainer-stats-marker";
 }

@@ -1,0 +1,158 @@
+using System.Text;
+using FujinTerm.Game;
+using FujinTerm.Services;
+using FujinTerm.Services.Patterns;
+using FujinTerm.Terminal;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// Pins the trainer-menu detection state machine. The whole point is to
+/// be safe against chat-noise false positives — the outbound-command
+/// gate is the load-bearing guard.
+/// </summary>
+public sealed class TrainerMenuTrackerTests
+{
+    private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    private static (TrainerMenuTracker tracker, MessageRouter router, PartyState state) Setup()
+    {
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        TrainerMenuTracker tracker = new(router, state)
+        {
+            NowProvider = () => Now,
+        };
+        return (tracker, router, state);
+    }
+
+    private static void Dispatch(MessageRouter router, string text)
+    {
+        router.Dispatch(new LineExtractor.EmittedLine(
+            Text: text,
+            Attributes: Array.Empty<CellAttributes>(),
+            Timestamp: Now,
+            IsPromptLine: false));
+    }
+
+    [Fact]
+    public void MarkerWithoutOutboundTrainStats_DoesNotEnterMenu()
+    {
+        // Chat-noise / unrelated source — "Point Cost Chart" line
+        // appears without a preceding outbound train command. Must
+        // NOT confirm menu entry.
+        var (tracker, router, _) = Setup();
+        Dispatch(router, "    Point Cost Chart");
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void OutboundTrainStats_ThenMarker_EntersMenu()
+    {
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void OutboundBareTrain_ThenMarker_EntersMenu()
+    {
+        // `train` alone is also a legitimate entry path on most BBSes.
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void OutboundUnrelated_DoesNotArmGate()
+    {
+        // Arbitrary commands sent before chat shouldn't flip the gate.
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("look\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void ChatLineContainingMenuText_DoesNotMatch()
+    {
+        // The pattern is anchored — a chat line embedding the phrase
+        // can't trigger it.
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "Foo gossips: did you see the Point Cost Chart");
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void MarkerAfterExpiringWindow_DoesNotEnterMenu()
+    {
+        // Mutable clock: arm, then jump past the expecting-menu window.
+        DateTime t = Now;
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        TrainerMenuTracker tracker = new(router, state) { NowProvider = () => t };
+        tracker.ExpectingMenuWindow = TimeSpan.FromSeconds(5);
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        t = t.AddSeconds(6);
+        router.Dispatch(new LineExtractor.EmittedLine(
+            "    Point Cost Chart", Array.Empty<CellAttributes>(), t, false));
+
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void Menu_PromptArrives_FiresMenuExitedAndClears()
+    {
+        var (tracker, router, _) = Setup();
+        bool fired = false;
+        tracker.MenuExited += () => fired = true;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+
+        // The trainer screen doesn't print game prompts; the next one
+        // appears only after we exit.
+        Dispatch(router, "[HP=33]:");
+
+        Assert.True(fired);
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void PromptWithoutMenu_DoesNotFireExit()
+    {
+        var (tracker, router, _) = Setup();
+        bool fired = false;
+        tracker.MenuExited += () => fired = true;
+
+        // No menu was entered — a regular in-game prompt mustn't fire
+        // the exit event.
+        Dispatch(router, "[HP=33]:");
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void EntryToMenu_SnapshotsNonSelfRoster()
+    {
+        var (tracker, router, state) = Setup();
+        state.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        state.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        state.Members.Add(new PartyMember { Name = "Helper" });
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+
+        Assert.Equal(2, tracker.RosterAtMenuEntry.Count);
+        Assert.Contains("Raijin WuzHere", tracker.RosterAtMenuEntry);
+        Assert.Contains("Helper", tracker.RosterAtMenuEntry);
+        Assert.DoesNotContain("Fujin", tracker.RosterAtMenuEntry);
+    }
+}
