@@ -405,6 +405,9 @@ public partial class MainWindowViewModel : ObservableObject
         // and JoinPartyIfInvited flags, sends `invite <given>` and
         // `follow <given>` over the wire.
         AppServices.Current.AutoParty.SetWireSender(SendUserInput);
+        // HangupHandler — sends the configured GameExitCommand when
+        // an authorised sender telepaths @hangup.
+        AppServices.Current.Hangup.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through

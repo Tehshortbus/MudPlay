@@ -54,4 +54,33 @@ public sealed class OtherSettings
 
     /// <summary>Don't auto-cure / don't @wait for disease. Default false (pause).</summary>
     public bool IgnoreDiseased  { get; set; }
+
+    // ----- Game-menu commands -------------------------------------------
+    // The two commands the client uses to enter / leave the realm from
+    // the MajorMUD main menu. Defaults are the standard menu picks
+    // ("E" = enter realm, "=x" = logoff from main menu). Persisted per
+    // character so different BBS dialects (alternate menu key bindings)
+    // can be overridden if needed.
+
+    /// <summary>
+    /// Sent on profile's first session load or post-cleanup re-login
+    /// once the client detects the main menu. Default <c>"E"</c>
+    /// (Enter the Realm). The cleanup-warning / main-menu detection
+    /// + delayed send logic lands in a follow-up PR once the
+    /// message-matching engine + small scheduler exist; this field is
+    /// persisted-and-ready now so the user can pre-configure the
+    /// command per character.
+    /// </summary>
+    public string GameEntryCommand { get; set; } = "E";
+
+    /// <summary>
+    /// Sent when an incoming <c>@hangup</c> with the
+    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
+    /// permission is received, OR when the client observes a cleanup
+    /// warning and the X→wait→logoff sequence reaches the main menu.
+    /// Default <c>"=x"</c> (logoff from main menu). The full cleanup
+    /// automation flow ships in a follow-up; the @hangup direct
+    /// handler ships now and uses this verbatim.
+    /// </summary>
+    public string GameExitCommand  { get; set; } = "=x";
 }

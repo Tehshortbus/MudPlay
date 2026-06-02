@@ -184,6 +184,26 @@ public sealed class AppServices
     public Game.Remote.PartyBroadcaster PartyBroadcaster { get; }
 
     /// <summary>
+    /// Live mirror of the per-character game-menu commands
+    /// (<see cref="GameCommands.EntryCommand"/> /
+    /// <see cref="GameCommands.ExitCommand"/>). Hydrated from the
+    /// Other-tab settings on every profile load + Apply; engines
+    /// (<see cref="Game.Remote.HangupHandler"/>, future cleanup-flow
+    /// automation) read from here instead of going through
+    /// <see cref="Profile"/> directly.
+    /// </summary>
+    public GameCommands GameCommands { get; } = new();
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
+    /// permission category — currently just <c>@hangup</c>. Sends the
+    /// configured <see cref="Services.GameCommands.ExitCommand"/> to
+    /// the wire when a permitted sender requests it.
+    /// </summary>
+    public Game.Remote.HangupHandler Hangup { get; }
+
+    /// <summary>
     /// Consumer of the per-player
     /// <see cref="Models.GameData.PlayerCustomization.InviteToPartyIfSeen"/>
     /// and
@@ -496,6 +516,10 @@ public sealed class AppServices
         // client is up; pre-binding, the engine still observes events
         // but produces no wire output.
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, Log);
+        // @hangup handler — sends the configured GameCommands.ExitCommand
+        // when an authorised sender (HangupDisconnect permission on
+        // the Players-tab record) telepaths @hangup.
+        Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
@@ -724,12 +748,25 @@ public sealed class AppServices
     {
         Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
         RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+        // Game-menu commands — HangupHandler consumes ExitCommand
+        // synchronously on @hangup; the future cleanup-flow + first-
+        // login automation will consume both. Blank entries fall back
+        // to the DTO defaults (E / =x) so a misconfiguration can't
+        // leave the engine with empty wire-sends.
+        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
+            ? new Models.Profile.OtherSettings().GameEntryCommand
+            : dto.GameEntryCommand;
+        GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
+            ? new Models.Profile.OtherSettings().GameExitCommand
+            : dto.GameExitCommand;
     }
 
     private void ResetOtherToDefaults()
     {
         Models.Profile.OtherSettings defaults = new();
         RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
+        GameCommands.EntryCommand = defaults.GameEntryCommand;
+        GameCommands.ExitCommand  = defaults.GameExitCommand;
     }
 
     /// <summary>

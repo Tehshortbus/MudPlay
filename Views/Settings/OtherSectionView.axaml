@@ -85,15 +85,9 @@
                                ToolTip.Tip="Range 0..20. Threshold is inclusive — at exactly N lives the command is still blocked."/>
                 <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="lives"/>
             </Grid>
-            <TextBlock Classes="HelpText"
-                       Margin="0,4,0,0"
-                       Text="The engine separately refuses every @suicide command while the live lives count is unknown — the conservative default until the Phase 9 DEATH section wires up live-lives tracking. Until then this threshold is persisted-and-ready but the runtime behaviour is always-block."/>
 
             <!-- ============ Ignored ailments (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Ignored ailments"/>
-            <TextBlock Classes="HelpText"
-                       Margin="0,0,0,4"
-                       Text="Default: unchecked → pause on this ailment (send @wait to the leader if following, hold our own engines if leading). Check to push through it — useful when the party has agreed not to halt for routine ticks during a boss / lair run. Wires into WaitTriggerEngine once message-matching ships."/>
             <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"
                       ToolTip.Tip="When checked: poison ticks don't trigger @wait. Always-on triggers (over-encumbered, MovementPrevented, Stunned) still pause regardless."/>
             <CheckBox Content="Ignore blindness" IsChecked="{Binding IgnoreBlindness, Mode=TwoWay}"
@@ -103,12 +97,35 @@
             <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
 
-            <!-- ============ Inline stub catalog (Phase 7 / 11 / 13) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Skeleton rows — engines below ship in later phases"/>
-            <TextBlock Classes="HelpText"
-                       Margin="0,0,0,4"
-                       Text="Surface preview only — every row below is disabled. Hover for the phase / PR that will wire it. Rows are removed as their consumer engines wire through OtherSettings."/>
+            <!-- ============ Game-menu commands (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Game-menu commands"/>
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0" ColumnSpacing="8" RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Game entry command"/>
+                <TextBox   Grid.Row="0" Grid.Column="1"
+                           Text="{Binding GameEntryCommand, Mode=TwoWay}"
+                           Width="120" FontFamily="{StaticResource FontMono}"
+                           ToolTip.Tip="Sent at the MajorMUD main menu to enter the realm. Default 'E'."/>
 
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Game exit command"/>
+                <TextBox   Grid.Row="1" Grid.Column="1"
+                           Text="{Binding GameExitCommand, Mode=TwoWay}"
+                           Width="120" FontFamily="{StaticResource FontMono}"
+                           ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
+            </Grid>
+
+            <!-- ============ Player database (wired, Global tier) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Player database"/>
+            <Grid ColumnDefinitions="180,90,Auto,*" Margin="0,2,0,0" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Auto-delete after"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
+                               Minimum="0" Maximum="3650" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               ToolTip.Tip="Stale Players-tab records get dropped at startup once they're older than this. 0 disables auto-cleanup. Per-player 'Don't auto-delete' opts records out individually. Global setting — applies to every character on this install."/>
+                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="days"/>
+            </Grid>
+
+            <!-- ============ Inline stub catalog ============ -->
             <ItemsControl ItemsSource="{Binding StubGroups}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:StubGroup">

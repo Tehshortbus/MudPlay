@@ -21,6 +21,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Other";
 
     private readonly ProfileService _profile;
+    private readonly SettingsService _globalSettings;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -54,6 +55,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Ignore confusion";
             yield return "Ignore diseased";
             yield return "Ailments";
+            yield return "Game entry command";
+            yield return "Game exit command";
+            yield return "Enter realm";
+            yield return "Logoff";
+            yield return "@hangup";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -81,6 +87,27 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _ignoreConfusion;
     [ObservableProperty] private bool _ignoreDiseased;
 
+    // ----- Game-menu commands (wired) -----
+    // Entry: main-menu key to enter the realm (default "E").
+    // Exit:  main-menu logoff command (default "=x").
+    // HangupHandler consumes ExitCommand immediately on a permitted
+    // @hangup. The cleanup-warning + first-session-load automation
+    // for both commands ships in a follow-up PR once the small
+    // scheduler + main-menu pattern exist.
+
+    [ObservableProperty] private string _gameEntryCommand = "E";
+    [ObservableProperty] private string _gameExitCommand  = "=x";
+
+    /// <summary>
+    /// Inactive-player auto-cleanup window in days. Moved here from the
+    /// General tab per user direction. Lives at the Global tier (one
+    /// threshold for the whole install) so Apply writes through to
+    /// <see cref="SettingsService"/>, not the per-character profile.
+    /// 0 disables auto-cleanup entirely; per-player Don't-auto-delete
+    /// opts records out individually.
+    /// </summary>
+    [ObservableProperty] private int _playerCleanupDays = 90;
+
     // ----- Inline stub catalog (un-wired Phase 7 / 11 / 13 fields) -----
 
     /// <summary>
@@ -96,6 +123,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Pick locks instead of bashing",   StubFieldKind.Check, "Phase 13 — walker prefers lockpicking when the skill is trained."),
             new StubField("Attempt to disarm traps",         StubFieldKind.Check, "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
             new StubField("Auto-train",                      StubFieldKind.Check, "Phase 13 — auto-spend CP at a trainer when allocations are pending."),
+            new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
             new StubField("Allow hangup when not AFK",       StubFieldKind.Check, "Phase 13 — gate hangup unless AFK Mode is on."),
@@ -103,10 +131,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Hangup if naked",                 StubFieldKind.Check, "Phase 13 — recovery safety, disconnect if equipment got lost."),
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
             new StubField("Go backwards if running",         StubFieldKind.Check, "Phase 13 — flee direction prefers retracing rather than pushing forward."),
-            new StubField("Backwards if warning",            StubFieldKind.Check, "Phase 13 — same direction logic but triggered by warning-state instead of HP."),
             new StubField("Break combat before running",     StubFieldKind.Check, "Phase 13 — stop swinging before issuing the flee command."),
             new StubField("Don't move unless sneaking",      StubFieldKind.Check, "Phase 7 — walker pause-gate when stealth drops."),
-            new StubField("Provide light in dimly lit rooms", StubFieldKind.Check, "Phase 7 — pairs with Spells → Room light."),
+            // Removed per user direction: "Backwards if warning" (nonsense),
+            // "Provide light in dimly lit rooms" (handled elsewhere).
         }),
         // Ignored ailments group graduated to a real wired section above
         // (rendered inline in OtherSectionView.axaml). Diseased added per
@@ -125,23 +153,23 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Attempt pick-lock N times", StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking."),
             new StubField("Attempt disarm N times",    StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back."),
         }),
-        new StubGroup("Commands + retention", new[]
-        {
-            new StubField("Command splitter character",     StubFieldKind.Text,    "Splits multi-command input (default `;`)."),
-            new StubField("Game entry command",             StubFieldKind.Text,    "One-shot sent on first prompt after logon (e.g. `set wimpy 30`)."),
-            new StubField("Game exit command",              StubFieldKind.Text,    "Sent before disconnect (e.g. `bye`)."),
-            new StubField("Backscroll buffer size",         StubFieldKind.Numeric, "Phase 1 — lines retained in the in-memory ring.", "lines"),
-            new StubField("Inactive player cleanup window", StubFieldKind.Numeric, "Phase 5 PR 5.19 — drop Players-tab records last seen this many days ago.", "days"),
-            new StubField("Debug log retention",            StubFieldKind.Numeric, "Phase 0 — prune Data/Logs/ entries older than this on app launch.", "days"),
-        }),
+        // Removed per user direction:
+        // - "Command splitter character" (^M and ; are hardwired)
+        // - "Backscroll buffer size" (lives on BBS + Display)
+        // - "Inactive player cleanup window" (graduated to wired field above)
+        // - "Debug log retention" (per-instance, doesn't persist)
+        // - "Game entry/exit command" (graduated to wired group above)
     };
 
-    public OtherSectionViewModel() : this(AppServices.Current.Profile) { }
+    public OtherSectionViewModel()
+        : this(AppServices.Current.Profile, AppServices.Current.Settings) { }
 
-    public OtherSectionViewModel(ProfileService profile)
+    public OtherSectionViewModel(ProfileService profile, SettingsService globalSettings)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(globalSettings);
         _profile = profile;
+        _globalSettings = globalSettings;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _suppressDirty = true;
@@ -160,11 +188,23 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             IgnoreBlindness = IgnoreBlindness,
             IgnoreConfusion = IgnoreConfusion,
             IgnoreDiseased  = IgnoreDiseased,
+            GameEntryCommand = (GameEntryCommand ?? string.Empty).Trim(),
+            GameExitCommand  = (GameExitCommand  ?? string.Empty).Trim(),
         };
 
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save();
+
+        // PlayerCleanupDays lives at Global tier (one threshold per
+        // install). Persist alongside the char-tier write so the
+        // user's single Apply commits both.
+        int sanitized = Math.Clamp(PlayerCleanupDays, 0, 3650);
+        if (_globalSettings.Current.PlayerCleanupDays != sanitized)
+        {
+            _globalSettings.Current.PlayerCleanupDays = sanitized;
+            _globalSettings.Save();
+        }
 
         ApplyToServices(dto);
         ClearDirty();
@@ -198,6 +238,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         IgnoreBlindness = dto.IgnoreBlindness;
         IgnoreConfusion = dto.IgnoreConfusion;
         IgnoreDiseased  = dto.IgnoreDiseased;
+        GameEntryCommand = dto.GameEntryCommand;
+        GameExitCommand  = dto.GameExitCommand;
+        PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
 
@@ -218,7 +261,18 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
 
     private static void ApplyToServices(OtherSettings dto)
     {
-        AppServices.Current.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+        AppServices svcs = AppServices.Current;
+        svcs.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+        // Live-mirror the entry / exit commands so HangupHandler picks
+        // them up without a profile reload. Blank values fall back to
+        // the DTO defaults — see AppServices.ApplyOtherFromActiveProfile
+        // for the canonical guard.
+        svcs.GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
+            ? new OtherSettings().GameEntryCommand
+            : dto.GameEntryCommand;
+        svcs.GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
+            ? new OtherSettings().GameExitCommand
+            : dto.GameExitCommand;
     }
 
     // ----- IsDirty plumbing -----
@@ -234,6 +288,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnIgnoreBlindnessChanged(bool value) => MarkDirty();
     partial void OnIgnoreConfusionChanged(bool value) => MarkDirty();
     partial void OnIgnoreDiseasedChanged(bool value)  => MarkDirty();
+    partial void OnGameEntryCommandChanged(string value) => MarkDirty();
+    partial void OnGameExitCommandChanged(string value)  => MarkDirty();
+    partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
 
     private void MarkDirty()
     {

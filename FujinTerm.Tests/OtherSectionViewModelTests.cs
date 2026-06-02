@@ -22,6 +22,8 @@ public sealed class OtherSectionViewModelTests
             IgnoreBlindness = true,
             IgnoreConfusion = true,
             IgnoreDiseased  = true,
+            GameEntryCommand = "enter",
+            GameExitCommand  = "bye",
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -33,6 +35,8 @@ public sealed class OtherSectionViewModelTests
         Assert.True(back.IgnoreBlindness);
         Assert.True(back.IgnoreConfusion);
         Assert.True(back.IgnoreDiseased);
+        Assert.Equal("enter", back.GameEntryCommand);
+        Assert.Equal("bye",   back.GameExitCommand);
     }
 
     [Fact]
@@ -50,5 +54,9 @@ public sealed class OtherSectionViewModelTests
         Assert.False(dto.IgnoreBlindness);
         Assert.False(dto.IgnoreConfusion);
         Assert.False(dto.IgnoreDiseased);
+        // Game-menu commands default to MajorMUD's standard picks:
+        // E to enter the realm, =x to log off from the main menu.
+        Assert.Equal("E",  dto.GameEntryCommand);
+        Assert.Equal("=x", dto.GameExitCommand);
     }
 }
