@@ -51,6 +51,45 @@ public sealed class PartyDisconnectDeathTests
     }
 
     [Fact]
+    public void Disconnect_OfLeader_DissolvesEntireParty()
+    {
+        // MajorMUD game rule: if the party leader disconnects, the
+        // party disbands — leadership doesn't transfer. The roster
+        // wipes for every follower (not just the leader's row), and
+        // the leader is NOT added to the grace-window map because a
+        // returning leader has no party to be auto-invited back into.
+        //
+        // Build the scenario manually: Fujin leads, we (Raijin) are a
+        // follower, and a third member Helper also follows Fujin. When
+        // Fujin disconnects, ALL three rows must clear.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+
+        router.Dispatch(Line("You are now following Fujin."));   // adds Fujin (leader) + self
+        // Simulate a second follower by feeding a par block with three rows.
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Backrank",
+            string.Empty,
+        });
+        Assert.Equal(3, mgr.State.Members.Count);
+        Assert.False(mgr.State.SelfIsLeader);
+        Assert.Equal("Fujin", mgr.State.LeaderName);
+
+        router.Dispatch(Line("Fujin just disconnected!!!."));
+
+        Assert.Empty(mgr.State.Members);
+        Assert.False(mgr.State.IsInParty);
+        Assert.Null(mgr.State.LeaderName);
+        Assert.DoesNotContain("Fujin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Disconnect_OfNonMember_IsIgnored()
     {
         var (router, mgr, _) = Setup();

@@ -413,22 +413,44 @@ public sealed partial class PartyManager : IDisposable
     // ----- Phase 6 PR 6.5: disconnect / death / reconnect ---------------
 
     /// <summary>
-    /// "X just disconnected!!!." — if X is in our roster, remove them
-    /// immediately and record the moment in the grace-window map so a
-    /// later <c>just entered the Realm</c> within the window can
-    /// auto-invite them back.
+    /// "X just disconnected!!!." — if X is in our roster, remove them.
+    /// <para>
+    /// <b>Follower drop:</b> evict the row and record the moment in the
+    /// grace-window map so a later <c>just entered the Realm</c> within
+    /// the window can auto-invite them back (when we're leader).
+    /// </para>
+    /// <para>
+    /// <b>Leader drop:</b> the whole party dissolves per MajorMUD's
+    /// game rule — leadership doesn't transfer on disconnect. Wipe
+    /// the full roster via the same path <see cref="OnPartyDissolved"/>
+    /// uses. No grace-window entry for a dropped leader: a returning
+    /// leader has no party to be auto-re-invited into, so the entry
+    /// would only mislead the reconnect handler.
+    /// </para>
     /// </summary>
     private void OnPlayerDisconnects(MatchResult result)
     {
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
+        string given = GivenNameOf(name);
         bool wasMember = false;
+        bool wasLeader = false;
         foreach (PartyMember m in State.Members)
         {
-            if (m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) { wasMember = true; break; }
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
+            wasMember = true;
+            wasLeader = m.IsLeader;
+            break;
         }
         if (!wasMember) return;
+        if (wasLeader)
+        {
+            // Full dissolution — same shape as OnPartyDissolved so the
+            // par-state machine, leader-name, and IsInParty all reset.
+            OnPartyDissolved(default);
+            return;
+        }
         RemoveMember(name);
         _recentlyDisconnected[name] = NowProvider();
     }
