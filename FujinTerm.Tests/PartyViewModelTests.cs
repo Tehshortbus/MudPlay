@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Models.Profile;
 using FujinTerm.ViewModels;
 using Xunit;
 
@@ -7,11 +8,15 @@ namespace FujinTerm.Tests;
 
 public sealed class PartyViewModelTests
 {
+    // Tests use the 3-arg ctor with profile: null so they don't reach
+    // through AppServices.Current — LocalRank stays at the Mid default,
+    // which is fine; the rank-chip render is exercised by smoke / live.
+
     [Fact]
     public void HeaderText_ReflectsMemberCount()
     {
         PartyState state = new();
-        PartyViewModel vm = new(state);
+        PartyViewModel vm = new(state, wireSender: null, profile: null);
 
         Assert.Equal("Party (0)", vm.HeaderText);
         state.Members.Add(new PartyMember { Name = "Forged" });
@@ -31,7 +36,7 @@ public sealed class PartyViewModelTests
         state.Members.Add(target);
 
         List<byte[]> wire = new();
-        PartyViewModel vm = new(state, wire.Add);
+        PartyViewModel vm = new(state, wire.Add, profile: null);
 
         vm.UninviteCommand.Execute(target);
 
@@ -48,7 +53,7 @@ public sealed class PartyViewModelTests
         state.Members.Add(target);
 
         List<byte[]> wire = new();
-        PartyViewModel vm = new(state, wire.Add);
+        PartyViewModel vm = new(state, wire.Add, profile: null);
 
         vm.UninviteCommand.Execute(target);
 
@@ -61,10 +66,18 @@ public sealed class PartyViewModelTests
         PartyState state = new();
         state.SelfIsLeader = true;
         List<byte[]> wire = new();
-        PartyViewModel vm = new(state, wire.Add);
+        PartyViewModel vm = new(state, wire.Add, profile: null);
 
         vm.UninviteCommand.Execute(null);
 
         Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void LocalRank_DefaultsToMid_WhenNoProfileBound()
+    {
+        PartyState state = new();
+        PartyViewModel vm = new(state, wireSender: null, profile: null);
+        Assert.Equal(PartyRank.Mid, vm.LocalRank);
     }
 }

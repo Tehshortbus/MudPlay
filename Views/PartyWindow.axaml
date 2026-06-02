@@ -2,16 +2,54 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels"
         xmlns:game="using:FujinTerm.Game"
+        xmlns:profile="using:FujinTerm.Models.Profile"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="220"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="240"
         x:Class="FujinTerm.Views.PartyWindow"
         x:DataType="vm:PartyViewModel"
         Title="Party"
-        Width="380" Height="220"
-        MinWidth="280" MinHeight="80"
+        Width="520" Height="240"
+        MinWidth="380" MinHeight="80"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
+
+    <Window.Styles>
+        <!-- Rank chip (F/M/B) — shown only on the self row. -->
+        <Style Selector="Border.RankChip">
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="MinWidth" Value="16"/>
+        </Style>
+
+        <!-- Status-flag chip (REST / PSN / WAIT / etc.). -->
+        <Style Selector="Border.StatusChip">
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="Border.StatusChip > TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Compact HP/MA bar. -->
+        <Style Selector="ProgressBar.HpBar">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="ProgressBar.MaBar">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+    </Window.Styles>
 
     <DockPanel LastChildFill="True">
 
@@ -45,70 +83,188 @@
                 <DataTemplate DataType="game:PartyMember">
                     <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,0,0,1"
-                            Padding="6,3">
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto"
+                            Padding="6,4">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto"
                               VerticalAlignment="Center">
 
-                            <!-- Leader star (visible only on the leader) -->
+                            <!-- (0) Leader star — visible only on the leader -->
                             <TextBlock Grid.Column="0"
                                        Text="★"
                                        FontSize="13"
-                                       Margin="0,0,6,0"
+                                       Margin="0,0,4,0"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource AccentPrimaryBrush}"
                                        IsVisible="{Binding IsLeader}"/>
 
-                            <!-- Name (always) -->
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding Name}"
-                                       FontSize="12"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource ChromeFgBrush}"/>
+                            <!-- (1) Rank chip — self only -->
+                            <Border Grid.Column="1"
+                                    Classes="RankChip"
+                                    Background="{StaticResource AccentAmberSoftBrush}"
+                                    IsVisible="{Binding IsSelf}">
+                                <TextBlock VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource ChromeFgBrush}">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0}">
+                                            <Binding Path="$parent[ItemsControl].DataContext.LocalRank"
+                                                     Converter="{x:Static vm:RankChipConverter.Instance}"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </Border>
 
-                            <!-- HP — "H: 690 94%" -->
-                            <TextBlock Grid.Column="2"
-                                       VerticalAlignment="Center"
-                                       FontFamily="{StaticResource FontMono}"
-                                       FontSize="11"
-                                       Margin="0,0,8,0"
-                                       Foreground="{StaticResource ChromeFgBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="H:{0} {1}%">
-                                        <Binding Path="BaselineHp"/>
-                                        <Binding Path="HpPercent"/>
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
+                            <!-- (2) Name + class -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource ChromeFgBrush}"/>
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding Class, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="({0})">
+                                            <Binding Path="Class"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </StackPanel>
 
-                            <!-- MA — "M: 290 50%" (Warriors with no MA show "M:—") -->
-                            <TextBlock Grid.Column="3"
-                                       VerticalAlignment="Center"
-                                       FontFamily="{StaticResource FontMono}"
-                                       FontSize="11"
-                                       Margin="0,0,8,0"
-                                       Foreground="{StaticResource ChromeFgBrush}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="M:{0} {1}%">
-                                        <Binding Path="BaselineMp"/>
-                                        <Binding Path="MpPercent"/>
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
+                            <!-- (3) HP bar + numeric -->
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
+                                        Margin="6,0,4,0" VerticalAlignment="Center">
+                                <ProgressBar Classes="HpBar"
+                                             Value="{Binding HpPercent}"
+                                             Maximum="100"
+                                             Width="60"
+                                             VerticalAlignment="Center"
+                                             ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
+                                <TextBlock VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           Width="34" TextAlignment="Right">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0}%">
+                                            <Binding Path="HpPercent"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </StackPanel>
 
-                            <!-- Position chip — "Standing" / "Resting" / "Meditating" -->
-                            <TextBlock Grid.Column="4"
+                            <!-- (4) MA bar + numeric. Hidden when baseline is 0 (warrior / no mana). -->
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4"
+                                        Margin="0,0,4,0" VerticalAlignment="Center"
+                                        IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
+                                <ProgressBar Classes="MaBar"
+                                             Value="{Binding MpPercent}"
+                                             Maximum="100"
+                                             Width="60"
+                                             VerticalAlignment="Center"
+                                             ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
+                                <TextBlock VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           Width="34" TextAlignment="Right">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0}%">
+                                            <Binding Path="MpPercent"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- (5) Position chip — kept as compact text to preserve a glanceable stance label. -->
+                            <TextBlock Grid.Column="5"
                                        Text="{Binding Position}"
                                        VerticalAlignment="Center"
-                                       FontSize="11"
-                                       Margin="0,0,6,0"
+                                       FontSize="10"
+                                       Margin="0,0,4,0"
                                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
 
-                            <!-- Uninvite button (per-row). Only meaningful for the leader;
-                                 disabled otherwise (the in-game command would no-op anyway). -->
-                            <Button Grid.Column="5"
+                            <!-- (6) Status-flag chips. Each chip self-collapses when the
+                                 corresponding flag is false. Order is roughly threat / cure /
+                                 stealth / coordination. -->
+                            <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentGreenBrush}"
+                                        IsVisible="{Binding Resting}">
+                                    <TextBlock Text="REST" Foreground="{StaticResource AccentGreenBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentCyanBrush}"
+                                        IsVisible="{Binding Meditating}">
+                                    <TextBlock Text="MED" Foreground="{StaticResource AccentCyanBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentRedBrush}"
+                                        IsVisible="{Binding Paralyzed}">
+                                    <TextBlock Text="PARA" Foreground="{StaticResource AccentRedBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentRedBrush}"
+                                        IsVisible="{Binding Held}">
+                                    <TextBlock Text="HELD" Foreground="{StaticResource AccentRedBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Blinded}">
+                                    <TextBlock Text="BLD" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Poisoned}">
+                                    <TextBlock Text="PSN" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Diseased}">
+                                    <TextBlock Text="DIS" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Confused}">
+                                    <TextBlock Text="CNF" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentMagentaBrush}"
+                                        IsVisible="{Binding Hidden}">
+                                    <TextBlock Text="HID" Foreground="{StaticResource AccentMagentaBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentMagentaBrush}"
+                                        IsVisible="{Binding Sneaking}">
+                                    <TextBlock Text="SNK" Foreground="{StaticResource AccentMagentaBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentPrimaryBrush}"
+                                        IsVisible="{Binding IsWaiting}">
+                                    <TextBlock Text="WAIT" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- (7) Uninvite — only meaningful for the leader -->
+                            <Button Grid.Column="7"
                                     Content="⨯"
                                     Width="22" Height="22"
                                     Padding="0"
+                                    Margin="4,0,0,0"
                                     FontSize="13"
                                     ToolTip.Tip="Uninvite from party"
                                     Command="{Binding $parent[ItemsControl].DataContext.UninviteCommand}"

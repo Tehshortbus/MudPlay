@@ -391,9 +391,15 @@ public sealed class RemoteCommandManager : IDisposable
 
     private bool IsActivePartyMember(string sender)
     {
+        // Telepaths arrive with the given-name only; par-derived member
+        // rows can be "Given Family". Match on the given-name prefix so
+        // a "Buddy" @wait still pairs with a "Buddy Lastname" row.
+        string senderGiven = GivenName(sender);
         foreach (PartyMember m in _party.Members)
         {
             if (m.Name.Equals(sender, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (GivenName(m.Name).Equals(senderGiven, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;

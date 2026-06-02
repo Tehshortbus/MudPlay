@@ -85,4 +85,15 @@ public sealed partial class PartyMember : ObservableObject
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _hidden;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _sneaking;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _held;
+
+    /// <summary>
+    /// True when this member has asked the party to <c>@wait</c> and
+    /// hasn't yet sent <c>@ok</c>. Owned by
+    /// <see cref="Remote.PartyEssentialHandlers"/> — the receive side of
+    /// the @wait/@ok protocol mirrors its <c>WaitingMembers</c> set onto
+    /// the matching PartyMember row so the PartyWindow can render a
+    /// "WAIT" chip per-member without bouncing through a separate
+    /// collection.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(Remote.PartyEssentialHandlers))] private bool _isWaiting;
 }

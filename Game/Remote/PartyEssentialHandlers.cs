@@ -189,6 +189,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     {
         bool wasPaused = IsPaused;
         WaitingMembers.Add(ctx.Sender);
+        SetMemberWaitFlag(ctx.Sender, true);
         if (!wasPaused && IsPaused) PauseGateChanged?.Invoke(true);
     }
 
@@ -196,6 +197,38 @@ public sealed class PartyEssentialHandlers : IDisposable
     {
         bool wasPaused = IsPaused;
         WaitingMembers.Remove(ctx.Sender);
+        SetMemberWaitFlag(ctx.Sender, false);
         if (wasPaused && !IsPaused) PauseGateChanged?.Invoke(false);
+    }
+
+    /// <summary>
+    /// Mirror the <see cref="WaitingMembers"/> set onto the matching
+    /// <see cref="PartyMember.IsWaiting"/> so the PartyWindow can render
+    /// a per-row WAIT chip without binding through the HashSet. Senders
+    /// are matched by given-name (first whitespace-delimited token) —
+    /// MajorMUD telepaths arrive with the given name only, while par's
+    /// member rows can be "Given Family", so we compare on the prefix.
+    /// Silent no-op when the sender isn't in the party (e.g. an
+    /// out-of-party stranger spamming @wait would still occupy the
+    /// IsPaused gate but has no member row to flag).
+    /// </summary>
+    private void SetMemberWaitFlag(string sender, bool waiting)
+    {
+        string senderGiven = GivenName(sender);
+        foreach (PartyMember m in _party.Members)
+        {
+            if (GivenName(m.Name).Equals(senderGiven, StringComparison.OrdinalIgnoreCase))
+            {
+                m.IsWaiting = waiting;
+                return;
+            }
+        }
+    }
+
+    private static string GivenName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 }

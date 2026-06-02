@@ -303,4 +303,61 @@ public sealed class PartyEssentialHandlersTests
 
         Assert.Empty(handlers.WaitingMembers);
     }
+
+    // ===== Per-member IsWaiting flag (drives PartyWindow's WAIT chip) =====
+
+    [Fact]
+    public void Wait_FlipsMatchingMembersIsWaiting()
+    {
+        var (engine, _, _, party, _, _) = Setup();
+        SeedPartyMember(party, "Follower");
+        PartyMember row = party.Members[0];
+        Assert.False(row.IsWaiting);
+
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+
+        Assert.True(row.IsWaiting);
+    }
+
+    [Fact]
+    public void Ok_ClearsMatchingMembersIsWaiting()
+    {
+        var (engine, _, _, party, _, _) = Setup();
+        SeedPartyMember(party, "Follower");
+        PartyMember row = party.Members[0];
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+        Assert.True(row.IsWaiting);
+
+        engine.DispatchForTests(Telepath("Follower", "@ok"));
+        Assert.False(row.IsWaiting);
+    }
+
+    [Fact]
+    public void Wait_MatchesByGivenName_AcrossGivenAndFamilyForms()
+    {
+        // par may have surfaced the member as "Given Family" while the
+        // telepath arrives with just "Given" — engine matches on the
+        // given-name prefix.
+        var (engine, _, _, party, _, _) = Setup();
+        SeedPartyMember(party, "Follower Lastname");
+        PartyMember row = party.Members[0];
+
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+
+        Assert.True(row.IsWaiting);
+    }
+
+    [Fact]
+    public void Wait_FromNonPartyMember_DoesNotFlipAnyRow()
+    {
+        // Engine drops @wait from non-party senders (party-whitelist gate);
+        // and since the sender isn't in the roster, no row should change.
+        var (engine, _, _, party, _, _) = Setup();
+        SeedPartyMember(party, "Follower");
+        PartyMember row = party.Members[0];
+
+        engine.DispatchForTests(Telepath("Stranger", "@wait"));
+
+        Assert.False(row.IsWaiting);
+    }
 }
