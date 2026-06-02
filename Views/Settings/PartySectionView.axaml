@@ -277,55 +277,45 @@
                     <TextBlock Classes="FieldLabel" Text="%"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only (min / s)"/>
                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown Value="{Binding IfLeadingWaitMinutes, Mode=TwoWay}"
                                    Minimum="0" Maximum="60" Increment="1"
                                    FormatString="0" ShowButtonSpinner="True"
                                    Width="120" MinWidth="120"
                                    ToolTip.Tip="Grace window for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Defaults to 2 m."/>
-                    <TextBlock Classes="FieldLabel" Text="min"/>
                     <NumericUpDown Value="{Binding IfLeadingWaitSeconds, Mode=TwoWay}"
                                    Minimum="0" Maximum="59" Increment="1"
                                    FormatString="0" ShowButtonSpinner="True"
                                    Width="120" MinWidth="120"
                                    ToolTip.Tip="Seconds component of the leader-side grace window."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
-                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown Value="{Binding ParPollFrequencySec, Mode=TwoWay}"
-                                   Minimum="1" Maximum="60" Width="120"
-                                   ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
-                </StackPanel>
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency (s)"/>
+                <NumericUpDown Grid.Row="3" Grid.Column="1"
+                               Value="{Binding ParPollFrequencySec, Mode=TwoWay}"
+                               Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
 
                 <!-- @join nag escalation knobs — feed AutoPartyManager's
                      follow-up sequence after the initial `invite`. -->
-                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="`@join` initial delay"/>
-                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
-                                   Minimum="1" Maximum="60" Width="120"
-                                   ToolTip.Tip="After auto-inviting a player, wait this many seconds for them to join before sending the first `@join` nag. Default 5."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
-                </StackPanel>
+                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="`@join` initial delay (s)"/>
+                <NumericUpDown Grid.Row="4" Grid.Column="1"
+                               Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
+                               Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="After auto-inviting a player, wait this many seconds for them to join before sending the first `@join` nag. Default 5."/>
 
-                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="`@join` resend frequency"/>
-                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown Value="{Binding JoinNagFrequencySec, Mode=TwoWay}"
-                                   Minimum="1" Maximum="60" Width="120"
-                                   ToolTip.Tip="How often the `@join` nag re-fires after the first send. Stops on join, on a non-{Ok} telepath reply, or when the max-total cap fires. Default 10."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
-                </StackPanel>
+                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="`@join` resend frequency (s)"/>
+                <NumericUpDown Grid.Row="5" Grid.Column="1"
+                               Value="{Binding JoinNagFrequencySec, Mode=TwoWay}"
+                               Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="How often the `@join` nag re-fires after the first send. Stops on join, on a non-{Ok} telepath reply, or when the max-total cap fires. Default 10."/>
 
-                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="`@join` max attempt window"/>
-                <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown Value="{Binding JoinNagMaxTotalSec, Mode=TwoWay}"
-                                   Minimum="5" Maximum="600" Width="120"
-                                   ToolTip.Tip="Hard cap on the whole nag window measured from the initial invite. Past this, give up. Default 55."/>
-                    <TextBlock Classes="FieldLabel" Text="s"/>
-                </StackPanel>
+                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="`@join` max attempt window (s)"/>
+                <NumericUpDown Grid.Row="6" Grid.Column="1"
+                               Value="{Binding JoinNagMaxTotalSec, Mode=TwoWay}"
+                               Minimum="5" Maximum="600" Width="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="Hard cap on the whole nag window measured from the initial invite. Past this, give up. Default 55."/>
             </Grid>
 
         </StackPanel>
