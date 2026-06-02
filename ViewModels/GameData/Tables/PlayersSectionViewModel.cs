@@ -114,8 +114,12 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         if (result is null) return;
 
         // Save only the customization slice — observed fields stay
-        // observation-only and never get stomped by the dialog.
-        _db.EditCustomization(result.OriginalDisplayName, result.Updated.ToCustomization());
+        // observation-only and never get stomped by the dialog. The
+        // customization layer is keyed on given name so the user's
+        // toggles follow the player across train-stats renames; the
+        // dialog's OriginalDisplayName carries the given as its first
+        // whitespace-delimited token and EditCustomization extracts it.
+        _db.EditCustomization(record.GivenName, result.Updated.ToCustomization());
         Reload();
     }
 }

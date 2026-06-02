@@ -42,11 +42,23 @@ public sealed class PlayerDatabase
 
     // ----- Backing layers ------------------------------------------------
 
-    /// <summary>BBS-tier observations, keyed by display name (case-insensitive).</summary>
+    /// <summary>
+    /// BBS-tier observations, keyed by GIVEN name (case-insensitive).
+    /// Given name is the stable identity across train-stats family-name
+    /// changes — keying on display name causes the same player to split
+    /// into two rows the moment they rename, which is the bug fixed
+    /// alongside this comment.
+    /// </summary>
     private readonly Dictionary<string, PlayerObservation> _observations =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Char-tier customizations, keyed by display name (case-insensitive). Empty when no profile loaded.</summary>
+    /// <summary>
+    /// Char-tier customizations, keyed by GIVEN name (case-insensitive).
+    /// Same rationale as <see cref="_observations"/>: the user's
+    /// per-player toggles must follow the player across renames, not
+    /// orphan when their family name changes. Empty when no profile
+    /// loaded.
+    /// </summary>
     private readonly Dictionary<string, PlayerCustomization> _customizations =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -86,9 +98,14 @@ public sealed class PlayerDatabase
     /// <summary>
     /// Apply one observed row (typically from <c>who</c> output). Wire
     /// names are split via <see cref="PlayerObservation.SplitName"/> on
-    /// the first whitespace. Existing records merge — nulls don't
-    /// overwrite — so a sparse observation only updates the fields it
-    /// has. Saves the BBS observation file after the merge.
+    /// the first whitespace; the record is keyed on
+    /// <see cref="PlayerObservation.GivenName"/> so a player who renames
+    /// at the train-stats screen (family-name change) updates her
+    /// existing row instead of creating a duplicate. Existing records
+    /// merge — nulls don't overwrite — so a sparse observation only
+    /// updates the fields it has; the observed family name DOES
+    /// overwrite, because seeing a new family name is itself an
+    /// observation. Saves the BBS observation file after the merge.
     /// </summary>
     public void RecordObservation(
         string name,
@@ -102,14 +119,17 @@ public sealed class PlayerDatabase
     {
         ArgumentNullException.ThrowIfNull(name);
         (string given, string family) = PlayerObservation.SplitName(name);
-        string display = string.IsNullOrEmpty(family) ? given : $"{given} {family}";
-        if (string.IsNullOrEmpty(display)) return;
+        if (string.IsNullOrEmpty(given)) return;
 
-        if (_observations.TryGetValue(display, out PlayerObservation? existing))
+        if (_observations.TryGetValue(given, out PlayerObservation? existing))
         {
-            _observations[display] = existing with
+            _observations[given] = existing with
             {
-                GivenName   = given,
+                // GivenName is the key — never changes for an existing row.
+                // FamilyName is always overwritten by the latest observation:
+                // a rename at train-stats produces a new family name, and
+                // that's a real observation we need to record (not a "null /
+                // unseen" event we should preserve the prior value through).
                 FamilyName  = family,
                 Class       = @class    ?? existing.Class,
                 Race        = race      ?? existing.Race,
@@ -122,7 +142,7 @@ public sealed class PlayerDatabase
         }
         else
         {
-            _observations[display] = new PlayerObservation(
+            _observations[given] = new PlayerObservation(
                 GivenName:    given,
                 FamilyName:   family,
                 Class:        @class,
@@ -159,22 +179,25 @@ public sealed class PlayerDatabase
     {
         ArgumentNullException.ThrowIfNull(name);
         (string given, string family) = PlayerObservation.SplitName(name);
-        string display = string.IsNullOrEmpty(family) ? given : $"{given} {family}";
-        if (string.IsNullOrEmpty(display)) return;
+        if (string.IsNullOrEmpty(given)) return;
 
-        if (_observations.TryGetValue(display, out PlayerObservation? existing))
+        if (_observations.TryGetValue(given, out PlayerObservation? existing))
         {
-            _observations[display] = existing with
+            _observations[given] = existing with
             {
-                Race        = race  ?? existing.Race,
-                Class       = @class ?? existing.Class,
+                // Family name on a look-observation overwrites for the same
+                // reason as in RecordObservation — a new family name is
+                // itself a real observation, not "I didn't see it".
+                FamilyName  = string.IsNullOrEmpty(family) ? existing.FamilyName : family,
+                Race        = race      ?? existing.Race,
+                Class       = @class    ?? existing.Class,
                 Equipment   = equipment ?? existing.Equipment,
                 LastSeenUtc = nowUtc,
             };
         }
         else
         {
-            _observations[display] = new PlayerObservation(
+            _observations[given] = new PlayerObservation(
                 GivenName:    given,
                 FamilyName:   family,
                 Class:        @class,
@@ -200,13 +223,20 @@ public sealed class PlayerDatabase
     /// existing entry so the profile JSON doesn't bloat with one row
     /// per observed stranger.
     /// </summary>
-    public bool EditCustomization(string displayName, PlayerCustomization customization)
+    public bool EditCustomization(string nameOrGiven, PlayerCustomization customization)
     {
-        if (string.IsNullOrWhiteSpace(displayName)) return false;
+        if (string.IsNullOrWhiteSpace(nameOrGiven)) return false;
+        // Accept either the bare given name ("Debbie") or a full display
+        // name ("Debbie Par") for backwards-compatible callers. The dict
+        // is keyed on given so the customization follows the player
+        // across family-name changes.
+        (string given, _) = PlayerObservation.SplitName(nameOrGiven);
+        if (string.IsNullOrEmpty(given)) return false;
+
         if (customization.IsDefault)
-            _customizations.Remove(displayName);
+            _customizations.Remove(given);
         else
-            _customizations[displayName] = customization;
+            _customizations[given] = customization;
 
         Rebuild();
         _profile?.Save();
@@ -225,12 +255,14 @@ public sealed class PlayerDatabase
         if (days <= 0) return 0;
         DateTime cutoff = nowUtc.AddDays(-days);
         int removed = 0;
-        foreach (string key in _observations.Keys.ToArray())
+        // Both dicts share the same key (GivenName) so the customization
+        // lookup for the DontAutoDelete flag is a direct hit.
+        foreach (string given in _observations.Keys.ToArray())
         {
-            PlayerObservation o = _observations[key];
+            PlayerObservation o = _observations[given];
             if (o.LastSeenUtc >= cutoff) continue;
-            if (_customizations.TryGetValue(key, out PlayerCustomization c) && c.DontAutoDelete) continue;
-            _observations.Remove(key);
+            if (_customizations.TryGetValue(given, out PlayerCustomization c) && c.DontAutoDelete) continue;
+            _observations.Remove(given);
             removed++;
         }
         if (removed > 0)
@@ -250,8 +282,8 @@ public sealed class PlayerDatabase
         _observations.Clear();
         foreach (PlayerObservation o in rows)
         {
-            string key = o.DisplayName;
-            if (!string.IsNullOrEmpty(key)) _observations[key] = o;
+            if (string.IsNullOrEmpty(o.GivenName)) continue;
+            MergeOnLoad(o);
         }
         Rebuild();
     }
@@ -264,6 +296,12 @@ public sealed class PlayerDatabase
         _activeBbsName = bbs?.Name;
 
         // BBS layer: load from disk if a BBS resolves, else clear.
+        // Files may have been written under the pre-bugfix layout — one
+        // dict entry per (Given, Family) pair, so the same player at
+        // different family names appears twice. Collapse those on load
+        // by given-name, picking the newer LastSeen as the canonical
+        // observation. The next save rewrites the file in the merged
+        // form, so this migration is one-shot.
         _observations.Clear();
         if (!string.IsNullOrEmpty(_activeBbsName))
         {
@@ -273,24 +311,67 @@ public sealed class PlayerDatabase
             {
                 foreach (PlayerObservation o in loaded)
                 {
-                    string key = o.DisplayName;
-                    if (!string.IsNullOrEmpty(key)) _observations[key] = o;
+                    if (string.IsNullOrEmpty(o.GivenName)) continue;
+                    MergeOnLoad(o);
                 }
             }
         }
 
         // Char layer: pull off the loaded profile (null when no profile).
+        // Same migration story: customization dicts written before the
+        // re-key may carry "Given Family" string keys. Extract given and
+        // re-bucket. If a player had been customized under both an old
+        // and a new family name, the non-default entry wins; ties pick
+        // the last-iterated one (rare in practice — most users only
+        // configure flags on characters they actually party with).
         _customizations.Clear();
         CharacterProfile? profile = _profile?.Current;
         if (profile?.PlayerCustomizations is { } pcs)
         {
-            foreach ((string key, PlayerCustomization c) in pcs)
+            foreach ((string oldKey, PlayerCustomization c) in pcs)
             {
-                if (!string.IsNullOrEmpty(key)) _customizations[key] = c;
+                if (string.IsNullOrEmpty(oldKey)) continue;
+                (string given, _) = PlayerObservation.SplitName(oldKey);
+                if (string.IsNullOrEmpty(given)) continue;
+                if (!_customizations.TryGetValue(given, out PlayerCustomization existing)
+                    || existing.IsDefault)
+                {
+                    _customizations[given] = c;
+                }
             }
         }
 
         Rebuild();
+    }
+
+    /// <summary>
+    /// Insert one observation, collapsing collisions on
+    /// <see cref="PlayerObservation.GivenName"/>. The newer LastSeenUtc
+    /// wins for the volatile fields (FamilyName / Class / Race / etc.);
+    /// the older FirstSeenUtc is retained so the "we've known this
+    /// player since X" stat survives the merge. Equipment is treated
+    /// the same as in <see cref="RecordLook"/> — the newer snapshot
+    /// replaces the older when present.
+    /// </summary>
+    private void MergeOnLoad(PlayerObservation o)
+    {
+        if (!_observations.TryGetValue(o.GivenName, out PlayerObservation? existing))
+        {
+            _observations[o.GivenName] = o;
+            return;
+        }
+        bool incomingIsNewer = o.LastSeenUtc >= existing.LastSeenUtc;
+        PlayerObservation newer = incomingIsNewer ? o : existing;
+        PlayerObservation older = incomingIsNewer ? existing : o;
+        _observations[o.GivenName] = newer with
+        {
+            FirstSeenUtc = older.FirstSeenUtc < newer.FirstSeenUtc ? older.FirstSeenUtc : newer.FirstSeenUtc,
+            // Equipment: keep newer snapshot when it has one, else fall
+            // back to older (an equipment-bearing look-observation
+            // shouldn't be erased by a later who-observation that didn't
+            // carry equipment).
+            Equipment    = newer.Equipment ?? older.Equipment,
+        };
     }
 
     /// <summary>
@@ -333,7 +414,9 @@ public sealed class PlayerDatabase
         foreach (PlayerObservation o in _observations.Values
                      .OrderBy(o => o.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
-            _customizations.TryGetValue(o.DisplayName, out PlayerCustomization c);
+            // Customization key follows the given-name layer — the user's
+            // per-player toggles must survive a family-name change.
+            _customizations.TryGetValue(o.GivenName, out PlayerCustomization c);
             Players.Add(PlayerRecord.Merge(o, c));
         }
     }

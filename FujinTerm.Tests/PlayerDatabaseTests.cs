@@ -142,4 +142,174 @@ public sealed class PlayerDatabaseTests
         Assert.Equal((string.Empty, string.Empty),   PlayerObservation.SplitName("   "));
         Assert.Equal((string.Empty, string.Empty),   PlayerObservation.SplitName(null));
     }
+
+    // ===== Family-name rename merge (the Debbie Par / Debbie Schwartz bug) =====
+
+    [Fact]
+    public void RecordObservation_FamilyRename_MergesIntoExistingRecord()
+    {
+        // The bug: train-stats lets a player change family name without
+        // losing identity. Re-observing under the new family must merge
+        // into the existing row, not create a duplicate.
+        PlayerDatabase db = new();
+        DateTime first = new(2026, 5, 30, 0, 0, 0, DateTimeKind.Utc);
+        DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Debbie Schwartz", "Mage", "Elf", "Good", null, null, null, first);
+        db.RecordObservation("Debbie Par",      null,   null,  null,   null, null, null, later);
+
+        Assert.Single(db.Players);
+        PlayerRecord r = db.Players[0];
+        Assert.Equal("Debbie", r.GivenName);
+        Assert.Equal("Par",    r.FamilyName);   // newest observation wins
+        Assert.Equal("Mage",   r.Class);        // un-observed → preserved
+        Assert.Equal("Elf",    r.Race);
+        Assert.Equal("Good",   r.Alignment);
+        Assert.Equal(first, r.FirstSeenUtc);    // "we've known this player since"
+        Assert.Equal(later, r.LastSeenUtc);
+    }
+
+    [Fact]
+    public void RecordObservation_FamilyRename_PreservesCustomization()
+    {
+        // The user's per-player flags / auto-party toggles / notes /
+        // DontAutoDelete must travel with the player identity, not with
+        // the display name. Family-rename can never reset them.
+        PlayerDatabase db = new();
+        DateTime first = new(2026, 5, 30, 0, 0, 0, DateTimeKind.Utc);
+        DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Debbie Schwartz", "Mage", null, null, null, null, null, first);
+        db.EditCustomization("Debbie Schwartz", new PlayerCustomization(
+            RemoteControls:      PlayerRemoteControls.QueryHealthStatus,
+            InviteToPartyIfSeen: true,
+            DontAutoDelete:      true,
+            Notes:               "trusted healer"));
+
+        db.RecordObservation("Debbie Par", null, null, null, null, null, null, later);
+
+        Assert.Single(db.Players);
+        PlayerRecord r = db.Players[0];
+        Assert.Equal("Par", r.FamilyName);
+        Assert.True(r.RemoteControls.HasFlag(PlayerRemoteControls.QueryHealthStatus));
+        Assert.True(r.InviteToPartyIfSeen);
+        Assert.True(r.DontAutoDelete);
+        Assert.Equal("trusted healer", r.Notes);
+    }
+
+    [Fact]
+    public void RecordObservation_SameGivenDifferentFamilies_CountsAsOnePlayer()
+    {
+        // Three consecutive observations of the same given name through
+        // different families. All collapse to one row; the last family
+        // is the one currently displayed.
+        PlayerDatabase db = new();
+        DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime t2 = new(2026, 5, 15, 0, 0, 0, DateTimeKind.Utc);
+        DateTime t3 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Debbie OldFamily",    null, null, null, null, null, null, t1);
+        db.RecordObservation("Debbie MidFamily",    null, null, null, null, null, null, t2);
+        db.RecordObservation("Debbie LatestFamily", null, null, null, null, null, null, t3);
+
+        Assert.Single(db.Players);
+        Assert.Equal("LatestFamily", db.Players[0].FamilyName);
+        Assert.Equal(t1, db.Players[0].FirstSeenUtc);
+        Assert.Equal(t3, db.Players[0].LastSeenUtc);
+    }
+
+    [Fact]
+    public void RecordObservation_DifferentGivens_StayDistinct()
+    {
+        // Same family-name "Clawful" appears on multiple given names in
+        // the screenshot — these are real different players and must
+        // NOT merge. Sanity check the given-name keying.
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Furnagerie Clawful", null, null, null, null, null, null, now);
+        db.RecordObservation("Gammi Clawful",      null, null, null, null, null, null, now);
+        db.RecordObservation("Gampi Clawful",      null, null, null, null, null, null, now);
+
+        Assert.Equal(3, db.Players.Count);
+    }
+
+    // ===== RecordLook equipment-snapshot merge =====
+
+    [Fact]
+    public void RecordLook_NewEquipmentSnapshot_ReplacesPrevious()
+    {
+        // Equipment is a snapshot of what they're wearing now — a later
+        // look-observation fully replaces an earlier loadout, not merges
+        // item-by-item. An old loadout combined with a new loadout would
+        // misrepresent both moments.
+        PlayerDatabase db = new();
+        DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        EquipmentItem oldHelm = new("head",   "Iron Helm");
+        EquipmentItem newHelm = new("head",   "Mithril Helm");
+        EquipmentItem newCape = new("back",   "Crimson Cape");
+
+        db.RecordLook("Debbie", race: null, @class: null,
+            equipment: new[] { oldHelm }, nowUtc: t1);
+        db.RecordLook("Debbie", race: null, @class: null,
+            equipment: new[] { newHelm, newCape }, nowUtc: t2);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.NotNull(r.Equipment);
+        Assert.Equal(2, r.Equipment!.Count);
+        Assert.Contains(r.Equipment, e => e.ItemName == "Mithril Helm");
+        Assert.Contains(r.Equipment, e => e.ItemName == "Crimson Cape");
+        Assert.DoesNotContain(r.Equipment, e => e.ItemName == "Iron Helm");
+    }
+
+    [Fact]
+    public void RecordLook_NullEquipment_KeepsPreviousSnapshot()
+    {
+        // A later observation that didn't see equipment (e.g. who only)
+        // must not erase the prior loadout — that would be replacing an
+        // observation with a non-observation.
+        PlayerDatabase db = new();
+        DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        EquipmentItem helm = new("head", "Iron Helm");
+        db.RecordLook("Debbie", race: null, @class: null,
+            equipment: new[] { helm }, nowUtc: t1);
+        db.RecordLook("Debbie", race: null, @class: null,
+            equipment: null, nowUtc: t2);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.NotNull(r.Equipment);
+        Assert.Single(r.Equipment!);
+        Assert.Equal("Iron Helm", r.Equipment![0].ItemName);
+    }
+
+    // ===== Load-time migration from legacy display-name keyed files =====
+
+    [Fact]
+    public void ReplaceObservations_CollapsesLegacyDuplicates_KeepingNewest()
+    {
+        // Simulates loading a pre-bugfix players.json that has both
+        // "Debbie Par" and "Debbie Schwartz" rows for the same player.
+        // The collapse picks the newer LastSeen as canonical but
+        // preserves the older FirstSeen.
+        PlayerDatabase db = new();
+        DateTime older = new(2026, 5, 30, 0, 0, 0, DateTimeKind.Utc);
+        DateTime newer = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.ReplaceObservations(new[]
+        {
+            new PlayerObservation("Debbie", "Schwartz", "Mage", "Elf", "Good", null, null, null,
+                                  FirstSeenUtc: older, LastSeenUtc: older),
+            new PlayerObservation("Debbie", "Par",      null,   null,  null,   null, null, null,
+                                  FirstSeenUtc: newer, LastSeenUtc: newer),
+        });
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal("Par",  r.FamilyName);     // newer wins for the volatile column
+        Assert.Equal(older,  r.FirstSeenUtc);   // older preserves "known since"
+        Assert.Equal(newer,  r.LastSeenUtc);
+    }
 }
