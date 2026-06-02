@@ -291,6 +291,9 @@ public partial class MainWindowViewModel : ObservableObject
         RefreshStatusBarTicks();
 
         // Seed File → Recent profile slots + Save profile label.
+        // Notify both the display labels (Recent0..4 — "name - bbs")
+        // and the raw profile names (ProfileName0..4 — used as the
+        // OpenRecentProfile command parameter) on every list change.
         RecentProfiles.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(Recent0));
@@ -298,6 +301,11 @@ public partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(Recent2));
             OnPropertyChanged(nameof(Recent3));
             OnPropertyChanged(nameof(Recent4));
+            OnPropertyChanged(nameof(ProfileName0));
+            OnPropertyChanged(nameof(ProfileName1));
+            OnPropertyChanged(nameof(ProfileName2));
+            OnPropertyChanged(nameof(ProfileName3));
+            OnPropertyChanged(nameof(ProfileName4));
             OnPropertyChanged(nameof(HasRecents));
         };
         RebuildRecentProfiles();
@@ -1624,11 +1632,32 @@ public partial class MainWindowViewModel : ObservableObject
     // the DataContext (the command resolution via $parent[Window] is
     // fragile across popup ownership). Binding to the parent VM directly
     // sidesteps that entirely.
-    public string? Recent0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
-    public string? Recent1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
-    public string? Recent2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
-    public string? Recent3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
-    public string? Recent4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+    //
+    // RecentLabel format: "<profile> - <bbs>" (or just "<profile>" when
+    // no BBS is pinned yet). The menu XAML prepends the slot number /
+    // mnemonic "_N)  ". Lets the user disambiguate generically-named
+    // profiles by the BBS they connect to.
+    public string? Recent0 => RecentLabel(0);
+    public string? Recent1 => RecentLabel(1);
+    public string? Recent2 => RecentLabel(2);
+    public string? Recent3 => RecentLabel(3);
+    public string? Recent4 => RecentLabel(4);
+
+    // ProfileNameN parallel accessors — kept as the raw profile name
+    // for the click handler. Recent0..4 are display strings only.
+    public string? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public string? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public string? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public string? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public string? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+
+    private string? RecentLabel(int index)
+    {
+        if (index < 0 || index >= RecentProfiles.Count) return null;
+        string name = RecentProfiles[index];
+        string? bbs = AppServices.Current.Profile.PeekBbs(name);
+        return string.IsNullOrEmpty(bbs) ? name : $"{name} - {bbs}";
+    }
 
     /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
     public bool HasRecents => RecentProfiles.Count > 0;

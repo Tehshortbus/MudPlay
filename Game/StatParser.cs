@@ -61,6 +61,9 @@ public sealed partial class StatParser : IDisposable
     /// </summary>
     private bool _capturedThisArm;
 
+    /// <summary>Per-arm counter of distinct field commits — surfaced in the gate-close summary log line.</summary>
+    private int _fieldsCapturedThisArm;
+
     /// <summary>True once any stat-screen line has been parsed this session.</summary>
     public bool HasParsed { get; private set; }
 
@@ -109,6 +112,7 @@ public sealed partial class StatParser : IDisposable
         if (cmd != "stat") return;
         _windowOpenedAt = NowProvider();
         _capturedThisArm = false;
+        _fieldsCapturedThisArm = 0;
         _log?.Log(LogSeverity.Info, "StatParser",
             $"Observed outbound `stat` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
     }
@@ -131,14 +135,12 @@ public sealed partial class StatParser : IDisposable
         if (_windowOpenedAt is null) return;
         if (isPromptLine && _capturedThisArm)
         {
-            _windowOpenedAt = null;
-            _capturedThisArm = false;
+            CloseGate("prompt after capture");
             return;
         }
         if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
         {
-            _windowOpenedAt = null;
-            _capturedThisArm = false;
+            CloseGate("window expired");
             return;
         }
         bool hadParsed = HasParsed;
@@ -163,15 +165,13 @@ public sealed partial class StatParser : IDisposable
         // whose echo contains "Strength: N" and corrupt the field.
         if (line.IsPromptLine && _capturedThisArm)
         {
-            _windowOpenedAt = null;
-            _capturedThisArm = false;
+            CloseGate("prompt after capture");
             return;
         }
 
         if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
         {
-            _windowOpenedAt = null;
-            _capturedThisArm = false;
+            CloseGate("window expired");
             return;
         }
 
@@ -207,16 +207,16 @@ public sealed partial class StatParser : IDisposable
         // non-greedy "up to two spaces" cutoff so multi-word values
         // like "Dark-Elf" / "Fujin WuzHere" capture fully without
         // bleeding into the next label.
-        TryString(text, NameRx(),  v => Stats.Name  = v);
-        TryString(text, RaceRx(),  v => Stats.Race  = v);
-        TryString(text, ClassRx(), v => Stats.Class = v);
+        TryString(text, NameRx(),  "Name",  v => Stats.Name  = v);
+        TryString(text, RaceRx(),  "Race",  v => Stats.Race  = v);
+        TryString(text, ClassRx(), "Class", v => Stats.Class = v);
 
         // Paired N/M fields.
-        TryPair(text, LivesCpRx(),     (a, b) => { Stats.Lives = a; Stats.Cp = b; });
-        TryPair(text, HitsRx(),        (a, b) => { Stats.Hits = a; Stats.MaxHits = b; });
-        TryPair(text, KaiRx(),         (a, b) => { Stats.Kai  = a; Stats.MaxKai  = b; });
-        TryPair(text, ManaRx(),        (a, b) => { Stats.Mana = a; Stats.MaxMana = b; });
-        TryPair(text, ArmourClassRx(), (a, b) => { Stats.ArmourClass = a; Stats.MaxArmourClass = b; });
+        TryPair(text, LivesCpRx(),     "Lives/CP",     (a, b) => { Stats.Lives = a; Stats.Cp = b; });
+        TryPair(text, HitsRx(),        "Hits",         (a, b) => { Stats.Hits = a; Stats.MaxHits = b; });
+        TryPair(text, KaiRx(),         "Kai",          (a, b) => { Stats.Kai  = a; Stats.MaxKai  = b; });
+        TryPair(text, ManaRx(),        "Mana",         (a, b) => { Stats.Mana = a; Stats.MaxMana = b; });
+        TryPair(text, ArmourClassRx(), "Armour Class", (a, b) => { Stats.ArmourClass = a; Stats.MaxArmourClass = b; });
 
         // Plain N fields. The `\*?` in every numeric regex tolerates
         // the asterisk that altered (buffed / cursed) stats prefix
@@ -225,23 +225,23 @@ public sealed partial class StatParser : IDisposable
         // altered-or-not distinction isn't surfaced anywhere yet;
         // can be added as parallel bool fields if a future consumer
         // wants it).
-        TryInt(text, LevelRx(),        v => Stats.Level        = v);
-        TryInt(text, ExpRx(),          v => Stats.Exp          = v);
-        TryInt(text, PerceptionRx(),   v => Stats.Perception   = v);
-        TryInt(text, StealthRx(),      v => Stats.Stealth      = v);
-        TryInt(text, ThieveryRx(),     v => Stats.Thievery     = v);
-        TryInt(text, TrapsRx(),        v => Stats.Traps        = v);
-        TryInt(text, PicklocksRx(),    v => Stats.Picklocks    = v);
-        TryInt(text, TrackingRx(),     v => Stats.Tracking     = v);
-        TryInt(text, StrengthRx(),     v => Stats.Strength     = v);
-        TryInt(text, IntellectRx(),    v => Stats.Intellect    = v);
-        TryInt(text, WillpowerRx(),    v => Stats.Willpower    = v);
-        TryInt(text, AgilityRx(),      v => Stats.Agility      = v);
-        TryInt(text, HealthRx(),       v => Stats.Health       = v);
-        TryInt(text, CharmRx(),        v => Stats.Charm        = v);
-        TryInt(text, MartialArtsRx(),  v => Stats.MartialArts  = v);
-        TryInt(text, MagicResRx(),     v => Stats.MagicRes     = v);
-        TryInt(text, SpellcastingRx(), v => Stats.Spellcasting = v);
+        TryInt(text, LevelRx(),        "Level",        v => Stats.Level        = v);
+        TryInt(text, ExpRx(),          "Exp",          v => Stats.Exp          = v);
+        TryInt(text, PerceptionRx(),   "Perception",   v => Stats.Perception   = v);
+        TryInt(text, StealthRx(),      "Stealth",      v => Stats.Stealth      = v);
+        TryInt(text, ThieveryRx(),     "Thievery",     v => Stats.Thievery     = v);
+        TryInt(text, TrapsRx(),        "Traps",        v => Stats.Traps        = v);
+        TryInt(text, PicklocksRx(),    "Picklocks",    v => Stats.Picklocks    = v);
+        TryInt(text, TrackingRx(),     "Tracking",     v => Stats.Tracking     = v);
+        TryInt(text, StrengthRx(),     "Strength",     v => Stats.Strength     = v);
+        TryInt(text, IntellectRx(),    "Intellect",    v => Stats.Intellect    = v);
+        TryInt(text, WillpowerRx(),    "Willpower",    v => Stats.Willpower    = v);
+        TryInt(text, AgilityRx(),      "Agility",      v => Stats.Agility      = v);
+        TryInt(text, HealthRx(),       "Health",       v => Stats.Health       = v);
+        TryInt(text, CharmRx(),        "Charm",        v => Stats.Charm        = v);
+        TryInt(text, MartialArtsRx(),  "Martial Arts", v => Stats.MartialArts  = v);
+        TryInt(text, MagicResRx(),     "MagicRes",     v => Stats.MagicRes     = v);
+        TryInt(text, SpellcastingRx(), "Spellcasting", v => Stats.Spellcasting = v);
     }
 
     /// <summary>
@@ -266,15 +266,18 @@ public sealed partial class StatParser : IDisposable
             $"Updated Lives → {lives} from miracle-save line.");
     }
 
-    private void TryString(string text, Regex rx, Action<string> set)
+    private void TryString(string text, Regex rx, string field, Action<string> set)
     {
         Match m = rx.Match(text);
         if (!m.Success) return;
-        set(m.Groups[1].Value.Trim());
+        string value = m.Groups[1].Value.Trim();
+        set(value);
         HasParsed = true;
+        _fieldsCapturedThisArm++;
+        _log?.Log(LogSeverity.Debug, "StatParser", $"{field} = \"{value}\"");
     }
 
-    private void TryInt(string text, Regex rx, Action<int> set)
+    private void TryInt(string text, Regex rx, string field, Action<int> set)
     {
         Match m = rx.Match(text);
         if (!m.Success) return;
@@ -282,9 +285,11 @@ public sealed partial class StatParser : IDisposable
             System.Globalization.CultureInfo.InvariantCulture, out int v)) return;
         set(v);
         HasParsed = true;
+        _fieldsCapturedThisArm++;
+        _log?.Log(LogSeverity.Debug, "StatParser", $"{field} = {v}");
     }
 
-    private void TryPair(string text, Regex rx, Action<int, int> set)
+    private void TryPair(string text, Regex rx, string field, Action<int, int> set)
     {
         Match m = rx.Match(text);
         if (!m.Success) return;
@@ -294,6 +299,37 @@ public sealed partial class StatParser : IDisposable
         if (!int.TryParse(m.Groups[2].Value, ns, inv, out int b)) return;
         set(a, b);
         HasParsed = true;
+        _fieldsCapturedThisArm++;
+        _log?.Log(LogSeverity.Debug, "StatParser", $"{field} = {a}/{b}");
+    }
+
+    /// <summary>
+    /// Close the scan gate + emit an INF summary of what we captured
+    /// this arm. <paramref name="reason"/> describes which terminator
+    /// fired ("prompt after capture", "window expired", etc.) so the
+    /// user can correlate with what they did on the wire.
+    /// </summary>
+    private void CloseGate(string reason)
+    {
+        if (_windowOpenedAt is null) return;
+        if (_fieldsCapturedThisArm > 0)
+        {
+            // Quick-glance digest of the most-load-bearing fields so
+            // the INF log doesn't require expanding DBG entries to
+            // see what landed.
+            _log?.Log(LogSeverity.Info, "StatParser",
+                $"Stat capture closed ({reason}) — {_fieldsCapturedThisArm} field(s) updated. "
+                + $"Name=\"{Stats.Name}\"  Level={Stats.Level}  Lives={Stats.Lives}/CP={Stats.Cp}  "
+                + $"Hits={Stats.Hits}/{Stats.MaxHits}.");
+        }
+        else
+        {
+            _log?.Log(LogSeverity.Info, "StatParser",
+                $"Stat capture closed ({reason}) — no fields matched this window.");
+        }
+        _windowOpenedAt = null;
+        _capturedThisArm = false;
+        _fieldsCapturedThisArm = 0;
     }
 
     // ----- Regexes -------------------------------------------------------

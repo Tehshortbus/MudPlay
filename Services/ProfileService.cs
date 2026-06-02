@@ -91,6 +91,29 @@ public sealed class ProfileService
     /// <c>.json</c> extension.</param>
     /// <returns>The loaded profile.</returns>
     /// <exception cref="FileNotFoundException">No file at the expected path.</exception>
+    /// <summary>
+    /// Read a named profile's persisted <see cref="CharacterProfile.BbsName"/>
+    /// without mutating <see cref="Current"/>. Used by the
+    /// File → Recent profiles menu to label each slot with the BBS
+    /// it'll connect to. Returns <c>null</c> when the profile file
+    /// doesn't exist, can't be parsed, or has no pinned BBS.
+    /// </summary>
+    public string? PeekBbs(string profileName)
+    {
+        if (string.IsNullOrWhiteSpace(profileName)) return null;
+        string path = AppPaths.CharacterProfileFile(profileName);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            CharacterProfile? p = JsonStore.Load<CharacterProfile>(path);
+            return string.IsNullOrEmpty(p?.BbsName) ? null : p.BbsName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public CharacterProfile Load(string profileName)
     {
         if (string.IsNullOrWhiteSpace(profileName))

@@ -40,26 +40,32 @@
                 <MenuItem Header="Save profile as…" InputGesture="{Binding SaveProfileAsGesture}"
                           Command="{Binding SaveProfileAsCommand}"/>
                 <Separator IsVisible="{Binding HasRecents}"/>
+                <!-- Recent profiles. Header shows "<profile> - <BBS>"
+                     when the profile has a pinned BBS, else just the
+                     profile name. CommandParameter binds to the RAW
+                     profile name (ProfileNameN) so OpenRecentProfile
+                     gets the on-disk identifier regardless of how the
+                     menu label renders. -->
                 <MenuItem Header="{Binding Recent0, StringFormat='_1)  {0}'}"
                           IsVisible="{Binding Recent0, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
                           Command="{Binding OpenRecentProfileCommand}"
-                          CommandParameter="{Binding Recent0}"/>
+                          CommandParameter="{Binding ProfileName0}"/>
                 <MenuItem Header="{Binding Recent1, StringFormat='_2)  {0}'}"
                           IsVisible="{Binding Recent1, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
                           Command="{Binding OpenRecentProfileCommand}"
-                          CommandParameter="{Binding Recent1}"/>
+                          CommandParameter="{Binding ProfileName1}"/>
                 <MenuItem Header="{Binding Recent2, StringFormat='_3)  {0}'}"
                           IsVisible="{Binding Recent2, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
                           Command="{Binding OpenRecentProfileCommand}"
-                          CommandParameter="{Binding Recent2}"/>
+                          CommandParameter="{Binding ProfileName2}"/>
                 <MenuItem Header="{Binding Recent3, StringFormat='_4)  {0}'}"
                           IsVisible="{Binding Recent3, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
                           Command="{Binding OpenRecentProfileCommand}"
-                          CommandParameter="{Binding Recent3}"/>
+                          CommandParameter="{Binding ProfileName3}"/>
                 <MenuItem Header="{Binding Recent4, StringFormat='_5)  {0}'}"
                           IsVisible="{Binding Recent4, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
                           Command="{Binding OpenRecentProfileCommand}"
-                          CommandParameter="{Binding Recent4}"/>
+                          CommandParameter="{Binding ProfileName4}"/>
                 <Separator/>
                 <MenuItem Header="_Quit" Command="{Binding QuitCommand}" InputGesture="{Binding QuitGesture}"/>
             </MenuItem>
