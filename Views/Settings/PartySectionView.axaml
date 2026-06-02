@@ -272,14 +272,14 @@
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
+                    <NumericUpDown IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="120"
                                    ToolTip.Tip="Pause the party action loop while any member is below this HP %."/>
                     <TextBlock Classes="FieldLabel" Text="%"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="2" Minimum="0" Maximum="60" Width="80"
+                    <NumericUpDown IsEnabled="False" Value="2" Minimum="0" Maximum="60" Width="120"
                                    ToolTip.Tip="Cap the wait window when this character is the leader."/>
                     <TextBlock Classes="FieldLabel" Text="min"/>
                 </StackPanel>
@@ -287,7 +287,7 @@
                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
                 <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown Value="{Binding ParPollFrequencySec, Mode=TwoWay}"
-                                   Minimum="1" Maximum="60" Width="80"
+                                   Minimum="1" Maximum="60" Width="120"
                                    ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
                     <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
