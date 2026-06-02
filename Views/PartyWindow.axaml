@@ -15,13 +15,18 @@
         ShowInTaskbar="False">
 
     <Window.Styles>
-        <!-- Rank chip (F/M/B) — shown only on the self row. -->
+        <!-- Rank chip (F/M/B) — rendered per member.
+             Matches the StatusChip style on the same row: dark elevated
+             background with a coloured border + foreground driven by the
+             rank's accent. White-text-on-tinted-fill (the previous
+             style) was unreadable for the amber and cyan ranks. -->
         <Style Selector="Border.RankChip">
             <Setter Property="Padding" Value="3,0"/>
             <Setter Property="Margin" Value="0,0,4,0"/>
             <Setter Property="CornerRadius" Value="2"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="MinWidth" Value="16"/>
+            <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
         <!-- Status-flag chip (REST / PSN / WAIT / etc.). -->
@@ -106,17 +111,20 @@
                                  Front = red (melee), Mid = amber (default), Back =
                                  cyan (caster). Parsed from the par row's last
                                  column (Frontrank / Midrank / Backrank) into the
-                                 PartyMember.Rank enum. -->
+                                 PartyMember.Rank enum. RankBrushConverter drives
+                                 both border + text colour so the chip reads the
+                                 same way as the StatusChip strip on the same row. -->
                             <Border Grid.Column="1"
                                     Classes="RankChip"
-                                    Background="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}">
+                                    Background="{StaticResource ChromeBgElevBrush}"
+                                    BorderBrush="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}">
                                 <TextBlock Text="{Binding Rank, Converter={x:Static vm:RankChipConverter.Instance}}"
                                            VerticalAlignment="Center"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="9"
                                            FontWeight="SemiBold"
                                            HorizontalAlignment="Center"
-                                           Foreground="{StaticResource ChromeFgBrush}"/>
+                                           Foreground="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}"/>
                             </Border>
 
                             <!-- (2) Name on top line; class on a small muted
