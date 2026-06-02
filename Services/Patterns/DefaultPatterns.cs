@@ -171,6 +171,21 @@ public static class DefaultPatterns
             @"^(?<player>\w+) just left the Realm\.");
         yield return new RegexPattern(KnownPatterns.PlayerEnters,
             @"^(?<player>\w+) just entered the Realm\.");
+
+        // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
+        // follows-you / stops-following are MajorMUD's party-membership
+        // signals. The par-block state machine in PartyManager handles
+        // the multi-line table; these single-line patterns cover the
+        // add/remove events between par polls.
+        yield return new RegexPattern(KnownPatterns.PartyFollowsYou,
+            @"^(?<player>\w+) now follows you\.");
+        yield return new RegexPattern(KnownPatterns.PartyStopsFollowing,
+            @"^(?<player>\w+) stops following you\.");
+        // par-header anchors PartyManager's stateful row parser — switches
+        // it from Idle to ReadingParBlock so subsequent rows get parsed
+        // as member entries.
+        yield return new RegexPattern(KnownPatterns.PartyHeader,
+            @"^Party Status:");
     }
 
 }

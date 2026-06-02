@@ -77,4 +77,12 @@ public static class KnownPatterns
     public const string PlayerDisconnects = "presence.player-disconnects";
     public const string PlayerExits       = "presence.player-exits";
     public const string PlayerEnters      = "presence.player-enters";
+
+    // ----- Party --------------------------------------------------------
+    // Single-line membership signals. The `par` table itself is multi-line
+    // and parsed via a small state machine in `PartyManager` (same shape
+    // as `WhoListParser`), not by a one-line regex.
+    public const string PartyFollowsYou     = "party.follows-you";       // "X now follows you."
+    public const string PartyStopsFollowing = "party.stops-following";   // "X stops following you."
+    public const string PartyHeader         = "party.par-header";        // "Party Status:" — anchors the par-block state machine
 }
