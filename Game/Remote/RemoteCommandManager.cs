@@ -90,6 +90,51 @@ public sealed class RemoteCommandManager : IDisposable
     /// </summary>
     public int MaxSuicideLivesThreshold { get; set; } = 3;
 
+    // ----- Settings.Talk-driven knobs --------------------------------------
+    // Pushed by TalkSectionViewModel.ApplyToServices on Apply / on profile
+    // load. Defaults match the TalkSettings DTO defaults — anything not yet
+    // wired up has permissive defaults that don't change behaviour.
+
+    /// <summary>
+    /// Hard kill-switch above every per-channel + per-player permission.
+    /// When <c>true</c> the engine ignores every inbound @-command. Pushed
+    /// from <see cref="Models.Profile.TalkSettings.DisallowAllRemoteCommands"/>.
+    /// </summary>
+    public bool MasterDisable { get; set; }
+
+    /// <summary>
+    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist. When
+    /// <c>true</c>, party-whitelist handlers (registered with
+    /// <see cref="PlayerRemoteControls.None"/>) deny even for active party
+    /// members. Pushed from
+    /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommandsFromLeader"/>.
+    /// </summary>
+    public bool DisablePartyWhitelist { get; set; }
+
+    /// <summary>Drop @-commands arriving on the Telepath channel.</summary>
+    public bool DisableTelepathChannel { get; set; }
+
+    /// <summary>Drop @-commands arriving on the Gangpath channel.</summary>
+    public bool DisableGangpathChannel { get; set; }
+
+    /// <summary>Drop @-commands arriving on the Local say channel.</summary>
+    public bool DisableLocalChannel { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, send <see cref="FailureMessage"/> back to the
+    /// originator on per-player denial / unknown-command / party-whitelist
+    /// denial. Hard-blocks and user-disabled paths (master / per-channel)
+    /// stay silent regardless. Pushed from
+    /// <see cref="Models.Profile.TalkSettings.WarnOnInvalidRemoteCommand"/>.
+    /// </summary>
+    public bool WarnOnDenial { get; set; } = true;
+
+    /// <summary>
+    /// Reply text used by the <see cref="WarnOnDenial"/> path. Pushed
+    /// from <see cref="Models.Profile.TalkSettings.RemoteCommandFailureMessage"/>.
+    /// </summary>
+    public string FailureMessage { get; set; } = "{command invalid or not allowed}";
+
     public RemoteCommandManager(
         ChatRouter chat,
         PartyState party,
@@ -161,11 +206,19 @@ public sealed class RemoteCommandManager : IDisposable
 
     private void OnChatEntry(ChatLogEntry entry)
     {
+        // Master kill-switch (Settings.Talk → Disallow all remote control
+        // commands). Above everything else — no logging either, no point
+        // spamming the log with denied lines when the user explicitly
+        // muted the whole feature.
+        if (MasterDisable) return;
+
         // Channel filter — only inbound chat-style channels carry remote
         // commands. RealmEvent / DaySeparator / TelepathOutgoing / etc.
-        // don't.
+        // don't. Per-channel Settings.Talk disables fold in here.
         RemoteChannel? channel = MapChannel(entry.Channel);
         if (channel is null) return;
+        if (IsChannelDisabled(channel.Value)) return;
+
         if (string.IsNullOrEmpty(entry.Speaker)) return; // Self-echo / unknown sender.
         if (string.IsNullOrEmpty(entry.Message)) return;
         if (entry.Message[0] != '@') return;             // Not an @-command.
@@ -177,7 +230,9 @@ public sealed class RemoteCommandManager : IDisposable
         string command = tokens[0];
         string[] args = tokens.Length > 1 ? tokens[1..] : Array.Empty<string>();
 
-        // Hard-blocks first — bypass everything else.
+        // Hard-blocks first — bypass everything else. Always silent (no
+        // reply) even when WarnOnDenial is on: never advertise the block
+        // to a malicious caller.
         if (IsHardBlocked(command, args, out string? reason))
         {
             _log?.Log(LogSeverity.Info, "RemoteCmd",
@@ -187,9 +242,11 @@ public sealed class RemoteCommandManager : IDisposable
 
         if (!_handlers.TryGetValue(command, out Registration registration))
         {
-            // Unknown @-command — no handler registered. Silent by design:
-            // many @-commands are valid (Phase 7 / Phase 12 register more)
-            // and an unfamiliar one isn't necessarily malicious.
+            // Unknown @-command — no handler registered. Surface back to
+            // sender per Settings.Talk → Warn on invalid remote command.
+            _log?.Log(LogSeverity.Debug, "RemoteCmd",
+                $"Unknown command {command} from {entry.Speaker}.");
+            SendDenialReply(channel.Value, entry.Speaker);
             return;
         }
 
@@ -198,6 +255,7 @@ public sealed class RemoteCommandManager : IDisposable
         {
             _log?.Log(LogSeverity.Debug, "RemoteCmd",
                 $"Denied {command} from {entry.Speaker} (lacks {registration.RequiredCategory}).");
+            SendDenialReply(channel.Value, entry.Speaker);
             return;
         }
 
@@ -219,6 +277,28 @@ public sealed class RemoteCommandManager : IDisposable
             _log?.Log(LogSeverity.Warn, "RemoteCmd",
                 $"Handler for {command} threw on {entry.Speaker}'s invocation: {ex.Message}");
         }
+    }
+
+    private bool IsChannelDisabled(RemoteChannel c) => c switch
+    {
+        RemoteChannel.Telepath => DisableTelepathChannel,
+        RemoteChannel.Gangpath => DisableGangpathChannel,
+        RemoteChannel.Local    => DisableLocalChannel,
+        _                      => false,
+    };
+
+    /// <summary>
+    /// Send the Settings.Talk-configured failure-message reply when the
+    /// engine has denied a command for one of the "sender expects an
+    /// answer" reasons (unknown command, per-player flag denial,
+    /// party-whitelist denial). No-op when <see cref="WarnOnDenial"/> is
+    /// false or the message is blank.
+    /// </summary>
+    private void SendDenialReply(RemoteChannel channel, string sender)
+    {
+        if (!WarnOnDenial) return;
+        if (string.IsNullOrWhiteSpace(FailureMessage)) return;
+        SendReply(channel, sender, FailureMessage);
     }
 
     /// <summary>
@@ -290,8 +370,10 @@ public sealed class RemoteCommandManager : IDisposable
     {
         // Special case: requiredCategory == None means "party whitelist —
         // allowed for any active party member". Used by @party <sub>.
+        // Settings.Talk → Disallow @party commands flips this off even
+        // for active members.
         if (requiredCategory == PlayerRemoteControls.None)
-            return IsActivePartyMember(sender);
+            return !DisablePartyWhitelist && IsActivePartyMember(sender);
 
         // Per-player flag check. Look up the merged record (BBS observation
         // + Char customisation) and bitmask-test the required category.

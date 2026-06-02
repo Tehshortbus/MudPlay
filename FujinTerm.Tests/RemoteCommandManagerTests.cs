@@ -67,6 +67,11 @@ public sealed class RemoteCommandManagerTests
     public void NoHandlersRegistered_DoesNothing()
     {
         var (engine, _, _) = Setup();
+        // Opt out of the WarnOnDenial reply so this test still proves the
+        // original invariant: an engine with no handlers neither fires nor
+        // sends. The dedicated WarnOnDenial-on tests below cover the
+        // failure-message reply path.
+        engine.WarnOnDenial = false;
         engine.DispatchForTests(Telepath("Stranger", "@health"));
         Assert.Empty(engine.LastSentForTests);
     }
@@ -410,5 +415,156 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Friend", "@health"));
         engine.DispatchForTests(Telepath("Friend", "@health"));
         // No assertion needed — the test passes if no exception escapes.
+    }
+
+    // ===== Settings.Talk knobs =====
+    //
+    // The TalkSectionViewModel pushes the loaded character's TalkSettings
+    // into the live engine via ApplyToServices. These tests assert each
+    // knob has the documented engine-side effect.
+
+    [Fact]
+    public void MasterDisable_DropsEveryInboundCommand()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.MasterDisable = true;
+
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => { fired = true; ctx.Reply("hi"); });
+
+        engine.DispatchForTests(Telepath("Friend", "@health"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void DisableTelepathChannel_SilencesTelepathOnly()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.DisableTelepathChannel = true;
+
+        int fireCount = 0;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            _ => fireCount++);
+
+        engine.DispatchForTests(Telepath("Friend", "@health"));   // muted
+        engine.DispatchForTests(Gangpath("Friend", "@health"));   // passes
+        engine.DispatchForTests(Local("Friend", "@health"));      // passes
+
+        Assert.Equal(2, fireCount);
+    }
+
+    [Fact]
+    public void DisablePartyWhitelist_DeniesPartyHandlerEvenForActiveMember()
+    {
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        engine.DisablePartyWhitelist = true;
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.None,
+            _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@party rest"));
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void WarnOnDenial_SendsFailureMessageOnUnknownCommand()
+    {
+        var (engine, _, _) = Setup();
+        engine.FailureMessage = "{nope}";
+
+        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Stranger {nope}\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void WarnOnDenial_SendsFailureMessageOnPerPlayerDenial()
+    {
+        var (engine, _, players) = Setup();
+        // Sender has version flag only; @health requires QueryHealthStatus.
+        SeedPlayer(players, "Stranger", PlayerRemoteControls.QueryVersion);
+        engine.FailureMessage = "denied";
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            _ => { });
+
+        engine.DispatchForTests(Telepath("Stranger", "@health"));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Stranger denied\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void WarnOnDenial_SendsFailureMessageOnPartyWhitelistDenial()
+    {
+        var (engine, _, _) = Setup();
+        engine.FailureMessage = "denied";
+        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => { });
+
+        // Stranger isn't in the party → party-whitelist denial path.
+        engine.DispatchForTests(Telepath("Stranger", "@party rest"));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Stranger denied\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void WarnOnDenial_StaysSilentOnHardBlock()
+    {
+        // Hard-blocks (reroll / suicide) must never produce a reply —
+        // never advertise the block to a malicious caller. Sender has
+        // every flag; engine WarnOnDenial is on.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => { });
+
+        engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void WarnOnDenial_StaysSilentWhenChannelDisabled()
+    {
+        // The user explicitly muted the channel — don't tell every spammer
+        // on that channel why they got ignored.
+        var (engine, _, _) = Setup();
+        engine.DisableTelepathChannel = true;
+
+        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void WarnOnDenialOff_NoFailureMessageSent()
+    {
+        var (engine, _, _) = Setup();
+        engine.WarnOnDenial = false;
+
+        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void EmptyFailureMessage_StaysSilentEvenWhenWarnOn()
+    {
+        // Empty message would otherwise serialise to "/Stranger \r" which
+        // is just noise. Engine treats blank as opt-out.
+        var (engine, _, _) = Setup();
+        engine.FailureMessage = "   ";
+
+        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+
+        Assert.Empty(engine.LastSentForTests);
     }
 }
