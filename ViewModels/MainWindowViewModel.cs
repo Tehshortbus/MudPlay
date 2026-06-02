@@ -419,6 +419,12 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // SuicideHandler — bypasses the engine gate because it OWNS
+        // the suicide flow (and needs its `suicide` + password sends
+        // to land even while SuicidePasswordTracker has the gate
+        // locked for the password-prompt phase). Uses the raw
+        // SendUserInput, not the wrapped engineSend.
+        AppServices.Current.Suicide.SetWireSender(SendUserInput);
         // MainMenuEntryAutomation — same sender; armed below when
         // LoginAutomator's LoggedIntoGame fires (only point in the
         // session where the entry command is allowed to auto-fire).

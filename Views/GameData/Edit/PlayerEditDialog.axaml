@@ -86,7 +86,7 @@
                                           ToolTip.Tip="{Binding RcAlterSettingsTip}"/>
                                 <CheckBox Content="Divert conversations" IsChecked="{Binding RcDivertConversations, Mode=TwoWay}"
                                           ToolTip.Tip="{Binding RcDivertConversationsTip}"/>
-                                <CheckBox Content="Sysop commands"       IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"
+                                <CheckBox Content="Elevated Commands"    IsChecked="{Binding RcSysopCommands, Mode=TwoWay}"
                                           ToolTip.Tip="{Binding RcSysopCommandsTip}"/>
                             </StackPanel>
                         </ScrollViewer>

@@ -211,6 +211,15 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
+    /// Authorised callers (Elevated-Commands permission, lives above
+    /// the suicide threshold) trigger the suicide round-trip; on
+    /// "Invalid password specified." the handler telepaths the
+    /// caller back so they know our stored password is stale.
+    /// </summary>
+    public Game.Remote.SuicideHandler Suicide { get; private set; } = null!;
+
+    /// <summary>
     /// Sends the configured <see cref="GameCommands.EntryCommand"/>
     /// when the MajorMUD main-menu screen is recognised at the tail
     /// end of the automated BBS-login sequence. Latched closed by
@@ -585,6 +594,12 @@ public sealed class AppServices
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands);
+        // SuicideHandler — needs the raw wire-sender (NOT the gate-
+        // wrapped one) because it owns the suicide flow and must keep
+        // sending while the password tracker locks the gate. Bound by
+        // MainWindowViewModel a few lines after the other engine
+        // wire-senders, deliberately to the un-wrapped SendUserInput.
+        Suicide = new Game.Remote.SuicideHandler(RemoteCommands, Router, Profile, Passwords);
         // Main-menu entry automation — armed by MainWindowVM when
         // LoginAutomator.LoggedIntoGame fires; observes the
         // MainMenuEnterRealm pattern and sends GameCommands.EntryCommand

@@ -34,7 +34,11 @@ namespace FujinTerm.Game.Remote;
 ///   <item><b>HangupDisconnect</b> — @hangup / @relog.</item>
 ///   <item><b>AlterSettings</b> — auto-* toggles, @settings, @reset.</item>
 ///   <item><b>DivertConversations</b> — @divert.</item>
-///   <item><b>SysopCommands</b> — mudop-only commands (@home).</item>
+///   <item><b>SysopCommands</b> ("Elevated Commands" in the Players-tab
+///         UI) — high-trust commands beyond ordinary control:
+///         mudop-only (@home) and irreversible character actions
+///         (@suicide). Wider than just sysop powers per FujinTerm
+///         convention.</item>
 /// </list>
 /// </para>
 /// <para>
@@ -73,6 +77,7 @@ public static class RemoteCommandCatalog
             ["@enc"]          = PlayerRemoteControls.QueryInventory,
             ["@have"]         = PlayerRemoteControls.QueryInventory,
             ["@home"]         = PlayerRemoteControls.SysopCommands,   // mudop-only per bearfather
+            ["@suicide"]      = PlayerRemoteControls.SysopCommands,   // irreversible — gated under Elevated Commands
             ["@invite"]       = PlayerRemoteControls.RequestInvite,
             ["@join"]         = PlayerRemoteControls.RequestInvite,
             ["@forget"]       = PlayerRemoteControls.RequestInvite,
