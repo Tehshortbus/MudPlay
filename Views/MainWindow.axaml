@@ -155,13 +155,18 @@
 
         <!-- ============ Toolbar (dynamic — built from ToolbarItems) ============ -->
         <!-- Layout comes from the active character's ToolbarSettings.Layout
-             via the catalogue. Each row is rendered by the kind-switching
-             template below: button rows resolve their icon / command /
-             tooltip from ToolbarButtonItem; separator rows render as a
-             vertical hairline. -->
-        <Border DockPanel.Dock="Top" Classes="Toolbar">
-            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+             via the catalogue. The three Borders mount at top / left /
+             right; IsVisible on each is driven by ToolbarConfig's derived
+             ShowTop / ShowLeft / ShowRight flags so toggling the
+             Settings → Toolbar Show / Vertical / Side controls re-docks
+             without a window rebuild. Item templates are inlined per-
+             orientation because StackPanel orientation lives on the
+             ItemsPanel, not the items themselves. -->
 
+        <!-- Top (horizontal) -->
+        <Border DockPanel.Dock="Top" Classes="Toolbar"
+                IsVisible="{Binding Toolbar.ShowTop}">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                 <ItemsControl Grid.Column="0"
                               ItemsSource="{Binding ToolbarItems}"
                               VerticalAlignment="Center">
@@ -173,17 +178,8 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="svc:ToolbarButtonItem">
                             <Panel>
-                                <!-- Separator row. -->
                                 <Border Classes="ToolbarSeparator"
                                         IsVisible="{Binding IsSeparator}"/>
-
-                                <!-- Button row. The connect button is the
-                                     only entry that swaps between two
-                                     icons (plug ↔ unplug) — controlled by
-                                     ShowAlternate, which the VM flips when
-                                     IsConnected changes. Rebinding the
-                                     keybind lives in Settings → Toolbar
-                                     (per-row "Change keybind…" button). -->
                                 <Button Classes="ToolbarBtn"
                                         Classes.Active="{Binding IsActive}"
                                         Classes.Danger="{Binding IsDanger}"
@@ -207,8 +203,87 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
             </Grid>
+        </Border>
+
+        <!-- Left (vertical) -->
+        <Border DockPanel.Dock="Left" Classes="ToolbarV"
+                IsVisible="{Binding Toolbar.ShowLeft}">
+            <ItemsControl ItemsSource="{Binding ToolbarItems}"
+                          HorizontalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" Spacing="4"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="svc:ToolbarButtonItem">
+                        <Panel>
+                            <Border Classes="ToolbarSeparatorV"
+                                    IsVisible="{Binding IsSeparator}"/>
+                            <Button Classes="ToolbarBtn"
+                                    Classes.Active="{Binding IsActive}"
+                                    Classes.Danger="{Binding IsDanger}"
+                                    IsVisible="{Binding IsButton}"
+                                    Command="{Binding Command}"
+                                    ToolTip.Tip="{Binding Tooltip}">
+                                <Panel>
+                                    <Path Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                          IsVisible="{Binding !ShowAlternate}"
+                                          Stroke="{Binding $parent[Button].Foreground}"
+                                          StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                          Width="16" Height="16" Stretch="Uniform"/>
+                                    <Path Data="{Binding AlternateIconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                          IsVisible="{Binding ShowAlternate}"
+                                          Stroke="{Binding $parent[Button].Foreground}"
+                                          StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                          Width="16" Height="16" Stretch="Uniform"/>
+                                </Panel>
+                            </Button>
+                        </Panel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <!-- Right (vertical) -->
+        <Border DockPanel.Dock="Right" Classes="ToolbarV"
+                IsVisible="{Binding Toolbar.ShowRight}">
+            <ItemsControl ItemsSource="{Binding ToolbarItems}"
+                          HorizontalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" Spacing="4"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="svc:ToolbarButtonItem">
+                        <Panel>
+                            <Border Classes="ToolbarSeparatorV"
+                                    IsVisible="{Binding IsSeparator}"/>
+                            <Button Classes="ToolbarBtn"
+                                    Classes.Active="{Binding IsActive}"
+                                    Classes.Danger="{Binding IsDanger}"
+                                    IsVisible="{Binding IsButton}"
+                                    Command="{Binding Command}"
+                                    ToolTip.Tip="{Binding Tooltip}">
+                                <Panel>
+                                    <Path Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                          IsVisible="{Binding !ShowAlternate}"
+                                          Stroke="{Binding $parent[Button].Foreground}"
+                                          StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                          Width="16" Height="16" Stretch="Uniform"/>
+                                    <Path Data="{Binding AlternateIconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                          IsVisible="{Binding ShowAlternate}"
+                                          Stroke="{Binding $parent[Button].Foreground}"
+                                          StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                          Width="16" Height="16" Stretch="Uniform"/>
+                                </Panel>
+                            </Button>
+                        </Panel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </Border>
 
         <!-- ============ Status bar (two slots) ============ -->

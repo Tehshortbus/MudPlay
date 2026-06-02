@@ -52,6 +52,27 @@
         <Setter Property="Margin" Value="4,0"/>
     </Style>
 
+    <!-- Vertical toolbar variant — same chrome, but a fixed-width column
+         instead of a fixed-height row, and the right-or-left border edge
+         draws to the inside so it acts as the same visual divider the
+         horizontal toolbar's bottom edge gives. -->
+    <Style Selector="Border.ToolbarV">
+        <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        <Setter Property="Width" Value="{StaticResource ToolbarHeight}"/>
+        <Setter Property="Padding" Value="0,8"/>
+    </Style>
+
+    <!-- Vertical separator chip — a thin horizontal line, dimensions swapped
+         from the horizontal variant. -->
+    <Style Selector="Border.ToolbarSeparatorV">
+        <Setter Property="Background" Value="{StaticResource ChromeBorderBrush}"/>
+        <Setter Property="Width" Value="20"/>
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="0,4"/>
+    </Style>
+
     <Style Selector="Button.ToolbarBtn">
         <Setter Property="Width"  Value="{StaticResource ToolbarButtonSize}"/>
         <Setter Property="Height" Value="{StaticResource ToolbarButtonSize}"/>
