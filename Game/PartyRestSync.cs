@@ -101,10 +101,11 @@ public sealed class PartyRestSync : IDisposable
     private void Telepath(string recipient, string body)
     {
         if (_wireSender is null) return;
-        // `tel` not `t` (the short form is `say` on Playpen BBS), and
-        // GIVEN name only (MajorMUD rejects "Given Family" recipients).
+        // Playpen BBS telepath syntax: `/<given> <body>` (slash + given
+        // name, no space). `t` / `tel` / `tell` are all interpreted as
+        // `say`; full "Given Family" recipients are rejected.
         string given = GivenName(recipient);
-        byte[] bytes = Encoding.Latin1.GetBytes($"tel {given} {body}\r");
+        byte[] bytes = Encoding.Latin1.GetBytes($"/{given} {body}\r");
         _wireSender(bytes);
     }
 

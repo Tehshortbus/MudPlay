@@ -320,14 +320,15 @@ public sealed class RemoteCommandManager : IDisposable
     /// use because BBSes expect 8-bit-clean bytes, not UTF-8.
     /// </summary>
     /// <remarks>
-    /// Telepath uses <c>tel &lt;name&gt;</c> not <c>t</c> — the short
-    /// form is interpreted as <c>say</c> on Playpen BBS (verified live).
+    /// Telepath uses <c>/&lt;name&gt;</c> (slash + given name, no space) —
+    /// the verbose <c>t</c> / <c>tel</c> / <c>tell</c> forms are all
+    /// interpreted as <c>say</c> on Playpen BBS (verified live).
     /// Recipient is always the GIVEN name (first whitespace-delimited
     /// token of <see cref="ChatLogEntry.Speaker"/>); MajorMUD doesn't
     /// accept "Given Family" as a telepath recipient. Speaker as
-    /// classified by ChatRouter is already single-word so this is a
-    /// no-op for the engine but the rule's worth stating for any
-    /// future callers.
+    /// classified by ChatRouter is already single-word so the given-name
+    /// strip is a no-op for the engine but the rule's worth stating for
+    /// any future callers.
     /// </remarks>
     private void SendReply(RemoteChannel channel, string recipient, string text)
     {
@@ -335,7 +336,7 @@ public sealed class RemoteCommandManager : IDisposable
         string given = GivenName(recipient);
         string wire = channel switch
         {
-            RemoteChannel.Telepath => $"tel {given} {text}",
+            RemoteChannel.Telepath => $"/{given} {text}",
             RemoteChannel.Gossip   => $"gos {text}",
             RemoteChannel.Gangpath => $"gang {text}",
             RemoteChannel.Local    => $"say {text}",

@@ -80,11 +80,12 @@ public sealed class PartyBroadcaster
         {
             if (m.IsSelf) continue;
             if (string.IsNullOrEmpty(m.Name)) continue;
-            // MajorMUD addresses other players by GIVEN name only — never
-            // "Given Family". And the telepath command on Playpen BBS is
-            // `tel` (the short form `t` is interpreted as `say`).
+            // Playpen BBS telepath syntax: `/<given> <atCommand>`
+            // (slash + given name). The verbose `t` / `tel` / `tell`
+            // forms are all interpreted as `say`; "Given Family"
+            // recipients are rejected — given name only.
             string given = GivenName(m.Name);
-            byte[] bytes = Encoding.Latin1.GetBytes($"tel {given} {atCommand}\r");
+            byte[] bytes = Encoding.Latin1.GetBytes($"/{given} {atCommand}\r");
             _wireSender(bytes);
         }
     }

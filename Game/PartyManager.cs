@@ -71,6 +71,15 @@ public sealed partial class PartyManager : IDisposable
     /// </summary>
     public TimeSpan DisconnectGraceWindow { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Master switch for the PR 6.5 auto-invite-on-reconnect flow. When
+    /// false, disconnect tracking still works (members are still removed
+    /// from the roster on drop, still get a grace-window entry) but no
+    /// <c>invite</c> command goes out when they return. Default true;
+    /// PR 6.9's Settings.Party tab binds this.
+    /// </summary>
+    public bool AutoInviteEnabled { get; set; } = true;
+
     /// <summary>Test-friendly clock — overridable so PR 6.5 tests don't have to wait real time.</summary>
     internal Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
 
@@ -268,6 +277,7 @@ public sealed partial class PartyManager : IDisposable
         }
         _recentlyDisconnected.Remove(name);
         if (!State.SelfIsLeader) return;
+        if (!AutoInviteEnabled) return;
         // Send the invite if we have a wire-sender wired. The wire
         // command is the plain MajorMUD "invite <name>" — the server
         // does the rest.

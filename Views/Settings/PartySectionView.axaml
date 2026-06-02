@@ -62,15 +62,19 @@
             <TextBlock Classes="SectionHeader" Text="Party behavior"/>
             <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
 
-                <!-- Rank: Front / Mid / Back. -->
+                <!-- Rank: Front / Mid / Back. Persisted; not yet consumed
+                     (Phase 12 CombatManager will read it for target ordering). -->
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rank"/>
-                <RadioButton Grid.Row="0" Grid.Column="1" GroupName="Rank" Content="Front" IsEnabled="False"
+                <RadioButton Grid.Row="0" Grid.Column="1" GroupName="Rank" Content="Front"
+                             IsChecked="{Binding RankFront, Mode=TwoWay}"
                              Margin="0,0,16,0"
                              ToolTip.Tip="Front rank — defaults the target order to attack-first."/>
-                <RadioButton Grid.Row="0" Grid.Column="2" GroupName="Rank" Content="Mid"   IsEnabled="False" IsChecked="True"
+                <RadioButton Grid.Row="0" Grid.Column="2" GroupName="Rank" Content="Mid"
+                             IsChecked="{Binding RankMid, Mode=TwoWay}"
                              Margin="0,0,16,0"
                              ToolTip.Tip="Mid rank — balanced default."/>
-                <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"  IsEnabled="False"
+                <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"
+                             IsChecked="{Binding RankBack, Mode=TwoWay}"
                              ToolTip.Tip="Back rank — caster / healer position."/>
 
                 <!-- Monster target order: which monster do we swing at first? -->
@@ -282,17 +286,20 @@
 
                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>
                 <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="5" Minimum="1" Maximum="60" Width="80"
+                    <NumericUpDown Value="{Binding ParPollFrequencySec, Mode=TwoWay}"
+                                   Minimum="1" Maximum="60" Width="80"
                                    ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
                     <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
 
                 <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
-                          Content="Reset statistics on loop start" IsEnabled="False"
+                          Content="Reset statistics on loop start"
+                          IsChecked="{Binding ResetStatisticsOnLoopStart, Mode=TwoWay}"
                           ToolTip.Tip="Sends `@Reset` so the party EXP / kill counters zero at the start of every loop run."/>
 
                 <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
-                          Content="Auto-invite reconnecting member" IsEnabled="False"
+                          Content="Auto-invite reconnecting member"
+                          IsChecked="{Binding AutoInviteReconnecting, Mode=TwoWay}"
                           ToolTip.Tip="Leader-only — auto-invite a member who returns inside the wait window."/>
             </Grid>
 
