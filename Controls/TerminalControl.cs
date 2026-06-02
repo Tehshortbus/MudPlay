@@ -62,11 +62,23 @@ public sealed class TerminalControl : Control
     /// <summary>Raised on the UI thread with bytes to send to the host.</summary>
     public event Action<byte[]>? UserInput;
 
+    /// <summary>
+    /// Optional client-side line buffer. When set, printable keystrokes
+    /// accumulate locally and only flush to the wire on Enter — so engine
+    /// auto-sends (par poll, AutoParty invite, @health round-trip, etc.)
+    /// can't interleave into the user's half-typed input on the server
+    /// side. See <see cref="Terminal.LocalInputBuffer"/> for rationale.
+    /// When null (no buffer attached) the control falls back to the
+    /// classic character-mode path — every keystroke straight to the wire.
+    /// </summary>
+    public LocalInputBuffer? InputBuffer { get; set; }
+
     private Typeface _typeface;
     private double _cellW = 8;
     private double _cellH = 16;
     private bool _cursorBlinkOn = true;
     private DispatcherTimer? _blinkTimer;
+    private Action? _onBufferChanged;
 
     public TerminalControl()
     {
@@ -128,6 +140,14 @@ public sealed class TerminalControl : Control
         _blinkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _blinkTimer.Tick += (_, _) => { _cursorBlinkOn = !_cursorBlinkOn; InvalidateVisual(); };
         _blinkTimer.Start();
+        // Repaint the buffer overlay whenever the user types / backspaces
+        // / flushes. Stored as a field so we can unsubscribe on detach
+        // without leaking the strong handler reference into the buffer.
+        if (InputBuffer is { } buf)
+        {
+            _onBufferChanged = () => Dispatcher.UIThread.Post(InvalidateVisual);
+            buf.Changed += _onBufferChanged;
+        }
         Focus();
     }
 
@@ -136,6 +156,11 @@ public sealed class TerminalControl : Control
         base.OnDetachedFromVisualTree(e);
         _blinkTimer?.Stop();
         _blinkTimer = null;
+        if (_onBufferChanged is not null && InputBuffer is { } buf)
+        {
+            buf.Changed -= _onBufferChanged;
+            _onBufferChanged = null;
+        }
     }
 
     /// <summary>
@@ -193,13 +218,64 @@ public sealed class TerminalControl : Control
             }
         }
 
+        // Local-line-edit overlay: paint the buffered (not-yet-sent)
+        // text at the cursor position, then advance the caret to the
+        // end of the overlay so the visual caret sits where the user's
+        // next char will land. The cell grid behind it is unchanged —
+        // when the user hits Enter and the server echoes the line
+        // back, the echo writes real cells over the overlay area
+        // (overlay is gone by then because the buffer is cleared).
+        int caretCol = screen.CursorX;
+        int caretRow = screen.CursorY;
+        if (InputBuffer is { Length: > 0 } buffer)
+        {
+            string overlay = buffer.Text;
+            int col = screen.CursorX;
+            int row = screen.CursorY;
+            foreach (char ch in overlay)
+            {
+                if (col >= screen.Cols)
+                {
+                    // Wrap to next row so a long buffer keeps rendering
+                    // instead of clipping at the right edge.
+                    col = 0;
+                    row++;
+                    if (row >= screen.Rows) break; // out of vertical room — silently truncate
+                }
+                double px = col * _cellW;
+                double py = row * _cellH;
+                // Match the cursor-cell foreground so the overlay reads
+                // inline with the prompt. Black BG fill first so any
+                // server-painted cells underneath don't bleed through.
+                context.FillRectangle(Brushes.Black,
+                    new Rect(px, py, _cellW, _cellH));
+                var glyph = new FormattedText(
+                    ch.ToString(),
+                    CultureInfo.InvariantCulture,
+                    FlowDirection.LeftToRight,
+                    _typeface,
+                    FontSize,
+                    Brushes.LightGray);
+                context.DrawText(glyph, new Point(px, py));
+                col++;
+            }
+            caretCol = col;
+            caretRow = row;
+        }
+
         // Cursor caret — a thin horizontal bar at the bottom of its cell,
         // shown only when the screen says it's visible AND the blink is "on".
-        if (screen.CursorVisible && _cursorBlinkOn)
+        // Position is the END of the buffer overlay (if any) so the caret
+        // sits where the next typed char will land.
+        if (screen.CursorVisible && _cursorBlinkOn && caretRow < screen.Rows)
         {
-            var cx = screen.CursorX * _cellW;
-            var cy = screen.CursorY * _cellH;
-            context.FillRectangle(Brushes.LightGray,
+            var cx = caretCol * _cellW;
+            var cy = caretRow * _cellH;
+            // Buffer-full hint: when the local buffer is at the wire
+            // cap (254 chars) the caret colour shifts so the user can
+            // see further keystrokes are being dropped on the floor.
+            IBrush caretBrush = InputBuffer is { IsFull: true } ? Brushes.OrangeRed : Brushes.LightGray;
+            context.FillRectangle(caretBrush,
                 new Rect(cx, cy + _cellH * 0.85, _cellW, _cellH * 0.15));
         }
     }
@@ -275,6 +351,31 @@ public sealed class TerminalControl : Control
             return;
         }
 
+        // Local-line-edit intercept. Enter flushes the buffer + CR;
+        // Backspace pops the last buffered char (and consumes the
+        // event regardless so we never send 0x08 to the wire when in
+        // line mode — per user: backspace just erases the buffer).
+        // All other special keys (arrows, F-keys, Ctrl+letter, Tab,
+        // Escape) pass straight through via MapKey because they're
+        // meaningful to the server immediately (login prompts, menu
+        // navigation) and aren't part of any "line" the user is
+        // composing.
+        if (InputBuffer is { } buf)
+        {
+            if (e.Key == Key.Enter)
+            {
+                UserInput?.Invoke(buf.FlushBytes());
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Back)
+            {
+                buf.Backspace();
+                e.Handled = true;
+                return;
+            }
+        }
+
         // Map special keys to escape sequences first; printable text is
         // delivered through OnTextInput instead.
         var bytes = MapKey(e);
@@ -289,6 +390,18 @@ public sealed class TerminalControl : Control
     protected override void OnTextInput(TextInputEventArgs e)
     {
         if (string.IsNullOrEmpty(e.Text)) return;
+        // Line-mode: route the typed chars into the local buffer
+        // instead of straight to the wire. The render overlay paints
+        // the buffer at the cursor on the next invalidation. Capped
+        // silently at LocalInputBuffer.MaxLength (254 — MUD wire-level
+        // line cap); chars past the cap are dropped.
+        if (InputBuffer is { } buf)
+        {
+            buf.Append(e.Text);
+            e.Handled = true;
+            return;
+        }
+        // Char-mode fallback for callers that haven't bound a buffer.
         // BBSes expect Latin-1 / 8-bit bytes, not UTF-8. Encoding here keeps
         // accented characters legible to older servers.
         var bytes = System.Text.Encoding.Latin1.GetBytes(e.Text);

@@ -119,6 +119,16 @@ public sealed class AppServices
     /// read by the Phase 6 PR 6.2 remote-command engine to gate the
     /// <c>@party &lt;sub&gt;</c> whitelist.
     /// </summary>
+    /// <summary>
+    /// Client-side terminal line buffer. Routes user keystrokes through
+    /// a local 254-char accumulator that only flushes to the wire on
+    /// Enter. Without this, engine auto-sends (par poll, AutoParty
+    /// invite, @health round-trip, etc.) interleave into half-typed
+    /// user input on the server's line buffer and submit as garbage
+    /// commands. See <see cref="Terminal.LocalInputBuffer"/>.
+    /// </summary>
+    public Terminal.LocalInputBuffer InputBuffer { get; } = new();
+
     public Game.PartyState PartyState { get; }
 
     /// <summary>

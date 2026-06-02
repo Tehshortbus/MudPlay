@@ -34,6 +34,11 @@ public partial class MainWindow : Window
             if (DataContext is MainWindowViewModel vm)
                 vm.SendUserInput(bytes);
         };
+        // Local-line-edit buffer — printable keystrokes accumulate
+        // client-side and only flush to the wire on Enter. Engine
+        // auto-sends (par poll, AutoParty invite, @health round-trip)
+        // can fire freely without interleaving into half-typed input.
+        Terminal.InputBuffer = AppServices.Current.InputBuffer;
 
         // Subscribe to VM PropertyChanged so we can react to IsConnected.
         // Hooking via DataContextChanged covers the case where the VM is
