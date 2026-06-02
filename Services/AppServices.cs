@@ -514,6 +514,25 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
 
+        // Bridge: per-character Party / Talk / Other settings into
+        // their live engine knobs. Pre-fix the section VMs handled
+        // their own ApplyToServices on Apply, but the load-from-disk
+        // path required the user to OPEN the Settings window before
+        // the cadence / engine flags actually took effect — so
+        // running two characters with different par-poll cadences
+        // both ran at the 5 s default until the user visited Settings
+        // on each. These subscriptions push the per-character DTOs
+        // automatically on every profile load + mutate.
+        Profile.ProfileLoaded  += _ => ApplyPartyFromActiveProfile();
+        Profile.ProfileClosed  += ResetPartyToDefaults;
+        Profile.ProfileMutated += _ => ApplyPartyFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyTalkFromActiveProfile();
+        Profile.ProfileClosed  += ResetTalkToDefaults;
+        Profile.ProfileMutated += _ => ApplyTalkFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyOtherFromActiveProfile();
+        Profile.ProfileClosed  += ResetOtherToDefaults;
+        Profile.ProfileMutated += _ => ApplyOtherFromActiveProfile();
+
         // Bridge: follow the pinned BBS's preferred game-data set.
         // Active set lives at BBS scope (every character on the same
         // realm shares the same MDB). Resolution chain:
@@ -593,7 +612,7 @@ public sealed class AppServices
 
     private void ApplyToolbarFromActiveProfile()
     {
-        Models.Profile.ToolbarSettings dto = ReadToolbar(Profile.Current);
+        Models.Profile.ToolbarSettings dto = ReadSection<Models.Profile.ToolbarSettings>(Profile.Current, "Toolbar");
         Toolbar.ApplyFrom(dto);
     }
 
@@ -602,12 +621,100 @@ public sealed class AppServices
         Toolbar.ApplyFrom(new Models.Profile.ToolbarSettings());
     }
 
-    private static Models.Profile.ToolbarSettings ReadToolbar(Models.Profile.CharacterProfile? profile)
+    /// <summary>
+    /// Generic per-section settings reader. Returns a fresh default-
+    /// constructed DTO when the profile is null, has no Settings dict,
+    /// is missing the named entry, or the JSON is malformed — the
+    /// callers all want a non-null DTO they can apply unconditionally.
+    /// </summary>
+    private static T ReadSection<T>(Models.Profile.CharacterProfile? profile, string key)
+        where T : new()
     {
-        if (profile?.Settings is null) return new();
-        if (!profile.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
-        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.ToolbarSettings>(json.GetRawText())
-               ?? new Models.Profile.ToolbarSettings();
+        if (profile?.Settings is null) return new T();
+        if (!profile.Settings.TryGetValue(key, out System.Text.Json.JsonElement json)) return new T();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json.GetRawText()) ?? new T();
+        }
+        catch
+        {
+            return new T();
+        }
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.PartySettings"/>
+    /// into the live <see cref="PartyPoller"/> / <see cref="Party"/> /
+    /// <see cref="PartyBroadcaster"/>. Subscribed to
+    /// <see cref="ProfileService.ProfileLoaded"/> +
+    /// <see cref="ProfileService.ProfileMutated"/> so a per-character
+    /// cadence (e.g. par-poll-frequency=15s) is honoured the moment the
+    /// profile auto-loads at startup — not just when the user opens the
+    /// Settings window. Pre-fix the cadence stayed at the 5 s default
+    /// for every character because the section-VM-only ApplyToServices
+    /// never fired until Settings was opened.
+    /// </summary>
+    public void ApplyPartyFromActiveProfile()
+    {
+        Models.Profile.PartySettings dto = ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party");
+        PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
+        Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
+        PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
+    }
+
+    private void ResetPartyToDefaults()
+    {
+        Models.Profile.PartySettings defaults = new();
+        PartyPoller.SetParCadence(TimeSpan.FromSeconds(defaults.ParPollFrequencySec));
+        Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
+        PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.TalkSettings"/>
+    /// into the live <see cref="RemoteCommands"/> engine. Same shape +
+    /// rationale as <see cref="ApplyPartyFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyTalkFromActiveProfile()
+    {
+        Models.Profile.TalkSettings dto = ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk");
+        RemoteCommands.MasterDisable          = dto.DisallowAllRemoteCommands;
+        RemoteCommands.DisablePartyWhitelist  = dto.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisableTelepathChannel = dto.DisallowRemoteFromTelepaths;
+        RemoteCommands.DisableGangpathChannel = dto.DisallowRemoteFromGangpaths;
+        RemoteCommands.DisableLocalChannel    = dto.DisallowRemoteFromLocal;
+        RemoteCommands.WarnOnDenial           = dto.WarnOnInvalidRemoteCommand;
+        RemoteCommands.FailureMessage         = dto.RemoteCommandFailureMessage ?? string.Empty;
+    }
+
+    private void ResetTalkToDefaults()
+    {
+        Models.Profile.TalkSettings defaults = new();
+        RemoteCommands.MasterDisable          = defaults.DisallowAllRemoteCommands;
+        RemoteCommands.DisablePartyWhitelist  = defaults.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisableTelepathChannel = defaults.DisallowRemoteFromTelepaths;
+        RemoteCommands.DisableGangpathChannel = defaults.DisallowRemoteFromGangpaths;
+        RemoteCommands.DisableLocalChannel    = defaults.DisallowRemoteFromLocal;
+        RemoteCommands.WarnOnDenial           = defaults.WarnOnInvalidRemoteCommand;
+        RemoteCommands.FailureMessage         = defaults.RemoteCommandFailureMessage ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.OtherSettings"/>
+    /// into the live engine knobs (currently
+    /// <see cref="Game.Remote.RemoteCommandManager.MaxSuicideLivesThreshold"/>).
+    /// Same shape + rationale as <see cref="ApplyPartyFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyOtherFromActiveProfile()
+    {
+        Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
+        RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+    }
+
+    private void ResetOtherToDefaults()
+    {
+        Models.Profile.OtherSettings defaults = new();
+        RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
     }
 
     /// <summary>
