@@ -61,6 +61,9 @@ public sealed class TalkSectionViewModelTests
         Assert.False(dto.DisallowRemoteFromGangpaths);
         Assert.False(dto.DisallowRemoteFromLocal);
         Assert.True(dto.WarnOnInvalidRemoteCommand);
-        Assert.Equal("{command invalid or not allowed}", dto.RemoteCommandFailureMessage);
+        // Bare text — RemoteCommandManager wraps every reply in { } at
+        // send time, so the configured failure message is the unbraced
+        // form to avoid double-bracing on the wire.
+        Assert.Equal("command invalid or not allowed", dto.RemoteCommandFailureMessage);
     }
 }

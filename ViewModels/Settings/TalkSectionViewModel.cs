@@ -69,7 +69,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private bool _warnOnInvalidRemoteCommand = true;
 
-    [ObservableProperty] private string _remoteCommandFailureMessage = "{command invalid or not allowed}";
+    [ObservableProperty] private string _remoteCommandFailureMessage = "command invalid or not allowed";
 
     public TalkSectionViewModel() : this(AppServices.Current.Profile) { }
 

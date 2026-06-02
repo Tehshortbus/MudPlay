@@ -132,8 +132,11 @@ public sealed class RemoteCommandManager : IDisposable
     /// <summary>
     /// Reply text used by the <see cref="WarnOnDenial"/> path. Pushed
     /// from <see cref="Models.Profile.TalkSettings.RemoteCommandFailureMessage"/>.
+    /// The engine wraps every reply in <c>{ }</c> at send time, so this
+    /// string should be bare text — adding literal braces here would
+    /// double them.
     /// </summary>
-    public string FailureMessage { get; set; } = "{command invalid or not allowed}";
+    public string FailureMessage { get; set; } = "command invalid or not allowed";
 
     public RemoteCommandManager(
         ChatRouter chat,
@@ -414,6 +417,7 @@ public sealed class RemoteCommandManager : IDisposable
     /// use because BBSes expect 8-bit-clean bytes, not UTF-8.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Telepath uses <c>/&lt;name&gt;</c> (slash + given name, no space) —
     /// the verbose <c>t</c> / <c>tel</c> / <c>tell</c> forms are all
     /// interpreted as <c>say</c> on Playpen BBS (verified live).
@@ -423,17 +427,27 @@ public sealed class RemoteCommandManager : IDisposable
     /// classified by ChatRouter is already single-word so the given-name
     /// strip is a no-op for the engine but the rule's worth stating for
     /// any future callers.
+    /// </para>
+    /// <para>
+    /// Reply payload is encapsulated in <c>{ }</c> braces — per user
+    /// direction, every remote-command response carries the curly-brace
+    /// meta-line convention so the recipient's terminal can visually
+    /// distinguish an engine-generated answer from in-character speech.
+    /// Handlers provide bare text; the engine adds the braces here, so
+    /// nothing upstream has to remember the convention.
+    /// </para>
     /// </remarks>
     private void SendReply(RemoteChannel channel, string recipient, string text)
     {
         if (string.IsNullOrEmpty(text)) return;
         string given = GivenName(recipient);
+        string payload = $"{{{text}}}";
         string wire = channel switch
         {
-            RemoteChannel.Telepath => $"/{given} {text}",
-            RemoteChannel.Gangpath => $"gang {text}",
-            RemoteChannel.Local    => $"say {text}",
-            _                      => text,
+            RemoteChannel.Telepath => $"/{given} {payload}",
+            RemoteChannel.Gangpath => $"gang {payload}",
+            RemoteChannel.Local    => $"say {payload}",
+            _                      => payload,
         };
         byte[] bytes = Encoding.Latin1.GetBytes(wire + "\r");
         LastSentForTests.Add(bytes);

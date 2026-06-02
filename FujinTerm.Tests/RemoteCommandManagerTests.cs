@@ -275,6 +275,29 @@ public sealed class RemoteCommandManagerTests
     // ===== Channel routing + Reply =====
 
     [Fact]
+    public void Reply_AlwaysWrappedInBraces_RegardlessOfChannel()
+    {
+        // Per user direction: every remote-command response is
+        // encapsulated in { } on the wire. Handlers provide bare text;
+        // the engine adds the braces in SendReply so handlers and
+        // configured failure messages don't need to remember the
+        // convention.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => ctx.Reply("plain"));
+
+        engine.DispatchForTests(Telepath("Friend",  "@health"));
+        engine.DispatchForTests(Gangpath("Friend",  "@health"));
+        engine.DispatchForTests(Local("Friend",     "@health"));
+
+        Assert.Equal(3, engine.LastSentForTests.Count);
+        Assert.Equal("/Friend {plain}\r", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
+        Assert.Equal("gang {plain}\r",    Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+        Assert.Equal("say {plain}\r",     Encoding.Latin1.GetString(engine.LastSentForTests[2]));
+    }
+
+    [Fact]
     public void Reply_TelepathRoutesViaTelepathCommand()
     {
         var (engine, _, players) = Setup();
@@ -286,7 +309,10 @@ public sealed class RemoteCommandManagerTests
 
         byte[] sent = Assert.Single(engine.LastSentForTests);
         string wire = Encoding.Latin1.GetString(sent);
-        Assert.Equal("/Friend HP 100/100\r", wire);
+        // Engine wraps every reply in { } at SendReply time — per user
+        // direction every remote response carries the curly-brace
+        // meta-line convention.
+        Assert.Equal("/Friend {HP 100/100}\r", wire);
     }
 
     [Fact]
@@ -300,7 +326,7 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Gangpath("Friend", "@health"));
 
         string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        Assert.Equal("gang hi\r", wire);
+        Assert.Equal("gang {hi}\r", wire);
     }
 
     [Fact]
@@ -314,7 +340,7 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Local("Friend", "@health"));
 
         string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        Assert.Equal("say hi\r", wire);
+        Assert.Equal("say {hi}\r", wire);
     }
 
     // ===== Channel scope — noise-channel ignores =====
@@ -478,7 +504,8 @@ public sealed class RemoteCommandManagerTests
     public void WarnOnDenial_SendsFailureMessageOnUnknownCommand()
     {
         var (engine, _, _) = Setup();
-        engine.FailureMessage = "{nope}";
+        // FailureMessage is bare text — engine wraps in { } at send.
+        engine.FailureMessage = "nope";
 
         engine.DispatchForTests(Telepath("Stranger", "@unknown"));
 
@@ -499,7 +526,7 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Stranger", "@health"));
 
         byte[] sent = Assert.Single(engine.LastSentForTests);
-        Assert.Equal("/Stranger denied\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("/Stranger {denied}\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
@@ -513,7 +540,7 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Stranger", "@party rest"));
 
         byte[] sent = Assert.Single(engine.LastSentForTests);
-        Assert.Equal("/Stranger denied\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("/Stranger {denied}\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]

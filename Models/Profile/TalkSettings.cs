@@ -59,9 +59,11 @@ public sealed class TalkSettings
     /// Reply text sent back to the originator when an @-command is
     /// denied or unrecognised. Variable substitution isn't applied —
     /// the string is sent verbatim. Default
-    /// <c>"{command invalid or not allowed}"</c> (the literal braces
-    /// are part of the message — MegaMUD-flavor curly-brace prefix
-    /// commonly used for client-side meta lines).
+    /// <c>"command invalid or not allowed"</c>. The
+    /// <see cref="Game.Remote.RemoteCommandManager"/> wraps every reply
+    /// in <c>{ }</c> braces on the wire (the curly-brace meta-line
+    /// convention), so this string is bare text — adding literal braces
+    /// here would double them.
     /// </summary>
-    public string RemoteCommandFailureMessage { get; set; } = "{command invalid or not allowed}";
+    public string RemoteCommandFailureMessage { get; set; } = "command invalid or not allowed";
 }
