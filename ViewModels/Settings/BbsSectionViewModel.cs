@@ -101,12 +101,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // ----- Confirm prompts (Global tier — install-wide UX preferences) -----
     // Persisted in GlobalSettings.Settings["Confirm"] and mirrored live
     // onto AppServices.Current.Confirm by ApplyConfirmFromGlobalSettings.
-    // Defaults all false so the historical no-prompt behaviour is
-    // preserved until the user opts in.
-    [ObservableProperty] private bool _confirmExit;
-    [ObservableProperty] private bool _confirmHangup;
-    [ObservableProperty] private bool _confirmSaveSettings;
-    [ObservableProperty] private bool _confirmDeletes;
+    // Explicit `= false` defaults — fresh installs / first-open of this
+    // tab render every checkbox unchecked so no nagging dialogs land on
+    // a user who hasn't asked for them.
+    [ObservableProperty] private bool _confirmExit = false;
+    [ObservableProperty] private bool _confirmHangup = false;
+    [ObservableProperty] private bool _confirmSaveSettings = false;
+    [ObservableProperty] private bool _confirmDeletes = false;
 
     /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
