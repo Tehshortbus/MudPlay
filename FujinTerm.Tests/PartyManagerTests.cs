@@ -380,24 +380,28 @@ public sealed class PartyManagerTests
         Assert.Equal(100, fujin.HpPercent);
     }
 
-    // ===== Initial-join rank-preference command =====
+    // ===== Initial-join rank-preference command (follower path only) =====
+    // MajorMUD forces party leaders to frontrank — the server rejects a
+    // rerank attempt from a leader — so the rank-preference command
+    // only fires on the follower-join path ("You are now following X.").
+    // The leader-join path ("X started to follow you.") never sends.
 
     [Fact]
-    public void InitialJoin_RankFront_SendsFrontrankCommand()
+    public void FollowerJoin_RankFront_SendsFrontrankCommand()
     {
         var (router, p) = Setup(localCharacterName: "Fujin");
         List<byte[]> wire = new();
         p.SetWireSender(wire.Add);
         p.LocalRankPreference = Models.Profile.PartyRank.Front;
 
-        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("You are now following Raijin."));
 
         byte[] sent = Assert.Single(wire);
         Assert.Equal("frontrank\r", System.Text.Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
-    public void InitialJoin_RankBack_SendsBackrankCommand()
+    public void FollowerJoin_RankBack_SendsBackrankCommand()
     {
         var (router, p) = Setup(localCharacterName: "Fujin");
         List<byte[]> wire = new();
@@ -411,7 +415,7 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
-    public void InitialJoin_RankMid_SendsNothing()
+    public void FollowerJoin_RankMid_SendsNothing()
     {
         // Mid is the server-side default rank — no command needed.
         var (router, p) = Setup(localCharacterName: "Fujin");
@@ -419,32 +423,29 @@ public sealed class PartyManagerTests
         p.SetWireSender(wire.Add);
         p.LocalRankPreference = Models.Profile.PartyRank.Mid;
 
+        router.Dispatch(Line("You are now following Raijin."));
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void LeaderJoin_AnyRankPreference_SendsNothing()
+    {
+        // We're the leader — MajorMUD forces leaders to frontrank and
+        // rejects a rerank attempt, so the preference must NOT be sent
+        // even when set to Front or Back.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+        p.LocalRankPreference = Models.Profile.PartyRank.Back;
+
         router.Dispatch(Line("Raijin started to follow you."));
 
         Assert.Empty(wire);
     }
 
     [Fact]
-    public void SubsequentFollower_DoesNotResendRankCommand()
-    {
-        // Only the false→true edge on IsInParty (= "initial join")
-        // triggers the rerank. A second follower joining our existing
-        // party must NOT cause another frontrank/backrank send —
-        // we're already at our preferred rank from the first send.
-        var (router, p) = Setup(localCharacterName: "Fujin");
-        List<byte[]> wire = new();
-        p.SetWireSender(wire.Add);
-        p.LocalRankPreference = Models.Profile.PartyRank.Front;
-
-        router.Dispatch(Line("Raijin started to follow you."));   // initial join → 1 send
-        router.Dispatch(Line("Helper started to follow you."));   // already in party → 0 sends
-
-        byte[] sent = Assert.Single(wire);
-        Assert.Equal("frontrank\r", System.Text.Encoding.Latin1.GetString(sent));
-    }
-
-    [Fact]
-    public void InitialJoin_NoWireSender_DoesNotThrow()
+    public void FollowerJoin_NoWireSender_DoesNotThrow()
     {
         // Defensive: PartyManager works without a wire-sender (the
         // construction order doesn't guarantee one's bound by the
@@ -452,7 +453,7 @@ public sealed class PartyManagerTests
         var (router, p) = Setup(localCharacterName: "Fujin");
         p.LocalRankPreference = Models.Profile.PartyRank.Front;
 
-        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("You are now following Raijin."));
         // No assertion — passes if no exception.
     }
 

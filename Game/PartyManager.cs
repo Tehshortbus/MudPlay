@@ -82,11 +82,14 @@ public sealed partial class PartyManager : IDisposable
 
     /// <summary>
     /// Local character's combat-rank preference (Settings → Party → Rank).
-    /// Sent to the server as <c>frontrank</c> / <c>backrank</c> the
-    /// moment the local character joins a party (<see cref="PartyState.IsInParty"/>
-    /// transitions false → true). <see cref="Models.Profile.PartyRank.Mid"/>
-    /// is no-op — Mid is the default rank, no command needed. AppServices
-    /// pushes <c>dto.Rank</c> in via
+    /// Sent to the server as <c>frontrank</c> / <c>backrank</c> only when
+    /// the local character joins a party <b>as a follower</b>
+    /// (<see cref="OnYouFollowing"/>). Party leaders are forced to
+    /// frontrank by MajorMUD and can't change it — so the preference is
+    /// only meaningful on the follower path.
+    /// <see cref="Models.Profile.PartyRank.Mid"/> is no-op — Mid is the
+    /// server default, no command needed. AppServices pushes
+    /// <c>dto.Rank</c> in via
     /// <see cref="Services.AppServices.ApplyPartyFromActiveProfile"/>.
     /// </summary>
     public Models.Profile.PartyRank LocalRankPreference { get; set; }
@@ -310,7 +313,6 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
-        bool wasInParty = State.IsInParty;
         // Flip IsInParty FIRST so any CollectionChanged.Add subscriber
         // (PartyPoller's on-join @health round-trip in particular)
         // sees the state already consistent at the moment of the add.
@@ -321,10 +323,10 @@ public sealed partial class PartyManager : IDisposable
         State.LeaderName ??= LocalCharacterName;
         AddOrTouchMember(name);
         AddSelfIfKnown(isLeader: true);
-        // Only on the false→true edge: this is the "initial join"
-        // moment the rank-preference command applies to. Subsequent
-        // followers joining our existing party don't re-trigger it.
-        if (!wasInParty) SendRankPreferenceCommand();
+        // No rank-preference command on the leader path — MajorMUD
+        // forces leaders to frontrank, and the server rejects the
+        // rerank attempt. The follower path (OnYouFollowing) is the
+        // only place LocalRankPreference matters.
     }
 
     /// <summary>
