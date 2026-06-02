@@ -84,7 +84,15 @@
                     <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,0,0,1"
                             Padding="6,4">
-                        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto"
+                        <!-- Fixed-pixel widths on every column whose presence
+                             varies per row (leader-star, rank-chip, HP, MA,
+                             position). Auto columns wouldn't sync across
+                             rows so a leaderless follower row had its HP bar
+                             land at a different X than the leader's. Only the
+                             name column (*) and the status-chip column (Auto)
+                             vary — both come BEFORE/AFTER the bars so they
+                             don't affect HP/MA alignment. -->
+                        <Grid ColumnDefinitions="20,28,*,135,135,78,Auto,Auto"
                               VerticalAlignment="Center">
 
                             <!-- (0) Leader star — visible only on the leader -->

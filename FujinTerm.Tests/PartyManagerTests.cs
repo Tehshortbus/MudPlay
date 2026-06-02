@@ -326,6 +326,48 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParBlock_StateFlag_R_SetsRestingPosition()
+    {
+        // The single-letter column between [H:nn%] and the dash carries
+        // the rest/meditate state — R = Resting, M = Meditating, blank
+        // = Standing. Real Playpen format observed live.
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%] R - Midrank",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        PartyMember raijin = p.State.Members.First(x => x.Name == "Raijin WuzHere");
+        PartyMember fujin  = p.State.Members.First(x => x.Name == "Fujin WuzHere");
+        Assert.Equal(PlayerPosition.Resting, raijin.Position);
+        Assert.True(raijin.Resting);
+        Assert.False(raijin.Meditating);
+        // No state flag on Fujin's row → Standing.
+        Assert.Equal(PlayerPosition.Standing, fujin.Position);
+        Assert.False(fujin.Resting);
+    }
+
+    [Fact]
+    public void ParBlock_StateFlag_M_SetsMeditatingPosition()
+    {
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%] M - Midrank",
+            string.Empty,
+        });
+
+        PartyMember raijin = p.State.Members.First(x => x.Name == "Raijin WuzHere");
+        Assert.Equal(PlayerPosition.Meditating, raijin.Position);
+        Assert.True(raijin.Meditating);
+        Assert.False(raijin.Resting);
+    }
+
+    [Fact]
     public void ParBlock_BlankLineEndsBlock()
     {
         // A blank line is the par-block terminator — rows after it must

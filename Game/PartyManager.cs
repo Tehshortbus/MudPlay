@@ -111,7 +111,7 @@ public sealed partial class PartyManager : IDisposable
     /// per-member status query.
     /// </summary>
     [GeneratedRegex(
-        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:(?<mp>\d+)%\])?\s*\[H:(?<hp>\d+)%\]\s*(?:-\s*(?<rank>\w+))?",
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:(?<mp>\d+)%\])?\s*\[H:(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
         RegexOptions.CultureInvariant)]
     private static partial Regex ParRow();
 
@@ -526,6 +526,19 @@ public sealed partial class PartyManager : IDisposable
             ? int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture)
             : (int?)null;
 
+        // Single-letter state column — `R` between the HP bracket and
+        // the `- <rank>` suffix means Resting, `M` means Meditating,
+        // blank means Standing/idle. Default Standing when the column
+        // is absent (the optional regex group doesn't match).
+        PlayerPosition position = m.Groups["state"].Success
+            ? m.Groups["state"].Value switch
+            {
+                "R" => PlayerPosition.Resting,
+                "M" => PlayerPosition.Meditating,
+                _   => PlayerPosition.Standing,
+            }
+            : PlayerPosition.Standing;
+
         // IsSelf detection — both sides are reduced to given (first
         // whitespace token) before comparing. The par row carries
         // "Given Family"; LocalCharacterName may carry the same shape
@@ -548,11 +561,11 @@ public sealed partial class PartyManager : IDisposable
         if (klass.Length > 0) member.Class = klass;
         member.HpPercent = hpPct;
         if (mpPct is { } v) member.MpPercent = v;
-        // par doesn't carry Position — Standing is the safe default; the
-        // local character's actual position flows via PromptParser into
-        // PlayerState (not into PartyState.Members). Future PR can add
-        // per-member position tracking via @status round-trip if needed.
-        member.Position = PlayerPosition.Standing;
+        member.Position = position;
+        // Mirror the par-state into the boolean flags so the PartyWindow
+        // status-chip strip (which keys on these booleans) lights up too.
+        member.Resting    = position == PlayerPosition.Resting;
+        member.Meditating = position == PlayerPosition.Meditating;
 
         State.IsInParty = State.Members.Count > 0;
     }
