@@ -383,9 +383,11 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Remote-command engine borrows the same wire-sender so a handler's
         // ctx.Reply(text) routes through SendUserInput exactly like a
-        // typed command would. Engine ships with no handlers in PR 6.2;
-        // PR 6.3 lands the party-essential set.
+        // typed command would. The Phase 6 PR 6.3 PartyEssentialHandlers
+        // also need their own copy for the @party <sub> → local-command
+        // relay (uses the wire-sender directly, bypassing ctx.Reply).
         AppServices.Current.RemoteCommands.SetWireSender(SendUserInput);
+        AppServices.Current.PartyEssentials.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through

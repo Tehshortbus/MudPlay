@@ -140,6 +140,15 @@ public sealed class AppServices
     public Game.Remote.RemoteCommandManager RemoteCommands { get; }
 
     /// <summary>
+    /// Phase 6 PR 6.3 — registers the party-essential @-command handlers
+    /// against <see cref="RemoteCommands"/>: <c>@health</c>, <c>@where</c>,
+    /// <c>@version</c>, <c>@status</c>, <c>@par</c>, <c>@party &lt;sub&gt;</c>,
+    /// <c>@wait</c>, <c>@ok</c>. Later phases register additional handlers
+    /// without going through this class.
+    /// </summary>
+    public Game.Remote.PartyEssentialHandlers PartyEssentials { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -410,10 +419,12 @@ public sealed class AppServices
         // through ResolveActiveBbs so Quick Connect and the BBS pin
         // resolution chain stay the single source of truth.
         Players = new PlayerDatabase(Profile, ResolveActiveBbs);
-        // Phase 6 PR 6.2 — engine with no handlers yet. PR 6.3 lands the
-        // party-essential handler registrations; Phase 7 / Phase 12
-        // register additional handlers without touching the engine.
+        // Phase 6 PR 6.2 — engine. Phase 7 / Phase 12 register additional
+        // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
+        // Phase 6 PR 6.3 — first consumer; registers the party-essential
+        // handler set against the engine.
+        PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
