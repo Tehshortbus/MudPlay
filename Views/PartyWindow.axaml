@@ -8,7 +8,7 @@
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="240"
         x:Class="FujinTerm.Views.PartyWindow"
         x:DataType="vm:PartyViewModel"
-        Title="Party"
+        Title="{Binding HeaderText}"
         Width="520" Height="240"
         MinWidth="380" MinHeight="80"
         WindowStartupLocation="CenterOwner"
@@ -53,18 +53,6 @@
 
     <DockPanel LastChildFill="True">
 
-        <!-- ===== Header strip ===== -->
-        <Border DockPanel.Dock="Top"
-                Background="{StaticResource ChromeBgElevBrush}"
-                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="10,4">
-            <TextBlock Text="{Binding HeaderText}"
-                       Foreground="{StaticResource ChromeFgSecBrush}"
-                       FontSize="11"
-                       VerticalAlignment="Center"/>
-        </Border>
-
         <!-- ===== Empty-state hint ===== -->
         <TextBlock DockPanel.Dock="Top"
                    Margin="10,12,10,0"
@@ -74,48 +62,12 @@
                    TextWrapping="Wrap"
                    IsVisible="{Binding !State.IsInParty}"/>
 
-        <!-- ===== Column headers ===== -->
-        <!-- Same column geometry as the per-row Grid below so the
-             header labels line up over their columns. Small muted
-             caps style matches the skeleton design. -->
-        <Border DockPanel.Dock="Top"
-                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="6,4"
-                IsVisible="{Binding State.IsInParty}">
-            <!-- Matches the per-row grid below: 6 columns now that
-                 HEALTH and MANA share one stacked cell. -->
-            <Grid ColumnDefinitions="20,28,*,190,Auto,Auto">
-                <!-- Col 0: leader-star slot (no label). -->
-                <!-- Col 1: rank chip. -->
-                <TextBlock Grid.Column="1"
-                           Text="RK"
-                           FontSize="9" FontWeight="SemiBold"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           HorizontalAlignment="Center"/>
-                <!-- Col 2: member name. -->
-                <TextBlock Grid.Column="2"
-                           Text="MEMBER"
-                           FontSize="9" FontWeight="SemiBold"
-                           Margin="6,0,0,0"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 3: HEALTH · MANA stacked. -->
-                <TextBlock Grid.Column="3"
-                           Text="HEALTH · MANA"
-                           FontSize="9" FontWeight="SemiBold"
-                           Margin="6,0,0,0"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 4: status chip strip. -->
-                <TextBlock Grid.Column="4"
-                           Text="FLAGS"
-                           FontSize="9" FontWeight="SemiBold"
-                           MinWidth="60"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 5: uninvite slot (no label). -->
-            </Grid>
-        </Border>
+        <!-- ===== Member rows =====
+             Column header row dropped — column purpose is obvious from
+             the rendered row (star · rank chip · name/class · bars · chips ·
+             uninvite). Leader name + HP% lives in the window Title instead
+             of an internal strip. -->
 
-        <!-- ===== Member rows ===== -->
         <ItemsControl ItemsSource="{Binding State.Members}"
                       Background="{StaticResource ChromeBgSunkenBrush}"
                       Padding="2"
@@ -168,11 +120,8 @@
                             </Border>
 
                             <!-- (2) Name on top line; class on a small muted
-                                 subtitle below — mirrors the skeleton design
-                                 where each member reads as "Name / class · lvl N"
-                                 stacked. We render class only (level not
-                                 disclosed by par; placeholder until who-output
-                                 cross-reference lands in a follow-up). -->
+                                 subtitle below — mirrors the skeleton design's
+                                 two-line member cell. -->
                             <StackPanel Grid.Column="2" Orientation="Vertical"
                                         VerticalAlignment="Center" Margin="6,0,0,0">
                                 <TextBlock Text="{Binding Name}"
