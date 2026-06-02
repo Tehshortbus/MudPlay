@@ -157,6 +157,15 @@ public sealed class AppServices
     public Game.PartyPoller PartyPoller { get; }
 
     /// <summary>
+    /// Phase 6 PR 6.7 — emit side of <c>@wait</c> / <c>@ok</c>. Observes
+    /// <see cref="PlayerState.Position"/> transitions and telepaths the
+    /// leader when the local character enters / leaves a rest state.
+    /// Receive side ships in PR 6.3 via
+    /// <see cref="Game.Remote.PartyEssentialHandlers"/>.
+    /// </summary>
+    public Game.PartyRestSync PartyRest { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -437,6 +446,10 @@ public sealed class AppServices
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel / PR 6.9.
         PartyPoller = new Game.PartyPoller(Chat, PartyState, Party);
+        // Phase 6 PR 6.7 — emit side of @wait/@ok. Observes our own
+        // position transitions and telepaths the leader when we enter
+        // / leave a rest state. Wire-sender hookup in MainWindowVM.
+        PartyRest = new Game.PartyRestSync(PlayerState, PartyState);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

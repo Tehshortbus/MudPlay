@@ -55,6 +55,21 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// </summary>
     public HashSet<string> WaitingMembers { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Pause-gate read consumed by Phase 12 automation engines (auto-walk,
+    /// auto-combat, etc.) — true whenever at least one party member has
+    /// asked us to <c>@wait</c> and hasn't yet sent <c>@ok</c>. Cheap to
+    /// poll; engines either check before each tick or subscribe to
+    /// <see cref="PauseGateChanged"/> for edge-triggered notification.
+    /// </summary>
+    public bool IsPaused => WaitingMembers.Count > 0;
+
+    /// <summary>
+    /// Fires on every transition of <see cref="IsPaused"/>. Lets the
+    /// pause-gate consumer drop a single subscription instead of polling.
+    /// </summary>
+    public event Action<bool>? PauseGateChanged;
+
     public PartyEssentialHandlers(RemoteCommandManager engine, PlayerState player, PartyState party)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -170,9 +185,17 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     // ----- @wait / @ok receive (pause-gate consumes in PR 6.7) ----------
 
-    private void OnWait(RemoteCommandContext ctx) =>
+    private void OnWait(RemoteCommandContext ctx)
+    {
+        bool wasPaused = IsPaused;
         WaitingMembers.Add(ctx.Sender);
+        if (!wasPaused && IsPaused) PauseGateChanged?.Invoke(true);
+    }
 
-    private void OnOk(RemoteCommandContext ctx) =>
+    private void OnOk(RemoteCommandContext ctx)
+    {
+        bool wasPaused = IsPaused;
         WaitingMembers.Remove(ctx.Sender);
+        if (wasPaused && !IsPaused) PauseGateChanged?.Invoke(false);
+    }
 }

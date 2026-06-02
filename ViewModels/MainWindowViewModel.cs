@@ -395,6 +395,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 6 PR 6.4 — poller needs the same wire-sender to send
         // @health round-trip requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(SendUserInput);
+        // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
+        // when we finish, so the party leader's pause-gate can react.
+        AppServices.Current.PartyRest.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
