@@ -351,6 +351,84 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void LiveRankChange_OtherMember_UpdatesRankImmediately()
+    {
+        // Observer side: when another party member reranks, the game
+        // emits one of three phrasings (front/back keep "rank in your
+        // group", middle drops "rank" → "of your group"). All three
+        // must update PartyMember.Rank instantly — without waiting for
+        // the next par poll — so the PartyWindow rank chip swaps colour
+        // on the same tick the rerank message lands.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+        PartyMember raijin = p.State.Members.First(x => x.Name == "Raijin WuzHere");
+        Assert.Equal(Models.Profile.PartyRank.Mid, raijin.Rank);
+
+        router.Dispatch(Line("Raijin just moved to the front rank in your group."));
+        Assert.Equal(Models.Profile.PartyRank.Front, raijin.Rank);
+
+        router.Dispatch(Line("Raijin just moved to the back rank in your group."));
+        Assert.Equal(Models.Profile.PartyRank.Back, raijin.Rank);
+
+        router.Dispatch(Line("Raijin just moved to the middle of your group."));
+        Assert.Equal(Models.Profile.PartyRank.Mid, raijin.Rank);
+    }
+
+    [Fact]
+    public void LiveRankChange_Self_UpdatesIsSelfRow()
+    {
+        // Self side: the player making the change sees "You have moved
+        // to the {front|middle|back} ranks of your group." (note the
+        // consistent "ranks of" form — different from the observer-side
+        // grammar). Routes to the IsSelf row by flag, since the
+        // message carries no name.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Midrank",
+            string.Empty,
+        });
+        PartyMember self = p.State.Members.First(x => x.IsSelf);
+        Assert.Equal(Models.Profile.PartyRank.Mid, self.Rank);
+
+        router.Dispatch(Line("You have moved to the front ranks of your group."));
+        Assert.Equal(Models.Profile.PartyRank.Front, self.Rank);
+
+        router.Dispatch(Line("You have moved to the back ranks of your group."));
+        Assert.Equal(Models.Profile.PartyRank.Back, self.Rank);
+
+        router.Dispatch(Line("You have moved to the middle ranks of your group."));
+        Assert.Equal(Models.Profile.PartyRank.Mid, self.Rank);
+    }
+
+    [Fact]
+    public void LiveRankChange_UnknownPlayer_IsNoOp()
+    {
+        // Defensive: a rerank line for a name not in the roster (race
+        // with disconnect / late-arriving observation) must not throw
+        // and must not magic up a phantom member.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Midrank",
+            string.Empty,
+        });
+        int before = p.State.Members.Count;
+
+        router.Dispatch(Line("Stranger just moved to the front rank in your group."));
+
+        Assert.Equal(before, p.State.Members.Count);
+    }
+
+    [Fact]
     public void ParBlock_StateFlag_R_SetsRestingPosition()
     {
         // The single-letter column between [H:nn%] and the dash carries

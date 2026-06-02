@@ -93,6 +93,11 @@ public static class KnownPatterns
     public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
     public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow
     public const string PartyDissolved            = "party.dissolved";              // "You are not in a party at the present time." — authoritative wipe
+    // Per-member rank-change observation — fires whenever someone in the
+    // party reranks via `frontr` / `midr` / `backr`. Lets PartyManager
+    // update PartyMember.Rank live instead of waiting for the next par poll.
+    public const string PartyMemberRankChanged    = "party.member-rank-changed";    // "X just moved to the {front|back} rank in your group." / "X just moved to the middle of your group."
+    public const string PartySelfRankChanged      = "party.self-rank-changed";      // "You have moved to the {front|middle|back} ranks of your group." — self's own rerank confirmation
 
     // ----- Main menu -----------------------------------------------------
     // BBSes customise the banner version + realm name + prompt text, but

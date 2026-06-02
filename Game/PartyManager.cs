@@ -152,6 +152,11 @@ public sealed partial class PartyManager : IDisposable
         _subs.Add(_router.Subscribe(KnownPatterns.PartyFollowerRemoved,      OnFollowerRemoved));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyYouNoLongerFollowing, OnYouNoLongerFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyDissolved,            OnPartyDissolved));
+        // Live rank-change observation (Phase 6 follow-up) — keeps
+        // PartyMember.Rank in sync the instant someone reranks, instead
+        // of waiting until the next par poll catches up.
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberRankChanged,    OnMemberRankChanged));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartySelfRankChanged,      OnSelfRankChanged));
     }
 
     /// <summary>
@@ -472,6 +477,60 @@ public sealed partial class PartyManager : IDisposable
 
     /// <summary>Test seam — read-only view of the disconnect grace window.</summary>
     internal IReadOnlyDictionary<string, DateTimeOffset> RecentlyDisconnected => _recentlyDisconnected;
+
+    // ----- Live rank-change observers -----------------------------------
+
+    /// <summary>
+    /// "X just moved to the {front|back} rank in your group." /
+    /// "X just moved to the middle of your group." — update the named
+    /// member's <see cref="PartyMember.Rank"/> immediately so the
+    /// PartyWindow rank chip reflects the new rank without waiting for
+    /// the next par poll. No-op when the named player isn't in the
+    /// roster (defensive — covers a race where a rerank line arrives
+    /// for a member we just dropped).
+    /// </summary>
+    private void OnMemberRankChanged(MatchResult result)
+    {
+        if (result.Groups.Count < 2) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        ApplyRankByGivenName(name, result.Groups[1]);
+    }
+
+    /// <summary>
+    /// "You have moved to the {front|middle|back} ranks of your group." —
+    /// self's own rerank confirmation. No name in the message; we
+    /// locate the row by <see cref="PartyMember.IsSelf"/> (set by the
+    /// par-row parser whenever the local character appears).
+    /// </summary>
+    private void OnSelfRankChanged(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        Models.Profile.PartyRank rank = ParseRankWord(result.Groups[0]);
+        foreach (PartyMember m in State.Members)
+        {
+            if (m.IsSelf) { m.Rank = rank; return; }
+        }
+    }
+
+    private void ApplyRankByGivenName(string name, string rankWord)
+    {
+        string given = GivenNameOf(name);
+        Models.Profile.PartyRank rank = ParseRankWord(rankWord);
+        foreach (PartyMember m in State.Members)
+        {
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
+            m.Rank = rank;
+            return;
+        }
+    }
+
+    private static Models.Profile.PartyRank ParseRankWord(string word) => word switch
+    {
+        "front"  => Models.Profile.PartyRank.Front,
+        "back"   => Models.Profile.PartyRank.Back,
+        _        => Models.Profile.PartyRank.Mid,
+    };
 
     // ----- par-block row parser ------------------------------------------
 

@@ -243,6 +243,25 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PartyDissolved,
             @"^You are not in a party at the present time\.?\s*$");
 
+        // ----- Per-member rank changes (Playpen-verified, 2026-06-02) ---
+        // When another party member reranks, the game prints one of three
+        // phrasings depending on which rank they moved to. The "middle"
+        // form drops the word "rank" ("...to the middle of your group");
+        // the "front"/"back" forms keep it ("...to the front rank in your
+        // group" / "...to the back rank in your group"). Capture the rank
+        // word so PartyManager can update PartyMember.Rank live without
+        // waiting for the next par poll.
+        //
+        // Player name is given/first only — matches PartyManager's
+        // GivenNameOf roster matching.
+        yield return new RegexPattern(KnownPatterns.PartyMemberRankChanged,
+            @"^(?<player>\w+) just moved to the (?<rank>front|middle|back) (?:rank in|of) your group\.?\s*$");
+        // Self's own rerank confirmation. No name to capture — applies to
+        // the local character row. Phrasing is consistently "ranks of"
+        // across all three (front/middle/back).
+        yield return new RegexPattern(KnownPatterns.PartySelfRankChanged,
+            @"^You have moved to the (?<rank>front|middle|back) ranks of your group\.?\s*$");
+
         // ----- Main menu (BBS-customisable but options are stable) -----
         // The "Enter the Realm" row is the universal signature — every
         // BBS keeps the [E] option on the main menu even when banners,
