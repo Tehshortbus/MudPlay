@@ -546,14 +546,119 @@ public sealed class RemoteCommandManagerTests
     [Fact]
     public void WarnOnDenial_StaysSilentOnHardBlock()
     {
-        // Hard-blocks (reroll / suicide) must never produce a reply —
-        // never advertise the block to a malicious caller. Sender has
-        // every flag; engine WarnOnDenial is on.
+        // Unconditional hard-blocks (reroll, @party suicide) must
+        // never produce a reply — never advertise the block to a
+        // malicious caller. Sender has every flag; engine
+        // WarnOnDenial is on. The user-configured suicide lives
+        // threshold is a SEPARATE path that DOES reply — see
+        // SuicidePolicyBlock_TelepathsBackReason for that test.
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => { });
 
         engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void SuicidePolicyBlock_TelepathsBackReason()
+    {
+        // User-configured suicide threshold is a POLICY block (not a
+        // safety hard-block). Distinct from reroll: the caller is
+        // typically a trusted ally who needs to know why their
+        // command isn't firing. Reply contains the live numbers so
+        // they can see exactly where the threshold sits.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.SysopCommands);
+        engine.MaxSuicideLivesThreshold = 5;
+        engine.LivesProvider = () => 4;   // below threshold
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => { });
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal(
+            "/Trusted {suicide blocked, 4 lives <= threshold 5}\r",
+            Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SuicidePolicyBlock_AtThreshold_RepliesAndBlocks()
+    {
+        // Boundary: lives == threshold means "blocked" per the
+        // `lives <= threshold` rule.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.SysopCommands);
+        engine.MaxSuicideLivesThreshold = 5;
+        engine.LivesProvider = () => 5;   // at threshold
+        bool handlerFired = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
+            _ => handlerFired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.False(handlerFired);   // gate stopped it
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal(
+            "/Trusted {suicide blocked, 5 lives <= threshold 5}\r",
+            Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SuicidePolicyBlock_LivesUnknown_RepliesUnknownAndBlocks()
+    {
+        // LivesProvider returns null → we don't trust the unknown
+        // state, default to blocked, tell the sender so they know
+        // to wait for us to `stat` first.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.SysopCommands);
+        engine.LivesProvider = () => null;
+        bool handlerFired = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
+            _ => handlerFired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.False(handlerFired);
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal(
+            "/Trusted {suicide blocked, lives unknown to client}\r",
+            Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SuicidePolicyBlock_AboveThreshold_FiresHandlerNoReply()
+    {
+        // Sanity: lives > threshold means the policy block doesn't
+        // engage — the handler fires normally, no reply leaks.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.SysopCommands);
+        engine.MaxSuicideLivesThreshold = 3;
+        engine.LivesProvider = () => 9;
+        bool handlerFired = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
+            _ => handlerFired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.True(handlerFired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void PartySuicide_StaysSilentEvenAboveThreshold()
+    {
+        // @party suicide is the unconditional hard-block path; should
+        // never reach the policy-block reply even when lives are
+        // plenty.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.MaxSuicideLivesThreshold = 0;
+        engine.LivesProvider = () => 99;
+        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => { });
+
+        engine.DispatchForTests(Telepath("Trusted", "@party suicide"));
 
         Assert.Empty(engine.LastSentForTests);
     }

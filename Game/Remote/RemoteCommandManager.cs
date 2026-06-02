@@ -251,6 +251,20 @@ public sealed class RemoteCommandManager : IDisposable
             return;
         }
 
+        // Suicide lives-threshold — user-configured policy block.
+        // UNLIKE the hard-blocks above, this DOES reply because the
+        // caller is typically a trusted party member and the policy
+        // is explicit, not a safety net. Without the reply they'd
+        // assume our @-command engine is broken.
+        string? suicideReply = GetSuicidePolicyBlockReply(command, args);
+        if (suicideReply is not null)
+        {
+            _log?.Log(LogSeverity.Info, "RemoteCmd",
+                $"Suicide policy-blocked from {entry.Speaker}: {suicideReply}");
+            SendReply(channel.Value, entry.Speaker, suicideReply);
+            return;
+        }
+
         if (!_handlers.TryGetValue(command, out Registration registration))
         {
             // Unknown @-command — no handler registered. Surface back to
@@ -334,6 +348,12 @@ public sealed class RemoteCommandManager : IDisposable
     /// command or args is blocked because MajorMUD requires the literal
     /// word reroll for the destructive action.
     /// </summary>
+    /// <summary>
+    /// Unconditional hard-blocks — never reply, never explain. These
+    /// guard against the most destructive misuse paths where any
+    /// information leakage to the caller is its own risk. Today:
+    /// reroll (always) + <c>@party suicide</c> (always).
+    /// </summary>
     private bool IsHardBlocked(string command, string[] args, out string? reason)
     {
         // reroll — token-level match across command + args
@@ -342,31 +362,38 @@ public sealed class RemoteCommandManager : IDisposable
             reason = "reroll hard-block (always denied)";
             return true;
         }
-        // suicide — token-level match, conditional on lives
-        if (ContainsToken(command, args, "suicide"))
+        // @party suicide is always blocked (the Phase 6 spec lists it
+        // alongside @party reroll as unconditional).
+        if (ContainsToken(command, args, "suicide")
+            && command.Equals("@party", StringComparison.OrdinalIgnoreCase))
         {
-            // @party suicide is always blocked (the Phase 6 spec lists it
-            // alongside @party reroll as unconditional). @do suicide is
-            // gated on lives.
-            if (command.Equals("@party", StringComparison.OrdinalIgnoreCase))
-            {
-                reason = "@party suicide hard-block (always denied)";
-                return true;
-            }
-            int? lives = LivesProvider?.Invoke();
-            if (lives is null)
-            {
-                reason = "suicide gated but lives unknown — defaulting to blocked";
-                return true;
-            }
-            if (lives <= MaxSuicideLivesThreshold)
-            {
-                reason = $"suicide blocked at lives={lives} (threshold {MaxSuicideLivesThreshold})";
-                return true;
-            }
+            reason = "@party suicide hard-block (always denied)";
+            return true;
         }
         reason = null;
         return false;
+    }
+
+    /// <summary>
+    /// User-configured policy block for direct <c>@suicide</c> /
+    /// <c>@do suicide</c> based on the lives threshold. Distinct from
+    /// <see cref="IsHardBlocked"/> because policy blocks SHOULD be
+    /// communicated back to the sender — the caller is typically a
+    /// trusted party member who needs to know why their command
+    /// isn't firing (otherwise they'll assume our @-command engine
+    /// is broken). Returns the reply text for the sender; <c>null</c>
+    /// when the command isn't a suicide attempt or the threshold is
+    /// satisfied.
+    /// </summary>
+    private string? GetSuicidePolicyBlockReply(string command, string[] args)
+    {
+        if (!ContainsToken(command, args, "suicide")) return null;
+        int? lives = LivesProvider?.Invoke();
+        if (lives is null)
+            return "suicide blocked, lives unknown to client";
+        if (lives <= MaxSuicideLivesThreshold)
+            return $"suicide blocked, {lives} lives <= threshold {MaxSuicideLivesThreshold}";
+        return null;
     }
 
     private static bool ContainsToken(string command, string[] args, string token)
