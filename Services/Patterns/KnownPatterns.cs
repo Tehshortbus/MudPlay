@@ -89,4 +89,8 @@ public static class KnownPatterns
     public const string PartyStopsFollowing = "party.stops-following";   // "X has stopped following you." / "X stops following you."
     public const string PartyHeader         = "party.par-header";        // "The following people are in your travel party:" — anchors the par-block state machine
     public const string PartyMemberDeath    = "party.member-death";      // "X has been slain by Y" — conservative kill-attribution match
+    // ----- Dissolution signals (Playpen-verified, 2026-06-01) ----------
+    public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
+    public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow
+    public const string PartyDissolved            = "party.dissolved";              // "You are not in a party at the present time." — authoritative wipe
 }

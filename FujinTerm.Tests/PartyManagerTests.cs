@@ -125,6 +125,113 @@ public sealed class PartyManagerTests
         Assert.True(p.State.IsInParty);
     }
 
+    // ===== Dissolution signals (Playpen-verified 2026-06-01 uninvite scenario) =====
+    //   Leader's view (Fujin uninvites Raijin):
+    //     "Raijin has been removed from your followers."
+    //     "You are not in a party at the present time."
+    //   Follower's view (Raijin sees Fujin's uninvite):
+    //     "You are no longer following Fujin."
+    //     "You are not in a party at the present time."
+
+    [Fact]
+    public void FollowerRemoved_RemovesMember_FromLeaderView()
+    {
+        // Leader scenario — we lead, then we uninvite Raijin. After the
+        // "has been removed from your followers" line the roster drops
+        // them. The follow-up "not in a party" line would land too in
+        // a real session — covered separately.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("Raijin started to follow you."));
+        Assert.Equal(2, p.State.Members.Count);   // Fujin self + Raijin
+
+        router.Dispatch(Line("Raijin has been removed from your followers."));
+
+        Assert.DoesNotContain(p.State.Members,
+            m => m.Name.Equals("Raijin", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void YouNoLongerFollowing_RemovesLeader_FromFollowerView()
+    {
+        // Follower scenario — we joined Fujin's party, then Fujin
+        // uninvites us. The follow-up line on our terminal is "You are
+        // no longer following Fujin." which evicts Fujin from the
+        // roster.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        Assert.Equal(2, p.State.Members.Count);   // Fujin leader + Raijin self
+
+        router.Dispatch(Line("You are no longer following Fujin."));
+
+        Assert.DoesNotContain(p.State.Members,
+            m => m.Name.Equals("Fujin", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Dissolved_WipesEverything()
+    {
+        // Authoritative dissolution — regardless of how the per-row
+        // evictions landed, this line guarantees an empty party.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("Raijin started to follow you."));
+        Assert.True(p.State.IsInParty);
+        Assert.True(p.State.SelfIsLeader);
+
+        router.Dispatch(Line("You are not in a party at the present time."));
+
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+        Assert.False(p.State.SelfIsLeader);
+        Assert.Null(p.State.LeaderName);
+    }
+
+    [Fact]
+    public void Dissolved_OnAlreadyEmpty_NoOp()
+    {
+        // Idempotent — receiving the dissolution line when we're
+        // already party-less shouldn't churn observable properties.
+        var (router, p) = Setup();
+        router.Dispatch(Line("You are not in a party at the present time."));
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+    }
+
+    [Fact]
+    public void FullUninviteSequence_LeaderSide_LeavesEmptyParty()
+    {
+        // End-to-end replay of the screenshot scenario: Fujin
+        // uninvites Raijin. Both signal lines arrive in sequence; the
+        // dissolved line is what guarantees a clean wipe even if the
+        // per-row eviction has self-membership quirks.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("Raijin started to follow you."));
+        Assert.Equal(2, p.State.Members.Count);
+
+        router.Dispatch(Line("Raijin has been removed from your followers."));
+        router.Dispatch(Line("You are not in a party at the present time."));
+
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+        Assert.False(p.State.SelfIsLeader);
+        Assert.Null(p.State.LeaderName);
+    }
+
+    [Fact]
+    public void FullUninviteSequence_FollowerSide_LeavesEmptyParty()
+    {
+        // Mirror scenario from Raijin's side after Fujin uninvites him.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        Assert.Equal(2, p.State.Members.Count);
+
+        router.Dispatch(Line("You are no longer following Fujin."));
+        router.Dispatch(Line("You are not in a party at the present time."));
+
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+        Assert.Null(p.State.LeaderName);
+    }
+
     // ===== par-block parsing — real Playpen BBS format =====
     //   "The following people are in your travel party:"
     //     Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank

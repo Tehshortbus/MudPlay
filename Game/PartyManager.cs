@@ -142,9 +142,16 @@ public sealed partial class PartyManager : IDisposable
         // re-connect within the grace window and we're the leader we
         // auto-invite them back. PartyMemberDeath is the conservative
         // PvP-kill match.
-        _subs.Add(_router.Subscribe(KnownPatterns.PlayerDisconnects,   OnPlayerDisconnects));
-        _subs.Add(_router.Subscribe(KnownPatterns.PlayerEnters,        OnPlayerEnters));
-        _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDeath,    OnMemberDeath));
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerDisconnects,        OnPlayerDisconnects));
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerEnters,             OnPlayerEnters));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDeath,         OnMemberDeath));
+        // Dissolution signals — the per-row evictions we already had
+        // (StopsFollowing / MemberDeath / Disconnect) handle individual
+        // departures; these cover the uninvite + leader-removal + total-
+        // dissolve cases the screenshot-reported bug exposed.
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyFollowerRemoved,      OnFollowerRemoved));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyYouNoLongerFollowing, OnYouNoLongerFollowing));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyDissolved,            OnPartyDissolved));
     }
 
     /// <summary>
@@ -226,6 +233,56 @@ public sealed partial class PartyManager : IDisposable
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
         RemoveMember(name);
+    }
+
+    /// <summary>
+    /// "X has been removed from your followers." — fires on the LEADER's
+    /// side when the leader uninvites X (or when X self-departs). Same
+    /// treatment as <see cref="OnStopsFollowing"/>: drop X from the
+    /// roster. The follow-up "You are not in a party at the present
+    /// time." (if it comes) handles total dissolution separately.
+    /// </summary>
+    private void OnFollowerRemoved(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        RemoveMember(name);
+    }
+
+    /// <summary>
+    /// "You are no longer following X." — fires on the FOLLOWER's side
+    /// when the leader uninvites us, or when we issue our own
+    /// <c>unfollow</c>. Drop X from the roster.
+    /// </summary>
+    private void OnYouNoLongerFollowing(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        RemoveMember(name);
+    }
+
+    /// <summary>
+    /// "You are not in a party at the present time." — authoritative
+    /// dissolution signal. Fires after the per-row eviction lines and
+    /// guarantees the whole party is gone, so we wipe state to the
+    /// known-empty shape regardless of what the per-row handlers saw.
+    /// Idempotent — already-empty state is a no-op.
+    /// </summary>
+    private void OnPartyDissolved(MatchResult _)
+    {
+        if (State.Members.Count == 0
+            && !State.IsInParty
+            && State.LeaderName is null
+            && !State.SelfIsLeader)
+        {
+            return;
+        }
+        State.Members.Clear();
+        State.LeaderName   = null;
+        State.SelfIsLeader = false;
+        State.IsInParty    = false;
     }
 
     private void OnParHeader(MatchResult _)

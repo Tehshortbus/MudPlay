@@ -222,6 +222,26 @@ public static class DefaultPatterns
         // evictions from PartyState.Members.
         yield return new RegexPattern(KnownPatterns.PartyMemberDeath,
             @"^(?<player>\w+) has been slain by ");
+
+        // ----- Party dissolution (Playpen-verified, 2026-06-01) ---------
+        // Three signals that should evict members / wipe the party.
+        // Verified live by uninviting Raijin from Fujin's party — the
+        // game emits the first two from the leader's side and the
+        // third + "no longer following" from the follower's side.
+        //
+        //   "Raijin has been removed from your followers."
+        //     ⇒ leader's view of an uninvite (or self-leave). Remove X.
+        //   "You are no longer following Fujin."
+        //     ⇒ follower's view of the leader uninviting us, OR our own
+        //        `unfollow` command. Remove X from the roster.
+        //   "You are not in a party at the present time."
+        //     ⇒ authoritative dissolution — wipe the whole party.
+        yield return new RegexPattern(KnownPatterns.PartyFollowerRemoved,
+            @"^(?<player>\w+) has been removed from your followers\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.PartyYouNoLongerFollowing,
+            @"^You are no longer following (?<player>\w+)\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.PartyDissolved,
+            @"^You are not in a party at the present time\.?\s*$");
     }
 
 }
