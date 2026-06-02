@@ -285,4 +285,70 @@ public sealed class AutoPartyManagerTests
         byte[] sent = Assert.Single(engine.LastSentForTests);
         Assert.Equal("invite Raijin\r", System.Text.Encoding.Latin1.GetString(sent));
     }
+
+    // ===== TTL housekeeping on party-roster changes =====
+
+    [Fact]
+    public void MemberLeavingParty_ClearsTheirInviteCooldown()
+    {
+        // Scenario from live test: Fujin auto-invites Raijin. Raijin
+        // accepts; they're in the party. Raijin walks east; party
+        // dissolves. Fujin walks back into Raijin's room — the next
+        // "Also here:" line should re-invite Raijin without waiting
+        // out the 60 s TTL. Before the fix, the stale cooldown entry
+        // suppressed the re-invite for a full minute.
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        // Initial auto-invite — TTL stamped.
+        Dispatch(router, "Also here: Raijin.");
+        Assert.Single(engine.LastSentForTests);
+        engine.LastSentForTests.Clear();
+
+        // Raijin joins the party (engine ignores subsequent "Also here:"
+        // lines while they're in our roster). Simulate by adding the row.
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        Dispatch(router, "Also here: Raijin.");
+        Assert.Empty(engine.LastSentForTests);
+
+        // Raijin leaves the party — the membership-change subscriber
+        // should drop "Raijin" from the cooldown map so a subsequent
+        // sighting can re-invite immediately.
+        party.Members.RemoveAt(0);
+
+        Dispatch(router, "Also here: Raijin.");
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void PartyFullyDissolving_ClearsEntireInviteCooldownMap()
+    {
+        // Whole-party wipe (IsInParty flips false) — the entire cooldown
+        // map flushes so any previous roster member that re-appears in
+        // our room becomes immediately eligible for a fresh auto-invite.
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        SeedPlayer(players, "Helper", inviteOnSeen: true);
+
+        // Stamp both cooldowns from a first sighting.
+        Dispatch(router, "Also here: Raijin, Helper.");
+        Assert.Equal(2, engine.LastSentForTests.Count);
+        engine.LastSentForTests.Clear();
+
+        // Both joined the party, then it dissolved.
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        party.Members.Add(new PartyMember { Name = "Helper" });
+        party.IsInParty = true;
+        party.Members.Clear();
+        party.IsInParty = false; // triggers the map flush.
+
+        // Both should now be re-invite-eligible immediately.
+        Dispatch(router, "Also here: Raijin, Helper.");
+        Assert.Equal(2, engine.LastSentForTests.Count);
+        Assert.Contains(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "invite Helper\r");
+    }
 }

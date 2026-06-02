@@ -84,6 +84,37 @@ public sealed class AutoPartyManager : IDisposable
 
         _alsoHereSub    = _router.Subscribe(KnownPatterns.RoomAlsoHere,        OnRoomAlsoHere);
         _partyInviteSub = _router.Subscribe(KnownPatterns.PartyInviteReceived, OnPartyInviteReceived);
+
+        // TTL housekeeping — drop the cooldown entry for any member that
+        // leaves the roster (so a player who separates from us and then
+        // re-enters our room is eligible for a fresh auto-invite without
+        // waiting out the 60 s window) and flush the entire map when the
+        // party fully dissolves (every roster member is gone — any of
+        // them could be re-invited the next "Also here:").
+        _party.Members.CollectionChanged += OnPartyMembersChanged;
+        _party.PropertyChanged           += OnPartyPropertyChanged;
+    }
+
+    private void OnPartyMembersChanged(object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is null) return;
+        foreach (object? item in e.OldItems)
+        {
+            if (item is not PartyMember m) continue;
+            string given = ExtractGiven(m.Name);
+            if (!string.IsNullOrEmpty(given)) _recentlyInvited.Remove(given);
+        }
+    }
+
+    private void OnPartyPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Full dissolution wipes the cooldown so any prior roster
+        // member that re-appears in our room can be auto-invited fresh.
+        if (e.PropertyName == nameof(PartyState.IsInParty) && !_party.IsInParty)
+        {
+            _recentlyInvited.Clear();
+        }
     }
 
     /// <summary>
@@ -106,6 +137,8 @@ public sealed class AutoPartyManager : IDisposable
         _disposed = true;
         _alsoHereSub.Dispose();
         _partyInviteSub.Dispose();
+        _party.Members.CollectionChanged -= OnPartyMembersChanged;
+        _party.PropertyChanged           -= OnPartyPropertyChanged;
     }
 
     // ----- Handlers ------------------------------------------------------
