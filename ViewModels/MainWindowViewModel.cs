@@ -362,6 +362,12 @@ public partial class MainWindowViewModel : ObservableObject
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
 
+        // PartyManager lives at AppServices level (so the @-command engine
+        // and PartyWindow can grab a stable reference), but its par-block
+        // state machine needs the per-session LineExtractor. Same wiring
+        // shape as TriggerEngine.AttachLineExtractor.
+        AppServices.Current.Party.AttachLineExtractor(Lines);
+
         // Macro dispatcher needs a wire-send callback before it can fire.
         // TerminalControl + ConversationWindow's input both call into the
         // dispatcher on KeyDown — without a sender bound, the call returns

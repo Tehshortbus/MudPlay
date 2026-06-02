@@ -112,6 +112,24 @@ public sealed class AppServices
     public Game.PromptParser Player { get; }
 
     /// <summary>
+    /// Live party-membership state — roster, leader, per-member HP%/MA%/
+    /// position/status-flags. Updated by <see cref="Party"/> from
+    /// follows-you / stops-following messages and the multi-line
+    /// <c>par</c> table. Bound by the Phase 6 PR 6.6 PartyWindow and
+    /// read by the Phase 6 PR 6.2 remote-command engine to gate the
+    /// <c>@party &lt;sub&gt;</c> whitelist.
+    /// </summary>
+    public Game.PartyState PartyState { get; }
+
+    /// <summary>
+    /// Sole writer of <see cref="PartyState"/> — every observable field
+    /// on <see cref="Game.PartyState"/> and <see cref="Game.PartyMember"/>
+    /// declares this type via <see cref="OwnerAttribute"/>, enforced by
+    /// the Phase 3 PR 3.5 single-writer IL scan.
+    /// </summary>
+    public Game.PartyManager Party { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -363,6 +381,8 @@ public sealed class AppServices
         PlayerState = new Game.PlayerState();
         PromptScanner = new WirePromptScanner();
         Player = new Game.PromptParser(PromptScanner, PlayerState);
+        PartyState = new Game.PartyState();
+        Party = new Game.PartyManager(Router, PartyState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
         Triggers = new TriggerEngine(Profile, Chat, Log);
