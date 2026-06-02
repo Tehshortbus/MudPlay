@@ -167,11 +167,12 @@ public sealed class AutoPartyManagerTests
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
-    // ===== Accept-invite via "X has invited you to follow him/her/them" =====
+    // ===== Accept-invite via "X has invited you to follow him/her" =====
     //
     // Real Playpen BBS wording (verified live, 2026-06-01 screenshot):
     //   "Fujin has invited you to follow him."
-    // Pronoun varies him / her / them.
+    // MajorMUD player characters are male or female only, so the
+    // pronoun alternation is him / her — no "them" arm.
 
     [Fact]
     public void InviteReceived_FlaggedSender_SendsFollow()
@@ -201,7 +202,7 @@ public sealed class AutoPartyManagerTests
     {
         var (engine, router, _, _) = Setup();
 
-        Dispatch(router, "Stranger has invited you to follow them.");
+        Dispatch(router, "Stranger has invited you to follow her.");
 
         Assert.Empty(engine.LastSentForTests);
     }
@@ -209,7 +210,6 @@ public sealed class AutoPartyManagerTests
     [Theory]
     [InlineData("him")]
     [InlineData("her")]
-    [InlineData("them")]
     public void InviteReceived_PronounVariants_AllMatch(string pronoun)
     {
         var (engine, router, players, _) = Setup();
@@ -218,6 +218,20 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, $"Fujin has invited you to follow {pronoun}.");
 
         Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void InviteReceived_NeuterPronoun_NoMatch()
+    {
+        // Monsters can be neuter ("it") but monsters don't issue
+        // party invites — the pattern is player→player only. A line
+        // ending in "follow it." is therefore noise, not an invite.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Fujin", joinOnInvited: true);
+
+        Dispatch(router, "Fujin has invited you to follow it.");
+
+        Assert.Empty(engine.LastSentForTests);
     }
 
     [Fact]

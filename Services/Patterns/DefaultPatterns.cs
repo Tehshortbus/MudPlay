@@ -185,13 +185,17 @@ public static class DefaultPatterns
 
         // Incoming party invite from another player. Real Playpen BBS
         // wording (verified live, 2026-06-01): "Fujin has invited you
-        // to follow him." Gender-pronoun varies (him / her / them);
-        // alternate covers all three. The earlier "invites you to join
-        // his party" form was a guess at the wording — left out so the
-        // pattern only matches what the game actually emits, otherwise
-        // unrelated lines could false-positive.
+        // to follow him."
+        //
+        // MajorMUD gender vocabulary — apply consistently when adding
+        // future patterns that involve subject/object pronouns:
+        //   * Player characters: male | female (him / her only).
+        //   * Monsters: male | female | neuter (him / her / it).
+        // Party invites are always player→player so the alternation
+        // here is just him/her. Monster-flavour patterns (combat
+        // misses, mob taunts, etc.) need the third arm.
         yield return new RegexPattern(KnownPatterns.PartyInviteReceived,
-            @"^(?<player>\w+) has invited you to follow (?:him|her|them)\.?\s*$");
+            @"^(?<player>\w+) has invited you to follow (?:him|her)\.?\s*$");
 
         // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
         // Real-BBS-verified patterns (Playpen BBS observation, Phase 6

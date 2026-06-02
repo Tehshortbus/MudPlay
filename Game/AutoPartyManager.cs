@@ -22,7 +22,7 @@ namespace FujinTerm.Game;
 ///         in <see cref="PartyState.Members"/>.</item>
 ///   <item><b>Accept-invite</b> — when another player sends us an in-game
 ///         party invite (<see cref="KnownPatterns.PartyInviteReceived"/>,
-///         matching "X has invited you to follow him/her/them"), look up
+///         matching "X has invited you to follow him/her"), look up
 ///         their customization. If
 ///         <see cref="PlayerCustomization.JoinPartyIfInvited"/> is set,
 ///         send <c>follow &lt;given&gt;</c> (the MajorMUD accept
