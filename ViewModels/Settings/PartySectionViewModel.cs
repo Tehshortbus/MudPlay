@@ -164,6 +164,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         AppServices svcs = AppServices.Current;
         svcs.PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
         svcs.Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
+        svcs.Party.LocalRankPreference = dto.Rank;
         svcs.PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
     }
 
