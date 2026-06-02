@@ -351,6 +351,36 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParBlock_NonFullHpPercent_ParsesLeadingSpacePadding()
+    {
+        // MajorMUD right-pads the percentage to a 3-char column so the
+        // table aligns: at 100% no padding ("[H:100%]"), at <100% a
+        // leading space ("[H: 85%]"), at <10% two leading spaces
+        // ("[H:  5%]"). Earlier regex required no whitespace between
+        // the colon and the digits, so every non-100% par row silently
+        // failed to match and PartyMember.HpPercent stayed frozen at
+        // whatever the last 100% poll captured.
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M: 72%] [H: 85%]   - Backrank",
+            "  Hurter WuzHere                  (Mystic)        [M:  3%] [H:  5%]   - Frontrank",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Midrank",
+            string.Empty,
+        });
+
+        PartyMember raijin = p.State.Members.First(x => x.Name == "Raijin WuzHere");
+        PartyMember hurter = p.State.Members.First(x => x.Name == "Hurter WuzHere");
+        PartyMember fujin  = p.State.Members.First(x => x.Name == "Fujin WuzHere");
+        Assert.Equal(85, raijin.HpPercent);
+        Assert.Equal(72, raijin.MpPercent);
+        Assert.Equal(5,  hurter.HpPercent);
+        Assert.Equal(3,  hurter.MpPercent);
+        Assert.Equal(100, fujin.HpPercent);
+    }
+
+    [Fact]
     public void LiveRankChange_OtherMember_UpdatesRankImmediately()
     {
         // Observer side: when another party member reranks, the game

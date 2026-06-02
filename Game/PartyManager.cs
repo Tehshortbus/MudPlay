@@ -99,19 +99,28 @@ public sealed partial class PartyManager : IDisposable
     /// Playpen BBS:
     /// <code>
     ///   Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank
-    ///   Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank
+    ///   Fujin WuzHere                   (Mystic)                  [H: 96%]   - Frontrank
+    ///   Raijin WuzHere                  (Priest)        [M:100%] [H: 85%]   - Backrank
     /// </code>
     /// Name is given + (optional) family. Class is in parens and can
     /// contain spaces ("High Priest" etc.). <c>[M:N%]</c> is optional —
     /// non-caster classes / display rules omit it. <c>[H:N%]</c> is
     /// load-bearing; rows without it aren't member rows.
+    /// <para>
+    /// IMPORTANT: the percentage is right-padded to a 3-char column.
+    /// At 100% there's no padding (<c>[H:100%]</c>), at &lt;100% there's
+    /// a leading space (<c>[H: 85%]</c>, <c>[H:  5%]</c>). The regex
+    /// must allow that space — otherwise every non-100% row silently
+    /// fails to match and HP percent stays frozen between full and
+    /// empty.
+    /// </para>
     /// <c>- Rank</c> is an optional trailing chip (Frontrank / Midrank /
     /// Backrank). par doesn't carry Position — that field stays at its
     /// default (Standing) for non-self members until a future PR adds a
     /// per-member status query.
     /// </summary>
     [GeneratedRegex(
-        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:(?<mp>\d+)%\])?\s*\[H:(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:\s*(?<mp>\d+)%\])?\s*\[H:\s*(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
         RegexOptions.CultureInvariant)]
     private static partial Regex ParRow();
 
