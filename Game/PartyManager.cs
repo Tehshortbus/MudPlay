@@ -606,6 +606,57 @@ public sealed partial class PartyManager : IDisposable
     /// <summary>Test seam — read-only view of the disconnect grace window.</summary>
     internal IReadOnlyDictionary<string, DateTimeOffset> RecentlyDisconnected => _recentlyDisconnected;
 
+    /// <summary>
+    /// End-of-par-block reconciliation — when we're leader, any member
+    /// the par output omitted is a "lost" member. Stamp them into the
+    /// grace window and drop the roster row so the
+    /// Re-invite-lost-party-members flow picks them up if they
+    /// reconnect within the window. Mirrors the dissolution-snapshot
+    /// path, but works for parties of 3+ where a single drop doesn't
+    /// dissolve the whole party (par just shows N-1 instead of N).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Defensive guard: only acts when at least one row was parsed
+    /// this cycle. An empty <see cref="_parBlockNames"/> set means
+    /// the par output was malformed / truncated / never finished —
+    /// not "everyone disappeared". Without this gate every transient
+    /// parse failure would flag the entire party as missing.
+    /// </para>
+    /// <para>
+    /// Names in <see cref="_parBlockNames"/> are the full par-row
+    /// names ("Raijin WuzHere"); <see cref="AddOrTouchMember"/>
+    /// upgrades existing members' <see cref="PartyMember.Name"/> to
+    /// the long form on first observation, so by the time this runs
+    /// the comparison hits for every member whose row was present.
+    /// </para>
+    /// </remarks>
+    private void ReconcileMissingFromPar()
+    {
+        if (_parBlockNames.Count == 0) return;
+        if (!State.SelfIsLeader) return;
+
+        DateTimeOffset now = NowProvider();
+        List<PartyMember>? missing = null;
+        foreach (PartyMember m in State.Members)
+        {
+            if (m.IsSelf) continue;
+            if (string.IsNullOrEmpty(m.Name)) continue;
+            if (_parBlockNames.Contains(m.Name)) continue;
+            (missing ??= new()).Add(m);
+        }
+        if (missing is null) return;
+
+        foreach (PartyMember m in missing)
+        {
+            string given = GivenNameOf(m.Name);
+            if (!string.IsNullOrEmpty(given))
+                _recentlyDisconnected[given] = now;
+            State.Members.Remove(m);
+        }
+        State.IsInParty = State.Members.Count > 0;
+    }
+
     // ----- Live rank-change observers -----------------------------------
 
     /// <summary>
@@ -691,6 +742,7 @@ public sealed partial class PartyManager : IDisposable
         if (string.IsNullOrWhiteSpace(text))
         {
             _parState = ParState.Idle;
+            ReconcileMissingFromPar();
             return;
         }
         Match m = ParRow().Match(text);

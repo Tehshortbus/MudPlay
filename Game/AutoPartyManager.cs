@@ -47,6 +47,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly IDisposable _alsoHereSub;
     private readonly IDisposable _partyInviteSub;
     private readonly IDisposable _telepathSub;
+    private readonly IDisposable _followerRemovedSub;
     private bool _disposed;
 
     /// <summary>
@@ -80,6 +81,22 @@ public sealed class AutoPartyManager : IDisposable
     /// <summary>Per-given-name TTL map suppressing rapid re-invites.</summary>
     private readonly Dictionary<string, DateTime> _recentlyInvited =
         new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Per-given-name TTL map suppressing auto-invites for a player we
+    /// just kicked. When the user clicks the Uninvite button (or any
+    /// other path through <c>uninvite X</c>), the server emits
+    /// "X has been removed from your followers." — we stamp X here so
+    /// the next "Also here: X" line doesn't immediately re-add them
+    /// and start the nag flow again. Default suppression window is
+    /// 1 hour; users who want a longer / permanent block can turn off
+    /// <c>InviteToPartyIfSeen</c> on the Players-tab record instead.
+    /// </summary>
+    private readonly Dictionary<string, DateTime> _recentlyUninvited =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Window after an uninvite during which the player won't be auto-invited again. Default 1 h.</summary>
+    public TimeSpan UninviteSuppression { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>Per-target nag-escalation state — live for the duration of the @join sequence.</summary>
     private readonly Dictionary<string, NagState> _activeNags =
@@ -122,6 +139,12 @@ public sealed class AutoPartyManager : IDisposable
         // Incoming telepath replies feed the @join nag escalation —
         // {Ok} stops the sends, anything else aborts the nag entirely.
         _telepathSub    = _router.Subscribe(KnownPatterns.ConversationTelepathIn, OnTelepathIncoming);
+        // "X has been removed from your followers" — leader-side
+        // confirmation that an `uninvite` we (or someone on our
+        // behalf) sent landed. Stamp X into the uninvite-suppression
+        // map and kill any active nag so we don't immediately
+        // re-invite + re-nag the person we just kicked.
+        _followerRemovedSub = _router.Subscribe(KnownPatterns.PartyFollowerRemoved, OnFollowerRemoved);
 
         // TTL housekeeping — drop the cooldown entry for any member that
         // leaves the roster (so a player who separates from us and then
@@ -176,6 +199,25 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// "X has been removed from your followers." — leader-side
+    /// uninvite confirmation. Suppress further auto-invites of X for
+    /// <see cref="UninviteSuppression"/> and cancel any in-flight
+    /// nag so we don't immediately re-add the person we just kicked.
+    /// </summary>
+    private void OnFollowerRemoved(MatchResult match)
+    {
+        if (match.Groups.Count == 0) return;
+        string name = match.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        string given = ExtractGiven(name);
+        if (string.IsNullOrEmpty(given)) return;
+        _recentlyUninvited[given] = NowProvider();
+        CancelNag(given, reason: "uninvited by leader");
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Suppressing auto-invite of {given} for {UninviteSuppression.TotalMinutes:0} min (uninvited).");
+    }
+
     private void OnTelepathIncoming(MatchResult match)
     {
         // Group 0 = player; Group 1 = message.
@@ -223,6 +265,7 @@ public sealed class AutoPartyManager : IDisposable
         _alsoHereSub.Dispose();
         _partyInviteSub.Dispose();
         _telepathSub.Dispose();
+        _followerRemovedSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
         StopNagTimer();
@@ -272,6 +315,14 @@ public sealed class AutoPartyManager : IDisposable
 
         if (!FindCustomization(given, out PlayerCustomization c)) return;
         if (!c.InviteToPartyIfSeen) return;
+
+        // Uninvite suppression — if we just kicked this player, don't
+        // re-add them. Lazy expiry on read so the map self-prunes.
+        if (_recentlyUninvited.TryGetValue(given, out DateTime kickedAt))
+        {
+            if (NowProvider() - kickedAt < UninviteSuppression) return;
+            _recentlyUninvited.Remove(given);
+        }
 
         // Bail BEFORE the TTL bookkeeping if we can't actually send.
         // Without this guard a too-early "Also here:" line (e.g. the

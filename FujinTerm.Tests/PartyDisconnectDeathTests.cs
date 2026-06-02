@@ -134,6 +134,116 @@ public sealed class PartyDisconnectDeathTests
     }
 
     [Fact]
+    public void ParPoll_MissingMemberInPartyOf3_StampsLostAndRemoves()
+    {
+        // Party of 3 — when a single member drops without a per-player
+        // signal, the party survives and the next par poll just shows
+        // N-1. End-of-block reconciliation detects the missing member,
+        // stamps their given name into the grace window, and drops
+        // them from the roster so the Re-invite-lost-party-members
+        // flow can pick them up on reconnect.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Fujin" };
+        mgr.NowProvider = () => Now;
+        mgr.SetWireSender(_ => { });
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.True(mgr.State.SelfIsLeader);
+
+        // First par poll — all three present, names upgrade to long form.
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
+            string.Empty,
+        });
+        Assert.Equal(3, mgr.State.Members.Count);
+
+        // Second par poll — Raijin dropped silently; par shows just
+        // Fujin + Helper. Reconciliation should mark Raijin as lost.
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
+            string.Empty,
+        });
+
+        Assert.Equal(2, mgr.State.Members.Count);
+        Assert.DoesNotContain(mgr.State.Members, m => m.Name.StartsWith("Raijin"));
+        Assert.Contains("Raijin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParPoll_MissingMember_AndReconnectsWithinWindow_GetsReinvited()
+    {
+        // End-to-end for the 3+-party case: par drops Raijin's row →
+        // they're stamped → they re-enter the realm → invite fires.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Fujin" };
+        mgr.NowProvider = () => Now;
+        List<byte[]> wire = new();
+        mgr.SetWireSender(wire.Add);
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("Helper started to follow you."));
+
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
+            string.Empty,
+        });
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
+            string.Empty,
+        });
+        wire.Clear();
+
+        router.Dispatch(Line("Raijin just entered the Realm."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void ParPoll_EmptyBlock_DoesNotFlagMembersAsLost()
+    {
+        // Defensive: a malformed/truncated par block (zero parsed
+        // rows) shouldn't false-positive every member as missing.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Fujin" };
+        mgr.NowProvider = () => Now;
+        mgr.SetWireSender(_ => { });
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("Helper started to follow you."));
+        int before = mgr.State.Members.Count;
+
+        // Header fires (par block opens) but no rows parse — terminator
+        // arrives immediately.
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[] { string.Empty });
+
+        Assert.Equal(before, mgr.State.Members.Count);
+        Assert.Empty(mgr.RecentlyDisconnected);
+    }
+
+    [Fact]
     public void StopsFollowing_StampsMemberIntoGraceWindow()
     {
         // "X stops following you" is leader-side only — we didn't

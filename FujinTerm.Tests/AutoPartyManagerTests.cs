@@ -579,4 +579,79 @@ public sealed class AutoPartyManagerTests
         Assert.Contains(engine.LastSentForTests,
             b => Encoding.Latin1.GetString(b) == "invite Helper\r");
     }
+
+    // ===== Uninvite suppression =====
+
+    [Fact]
+    public void Uninvite_SuppressesAutoInviteForTheUninvitedPlayer()
+    {
+        // The leader's "X has been removed from your followers" line
+        // confirms an uninvite landed. Auto-invite of that player
+        // should be suppressed for the next UninviteSuppression window,
+        // so the next "Also here: X" line doesn't immediately re-add
+        // them and re-fire the @join nag.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.UninviteSuppression = TimeSpan.FromMinutes(60);
+
+        Dispatch(router, "Raijin has been removed from your followers.");
+        engine.LastSentForTests.Clear();
+
+        // 10 min later — still inside the suppression window.
+        engine.NowProvider = () => t0.AddMinutes(10);
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Uninvite_SuppressionExpires_AllowsReinviteAfterWindow()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.UninviteSuppression = TimeSpan.FromMinutes(60);
+
+        Dispatch(router, "Raijin has been removed from your followers.");
+        engine.LastSentForTests.Clear();
+
+        // Past the suppression window AND past the regular 60s
+        // re-invite cooldown.
+        engine.NowProvider = () => t0.AddMinutes(61);
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void Uninvite_CancelsActiveNagInFlight()
+    {
+        // Uninvite arriving mid-nag should kill the nag — the player
+        // we're nagging is the one we just kicked.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        Assert.Equal(2, engine.LastSentForTests.Count); // invite + 1st @join
+
+        Dispatch(router, "Raijin has been removed from your followers.");
+        engine.LastSentForTests.Clear();
+
+        // Further ticks — no more @join because the nag was cancelled.
+        engine.NowProvider = () => t0.AddSeconds(20);
+        engine.TickNagsForTests();
+        engine.NowProvider = () => t0.AddSeconds(40);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
 }
