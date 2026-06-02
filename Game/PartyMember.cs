@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game;
@@ -105,6 +106,16 @@ public sealed partial class PartyMember : ObservableObject
     /// <c>par</c> table). Drives the leader-star UI badge.
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _isLeader;
+
+    /// <summary>
+    /// Combat rank parsed from the last column of the <c>par</c> table
+    /// (<c>Frontrank</c> / <c>Midrank</c> / <c>Backrank</c>). Drives
+    /// the per-row rank chip in the PartyWindow — the skeleton design
+    /// shows it on every row, colour-coded per rank, not just for the
+    /// local self row. Defaults to <see cref="PartyRank.Mid"/> when
+    /// the par column is absent or unrecognised.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(PartyManager))] private PartyRank _rank = PartyRank.Mid;
 
     /// <summary>
     /// True when this member is the locally connected character (the row

@@ -326,6 +326,31 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParBlock_Rank_ParsedPerMember()
+    {
+        // The trailing column of each par row carries the combat rank
+        // (Frontrank / Midrank / Backrank). PartyMember.Rank stores it
+        // so the PartyWindow can render the per-row rank chip in the
+        // skeleton-design colour-coded style. Default Mid when missing.
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            "  Backline WuzHere                (Mage)          [M:100%] [H:100%]   - Backrank",
+            string.Empty,
+        });
+
+        PartyMember raijin = p.State.Members.First(x => x.Name == "Raijin WuzHere");
+        PartyMember fujin  = p.State.Members.First(x => x.Name == "Fujin WuzHere");
+        PartyMember back   = p.State.Members.First(x => x.Name == "Backline WuzHere");
+        Assert.Equal(Models.Profile.PartyRank.Mid,   raijin.Rank);
+        Assert.Equal(Models.Profile.PartyRank.Front, fujin.Rank);
+        Assert.Equal(Models.Profile.PartyRank.Back,  back.Rank);
+    }
+
+    [Fact]
     public void ParBlock_StateFlag_R_SetsRestingPosition()
     {
         // The single-letter column between [H:nn%] and the dash carries

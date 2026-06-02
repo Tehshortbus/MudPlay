@@ -539,6 +539,20 @@ public sealed partial class PartyManager : IDisposable
             }
             : PlayerPosition.Standing;
 
+        // Rank text from the last par column (Frontrank / Midrank /
+        // Backrank). The regex already captures the word; map it to
+        // the PartyRank enum so the PartyWindow rank-chip can render
+        // a consistent label + colour per row. Unknown / missing
+        // values fall through to Mid.
+        Models.Profile.PartyRank rank = m.Groups["rank"].Success
+            ? m.Groups["rank"].Value switch
+            {
+                "Frontrank" => Models.Profile.PartyRank.Front,
+                "Backrank"  => Models.Profile.PartyRank.Back,
+                _           => Models.Profile.PartyRank.Mid,
+            }
+            : Models.Profile.PartyRank.Mid;
+
         // IsSelf detection — both sides are reduced to given (first
         // whitespace token) before comparing. The par row carries
         // "Given Family"; LocalCharacterName may carry the same shape
@@ -562,6 +576,7 @@ public sealed partial class PartyManager : IDisposable
         member.HpPercent = hpPct;
         if (mpPct is { } v) member.MpPercent = v;
         member.Position = position;
+        member.Rank     = rank;
         // Mirror the par-state into the boolean flags so the PartyWindow
         // status-chip strip (which keys on these booleans) lights up too.
         member.Resting    = position == PlayerPosition.Resting;

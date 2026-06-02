@@ -151,24 +151,21 @@
                                        Foreground="{StaticResource AccentPrimaryBrush}"
                                        IsVisible="{Binding IsLeader}"/>
 
-                            <!-- (1) Rank chip — self only -->
+                            <!-- (1) Rank chip — every row, colour-coded per rank.
+                                 Front = red (melee), Mid = amber (default), Back =
+                                 cyan (caster). Parsed from the par row's last
+                                 column (Frontrank / Midrank / Backrank) into the
+                                 PartyMember.Rank enum. -->
                             <Border Grid.Column="1"
                                     Classes="RankChip"
-                                    Background="{StaticResource AccentAmberSoftBrush}"
-                                    IsVisible="{Binding IsSelf}">
-                                <TextBlock VerticalAlignment="Center"
+                                    Background="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}">
+                                <TextBlock Text="{Binding Rank, Converter={x:Static vm:RankChipConverter.Instance}}"
+                                           VerticalAlignment="Center"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="9"
                                            FontWeight="SemiBold"
                                            HorizontalAlignment="Center"
-                                           Foreground="{StaticResource ChromeFgBrush}">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0}">
-                                            <Binding Path="$parent[ItemsControl].DataContext.LocalRank"
-                                                     Converter="{x:Static vm:RankChipConverter.Instance}"/>
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
+                                           Foreground="{StaticResource ChromeFgBrush}"/>
                             </Border>
 
                             <!-- (2) Name + class -->
