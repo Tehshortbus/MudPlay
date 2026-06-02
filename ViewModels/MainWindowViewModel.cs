@@ -398,6 +398,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
         // when we finish, so the party leader's pause-gate can react.
         AppServices.Current.PartyRest.SetWireSender(SendUserInput);
+        // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
+        // broadcasts go through PartyBroadcaster.
+        AppServices.Current.PartyBroadcaster.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through

@@ -166,6 +166,14 @@ public sealed class AppServices
     public Game.PartyRestSync PartyRest { get; }
 
     /// <summary>
+    /// Phase 6 PR 6.8 — one-to-many @-command sender. Used now for
+    /// Auto-Exp-Reset (<c>@Reset</c> broadcast on loop / Auto-Lair start
+    /// once Phase 7 wires those triggers); Phase 12's panic / kill
+    /// broadcasts will share this service.
+    /// </summary>
+    public Game.Remote.PartyBroadcaster PartyBroadcaster { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -450,6 +458,11 @@ public sealed class AppServices
         // position transitions and telepaths the leader when we enter
         // / leave a rest state. Wire-sender hookup in MainWindowVM.
         PartyRest = new Game.PartyRestSync(PlayerState, PartyState);
+        // Phase 6 PR 6.8 — one-to-many @-command sender. Auto-Exp-Reset
+        // is the first consumer (Phase 7 LoopManager will call
+        // BroadcastExpReset on loop start); the broadcaster's also the
+        // canonical spot for Phase 12 panic / kill broadcasts.
+        PartyBroadcaster = new Game.Remote.PartyBroadcaster(PartyState);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
