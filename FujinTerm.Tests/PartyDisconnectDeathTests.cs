@@ -68,6 +68,88 @@ public sealed class PartyDisconnectDeathTests
     }
 
     [Fact]
+    public void Dissolution_WithoutPerPlayerSignal_StampsPriorMembersIntoGraceWindow()
+    {
+        // Real-world scenario (Playpen-like BBS): a member hangs up but
+        // the BBS only emits the account-name signal ("[Raijin] logs OFF"
+        // — we don't pattern-match that, it's not player-keyed). The
+        // result we DO see is the bare dissolution line. Treat that as
+        // the fallback "lost member" signal and seed the grace window
+        // with every prior other-member name so they're re-invite-
+        // eligible when they reconnect.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Fujin" };
+        mgr.NowProvider = () => Now;
+        mgr.SetWireSender(_ => { });
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+        Assert.True(mgr.State.SelfIsLeader);
+
+        // Dissolution arrives with no per-player signal.
+        router.Dispatch(Line("You are not in a party at the present time."));
+
+        Assert.Empty(mgr.State.Members);
+        // Snapshot key is the given name — matches the lookup
+        // OnPlayerEnters does when "Raijin just entered the Realm" fires.
+        Assert.Contains("Raijin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Dissolution_WithoutPerPlayerSignal_AndWeLead_AutoInvitesOnReconnect()
+    {
+        // End-to-end: dissolution → snapshot → re-entry within window
+        // auto-fires the invite. Wires the user's reported scenario.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Fujin" };
+        mgr.NowProvider = () => Now;
+        List<byte[]> wire = new();
+        mgr.SetWireSender(wire.Add);
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
+            "  Fujin  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+        router.Dispatch(Line("You are not in a party at the present time."));
+        wire.Clear();
+
+        router.Dispatch(Line("Raijin just entered the Realm."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void StopsFollowing_StampsMemberIntoGraceWindow()
+    {
+        // "X stops following you" is leader-side only — we didn't
+        // initiate (uninvite goes through OnFollowerRemoved). Stamp
+        // them so a reconnect can re-invite them automatically.
+        var (router, mgr, _) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.Single(mgr.State.Members);
+
+        router.Dispatch(Line("Helper has stopped following you."));
+
+        Assert.Empty(mgr.State.Members);
+        Assert.Contains("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void HungUp_AndReturnsWithinWindow_AndWeLead_SendsInvite()
     {
         var (router, mgr, wire) = Setup();

@@ -383,6 +383,12 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
+        // "X stops following you" is leader-side only — we didn't
+        // initiate (uninvite goes through OnFollowerRemoved instead),
+        // so stamp X into the grace window. If they re-enter the realm
+        // inside the window, the Re-invite-lost-members flow picks
+        // them up.
+        _recentlyDisconnected[name] = NowProvider();
         RemoveMember(name);
     }
 
@@ -442,6 +448,30 @@ public sealed partial class PartyManager : IDisposable
             && !State.SelfIsLeader)
         {
             return;
+        }
+        // If WE were the leader, snapshot every other-member name into
+        // the grace-window map before clearing. Covers the "BBS only
+        // emits account-name logoff" failure mode where we never get a
+        // per-player disconnect / hung-up line but the party dissolves
+        // on its own — any of the prior members could be the player
+        // who dropped, so all of them become re-invite candidates. The
+        // re-entry handler (OnPlayerEnters) gates on SelfIsLeader at
+        // that point, so a returning member only gets auto-invited if
+        // we're still leader / soloed at that moment.
+        if (State.SelfIsLeader)
+        {
+            DateTimeOffset now = NowProvider();
+            foreach (PartyMember m in State.Members)
+            {
+                if (m.IsSelf) continue;
+                string given = GivenNameOf(m.Name);
+                if (string.IsNullOrEmpty(given)) continue;
+                // Key by given name to match the lookup in OnPlayerEnters
+                // ("X just entered the Realm" only carries the given
+                // name). The existing per-player disconnect-stamp uses
+                // the same convention.
+                _recentlyDisconnected[given] = now;
+            }
         }
         State.Members.Clear();
         State.LeaderName   = null;
@@ -514,9 +544,19 @@ public sealed partial class PartyManager : IDisposable
 
     /// <summary>
     /// "X just entered the Realm." — if X is in the grace-window map
-    /// AND we're the party leader, auto-invite. The reconnect window
-    /// is short (default 30 s) so this only fires for actual quick
-    /// dropoffs, not for someone who left an hour ago.
+    /// AND we're not currently following someone else, auto-invite.
+    /// Reconnect window length comes from
+    /// <see cref="DisconnectGraceWindow"/> (Settings → Party "If
+    /// leading, wait only"), default 2 minutes.
+    /// <para>
+    /// Gate is "not currently a follower" rather than strict
+    /// SelfIsLeader because the dissolution-fallback path
+    /// (<see cref="OnPartyDissolved"/>) stamps prior members into the
+    /// grace window AND wipes our leadership flag — we're solo at
+    /// re-entry time, but solo-becomes-leader the moment the invite
+    /// goes out, so we should still send it. A genuine follower of
+    /// someone else's party can't invite, so that case is excluded.
+    /// </para>
     /// </summary>
     private void OnPlayerEnters(MatchResult result)
     {
@@ -531,7 +571,7 @@ public sealed partial class PartyManager : IDisposable
             return;
         }
         _recentlyDisconnected.Remove(name);
-        if (!State.SelfIsLeader) return;
+        if (State.IsInParty && !State.SelfIsLeader) return;
         if (!AutoInviteEnabled) return;
         // Send the invite if we have a wire-sender wired. The wire
         // command is the plain MajorMUD "invite <name>" — the server
