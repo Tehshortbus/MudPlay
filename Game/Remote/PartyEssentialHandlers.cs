@@ -79,14 +79,20 @@ public sealed class PartyEssentialHandlers : IDisposable
         _player = player;
         _party  = party;
 
-        _engine.RegisterHandler("@version", PlayerRemoteControls.QueryVersion,      OnVersion);
-        _engine.RegisterHandler("@health",  PlayerRemoteControls.QueryHealthStatus, OnHealth);
-        _engine.RegisterHandler("@status",  PlayerRemoteControls.QueryHealthStatus, OnStatus);
-        _engine.RegisterHandler("@par",     PlayerRemoteControls.QueryHealthStatus, OnPar);
-        _engine.RegisterHandler("@where",   PlayerRemoteControls.QueryLocation,     OnWhere);
-        _engine.RegisterHandler("@party",   PlayerRemoteControls.None,              OnParty);
-        _engine.RegisterHandler("@wait",    PlayerRemoteControls.None,              OnWait);
-        _engine.RegisterHandler("@ok",      PlayerRemoteControls.None,              OnOk);
+        // Categories sourced from RemoteCommandCatalog — single source
+        // of truth for every documented @-command's required permission
+        // category. Hardcoding the category per RegisterHandler call
+        // led to drift; routing through the catalog keeps Phase 6 and
+        // future Phase 7 / 12 handlers consistent with the wiki + the
+        // Players-tab 12-checkbox UI.
+        Register("@version", OnVersion);
+        Register("@health",  OnHealth);
+        Register("@status",  OnStatus);
+        Register("@par",     OnPar);
+        Register("@where",   OnWhere);
+        Register("@party",   OnParty);
+        Register("@wait",    OnWait);
+        Register("@ok",      OnOk);
     }
 
     /// <summary>
@@ -106,6 +112,22 @@ public sealed class PartyEssentialHandlers : IDisposable
         if (_disposed) return;
         _disposed = true;
         foreach (string cmd in RegisteredCommands) _engine.UnregisterHandler(cmd);
+    }
+
+    /// <summary>
+    /// Wrapper around <see cref="RemoteCommandManager.RegisterHandler"/>
+    /// that pulls the required category from
+    /// <see cref="RemoteCommandCatalog"/>. Throws if the command isn't in
+    /// the catalog — Phase 6 handlers are catalog-backed by definition,
+    /// so a missing entry means the catalog needs updating, not the
+    /// handler.
+    /// </summary>
+    private void Register(string command, Action<RemoteCommandContext> handler)
+    {
+        if (!RemoteCommandCatalog.TryGetCategory(command, out PlayerRemoteControls category))
+            throw new InvalidOperationException(
+                $"RemoteCommandCatalog missing entry for '{command}'. Add it to the Map before registering.");
+        _engine.RegisterHandler(command, category, handler);
     }
 
     // ----- Query handlers -------------------------------------------------
