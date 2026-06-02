@@ -21,8 +21,9 @@ namespace FujinTerm.Game;
 ///         re-renders don't re-spam. Skipped when the player is already
 ///         in <see cref="PartyState.Members"/>.</item>
 ///   <item><b>Accept-invite</b> — when another player sends us an in-game
-///         party invite (<see cref="KnownPatterns.PartyInviteReceived"/>),
-///         look up their customization. If
+///         party invite (<see cref="KnownPatterns.PartyInviteReceived"/>,
+///         matching "X has invited you to follow him/her/them"), look up
+///         their customization. If
 ///         <see cref="PlayerCustomization.JoinPartyIfInvited"/> is set,
 ///         send <c>follow &lt;given&gt;</c> (the MajorMUD accept
 ///         mechanism — joining someone's party is "follow them";

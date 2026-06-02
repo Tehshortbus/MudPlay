@@ -183,13 +183,15 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.RoomAlsoHere,
             @"^Also here: (?<players>.+?)\.\s*$");
 
-        // Incoming party invite from another player. Possessive form
-        // varies by inviter's gender ("his" / "her" / occasionally
-        // "their" in modern variants), so alternate. Captures inviter's
-        // given name — the AutoPartyManager looks up the customization
-        // flag on that name.
+        // Incoming party invite from another player. Real Playpen BBS
+        // wording (verified live, 2026-06-01): "Fujin has invited you
+        // to follow him." Gender-pronoun varies (him / her / them);
+        // alternate covers all three. The earlier "invites you to join
+        // his party" form was a guess at the wording — left out so the
+        // pattern only matches what the game actually emits, otherwise
+        // unrelated lines could false-positive.
         yield return new RegexPattern(KnownPatterns.PartyInviteReceived,
-            @"^(?<player>\w+) invites you to join (?:his|her|their) party\.?\s*$");
+            @"^(?<player>\w+) has invited you to follow (?:him|her|them)\.?\s*$");
 
         // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
         // Real-BBS-verified patterns (Playpen BBS observation, Phase 6

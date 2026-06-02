@@ -167,27 +167,31 @@ public sealed class AutoPartyManagerTests
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
-    // ===== Accept-invite via "X invites you to join their/his/her party" =====
+    // ===== Accept-invite via "X has invited you to follow him/her/them" =====
+    //
+    // Real Playpen BBS wording (verified live, 2026-06-01 screenshot):
+    //   "Fujin has invited you to follow him."
+    // Pronoun varies him / her / them.
 
     [Fact]
     public void InviteReceived_FlaggedSender_SendsFollow()
     {
         var (engine, router, players, _) = Setup();
-        SeedPlayer(players, "Raijin", joinOnInvited: true);
+        SeedPlayer(players, "Fujin", joinOnInvited: true);
 
-        Dispatch(router, "Raijin invites you to join his party.");
+        Dispatch(router, "Fujin has invited you to follow him.");
 
         byte[] sent = Assert.Single(engine.LastSentForTests);
-        Assert.Equal("follow Raijin\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("follow Fujin\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
     public void InviteReceived_UnflaggedSender_NoAccept()
     {
         var (engine, router, players, _) = Setup();
-        SeedPlayer(players, "Raijin", joinOnInvited: false);
+        SeedPlayer(players, "Fujin", joinOnInvited: false);
 
-        Dispatch(router, "Raijin invites you to join his party.");
+        Dispatch(router, "Fujin has invited you to follow him.");
 
         Assert.Empty(engine.LastSentForTests);
     }
@@ -197,21 +201,21 @@ public sealed class AutoPartyManagerTests
     {
         var (engine, router, _, _) = Setup();
 
-        Dispatch(router, "Stranger invites you to join their party.");
+        Dispatch(router, "Stranger has invited you to follow them.");
 
         Assert.Empty(engine.LastSentForTests);
     }
 
     [Theory]
-    [InlineData("his")]
+    [InlineData("him")]
     [InlineData("her")]
-    [InlineData("their")]
-    public void InviteReceived_PossessiveFormVariants_AllMatch(string possessive)
+    [InlineData("them")]
+    public void InviteReceived_PronounVariants_AllMatch(string pronoun)
     {
         var (engine, router, players, _) = Setup();
-        SeedPlayer(players, "Raijin", joinOnInvited: true);
+        SeedPlayer(players, "Fujin", joinOnInvited: true);
 
-        Dispatch(router, $"Raijin invites you to join {possessive} party.");
+        Dispatch(router, $"Fujin has invited you to follow {pronoun}.");
 
         Assert.Single(engine.LastSentForTests);
     }
@@ -220,11 +224,11 @@ public sealed class AutoPartyManagerTests
     public void InviteReceived_AlreadyInParty_NoDuplicateFollow()
     {
         var (engine, router, players, party) = Setup();
-        SeedPlayer(players, "Raijin", joinOnInvited: true);
-        party.Members.Add(new PartyMember { Name = "Raijin" });
+        SeedPlayer(players, "Fujin", joinOnInvited: true);
+        party.Members.Add(new PartyMember { Name = "Fujin" });
         party.IsInParty = true;
 
-        Dispatch(router, "Raijin invites you to join their party.");
+        Dispatch(router, "Fujin has invited you to follow him.");
 
         Assert.Empty(engine.LastSentForTests);
     }
