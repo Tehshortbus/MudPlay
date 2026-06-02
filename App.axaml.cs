@@ -59,6 +59,9 @@ public partial class App : Application
                 FujinTerm.ViewModels.GameData.Edit.PlayerEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.PlayerEditDialog>();
             AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.PlayerAddDialogViewModel,
+                FujinTerm.Views.GameData.Edit.PlayerAddDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.MacroEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.MacroEditDialog>();
             AppServices.Current.Dialogs.RegisterWindow<

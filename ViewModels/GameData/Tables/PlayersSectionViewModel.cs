@@ -42,7 +42,12 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
-    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    public IRelayCommand AddAsyncCommand { get; }
+    public IRelayCommand RemoveSelectedCommand { get; }
+
+    ICommand  IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand      => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand   => RemoveSelectedCommand;
 
     // Stored as a field so Dispose can detach — the database singleton
     // otherwise pins every section VM ever created across browser opens.
@@ -55,7 +60,16 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         _dialogs = dialogs;
         _handler = (_, _) => Reload();
         _db.Players.CollectionChanged += _handler;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
         Reload();
     }
 
@@ -86,6 +100,35 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         if (rc == PlayerRemoteControls.None) return "None";
         if (rc == PlayerRemoteControls.All)  return "All";
         return "Some";
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        PlayerAddDialogViewModel vm = new(_db);
+        PlayerAddResult? created = await _dialogs.OpenWindowAsync<PlayerAddDialogViewModel, PlayerAddResult>(vm);
+        if (created is null) return;
+        // Mint a fresh observation at "now" — the user can refine flags
+        // afterward via the existing edit dialog (double-click the row).
+        _db.AddManual(created.GivenName, created.FamilyName, DateTime.UtcNow);
+    }
+
+    private void RemoveSelected()
+    {
+        // Customizations stay attached to the profile so a future
+        // re-observation auto-rebinds the user's flags. Removing an
+        // observation is therefore safely reversible by next `who`.
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+
+        List<string> givens = new();
+        foreach (GameDataRow row in selection)
+        {
+            string given = row.Get("Given Name") ?? string.Empty;
+            if (!string.IsNullOrEmpty(given)) givens.Add(given);
+        }
+        foreach (string g in givens) _db.RemoveByGivenName(g);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)

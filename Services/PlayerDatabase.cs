@@ -244,6 +244,54 @@ public sealed class PlayerDatabase
     }
 
     /// <summary>
+    /// Manually add a player record from the Game Data Browser → Players
+    /// tab's Add button. Differs from <see cref="RecordObservation"/>
+    /// only in intent — same merge semantics if the given-name already
+    /// exists (overwrites Family, bumps LastSeen, keeps prior fields the
+    /// caller didn't supply). Returns <c>true</c> when a brand-new row
+    /// was created, <c>false</c> when the call merged into an existing
+    /// row.
+    /// </summary>
+    public bool AddManual(string givenName, string familyName, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(givenName);
+        string given  = givenName.Trim();
+        string family = (familyName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(given)) return false;
+
+        bool isNew = !_observations.ContainsKey(given);
+        // Re-use the observation pipeline so the dedup + sparse-merge
+        // rules apply consistently. A manual add with no class / race /
+        // alignment etc. is treated as a sparse observation — exactly
+        // the right semantics: we don't claim to know more than what
+        // the user typed.
+        string composedName = string.IsNullOrEmpty(family) ? given : $"{given} {family}";
+        RecordObservation(composedName, null, null, null, null, null, null, nowUtc);
+        return isNew;
+    }
+
+    /// <summary>
+    /// Remove the observation for one player by given-name. Returns
+    /// <c>true</c> when a row was removed. The customization layer
+    /// stays attached to the profile — if the user re-observes this
+    /// player later (via <c>who</c> or <c>look</c>), the customization
+    /// automatically re-binds. To reset customizations too, the user
+    /// uses the edit dialog to clear every flag (which removes the
+    /// customization entry once <see cref="PlayerCustomization.IsDefault"/>
+    /// is true).
+    /// </summary>
+    public bool RemoveByGivenName(string givenName)
+    {
+        if (string.IsNullOrWhiteSpace(givenName)) return false;
+        (string given, _) = PlayerObservation.SplitName(givenName);
+        if (string.IsNullOrEmpty(given)) return false;
+        if (!_observations.Remove(given)) return false;
+        Rebuild();
+        SaveObservations();
+        return true;
+    }
+
+    /// <summary>
     /// Drop every observation last seen more than <paramref name="days"/>
     /// days ago, EXCEPT those whose customization is flagged
     /// <see cref="PlayerCustomization.DontAutoDelete"/>. Returns the

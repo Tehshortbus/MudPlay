@@ -288,6 +288,114 @@ public sealed class PlayerDatabaseTests
 
     // ===== Load-time migration from legacy display-name keyed files =====
 
+    // ===== Manual Add / Remove (PR B) =====
+
+    [Fact]
+    public void AddManual_CreatesNewRecord_WhenGivenIsUnknown()
+    {
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        bool isNew = db.AddManual("Debbie", "Par", now);
+
+        Assert.True(isNew);
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal("Debbie", r.GivenName);
+        Assert.Equal("Par",    r.FamilyName);
+        Assert.Equal(now, r.FirstSeenUtc);
+        Assert.Equal(now, r.LastSeenUtc);
+    }
+
+    [Fact]
+    public void AddManual_MergesIntoExisting_WhenGivenAlreadyTracked()
+    {
+        // Defensive: an Add against a duplicate given collapses through
+        // the same sparse-merge as RecordObservation. The dialog blocks
+        // this from happening via its CanSave validation, but the DB
+        // itself stays consistent under direct callers.
+        PlayerDatabase db = new();
+        DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Debbie Schwartz", "Mage", "Elf", "Good", null, null, null, first);
+        bool isNew = db.AddManual("Debbie", "Par", later);
+
+        Assert.False(isNew);
+        Assert.Single(db.Players);
+        Assert.Equal("Par",  db.Players[0].FamilyName);
+        Assert.Equal("Mage", db.Players[0].Class);   // sparse-merge preserves
+        Assert.Equal(first,  db.Players[0].FirstSeenUtc);
+    }
+
+    [Fact]
+    public void AddManual_EmptyGiven_NoOp()
+    {
+        PlayerDatabase db = new();
+        Assert.False(db.AddManual("", "Par", DateTime.UtcNow));
+        Assert.False(db.AddManual("   ", "", DateTime.UtcNow));
+        Assert.Empty(db.Players);
+    }
+
+    [Fact]
+    public void RemoveByGivenName_DropsTheRow()
+    {
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        db.RecordObservation("Debbie Par", null, null, null, null, null, null, now);
+        db.RecordObservation("Helper Lastname", null, null, null, null, null, null, now);
+
+        bool removed = db.RemoveByGivenName("Debbie");
+
+        Assert.True(removed);
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal("Helper", r.GivenName);
+    }
+
+    [Fact]
+    public void RemoveByGivenName_AcceptsFullDisplayName()
+    {
+        // Convenience for callers passing the full "Given Family" string —
+        // the helper splits internally and matches on the given token.
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        db.RecordObservation("Debbie Par", null, null, null, null, null, null, now);
+
+        Assert.True(db.RemoveByGivenName("Debbie Par"));
+        Assert.Empty(db.Players);
+    }
+
+    [Fact]
+    public void RemoveByGivenName_PreservesCustomization_OnProfile()
+    {
+        // Removing the observation drops the row from Players, but the
+        // customization stays attached. On the NEXT observation of the
+        // same player (real or manual), the customization re-binds.
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        db.RecordObservation("Debbie", null, null, null, null, null, null, now);
+        db.EditCustomization("Debbie", new PlayerCustomization(
+            RemoteControls: PlayerRemoteControls.QueryHealthStatus,
+            Notes:          "trusted"));
+
+        db.RemoveByGivenName("Debbie");
+        Assert.Empty(db.Players);
+
+        // Re-observe → customization snaps back into place.
+        db.RecordObservation("Debbie", null, null, null, null, null, null, now.AddDays(1));
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.True(r.RemoteControls.HasFlag(PlayerRemoteControls.QueryHealthStatus));
+        Assert.Equal("trusted", r.Notes);
+    }
+
+    [Fact]
+    public void RemoveByGivenName_UnknownGiven_NoOp()
+    {
+        PlayerDatabase db = new();
+        Assert.False(db.RemoveByGivenName("NeverSeen"));
+        Assert.False(db.RemoveByGivenName(""));
+        Assert.False(db.RemoveByGivenName("   "));
+    }
+
     [Fact]
     public void ReplaceObservations_CollapsesLegacyDuplicates_KeepingNewest()
     {
