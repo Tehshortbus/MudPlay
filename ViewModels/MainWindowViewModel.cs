@@ -401,6 +401,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
         // broadcasts go through PartyBroadcaster.
         AppServices.Current.PartyBroadcaster.SetWireSender(SendUserInput);
+        // AutoPartyManager — consumes per-player InviteToPartyIfSeen
+        // and JoinPartyIfInvited flags, sends `invite <given>` and
+        // `follow <given>` over the wire.
+        AppServices.Current.AutoParty.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through

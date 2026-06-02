@@ -174,6 +174,18 @@ public sealed class AppServices
     public Game.Remote.PartyBroadcaster PartyBroadcaster { get; }
 
     /// <summary>
+    /// Consumer of the per-player
+    /// <see cref="Models.GameData.PlayerCustomization.InviteToPartyIfSeen"/>
+    /// and
+    /// <see cref="Models.GameData.PlayerCustomization.JoinPartyIfInvited"/>
+    /// flags. Watches "Also here:" room-occupant lines + incoming
+    /// "X invites you to join their party" messages and drives the
+    /// matching <c>invite</c> / <c>follow</c> commands. Wire-sender
+    /// bound from <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.AutoPartyManager AutoParty { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -463,6 +475,12 @@ public sealed class AppServices
         // BroadcastExpReset on loop start); the broadcaster's also the
         // canonical spot for Phase 12 panic / kill broadcasts.
         PartyBroadcaster = new Game.Remote.PartyBroadcaster(PartyState);
+        // Auto-party flag consumer — invites flagged players when they
+        // appear in our room, accepts invites from flagged players.
+        // Wire-sender is bound by MainWindowViewModel once the telnet
+        // client is up; pre-binding, the engine still observes events
+        // but produces no wire output.
+        AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

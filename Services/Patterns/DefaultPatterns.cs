@@ -172,6 +172,25 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PlayerEnters,
             @"^(?<player>\w+) just entered the Realm\.");
 
+        // Room-occupant list — fires on every room render that includes
+        // visible non-mob players. Single capture group holds the full
+        // comma-separated list (with optional "and" Oxford-comma form);
+        // the consumer (AutoPartyManager) splits the list itself so we
+        // don't have to express alternation N-ways in the regex.
+        // Examples observed: "Also here: Raijin." (single),
+        // "Also here: Foo, Bar." (two), "Also here: Foo, Bar and Baz."
+        // (three with Oxford-and).
+        yield return new RegexPattern(KnownPatterns.RoomAlsoHere,
+            @"^Also here: (?<players>.+?)\.\s*$");
+
+        // Incoming party invite from another player. Possessive form
+        // varies by inviter's gender ("his" / "her" / occasionally
+        // "their" in modern variants), so alternate. Captures inviter's
+        // given name — the AutoPartyManager looks up the customization
+        // flag on that name.
+        yield return new RegexPattern(KnownPatterns.PartyInviteReceived,
+            @"^(?<player>\w+) invites you to join (?:his|her|their) party\.?\s*$");
+
         // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
         // Real-BBS-verified patterns (Playpen BBS observation, Phase 6
         // post-PR-6.8). Two distinct follow-direction signals:

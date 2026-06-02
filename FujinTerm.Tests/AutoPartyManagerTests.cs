@@ -1,0 +1,231 @@
+using System.Text;
+using FujinTerm.Game;
+using FujinTerm.Models.GameData;
+using FujinTerm.Services;
+using FujinTerm.Services.Patterns;
+using FujinTerm.Terminal;
+using Xunit;
+
+#pragma warning disable CA1859 // Intentional interface-typed deps for readability in tests.
+
+namespace FujinTerm.Tests;
+
+public sealed class AutoPartyManagerTests
+{
+    private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Self-contained engine + every dependency. Default patterns are
+    /// seeded so the RoomAlsoHere / PartyInviteReceived regexes are
+    /// resolvable. Tests dispatch via the router with synthesised
+    /// EmittedLine values and inspect the engine's LastSentForTests.
+    /// </summary>
+    private static (AutoPartyManager engine, MessageRouter router, PlayerDatabase players, PartyState party) Setup()
+    {
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new();
+        PartyState party = new();
+        AutoPartyManager engine = new(router, players, party);
+        engine.NowProvider = () => Now;
+        return (engine, router, players, party);
+    }
+
+    private static void Dispatch(MessageRouter router, string text)
+    {
+        LineExtractor.EmittedLine line = new(
+            Text:         text,
+            Attributes:   Array.Empty<CellAttributes>(),
+            Timestamp:    Now,
+            IsPromptLine: false);
+        router.Dispatch(line);
+    }
+
+    private static void SeedPlayer(PlayerDatabase db, string name, bool inviteOnSeen = false, bool joinOnInvited = false)
+    {
+        db.RecordObservation(name, null, null, null, null, null, null, Now);
+        db.EditCustomization(name, new PlayerCustomization(
+            InviteToPartyIfSeen: inviteOnSeen,
+            JoinPartyIfInvited:  joinOnInvited));
+    }
+
+    // ===== Invite-on-seen via "Also here:" =====
+
+    [Fact]
+    public void AlsoHere_FlaggedPlayer_SendsInvite()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void AlsoHere_UnflaggedPlayer_NoInvite()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: false);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void AlsoHere_UnknownPlayer_NoInvite()
+    {
+        // No customization record at all — the dialog never even saw
+        // them, so default-deny.
+        var (engine, router, _, _) = Setup();
+
+        Dispatch(router, "Also here: Stranger.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void AlsoHere_PlayerAlreadyInParty_NoReinvite()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        party.IsInParty = true;
+
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void AlsoHere_MultiplePlayers_InvitesEachFlaggedOnce()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin",  inviteOnSeen: true);
+        SeedPlayer(players, "Forged",  inviteOnSeen: true);
+        SeedPlayer(players, "Stranger", inviteOnSeen: false);
+
+        // Oxford-and form covering the 3-name shape MajorMUD uses.
+        Dispatch(router, "Also here: Raijin, Forged and Stranger.");
+
+        Assert.Equal(2, engine.LastSentForTests.Count);
+        string a = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
+        string b = Encoding.Latin1.GetString(engine.LastSentForTests[1]);
+        Assert.Contains("invite Raijin\r", new[] { a, b });
+        Assert.Contains("invite Forged\r", new[] { a, b });
+    }
+
+    [Fact]
+    public void AlsoHere_TtlSuppressesReinviteWithinCooldown()
+    {
+        // The screenshot scenario: room re-renders every move tick, and
+        // the same "Also here:" line keeps coming. We invite once,
+        // then the cooldown should keep the wire quiet until it expires
+        // or the player joins the party (whichever first).
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        Dispatch(router, "Also here: Raijin.");
+        Dispatch(router, "Also here: Raijin.");
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void AlsoHere_TtlExpires_AllowsReinvite()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        Dispatch(router, "Also here: Raijin.");
+
+        // Advance past the default 60s cooldown.
+        engine.NowProvider = () => t0.AddSeconds(61);
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Equal(2, engine.LastSentForTests.Count);
+    }
+
+    [Fact]
+    public void AlsoHere_GivenNameStrippedFromFullDisplayName()
+    {
+        // Real-world rendering can include the family in the room
+        // listing ("Raijin WuzHere"). The invite command takes the
+        // given name only, so the engine strips down to the first
+        // whitespace token.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        Dispatch(router, "Also here: Raijin WuzHere.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    // ===== Accept-invite via "X invites you to join their/his/her party" =====
+
+    [Fact]
+    public void InviteReceived_FlaggedSender_SendsFollow()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", joinOnInvited: true);
+
+        Dispatch(router, "Raijin invites you to join his party.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("follow Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void InviteReceived_UnflaggedSender_NoAccept()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", joinOnInvited: false);
+
+        Dispatch(router, "Raijin invites you to join his party.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void InviteReceived_UnknownSender_NoAccept()
+    {
+        var (engine, router, _, _) = Setup();
+
+        Dispatch(router, "Stranger invites you to join their party.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Theory]
+    [InlineData("his")]
+    [InlineData("her")]
+    [InlineData("their")]
+    public void InviteReceived_PossessiveFormVariants_AllMatch(string possessive)
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", joinOnInvited: true);
+
+        Dispatch(router, $"Raijin invites you to join {possessive} party.");
+
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void InviteReceived_AlreadyInParty_NoDuplicateFollow()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", joinOnInvited: true);
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        party.IsInParty = true;
+
+        Dispatch(router, "Raijin invites you to join their party.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+}
