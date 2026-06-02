@@ -77,6 +77,36 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
     [ObservableProperty] private int _joinNagMaxTotalSec = 55;
 
+    // ----- "If leading, wait only" — minutes / seconds split bound to a
+    //       single underlying total-seconds field. Drives the disconnect
+    //       grace window used by the re-invite-lost-members flow.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IfLeadingWaitMinutes))]
+    [NotifyPropertyChangedFor(nameof(IfLeadingWaitSeconds))]
+    private int _ifLeadingWaitTotalSec = 120;
+
+    /// <summary>UI mirror — minutes component of <see cref="IfLeadingWaitTotalSec"/>. 0..60.</summary>
+    public int IfLeadingWaitMinutes
+    {
+        get => IfLeadingWaitTotalSec / 60;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, 60);
+            IfLeadingWaitTotalSec = clamped * 60 + (IfLeadingWaitTotalSec % 60);
+        }
+    }
+
+    /// <summary>UI mirror — seconds component of <see cref="IfLeadingWaitTotalSec"/>. 0..59.</summary>
+    public int IfLeadingWaitSeconds
+    {
+        get => IfLeadingWaitTotalSec % 60;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, 59);
+            IfLeadingWaitTotalSec = (IfLeadingWaitTotalSec / 60) * 60 + clamped;
+        }
+    }
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -105,6 +135,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             JoinNagInitialDelaySec   = Math.Clamp(JoinNagInitialDelaySec, 1, 60),
             JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
             JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
+            IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
         };
 
         profile.Settings ??= new();
@@ -150,6 +181,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         JoinNagInitialDelaySec     = dto.JoinNagInitialDelaySec;
         JoinNagFrequencySec        = dto.JoinNagFrequencySec;
         JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
+        IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -183,6 +215,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         svcs.AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
         svcs.AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
         svcs.AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        svcs.Party.DisconnectGraceWindow   = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec,  0, 3600));
     }
 
     // ----- IsDirty plumbing -----
@@ -202,6 +235,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnJoinNagInitialDelaySecChanged(int value)     => MarkDirty();
     partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
     partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
+    partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
 
     private void MarkDirty()
     {

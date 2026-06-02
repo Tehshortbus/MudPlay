@@ -258,9 +258,9 @@
                 <CheckBox Content="Reset statistics on loop start"
                           IsChecked="{Binding ResetStatisticsOnLoopStart, Mode=TwoWay}"
                           ToolTip.Tip="Sends `@Reset` so the party EXP / kill counters zero at the start of every loop run."/>
-                <CheckBox Content="Auto-invite reconnecting member"
+                <CheckBox Content="Re-invite lost party members"
                           IsChecked="{Binding AutoInviteReconnecting, Mode=TwoWay}"
-                          ToolTip.Tip="Leader-only — auto-invite a member who returns inside the wait window."/>
+                          ToolTip.Tip="Leader-only — auto-invite a member who returns inside the &quot;If leading, wait only&quot; window after they hung up or dropped connection."/>
             </StackPanel>
 
             <!-- ============ Capacity + cadence ============ -->
@@ -279,9 +279,14 @@
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="2" Minimum="0" Maximum="60" Width="120"
-                                   ToolTip.Tip="Cap the wait window when this character is the leader."/>
+                    <NumericUpDown Value="{Binding IfLeadingWaitMinutes, Mode=TwoWay}"
+                                   Minimum="0" Maximum="60" Width="90"
+                                   ToolTip.Tip="Grace window for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Defaults to 2 m."/>
                     <TextBlock Classes="FieldLabel" Text="min"/>
+                    <NumericUpDown Value="{Binding IfLeadingWaitSeconds, Mode=TwoWay}"
+                                   Minimum="0" Maximum="59" Width="90"
+                                   ToolTip.Tip="Seconds component of the leader-side grace window."/>
+                    <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency"/>

@@ -49,5 +49,18 @@ public sealed class PartySectionViewModelTests
         Assert.True(dto.AutoInviteReconnecting);
         Assert.True(dto.ResetStatisticsOnLoopStart);
         Assert.Equal(PartyRank.Mid, dto.Rank);
+        // "If leading, wait only" — drives the disconnect grace window
+        // used by the Re-invite lost party members flow. Default 2 min.
+        Assert.Equal(120,          dto.IfLeadingWaitTotalSec);
+    }
+
+    [Fact]
+    public void IfLeadingWaitTotalSec_RoundTripsThroughJson()
+    {
+        PartySettings src = new() { IfLeadingWaitTotalSec = 305 };
+        string json = JsonSerializer.Serialize(src);
+        PartySettings? back = JsonSerializer.Deserialize<PartySettings>(json);
+        Assert.NotNull(back);
+        Assert.Equal(305, back!.IfLeadingWaitTotalSec);
     }
 }

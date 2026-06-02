@@ -167,6 +167,14 @@ public static class DefaultPatterns
         // ----- Player presence ------------------------------------------ (source: classifier.js module)
         yield return new RegexPattern(KnownPatterns.PlayerDisconnects,
             @"^(?<player>\w+) just disconnected!!!\.");
+        // Clean logoff via the in-game hangup command. Distinct from the
+        // BBS-level "[Account] logs OFF" signal — that one's account-name
+        // keyed and we have no reliable account→character mapping at the
+        // observation layer, so we deliberately don't pattern-match it
+        // here. The "just hung up" line is the player-name-keyed form we
+        // can act on; some BBSes disable it but when it's on we use it.
+        yield return new RegexPattern(KnownPatterns.PlayerHungUp,
+            @"^(?<player>\w+) just hung up!!!\.?");
         yield return new RegexPattern(KnownPatterns.PlayerExits,
             @"^(?<player>\w+) just left the Realm\.");
         yield return new RegexPattern(KnownPatterns.PlayerEnters,

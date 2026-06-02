@@ -75,6 +75,7 @@ public static class KnownPatterns
 
     // ----- Player presence ----------------------------------------------
     public const string PlayerDisconnects = "presence.player-disconnects";
+    public const string PlayerHungUp      = "presence.player-hung-up";    // "X just hung up!!!" — clean logoff via in-game hangup command; some BBSes disable this line entirely
     public const string PlayerExits       = "presence.player-exits";
     public const string PlayerEnters      = "presence.player-enters";
     public const string RoomAlsoHere      = "presence.room-also-here";    // "Also here: A, B, and C." — per-room occupant list

@@ -51,6 +51,39 @@ public sealed class PartyDisconnectDeathTests
     }
 
     [Fact]
+    public void HungUp_OfPartyMember_RemovesAndStartsGraceWindow()
+    {
+        // "X just hung up!!!" is the clean-logoff line, distinct from
+        // "X just disconnected!!!." (carrier lost). Both should route
+        // through the same remove-and-grace-window handler so the
+        // re-invite-lost-party-members flow works either way.
+        var (router, mgr, _) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.Single(mgr.State.Members);
+
+        router.Dispatch(Line("Helper just hung up!!!."));
+
+        Assert.Empty(mgr.State.Members);
+        Assert.Contains("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void HungUp_AndReturnsWithinWindow_AndWeLead_SendsInvite()
+    {
+        var (router, mgr, wire) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.True(mgr.State.SelfIsLeader);
+
+        router.Dispatch(Line("Helper just hung up!!!."));
+        wire.Clear();
+
+        router.Dispatch(Line("Helper just entered the Realm."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("invite Helper\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
     public void Disconnect_OfLeader_DissolvesEntireParty()
     {
         // MajorMUD game rule: if the party leader disconnects, the

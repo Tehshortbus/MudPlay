@@ -167,6 +167,10 @@ public sealed partial class PartyManager : IDisposable
         // auto-invite them back. PartyMemberDeath is the conservative
         // PvP-kill match.
         _subs.Add(_router.Subscribe(KnownPatterns.PlayerDisconnects,        OnPlayerDisconnects));
+        // "X just hung up!!!" — clean logoff via in-game hangup. Same
+        // remove-and-grace-window treatment as a connection drop; the
+        // re-invite path works identically.
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerHungUp,             OnPlayerDisconnects));
         _subs.Add(_router.Subscribe(KnownPatterns.PlayerEnters,             OnPlayerEnters));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDeath,         OnMemberDeath));
         // Dissolution signals — the per-row evictions we already had
@@ -454,11 +458,15 @@ public sealed partial class PartyManager : IDisposable
     // ----- Phase 6 PR 6.5: disconnect / death / reconnect ---------------
 
     /// <summary>
-    /// "X just disconnected!!!." — if X is in our roster, remove them.
+    /// "X just disconnected!!!." (carrier lost) or "X just hung up!!!"
+    /// (clean logoff) — if X is in our roster, remove them.
     /// <para>
     /// <b>Follower drop:</b> evict the row and record the moment in the
     /// grace-window map so a later <c>just entered the Realm</c> within
-    /// the window can auto-invite them back (when we're leader).
+    /// the window can auto-invite them back (when we're leader). The
+    /// grace-window length is the user's Settings → Party "If leading,
+    /// wait only" value, mirrored into
+    /// <see cref="DisconnectGraceWindow"/>.
     /// </para>
     /// <para>
     /// <b>Leader drop:</b> the whole party dissolves per MajorMUD's
@@ -467,6 +475,14 @@ public sealed partial class PartyManager : IDisposable
     /// uses. No grace-window entry for a dropped leader: a returning
     /// leader has no party to be auto-re-invited into, so the entry
     /// would only mislead the reconnect handler.
+    /// </para>
+    /// <para>
+    /// We deliberately don't watch the BBS-level "[Account] logs OFF"
+    /// signal — that line keys on the BBS account name, and observers
+    /// have no reliable account→character mapping. Some BBSes also
+    /// disable the per-player "just hung up" message; in that case
+    /// we'll only catch carrier-lost disconnects from the
+    /// "just disconnected!!!." line.
     /// </para>
     /// </summary>
     private void OnPlayerDisconnects(MatchResult result)

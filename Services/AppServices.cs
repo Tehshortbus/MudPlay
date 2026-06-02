@@ -729,6 +729,7 @@ public sealed class AppServices
         Models.Profile.PartySettings dto = ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party");
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
         Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
+        Party.DisconnectGraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
         AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
@@ -741,6 +742,7 @@ public sealed class AppServices
         Models.Profile.PartySettings defaults = new();
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(defaults.ParPollFrequencySec));
         Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
+        Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
         AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);
