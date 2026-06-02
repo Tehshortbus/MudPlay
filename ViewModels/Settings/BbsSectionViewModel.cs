@@ -45,8 +45,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
-        "Show information messages", "Show reason for running", "Show data being sent",
-        "Combat round totals",
     };
 
     public override Control View => _view ??= new BbsSectionView { DataContext = this };
