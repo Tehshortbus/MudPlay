@@ -321,6 +321,234 @@ public sealed class AutoPartyManagerTests
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
+    // ===== Follower gate =====
+
+    [Fact]
+    public void AlsoHere_WhenWeAreAFollower_DoesNotInvite()
+    {
+        // Inviting only makes sense when solo or leading. As a follower
+        // we have no authority over someone else's roster.
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        party.IsInParty    = true;
+        party.SelfIsLeader = false;
+
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void AlsoHere_WhenWeAreLeader_DoesInvite()
+    {
+        // Leader of our own party — auto-invite still applies.
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        party.IsInParty    = true;
+        party.SelfIsLeader = true;
+
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    // ===== @join nag escalation =====
+
+    [Fact]
+    public void JoinNag_FiresAfterInitialDelay()
+    {
+        // Within the initial delay window, no @join. Past it, one @join
+        // fires. We tick the nag loop manually via the test seam to avoid
+        // depending on the real DispatcherTimer.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear(); // ignore the initial invite
+
+        // 3s in — no nag yet.
+        engine.NowProvider = () => t0.AddSeconds(3);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+
+        // 5s in — first @join.
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        byte[] first = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(first));
+    }
+
+    [Fact]
+    public void JoinNag_ResendsAtFrequencyAfterFirst()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        // First @join at t+5s, then re-fire at t+15s, t+25s.
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        engine.NowProvider = () => t0.AddSeconds(15);
+        engine.TickNagsForTests();
+        engine.NowProvider = () => t0.AddSeconds(25);
+        engine.TickNagsForTests();
+
+        Assert.Equal(3, engine.LastSentForTests.Count);
+        foreach (byte[] sent in engine.LastSentForTests)
+            Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void JoinNag_OkTelepath_HaltsSendsButKeepsWaiting()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests); // first @join
+
+        // Raijin replies {Ok} — further sends should halt even though
+        // the cadence + cap windows would otherwise allow them.
+        Dispatch(router, "Raijin telepaths: {Ok}");
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(20);
+        engine.TickNagsForTests();
+        engine.NowProvider = () => t0.AddSeconds(40);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void JoinNag_NonOkTelepath_AbortsEntireNag()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests);
+
+        // Anything other than {Ok} from the target — kill the nag.
+        Dispatch(router, "Raijin telepaths: nah I'm good");
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(20);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void JoinNag_TargetJoinsParty_CancelsNag()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests);
+
+        // Target joins — CollectionChanged.Add fires the cancel.
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        engine.LastSentForTests.Clear();
+
+        engine.NowProvider = () => t0.AddSeconds(20);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void JoinNag_TotalWindowExpired_StopsNagging()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        // Tick across the entire 55s window — sends fire until then.
+        for (int t = 5; t <= 55; t += 10)
+        {
+            engine.NowProvider = () => t0.AddSeconds(t);
+            engine.TickNagsForTests();
+        }
+        int sendsWithinWindow = engine.LastSentForTests.Count;
+
+        engine.LastSentForTests.Clear();
+
+        // Anything past 55s — nothing further.
+        engine.NowProvider = () => t0.AddSeconds(70);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+        Assert.True(sendsWithinWindow >= 1);
+    }
+
+    [Fact]
+    public void JoinNag_BecomingAFollowerMidFlow_AbortsAllNags()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        engine.LastSentForTests.Clear();
+
+        // We accept someone else's invite mid-nag — became a follower.
+        party.IsInParty    = true;
+        party.SelfIsLeader = false;
+
+        engine.NowProvider = () => t0.AddSeconds(20);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
     [Fact]
     public void PartyFullyDissolving_ClearsEntireInviteCooldownMap()
     {

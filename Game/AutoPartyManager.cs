@@ -46,6 +46,7 @@ public sealed class AutoPartyManager : IDisposable
     private Action<byte[]>? _wireSender;
     private readonly IDisposable _alsoHereSub;
     private readonly IDisposable _partyInviteSub;
+    private readonly IDisposable _telepathSub;
     private bool _disposed;
 
     /// <summary>
@@ -57,6 +58,14 @@ public sealed class AutoPartyManager : IDisposable
     /// at runtime if a feature surfaces a knob for it.
     /// </summary>
     public TimeSpan InviteCooldown { get; set; } = TimeSpan.FromSeconds(60);
+
+    // ----- @join nag escalation knobs (Settings → Party) ------------------
+    /// <summary>Wait this long after the initial <c>invite</c> before the first <c>@join</c> nag.</summary>
+    public TimeSpan JoinNagInitialDelay { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Cadence for subsequent <c>@join</c> resends.</summary>
+    public TimeSpan JoinNagFrequency { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>Hard cap on the total nag window measured from the initial <c>invite</c>.</summary>
+    public TimeSpan JoinNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
 
     /// <summary>
     /// Test seam — overrides <see cref="DateTime.UtcNow"/> for the TTL
@@ -72,6 +81,32 @@ public sealed class AutoPartyManager : IDisposable
     private readonly Dictionary<string, DateTime> _recentlyInvited =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Per-target nag-escalation state — live for the duration of the @join sequence.</summary>
+    private readonly Dictionary<string, NagState> _activeNags =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// One target's @join nag progression. The engine ticks all active
+    /// nags on every dispatcher tick (UI thread) and on every external
+    /// observation (telepath reply, party-add, follower-state flip).
+    /// </summary>
+    private sealed class NagState
+    {
+        public string Given { get; set; } = string.Empty;
+        public DateTime InvitedAt { get; set; }
+        public DateTime? LastJoinAt { get; set; }
+        public int JoinSends { get; set; }
+        /// <summary>True once the target telepathed back <c>{Ok}</c> — stop firing @join but keep waiting for them to actually follow.</summary>
+        public bool Acknowledged { get; set; }
+    }
+
+    /// <summary>
+    /// UI-thread tick that walks <see cref="_activeNags"/> and fires
+    /// <c>@join</c> resends + cap checks. Started on first nag, stopped
+    /// when the map empties.
+    /// </summary>
+    private Avalonia.Threading.DispatcherTimer? _nagTimer;
+
     public AutoPartyManager(MessageRouter router, PlayerDatabase players, PartyState party, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -84,6 +119,9 @@ public sealed class AutoPartyManager : IDisposable
 
         _alsoHereSub    = _router.Subscribe(KnownPatterns.RoomAlsoHere,        OnRoomAlsoHere);
         _partyInviteSub = _router.Subscribe(KnownPatterns.PartyInviteReceived, OnPartyInviteReceived);
+        // Incoming telepath replies feed the @join nag escalation —
+        // {Ok} stops the sends, anything else aborts the nag entirely.
+        _telepathSub    = _router.Subscribe(KnownPatterns.ConversationTelepathIn, OnTelepathIncoming);
 
         // TTL housekeeping — drop the cooldown entry for any member that
         // leaves the roster (so a player who separates from us and then
@@ -98,12 +136,25 @@ public sealed class AutoPartyManager : IDisposable
     private void OnPartyMembersChanged(object? sender,
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        if (e.OldItems is null) return;
-        foreach (object? item in e.OldItems)
+        if (e.OldItems is not null)
         {
-            if (item is not PartyMember m) continue;
-            string given = ExtractGiven(m.Name);
-            if (!string.IsNullOrEmpty(given)) _recentlyInvited.Remove(given);
+            foreach (object? item in e.OldItems)
+            {
+                if (item is not PartyMember m) continue;
+                string given = ExtractGiven(m.Name);
+                if (!string.IsNullOrEmpty(given)) _recentlyInvited.Remove(given);
+            }
+        }
+        // Any name that's now in the roster — the @join nag for them
+        // succeeded; stop sending.
+        if (e.NewItems is not null)
+        {
+            foreach (object? item in e.NewItems)
+            {
+                if (item is not PartyMember m) continue;
+                string given = ExtractGiven(m.Name);
+                if (!string.IsNullOrEmpty(given)) CancelNag(given, reason: "joined the party");
+            }
         }
     }
 
@@ -114,6 +165,40 @@ public sealed class AutoPartyManager : IDisposable
         if (e.PropertyName == nameof(PartyState.IsInParty) && !_party.IsInParty)
         {
             _recentlyInvited.Clear();
+        }
+        // If we just became a follower, abort every active nag — only
+        // solo or leader configurations should be inviting people.
+        if ((e.PropertyName == nameof(PartyState.IsInParty)
+             || e.PropertyName == nameof(PartyState.SelfIsLeader))
+            && _party.IsInParty && !_party.SelfIsLeader)
+        {
+            CancelAllNags("became a follower");
+        }
+    }
+
+    private void OnTelepathIncoming(MatchResult match)
+    {
+        // Group 0 = player; Group 1 = message.
+        if (match.Groups.Count < 2) return;
+        string sender = match.Groups[0];
+        string body   = match.Groups[1].Trim();
+        if (string.IsNullOrEmpty(sender)) return;
+        if (!_activeNags.TryGetValue(sender, out NagState? state)) return;
+
+        // {Ok} (case-insensitive, optional surrounding whitespace) =
+        // acknowledgement that they're coming — stop the @join sends
+        // but leave the nag entry alive so the join-confirmation
+        // path can still cancel it cleanly. Anything else from this
+        // target ends the entire nag attempt.
+        if (body.Equals("{Ok}", StringComparison.OrdinalIgnoreCase))
+        {
+            state.Acknowledged = true;
+            _log?.Log(LogSeverity.Info, "AutoParty",
+                $"{sender} acknowledged @join with {{Ok}} — holding further sends.");
+        }
+        else
+        {
+            CancelNag(sender, reason: $"replied '{body}' (not {{Ok}})");
         }
     }
 
@@ -137,8 +222,10 @@ public sealed class AutoPartyManager : IDisposable
         _disposed = true;
         _alsoHereSub.Dispose();
         _partyInviteSub.Dispose();
+        _telepathSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
+        StopNagTimer();
     }
 
     // ----- Handlers ------------------------------------------------------
@@ -178,6 +265,11 @@ public sealed class AutoPartyManager : IDisposable
                 return;
         }
 
+        // Follower gate — inviting people is only meaningful when we're
+        // solo or leading our own party. As a follower we have no
+        // authority to grow someone else's roster.
+        if (_party.IsInParty && !_party.SelfIsLeader) return;
+
         if (!FindCustomization(given, out PlayerCustomization c)) return;
         if (!c.InviteToPartyIfSeen) return;
 
@@ -202,6 +294,11 @@ public sealed class AutoPartyManager : IDisposable
 
         SendWire($"invite {given}");
         _log?.Log(LogSeverity.Info, "AutoParty", $"Auto-invited {given} (InviteToPartyIfSeen).");
+
+        // Start the @join nag escalation — fires the first /given @join
+        // after JoinNagInitialDelay, then re-sends every JoinNagFrequency
+        // until they join, telepath back, or JoinNagMaxTotal expires.
+        StartNag(given, now);
     }
 
     private void TryAutoAccept(string sender)
@@ -247,6 +344,115 @@ public sealed class AutoPartyManager : IDisposable
         byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
         LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
+    }
+
+    // ----- @join nag escalation ----------------------------------------
+
+    /// <summary>Begin (or replace) the @join nag flow for <paramref name="given"/>.</summary>
+    private void StartNag(string given, DateTime invitedAt)
+    {
+        _activeNags[given] = new NagState
+        {
+            Given     = given,
+            InvitedAt = invitedAt,
+            JoinSends = 0,
+        };
+        EnsureNagTimerRunning();
+    }
+
+    /// <summary>End the nag flow for <paramref name="given"/> — they joined, declined, replied non-Ok, or the window expired.</summary>
+    private void CancelNag(string given, string reason)
+    {
+        if (!_activeNags.Remove(given)) return;
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Stopped @join nag for {given} — {reason}.");
+        if (_activeNags.Count == 0) StopNagTimer();
+    }
+
+    /// <summary>Abort every active nag — used on the became-a-follower transition.</summary>
+    private void CancelAllNags(string reason)
+    {
+        if (_activeNags.Count == 0) return;
+        foreach (string given in _activeNags.Keys.ToArray())
+        {
+            _activeNags.Remove(given);
+            _log?.Log(LogSeverity.Info, "AutoParty",
+                $"Stopped @join nag for {given} — {reason}.");
+        }
+        StopNagTimer();
+    }
+
+    /// <summary>
+    /// Lazily spin up the dispatcher tick that walks active nags.
+    /// 500 ms cadence is fine — nag decisions are second-resolution,
+    /// not millisecond-sensitive.
+    /// </summary>
+    private void EnsureNagTimerRunning()
+    {
+        if (_nagTimer is not null) return;
+        _nagTimer = new Avalonia.Threading.DispatcherTimer(
+            interval: TimeSpan.FromMilliseconds(500),
+            priority: Avalonia.Threading.DispatcherPriority.Background,
+            callback: (_, _) => TickNags());
+        _nagTimer.Start();
+    }
+
+    private void StopNagTimer()
+    {
+        _nagTimer?.Stop();
+        _nagTimer = null;
+    }
+
+    /// <summary>Test seam — runs one pass of the nag loop without a real timer.</summary>
+    internal void TickNagsForTests() => TickNags();
+
+    private void TickNags()
+    {
+        if (_activeNags.Count == 0) { StopNagTimer(); return; }
+        DateTime now = NowProvider();
+
+        // Snapshot keys — cancel paths mutate _activeNags.
+        foreach (string given in _activeNags.Keys.ToArray())
+        {
+            if (!_activeNags.TryGetValue(given, out NagState? s)) continue;
+
+            // Hard cap from the original invite — give up regardless of state.
+            if (now - s.InvitedAt >= JoinNagMaxTotal)
+            {
+                CancelNag(given, reason: $"window of {JoinNagMaxTotal.TotalSeconds:0}s expired");
+                continue;
+            }
+
+            // {Ok} acknowledged — hold off on further sends; the
+            // join-confirmation path (CollectionChanged) or the
+            // total-cap above will close the nag out.
+            if (s.Acknowledged) continue;
+
+            if (s.LastJoinAt is null)
+            {
+                // Phase 1: initial delay after the invite before the
+                // first @join fires.
+                if (now - s.InvitedAt >= JoinNagInitialDelay)
+                {
+                    SendJoinNag(s, now);
+                }
+            }
+            else if (now - s.LastJoinAt.Value >= JoinNagFrequency)
+            {
+                // Phase 2: re-send cadence.
+                SendJoinNag(s, now);
+            }
+        }
+    }
+
+    private void SendJoinNag(NagState s, DateTime now)
+    {
+        if (_wireSender is null) return;
+        SendWire($"/{s.Given} @join");
+        s.LastJoinAt = now;
+        s.JoinSends++;
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Sent @join nag #{s.JoinSends} to {s.Given}.");
     }
 
     // ----- Parsing helpers ---------------------------------------------

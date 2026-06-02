@@ -51,6 +51,27 @@ public sealed class PartySettings
     /// ordering; PR 6.9 just persists the user's choice.
     /// </summary>
     public PartyRank Rank { get; set; } = PartyRank.Mid;
+
+    /// <summary>
+    /// Seconds to wait after sending <c>invite X</c> before sending the
+    /// first follow-up <c>/X @join</c> nag. Range 1..60, default 5.
+    /// Drives <see cref="Game.AutoPartyManager"/>'s nag escalation.
+    /// </summary>
+    public int JoinNagInitialDelaySec { get; set; } = 5;
+
+    /// <summary>
+    /// Cadence for the <c>@join</c> resend after the initial nag fires.
+    /// Range 1..60, default 10. Stops once the target joins, telepaths
+    /// us back, or <see cref="JoinNagMaxTotalSec"/> elapses.
+    /// </summary>
+    public int JoinNagFrequencySec { get; set; } = 10;
+
+    /// <summary>
+    /// Hard cap on the total nag window measured from the initial
+    /// <c>invite</c>. Past this many seconds we give up and stop
+    /// sending <c>@join</c>. Range 5..600, default 55.
+    /// </summary>
+    public int JoinNagMaxTotalSec { get; set; } = 55;
 }
 
 /// <summary>Local character's combat rank within a party.</summary>

@@ -69,6 +69,14 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _rankMid = true;
     [ObservableProperty] private bool _rankBack;
 
+    // ----- @join nag escalation (wired Phase 6) -----
+    /// <summary>Delay after the initial <c>invite</c> before the first <c>@join</c>. Range 1..60, default 5.</summary>
+    [ObservableProperty] private int _joinNagInitialDelaySec = 5;
+    /// <summary>Cadence for subsequent <c>@join</c> resends. Range 1..60, default 10.</summary>
+    [ObservableProperty] private int _joinNagFrequencySec = 10;
+    /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
+    [ObservableProperty] private int _joinNagMaxTotalSec = 55;
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -94,6 +102,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             Rank = RankFront ? PartyRank.Front
                  : RankBack  ? PartyRank.Back
                  : PartyRank.Mid,
+            JoinNagInitialDelaySec   = Math.Clamp(JoinNagInitialDelaySec, 1, 60),
+            JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
+            JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
         };
 
         profile.Settings ??= new();
@@ -136,6 +147,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         RankFront = dto.Rank == PartyRank.Front;
         RankMid   = dto.Rank == PartyRank.Mid;
         RankBack  = dto.Rank == PartyRank.Back;
+        JoinNagInitialDelaySec     = dto.JoinNagInitialDelaySec;
+        JoinNagFrequencySec        = dto.JoinNagFrequencySec;
+        JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -166,6 +180,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         svcs.Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
         svcs.Party.LocalRankPreference = dto.Rank;
         svcs.PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
+        svcs.AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
+        svcs.AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
+        svcs.AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
     }
 
     // ----- IsDirty plumbing -----
@@ -182,6 +199,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnRankFrontChanged(bool value)                 => MarkDirty();
     partial void OnRankMidChanged(bool value)                   => MarkDirty();
     partial void OnRankBackChanged(bool value)                  => MarkDirty();
+    partial void OnJoinNagInitialDelaySecChanged(int value)     => MarkDirty();
+    partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
+    partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
 
     private void MarkDirty()
     {

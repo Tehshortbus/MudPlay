@@ -259,7 +259,7 @@
 
             <!-- ============ Capacity + cadence ============ -->
             <TextBlock Classes="SectionHeader" Text="Capacity + cadence"/>
-            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters when partying"/>
                 <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="20" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Cap on hostiles to engage as a party (overrides Combat-tab cap)."/>
@@ -286,12 +286,38 @@
                     <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
 
-                <CheckBox Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                <!-- @join nag escalation knobs — feed AutoPartyManager's
+                     follow-up sequence after the initial `invite`. -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="`@join` initial delay"/>
+                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
+                                   Minimum="1" Maximum="60" Width="120"
+                                   ToolTip.Tip="After auto-inviting a player, wait this many seconds for them to join before sending the first `@join` nag. Default 5."/>
+                    <TextBlock Classes="FieldLabel" Text="s"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="`@join` resend frequency"/>
+                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown Value="{Binding JoinNagFrequencySec, Mode=TwoWay}"
+                                   Minimum="1" Maximum="60" Width="120"
+                                   ToolTip.Tip="How often the `@join` nag re-fires after the first send. Stops on join, on a non-{Ok} telepath reply, or when the max-total cap fires. Default 10."/>
+                    <TextBlock Classes="FieldLabel" Text="s"/>
+                </StackPanel>
+
+                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="`@join` max attempt window"/>
+                <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <NumericUpDown Value="{Binding JoinNagMaxTotalSec, Mode=TwoWay}"
+                                   Minimum="5" Maximum="600" Width="120"
+                                   ToolTip.Tip="Hard cap on the whole nag window measured from the initial invite. Past this, give up. Default 55."/>
+                    <TextBlock Classes="FieldLabel" Text="s"/>
+                </StackPanel>
+
+                <CheckBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                           Content="Reset statistics on loop start"
                           IsChecked="{Binding ResetStatisticsOnLoopStart, Mode=TwoWay}"
                           ToolTip.Tip="Sends `@Reset` so the party EXP / kill counters zero at the start of every loop run."/>
 
-                <CheckBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
+                <CheckBox Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
                           Content="Auto-invite reconnecting member"
                           IsChecked="{Binding AutoInviteReconnecting, Mode=TwoWay}"
                           ToolTip.Tip="Leader-only — auto-invite a member who returns inside the wait window."/>

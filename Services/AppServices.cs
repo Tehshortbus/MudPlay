@@ -731,6 +731,9 @@ public sealed class AppServices
         Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
+        AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
+        AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
+        AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
     }
 
     private void ResetPartyToDefaults()
@@ -740,6 +743,9 @@ public sealed class AppServices
         Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
+        AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);
+        AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(defaults.JoinNagFrequencySec);
+        AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(defaults.JoinNagMaxTotalSec);
     }
 
     /// <summary>
