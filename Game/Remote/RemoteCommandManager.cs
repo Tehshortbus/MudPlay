@@ -221,10 +221,16 @@ public sealed class RemoteCommandManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Per user direction: remote commands are accepted from every
+    /// inbound chat channel EXCEPT the realm-wide noise channels —
+    /// Gossip (also carries auctions), Yell (shout-style noise),
+    /// system-level Broadcast / RealmEvent, and our own outbound
+    /// echo (TelepathOutgoing).
+    /// </summary>
     private static RemoteChannel? MapChannel(ChatChannel c) => c switch
     {
         ChatChannel.TelepathIncoming => RemoteChannel.Telepath,
-        ChatChannel.Gossip           => RemoteChannel.Gossip,
         ChatChannel.Gangpath         => RemoteChannel.Gangpath,
         ChatChannel.Local            => RemoteChannel.Local,
         _                            => null,
@@ -337,7 +343,6 @@ public sealed class RemoteCommandManager : IDisposable
         string wire = channel switch
         {
             RemoteChannel.Telepath => $"/{given} {text}",
-            RemoteChannel.Gossip   => $"gos {text}",
             RemoteChannel.Gangpath => $"gang {text}",
             RemoteChannel.Local    => $"say {text}",
             _                      => text,

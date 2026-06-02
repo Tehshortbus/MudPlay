@@ -34,6 +34,18 @@ public sealed class RemoteCommandManagerTests
     private static ChatLogEntry Gossip(string sender, string msg) =>
         new(Now, ChatChannel.Gossip, sender, msg, $"{sender} gossips: {msg}");
 
+    private static ChatLogEntry Yell(string sender, string msg) =>
+        new(Now, ChatChannel.Yell, sender, msg, $"{sender} yells: {msg}");
+
+    private static ChatLogEntry Local(string sender, string msg) =>
+        new(Now, ChatChannel.Local, sender, msg, $"{sender} says: {msg}");
+
+    private static ChatLogEntry Gangpath(string sender, string msg) =>
+        new(Now, ChatChannel.Gangpath, sender, msg, $"{sender} gangpaths: {msg}");
+
+    private static ChatLogEntry Broadcast(string sender, string msg) =>
+        new(Now, ChatChannel.Broadcast, sender, msg, $"BROADCAST: {msg}");
+
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
         db.RecordObservation(name, @class: null, race: null, alignment: null,
@@ -273,17 +285,84 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void Reply_GossipRoutesViaGossipCommand()
+    public void Reply_GangpathRoutesViaGangCommand()
     {
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => ctx.Reply("hi"));
 
-        engine.DispatchForTests(Gossip("Friend", "@health"));
+        engine.DispatchForTests(Gangpath("Friend", "@health"));
 
         string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        Assert.Equal("gos hi\r", wire);
+        Assert.Equal("gang hi\r", wire);
+    }
+
+    [Fact]
+    public void Reply_LocalRoutesViaSayCommand()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => ctx.Reply("hi"));
+
+        engine.DispatchForTests(Local("Friend", "@health"));
+
+        string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
+        Assert.Equal("say hi\r", wire);
+    }
+
+    // ===== Channel scope — noise-channel ignores =====
+    //
+    // Per user direction (verified live): remote commands fire from
+    // Telepath / Gangpath / Local only. Realm-wide noise channels
+    // (Gossip — also carries auctions, Yell — shouts), system-level
+    // (Broadcast / RealmEvent), and our own TelepathOutgoing echo
+    // are all silently ignored regardless of whether a handler is
+    // registered or the sender is fully authorised.
+
+    [Fact]
+    public void Gossip_IsIgnoredEvenWithAuthorisedSender()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => { fired = true; ctx.Reply("hi"); });
+
+        engine.DispatchForTests(Gossip("Friend", "@health"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Yell_IsIgnoredEvenWithAuthorisedSender()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => { fired = true; ctx.Reply("hi"); });
+
+        engine.DispatchForTests(Yell("Friend", "@health"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Broadcast_IsIgnoredEvenWithAuthorisedSender()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
+            ctx => fired = true);
+
+        engine.DispatchForTests(Broadcast("Friend", "@health"));
+
+        Assert.False(fired);
     }
 
     // ===== Arg parsing =====

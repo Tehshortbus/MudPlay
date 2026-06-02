@@ -31,18 +31,18 @@ public sealed class TalkSectionViewModel : StubSectionViewModel
                           "Phase 6 — hard kill-switch above every per-channel row below and above the per-player permissions on the Players tab."),
             new StubField("Disallow @party commands (from leader)", StubFieldKind.Check,
                           "Phase 6 — overrides the base @party whitelist; useful for solo runs inside a party."),
-            new StubField("Disallow @-commands from gossip", StubFieldKind.Check,
-                          "Phase 6 — realm-wide gossip channel."),
+            // Per-channel disable rows below cover only the three channels the
+            // engine accepts @-commands from. Gossip / Auction / Broadcast / Yell
+            // are hard-excluded by RemoteCommandManager.MapChannel — they're
+            // realm-wide noise; no per-user toggle would make sense for them.
             new StubField("Disallow @-commands from telepaths / pages", StubFieldKind.Check,
                           "Phase 6 — direct tells from individual players."),
             new StubField("Disallow @-commands from gangpaths", StubFieldKind.Check,
                           "Phase 6 — gang-channel @-commands."),
             new StubField("Disallow @-commands from say (local)", StubFieldKind.Check,
                           "Phase 6 — local-room talk."),
-            new StubField("Disallow @-commands from broadcasts", StubFieldKind.Check,
-                          "Phase 6 — sysop / global broadcast channel."),
-            new StubField("Disallow @-commands from auctions", StubFieldKind.Check,
-                          "Phase 6 — auction channel."),
+            new StubField("Remote-control failure message", StubFieldKind.Text,
+                          "Phase 6 — reply text sent back to the originator when an @-command is denied or unrecognised. Default `{command invalid or not allowed}`. Subscribed by RemoteCommandManager's denial path."),
         }),
         new StubGroup("Remote diverting", new[]
         {
@@ -61,7 +61,6 @@ public sealed class TalkSectionViewModel : StubSectionViewModel
             new StubField("Auto-AFK when minimized",    StubFieldKind.Check,   "Phase 11 — flip AFK as soon as the window minimises."),
             new StubField("User input cancels AFK mode", StubFieldKind.Check,  "Phase 11 — any key in the terminal restores active state."),
             new StubField("AFK response message",          StubFieldKind.Text, "Phase 11 — reply text for incoming tells while AFK (default `{AFK}`)."),
-            new StubField("Remote-control failure message", StubFieldKind.Text, "Phase 11 — reply text for denied @-commands (default `{command invalid or not allowed}`)."),
         }),
     };
 }
