@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Linq;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -33,8 +35,33 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
 
     public PartyState State { get; }
 
-    /// <summary>"Party (N)" header text — recomputes when membership changes.</summary>
-    public string HeaderText => $"Party ({State.Members.Count})";
+    /// <summary>
+    /// Header text shown at the top of the PartyWindow. Mirrors the
+    /// skeleton design: when a leader is known, shows their given
+    /// name + current HP percent ("Fujin (94%)"); when there's no
+    /// leader yet (mid-formation, solo, or par hasn't disclosed who
+    /// leads), falls back to the legacy "Party (N)" count.
+    /// Recomputes on:
+    /// - Members.CollectionChanged (membership churn).
+    /// - State.PropertyChanged (LeaderName flip).
+    /// - Any member's HpPercent or IsLeader change (per-member sub).
+    /// </summary>
+    public string HeaderText
+    {
+        get
+        {
+            if (State.Members.Count == 0) return "No party active";
+            PartyMember? leader = State.Members.FirstOrDefault(m => m.IsLeader);
+            if (leader is null || string.IsNullOrEmpty(leader.Name))
+                return $"Party ({State.Members.Count})";
+            // Leader name to given only — matches the skeleton's
+            // single-word display and is the form MajorMUD itself uses
+            // when addressing the player at most prompts.
+            int space = leader.Name.IndexOf(' ');
+            string given = space >= 0 ? leader.Name[..space] : leader.Name;
+            return $"{given} ({leader.HpPercent}%)";
+        }
+    }
 
     /// <summary>
     /// Local character's persisted rank (Front / Mid / Back). Read from
@@ -67,7 +94,24 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
         _wireSender = wireSender;
         _profile = profile;
 
-        State.Members.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HeaderText));
+        // Membership churn → refresh HeaderText AND adjust per-member
+        // PropertyChanged subscriptions so leader-HP changes refresh
+        // the header live (the skeleton-design header reads
+        // "{LeaderGiven} ({LeaderHpPercent}%)").
+        State.Members.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems is not null)
+                foreach (object? o in e.OldItems)
+                    if (o is PartyMember m) m.PropertyChanged -= OnMemberPropertyChanged;
+            if (e.NewItems is not null)
+                foreach (object? o in e.NewItems)
+                    if (o is PartyMember m) m.PropertyChanged += OnMemberPropertyChanged;
+            OnPropertyChanged(nameof(HeaderText));
+        };
+        // Existing members at construction time also need a sub —
+        // CollectionChanged only fires for subsequent additions.
+        foreach (PartyMember m in State.Members)
+            m.PropertyChanged += OnMemberPropertyChanged;
         State.PropertyChanged += (_, _) => OnPropertyChanged(nameof(HeaderText));
 
         if (_profile is not null)
@@ -88,6 +132,19 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
             _profile.ProfileLoaded -= OnProfileLoaded;
             _profile.ProfileMutated -= OnProfileMutated;
             _profile.ProfileClosed -= OnProfileClosed;
+        }
+    }
+
+    private void OnMemberPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Only the fields that contribute to HeaderText warrant a
+        // refresh — other PartyMember properties churn frequently
+        // (HpDisplay, status flags) and don't affect the header.
+        if (e.PropertyName is nameof(PartyMember.HpPercent)
+                          or nameof(PartyMember.IsLeader)
+                          or nameof(PartyMember.Name))
+        {
+            OnPropertyChanged(nameof(HeaderText));
         }
     }
 
