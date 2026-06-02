@@ -134,52 +134,65 @@
                                 </TextBlock>
                             </StackPanel>
 
-                            <!-- (3) HP bar + numeric -->
-                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
-                                        Margin="6,0,4,0" VerticalAlignment="Center">
-                                <ProgressBar Classes="HpBar"
+                            <!-- (3) HP bar + numeric — fixed slot width keeps the
+                                 columns past this point aligned across rows. -->
+                            <Grid Grid.Column="3" ColumnDefinitions="60,8,*"
+                                  Margin="6,0,8,0" VerticalAlignment="Center" Width="135">
+                                <ProgressBar Grid.Column="0"
+                                             Classes="HpBar"
                                              Value="{Binding HpPercent}"
                                              Maximum="100"
-                                             Width="60"
                                              VerticalAlignment="Center"
                                              ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
-                                <!-- HpDisplay shows "current/max" once the on-join @health
-                                     exchange captures the baseline; falls back to "percent%"
-                                     until then. Widened to fit the longer cur/max form. -->
-                                <TextBlock Text="{Binding HpDisplay}"
+                                <!-- HpDisplay shows "current/max" once a baseline is
+                                     known (on-join @health for foreign members; PromptParser
+                                     mirror for self). Falls back to "percent%" until then. -->
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding HpDisplay}"
                                            VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="10"
                                            Foreground="{StaticResource ChromeFgBrush}"
-                                           MinWidth="60" TextAlignment="Right"
                                            ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
-                            </StackPanel>
+                            </Grid>
 
-                            <!-- (4) MA bar + numeric. Hidden when baseline is 0 (warrior / no mana). -->
-                            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4"
-                                        Margin="0,0,4,0" VerticalAlignment="Center"
-                                        IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
-                                <ProgressBar Classes="MaBar"
+                            <!-- (4) MA bar + numeric. Always reserves layout space so
+                                 the position + chips columns line up across rows; the
+                                 visible bar / text just blank out when BaselineMp=0
+                                 (warrior or pre-@health-exchange). -->
+                            <Grid Grid.Column="4" ColumnDefinitions="60,8,*"
+                                  Margin="0,0,8,0" VerticalAlignment="Center" Width="135"
+                                  IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
+                                <ProgressBar Grid.Column="0"
+                                             Classes="MaBar"
                                              Value="{Binding MpPercent}"
                                              Maximum="100"
-                                             Width="60"
                                              VerticalAlignment="Center"
                                              ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
-                                <TextBlock Text="{Binding MaDisplay}"
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding MaDisplay}"
                                            VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="10"
                                            Foreground="{StaticResource ChromeFgBrush}"
-                                           MinWidth="60" TextAlignment="Right"
                                            ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
-                            </StackPanel>
+                            </Grid>
+                            <!-- Empty placeholder when MA is hidden, so column 5 onwards
+                                 still occupies the same horizontal slot on every row. -->
+                            <Border Grid.Column="4" Width="135"
+                                    IsVisible="{Binding BaselineMp, Converter={x:Static vm:LessThanOrEqualZeroConverter.Instance}}"/>
 
-                            <!-- (5) Position chip — kept as compact text to preserve a glanceable stance label. -->
+                            <!-- (5) Position chip — compact stance label. MinWidth so
+                                 "Standing" / "Resting" / "Meditating" all reserve the
+                                 same horizontal cell. -->
                             <TextBlock Grid.Column="5"
                                        Text="{Binding Position}"
                                        VerticalAlignment="Center"
                                        FontSize="10"
-                                       Margin="0,0,4,0"
+                                       MinWidth="70"
+                                       Margin="0,0,6,0"
                                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
 
                             <!-- (6) Status-flag chips. Each chip self-collapses when the

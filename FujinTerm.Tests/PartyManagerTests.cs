@@ -452,4 +452,73 @@ public sealed class PartyManagerTests
         PartyMember m = new() { BaselineMp = 300, MpPercent = 66 };
         Assert.Equal("198/300", m.MaDisplay);
     }
+
+    // ===== Self row mirrors PlayerState =====
+    //
+    // The on-join @health round-trip is intentionally skipped for the
+    // local character (PromptParser is the fresher source). Mirroring
+    // PlayerState into the self PartyMember row keeps the PartyWindow
+    // current with per-prompt HP/MA changes between par polls.
+
+    [Fact]
+    public void AttachPlayerState_MirrorsHpMaInto_SelfRow_OnPropertyChange()
+    {
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        PlayerState ps = new();
+        p.AttachPlayerState(ps);
+        // Form a party so the self row gets added via AddSelfIfKnown.
+        router.Dispatch(Line("Helper started to follow you."));
+        PartyMember self = p.State.Members.Single(m => m.IsSelf);
+        Assert.Equal(0, self.BaselineHp);   // no PlayerState data yet
+
+        // Simulate a prompt update — PromptParser writes these fields
+        // on every status-line observation.
+        ps.MaxHp = 150;
+        ps.Hp    = 90;
+        ps.MaxMa = 80;
+        ps.Ma    = 40;
+
+        Assert.Equal(150, self.BaselineHp);
+        Assert.Equal(60,  self.HpPercent);  // 90/150 = 60%
+        Assert.Equal(80,  self.BaselineMp);
+        Assert.Equal(50,  self.MpPercent);  // 40/80  = 50%
+        Assert.Equal("90/150", self.HpDisplay);
+        Assert.Equal("40/80",  self.MaDisplay);
+    }
+
+    [Fact]
+    public void AttachPlayerState_SelfRow_SyncsOnAddEvenWhenStateWasPrePopulated()
+    {
+        // Reverse order: PlayerState already has values, then we form
+        // a party — the new self row should get the values via the
+        // CollectionChanged sync, not just on the next PropertyChanged.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        PlayerState ps = new() { MaxHp = 200, Hp = 100, MaxMa = 50, Ma = 25 };
+        p.AttachPlayerState(ps);
+
+        router.Dispatch(Line("Helper started to follow you."));
+        PartyMember self = p.State.Members.Single(m => m.IsSelf);
+
+        Assert.Equal(200, self.BaselineHp);
+        Assert.Equal(50,  self.HpPercent);
+        Assert.Equal(50,  self.BaselineMp);
+        Assert.Equal(50,  self.MpPercent);
+    }
+
+    [Fact]
+    public void AttachPlayerState_NoMana_LeavesBaselineMpZero()
+    {
+        // Warrior-style ManaType.None: MaxMa stays 0 → BaselineMp stays
+        // 0 → PartyWindow hides the MA column (or shows the empty
+        // placeholder for alignment) per the existing converter.
+        var (router, p) = Setup(localCharacterName: "Tank");
+        PlayerState ps = new() { MaxHp = 850, Hp = 850, MaxMa = 0, Ma = 0 };
+        p.AttachPlayerState(ps);
+
+        router.Dispatch(Line("Helper started to follow you."));
+        PartyMember self = p.State.Members.Single(m => m.IsSelf);
+
+        Assert.Equal(850, self.BaselineHp);
+        Assert.Equal(0,   self.BaselineMp);
+    }
 }

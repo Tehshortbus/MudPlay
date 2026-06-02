@@ -167,6 +167,88 @@ public sealed partial class PartyManager : IDisposable
     }
 
     /// <summary>
+    /// Bind the live <see cref="PlayerState"/> so the local
+    /// character's <see cref="PartyMember"/> row stays in sync with
+    /// every prompt (PromptParser writes HP/MA on every status line).
+    /// Without this the self row only updates on a <c>par</c> poll,
+    /// which means per-prompt damage taken between polls doesn't show
+    /// in the PartyWindow.
+    /// </summary>
+    /// <remarks>
+    /// We mirror absolute values into the same observable fields the
+    /// rest of the roster uses — <see cref="PartyMember.BaselineHp"/>
+    /// + <see cref="PartyMember.HpPercent"/>, etc. — so the
+    /// <see cref="PartyMember.HpDisplay"/> computation works
+    /// identically for self and others. For non-self members we only
+    /// know percent from par + max from the on-join @health round-trip
+    /// (computed-back current = max × pct / 100); for self we know
+    /// exact current + max from PromptParser, and the percent is
+    /// recomputed from those exact values so the display matches.
+    /// </remarks>
+    public void AttachPlayerState(PlayerState playerState)
+    {
+        ArgumentNullException.ThrowIfNull(playerState);
+        if (_playerState is not null) _playerState.PropertyChanged -= OnPlayerStateChanged;
+        _playerState = playerState;
+        _playerState.PropertyChanged += OnPlayerStateChanged;
+        // Also sync whenever the roster changes — when AddSelfIfKnown
+        // first inserts the self row, it has zero baselines until
+        // a prompt fires PropertyChanged. CollectionChanged here
+        // catches that moment so the row is correct from the first
+        // PartyWindow render.
+        State.Members.CollectionChanged += OnMembersChangedForSelfSync;
+        // Initial sync — covers the case where the self row already
+        // exists when this method is called.
+        SyncSelfFromPlayerState();
+    }
+
+    private PlayerState? _playerState;
+
+    private void OnPlayerStateChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(PlayerState.Hp):
+            case nameof(PlayerState.MaxHp):
+            case nameof(PlayerState.Ma):
+            case nameof(PlayerState.MaxMa):
+                SyncSelfFromPlayerState();
+                break;
+        }
+    }
+
+    private void OnMembersChangedForSelfSync(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // Only Add events warrant a sync — Remove / Reset don't create
+        // a new self row that needs population.
+        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add) return;
+        SyncSelfFromPlayerState();
+    }
+
+    private void SyncSelfFromPlayerState()
+    {
+        if (_playerState is null) return;
+        foreach (PartyMember m in State.Members)
+        {
+            if (!m.IsSelf) continue;
+            // Baseline = max (drives HpDisplay's "cur/max" formatting).
+            // Percent = exact current * 100 / max — int rounding here is
+            // fine because HpDisplay multiplies max back out the same
+            // way for non-self members; self always has the precise
+            // baseline so the cur it computes lines up.
+            m.BaselineHp = _playerState.MaxHp;
+            m.HpPercent  = _playerState.MaxHp > 0
+                ? _playerState.Hp * 100 / _playerState.MaxHp
+                : 0;
+            m.BaselineMp = _playerState.MaxMa;
+            m.MpPercent  = _playerState.MaxMa > 0
+                ? _playerState.Ma * 100 / _playerState.MaxMa
+                : 0;
+            return;
+        }
+    }
+
+    /// <summary>
     /// Bind to the active session's <see cref="LineExtractor"/> so the
     /// par-block state machine can read row lines. Calling again with a
     /// new extractor (rare — only if the main window is rebuilt)

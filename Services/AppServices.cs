@@ -439,6 +439,11 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         PartyState = new Game.PartyState();
         Party = new Game.PartyManager(Router, PartyState);
+        // Mirror the local character's live HP/MA into the self party
+        // row on every prompt — without this the self row only updates
+        // on a par poll, so per-prompt damage between polls doesn't
+        // surface in the PartyWindow.
+        Party.AttachPlayerState(PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
         // RemoteCommands is constructed AFTER Chat / Party / Players are
