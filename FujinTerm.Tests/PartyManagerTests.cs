@@ -380,6 +380,82 @@ public sealed class PartyManagerTests
         Assert.Equal(100, fujin.HpPercent);
     }
 
+    // ===== Initial-join rank-preference command =====
+
+    [Fact]
+    public void InitialJoin_RankFront_SendsFrontrankCommand()
+    {
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+        p.LocalRankPreference = Models.Profile.PartyRank.Front;
+
+        router.Dispatch(Line("Raijin started to follow you."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("frontrank\r", System.Text.Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void InitialJoin_RankBack_SendsBackrankCommand()
+    {
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+        p.LocalRankPreference = Models.Profile.PartyRank.Back;
+
+        router.Dispatch(Line("You are now following Raijin."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("backrank\r", System.Text.Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void InitialJoin_RankMid_SendsNothing()
+    {
+        // Mid is the server-side default rank — no command needed.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+        p.LocalRankPreference = Models.Profile.PartyRank.Mid;
+
+        router.Dispatch(Line("Raijin started to follow you."));
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void SubsequentFollower_DoesNotResendRankCommand()
+    {
+        // Only the false→true edge on IsInParty (= "initial join")
+        // triggers the rerank. A second follower joining our existing
+        // party must NOT cause another frontrank/backrank send —
+        // we're already at our preferred rank from the first send.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+        p.LocalRankPreference = Models.Profile.PartyRank.Front;
+
+        router.Dispatch(Line("Raijin started to follow you."));   // initial join → 1 send
+        router.Dispatch(Line("Helper started to follow you."));   // already in party → 0 sends
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("frontrank\r", System.Text.Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void InitialJoin_NoWireSender_DoesNotThrow()
+    {
+        // Defensive: PartyManager works without a wire-sender (the
+        // construction order doesn't guarantee one's bound by the
+        // time the first join lands).
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.LocalRankPreference = Models.Profile.PartyRank.Front;
+
+        router.Dispatch(Line("Raijin started to follow you."));
+        // No assertion — passes if no exception.
+    }
+
     [Fact]
     public void LiveRankChange_OtherMember_UpdatesRankImmediately()
     {

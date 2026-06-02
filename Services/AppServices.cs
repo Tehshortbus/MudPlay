@@ -729,6 +729,7 @@ public sealed class AppServices
         Models.Profile.PartySettings dto = ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party");
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
         Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
+        Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
     }
 
@@ -737,6 +738,7 @@ public sealed class AppServices
         Models.Profile.PartySettings defaults = new();
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(defaults.ParPollFrequencySec));
         Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
+        Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
     }
 

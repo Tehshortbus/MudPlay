@@ -80,6 +80,18 @@ public sealed partial class PartyManager : IDisposable
     /// </summary>
     public bool AutoInviteEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Local character's combat-rank preference (Settings → Party → Rank).
+    /// Sent to the server as <c>frontrank</c> / <c>backrank</c> the
+    /// moment the local character joins a party (<see cref="PartyState.IsInParty"/>
+    /// transitions false → true). <see cref="Models.Profile.PartyRank.Mid"/>
+    /// is no-op — Mid is the default rank, no command needed. AppServices
+    /// pushes <c>dto.Rank</c> in via
+    /// <see cref="Services.AppServices.ApplyPartyFromActiveProfile"/>.
+    /// </summary>
+    public Models.Profile.PartyRank LocalRankPreference { get; set; }
+        = Models.Profile.PartyRank.Mid;
+
     /// <summary>Test-friendly clock — overridable so PR 6.5 tests don't have to wait real time.</summary>
     internal Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
 
@@ -298,6 +310,7 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
+        bool wasInParty = State.IsInParty;
         // Flip IsInParty FIRST so any CollectionChanged.Add subscriber
         // (PartyPoller's on-join @health round-trip in particular)
         // sees the state already consistent at the moment of the add.
@@ -308,6 +321,10 @@ public sealed partial class PartyManager : IDisposable
         State.LeaderName ??= LocalCharacterName;
         AddOrTouchMember(name);
         AddSelfIfKnown(isLeader: true);
+        // Only on the false→true edge: this is the "initial join"
+        // moment the rank-preference command applies to. Subsequent
+        // followers joining our existing party don't re-trigger it.
+        if (!wasInParty) SendRankPreferenceCommand();
     }
 
     /// <summary>
@@ -320,6 +337,7 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string leaderName = result.Groups[0];
         if (string.IsNullOrEmpty(leaderName)) return;
+        bool wasInParty = State.IsInParty;
         // Same early-set rationale as OnFollowsYou — derived state
         // (IsInParty + LeaderName + SelfIsLeader) needs to be
         // consistent at the moment the CollectionChanged.Add fires
@@ -331,6 +349,27 @@ public sealed partial class PartyManager : IDisposable
         PartyMember leader = AddOrTouchMember(leaderName);
         leader.IsLeader = true;
         AddSelfIfKnown(isLeader: false);
+        // Initial-join edge — see OnFollowsYou for the rationale.
+        if (!wasInParty) SendRankPreferenceCommand();
+    }
+
+    /// <summary>
+    /// Send the rerank command (<c>frontrank</c> / <c>backrank</c>) to
+    /// the server iff <see cref="LocalRankPreference"/> is non-Mid and
+    /// a wire-sender is bound. Mid is the server-side default rank —
+    /// no command needed when that's the preference.
+    /// </summary>
+    private void SendRankPreferenceCommand()
+    {
+        if (_wireSender is null) return;
+        string? cmd = LocalRankPreference switch
+        {
+            Models.Profile.PartyRank.Front => "frontrank\r",
+            Models.Profile.PartyRank.Back  => "backrank\r",
+            _                              => null,
+        };
+        if (cmd is null) return;
+        _wireSender(System.Text.Encoding.Latin1.GetBytes(cmd));
     }
 
     private void OnStopsFollowing(MatchResult result)
