@@ -113,4 +113,19 @@ public static class KnownPatterns
     // in TrainerMenuTracker, this is our entry signal for the
     // re-invite-after-trainer-menu flow.
     public const string MenuTrainerStatsMarker = "menu.trainer-stats-marker";
+
+    // ----- Suicide password flow (Phase 6 follow-up) ---------------------
+    // Drives the SuicidePasswordTracker state machine and the engine-
+    // send gate. The whole point of pattern-matching these is to
+    // (a) detect when we've entered a password-entry prompt and lock
+    // out engine auto-sends so they don't pollute the input, and
+    // (b) capture the password the user types so we can store it
+    // encrypted on the profile for @suicide consumption.
+    public const string SuicidePromptOldPassword = "suicide.prompt-old";   // "Enter the current password:"  (set-flow when password exists)
+    public const string SuicidePromptNewPassword = "suicide.prompt-new";   // "Enter New Password:"          (set-flow new entry)
+    public const string SuicidePromptUseSuicide  = "suicide.prompt-use";   // "Enter your suicide password:" (plain `suicide` command when password is set)
+    public const string SuicideInvalidPassword   = "suicide.invalid";      // "Invalid password specified."  (wrong old password OR wrong use-suicide password)
+    public const string SuicideNotSet            = "suicide.not-set";      // "You do not have a suicide password set."  (response to `pro`)
+    public const string SuicidePasswordChanged   = "suicide.changed";      // "Password Changed"             (success commit)
+    public const string SuicidePasswordNotChanged = "suicide.not-changed"; // "Password NOT changed"         (empty-CR into new-password prompt)
 }

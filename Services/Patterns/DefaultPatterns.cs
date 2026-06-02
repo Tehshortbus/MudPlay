@@ -286,6 +286,26 @@ public static class DefaultPatterns
         // outbound `train stats` within the last few seconds.
         yield return new RegexPattern(KnownPatterns.MenuTrainerStatsMarker,
             @"^\s*Point Cost Chart\s*$");
+
+        // ----- Suicide password flow patterns -----------------------------
+        // All anchored to the line start so a chat / gossip line embedding
+        // the phrase can't trigger them. SuicidePasswordTracker layers
+        // additional context on top — it only acts on these when it knows
+        // we're actively in a flow (user just sent `set s*` or `suicide`).
+        yield return new RegexPattern(KnownPatterns.SuicidePromptOldPassword,
+            @"^Enter the current password:");
+        yield return new RegexPattern(KnownPatterns.SuicidePromptNewPassword,
+            @"^Enter New Password:");
+        yield return new RegexPattern(KnownPatterns.SuicidePromptUseSuicide,
+            @"^Enter your suicide password:");
+        yield return new RegexPattern(KnownPatterns.SuicideInvalidPassword,
+            @"^Invalid password specified\.");
+        yield return new RegexPattern(KnownPatterns.SuicideNotSet,
+            @"^You do not have a suicide password set\.");
+        yield return new RegexPattern(KnownPatterns.SuicidePasswordChanged,
+            @"^Password Changed\b");
+        yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
+            @"^Password NOT changed\b");
     }
 
 }

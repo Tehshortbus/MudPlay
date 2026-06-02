@@ -109,6 +109,18 @@ public sealed class CharacterProfile
     public Dictionary<string, BbsCredentials>? BbsCredentials { get; set; }
 
     /// <summary>
+    /// In-game <c>set suicide</c> password, encrypted with
+    /// <see cref="Services.PasswordProtector"/>. Captured passively
+    /// while the user is in the password-entry flow (see
+    /// <see cref="Game.SuicidePasswordTracker"/>) and consumed by the
+    /// Phase 6 <c>@suicide</c> remote-command path. <c>null</c> when
+    /// no password has been observed yet OR after the user runs
+    /// <c>pro</c> and the "no password set" line confirms the
+    /// realm-side state no longer matches our cached value.
+    /// </summary>
+    public string? EncryptedSuicidePassword { get; set; }
+
+    /// <summary>
     /// Persisted size + screen position per top-level window, keyed by
     /// stable id ("main", "backscroll", "settings", etc.). Populated by
     /// <see cref="Services.WindowLayoutStore"/> on profile save and consumed

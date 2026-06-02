@@ -300,6 +300,24 @@ public sealed class AppServices
     public PasswordProtector Passwords { get; } = new();
 
     /// <summary>
+    /// One-flag pause switch wrapping every engine's wire-sender.
+    /// Raised by <see cref="Game.SuicidePasswordTracker"/> while a
+    /// password-entry prompt is active so engine auto-sends don't
+    /// pollute the input.
+    /// </summary>
+    public EngineSendGate EngineGate { get; } = new();
+
+    /// <summary>
+    /// Passive observer for the in-game <c>set suicide</c> /
+    /// <c>suicide</c> password flows. Locks
+    /// <see cref="EngineGate"/> for the duration of each prompt and
+    /// captures the user-typed new password (committed to the
+    /// profile's <see cref="Models.Profile.CharacterProfile.EncryptedSuicidePassword"/>
+    /// on the server-side <c>Password Changed</c> confirmation).
+    /// </summary>
+    public Game.SuicidePasswordTracker SuicidePassword { get; private set; } = null!;
+
+    /// <summary>
     /// Live cache of imported MajorMUD game data. Loads JSON tables on
     /// demand from <c>Data/game data/{set}/</c>; the active set follows
     /// the pinned BBS's
@@ -556,6 +574,13 @@ public sealed class AppServices
         // menu round-trip dropped from the follower's view.
         TrainerMenu = new Game.TrainerMenuTracker(Router, PartyState, Log);
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
+        // Suicide-password observer + engine-gate consumer. Drives
+        // EngineGate.IsLocked during password-entry prompts so
+        // MainWindowViewModel's wrapped engine wire-senders silently
+        // no-op for the duration; on commit, stores the encrypted
+        // password to CharacterProfile.EncryptedSuicidePassword.
+        SuicidePassword = new Game.SuicidePasswordTracker(
+            Router, EngineGate, Profile, Passwords, Log);
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup.

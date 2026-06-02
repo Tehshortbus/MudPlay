@@ -367,51 +367,62 @@ public partial class MainWindowViewModel : ObservableObject
         // state machine needs the per-session LineExtractor. Same wiring
         // shape as TriggerEngine.AttachLineExtractor.
         AppServices.Current.Party.AttachLineExtractor(Lines);
+        // Every engine wire-sender is routed through EngineGate's
+        // wrapper. The wrapper short-circuits while
+        // EngineGate.IsLocked is true (today: while
+        // SuicidePasswordTracker is in a password-entry prompt),
+        // so a stray par poll / auto-invite / @health round-trip
+        // can't end up sent as the user's suicide password. User-
+        // typed input doesn't go through this wrapper — TerminalControl
+        // calls SendUserInput directly via the local-input buffer
+        // flush.
+        Action<byte[]> engineSend = AppServices.Current.EngineGate.WrapEngineSender(SendUserInput);
+
         // Phase 6 PR 6.5 — auto-invite on reconnect needs a wire-sender
         // to send "invite <name>" when a disconnected member returns
         // within the grace window AND we're the party leader.
-        AppServices.Current.Party.SetWireSender(SendUserInput);
+        AppServices.Current.Party.SetWireSender(engineSend);
 
         // Macro dispatcher needs a wire-send callback before it can fire.
         // TerminalControl + ConversationWindow's input both call into the
         // dispatcher on KeyDown — without a sender bound, the call returns
         // false and the keystroke falls through to normal handling.
-        AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
+        AppServices.Current.MacroDispatcher.SetSender(engineSend);
 
         // Trigger engine subscribes to the LineExtractor for game-message
         // dispatch (chat + system-log subscriptions wired in its ctor) and
         // borrows the same wire sender so a fired trigger's Response goes
         // through the canonical SendUserInput path.
         AppServices.Current.Triggers.AttachLineExtractor(Lines);
-        AppServices.Current.Triggers.SetSender(SendUserInput);
+        AppServices.Current.Triggers.SetSender(engineSend);
 
         // Remote-command engine borrows the same wire-sender so a handler's
         // ctx.Reply(text) routes through SendUserInput exactly like a
         // typed command would. The Phase 6 PR 6.3 PartyEssentialHandlers
         // also need their own copy for the @party <sub> → local-command
         // relay (uses the wire-sender directly, bypassing ctx.Reply).
-        AppServices.Current.RemoteCommands.SetWireSender(SendUserInput);
-        AppServices.Current.PartyEssentials.SetWireSender(SendUserInput);
+        AppServices.Current.RemoteCommands.SetWireSender(engineSend);
+        AppServices.Current.PartyEssentials.SetWireSender(engineSend);
         // Phase 6 PR 6.4 — poller needs the same wire-sender to send
         // @health round-trip requests and the periodic par poll.
-        AppServices.Current.PartyPoller.SetWireSender(SendUserInput);
+        AppServices.Current.PartyPoller.SetWireSender(engineSend);
         // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
         // when we finish, so the party leader's pause-gate can react.
-        AppServices.Current.PartyRest.SetWireSender(SendUserInput);
+        AppServices.Current.PartyRest.SetWireSender(engineSend);
         // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
         // broadcasts go through PartyBroadcaster.
-        AppServices.Current.PartyBroadcaster.SetWireSender(SendUserInput);
+        AppServices.Current.PartyBroadcaster.SetWireSender(engineSend);
         // AutoPartyManager — consumes per-player InviteToPartyIfSeen
         // and JoinPartyIfInvited flags, sends `invite <given>` and
         // `follow <given>` over the wire.
-        AppServices.Current.AutoParty.SetWireSender(SendUserInput);
+        AppServices.Current.AutoParty.SetWireSender(engineSend);
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
-        AppServices.Current.Hangup.SetWireSender(SendUserInput);
+        AppServices.Current.Hangup.SetWireSender(engineSend);
         // MainMenuEntryAutomation — same sender; armed below when
         // LoginAutomator's LoggedIntoGame fires (only point in the
         // session where the entry command is allowed to auto-fire).
-        AppServices.Current.MainMenuEntry.SetWireSender(SendUserInput);
+        AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
@@ -1314,6 +1325,10 @@ public partial class MainWindowViewModel : ObservableObject
         // the user's own `train stats` / `train` going out before
         // accepting the "Point Cost Chart" marker as menu confirmation.
         AppServices.Current.TrainerMenu.ObserveOutbound(data);
+        // Suicide-password capture — during the AwaitingNewPassword
+        // state, the next bytes the user types ARE the password. We
+        // peek here (the bytes still flow to the server unchanged).
+        AppServices.Current.SuicidePassword.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }

@@ -200,7 +200,7 @@
                                Text="{Binding CredentialsHint}"/>
 
                     <Grid Margin="0,6,0,0" IsEnabled="{Binding HasProfile}"
-                          ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                          ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Username:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
                                    Text="{Binding Username, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
@@ -215,6 +215,31 @@
                                      PlaceholderText="(leave empty to keep the existing password)"/>
                             <ToggleButton Grid.Column="2"
                                           IsChecked="{Binding ShowPassword, Mode=TwoWay}"
+                                          Content="Show"
+                                          MinWidth="60"/>
+                        </Grid>
+
+                        <!-- Suicide password — read-only display.
+                             The value is captured passively by
+                             SuicidePasswordTracker when the user runs
+                             `set suicide` in-game; this row just
+                             exposes the stored value so the user can
+                             confirm what we have. Hidden when nothing
+                             is stored (per user spec: "show only if
+                             one is set"). -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                                   Text="Suicide Password:"
+                                   IsVisible="{Binding HasSuicidePassword}"/>
+                        <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="280,6,Auto"
+                              HorizontalAlignment="Left"
+                              IsVisible="{Binding HasSuicidePassword}">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding SuicidePassword, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     PasswordChar="{Binding ShowSuicidePassword, Converter={x:Static vm:PasswordCharConverter.Instance}}"
+                                     ToolTip.Tip="Captured from in-game `set suicide` flow. Run `set suicide` again to change; run `pro` and observe 'You do not have a suicide password set.' to wipe."/>
+                            <ToggleButton Grid.Column="2"
+                                          IsChecked="{Binding ShowSuicidePassword, Mode=TwoWay}"
                                           Content="Show"
                                           MinWidth="60"/>
                         </Grid>

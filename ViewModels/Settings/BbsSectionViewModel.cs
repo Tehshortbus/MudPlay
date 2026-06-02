@@ -98,6 +98,19 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty] private bool _showPassword;
 
+    // Suicide-password display only — captured passively by
+    // SuicidePasswordTracker when the user runs `set suicide` in-game.
+    // No editor; the BBS-tab field is read-only and hidden when nothing
+    // is stored. ShowSuicidePassword toggles the obfuscation char.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSuicidePassword))]
+    private string _suicidePassword = string.Empty;
+
+    [ObservableProperty] private bool _showSuicidePassword;
+
+    /// <summary>True when the loaded profile carries a stored suicide password.</summary>
+    public bool HasSuicidePassword => !string.IsNullOrEmpty(SuicidePassword);
+
     // ----- Confirm prompts (Global tier — install-wide UX preferences) -----
     // Persisted in GlobalSettings.Settings["Confirm"] and mirrored live
     // onto AppServices.Current.Confirm by ApplyConfirmFromGlobalSettings.
@@ -154,6 +167,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         _profile.ProfileLoaded += _ => RefreshProfileState();
         _profile.ProfileClosed += RefreshProfileState;
+        // SuicidePasswordTracker writes a new encrypted blob and
+        // calls NotifyMutated on commit; pick that up so the
+        // Settings → BBS field reflects the freshly-captured value
+        // without requiring the user to reload the section.
+        _profile.ProfileMutated += _ => RefreshSuicidePassword();
         RefreshProfileState();
         LoadConfirmFromGlobalSettings();
 
@@ -494,6 +512,28 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             LoadCredentialsFor(SelectedBbsName);
             _suppressDirty = false;
         }
+        RefreshSuicidePassword();
+    }
+
+    /// <summary>
+    /// Hydrate <see cref="SuicidePassword"/> from the loaded profile's
+    /// encrypted blob. Runs on every profile load / mutate / close so
+    /// the field reflects the live state — including the wipe case
+    /// where <see cref="Game.SuicidePasswordTracker"/> saw <c>pro</c>'s
+    /// "You do not have a suicide password set." line and cleared the
+    /// stored value.
+    /// </summary>
+    private void RefreshSuicidePassword()
+    {
+        string decrypted = string.Empty;
+        if (_profile.Current is { } profile
+            && profile.EncryptedSuicidePassword is { Length: > 0 } blob)
+        {
+            decrypted = _passwords.Unprotect(blob) ?? string.Empty;
+        }
+        _suppressDirty = true;
+        SuicidePassword = decrypted;
+        _suppressDirty = false;
     }
 
     private void ResetFields()
