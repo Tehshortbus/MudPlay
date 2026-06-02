@@ -1,0 +1,123 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:game="using:FujinTerm.Game"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="220"
+        x:Class="FujinTerm.Views.PartyWindow"
+        x:DataType="vm:PartyViewModel"
+        Title="Party"
+        Width="380" Height="220"
+        MinWidth="280" MinHeight="80"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ===== Header strip ===== -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,4">
+            <TextBlock Text="{Binding HeaderText}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"
+                       FontSize="11"
+                       VerticalAlignment="Center"/>
+        </Border>
+
+        <!-- ===== Empty-state hint ===== -->
+        <TextBlock DockPanel.Dock="Top"
+                   Margin="10,12,10,0"
+                   Text="No party active. Members appear here as soon as someone follows you (or you follow someone)."
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding !State.IsInParty}"/>
+
+        <!-- ===== Member rows ===== -->
+        <ItemsControl ItemsSource="{Binding State.Members}"
+                      Background="{StaticResource ChromeBgSunkenBrush}"
+                      Padding="2"
+                      IsVisible="{Binding State.IsInParty}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="game:PartyMember">
+                    <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="6,3">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto"
+                              VerticalAlignment="Center">
+
+                            <!-- Leader star (visible only on the leader) -->
+                            <TextBlock Grid.Column="0"
+                                       Text="★"
+                                       FontSize="13"
+                                       Margin="0,0,6,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentPrimaryBrush}"
+                                       IsVisible="{Binding IsLeader}"/>
+
+                            <!-- Name (always) -->
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource ChromeFgBrush}"/>
+
+                            <!-- HP — "H: 690 94%" -->
+                            <TextBlock Grid.Column="2"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       Margin="0,0,8,0"
+                                       Foreground="{StaticResource ChromeFgBrush}">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="H:{0} {1}%">
+                                        <Binding Path="BaselineHp"/>
+                                        <Binding Path="HpPercent"/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+
+                            <!-- MA — "M: 290 50%" (Warriors with no MA show "M:—") -->
+                            <TextBlock Grid.Column="3"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       Margin="0,0,8,0"
+                                       Foreground="{StaticResource ChromeFgBrush}">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="M:{0} {1}%">
+                                        <Binding Path="BaselineMp"/>
+                                        <Binding Path="MpPercent"/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+
+                            <!-- Position chip — "Standing" / "Resting" / "Meditating" -->
+                            <TextBlock Grid.Column="4"
+                                       Text="{Binding Position}"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Margin="0,0,6,0"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+                            <!-- Uninvite button (per-row). Only meaningful for the leader;
+                                 disabled otherwise (the in-game command would no-op anyway). -->
+                            <Button Grid.Column="5"
+                                    Content="⨯"
+                                    Width="22" Height="22"
+                                    Padding="0"
+                                    FontSize="13"
+                                    ToolTip.Tip="Uninvite from party"
+                                    Command="{Binding $parent[ItemsControl].DataContext.UninviteCommand}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding $parent[ItemsControl].DataContext.State.SelfIsLeader}"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DockPanel>
+</Window>

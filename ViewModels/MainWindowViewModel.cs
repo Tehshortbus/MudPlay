@@ -1516,17 +1516,27 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Singleton handle for the live PartyWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private PartyWindow? _partyWindow;
+
     [RelayCommand]
     private void OpenParty()
-        => OpenPlaceholder(
-            id: "party",
-            panelName: "Party",
-            phaseTag: "Phase 6",
-            headline: "Party tracker",
-            description:
-                "Leader at top, HP / MA bars per member, leader-star highlight. " +
-                "Driven by PartyManager (par-poller + follows-you / stops-following " +
-                "pattern matchers). Compact and detail modes.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_partyWindow is { } existing) { existing.Close(); return; }
+
+        PartyWindow window = new()
+        {
+            DataContext = new PartyViewModel(
+                AppServices.Current.PartyState,
+                SendUserInput),
+        };
+        window.Closed += (_, _) => _partyWindow = null;
+        _partyWindow = window;
+        window.Show(main);
+    }
 
     private SettingsWindow? _settings;
 
