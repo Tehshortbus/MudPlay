@@ -520,6 +520,47 @@ public sealed class PartyManagerTests
         Assert.Equal("198/300", m.MaDisplay);
     }
 
+    // ===== PartyMember.HpRichDisplay / MaRichDisplay =====
+    //
+    // Skeleton-design verbose form for the stacked HP+MA column:
+    // "H:cur/max pct%" / "M:cur/max pct%". Used by the PartyWindow's
+    // new single stacked column (HEALTH · MANA). Falls back to
+    // "H:pct%" when baseline is unknown to avoid an awkward double-
+    // percent like "H:95% 95%".
+
+    [Fact]
+    public void HpRichDisplay_RendersFullForm_WhenBaselineKnown()
+    {
+        PartyMember m = new() { BaselineHp = 817, HpPercent = 95 };
+        Assert.Equal("H:776/817 95%", m.HpRichDisplay);
+    }
+
+    [Fact]
+    public void HpRichDisplay_FallsBackToPercentOnly_WhenBaselineUnknown()
+    {
+        PartyMember m = new() { HpPercent = 75 };
+        Assert.Equal("H:75%", m.HpRichDisplay);
+    }
+
+    [Fact]
+    public void MaRichDisplay_RendersFullForm_WhenBaselineKnown()
+    {
+        PartyMember m = new() { BaselineMp = 580, MpPercent = 98 };
+        Assert.Equal("M:568/580 98%", m.MaRichDisplay);
+    }
+
+    [Fact]
+    public void HpRichDisplay_UpdatesWhenPercentChanges()
+    {
+        // Validates the [NotifyPropertyChangedFor(HpRichDisplay)]
+        // wiring on the percent field — par-poll percent ticks must
+        // re-fire the bound TextBlock in the new stacked layout.
+        PartyMember m = new() { BaselineHp = 200, HpPercent = 100 };
+        Assert.Equal("H:200/200 100%", m.HpRichDisplay);
+        m.HpPercent = 50;
+        Assert.Equal("H:100/200 50%", m.HpRichDisplay);
+    }
+
     // ===== Self row mirrors PlayerState =====
     //
     // The on-join @health round-trip is intentionally skipped for the

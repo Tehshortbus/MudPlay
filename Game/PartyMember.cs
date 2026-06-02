@@ -47,24 +47,28 @@ public sealed partial class PartyMember : ObservableObject
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
     [NotifyPropertyChangedFor(nameof(HpDisplay))]
+    [NotifyPropertyChangedFor(nameof(HpRichDisplay))]
     private int _baselineHp;
 
     /// <summary>Baseline MA at join. Same provenance as <see cref="BaselineHp"/>.</summary>
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
     [NotifyPropertyChangedFor(nameof(MaDisplay))]
+    [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
     private int _baselineMp;
 
     /// <summary>Current HP as a percentage (0–100) of <see cref="BaselineHp"/>. Updated by every <c>par</c> poll.</summary>
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
     [NotifyPropertyChangedFor(nameof(HpDisplay))]
+    [NotifyPropertyChangedFor(nameof(HpRichDisplay))]
     private int _hpPercent;
 
     /// <summary>Current MA as a percentage (0–100) of <see cref="BaselineMp"/>.</summary>
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
     [NotifyPropertyChangedFor(nameof(MaDisplay))]
+    [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
     private int _mpPercent;
 
     /// <summary>
@@ -97,6 +101,24 @@ public sealed partial class PartyMember : ObservableObject
     public string MaDisplay => BaselineMp > 0
         ? $"{BaselineMp * MpPercent / 100}/{BaselineMp}"
         : $"{MpPercent}%";
+
+    /// <summary>
+    /// PartyWindow rich display string for HP — skeleton-design form
+    /// "H:cur/max pct%" (e.g. "H:779/817 95%"). Falls back to just
+    /// "H:pct%" when baseline is unknown so the row doesn't render
+    /// the awkward double-percent "H:95% 95%".
+    /// </summary>
+    public string HpRichDisplay => BaselineHp > 0
+        ? $"H:{BaselineHp * HpPercent / 100}/{BaselineHp} {HpPercent}%"
+        : $"H:{HpPercent}%";
+
+    /// <summary>
+    /// PartyWindow rich display string for MA / KAI — symmetric with
+    /// <see cref="HpRichDisplay"/>.
+    /// </summary>
+    public string MaRichDisplay => BaselineMp > 0
+        ? $"M:{BaselineMp * MpPercent / 100}/{BaselineMp} {MpPercent}%"
+        : $"M:{MpPercent}%";
 
     /// <summary>Stance / position observed on the most recent <c>par</c> row.</summary>
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private PlayerPosition _position;

@@ -83,7 +83,9 @@
                 BorderThickness="0,0,0,1"
                 Padding="6,4"
                 IsVisible="{Binding State.IsInParty}">
-            <Grid ColumnDefinitions="20,28,*,135,135,Auto,Auto">
+            <!-- Matches the per-row grid below: 6 columns now that
+                 HEALTH and MANA share one stacked cell. -->
+            <Grid ColumnDefinitions="20,28,*,190,Auto,Auto">
                 <!-- Col 0: leader-star slot (no label). -->
                 <!-- Col 1: rank chip. -->
                 <TextBlock Grid.Column="1"
@@ -97,24 +99,19 @@
                            FontSize="9" FontWeight="SemiBold"
                            Margin="6,0,0,0"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 3: HP bar. -->
+                <!-- Col 3: HEALTH · MANA stacked. -->
                 <TextBlock Grid.Column="3"
-                           Text="HEALTH"
+                           Text="HEALTH · MANA"
                            FontSize="9" FontWeight="SemiBold"
                            Margin="6,0,0,0"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 4: MA bar. -->
+                <!-- Col 4: status chip strip. -->
                 <TextBlock Grid.Column="4"
-                           Text="MANA"
-                           FontSize="9" FontWeight="SemiBold"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 5: status chip strip. -->
-                <TextBlock Grid.Column="5"
                            Text="FLAGS"
                            FontSize="9" FontWeight="SemiBold"
                            MinWidth="60"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <!-- Col 6: uninvite slot (no label). -->
+                <!-- Col 5: uninvite slot (no label). -->
             </Grid>
         </Border>
 
@@ -138,8 +135,10 @@
                              don't affect HP/MA alignment. -->
                         <!-- Column layout matches the header Border above.
                              Position text column dropped — stance is covered by
-                             the REST / MED status chips in column 5. -->
-                        <Grid ColumnDefinitions="20,28,*,135,135,Auto,Auto"
+                             the REST / MED status chips. HP + MA collapsed into
+                             one stacked column (HEALTH · MANA) per the skeleton
+                             design — each row renders bar + "X:cur/max pct%". -->
+                        <Grid ColumnDefinitions="20,28,*,190,Auto,Auto"
                               VerticalAlignment="Center">
 
                             <!-- (0) Leader star — visible only on the leader -->
@@ -185,62 +184,55 @@
                                            IsVisible="{Binding Class, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
 
-                            <!-- (3) HP bar + numeric — fixed slot width keeps the
-                                 columns past this point aligned across rows. -->
-                            <Grid Grid.Column="3" ColumnDefinitions="60,8,*"
-                                  Margin="6,0,8,0" VerticalAlignment="Center" Width="135">
-                                <ProgressBar Grid.Column="0"
-                                             Classes="HpBar"
-                                             Value="{Binding HpPercent}"
-                                             Maximum="100"
-                                             VerticalAlignment="Center"
-                                             ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
-                                <!-- HpDisplay shows "current/max" once a baseline is
-                                     known (on-join @health for foreign members; PromptParser
-                                     mirror for self). Falls back to "percent%" until then. -->
-                                <TextBlock Grid.Column="2"
-                                           Text="{Binding HpDisplay}"
-                                           VerticalAlignment="Center"
-                                           HorizontalAlignment="Right"
-                                           FontFamily="{StaticResource FontMono}"
-                                           FontSize="10"
-                                           Foreground="{StaticResource ChromeFgBrush}"
-                                           ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
-                            </Grid>
+                            <!-- (3) HP + MA stacked, single column (HEALTH · MANA).
+                                 Skeleton-design layout: each member gets two
+                                 vertical rows — HP bar + "H:cur/max pct%" on top,
+                                 MA bar + "M:cur/max pct%" below. The MA sub-row
+                                 hides when BaselineMp=0 (warrior / no-mana class
+                                 / pre-@health-exchange) so the row collapses to
+                                 HP-only height. -->
+                            <StackPanel Grid.Column="3" Orientation="Vertical"
+                                        Margin="6,0,8,0" VerticalAlignment="Center"
+                                        Width="190" Spacing="2">
+                                <!-- HP sub-row -->
+                                <Grid ColumnDefinitions="60,8,*" VerticalAlignment="Center">
+                                    <ProgressBar Grid.Column="0"
+                                                 Classes="HpBar"
+                                                 Value="{Binding HpPercent}"
+                                                 Maximum="100"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding HpRichDisplay}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgBrush}"/>
+                                </Grid>
+                                <!-- MA sub-row — hidden when no mana pool. -->
+                                <Grid ColumnDefinitions="60,8,*" VerticalAlignment="Center"
+                                      IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
+                                    <ProgressBar Grid.Column="0"
+                                                 Classes="MaBar"
+                                                 Value="{Binding MpPercent}"
+                                                 Maximum="100"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding MaRichDisplay}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgBrush}"/>
+                                </Grid>
+                            </StackPanel>
 
-                            <!-- (4) MA bar + numeric. Always reserves layout space so
-                                 the position + chips columns line up across rows; the
-                                 visible bar / text just blank out when BaselineMp=0
-                                 (warrior or pre-@health-exchange). -->
-                            <Grid Grid.Column="4" ColumnDefinitions="60,8,*"
-                                  Margin="0,0,8,0" VerticalAlignment="Center" Width="135"
-                                  IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
-                                <ProgressBar Grid.Column="0"
-                                             Classes="MaBar"
-                                             Value="{Binding MpPercent}"
-                                             Maximum="100"
-                                             VerticalAlignment="Center"
-                                             ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
-                                <TextBlock Grid.Column="2"
-                                           Text="{Binding MaDisplay}"
-                                           VerticalAlignment="Center"
-                                           HorizontalAlignment="Right"
-                                           FontFamily="{StaticResource FontMono}"
-                                           FontSize="10"
-                                           Foreground="{StaticResource ChromeFgBrush}"
-                                           ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
-                            </Grid>
-                            <!-- Empty placeholder when MA is hidden, so column 5 onwards
-                                 still occupies the same horizontal slot on every row. -->
-                            <Border Grid.Column="4" Width="135"
-                                    IsVisible="{Binding BaselineMp, Converter={x:Static vm:LessThanOrEqualZeroConverter.Instance}}"/>
-
-                            <!-- (5) Status-flag chips. Each chip self-collapses when the
+                            <!-- (4) Status-flag chips. Each chip self-collapses when the
                                  corresponding flag is false. REST and MED chips also
                                  communicate stance — replacing the previous position
                                  text column. Order is roughly stance / threat / cure /
                                  stealth / coordination. -->
-                            <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"
                                         BorderBrush="{StaticResource AccentGreenBrush}"
@@ -309,8 +301,8 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- (6) Uninvite — only meaningful for the leader -->
-                            <Button Grid.Column="6"
+                            <!-- (5) Uninvite — only meaningful for the leader -->
+                            <Button Grid.Column="5"
                                     Content="⨯"
                                     Width="22" Height="22"
                                     Padding="0"
