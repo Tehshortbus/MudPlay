@@ -50,17 +50,26 @@
                  are removed too. The bound Title is still surfaced via
                  SettingsWindowViewModel's sidebar selection. -->
 
-            <Grid ColumnDefinitions="280,Auto,Auto,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel"
-                           Text="Block @suicide commands when lives ≤"
-                           ToolTip.Tip="Hard-blocks `@do suicide` and `@party suicide` while remaining lives are at or below this number. Default 3 — protects characters who haven't yet built up a lives buffer. Set to 0 to never block on lives (the engine still refuses when the live lives count is unknown)."/>
-                <NumericUpDown Grid.Column="1"
+            <!-- Label column widened to 360 so "Block @suicide
+                 commands when lives ≤" fits without clipping. Tooltip
+                 stripped per user direction (the spinner range + the
+                 subnote below are self-explanatory). Range 0..9 with
+                 default 5 — small dial reflects the realistic safety
+                 buffer at typical mid-game lives counts. -->
+            <Grid ColumnDefinitions="360,Auto,Auto,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
+                           Text="Block @suicide commands when lives ≤"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
                                Value="{Binding MaxSuicideLivesThreshold, Mode=TwoWay}"
-                               Minimum="0" Maximum="20"
+                               Minimum="0" Maximum="9"
                                Increment="1"
-                               Width="100"
-                               ToolTip.Tip="Range 0..20. Threshold is inclusive — at exactly N lives the command is still blocked."/>
-                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="lives"/>
+                               Width="80"/>
+                <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldSuffix" Text="lives"/>
+                <TextBlock Grid.Row="1" Grid.Column="0"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" FontStyle="Italic"
+                           Margin="0,2,0,0"
+                           Text="0 = disabled"/>
             </Grid>
 
             <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"

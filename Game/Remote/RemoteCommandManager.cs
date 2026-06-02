@@ -88,7 +88,7 @@ public sealed class RemoteCommandManager : IDisposable
     /// spec; settable to 0 in Settings.Other (PR 6.9 wires the UI) to
     /// allow forced suicide through all lives.
     /// </summary>
-    public int MaxSuicideLivesThreshold { get; set; } = 3;
+    public int MaxSuicideLivesThreshold { get; set; } = 5;
 
     // ----- Settings.Talk-driven knobs --------------------------------------
     // Pushed by TalkSectionViewModel.ApplyToServices on Apply / on profile

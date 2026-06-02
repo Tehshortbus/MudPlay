@@ -42,11 +42,12 @@ public sealed class OtherSectionViewModelTests
     [Fact]
     public void OtherSettings_Default_MatchesPhase6Spec()
     {
-        // Phase 6 spec: block @do suicide / @party suicide at lives ≤ 3.
-        // A freshly-loaded profile with no Other entry falls through to
-        // this value for the engine, so it has to be stable.
+        // Per user direction: default 5. Range 0..9 (range enforced by
+        // the spinner + Math.Clamp in OtherSectionViewModel.Apply +
+        // AppServices.ApplyOtherFromActiveProfile). 0 disables the
+        // block entirely.
         OtherSettings dto = new();
-        Assert.Equal(3, dto.MaxSuicideLivesThreshold);
+        Assert.Equal(5, dto.MaxSuicideLivesThreshold);
         // Ignore-ailment toggles default UNCHECKED — most parties want
         // to pause on every ailment. Toggle ON when the party agrees
         // to push through a specific tick (e.g. boss runs).

@@ -29,7 +29,7 @@ public sealed class OtherSettings
     /// up live-lives tracking. This setting only takes effect once
     /// that lives source is connected.
     /// </remarks>
-    public int MaxSuicideLivesThreshold { get; set; } = 3;
+    public int MaxSuicideLivesThreshold { get; set; } = 5;
 
     // ----- Ignored ailments ---------------------------------------------
     // Per user direction: the four "Ignore X" toggles gate whether

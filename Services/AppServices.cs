@@ -747,7 +747,7 @@ public sealed class AppServices
     public void ApplyOtherFromActiveProfile()
     {
         Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
-        RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+        RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 9);
         // Game-menu commands — HangupHandler consumes ExitCommand
         // synchronously on @hangup; the future cleanup-flow + first-
         // login automation will consume both. Blank entries fall back

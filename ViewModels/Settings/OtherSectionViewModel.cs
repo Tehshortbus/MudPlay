@@ -73,7 +73,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// lives are ≤ this value. Range 0..20. Default 3 per the Phase 6
     /// spec; pushed into the live engine on Apply + on profile load.
     /// </summary>
-    [ObservableProperty] private int _maxSuicideLivesThreshold = 3;
+    [ObservableProperty] private int _maxSuicideLivesThreshold = 5;
 
     // ----- Ignored ailments (wired Phase 6+) -----
     // Default UNCHECKED — most parties want to pause on every ailment.
@@ -187,7 +187,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
 
         OtherSettings dto = new()
         {
-            MaxSuicideLivesThreshold = Math.Clamp(MaxSuicideLivesThreshold, 0, 20),
+            MaxSuicideLivesThreshold = Math.Clamp(MaxSuicideLivesThreshold, 0, 9),
             IgnorePoison    = IgnorePoison,
             IgnoreBlindness = IgnoreBlindness,
             IgnoreConfusion = IgnoreConfusion,
