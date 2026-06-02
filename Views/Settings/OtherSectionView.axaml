@@ -45,33 +45,10 @@
         <StackPanel Margin="22" Spacing="4"
                     MaxWidth="780" HorizontalAlignment="Left">
 
-            <!-- ============ Tab header ============ -->
-            <TextBlock Text="{Binding Title}"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"/>
-
-            <Border Padding="4,2"
-                    Background="{StaticResource ChromeBgElevBrush}"
-                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}"
-                    HorizontalAlignment="Left"
-                    Margin="0,4,0,4">
-                <TextBlock Text="{Binding PhaseTag}"
-                           Foreground="{StaticResource AccentAmberBrush}"
-                           FontFamily="{StaticResource FontMono}"
-                           FontSize="11"/>
-            </Border>
-
-            <TextBlock Text="{Binding Description}"
-                       Foreground="{StaticResource ChromeFgSecBrush}"
-                       FontSize="{StaticResource FontSizeMd}"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,8"/>
-
-            <!-- ============ Remote-command safety (wired) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Remote-command safety"/>
+            <!-- Title / phase tag / description deliberately omitted per
+                 user direction — section headers throughout this tab
+                 are removed too. The bound Title is still surfaced via
+                 SettingsWindowViewModel's sidebar selection. -->
 
             <Grid ColumnDefinitions="280,Auto,Auto,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel"
@@ -86,9 +63,8 @@
                 <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="lives"/>
             </Grid>
 
-            <!-- ============ Ignored ailments (wired) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Ignored ailments"/>
             <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"
+                      Margin="0,8,0,0"
                       ToolTip.Tip="When checked: poison ticks don't trigger @wait. Always-on triggers (over-encumbered, MovementPrevented, Stunned) still pause regardless."/>
             <CheckBox Content="Ignore blindness" IsChecked="{Binding IgnoreBlindness, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being blinded doesn't trigger @wait."/>
@@ -97,9 +73,7 @@
             <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
 
-            <!-- ============ Game-menu commands (wired) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Game-menu commands"/>
-            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0" ColumnSpacing="8" RowSpacing="4">
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,8,0,0" ColumnSpacing="8" RowSpacing="4">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Game entry command"/>
                 <TextBox   Grid.Row="0" Grid.Column="1"
                            Text="{Binding GameEntryCommand, Mode=TwoWay}"
@@ -113,66 +87,73 @@
                            ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
             </Grid>
 
-            <!-- ============ Player database (wired, Global tier) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Player database"/>
-            <Grid ColumnDefinitions="180,90,Auto,*" Margin="0,2,0,0" ColumnSpacing="8">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Auto-delete after"/>
-                <NumericUpDown Grid.Column="1"
-                               Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
+            <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
+                 Database after [spinner] days." — spinner widened from
+                 90→120 so 4-digit values (e.g. 3650-day max) render
+                 without clipping. -->
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Classes="FieldLabel" Text="Cleanup Player Database after"/>
+                <NumericUpDown Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
                                Minimum="0" Maximum="3650" Increment="1"
                                FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
                                ToolTip.Tip="Stale Players-tab records get dropped at startup once they're older than this. 0 disables auto-cleanup. Per-player 'Don't auto-delete' opts records out individually. Global setting — applies to every character on this install."/>
-                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="days"/>
-            </Grid>
+                <TextBlock Classes="FieldLabel" Text="days."/>
+            </StackPanel>
 
-            <!-- ============ Inline stub catalog ============ -->
-            <ItemsControl ItemsSource="{Binding StubGroups}">
+            <!-- ============ Inline stub catalog ============
+                 Section headers stripped per user direction — the
+                 catalog renders as a flat list of rows. The numeric-
+                 row template puts the picker INLINE between the
+                 label and the suffix (e.g. "Attempt bash [120] times")
+                 instead of using a fixed-width left column with the
+                 picker pushed right. -->
+            <ItemsControl ItemsSource="{Binding StubGroups}" Margin="0,8,0,0">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:StubGroup">
-                        <StackPanel Spacing="2">
-                            <TextBlock Classes="SectionHeader"
-                                       Text="{Binding Header}"
-                                       IsVisible="{Binding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <ItemsControl ItemsSource="{Binding Fields}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:StubField">
+                                    <Grid ColumnDefinitions="*"
+                                          Margin="0,3,0,3"
+                                          ToolTip.Tip="{Binding Tooltip}">
+                                        <!-- Check rows: just the disabled checkbox spanning the row. -->
+                                        <CheckBox IsEnabled="False"
+                                                  Content="{Binding Label}"
+                                                  IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
 
-                            <ItemsControl ItemsSource="{Binding Fields}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:StubField">
-                                        <Grid ColumnDefinitions="260,*,Auto"
-                                              Margin="0,3,0,3"
-                                              ToolTip.Tip="{Binding Tooltip}">
-
-                                            <TextBlock Grid.Column="0"
-                                                       Classes="FieldLabel"
-                                                       Text="{Binding Label}"
-                                                       IsVisible="{Binding HasLabel}"/>
-
-                                            <CheckBox Grid.Column="0" Grid.ColumnSpan="3"
-                                                      IsEnabled="False"
-                                                      Content="{Binding Label}"
-                                                      IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
-                                            <NumericUpDown Grid.Column="1" IsEnabled="False"
+                                        <!-- Numeric rows: prose-style with the picker inline.
+                                             "Attempt bash [picker] times" — label + picker + suffix. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}">
+                                            <TextBlock Classes="FieldLabel" Text="{Binding Label}"/>
+                                            <NumericUpDown IsEnabled="False"
                                                            Value="0"
                                                            Minimum="{Binding Min}"
                                                            Maximum="{Binding Max}"
-                                                           Width="120"
-                                                           IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}"/>
-                                            <TextBox Grid.Column="1" IsEnabled="False"
-                                                     Width="220"
-                                                     IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}"/>
-                                            <TextBlock Grid.Column="1" Grid.ColumnSpan="2"
-                                                       Classes="FieldNote"
-                                                       Text="{Binding Label}"
-                                                       IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Note}}"/>
-
-                                            <TextBlock Grid.Column="2"
-                                                       Classes="FieldSuffix"
+                                                           Width="100"/>
+                                            <TextBlock Classes="FieldLabel"
                                                        Text="{Binding Suffix}"
                                                        IsVisible="{Binding Suffix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Text rows: label + textbox horizontally. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}">
+                                            <TextBlock Classes="FieldLabel" Text="{Binding Label}"/>
+                                            <TextBox IsEnabled="False" Width="220"/>
+                                        </StackPanel>
+
+                                        <!-- Note rows: italic prose, no control. -->
+                                        <TextBlock Classes="FieldNote"
+                                                   Text="{Binding Label}"
+                                                   IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Note}}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

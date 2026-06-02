@@ -149,9 +149,13 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         }),
         new StubGroup("Retry counts", new[]
         {
-            new StubField("Attempt bash N times",      StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash."),
-            new StubField("Attempt pick-lock N times", StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking."),
-            new StubField("Attempt disarm N times",    StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back."),
+            // Label = prose prefix, suffix = unit; the inline-numeric
+            // row template renders "Attempt bash [picker] times" so
+            // the picker is positioned exactly where the "N" was
+            // written into the label before.
+            new StubField("Attempt bash",      StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash.",                     "times"),
+            new StubField("Attempt pick-lock", StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                           "times"),
+            new StubField("Attempt disarm",    StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
         }),
         // Removed per user direction:
         // - "Command splitter character" (^M and ; are hardwired)
