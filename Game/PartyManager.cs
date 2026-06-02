@@ -225,6 +225,27 @@ public sealed partial class PartyManager : IDisposable
         return created;
     }
 
+    /// <summary>
+    /// Set the absolute-HP / absolute-MP baseline on a named member. Called
+    /// by <see cref="PartyPoller"/> (PR 6.4) after parsing a member's
+    /// reply to an on-join <c>@health</c> request. Routes through the
+    /// manager so the <see cref="PartyMember"/>'s
+    /// <see cref="OwnerAttribute"/>-marked fields keep a single writer
+    /// (the Phase 3 PR 3.5 IL scan enforces this). No-op when the named
+    /// member isn't in the roster.
+    /// </summary>
+    public void SetMemberBaseline(string name, int hp, int mp)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        foreach (PartyMember m in State.Members)
+        {
+            if (!m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+            m.BaselineHp = hp;
+            m.BaselineMp = mp;
+            return;
+        }
+    }
+
     private void RemoveMember(string name)
     {
         for (int i = State.Members.Count - 1; i >= 0; i--)

@@ -388,6 +388,9 @@ public partial class MainWindowViewModel : ObservableObject
         // relay (uses the wire-sender directly, bypassing ctx.Reply).
         AppServices.Current.RemoteCommands.SetWireSender(SendUserInput);
         AppServices.Current.PartyEssentials.SetWireSender(SendUserInput);
+        // Phase 6 PR 6.4 — poller needs the same wire-sender to send
+        // @health round-trip requests and the periodic par poll.
+        AppServices.Current.PartyPoller.SetWireSender(SendUserInput);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through

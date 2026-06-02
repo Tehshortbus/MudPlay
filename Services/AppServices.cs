@@ -149,6 +149,14 @@ public sealed class AppServices
     public Game.Remote.PartyEssentialHandlers PartyEssentials { get; }
 
     /// <summary>
+    /// Phase 6 PR 6.4 — drives the on-join <c>@health</c> exchange that
+    /// captures each new <see cref="Game.PartyMember"/>'s absolute HP/MA
+    /// baseline, plus the periodic <c>par</c> poll (5 s default cadence;
+    /// PR 6.9 wires Settings.Party for user-configurable frequency).
+    /// </summary>
+    public Game.PartyPoller PartyPoller { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -425,6 +433,10 @@ public sealed class AppServices
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
         PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
+        // Phase 6 PR 6.4 — drives the on-join @health exchange + the
+        // periodic par poll. Wire-sender + cadence-from-settings hookup
+        // happens in MainWindowViewModel / PR 6.9.
+        PartyPoller = new Game.PartyPoller(Chat, PartyState, Party);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
