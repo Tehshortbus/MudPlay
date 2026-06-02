@@ -74,6 +74,50 @@
                    TextWrapping="Wrap"
                    IsVisible="{Binding !State.IsInParty}"/>
 
+        <!-- ===== Column headers ===== -->
+        <!-- Same column geometry as the per-row Grid below so the
+             header labels line up over their columns. Small muted
+             caps style matches the skeleton design. -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="6,4"
+                IsVisible="{Binding State.IsInParty}">
+            <Grid ColumnDefinitions="20,28,*,135,135,Auto,Auto">
+                <!-- Col 0: leader-star slot (no label). -->
+                <!-- Col 1: rank chip. -->
+                <TextBlock Grid.Column="1"
+                           Text="RK"
+                           FontSize="9" FontWeight="SemiBold"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           HorizontalAlignment="Center"/>
+                <!-- Col 2: member name. -->
+                <TextBlock Grid.Column="2"
+                           Text="MEMBER"
+                           FontSize="9" FontWeight="SemiBold"
+                           Margin="6,0,0,0"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <!-- Col 3: HP bar. -->
+                <TextBlock Grid.Column="3"
+                           Text="HEALTH"
+                           FontSize="9" FontWeight="SemiBold"
+                           Margin="6,0,0,0"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <!-- Col 4: MA bar. -->
+                <TextBlock Grid.Column="4"
+                           Text="MANA"
+                           FontSize="9" FontWeight="SemiBold"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <!-- Col 5: status chip strip. -->
+                <TextBlock Grid.Column="5"
+                           Text="FLAGS"
+                           FontSize="9" FontWeight="SemiBold"
+                           MinWidth="60"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <!-- Col 6: uninvite slot (no label). -->
+            </Grid>
+        </Border>
+
         <!-- ===== Member rows ===== -->
         <ItemsControl ItemsSource="{Binding State.Members}"
                       Background="{StaticResource ChromeBgSunkenBrush}"
@@ -92,7 +136,10 @@
                              name column (*) and the status-chip column (Auto)
                              vary — both come BEFORE/AFTER the bars so they
                              don't affect HP/MA alignment. -->
-                        <Grid ColumnDefinitions="20,28,*,135,135,78,Auto,Auto"
+                        <!-- Column layout matches the header Border above.
+                             Position text column dropped — stance is covered by
+                             the REST / MED status chips in column 5. -->
+                        <Grid ColumnDefinitions="20,28,*,135,135,Auto,Auto"
                               VerticalAlignment="Center">
 
                             <!-- (0) Leader star — visible only on the leader -->
@@ -192,21 +239,12 @@
                             <Border Grid.Column="4" Width="135"
                                     IsVisible="{Binding BaselineMp, Converter={x:Static vm:LessThanOrEqualZeroConverter.Instance}}"/>
 
-                            <!-- (5) Position chip — compact stance label. MinWidth so
-                                 "Standing" / "Resting" / "Meditating" all reserve the
-                                 same horizontal cell. -->
-                            <TextBlock Grid.Column="5"
-                                       Text="{Binding Position}"
-                                       VerticalAlignment="Center"
-                                       FontSize="10"
-                                       MinWidth="70"
-                                       Margin="0,0,6,0"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
-
-                            <!-- (6) Status-flag chips. Each chip self-collapses when the
-                                 corresponding flag is false. Order is roughly threat / cure /
+                            <!-- (5) Status-flag chips. Each chip self-collapses when the
+                                 corresponding flag is false. REST and MED chips also
+                                 communicate stance — replacing the previous position
+                                 text column. Order is roughly stance / threat / cure /
                                  stealth / coordination. -->
-                            <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"
                                         BorderBrush="{StaticResource AccentGreenBrush}"
@@ -275,8 +313,8 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- (7) Uninvite — only meaningful for the leader -->
-                            <Button Grid.Column="7"
+                            <!-- (6) Uninvite — only meaningful for the leader -->
+                            <Button Grid.Column="6"
                                     Content="⨯"
                                     Width="22" Height="22"
                                     Padding="0"
