@@ -232,6 +232,66 @@ public sealed class PartyManagerTests
         Assert.Null(p.State.LeaderName);
     }
 
+    // ===== IsSelf detection against full-display LocalCharacterName =====
+
+    [Fact]
+    public void ParRow_LocalCharacterNameWithFamily_StillMatchesSelfRow()
+    {
+        // The screenshot bug: profile.Name was "Fujin WuzHere" and the
+        // par row was "Fujin WuzHere ...". Pre-fix the IsSelf compare
+        // extracted "Fujin" from the par row but compared it to the
+        // full "Fujin WuzHere" LocalCharacterName → mismatch → our
+        // own row had IsSelf=false → PartyPoller telepathed
+        // /Fujin @health to ourselves. Both sides now reduce to given.
+        var (router, p) = Setup(localCharacterName: "Fujin WuzHere");
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Fujin WuzHere                                   (Mystic)            [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        PartyMember? self = p.State.Members.FirstOrDefault(m => m.IsSelf);
+        Assert.NotNull(self);
+        Assert.Equal("Fujin WuzHere", self!.Name);
+    }
+
+    // ===== Dissolution flushes par-block state machine =====
+
+    [Fact]
+    public void Dissolved_FlushesParBlockState_PreventingGhostAdd()
+    {
+        // Real Playpen output: after the first par returns, the
+        // par-block parser stays in ReadingRows because the BBS doesn't
+        // emit a blank-line terminator between the par table and the
+        // next prompt. When dissolution fires on the next poll, the
+        // "Fujin WuzHere" solo row that follows the dissolution line
+        // would otherwise match ParRow and re-add Fujin — keeping
+        // IsInParty true and the poller alive.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)                [H:100%]   - Midrank",
+            "  Fujin WuzHere                   (Mystic)                [H:100%]   - Frontrank",
+            // NO blank line — the par-block parser carries ReadingRows
+            // forward to the next poll cycle just like real Playpen.
+        });
+        Assert.True(p.State.IsInParty);
+
+        // Next poll: dissolution line + lone Fujin row in "solo" par.
+        router.Dispatch(Line("You are not in a party at the present time."));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                   (Mystic)                [H:100%]   - Midrank",
+        });
+
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+    }
+
     // ===== par-block parsing — real Playpen BBS format =====
     //   "The following people are in your travel party:"
     //     Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank

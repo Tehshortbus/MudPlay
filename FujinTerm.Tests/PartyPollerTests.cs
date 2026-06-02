@@ -87,6 +87,12 @@ public sealed class PartyPollerTests
     public void NewMember_AddedToParty_TriggersHealthTelepath()
     {
         var (poller, _, state, _, _, wire) = Setup();
+        // IsInParty is the gate the poller now consults for defense in
+        // depth (the par-block parser can spuriously re-add a name when
+        // dissolution leaves the state machine in ReadingRows; the
+        // poller shouldn't fire @health round-trips for those
+        // ghost-adds). Flip it first to model an active party.
+        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Helper" });
 
         // CollectionChanged Add fires synchronously from the
@@ -99,6 +105,7 @@ public sealed class PartyPollerTests
     public void SelfMember_AddedToParty_DoesNotTelepathSelf()
     {
         var (poller, _, state, _, _, wire) = Setup();
+        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Forged", IsSelf = true });
         Assert.Empty(wire);
     }
@@ -107,6 +114,7 @@ public sealed class PartyPollerTests
     public void MultipleMembers_AddedAtOnce_TelepathsEach()
     {
         var (poller, _, state, _, _, wire) = Setup();
+        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Helper" });
         state.Members.Add(new PartyMember { Name = "Tank" });
         state.Members.Add(new PartyMember { Name = "Cleric" });
@@ -115,6 +123,18 @@ public sealed class PartyPollerTests
         Assert.Equal("/Helper @health\r", Encoding.Latin1.GetString(wire[0]));
         Assert.Equal("/Tank @health\r",   Encoding.Latin1.GetString(wire[1]));
         Assert.Equal("/Cleric @health\r", Encoding.Latin1.GetString(wire[2]));
+    }
+
+    [Fact]
+    public void MemberAddedWhileNotInParty_DoesNotTelepath()
+    {
+        // The defense-in-depth gate — IsInParty stays false (a stale
+        // par-block parser hangover scenario). The poller should not
+        // emit any @health round-trip for these ghost-adds.
+        var (poller, _, state, _, _, wire) = Setup();
+        // IsInParty intentionally NOT set.
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        Assert.Empty(wire);
     }
 
     [Fact]

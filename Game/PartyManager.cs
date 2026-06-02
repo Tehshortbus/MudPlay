@@ -272,6 +272,19 @@ public sealed partial class PartyManager : IDisposable
     /// </summary>
     private void OnPartyDissolved(MatchResult _)
     {
+        // Also flush the par-block state machine. Without this, _parState
+        // can carry over from a previous in-party par-block (BBS output
+        // doesn't emit a blank line between the par table and the next
+        // prompt, so _parState stays in ReadingRows). The line that
+        // follows "You are not in a party at the present time." is the
+        // local character's own row in par's "solo" format
+        // ("Fujin WuzHere ..."), which would otherwise match ParRow,
+        // re-add us to Members, flip IsInParty back to true, and keep
+        // the par poller alive even though the server just told us
+        // we're alone.
+        _parState = ParState.Idle;
+        _parBlockNames.Clear();
+
         if (State.Members.Count == 0
             && !State.IsInParty
             && State.LeaderName is null
@@ -421,16 +434,20 @@ public sealed partial class PartyManager : IDisposable
             ? int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture)
             : (int?)null;
 
-        // IsSelf detection — par row name is "Given Family"; compare the
-        // first whitespace-delimited token against the loaded profile's
-        // character name. Falls back to false when LocalCharacterName is
-        // unknown (no profile loaded yet).
+        // IsSelf detection — both sides are reduced to given (first
+        // whitespace token) before comparing. The par row carries
+        // "Given Family"; LocalCharacterName may carry the same shape
+        // (the loaded profile name often includes family because that's
+        // what the user picked at character creation). Without the
+        // given-from-both extraction the compare would mismatch
+        // ("Fujin" vs "Fujin WuzHere"), IsSelf would stay false on
+        // OUR OWN row, and PartyPoller.OnMembersChanged would telepath
+        // /Fujin @health to us — the exact spam the screenshot showed.
         bool isSelf = false;
         if (!string.IsNullOrEmpty(LocalCharacterName))
         {
-            int space = name.IndexOf(' ');
-            string given = space >= 0 ? name[..space] : name;
-            isSelf = given.Equals(LocalCharacterName, StringComparison.OrdinalIgnoreCase);
+            isSelf = GivenNameOf(name)
+                .Equals(GivenNameOf(LocalCharacterName), StringComparison.OrdinalIgnoreCase);
         }
 
         _parBlockNames.Add(name);
