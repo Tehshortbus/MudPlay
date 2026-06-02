@@ -154,16 +154,13 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             // the picker is positioned exactly where the "N" was
             // written into the label before.
             //
-            // Preference / gate toggles sit immediately after the
-            // pickers they relate to: "Pick locks instead of bashing"
-            // selects between the two retry counts above; "Attempt to
-            // disarm traps" gates whether the disarm retry count is
-            // ever consumed.
+            // Toggles sit immediately ABOVE the picker they gate, so
+            // the user reads "decide → set the cap" top-down.
             new StubField("Attempt bash",                  StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash.",                      "times"),
-            new StubField("Attempt pick-lock",             StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                            "times"),
             new StubField("Pick locks instead of bashing", StubFieldKind.Check,   "Phase 13 — walker prefers lockpicking when the skill is trained."),
-            new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
+            new StubField("Attempt pick-lock",             StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                            "times"),
             new StubField("Attempt to disarm traps",       StubFieldKind.Check,   "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
+            new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
         }),
         // Removed per user direction:
         // - "Command splitter character" (^M and ; are hardwired)

@@ -27,7 +27,9 @@ public sealed class EventsSectionViewModel : StubSectionViewModel
             new StubField("Empty list — events are per-character and persist on the profile.",
                           StubFieldKind.Note, "List preview here in Phase 11."),
         }),
-        new StubGroup("Defaults", new[]
+        // Header omitted (empty Header → StubSectionView's
+        // IsNotNullOrEmpty gate hides the SectionHeader TextBlock).
+        new StubGroup("", new[]
         {
             new StubField("Only fire while AFK by default", StubFieldKind.Check, "Sets the AFK-only flag on newly-created events."),
             new StubField("Disable all events while disconnected", StubFieldKind.Check,
