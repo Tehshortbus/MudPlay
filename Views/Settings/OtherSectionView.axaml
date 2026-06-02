@@ -89,6 +89,20 @@
                        Margin="0,4,0,0"
                        Text="The engine separately refuses every @suicide command while the live lives count is unknown — the conservative default until the Phase 9 DEATH section wires up live-lives tracking. Until then this threshold is persisted-and-ready but the runtime behaviour is always-block."/>
 
+            <!-- ============ Ignored ailments (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Ignored ailments"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Default: unchecked → pause on this ailment (send @wait to the leader if following, hold our own engines if leading). Check to push through it — useful when the party has agreed not to halt for routine ticks during a boss / lair run. Wires into WaitTriggerEngine once message-matching ships."/>
+            <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: poison ticks don't trigger @wait. Always-on triggers (over-encumbered, MovementPrevented, Stunned) still pause regardless."/>
+            <CheckBox Content="Ignore blindness" IsChecked="{Binding IgnoreBlindness, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being blinded doesn't trigger @wait."/>
+            <CheckBox Content="Ignore confusion" IsChecked="{Binding IgnoreConfusion, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being confused doesn't trigger @wait. Caster parties often want to leave this UNCHECKED — confusion makes our cast fail randomly."/>
+            <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
+
             <!-- ============ Inline stub catalog (Phase 7 / 11 / 13) ============ -->
             <TextBlock Classes="SectionHeader" Text="Skeleton rows — engines below ship in later phases"/>
             <TextBlock Classes="HelpText"

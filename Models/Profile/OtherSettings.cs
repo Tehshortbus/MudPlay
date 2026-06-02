@@ -30,4 +30,28 @@ public sealed class OtherSettings
     /// that lives source is connected.
     /// </remarks>
     public int MaxSuicideLivesThreshold { get; set; } = 3;
+
+    // ----- Ignored ailments ---------------------------------------------
+    // Per user direction: the four "Ignore X" toggles gate whether
+    // catching that ailment triggers an automatic @wait to the party
+    // leader (or, when we ARE the leader, makes our own engines pause
+    // until the affect is gone). Default UNCHECKED — most parties
+    // want to pause on every ailment by default; the toggle is for
+    // edge cases ("we're at the boss fight, don't pause for a poison
+    // tick"). Once the message-matching engine ships, these flags
+    // become the user-configurable input to WaitTriggerEngine.
+    // Always-on triggers (over-encumbered, MovementPrevented,
+    // Stunned = movement+attack prevented) bypass these flags.
+
+    /// <summary>Don't auto-cure / don't @wait for poison. Default false (pause).</summary>
+    public bool IgnorePoison    { get; set; }
+
+    /// <summary>Don't auto-cure / don't @wait for blindness. Default false (pause).</summary>
+    public bool IgnoreBlindness { get; set; }
+
+    /// <summary>Don't auto-cure / don't @wait for confusion. Default false (pause).</summary>
+    public bool IgnoreConfusion { get; set; }
+
+    /// <summary>Don't auto-cure / don't @wait for disease. Default false (pause).</summary>
+    public bool IgnoreDiseased  { get; set; }
 }

@@ -49,6 +49,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Suicide threshold";
             yield return "Block @do suicide";
             yield return "Lives";
+            yield return "Ignore poison";
+            yield return "Ignore blindness";
+            yield return "Ignore confusion";
+            yield return "Ignore diseased";
+            yield return "Ailments";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -63,6 +68,18 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// spec; pushed into the live engine on Apply + on profile load.
     /// </summary>
     [ObservableProperty] private int _maxSuicideLivesThreshold = 3;
+
+    // ----- Ignored ailments (wired Phase 6+) -----
+    // Default UNCHECKED — most parties want to pause on every ailment.
+    // Toggle ON when the party agrees to push through a specific
+    // ailment (e.g. don't pause for a poison tick during a boss).
+    // Drives the future WaitTriggerEngine's per-ailment @wait decision
+    // once message-matching lands.
+
+    [ObservableProperty] private bool _ignorePoison;
+    [ObservableProperty] private bool _ignoreBlindness;
+    [ObservableProperty] private bool _ignoreConfusion;
+    [ObservableProperty] private bool _ignoreDiseased;
 
     // ----- Inline stub catalog (un-wired Phase 7 / 11 / 13 fields) -----
 
@@ -91,12 +108,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Don't move unless sneaking",      StubFieldKind.Check, "Phase 7 — walker pause-gate when stealth drops."),
             new StubField("Provide light in dimly lit rooms", StubFieldKind.Check, "Phase 7 — pairs with Spells → Room light."),
         }),
-        new StubGroup("Ignored ailments", new[]
-        {
-            new StubField("Ignore poison",    StubFieldKind.Check, "Phase 13 — don't auto-cure; let it wear off."),
-            new StubField("Ignore blindness", StubFieldKind.Check, "Phase 13 — don't auto-cure; let it wear off."),
-            new StubField("Ignore confusion", StubFieldKind.Check, "Phase 13 — don't auto-cure; let it wear off."),
-        }),
+        // Ignored ailments group graduated to a real wired section above
+        // (rendered inline in OtherSectionView.axaml). Diseased added per
+        // user direction so the four ailment families are symmetric.
         new StubGroup("Auto-engage on connect", new[]
         {
             new StubField("Auto-Combat on",       StubFieldKind.Check, "Phase 13 PR 13.A — flips CombatManager on at logon."),
@@ -142,6 +156,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         OtherSettings dto = new()
         {
             MaxSuicideLivesThreshold = Math.Clamp(MaxSuicideLivesThreshold, 0, 20),
+            IgnorePoison    = IgnorePoison,
+            IgnoreBlindness = IgnoreBlindness,
+            IgnoreConfusion = IgnoreConfusion,
+            IgnoreDiseased  = IgnoreDiseased,
         };
 
         profile.Settings ??= new();
@@ -176,6 +194,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     {
         OtherSettings dto = ReadOrDefault();
         MaxSuicideLivesThreshold = dto.MaxSuicideLivesThreshold;
+        IgnorePoison    = dto.IgnorePoison;
+        IgnoreBlindness = dto.IgnoreBlindness;
+        IgnoreConfusion = dto.IgnoreConfusion;
+        IgnoreDiseased  = dto.IgnoreDiseased;
         ApplyToServices(dto);
     }
 
@@ -208,6 +230,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     }
 
     partial void OnMaxSuicideLivesThresholdChanged(int value) => MarkDirty();
+    partial void OnIgnorePoisonChanged(bool value)    => MarkDirty();
+    partial void OnIgnoreBlindnessChanged(bool value) => MarkDirty();
+    partial void OnIgnoreConfusionChanged(bool value) => MarkDirty();
+    partial void OnIgnoreDiseasedChanged(bool value)  => MarkDirty();
 
     private void MarkDirty()
     {

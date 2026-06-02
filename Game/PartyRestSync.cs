@@ -1,14 +1,14 @@
-using System.ComponentModel;
 using System.Text;
 
 namespace FujinTerm.Game;
 
 /// <summary>
 /// Emit side of the Phase 6 PR 6.7 <c>@wait</c> / <c>@ok</c> protocol.
-/// When the local character enters a non-Standing position (Resting or
-/// Meditating) while following a leader, we telepath <c>@wait</c> so the
-/// leader's auto-walker / auto-combat can pause until we're ready.
-/// Coming back to Standing emits <c>@ok</c> so the leader can resume.
+/// Engines call <see cref="RequestWait"/> / <see cref="RequestOk"/>
+/// when their own logic decides the party leader should pause / resume —
+/// e.g. the Phase 12 HealthManager auto-rest path, message-engine
+/// flag triggers (a paralyzed / held / confused ailment fires a
+/// "send @wait if following" message-flag handler), etc.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,34 +23,30 @@ namespace FujinTerm.Game;
 /// Leader has no one to ping; solo means there's no party context at all.
 /// </para>
 /// <para>
-/// Meditating is treated as a rest state for the protocol — same as
-/// Resting from the leader's "I need to wait" perspective. The
-/// receiving leader's <see cref="Remote.PartyEssentialHandlers.OnWait"/>
-/// adds to a HashSet so duplicate <c>@wait</c> emissions are idempotent.
+/// Per user direction (live-test feedback): we deliberately do NOT
+/// hook <see cref="PlayerState.Position"/> changes. A user typing a
+/// manual <c>rest</c> shouldn't trigger an automatic @wait — only
+/// engine decisions should. Engines call into this service when
+/// their own conditions fire.
 /// </para>
 /// </remarks>
 public sealed class PartyRestSync : IDisposable
 {
-    private readonly PlayerState _player;
     private readonly PartyState _party;
     private Action<byte[]>? _wireSender;
-    private PlayerPosition _lastObservedPosition;
     private bool _disposed;
 
-    public PartyRestSync(PlayerState player, PartyState party)
+    public PartyRestSync(PartyState party)
     {
-        ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(party);
-        _player = player;
         _party  = party;
-        _lastObservedPosition = _player.Position;
-        _player.PropertyChanged += OnPlayerChanged;
     }
 
     /// <summary>
-    /// Bind the wire-sender. Without it, position transitions are still
-    /// observed but no telepath fires. MainWindowViewModel supplies
-    /// <c>SendUserInput</c> alongside the other Phase 6 hookups.
+    /// Bind the wire-sender. Without it, <see cref="RequestWait"/> /
+    /// <see cref="RequestOk"/> calls are silent no-ops (no telepath).
+    /// MainWindowViewModel supplies <c>SendUserInput</c> alongside the
+    /// other Phase 6 hookups.
     /// </summary>
     public void SetWireSender(Action<byte[]> sender)
     {
@@ -58,44 +54,42 @@ public sealed class PartyRestSync : IDisposable
         _wireSender = sender;
     }
 
-    /// <summary>Test seam — force a position-transition emission without going through PlayerState mutation.</summary>
-    internal void HandlePositionChangeForTests(PlayerPosition newPosition)
+    /// <summary>
+    /// Engine-callable entry point — telepath <c>@wait</c> to the
+    /// party leader. No-ops when solo, when we're the leader, when
+    /// there's no leader yet, or when no wire-sender is bound. Idempotent
+    /// at the protocol level — the receiving leader's
+    /// <see cref="Remote.PartyEssentialHandlers.OnWait"/> dedupes via
+    /// a HashSet so repeat sends don't double-count.
+    /// </summary>
+    public void RequestWait()
     {
-        HandlePositionChange(newPosition);
-        _lastObservedPosition = newPosition;
+        if (!CanSignal()) return;
+        Telepath(_party.LeaderName!, "@wait");
+    }
+
+    /// <summary>
+    /// Engine-callable entry point — telepath <c>@ok</c> to the party
+    /// leader. Same gates as <see cref="RequestWait"/>.
+    /// </summary>
+    public void RequestOk()
+    {
+        if (!CanSignal()) return;
+        Telepath(_party.LeaderName!, "@ok");
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _player.PropertyChanged -= OnPlayerChanged;
     }
 
-    private void OnPlayerChanged(object? sender, PropertyChangedEventArgs e)
+    private bool CanSignal()
     {
-        if (e.PropertyName != nameof(PlayerState.Position)) return;
-        if (_player.Position == _lastObservedPosition) return;
-        HandlePositionChange(_player.Position);
-        _lastObservedPosition = _player.Position;
-    }
-
-    private void HandlePositionChange(PlayerPosition newPos)
-    {
-        // No-op outside a party — there's no one to telepath.
-        if (!_party.IsInParty) return;
-        // Leaders don't @wait themselves — they're the recipient of
-        // other members' @waits.
-        if (_party.SelfIsLeader) return;
-        // No leader identified yet → no recipient.
-        if (string.IsNullOrEmpty(_party.LeaderName)) return;
-
-        bool wasResting = _lastObservedPosition != PlayerPosition.Standing;
-        bool nowResting = newPos != PlayerPosition.Standing;
-        if (wasResting == nowResting) return;
-
-        string verb = nowResting ? "@wait" : "@ok";
-        Telepath(_party.LeaderName, verb);
+        if (!_party.IsInParty) return false;
+        if (_party.SelfIsLeader) return false;
+        if (string.IsNullOrEmpty(_party.LeaderName)) return false;
+        return true;
     }
 
     private void Telepath(string recipient, string body)

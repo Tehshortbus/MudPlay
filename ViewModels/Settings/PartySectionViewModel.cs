@@ -50,7 +50,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         "Auto-invite", "Auto-Exp-Reset", "par frequency",
         "Wait for members", "Max monsters", "Max monster experience",
         "Attack last in party", "Attack in reverse order",
-        "Attack what other members attack", "Request party health",
+        "Attack what other members attack",
         "Ignore party when following", "Auto-collect when following",
         "Say emote", "Go @panic when injured",
     };

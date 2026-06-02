@@ -18,6 +18,10 @@ public sealed class OtherSectionViewModelTests
         OtherSettings src = new()
         {
             MaxSuicideLivesThreshold = 7,
+            IgnorePoison    = true,
+            IgnoreBlindness = true,
+            IgnoreConfusion = true,
+            IgnoreDiseased  = true,
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -25,6 +29,10 @@ public sealed class OtherSectionViewModelTests
 
         Assert.NotNull(back);
         Assert.Equal(7, back!.MaxSuicideLivesThreshold);
+        Assert.True(back.IgnorePoison);
+        Assert.True(back.IgnoreBlindness);
+        Assert.True(back.IgnoreConfusion);
+        Assert.True(back.IgnoreDiseased);
     }
 
     [Fact]
@@ -35,5 +43,12 @@ public sealed class OtherSectionViewModelTests
         // this value for the engine, so it has to be stable.
         OtherSettings dto = new();
         Assert.Equal(3, dto.MaxSuicideLivesThreshold);
+        // Ignore-ailment toggles default UNCHECKED — most parties want
+        // to pause on every ailment. Toggle ON when the party agrees
+        // to push through a specific tick (e.g. boss runs).
+        Assert.False(dto.IgnorePoison);
+        Assert.False(dto.IgnoreBlindness);
+        Assert.False(dto.IgnoreConfusion);
+        Assert.False(dto.IgnoreDiseased);
     }
 }

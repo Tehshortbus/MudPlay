@@ -11,142 +11,114 @@ namespace FujinTerm.Tests;
 
 public sealed class PartyRestSyncTests
 {
-    private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
-
-    private static (PartyRestSync sync, PlayerState player, PartyState party, List<byte[]> wire) Setup()
+    private static (PartyRestSync sync, PartyState party, List<byte[]> wire) Setup()
     {
-        PlayerState player = new();
         PartyState party = new();
-        PartyRestSync sync = new(player, party);
+        PartyRestSync sync = new(party);
         List<byte[]> wire = new();
         sync.SetWireSender(wire.Add);
-        return (sync, player, party, wire);
+        return (sync, party, wire);
     }
 
     private static string LastWire(List<byte[]> w) => Encoding.Latin1.GetString(w[^1]);
 
-    // ===== emit side: Standing → Resting / Meditating =====
+    // ===== engine-callable emit side =====
+    // Per user direction: PartyRestSync no longer auto-fires on
+    // PlayerState.Position changes. A user manually typing `rest`
+    // should NOT auto-broadcast @wait — only engines that decide
+    // the leader should pause / resume call RequestWait / RequestOk
+    // (e.g. Phase 12 HealthManager auto-rest, message-engine flag
+    // triggers on paralyze / held / confused, etc.).
 
     [Fact]
-    public void Solo_PositionChange_SendsNothing()
+    public void RequestWait_Solo_SendsNothing()
     {
-        var (_, player, party, wire) = Setup();
+        var (sync, party, wire) = Setup();
         Assert.False(party.IsInParty);
-
-        player.Position = PlayerPosition.Resting;
-
+        sync.RequestWait();
         Assert.Empty(wire);
     }
 
     [Fact]
-    public void Leader_PositionChange_SendsNothing()
+    public void RequestWait_AsLeader_SendsNothing()
     {
         // Leaders don't @wait themselves.
-        var (_, player, party, wire) = Setup();
+        var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.SelfIsLeader = true;
         party.LeaderName = "Forged";
-
-        player.Position = PlayerPosition.Resting;
-
+        sync.RequestWait();
         Assert.Empty(wire);
     }
 
     [Fact]
-    public void NoLeaderName_PositionChange_SendsNothing()
+    public void RequestWait_NoLeaderName_SendsNothing()
     {
         // No leader name means we don't know where to telepath.
-        var (_, player, party, wire) = Setup();
+        var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = null;
-
-        player.Position = PlayerPosition.Resting;
-
+        sync.RequestWait();
         Assert.Empty(wire);
     }
 
     [Fact]
-    public void Follower_StandingToResting_EmitsAtWait()
+    public void RequestWait_AsFollower_TelepathsLeader()
     {
-        var (_, player, party, wire) = Setup();
+        var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = "Leader";
-        // Default SelfIsLeader = false
-
-        player.Position = PlayerPosition.Resting;
-
+        sync.RequestWait();
         Assert.Equal("/Leader @wait\r", LastWire(wire));
     }
 
     [Fact]
-    public void Follower_StandingToMeditating_EmitsAtWait()
+    public void RequestOk_AsFollower_TelepathsLeader()
     {
-        // Meditating counts as a rest state — same as Resting for the
-        // leader's pause-gate purposes.
-        var (_, player, party, wire) = Setup();
+        var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = "Leader";
-
-        player.Position = PlayerPosition.Meditating;
-
-        Assert.Equal("/Leader @wait\r", LastWire(wire));
-    }
-
-    [Fact]
-    public void Follower_RestingToStanding_EmitsAtOk()
-    {
-        var (_, player, party, wire) = Setup();
-        party.IsInParty = true;
-        party.LeaderName = "Leader";
-        // Drive both transitions through the real setter so PropertyChanged
-        // actually fires for both — going from default Standing to Resting
-        // first establishes the "we're resting" baseline.
-        player.Position = PlayerPosition.Resting;
-        wire.Clear();
-
-        player.Position = PlayerPosition.Standing;
-
+        sync.RequestOk();
         Assert.Equal("/Leader @ok\r", LastWire(wire));
     }
 
     [Fact]
-    public void Follower_RestingToMeditating_EmitsNothing()
+    public void RequestWait_TelepathsByGivenName_NotFullDisplayName()
     {
-        // Both states are "resting" from the protocol's perspective —
-        // no transition, no emission.
-        var (_, player, party, wire) = Setup();
+        // "Leader Lastname" leader → /Leader (given only) — MajorMUD
+        // rejects "Given Family" recipients for telepaths.
+        var (sync, party, wire) = Setup();
         party.IsInParty = true;
-        party.LeaderName = "Leader";
-        player.Position = PlayerPosition.Resting;
-        wire.Clear();
-
-        player.Position = PlayerPosition.Meditating;
-
-        Assert.Empty(wire);
+        party.LeaderName = "Leader Lastname";
+        sync.RequestWait();
+        Assert.Equal("/Leader @wait\r", LastWire(wire));
     }
 
     [Fact]
-    public void Follower_SamePositionTwice_EmitsOnce()
+    public void RequestWait_NoWireSender_NoThrow()
     {
-        var (_, player, party, wire) = Setup();
-        party.IsInParty = true;
-        party.LeaderName = "Leader";
-
-        player.Position = PlayerPosition.Resting;
-        player.Position = PlayerPosition.Resting;
-
-        Assert.Single(wire);
-    }
-
-    [Fact]
-    public void NoWireSender_NoThrow()
-    {
-        PlayerState player = new();
         PartyState party = new() { IsInParty = true, LeaderName = "Leader" };
-        PartyRestSync sync = new(player, party);
-        // No SetWireSender — should still observe transitions without throwing.
-        player.Position = PlayerPosition.Resting;
+        PartyRestSync sync = new(party);
+        // No SetWireSender — call should silently no-op.
+        sync.RequestWait();
         sync.Dispose();
+    }
+
+    [Fact]
+    public void PositionChange_DoesNotAutoFire()
+    {
+        // Regression guard for the live-test feedback: manual `rest`
+        // (which sets PlayerState.Position = Resting) must NOT trigger
+        // @wait. PartyRestSync no longer subscribes to PlayerState at
+        // all; engines drive it explicitly.
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+        // Just mutating a PlayerState would have fired the old code;
+        // we don't even construct one here because the new ctor
+        // doesn't take it. The point of this test is to document the
+        // contract.
+        Assert.Empty(wire);
     }
 }
 

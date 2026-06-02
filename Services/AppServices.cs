@@ -484,7 +484,7 @@ public sealed class AppServices
         // Phase 6 PR 6.7 — emit side of @wait/@ok. Observes our own
         // position transitions and telepaths the leader when we enter
         // / leave a rest state. Wire-sender hookup in MainWindowVM.
-        PartyRest = new Game.PartyRestSync(PlayerState, PartyState);
+        PartyRest = new Game.PartyRestSync(PartyState);
         // Phase 6 PR 6.8 — one-to-many @-command sender. Auto-Exp-Reset
         // is the first consumer (Phase 7 LoopManager will call
         // BroadcastExpReset on loop start); the broadcaster's also the
