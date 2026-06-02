@@ -809,8 +809,10 @@ public sealed partial class PartyManager : IDisposable
         }
 
         _parBlockNames.Add(name);
-        PartyMember member = AddOrTouchMember(name);
-        member.IsSelf = isSelf;
+        // Pass isSelf so AddOrTouchMember sets it at construction —
+        // CollectionChanged.Add subscribers (PartyPoller) need it
+        // correct AT THE MOMENT the add fires, not after.
+        PartyMember member = AddOrTouchMember(name, isSelf);
         if (klass.Length > 0) member.Class = klass;
         member.HpPercent = hpPct;
         if (mpPct is { } v) member.MpPercent = v;
@@ -858,12 +860,25 @@ public sealed partial class PartyManager : IDisposable
     /// ("Raijin WuzHere"). Storing both would create duplicate rows.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Name field always upgrades to the LONGER form when observed —
     /// once we see "Raijin WuzHere" in par, the row's Name becomes
     /// "Raijin WuzHere" even if it was first added as just "Raijin"
     /// via follows-you. Going shorter is no-op (don't downgrade).
+    /// </para>
+    /// <para>
+    /// <paramref name="isSelf"/> is applied at construction so any
+    /// <see cref="System.Collections.ObjectModel.ObservableCollection{T}.CollectionChanged"/>
+    /// subscriber (PartyPoller's on-join @health round-trip in
+    /// particular) sees the right value at the moment the Add fires.
+    /// Without this, par parsing the local character's row for the
+    /// first time would race the IsSelf assignment and PartyPoller
+    /// would telepath /Fujin @health to ourselves — the server
+    /// replies "Why are you telepathing to yourself?" and the noise
+    /// lands in chat.
+    /// </para>
     /// </remarks>
-    private PartyMember AddOrTouchMember(string name)
+    private PartyMember AddOrTouchMember(string name, bool isSelf = false)
     {
         string given = GivenNameOf(name);
         foreach (PartyMember m in State.Members)
@@ -872,11 +887,12 @@ public sealed partial class PartyManager : IDisposable
             {
                 // Upgrade to the longer form if applicable.
                 if (name.Length > m.Name.Length) m.Name = name;
+                // Upgrade IsSelf if a later observation establishes it.
+                if (isSelf && !m.IsSelf) m.IsSelf = true;
                 return m;
             }
         }
-        PartyMember created = new();
-        created.Name = name;
+        PartyMember created = new() { Name = name, IsSelf = isSelf };
         State.Members.Add(created);
         return created;
     }

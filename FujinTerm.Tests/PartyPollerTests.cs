@@ -262,4 +262,51 @@ public sealed class PartyPollerTests
         router.Dispatch(new Terminal.LineExtractor.EmittedLine(
             line, new Terminal.CellAttributes[line.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
     }
+
+    // ===== IsSelf race regression =====
+    //
+    // If par parses our own row first (no AddSelfIfKnown path having run
+    // yet — e.g. mid-session connect into an existing party state), the
+    // member used to land in the collection with IsSelf=false and only
+    // get corrected AFTER CollectionChanged.Add fired. PartyPoller's
+    // skip-self gate would miss us, fire `/Fujin @health`, and the
+    // server would respond "Why are you telepathing to yourself?".
+    // Fix: AddOrTouchMember now sets IsSelf at construction.
+
+    [Fact]
+    public void OnMembersChanged_ParSelfRow_DoesNotFireHealthRoundTrip()
+    {
+        var (poller, mgr, _, _, _, wire) = Setup();
+        mgr.LocalCharacterName = "Fujin";
+
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        // Wire should be empty — no /Fujin @health.
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void OnMembersChanged_ParOtherMember_DoesFireHealthRoundTrip()
+    {
+        // Sanity: the fix above must not break the legitimate case
+        // where a non-self member is added via par and triggers the
+        // @health round-trip.
+        var (poller, mgr, _, _, _, wire) = Setup();
+        mgr.LocalCharacterName = "Fujin";
+
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("/Raijin @health\r", Encoding.Latin1.GetString(sent));
+    }
 }
