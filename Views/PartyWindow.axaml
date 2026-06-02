@@ -185,10 +185,11 @@
                             </StackPanel>
 
                             <!-- (4) Status-flag chips. Each chip self-collapses when the
-                                 corresponding flag is false. REST and MED chips also
-                                 communicate stance — replacing the previous position
-                                 text column. Order is roughly stance / threat / cure /
-                                 stealth / coordination. -->
+                                 corresponding flag is false. REST / MED communicate
+                                 stance (from par's state column); the four ailments
+                                 (BLD / PSN / DIS / CNF) will be lit by the combat
+                                 engine once it parses applied / cured messages; WAIT
+                                 fires from the @wait / @ok protocol handlers. -->
                             <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"
@@ -201,18 +202,6 @@
                                         BorderBrush="{StaticResource AccentCyanBrush}"
                                         IsVisible="{Binding Meditating}">
                                     <TextBlock Text="MED" Foreground="{StaticResource AccentCyanBrush}"/>
-                                </Border>
-                                <Border Classes="StatusChip"
-                                        Background="{StaticResource ChromeBgElevBrush}"
-                                        BorderBrush="{StaticResource AccentRedBrush}"
-                                        IsVisible="{Binding Paralyzed}">
-                                    <TextBlock Text="PARA" Foreground="{StaticResource AccentRedBrush}"/>
-                                </Border>
-                                <Border Classes="StatusChip"
-                                        Background="{StaticResource ChromeBgElevBrush}"
-                                        BorderBrush="{StaticResource AccentRedBrush}"
-                                        IsVisible="{Binding Held}">
-                                    <TextBlock Text="HELD" Foreground="{StaticResource AccentRedBrush}"/>
                                 </Border>
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"
@@ -237,18 +226,6 @@
                                         BorderBrush="{StaticResource AccentAmberBrush}"
                                         IsVisible="{Binding Confused}">
                                     <TextBlock Text="CNF" Foreground="{StaticResource AccentAmberBrush}"/>
-                                </Border>
-                                <Border Classes="StatusChip"
-                                        Background="{StaticResource ChromeBgElevBrush}"
-                                        BorderBrush="{StaticResource AccentMagentaBrush}"
-                                        IsVisible="{Binding Hidden}">
-                                    <TextBlock Text="HID" Foreground="{StaticResource AccentMagentaBrush}"/>
-                                </Border>
-                                <Border Classes="StatusChip"
-                                        Background="{StaticResource ChromeBgElevBrush}"
-                                        BorderBrush="{StaticResource AccentMagentaBrush}"
-                                        IsVisible="{Binding Sneaking}">
-                                    <TextBlock Text="SNK" Foreground="{StaticResource AccentMagentaBrush}"/>
                                 </Border>
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"

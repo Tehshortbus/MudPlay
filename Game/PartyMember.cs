@@ -146,10 +146,17 @@ public sealed partial class PartyMember : ObservableObject
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _isSelf;
 
-    // ----- Per-member status flags (PR 6.5+) -----------------------------
-    // Surfaced as the PartyWindow row's compact flag indicator. Each
-    // tracks an ailment / state observed via dedicated message patterns
-    // (cure messages, ailment-applied lines, follow-up par parses).
+    // ----- Per-member status flags ----------------------------------------
+    // Surfaced as the PartyWindow row's compact flag indicator. The combat
+    // engine (Phase 13) will set the ailment flags as it recognises the
+    // applied / cured / par-confirmation messages — for now Resting and
+    // Meditating are the only ones live-wired (from the par state column).
+    //
+    // Set chosen for PartyWindow surfacing: rest / meditate posture, the
+    // four ailments that meaningfully change party tactics (blind, poison,
+    // disease, confuse), and the cross-cutting WAIT coordination flag
+    // below. Stealth (hidden/sneaking), paralysis, and held are tracked
+    // elsewhere by their own subsystems — no reason to mirror them here.
 
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _resting;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _meditating;
@@ -157,10 +164,6 @@ public sealed partial class PartyMember : ObservableObject
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _poisoned;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _diseased;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _confused;
-    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _paralyzed;
-    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _hidden;
-    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _sneaking;
-    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _held;
 
     /// <summary>
     /// True when this member has asked the party to <c>@wait</c> and
