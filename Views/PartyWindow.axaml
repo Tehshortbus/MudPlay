@@ -168,22 +168,21 @@
                                            Foreground="{StaticResource ChromeFgBrush}"/>
                             </Border>
 
-                            <!-- (2) Name + class -->
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <!-- (2) Name on top line; class on a small muted
+                                 subtitle below — mirrors the skeleton design
+                                 where each member reads as "Name / class · lvl N"
+                                 stacked. We render class only (level not
+                                 disclosed by par; placeholder until who-output
+                                 cross-reference lands in a follow-up). -->
+                            <StackPanel Grid.Column="2" Orientation="Vertical"
+                                        VerticalAlignment="Center" Margin="6,0,0,0">
                                 <TextBlock Text="{Binding Name}"
                                            FontSize="12"
-                                           VerticalAlignment="Center"
                                            Foreground="{StaticResource ChromeFgBrush}"/>
-                                <TextBlock VerticalAlignment="Center"
-                                           FontSize="10"
+                                <TextBlock Text="{Binding Class}"
+                                           FontSize="9"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           IsVisible="{Binding Class, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="({0})">
-                                            <Binding Path="Class"/>
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
+                                           IsVisible="{Binding Class, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
 
                             <!-- (3) HP bar + numeric — fixed slot width keeps the
