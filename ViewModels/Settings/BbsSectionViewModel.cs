@@ -29,6 +29,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private readonly ProfileService _profile;
     private readonly PasswordProtector _passwords;
     private readonly DisplayConfig _display;
+    private readonly SettingsService _globalSettings;
     private readonly Dictionary<string, BbsProfile> _loaded = new(StringComparer.OrdinalIgnoreCase);
     private string? _pendingPassword;          // null = unchanged; "" = clear; else write
     private bool _suppressDirty = true;
@@ -97,6 +98,16 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty] private bool _showPassword;
 
+    // ----- Confirm prompts (Global tier — install-wide UX preferences) -----
+    // Persisted in GlobalSettings.Settings["Confirm"] and mirrored live
+    // onto AppServices.Current.Confirm by ApplyConfirmFromGlobalSettings.
+    // Defaults all false so the historical no-prompt behaviour is
+    // preserved until the user opts in.
+    [ObservableProperty] private bool _confirmExit;
+    [ObservableProperty] private bool _confirmHangup;
+    [ObservableProperty] private bool _confirmSaveSettings;
+    [ObservableProperty] private bool _confirmDeletes;
+
     /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
@@ -126,20 +137,24 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         BbsProfileStore bbsStore,
         ProfileService profile,
         PasswordProtector passwords,
-        DisplayConfig display)
+        DisplayConfig display,
+        SettingsService globalSettings)
     {
         ArgumentNullException.ThrowIfNull(bbsStore);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(passwords);
         ArgumentNullException.ThrowIfNull(display);
+        ArgumentNullException.ThrowIfNull(globalSettings);
         _bbsStore = bbsStore;
         _profile = profile;
         _passwords = passwords;
         _display = display;
+        _globalSettings = globalSettings;
 
         _profile.ProfileLoaded += _ => RefreshProfileState();
         _profile.ProfileClosed += RefreshProfileState;
         RefreshProfileState();
+        LoadConfirmFromGlobalSettings();
 
         ReloadBbsList();
         // Default selection to the loaded character's active BBS when it's
@@ -185,8 +200,60 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
 
         ApplyToCurrentProfile();
+        SaveConfirmToGlobalSettings();
 
         ClearDirty();
+    }
+
+    /// <summary>
+    /// Hydrate the four Confirm* observables from the Global-tier
+    /// settings file. Runs once at ctor time; Discard re-runs it to
+    /// roll back unsaved edits.
+    /// </summary>
+    private void LoadConfirmFromGlobalSettings()
+    {
+        ConfirmSettings dto = new();
+        Dictionary<string, System.Text.Json.JsonElement>? bucket =
+            _globalSettings.Current.Settings;
+        if (bucket is not null
+            && bucket.TryGetValue("Confirm", out System.Text.Json.JsonElement json))
+        {
+            try
+            {
+                dto = System.Text.Json.JsonSerializer.Deserialize<ConfirmSettings>(json) ?? new();
+            }
+            catch
+            {
+                dto = new ConfirmSettings();
+            }
+        }
+        bool prev = _suppressDirty;
+        _suppressDirty = true;
+        ConfirmExit         = dto.ConfirmExit;
+        ConfirmHangup       = dto.ConfirmHangup;
+        ConfirmSaveSettings = dto.ConfirmSaveSettings;
+        ConfirmDeletes      = dto.ConfirmDeletes;
+        _suppressDirty = prev;
+    }
+
+    /// <summary>
+    /// Persist the four Confirm* observables back into the Global tier
+    /// and trigger the live mirror via
+    /// <see cref="SettingsService.GlobalSettingsChanged"/>.
+    /// </summary>
+    private void SaveConfirmToGlobalSettings()
+    {
+        ConfirmSettings dto = new()
+        {
+            ConfirmExit         = ConfirmExit,
+            ConfirmHangup       = ConfirmHangup,
+            ConfirmSaveSettings = ConfirmSaveSettings,
+            ConfirmDeletes      = ConfirmDeletes,
+        };
+        _globalSettings.Current.Settings ??= new Dictionary<string, System.Text.Json.JsonElement>();
+        _globalSettings.Current.Settings["Confirm"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        _globalSettings.Save();
     }
 
     /// <summary>
@@ -278,6 +345,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             _suppressDirty = false;
         }
 
+        // Roll Confirm* observables back to their on-disk values too —
+        // they're independent of the BBS cache but share this section's
+        // dirty bit.
+        LoadConfirmFromGlobalSettings();
+
         // Roll the live DisplayConfig back to the *active* BBS, not the
         // BBS that happened to be selected in the editor. Otherwise the
         // terminal canvas keeps the discarded preview font.
@@ -314,9 +386,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     }
 
     [RelayCommand]
-    private void DeleteBbs()
+    private async Task DeleteBbsAsync()
     {
         if (SelectedBbsName is not { } name) return;
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync($"the BBS '{name}'")) return;
         _bbsStore.Delete(name);
         _loaded.Remove(name);
         ReloadBbsList();
@@ -540,6 +613,14 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     partial void OnFontSizeChanged(double value)                { PushToCache(); Dirty(); }
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
+
+    // Confirm flags are Global-tier, not per-BBS — they don't push into
+    // the per-BBS cache, just mark the section dirty so Apply commits
+    // them via SaveConfirmToGlobalSettings.
+    partial void OnConfirmExitChanged(bool value)               { Dirty(); }
+    partial void OnConfirmHangupChanged(bool value)             { Dirty(); }
+    partial void OnConfirmSaveSettingsChanged(bool value)       { Dirty(); }
+    partial void OnConfirmDeletesChanged(bool value)            { Dirty(); }
 
     [RelayCommand]
     private void AddMenuStep()

@@ -41,7 +41,7 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
-    public IRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
     ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
@@ -59,7 +59,7 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         _store.Macros.CollectionChanged += _handler;
         OpenEditAsyncCommand   = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand        = new AsyncRelayCommand(AddAsync);
-        RemoveSelectedCommand  = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+        RemoveSelectedCommand  = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
 
         // The Remove button's CanExecute depends on the current SelectedRow —
         // re-evaluate every time the selection changes.
@@ -107,12 +107,16 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         Reload();
     }
 
-    private void RemoveSelected()
+    private async Task RemoveSelectedAsync()
     {
-        List<Macro> targets = new();
         IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
             ? SelectedRows.ToList()
             : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this macro" : $"{selection.Count} macros";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
+
+        List<Macro> targets = new();
         foreach (GameDataRow row in selection)
         {
             string? chord = row.Get("Key");

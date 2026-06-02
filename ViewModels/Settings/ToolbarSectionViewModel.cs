@@ -327,9 +327,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private bool CanMoveDown() => SelectedRow is not null && Rows.IndexOf(SelectedRow) < Rows.Count - 1;
 
     [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    private void DeleteSelected()
+    private async Task DeleteSelectedAsync()
     {
         if (SelectedRow is null) return;
+        string what = SelectedRow.IsSeparator
+            ? "this separator"
+            : $"the toolbar row '{SelectedRow.DisplayLabel}'";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
         Rows.Remove(SelectedRow);
         SelectedRow = null;
         RefreshAvailableActions();

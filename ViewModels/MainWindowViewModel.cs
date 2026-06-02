@@ -626,7 +626,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
-        if (IsConnected)        { await DisconnectInternalAsync();   return; }
+        if (IsConnected)
+        {
+            // User-initiated disconnect path — prompt if the Confirm
+            // hangup flag is on. Programmatic disconnects (carrier-lost
+            // auto-reconnect cycle, remote @hangup, future health-
+            // threshold drops) call DisconnectInternalAsync directly
+            // and bypass this prompt.
+            if (!await AppServices.Current.Confirm.ConfirmHangupAsync()) return;
+            await DisconnectInternalAsync();
+            return;
+        }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
         // Auto-reconnect armed (predictive cleanup OR reactive carrier-lost):
         // first click cancels the pending redial — the user is opting out of

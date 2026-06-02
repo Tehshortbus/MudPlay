@@ -43,7 +43,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
-    public IRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
 
     ICommand  IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
     ICommand? IEditableTableSectionViewModel.AddCommand      => AddAsyncCommand;
@@ -62,7 +62,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         _db.Players.CollectionChanged += _handler;
         OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
-        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+        RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
 
         PropertyChanged += (_, e) =>
         {
@@ -113,7 +113,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         _db.AddManual(created.GivenName, created.FamilyName, DateTime.UtcNow);
     }
 
-    private void RemoveSelected()
+    private async Task RemoveSelectedAsync()
     {
         // Customizations stay attached to the profile so a future
         // re-observation auto-rebinds the user's flags. Removing an
@@ -121,6 +121,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
             ? SelectedRows.ToList()
             : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this player record" : $"{selection.Count} player records";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
 
         List<string> givens = new();
         foreach (GameDataRow row in selection)

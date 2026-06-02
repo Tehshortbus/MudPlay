@@ -92,6 +92,14 @@ public partial class App : Application
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
                 FujinTerm.Views.Settings.DataDirectoryRelocateDialog>();
 
+            // Generic "are you sure?" confirm dialog — owned by
+            // ConfirmService, surfaced by the exit / hangup / save /
+            // delete paths whose matching flag is on in Settings →
+            // BBS's Display group.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.ConfirmDialogViewModel,
+                FujinTerm.Views.ConfirmDialog>();
+
             // Register the LogPane double-click handler for the spell-
             // coverage auditor's summary entries. Opening reuses any
             // already-open window (single-instance) so repeated

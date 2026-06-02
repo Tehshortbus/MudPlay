@@ -41,6 +41,13 @@ public sealed class AppServices
     /// <summary>Modeless-only window spawner (no <c>ShowDialog</c> wrapper).</summary>
     public DialogService Dialogs { get; }
 
+    /// <summary>
+    /// Single source of truth for "are you sure?" prompts (exit /
+    /// hangup / save / delete). Lives at Global tier; mirrored from
+    /// <see cref="SettingsService"/> on startup and every save.
+    /// </summary>
+    public ConfirmService Confirm { get; }
+
     /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
     public LogService Log { get; }
 
@@ -457,6 +464,12 @@ public sealed class AppServices
         Resolver = new SettingsResolver(Settings, Bbs, Profile, () => GameData.ActiveSet);
 
         Dialogs = new DialogService();
+        Confirm = new ConfirmService(Dialogs);
+        // Hydrate the live confirm mirror from Global tier now and on
+        // every subsequent global-settings save (Settings → BBS's
+        // confirm checkboxes write to Global through this path).
+        ApplyConfirmFromGlobalSettings();
+        Settings.GlobalSettingsChanged += _ => ApplyConfirmFromGlobalSettings();
         // Log already set by ctor parameter — bootstrap log carries the
         // DataMigration entries from before AppServices was constructed.
         Panels = new FloatingPanelHost();
@@ -785,6 +798,41 @@ public sealed class AppServices
         RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
         GameCommands.EntryCommand = defaults.GameEntryCommand;
         GameCommands.ExitCommand  = defaults.GameExitCommand;
+    }
+
+    /// <summary>
+    /// Pull <see cref="Models.Settings.ConfirmSettings"/> out of the
+    /// Global-tier <c>"Confirm"</c> bucket and push it into
+    /// <see cref="Confirm"/>. Confirm prefs are Global tier (one
+    /// install-wide preference, not per-character) so this fires off
+    /// <see cref="SettingsService.GlobalSettingsChanged"/>, not the
+    /// per-profile events.
+    /// </summary>
+    private void ApplyConfirmFromGlobalSettings()
+    {
+        Models.Settings.ConfirmSettings dto =
+            ReadGlobalSection<Models.Settings.ConfirmSettings>("Confirm");
+        Confirm.ApplyFrom(dto);
+    }
+
+    /// <summary>
+    /// Read a typed DTO out of the Global-tier <c>Settings</c>
+    /// dictionary, returning a default-constructed instance when the
+    /// bucket is missing or unparseable.
+    /// </summary>
+    private T ReadGlobalSection<T>(string key) where T : new()
+    {
+        Dictionary<string, System.Text.Json.JsonElement>? bucket = Settings.Current.Settings;
+        if (bucket is null) return new T();
+        if (!bucket.TryGetValue(key, out System.Text.Json.JsonElement json)) return new T();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json) ?? new T();
+        }
+        catch
+        {
+            return new T();
+        }
     }
 
     /// <summary>

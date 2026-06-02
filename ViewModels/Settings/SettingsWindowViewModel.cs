@@ -81,10 +81,12 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     /// <summary>
     /// Save path — apply every dirty section, then ask the host window to
     /// close. Called by the OK button AND by the MainWindow toggle-hotkey
-    /// re-press path (per CLAUDE.md).
+    /// re-press path (per CLAUDE.md). When Confirm save settings is on,
+    /// "No" returns to the editor with no save and no close.
     /// </summary>
-    public void ApplyAndClose()
+    public async void ApplyAndClose()
     {
+        if (!await Services.AppServices.Current.Confirm.ConfirmSaveAsync()) return;
         ApplyAll();
         IsCommitted = true;
         CloseRequested?.Invoke();
@@ -119,7 +121,12 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
     private void Cancel() => DiscardAndClose();
 
     [RelayCommand]
-    private void Apply() => ApplyAll();
+    private async Task ApplyAsync()
+    {
+        // Apply button — same confirm-save semantics as OK, minus the close.
+        if (!await Services.AppServices.Current.Confirm.ConfirmSaveAsync()) return;
+        ApplyAll();
+    }
 
     private void ApplyAll()
     {
@@ -218,7 +225,8 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
             AppServices.Current.Bbs,
             _profile,
             AppServices.Current.Passwords,
-            AppServices.Current.Display));
+            AppServices.Current.Display,
+            AppServices.Current.Settings));
 
         // Phase 4 PR 4.8 stub tabs — disabled controls with per-field tooltips
         // showing the owning PR. Real persistence + wiring lands per the

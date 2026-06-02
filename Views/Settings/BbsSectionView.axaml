@@ -264,29 +264,33 @@
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
                     </StackPanel>
 
-                    <!-- ===== Display options =====
+                    <!-- ===== Confirmations =====
                          Show-information / Show-data-being-sent /
                          Show-reason-for-running were removed entirely —
                          the system log covers what they would have
                          exposed and we have no plans to surface them
                          on the terminal canvas. Show-combat-round-totals
-                         moved to Settings → Combat where it'll be
-                         wired by the Phase 13 CombatManager. -->
-                    <TextBlock Classes="GroupHeader" Text="Display"
-                               Margin="0,18,0,4"/>
-
-                    <StackPanel Spacing="2" Margin="0,8,0,0">
+                         moved to Settings → Combat. The "Display" group
+                         label was dropped — the bold "Show confirmations"
+                         header below already names what this group is.
+                         These four toggles persist at Global tier; the
+                         live mirror is ConfirmService. -->
+                    <StackPanel Spacing="2" Margin="0,18,0,0">
                         <TextBlock Text="Show confirmations"
                                    Foreground="{StaticResource ChromeFgMutedBrush}"
                                    FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <CheckBox Content="Confirm exit"          IsEnabled="False"
-                                  ToolTip.Tip="Phase 0 polish — confirm prompt before File → Quit."/>
-                        <CheckBox Content="Confirm hangup"        IsEnabled="False"
-                                  ToolTip.Tip="Phase 0 polish — confirm prompt before disconnect."/>
-                        <CheckBox Content="Confirm save settings" IsEnabled="False"
-                                  ToolTip.Tip="Phase 0 polish — confirm prompt before Settings → OK / Apply."/>
-                        <CheckBox Content="Confirm deletes"       IsEnabled="False"
-                                  ToolTip.Tip="Phase 0 polish — confirm prompt before destructive list-row removes."/>
+                        <CheckBox Content="Confirm exit"
+                                  IsChecked="{Binding ConfirmExit, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt 'Are you sure?' when closing FujinTerm (window X / File → Quit / hotkey)."/>
+                        <CheckBox Content="Confirm hangup"
+                                  IsChecked="{Binding ConfirmHangup, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before user-initiated disconnects (toolbar / hotkey / menu). App-initiated disconnects (carrier-lost, @hangup, health drops) bypass the prompt."/>
+                        <CheckBox Content="Confirm save settings"
+                                  IsChecked="{Binding ConfirmSaveSettings, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before Settings → OK / Apply and other JSON-write saves. 'No' returns to the editor without saving or closing."/>
+                        <CheckBox Content="Confirm deletes"
+                                  IsChecked="{Binding ConfirmDeletes, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before destructive list-row removes (toolbar rows, BBS profiles, future game-data records)."/>
                     </StackPanel>
 
                     <!-- ===== Realm-specific naming (Phase 4 PR 4.8 stub) =====
