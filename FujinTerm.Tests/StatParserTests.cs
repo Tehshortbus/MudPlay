@@ -178,4 +178,89 @@ public sealed class StatParserTests
         parser.FeedTestLine("You have 1 life left.");
         Assert.Equal(1, stats.Lives);
     }
+
+    // ===== Fix A: close-on-prompt-after-capture =====
+
+    [Fact]
+    public void PromptAfterCapture_ClosesGateImmediately()
+    {
+        // Once a field has committed this arm, the next prompt line
+        // closes the gate — even if the configured window hasn't
+        // expired. Protects against the user's own typed-command
+        // echo (which is a prompt line) corrupting stat fields.
+        var (p, s) = Setup();
+        p.FeedTestLine("Strength: 60");                 // capture
+        Assert.Equal(60, s.Strength);
+        p.FeedTestLine("[HP=22]:", isPromptLine: true); // prompt after capture → close
+
+        // Subsequent line — even with a juicy match — must NOT commit.
+        p.FeedTestLine("Strength: 0");
+        Assert.Equal(60, s.Strength);
+    }
+
+    [Fact]
+    public void PromptBeforeAnyCapture_DoesNotClose()
+    {
+        // Useful edge case — the user's own `[HP=22]:stat` echo is a
+        // prompt line that fires before any stat data arrives. The
+        // gate must NOT close on that one (nothing's been captured
+        // yet). Only the SECOND prompt (the one after the stat
+        // burst) should close.
+        var (p, s) = Setup();
+        p.FeedTestLine("[HP=22]:stat", isPromptLine: true);   // pre-capture prompt: ignored
+        p.FeedTestLine("Strength: 60");                       // capture
+        Assert.Equal(60, s.Strength);
+        p.FeedTestLine("Charm: 40");                          // still in window
+        Assert.Equal(40, s.Charm);
+    }
+
+    // ===== Fix B: chat-line shape skip =====
+
+    [Fact]
+    public void ChatLineEmbeddingStatLabel_IsIgnored()
+    {
+        // The big threat — another player's gossip embedding a stat
+        // label lands inside our scan window. The ChatLineRx pre-check
+        // skips the whole line so the field regexes never run.
+        var (p, s) = Setup();
+        p.FeedTestLine("Foo gossips: my Strength: 999 is great");
+        Assert.Equal(0, s.Strength);
+    }
+
+    [Fact]
+    public void SelfChatEchoEmbeddingStatLabel_IsIgnored()
+    {
+        // User's own outgoing `gossip` echoes back as
+        // `Fujin gossips: "..."`. Same shape, same protection.
+        var (p, s) = Setup();
+        p.FeedTestLine("Fujin gossips: \"my Lives/CP: 0/0 is sad\"");
+        Assert.Equal(0, s.Lives);
+        Assert.Equal(0, s.Cp);
+    }
+
+    [Theory]
+    [InlineData("Foo telepaths:")]
+    [InlineData("Bar yells:")]
+    [InlineData("Baz says:")]
+    [InlineData("Qux auctions:")]
+    [InlineData("Quux gangpaths:")]
+    [InlineData("Quuux broadcasts:")]
+    public void AllChatVerbs_AreSkipped(string prefix)
+    {
+        var (p, s) = Setup();
+        p.FeedTestLine($"{prefix} Strength: 100 is a thing I have");
+        Assert.Equal(0, s.Strength);
+    }
+
+    [Fact]
+    public void NonChatLine_StillCaptures()
+    {
+        // Sanity — the chat-shape guard mustn't false-positive on
+        // legitimate stat-screen lines (no chat-verb-shape prefix).
+        var (p, s) = Setup();
+        p.FeedTestLine("Strength:   60       Agility:   80          Tracking:     0");
+        Assert.Equal(60, s.Strength);
+        Assert.Equal(80, s.Agility);
+        Assert.Equal(0,  s.Tracking);
+    }
 }

@@ -53,6 +53,13 @@ public sealed partial class StatParser : IDisposable
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
     private DateTime? _windowOpenedAt;
+    /// <summary>
+    /// Per-arm flag — flipped true the first time a field commits
+    /// within the current scan window, reset when the gate closes.
+    /// Lets us close the gate as soon as the in-game prompt returns
+    /// AFTER capture, instead of waiting for the full window timeout.
+    /// </summary>
+    private bool _capturedThisArm;
 
     /// <summary>True once any stat-screen line has been parsed this session.</summary>
     public bool HasParsed { get; private set; }
@@ -101,6 +108,7 @@ public sealed partial class StatParser : IDisposable
         string cmd = raw.TrimEnd('\r', '\n', '\0').Trim().ToLowerInvariant();
         if (cmd != "stat") return;
         _windowOpenedAt = NowProvider();
+        _capturedThisArm = false;
         _log?.Log(LogSeverity.Info, "StatParser",
             $"Observed outbound `stat` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
     }
@@ -113,18 +121,29 @@ public sealed partial class StatParser : IDisposable
     /// Test seam — pump a line through the full handler path without
     /// a real <see cref="LineExtractor"/>. Mirrors <see cref="OnLine"/>
     /// so tests exercise the always-on lives handler + the gated
-    /// scan together.
+    /// scan together. <paramref name="isPromptLine"/> defaults to
+    /// false; set true for tests that want to exercise the
+    /// close-on-prompt-after-capture path.
     /// </summary>
-    internal void FeedTestLine(string text)
+    internal void FeedTestLine(string text, bool isPromptLine = false)
     {
         OnLivesRemainingLine(text);
         if (_windowOpenedAt is null) return;
+        if (isPromptLine && _capturedThisArm)
+        {
+            _windowOpenedAt = null;
+            _capturedThisArm = false;
+            return;
+        }
         if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
         {
             _windowOpenedAt = null;
+            _capturedThisArm = false;
             return;
         }
+        bool hadParsed = HasParsed;
         ScanLine(text);
+        if (HasParsed && !hadParsed) _capturedThisArm = true;
     }
 
     private void OnLine(LineExtractor.EmittedLine line)
@@ -134,12 +153,31 @@ public sealed partial class StatParser : IDisposable
         OnLivesRemainingLine(line.Text);
 
         if (_windowOpenedAt is null) return;
+
+        // Close the gate as soon as the in-game prompt fires AFTER we
+        // captured at least one field this arm. The stat screen
+        // terminates with the next `[HP=...]:` prompt, which arrives
+        // milliseconds after the burst — long before any human
+        // keystroke could land. Without this, the gate stays open
+        // for the full 5 s and a fast typist could land a command
+        // whose echo contains "Strength: N" and corrupt the field.
+        if (line.IsPromptLine && _capturedThisArm)
+        {
+            _windowOpenedAt = null;
+            _capturedThisArm = false;
+            return;
+        }
+
         if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
         {
             _windowOpenedAt = null;
+            _capturedThisArm = false;
             return;
         }
+
+        bool hadParsed = HasParsed;
         ScanLine(line.Text);
+        if (HasParsed && !hadParsed) _capturedThisArm = true;
     }
 
     /// <summary>
@@ -153,6 +191,17 @@ public sealed partial class StatParser : IDisposable
     private void ScanLine(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
+
+        // Chat-line shape guard — any line that opens with
+        // `<player> <verb>:` is chat or a self-echo of chat the user
+        // typed. Skipped wholesale so a message like
+        // "Foo gossips: my Strength: 60 sucks" can't write to the
+        // Strength field even if the gate happens to be open. Pairs
+        // with the close-on-prompt-after-capture path: between the
+        // two, the only lines that ever reach the field regexes
+        // during a scan window are non-chat, non-prompt server lines
+        // — i.e. the actual stat-screen output.
+        if (ChatLineRx().IsMatch(text)) return;
 
         // String-valued fields are caught first — they have the
         // non-greedy "up to two spaces" cutoff so multi-word values
@@ -290,4 +339,13 @@ public sealed partial class StatParser : IDisposable
     // Always-on miracle-save line — fires outside the stat-screen
     // window. "You have N lives left." / "You have 1 life left."
     [GeneratedRegex(@"^You have (\d+) (?:lives?|life) left\.",          RegexOptions.CultureInvariant)] private static partial Regex LivesRemainingRx();
+
+    // Chat-line shape — matched at line start. Any of the standard
+    // MajorMUD chat verbs after a single-word speaker means the
+    // entire line is chat noise (including the user's own outgoing
+    // gossip / say echoes). Used as a skip-guard in ScanLine so a
+    // chat line embedding a stat label can't write to PlayerStats
+    // even if it lands inside the scan window.
+    [GeneratedRegex(@"^\w+\s+(?:gossips|telepaths|yells|says|auctions|gangpaths|broadcasts):",
+        RegexOptions.CultureInvariant)] private static partial Regex ChatLineRx();
 }
