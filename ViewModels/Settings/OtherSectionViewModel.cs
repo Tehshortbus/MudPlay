@@ -141,9 +141,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // user direction so the four ailment families are symmetric.
         new StubGroup("Auto-engage on connect", new[]
         {
-            new StubField("Auto-Combat on",       StubFieldKind.Check, "Phase 13 PR 13.A — flips CombatManager on at logon."),
-            new StubField("Auto-Rest on",         StubFieldKind.Check, "Phase 13 PR 13.B — flips HealthManager rest on at logon."),
-            new StubField("Auto-Heal on",         StubFieldKind.Check, "Phase 13 PR 13.D — flips CastingDirector self-heal on at logon."),
+            new StubField("Enable auto-combat on reconnect", StubFieldKind.Check, "Phase 13 PR 13.A — flips CombatManager on at logon."),
+            new StubField("Enable auto-rest on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.B — flips HealthManager rest on at logon."),
+            new StubField("Enable auto-heal on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.D — flips CastingDirector self-heal on at logon."),
             new StubField("Bless while resting",  StubFieldKind.Check, "Phase 13 PR 13.D — CastingDirector recasts party-buffs during downtime."),
             new StubField("Bless during combat",  StubFieldKind.Check, "Phase 13 PR 13.D — extends bless casting into active rounds."),
         }),
