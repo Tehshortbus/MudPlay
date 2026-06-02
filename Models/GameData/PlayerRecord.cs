@@ -170,16 +170,17 @@ public sealed record PlayerRecord(
 /// "Allowed Remote Control" panel layout — 12 grouped categories that
 /// span the individual <c>@-command</c> set documented at
 /// <see href="https://kyau.net/wiki/MajorMUD:Remote_Commands"/>. The
-/// Phase 13 <c>RemoteCommandManager</c> consults this bitmask before
-/// dispatching any @-command from a non-party player.
+/// <see cref="Game.Remote.RemoteCommandManager"/> (Phase 6 PR 6.2)
+/// consults this bitmask before dispatching any @-command from a
+/// non-party player.
 /// </summary>
 /// <remarks>
 /// Empty (<see cref="None"/>) means "deny every category" — the default
 /// for newly-observed players. <see cref="All"/> grants the full set in
 /// one flag. Hard-blocks for destructive commands (<c>@do reroll</c> /
-/// <c>@do suicide</c> when lives ≤ 3, <c>@party reroll</c> / <c>@party suicide</c>
-/// always) bypass this bitmask entirely — those are policy, not
-/// per-player choices.
+/// <c>@do suicide</c> when lives ≤ threshold, <c>@party reroll</c> /
+/// <c>@party suicide</c> always) bypass this bitmask entirely — those
+/// are engine policy, not per-player choices.
 /// </remarks>
 [Flags]
 public enum PlayerRemoteControls

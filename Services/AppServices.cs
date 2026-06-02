@@ -130,6 +130,16 @@ public sealed class AppServices
     public Game.PartyManager Party { get; }
 
     /// <summary>
+    /// Phase 6 remote-command engine. Subscribes to <see cref="Chat"/>'s
+    /// <see cref="Game.ChatRouter.EntryClassified"/>, identifies
+    /// <c>@-prefixed</c> messages from other players, enforces hard-blocks
+    /// and per-player <see cref="Models.GameData.PlayerRemoteControls"/>
+    /// permissions, and dispatches to registered handlers. PR 6.2 ships
+    /// the engine; PR 6.3 onward registers the actual command handlers.
+    /// </summary>
+    public Game.Remote.RemoteCommandManager RemoteCommands { get; }
+
+    /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
     /// <see cref="Player"/> directly so prompts overwritten in place on
     /// a single row (server CR + erase-line + rewrite) don't get lost
@@ -385,6 +395,9 @@ public sealed class AppServices
         Party = new Game.PartyManager(Router, PartyState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        // RemoteCommands is constructed AFTER Chat / Party / Players are
+        // ready (they're all dependencies). Handler registration ships
+        // in PR 6.3 — the engine is empty here; we just wire the plumbing.
         Triggers = new TriggerEngine(Profile, Chat, Log);
         Aliases = new AliasEngine(Profile);
         Macros = new MacroStore(Profile);
@@ -397,6 +410,10 @@ public sealed class AppServices
         // through ResolveActiveBbs so Quick Connect and the BBS pin
         // resolution chain stay the single source of truth.
         Players = new PlayerDatabase(Profile, ResolveActiveBbs);
+        // Phase 6 PR 6.2 — engine with no handlers yet. PR 6.3 lands the
+        // party-essential handler registrations; Phase 7 / Phase 12
+        // register additional handlers without touching the engine.
+        RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
