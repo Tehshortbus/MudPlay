@@ -719,23 +719,33 @@ public sealed partial class PartyManager : IDisposable
     }
 
     /// <summary>
-    /// Set the absolute-HP / absolute-MP baseline on a named member. Called
-    /// by <see cref="PartyPoller"/> (PR 6.4) after parsing a member's
-    /// reply to an on-join <c>@health</c> request. Routes through the
-    /// manager so the <see cref="PartyMember"/>'s
+    /// Record a member's on-join <c>@health</c> snapshot. The reply has
+    /// the shape <c>{HP=cur/max,MA=cur/max}</c> — we store the max as
+    /// <see cref="PartyMember.BaselineHp"/> / <see cref="PartyMember.BaselineMp"/>
+    /// AND compute <see cref="PartyMember.HpPercent"/> /
+    /// <see cref="PartyMember.MpPercent"/> from <c>cur</c> so the row
+    /// shows a meaningful bar immediately, without waiting for the next
+    /// par poll to fill in the percentage. (Earlier shape only took the
+    /// max, leaving the row stuck at "H:0/36 0%" until par caught up.)
+    /// Routes through the manager so the
     /// <see cref="OwnerAttribute"/>-marked fields keep a single writer
     /// (the Phase 3 PR 3.5 IL scan enforces this). No-op when the named
-    /// member isn't in the roster.
+    /// member isn't in the roster. <paramref name="mpMax"/> = 0 marks a
+    /// no-mana class (Warriors) — both baseline and percent stay 0 and
+    /// the PartyWindow hides the MA sub-row entirely via
+    /// <c>GreaterThanZeroConverter</c>.
     /// </summary>
-    public void SetMemberBaseline(string name, int hp, int mp)
+    public void SetMemberHealthSnapshot(string name, int hpCur, int hpMax, int mpCur, int mpMax)
     {
         if (string.IsNullOrEmpty(name)) return;
         string given = GivenNameOf(name);
         foreach (PartyMember m in State.Members)
         {
             if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
-            m.BaselineHp = hp;
-            m.BaselineMp = mp;
+            m.BaselineHp = hpMax;
+            m.BaselineMp = mpMax;
+            m.HpPercent  = hpMax > 0 ? hpCur * 100 / hpMax : 0;
+            m.MpPercent  = mpMax > 0 ? mpCur * 100 / mpMax : 0;
             return;
         }
     }

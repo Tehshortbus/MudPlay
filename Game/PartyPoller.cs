@@ -17,7 +17,7 @@ namespace FujinTerm.Game;
 ///         reply, and writes the absolute HP/MA into the matching
 ///         <see cref="PartyMember"/>'s <see cref="PartyMember.BaselineHp"/>
 ///         / <see cref="PartyMember.BaselineMp"/> through
-///         <see cref="PartyManager.SetMemberBaseline"/>.</item>
+///         <see cref="PartyManager.SetMemberHealthSnapshot"/>.</item>
 ///   <item><b><c>par</c> poll.</b> A <see cref="DispatcherTimer"/>
 ///         ticks at <see cref="ParCadence"/> (5 s default per the
 ///         Phase 6 spec; Settings.Party in PR 6.9 makes this
@@ -195,15 +195,20 @@ public sealed partial class PartyPoller : IDisposable
         if (string.IsNullOrEmpty(entry.Message)) return;
         Match m = HealthReply().Match(entry.Message);
         if (!m.Success) return;
-        // hpmax is the absolute baseline (the cap). For mana, mpmax is
-        // optional — Warriors and other non-casters reply without an MA
-        // segment, in which case we store 0 for the baseline (UI shows
-        // "—" rather than a percent).
-        int hpBaseline = int.Parse(m.Groups["hpmax"].Value, System.Globalization.CultureInfo.InvariantCulture);
-        int mpBaseline = m.Groups["mpmax"].Success
-            ? int.Parse(m.Groups["mpmax"].Value, System.Globalization.CultureInfo.InvariantCulture)
-            : 0;
-        _manager.SetMemberBaseline(entry.Speaker, hpBaseline, mpBaseline);
+        // Reply shape is `{HP=cur/max[,MA=cur/max]}`. Capture both halves
+        // — max becomes the baseline (the cap), cur drives the initial
+        // percent so the bar shows real health from the very first frame.
+        // Without the percent assignment the row sat at "H:0/max 0%"
+        // until the next par poll dribbled in a percentage.
+        // MA segment is optional — Warriors and other non-casters reply
+        // without it; we store 0 for both mp baseline and percent and the
+        // UI hides the MA sub-row via GreaterThanZeroConverter.
+        System.Globalization.CultureInfo inv = System.Globalization.CultureInfo.InvariantCulture;
+        int hpCur = int.Parse(m.Groups["hp"].Value,    inv);
+        int hpMax = int.Parse(m.Groups["hpmax"].Value, inv);
+        int mpCur = m.Groups["mp"].Success    ? int.Parse(m.Groups["mp"].Value,    inv) : 0;
+        int mpMax = m.Groups["mpmax"].Success ? int.Parse(m.Groups["mpmax"].Value, inv) : 0;
+        _manager.SetMemberHealthSnapshot(entry.Speaker, hpCur, hpMax, mpCur, mpMax);
     }
 
     // ----- par poll ------------------------------------------------------

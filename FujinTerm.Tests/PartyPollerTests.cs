@@ -165,7 +165,7 @@ public sealed class PartyPollerTests
     // ===== @health reply parsing =====
 
     [Fact]
-    public void HealthReply_WithMana_UpdatesBaselines()
+    public void HealthReply_WithMana_UpdatesBaselinesAndPercents()
     {
         var (_, mgr, state, _, router, _) = Setup();
         state.Members.Add(new PartyMember { Name = "Helper" });
@@ -179,10 +179,31 @@ public sealed class PartyPollerTests
         PartyMember m = state.Members[0];
         Assert.Equal(720, m.BaselineHp);
         Assert.Equal(300, m.BaselineMp);
+        // 690/720 = 95.83%; integer truncation → 95.
+        Assert.Equal(95, m.HpPercent);
+        // 200/300 = 66.67% → 66.
+        Assert.Equal(66, m.MpPercent);
     }
 
     [Fact]
-    public void HealthReply_WithKai_UpdatesBaselines()
+    public void HealthReply_FullHealth_PercentsAreHundred()
+    {
+        // Regression: a member who joins at full health should land on
+        // the roster reading "H:36/36 100%", not "H:0/36 0%" until the
+        // next par poll catches up.
+        var (_, _, state, _, router, _) = Setup();
+        state.Members.Add(new PartyMember { Name = "Raijin" });
+        DispatchTelepath(router, "Raijin", "{HP=36/36,MA=34/34}");
+
+        PartyMember m = state.Members[0];
+        Assert.Equal(36,  m.BaselineHp);
+        Assert.Equal(34,  m.BaselineMp);
+        Assert.Equal(100, m.HpPercent);
+        Assert.Equal(100, m.MpPercent);
+    }
+
+    [Fact]
+    public void HealthReply_WithKai_UpdatesBaselinesAndPercents()
     {
         var (_, _, state, _, router, _) = Setup();
         state.Members.Add(new PartyMember { Name = "Monk" });
@@ -192,10 +213,12 @@ public sealed class PartyPollerTests
         PartyMember m = state.Members[0];
         Assert.Equal(500, m.BaselineHp);
         Assert.Equal(150, m.BaselineMp);
+        Assert.Equal(100, m.HpPercent);
+        Assert.Equal(100, m.MpPercent);
     }
 
     [Fact]
-    public void HealthReply_WarriorWithoutMana_UpdatesHpOnly()
+    public void HealthReply_WarriorWithoutMana_UpdatesHpOnlyAndZeroesMana()
     {
         var (_, _, state, _, router, _) = Setup();
         state.Members.Add(new PartyMember { Name = "Tank" });
@@ -204,6 +227,8 @@ public sealed class PartyPollerTests
         PartyMember m = state.Members[0];
         Assert.Equal(850, m.BaselineHp);
         Assert.Equal(0,   m.BaselineMp);
+        Assert.Equal(100, m.HpPercent);
+        Assert.Equal(0,   m.MpPercent);
     }
 
     [Fact]
@@ -225,6 +250,8 @@ public sealed class PartyPollerTests
         PartyMember m = state.Members[0];
         Assert.Equal(0, m.BaselineHp);
         Assert.Equal(0, m.BaselineMp);
+        Assert.Equal(0, m.HpPercent);
+        Assert.Equal(0, m.MpPercent);
     }
 
     // ===== helper =====
