@@ -94,24 +94,54 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Health_WithPromptDataAndMana_FormatsCorrectly()
+    public void Health_WhenResting_AppendsRestingSuffix()
     {
         var (engine, _, player, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        player.Hp = 690;
-        player.MaxHp = 720;
-        player.Ma = 200;
-        player.MaxMa = 300;
+        player.Hp = 100; player.MaxHp = 150;
+        player.Ma = 75;  player.MaxMa = 85;
         player.ManaType = ManaType.Mana;
         player.Position = PlayerPosition.Resting;
         player.HasPromptData = true;
 
         engine.DispatchForTests(Telepath("Friend", "@health"));
 
-        string reply = LastReply(engine);
-        Assert.Contains("HP 690/720", reply);
-        Assert.Contains("MA 200/300", reply);
-        Assert.Contains("(Resting)", reply);
+        // Full wire: /<given> {<payload>}\r. The reply body is
+        // brace-wrapped at SendReply per the remote-command convention.
+        Assert.Equal("/Friend {HP=100/150,MA=75/85, Resting}\r", LastReply(engine));
+    }
+
+    [Fact]
+    public void Health_WhenStanding_OmitsPositionSuffix()
+    {
+        // Standing is the idle default — adding "(Standing)" gives the
+        // recipient no usable signal, so the payload skips the suffix
+        // entirely. Recipient reads "HP=…, MA=…" and infers idle.
+        var (engine, _, player, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Hp = 100; player.MaxHp = 150;
+        player.Ma = 75;  player.MaxMa = 85;
+        player.ManaType = ManaType.Mana;
+        player.Position = PlayerPosition.Standing;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@health"));
+        Assert.Equal("/Friend {HP=100/150,MA=75/85}\r", LastReply(engine));
+    }
+
+    [Fact]
+    public void Health_WhenMeditating_AppendsMeditatingSuffix()
+    {
+        var (engine, _, player, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Hp = 100; player.MaxHp = 150;
+        player.Ma = 75;  player.MaxMa = 85;
+        player.ManaType = ManaType.Mana;
+        player.Position = PlayerPosition.Meditating;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@health"));
+        Assert.Equal("/Friend {HP=100/150,MA=75/85, Meditating}\r", LastReply(engine));
     }
 
     [Fact]
@@ -125,7 +155,22 @@ public sealed class PartyEssentialHandlersTests
         player.HasPromptData = true;
 
         engine.DispatchForTests(Telepath("Friend", "@health"));
-        Assert.Contains("KAI 150/150", LastReply(engine));
+        Assert.Equal("/Friend {HP=500/500,KAI=150/150}\r", LastReply(engine));
+    }
+
+    [Fact]
+    public void Health_NoMana_OmitsManaSegment()
+    {
+        // Warrior / no-mana class — ManaType.None. The MA / KAI segment
+        // simply isn't emitted; the bare reply is HP-only.
+        var (engine, _, player, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Hp = 200; player.MaxHp = 200;
+        player.ManaType = ManaType.None;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@health"));
+        Assert.Equal("/Friend {HP=200/200}\r", LastReply(engine));
     }
 
     [Fact]

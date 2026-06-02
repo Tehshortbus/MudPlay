@@ -138,13 +138,29 @@ public sealed class PartyEssentialHandlers : IDisposable
     private void OnHealth(RemoteCommandContext ctx)
     {
         if (!_player.HasPromptData) { ctx.Reply("HP unknown — no prompt observed yet"); return; }
+        // Format mirrors the in-game prompt vocabulary so the recipient
+        // can read it at a glance: HP=cur/max,MA=cur/max[, Resting|Meditating].
+        // The engine wraps the whole payload in { } at SendReply time;
+        // we provide the bare body.
+        //
+        // - HP is always present.
+        // - Mana segment uses MA / KAI per ManaType; omitted when None.
+        // - Position suffix only appears for non-idle stances. Standing
+        //   is the default "doing nothing notable" and adds no signal
+        //   for the recipient — Resting and Meditating do.
         string mana = _player.ManaType switch
         {
-            ManaType.Mana => $", MA {_player.Ma}/{_player.MaxMa}",
-            ManaType.Kai  => $", KAI {_player.Ma}/{_player.MaxMa}",
+            ManaType.Mana => $",MA={_player.Ma}/{_player.MaxMa}",
+            ManaType.Kai  => $",KAI={_player.Ma}/{_player.MaxMa}",
             _             => string.Empty,
         };
-        ctx.Reply($"HP {_player.Hp}/{_player.MaxHp}{mana} ({_player.Position})");
+        string position = _player.Position switch
+        {
+            PlayerPosition.Resting    => ", Resting",
+            PlayerPosition.Meditating => ", Meditating",
+            _                         => string.Empty,
+        };
+        ctx.Reply($"HP={_player.Hp}/{_player.MaxHp}{mana}{position}");
     }
 
     private void OnStatus(RemoteCommandContext ctx)
