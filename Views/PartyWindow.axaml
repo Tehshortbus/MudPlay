@@ -143,17 +143,16 @@
                                              Width="60"
                                              VerticalAlignment="Center"
                                              ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
-                                <TextBlock VerticalAlignment="Center"
+                                <!-- HpDisplay shows "current/max" once the on-join @health
+                                     exchange captures the baseline; falls back to "percent%"
+                                     until then. Widened to fit the longer cur/max form. -->
+                                <TextBlock Text="{Binding HpDisplay}"
+                                           VerticalAlignment="Center"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="10"
                                            Foreground="{StaticResource ChromeFgBrush}"
-                                           Width="34" TextAlignment="Right">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0}%">
-                                            <Binding Path="HpPercent"/>
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
+                                           MinWidth="60" TextAlignment="Right"
+                                           ToolTip.Tip="{Binding HpPercent, StringFormat='HP {0}%'}"/>
                             </StackPanel>
 
                             <!-- (4) MA bar + numeric. Hidden when baseline is 0 (warrior / no mana). -->
@@ -166,17 +165,13 @@
                                              Width="60"
                                              VerticalAlignment="Center"
                                              ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
-                                <TextBlock VerticalAlignment="Center"
+                                <TextBlock Text="{Binding MaDisplay}"
+                                           VerticalAlignment="Center"
                                            FontFamily="{StaticResource FontMono}"
                                            FontSize="10"
                                            Foreground="{StaticResource ChromeFgBrush}"
-                                           Width="34" TextAlignment="Right">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0}%">
-                                            <Binding Path="MpPercent"/>
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
+                                           MinWidth="60" TextAlignment="Right"
+                                           ToolTip.Tip="{Binding MpPercent, StringFormat='MA {0}%'}"/>
                             </StackPanel>
 
                             <!-- (5) Position chip — kept as compact text to preserve a glanceable stance label. -->

@@ -158,8 +158,10 @@ public sealed class PartyPollerTests
         state.Members.Add(new PartyMember { Name = "Helper" });
         // Simulate Helper's reply coming back as a telepath. Use the
         // real router dispatch so ChatRouter classifies + the poller
-        // picks it up via its EntryClassified subscription.
-        DispatchTelepath(router, "Helper", "HP 690/720, MA 200/300 (Resting)");
+        // picks it up via its EntryClassified subscription. Reply body
+        // is the brace-wrapped key=value shape the engine produces:
+        // {HP=cur/max,MA=cur/max, Resting}.
+        DispatchTelepath(router, "Helper", "{HP=690/720,MA=200/300, Resting}");
 
         PartyMember m = state.Members[0];
         Assert.Equal(720, m.BaselineHp);
@@ -171,7 +173,8 @@ public sealed class PartyPollerTests
     {
         var (_, _, state, _, router, _) = Setup();
         state.Members.Add(new PartyMember { Name = "Monk" });
-        DispatchTelepath(router, "Monk", "HP 500/500, KAI 150/150 (Standing)");
+        // Standing is the idle default, no position suffix.
+        DispatchTelepath(router, "Monk", "{HP=500/500,KAI=150/150}");
 
         PartyMember m = state.Members[0];
         Assert.Equal(500, m.BaselineHp);
@@ -183,7 +186,7 @@ public sealed class PartyPollerTests
     {
         var (_, _, state, _, router, _) = Setup();
         state.Members.Add(new PartyMember { Name = "Tank" });
-        DispatchTelepath(router, "Tank", "HP 850/850 (Standing)");
+        DispatchTelepath(router, "Tank", "{HP=850/850}");
 
         PartyMember m = state.Members[0];
         Assert.Equal(850, m.BaselineHp);
@@ -194,7 +197,7 @@ public sealed class PartyPollerTests
     public void HealthReply_FromUnknownPlayer_DoesNotCreateMember()
     {
         var (_, _, state, _, router, _) = Setup();
-        DispatchTelepath(router, "Stranger", "HP 100/100, MA 50/50 (Standing)");
+        DispatchTelepath(router, "Stranger", "{HP=100/100,MA=50/50}");
 
         Assert.Empty(state.Members);
     }

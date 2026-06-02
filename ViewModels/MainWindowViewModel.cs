@@ -757,7 +757,7 @@ public partial class MainWindowViewModel : ObservableObject
 
             // Loop fell through — every attempt failed.
             _lastDisconnectCause = DisconnectCause.FailedConnect;
-            WriteTerminalStatus($"[GIVING UP AFTER {maxAttempts} ATTEMPT{(maxAttempts == 1 ? "" : "S")}.]",
+            WriteTerminalStatus($"[GAVE UP AFTER {maxAttempts} ATTEMPT{(maxAttempts == 1 ? "" : "S")}.]",
                                 TerminalStatusKind.Error);
             AppServices.Current.Log.Error("Connect",
                 $"Gave up after {maxAttempts} attempt(s).");

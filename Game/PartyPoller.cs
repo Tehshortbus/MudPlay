@@ -64,11 +64,15 @@ public sealed partial class PartyPoller : IDisposable
     /// <summary>
     /// Canonical reply regex for the @health round-trip. Matches the
     /// shape <see cref="Remote.PartyEssentialHandlers.OnHealth"/>
-    /// produces. Mana group is optional — Warrior-class members reply
-    /// without an MA segment.
+    /// produces — <c>{HP=cur/max,MA=cur/max[, Resting|Meditating]}</c>.
+    /// The leading <c>{</c> + trailing <c>}</c> are the brace-wrap the
+    /// engine adds at SendReply time per the remote-command meta-line
+    /// convention. Mana group is optional (warriors reply HP-only);
+    /// position suffix is optional and ignored — we only need the
+    /// HP/MA numbers for baseline capture.
     /// </summary>
     [GeneratedRegex(
-        @"^HP\s+(?<hp>\d+)/(?<hpmax>\d+)(?:,\s+(?:MA|KAI)\s+(?<mp>\d+)/(?<mpmax>\d+))?",
+        @"^\{?HP=(?<hp>\d+)/(?<hpmax>\d+)(?:,(?:MA|KAI)=(?<mp>\d+)/(?<mpmax>\d+))?(?:,\s*\w+)?\}?\s*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
