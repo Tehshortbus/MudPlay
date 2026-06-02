@@ -272,7 +272,9 @@ public sealed partial class PartyManager : IDisposable
         // command is the plain MajorMUD "invite <name>" — the server
         // does the rest.
         if (_wireSender is null) return;
-        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {name}\r");
+        // MajorMUD addresses other players by GIVEN name only — never
+        // family. "invite Raijin", not "invite Raijin WuzHere".
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {GivenNameOf(name)}\r");
         _wireSender(bytes);
     }
 
@@ -404,16 +406,44 @@ public sealed partial class PartyManager : IDisposable
 
     // ----- Helpers --------------------------------------------------------
 
+    /// <summary>
+    /// Find the existing member whose given name (first whitespace token)
+    /// matches the given name in <paramref name="name"/>, or add a fresh
+    /// row. Roster matching is by GIVEN name only because MajorMUD
+    /// addresses players different ways at different times — chat lines
+    /// use short form ("Raijin"), par output uses long form
+    /// ("Raijin WuzHere"). Storing both would create duplicate rows.
+    /// </summary>
+    /// <remarks>
+    /// Name field always upgrades to the LONGER form when observed —
+    /// once we see "Raijin WuzHere" in par, the row's Name becomes
+    /// "Raijin WuzHere" even if it was first added as just "Raijin"
+    /// via follows-you. Going shorter is no-op (don't downgrade).
+    /// </remarks>
     private PartyMember AddOrTouchMember(string name)
     {
+        string given = GivenNameOf(name);
         foreach (PartyMember m in State.Members)
         {
-            if (m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return m;
+            if (GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase))
+            {
+                // Upgrade to the longer form if applicable.
+                if (name.Length > m.Name.Length) m.Name = name;
+                return m;
+            }
         }
         PartyMember created = new();
         created.Name = name;
         State.Members.Add(created);
         return created;
+    }
+
+    /// <summary>First whitespace-delimited token. "Raijin WuzHere" → "Raijin"; "Raijin" → "Raijin".</summary>
+    private static string GivenNameOf(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return string.Empty;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 
     /// <summary>
@@ -428,9 +458,10 @@ public sealed partial class PartyManager : IDisposable
     public void SetMemberBaseline(string name, int hp, int mp)
     {
         if (string.IsNullOrEmpty(name)) return;
+        string given = GivenNameOf(name);
         foreach (PartyMember m in State.Members)
         {
-            if (!m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
             m.BaselineHp = hp;
             m.BaselineMp = mp;
             return;
@@ -439,16 +470,20 @@ public sealed partial class PartyManager : IDisposable
 
     private void RemoveMember(string name)
     {
+        string given = GivenNameOf(name);
         bool removedSelf = false;
         for (int i = State.Members.Count - 1; i >= 0; i--)
         {
-            if (State.Members[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            // Given-name comparison so short-form chat ("Raijin") matches
+            // long-form par rows ("Raijin WuzHere") — see AddOrTouchMember.
+            if (GivenNameOf(State.Members[i].Name).Equals(given, StringComparison.OrdinalIgnoreCase))
             {
                 if (State.Members[i].IsSelf) removedSelf = true;
                 State.Members.RemoveAt(i);
             }
         }
-        if (State.LeaderName is { } lead && lead.Equals(name, StringComparison.OrdinalIgnoreCase))
+        if (State.LeaderName is { } lead
+            && GivenNameOf(lead).Equals(given, StringComparison.OrdinalIgnoreCase))
             State.LeaderName = null;
         State.IsInParty = State.Members.Count > 0;
         // Only revoke self-leadership when the row removed WAS self —

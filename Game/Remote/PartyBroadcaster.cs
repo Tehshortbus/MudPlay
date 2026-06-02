@@ -80,8 +80,18 @@ public sealed class PartyBroadcaster
         {
             if (m.IsSelf) continue;
             if (string.IsNullOrEmpty(m.Name)) continue;
-            byte[] bytes = Encoding.Latin1.GetBytes($"t {m.Name} {atCommand}\r");
+            // MajorMUD addresses other players by GIVEN name only — never
+            // "Given Family". And the telepath command on Playpen BBS is
+            // `tel` (the short form `t` is interpreted as `say`).
+            string given = GivenName(m.Name);
+            byte[] bytes = Encoding.Latin1.GetBytes($"tel {given} {atCommand}\r");
             _wireSender(bytes);
         }
+    }
+
+    private static string GivenName(string name)
+    {
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 }

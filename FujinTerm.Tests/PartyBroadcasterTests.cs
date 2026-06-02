@@ -55,7 +55,7 @@ public sealed class PartyBroadcasterTests
 
         // Only Helper gets the telepath; self is skipped.
         byte[] sent = Assert.Single(wire);
-        Assert.Equal("t Helper @Reset\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("tel Helper @Reset\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
@@ -70,9 +70,9 @@ public sealed class PartyBroadcasterTests
         bc.BroadcastExpReset();
 
         Assert.Equal(3, wire.Count);
-        Assert.Equal("t Helper @Reset\r", Encoding.Latin1.GetString(wire[0]));
-        Assert.Equal("t Tank @Reset\r",   Encoding.Latin1.GetString(wire[1]));
-        Assert.Equal("t Cleric @Reset\r", Encoding.Latin1.GetString(wire[2]));
+        Assert.Equal("tel Helper @Reset\r", Encoding.Latin1.GetString(wire[0]));
+        Assert.Equal("tel Tank @Reset\r",   Encoding.Latin1.GetString(wire[1]));
+        Assert.Equal("tel Cleric @Reset\r", Encoding.Latin1.GetString(wire[2]));
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class PartyBroadcasterTests
         bc.Broadcast("@panic!");
 
         byte[] sent = Assert.Single(wire);
-        Assert.Equal("t Helper @panic!\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("tel Helper @panic!\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
@@ -125,6 +125,6 @@ public sealed class PartyBroadcasterTests
         bc.Broadcast("@kill");
 
         byte[] sent = Assert.Single(wire);
-        Assert.Equal("t Real @kill\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("tel Real @kill\r", Encoding.Latin1.GetString(sent));
     }
 }

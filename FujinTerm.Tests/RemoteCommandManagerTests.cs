@@ -269,7 +269,7 @@ public sealed class RemoteCommandManagerTests
 
         byte[] sent = Assert.Single(engine.LastSentForTests);
         string wire = Encoding.Latin1.GetString(sent);
-        Assert.Equal("t Friend HP 100/100\r", wire);
+        Assert.Equal("tel Friend HP 100/100\r", wire);
     }
 
     [Fact]

@@ -58,7 +58,10 @@ public sealed partial class PartyViewModel : ObservableObject
         if (string.IsNullOrEmpty(member.Name)) return;
         if (!State.SelfIsLeader) return;
         if (_wireSender is null) return;
-        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {member.Name}\r");
+        // MajorMUD addresses other players by GIVEN name only.
+        int space = member.Name.IndexOf(' ');
+        string given = space >= 0 ? member.Name[..space] : member.Name;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {given}\r");
         _wireSender(bytes);
     }
 }

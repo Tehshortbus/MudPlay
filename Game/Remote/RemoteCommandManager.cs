@@ -319,12 +319,23 @@ public sealed class RemoteCommandManager : IDisposable
     /// Latin-1 + trailing CR — same encoding the macro / trigger paths
     /// use because BBSes expect 8-bit-clean bytes, not UTF-8.
     /// </summary>
+    /// <remarks>
+    /// Telepath uses <c>tel &lt;name&gt;</c> not <c>t</c> — the short
+    /// form is interpreted as <c>say</c> on Playpen BBS (verified live).
+    /// Recipient is always the GIVEN name (first whitespace-delimited
+    /// token of <see cref="ChatLogEntry.Speaker"/>); MajorMUD doesn't
+    /// accept "Given Family" as a telepath recipient. Speaker as
+    /// classified by ChatRouter is already single-word so this is a
+    /// no-op for the engine but the rule's worth stating for any
+    /// future callers.
+    /// </remarks>
     private void SendReply(RemoteChannel channel, string recipient, string text)
     {
         if (string.IsNullOrEmpty(text)) return;
+        string given = GivenName(recipient);
         string wire = channel switch
         {
-            RemoteChannel.Telepath => $"t {recipient} {text}",
+            RemoteChannel.Telepath => $"tel {given} {text}",
             RemoteChannel.Gossip   => $"gos {text}",
             RemoteChannel.Gangpath => $"gang {text}",
             RemoteChannel.Local    => $"say {text}",
@@ -333,6 +344,13 @@ public sealed class RemoteCommandManager : IDisposable
         byte[] bytes = Encoding.Latin1.GetBytes(wire + "\r");
         LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
+    }
+
+    private static string GivenName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 
     private readonly record struct Registration(

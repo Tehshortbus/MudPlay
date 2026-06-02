@@ -75,7 +75,7 @@ public sealed class PartyRestSyncTests
 
         player.Position = PlayerPosition.Resting;
 
-        Assert.Equal("t Leader @wait\r", LastWire(wire));
+        Assert.Equal("tel Leader @wait\r", LastWire(wire));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class PartyRestSyncTests
 
         player.Position = PlayerPosition.Meditating;
 
-        Assert.Equal("t Leader @wait\r", LastWire(wire));
+        Assert.Equal("tel Leader @wait\r", LastWire(wire));
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class PartyRestSyncTests
 
         player.Position = PlayerPosition.Standing;
 
-        Assert.Equal("t Leader @ok\r", LastWire(wire));
+        Assert.Equal("tel Leader @ok\r", LastWire(wire));
     }
 
     [Fact]

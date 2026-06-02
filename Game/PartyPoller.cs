@@ -132,7 +132,7 @@ public sealed partial class PartyPoller : IDisposable
     internal void SendHealthRequestForTests(string memberName)
     {
         if (_wireSender is null) return;
-        byte[] bytes = Encoding.Latin1.GetBytes($"t {memberName} @health\r");
+        byte[] bytes = Encoding.Latin1.GetBytes($"tel {GivenName(memberName)} @health\r");
         _wireSender(bytes);
     }
 
@@ -160,9 +160,19 @@ public sealed partial class PartyPoller : IDisposable
             // would be. Skip if name is missing too.
             if (m.IsSelf) continue;
             if (string.IsNullOrEmpty(m.Name)) continue;
-            byte[] bytes = Encoding.Latin1.GetBytes($"t {m.Name} @health\r");
+            // MajorMUD telepath: `tel <given> ...`. The short form `t`
+            // is interpreted as `say` on Playpen BBS; addressing by full
+            // "Given Family" is also rejected.
+            string given = GivenName(m.Name);
+            byte[] bytes = Encoding.Latin1.GetBytes($"tel {given} @health\r");
             _wireSender(bytes);
         }
+    }
+
+    private static string GivenName(string name)
+    {
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 
     private void OnChatEntry(ChatLogEntry entry)

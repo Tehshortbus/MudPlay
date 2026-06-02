@@ -92,7 +92,7 @@ public sealed class PartyPollerTests
         // CollectionChanged Add fires synchronously from the
         // ObservableCollection — the poller's handler runs inline.
         byte[] sent = Assert.Single(wire);
-        Assert.Equal("t Helper @health\r", Encoding.Latin1.GetString(sent));
+        Assert.Equal("tel Helper @health\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
@@ -112,9 +112,9 @@ public sealed class PartyPollerTests
         state.Members.Add(new PartyMember { Name = "Cleric" });
 
         Assert.Equal(3, wire.Count);
-        Assert.Equal("t Helper @health\r", Encoding.Latin1.GetString(wire[0]));
-        Assert.Equal("t Tank @health\r",   Encoding.Latin1.GetString(wire[1]));
-        Assert.Equal("t Cleric @health\r", Encoding.Latin1.GetString(wire[2]));
+        Assert.Equal("tel Helper @health\r", Encoding.Latin1.GetString(wire[0]));
+        Assert.Equal("tel Tank @health\r",   Encoding.Latin1.GetString(wire[1]));
+        Assert.Equal("tel Cleric @health\r", Encoding.Latin1.GetString(wire[2]));
     }
 
     [Fact]

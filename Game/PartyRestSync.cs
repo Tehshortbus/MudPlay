@@ -101,7 +101,17 @@ public sealed class PartyRestSync : IDisposable
     private void Telepath(string recipient, string body)
     {
         if (_wireSender is null) return;
-        byte[] bytes = Encoding.Latin1.GetBytes($"t {recipient} {body}\r");
+        // `tel` not `t` (the short form is `say` on Playpen BBS), and
+        // GIVEN name only (MajorMUD rejects "Given Family" recipients).
+        string given = GivenName(recipient);
+        byte[] bytes = Encoding.Latin1.GetBytes($"tel {given} {body}\r");
         _wireSender(bytes);
+    }
+
+    private static string GivenName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 }
