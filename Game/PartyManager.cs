@@ -75,14 +75,34 @@ public sealed partial class PartyManager : IDisposable
     internal Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
 
     /// <summary>
-    /// par row regex — flexible enough to handle the typical MajorMUD
-    /// layout (leader marker, name, optional class, two percent values,
-    /// position word) while tolerating column-width variance between
-    /// realms. The two <c>\d+%</c> tokens are the load-bearing anchors;
-    /// rows without them aren't member rows.
+    /// Locally-connected character's given name (matches the profile
+    /// name; e.g. "Fujin" / "Raijin"). Used to detect <see cref="PartyMember.IsSelf"/>
+    /// when parsing par rows whose name field is <c>"Given Family"</c>.
+    /// <c>null</c> when no profile is loaded; in that case the par parser
+    /// can't tell which row is us and IsSelf stays false on every row.
+    /// AppServices sets this from <c>ProfileService.ProfileLoaded</c> /
+    /// <c>ProfileClosed</c>.
+    /// </summary>
+    public string? LocalCharacterName { get; set; }
+
+    /// <summary>
+    /// par row regex — anchored on the real MajorMUD format observed on
+    /// Playpen BBS:
+    /// <code>
+    ///   Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank
+    ///   Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank
+    /// </code>
+    /// Name is given + (optional) family. Class is in parens and can
+    /// contain spaces ("High Priest" etc.). <c>[M:N%]</c> is optional —
+    /// non-caster classes / display rules omit it. <c>[H:N%]</c> is
+    /// load-bearing; rows without it aren't member rows.
+    /// <c>- Rank</c> is an optional trailing chip (Frontrank / Midrank /
+    /// Backrank). par doesn't carry Position — that field stays at its
+    /// default (Standing) for non-self members until a future PR adds a
+    /// per-member status query.
     /// </summary>
     [GeneratedRegex(
-        @"^\s*(?<leader>\*)?\s*(?<name>\w[\w '-]*?)(?:\s*\(You\))?\s*(?::\s*(?<class>\w+))?\s+(?<hp>\d+)%\s+(?<mp>\d+)%\s+(?<pos>\w+)\s*$",
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:(?<mp>\d+)%\])?\s*\[H:(?<hp>\d+)%\]\s*(?:-\s*(?<rank>\w+))?",
         RegexOptions.CultureInvariant)]
     private static partial Regex ParRow();
 
@@ -103,6 +123,7 @@ public sealed partial class PartyManager : IDisposable
         State   = state;
 
         _subs.Add(_router.Subscribe(KnownPatterns.PartyFollowsYou,     OnFollowsYou));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyYouFollowing,   OnYouFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyStopsFollowing, OnStopsFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyHeader,         OnParHeader));
         // Phase 6 PR 6.5 — disconnect / death / reconnect grace window.
@@ -154,14 +175,39 @@ public sealed partial class PartyManager : IDisposable
 
     // ----- Single-line observers -----------------------------------------
 
+    /// <summary>
+    /// "X started to follow you." — X joined OUR party, so we lead.
+    /// Add X to <see cref="PartyState.Members"/>, ensure self is also
+    /// present (if we know our name), and flip <see cref="PartyState.SelfIsLeader"/>
+    /// + <see cref="PartyState.LeaderName"/> accordingly.
+    /// </summary>
     private void OnFollowsYou(MatchResult result)
     {
-        // Pattern's only capture group is the player name (group 1 in the
-        // regex, index 0 in MatchResult.Groups since group 0 is dropped).
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
         AddOrTouchMember(name);
+        AddSelfIfKnown(isLeader: true);
+        State.SelfIsLeader = true;
+        State.LeaderName ??= LocalCharacterName;
+        State.IsInParty = State.Members.Count > 0;
+    }
+
+    /// <summary>
+    /// "You are now following X." — WE joined X's party, so X leads.
+    /// Add X with IsLeader=true, add self as follower if we know our
+    /// name, set <see cref="PartyState.LeaderName"/> to X.
+    /// </summary>
+    private void OnYouFollowing(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string leaderName = result.Groups[0];
+        if (string.IsNullOrEmpty(leaderName)) return;
+        PartyMember leader = AddOrTouchMember(leaderName);
+        leader.IsLeader = true;
+        AddSelfIfKnown(isLeader: false);
+        State.LeaderName = leaderName;
+        State.SelfIsLeader = false;
         State.IsInParty = State.Members.Count > 0;
     }
 
@@ -290,38 +336,70 @@ public sealed partial class PartyManager : IDisposable
         if (!m.Success)
         {
             // Non-row line during ReadingRows — likely the column header
-            // ("Name Class Hits Mana ...") or the separator line.
-            // Stay in ReadingRows until we either see a real row or a
-            // blank line; only step out on blank.
+            // or a separator. Stay in ReadingRows until we either see a
+            // real row or a blank line; only step out on blank.
             return;
         }
 
-        string name = m.Groups["name"].Value.Trim();
+        string name  = m.Groups["name"].Value.Trim();
         if (name.Length == 0) return;
-        bool isLeader = m.Groups["leader"].Success;
-        string klass  = m.Groups["class"].Success ? m.Groups["class"].Value.Trim() : string.Empty;
+        string klass = m.Groups["class"].Success ? m.Groups["class"].Value.Trim() : string.Empty;
         int hpPct = int.Parse(m.Groups["hp"].Value, System.Globalization.CultureInfo.InvariantCulture);
-        int mpPct = int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture);
-        PlayerPosition pos = ParsePosition(m.Groups["pos"].Value);
+        // [M:N%] bracket is omitted when the class has no mana (Warriors,
+        // level-1 Mystics with 0 Kai, etc.). Absent = leave MpPercent
+        // unchanged on existing members; default 0 on new ones.
+        int? mpPct = m.Groups["mp"].Success
+            ? int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture)
+            : (int?)null;
 
-        // "ME" is MajorMUD's marker for the locally connected character's
-        // row. Treat it as IsSelf=true but skip the membership update —
-        // the local player's HP / MA is tracked via PromptParser, not par.
-        bool isSelf = name.Equals("ME", StringComparison.OrdinalIgnoreCase);
+        // IsSelf detection — par row name is "Given Family"; compare the
+        // first whitespace-delimited token against the loaded profile's
+        // character name. Falls back to false when LocalCharacterName is
+        // unknown (no profile loaded yet).
+        bool isSelf = false;
+        if (!string.IsNullOrEmpty(LocalCharacterName))
+        {
+            int space = name.IndexOf(' ');
+            string given = space >= 0 ? name[..space] : name;
+            isSelf = given.Equals(LocalCharacterName, StringComparison.OrdinalIgnoreCase);
+        }
 
         _parBlockNames.Add(name);
         PartyMember member = AddOrTouchMember(name);
-        member.IsLeader = isLeader;
-        member.IsSelf   = isSelf;
+        member.IsSelf = isSelf;
         if (klass.Length > 0) member.Class = klass;
         member.HpPercent = hpPct;
-        member.MpPercent = mpPct;
-        member.Position  = pos;
+        if (mpPct is { } v) member.MpPercent = v;
+        // par doesn't carry Position — Standing is the safe default; the
+        // local character's actual position flows via PromptParser into
+        // PlayerState (not into PartyState.Members). Future PR can add
+        // per-member position tracking via @status round-trip if needed.
+        member.Position = PlayerPosition.Standing;
 
-        if (isLeader) State.LeaderName = name;
-        State.SelfIsLeader = State.LeaderName != null
-                          && State.Members.Any(x => x.IsSelf && x.IsLeader);
         State.IsInParty = State.Members.Count > 0;
+    }
+
+    /// <summary>
+    /// Ensure self is represented in <see cref="PartyState.Members"/> with
+    /// the leader marker set per <paramref name="isLeader"/>. No-op when
+    /// <see cref="LocalCharacterName"/> is null (we don't know our name
+    /// well enough to disambiguate from other rows). Used by follows-you
+    /// / you-following handlers so the PartyWindow shows us immediately
+    /// without waiting for the next par observation.
+    /// </summary>
+    private void AddSelfIfKnown(bool isLeader)
+    {
+        if (string.IsNullOrEmpty(LocalCharacterName)) return;
+        foreach (PartyMember existing in State.Members)
+        {
+            if (existing.IsSelf)
+            {
+                existing.IsLeader = isLeader;
+                return;
+            }
+        }
+        PartyMember self = new() { Name = LocalCharacterName, IsSelf = true, IsLeader = isLeader };
+        State.Members.Add(self);
     }
 
     // ----- Helpers --------------------------------------------------------

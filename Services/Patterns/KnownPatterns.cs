@@ -82,8 +82,9 @@ public static class KnownPatterns
     // Single-line membership signals. The `par` table itself is multi-line
     // and parsed via a small state machine in `PartyManager` (same shape
     // as `WhoListParser`), not by a one-line regex.
-    public const string PartyFollowsYou     = "party.follows-you";       // "X now follows you."
-    public const string PartyStopsFollowing = "party.stops-following";   // "X stops following you."
-    public const string PartyHeader         = "party.par-header";        // "Party Status:" — anchors the par-block state machine
+    public const string PartyFollowsYou     = "party.follows-you";       // "X started to follow you."
+    public const string PartyYouFollowing   = "party.you-following";     // "You are now following X."  (we joined someone's party)
+    public const string PartyStopsFollowing = "party.stops-following";   // "X has stopped following you." / "X stops following you."
+    public const string PartyHeader         = "party.par-header";        // "The following people are in your travel party:" — anchors the par-block state machine
     public const string PartyMemberDeath    = "party.member-death";      // "X has been slain by Y" — conservative kill-attribution match
 }

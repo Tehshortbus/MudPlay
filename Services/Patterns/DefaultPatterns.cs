@@ -173,19 +173,22 @@ public static class DefaultPatterns
             @"^(?<player>\w+) just entered the Realm\.");
 
         // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
-        // follows-you / stops-following are MajorMUD's party-membership
-        // signals. The par-block state machine in PartyManager handles
-        // the multi-line table; these single-line patterns cover the
-        // add/remove events between par polls.
+        // Real-BBS-verified patterns (Playpen BBS observation, Phase 6
+        // post-PR-6.8). Two distinct follow-direction signals:
+        //   - "X started to follow you."     ⇒ X joined OUR party (we lead)
+        //   - "You are now following X."     ⇒ WE joined X's party (X leads)
+        // Stop-following alternation covers both observed wordings.
         yield return new RegexPattern(KnownPatterns.PartyFollowsYou,
-            @"^(?<player>\w+) now follows you\.");
+            @"^(?<player>\w+) started to follow you\.");
+        yield return new RegexPattern(KnownPatterns.PartyYouFollowing,
+            @"^You are now following (?<player>\w+)\.?$");
         yield return new RegexPattern(KnownPatterns.PartyStopsFollowing,
-            @"^(?<player>\w+) stops following you\.");
-        // par-header anchors PartyManager's stateful row parser — switches
-        // it from Idle to ReadingParBlock so subsequent rows get parsed
-        // as member entries.
+            @"^(?<player>\w+) (?:stops following you|has stopped following you)\.?");
+        // par-header — MajorMUD actually labels it "The following people
+        // are in your travel party:" (not "Party Status:" which was my
+        // earlier guess). Anchors PartyManager's stateful row parser.
         yield return new RegexPattern(KnownPatterns.PartyHeader,
-            @"^Party Status:");
+            @"^The following people are in your travel party:");
         // Conservative member-death match — "X has been slain by Y" is
         // the clearest PvP kill line in MajorMUD's vocabulary, with the
         // victim's name as the load-bearing group. Generic "X has died"

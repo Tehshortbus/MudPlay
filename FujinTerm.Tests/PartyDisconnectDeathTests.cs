@@ -9,9 +9,11 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// Coverage for the Phase 6 PR 6.5 additions to PartyManager —
-/// disconnect / death / grace-window auto-invite. PR 6.1 tests
-/// cover follows-you / stops-following / par-block; this class
-/// focuses on the new event paths only.
+/// disconnect / death / grace-window auto-invite. PR 6.1 tests cover
+/// follows-you / par-block; this class focuses on the new event paths
+/// only. Updated post-PR-6.8 to use the real BBS-observed wordings
+/// ("X started to follow you." instead of the earlier "now follows
+/// you" guess).
 /// </summary>
 public sealed class PartyDisconnectDeathTests
 {
@@ -39,7 +41,7 @@ public sealed class PartyDisconnectDeathTests
     public void Disconnect_OfPartyMember_RemovesAndStartsGraceWindow()
     {
         var (router, mgr, _) = Setup();
-        router.Dispatch(Line("Helper now follows you."));
+        router.Dispatch(Line("Helper started to follow you."));
         Assert.Single(mgr.State.Members);
 
         router.Dispatch(Line("Helper just disconnected!!!."));
@@ -52,7 +54,7 @@ public sealed class PartyDisconnectDeathTests
     public void Disconnect_OfNonMember_IsIgnored()
     {
         var (router, mgr, _) = Setup();
-        router.Dispatch(Line("Helper now follows you."));
+        router.Dispatch(Line("Helper started to follow you."));
 
         router.Dispatch(Line("Stranger just disconnected!!!."));
 
@@ -65,19 +67,15 @@ public sealed class PartyDisconnectDeathTests
     [Fact]
     public void Reconnect_WithinWindow_AndWeLead_SendsInvite()
     {
-        // Have to enter the par block to flip SelfIsLeader — only the
-        // par parser marks IsLeader on members.
+        // "X started to follow you" automatically flips SelfIsLeader=true,
+        // so no par-block setup needed.
         var (router, mgr, wire) = Setup();
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[] { " * ME          : Mage             100%    100%   Standing" });
+        router.Dispatch(Line("Helper started to follow you."));
         Assert.True(mgr.State.SelfIsLeader);
 
-        // Add Helper, then disconnect them.
-        router.Dispatch(Line("Helper now follows you."));
         router.Dispatch(Line("Helper just disconnected!!!."));
         wire.Clear();
 
-        // Helper reconnects.
         router.Dispatch(Line("Helper just entered the Realm."));
 
         byte[] sent = Assert.Single(wire);
@@ -88,14 +86,17 @@ public sealed class PartyDisconnectDeathTests
     [Fact]
     public void Reconnect_WithinWindow_AndWeFollow_DoesNotInvite()
     {
-        // Not leader — no invite even on quick reconnect.
+        // We follow Fujin → not leader. Then Fujin (or Helper) disconnects
+        // and reconnects → no invite because we're not the leader.
         var (router, mgr, wire) = Setup();
-        router.Dispatch(Line("Helper now follows you."));
-        router.Dispatch(Line("Helper just disconnected!!!."));
-        wire.Clear();
+        router.Dispatch(Line("You are now following Fujin."));
         Assert.False(mgr.State.SelfIsLeader);
+        // Also a follower joins us... actually that'd flip us to leader.
+        // Use the simpler "Fujin is leader, Fujin disconnects" scenario.
+        router.Dispatch(Line("Fujin just disconnected!!!."));
+        wire.Clear();
 
-        router.Dispatch(Line("Helper just entered the Realm."));
+        router.Dispatch(Line("Fujin just entered the Realm."));
 
         Assert.Empty(wire);
     }
@@ -114,10 +115,8 @@ public sealed class PartyDisconnectDeathTests
         mgr.NowProvider = () => clock;
         mgr.DisconnectGraceWindow = TimeSpan.FromSeconds(10);
 
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[] { " * ME          : Mage             100%    100%   Standing" });
-
-        router.Dispatch(Line("Helper now follows you."));
+        // Establish leadership via the follows-you path.
+        router.Dispatch(Line("Helper started to follow you."));
         router.Dispatch(Line("Helper just disconnected!!!."));
         wire.Clear();
 
@@ -132,7 +131,6 @@ public sealed class PartyDisconnectDeathTests
     [Fact]
     public void Reconnect_OfNonDisconnectedPlayer_IsIgnored()
     {
-        // Someone we never had in the party connecting shouldn't trip us.
         var (router, mgr, wire) = Setup();
         router.Dispatch(Line("Stranger just entered the Realm."));
 
@@ -143,12 +141,8 @@ public sealed class PartyDisconnectDeathTests
     public void Reconnect_NoWireSender_NoThrow()
     {
         var (router, mgr, _) = Setup();
-        // Test ctor wires a sender; replace with one that won't help.
-        // Actually we can't unset the sender, but we can prove the
-        // wire was empty after a fresh router without leader status.
-        router.Dispatch(Line("Helper now follows you."));
+        router.Dispatch(Line("Helper started to follow you."));
         router.Dispatch(Line("Helper just disconnected!!!."));
-        // Not leader → no invite even if wire-sender bound.
         router.Dispatch(Line("Helper just entered the Realm."));
         // No assertion — passes if no exception.
     }
@@ -159,13 +153,12 @@ public sealed class PartyDisconnectDeathTests
     public void Death_OfPartyMember_RemovesImmediately()
     {
         var (router, mgr, _) = Setup();
-        router.Dispatch(Line("Helper now follows you."));
+        router.Dispatch(Line("Helper started to follow you."));
         Assert.Single(mgr.State.Members);
 
         router.Dispatch(Line("Helper has been slain by a giant rat."));
 
         Assert.Empty(mgr.State.Members);
-        // Death is NOT a disconnect — grace window doesn't track them.
         Assert.DoesNotContain("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -173,7 +166,7 @@ public sealed class PartyDisconnectDeathTests
     public void Death_OfNonMember_IsIgnored()
     {
         var (router, mgr, _) = Setup();
-        router.Dispatch(Line("Helper now follows you."));
+        router.Dispatch(Line("Helper started to follow you."));
 
         router.Dispatch(Line("Stranger has been slain by a dragon."));
 

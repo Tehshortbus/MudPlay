@@ -467,6 +467,14 @@ public sealed class AppServices
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
         Profile.ProfileLoaded += p => Panels.ApplyLayouts(p.PanelLayouts);
+
+        // Phase 6: PartyManager needs the local character's name so its
+        // par-row parser can tag the right row IsSelf=true (par's
+        // "Given Family" name is compared against the loaded profile
+        // name). Cleared on profile close so IsSelf goes back to false
+        // for every row across the swap.
+        Profile.ProfileLoaded += p => Party.LocalCharacterName = p.Name;
+        Profile.ProfileClosed += ()  => Party.LocalCharacterName = null;
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
