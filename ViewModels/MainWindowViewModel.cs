@@ -367,6 +367,10 @@ public partial class MainWindowViewModel : ObservableObject
         // state machine needs the per-session LineExtractor. Same wiring
         // shape as TriggerEngine.AttachLineExtractor.
         AppServices.Current.Party.AttachLineExtractor(Lines);
+        // Phase 6 PR 6.5 — auto-invite on reconnect needs a wire-sender
+        // to send "invite <name>" when a disconnected member returns
+        // within the grace window AND we're the party leader.
+        AppServices.Current.Party.SetWireSender(SendUserInput);
 
         // Macro dispatcher needs a wire-send callback before it can fire.
         // TerminalControl + ConversationWindow's input both call into the

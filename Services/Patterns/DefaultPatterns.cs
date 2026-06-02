@@ -186,6 +186,14 @@ public static class DefaultPatterns
         // as member entries.
         yield return new RegexPattern(KnownPatterns.PartyHeader,
             @"^Party Status:");
+        // Conservative member-death match — "X has been slain by Y" is
+        // the clearest PvP kill line in MajorMUD's vocabulary, with the
+        // victim's name as the load-bearing group. Generic "X has died"
+        // lines aren't matched here because they can fire for non-party
+        // mobs / NPCs in the same room and we don't want false-positive
+        // evictions from PartyState.Members.
+        yield return new RegexPattern(KnownPatterns.PartyMemberDeath,
+            @"^(?<player>\w+) has been slain by ");
     }
 
 }

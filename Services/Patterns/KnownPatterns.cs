@@ -85,4 +85,5 @@ public static class KnownPatterns
     public const string PartyFollowsYou     = "party.follows-you";       // "X now follows you."
     public const string PartyStopsFollowing = "party.stops-following";   // "X stops following you."
     public const string PartyHeader         = "party.par-header";        // "Party Status:" — anchors the par-block state machine
+    public const string PartyMemberDeath    = "party.member-death";      // "X has been slain by Y" — conservative kill-attribution match
 }

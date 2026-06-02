@@ -54,8 +54,25 @@ public sealed partial class PartyManager : IDisposable
     // ----- par-block state machine -----
     private enum ParState { Idle, ReadingRows }
     private ParState _parState = ParState.Idle;
-    /// <summary>Names observed in the current par block; used to skip duplicates and (in PR 6.5) prune absent members.</summary>
+    /// <summary>Names observed in the current par block; used to skip duplicates.</summary>
     private readonly HashSet<string> _parBlockNames = new(StringComparer.OrdinalIgnoreCase);
+
+    // ----- Phase 6 PR 6.5: disconnect grace window + auto-invite -------
+    /// <summary>Disconnected members keyed by name → moment we last saw them drop. Lazy-expires on access.</summary>
+    private readonly Dictionary<string, DateTimeOffset> _recentlyDisconnected
+        = new(StringComparer.OrdinalIgnoreCase);
+    private Action<byte[]>? _wireSender;
+
+    /// <summary>
+    /// "Wait for party members" grace window — how long after a disconnect
+    /// we'll auto-invite a returning party member back. Default 30 s per
+    /// MegaMUD's typical Settings.Party value; PR 6.9 wires the
+    /// Settings.Party tab to make this user-configurable.
+    /// </summary>
+    public TimeSpan DisconnectGraceWindow { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Test-friendly clock — overridable so PR 6.5 tests don't have to wait real time.</summary>
+    internal Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
 
     /// <summary>
     /// par row regex — flexible enough to handle the typical MajorMUD
@@ -88,6 +105,28 @@ public sealed partial class PartyManager : IDisposable
         _subs.Add(_router.Subscribe(KnownPatterns.PartyFollowsYou,     OnFollowsYou));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyStopsFollowing, OnStopsFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyHeader,         OnParHeader));
+        // Phase 6 PR 6.5 — disconnect / death / reconnect grace window.
+        // We watch every "X just disconnected" / "X just entered the
+        // Realm" line because a party member who drops while we're
+        // looking has to leave the roster immediately, but if they
+        // re-connect within the grace window and we're the leader we
+        // auto-invite them back. PartyMemberDeath is the conservative
+        // PvP-kill match.
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerDisconnects,   OnPlayerDisconnects));
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerEnters,        OnPlayerEnters));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDeath,    OnMemberDeath));
+    }
+
+    /// <summary>
+    /// Bind the wire-sender used for auto-invite of a reconnecting
+    /// disconnected member (PR 6.5). Without it, reconnect detection
+    /// still works but no <c>invite &lt;name&gt;</c> goes out — the
+    /// member stays out of the party until manually re-invited.
+    /// </summary>
+    public void SetWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _wireSender = sender;
     }
 
     /// <summary>
@@ -139,6 +178,80 @@ public sealed partial class PartyManager : IDisposable
         _parState = ParState.ReadingRows;
         _parBlockNames.Clear();
     }
+
+    // ----- Phase 6 PR 6.5: disconnect / death / reconnect ---------------
+
+    /// <summary>
+    /// "X just disconnected!!!." — if X is in our roster, remove them
+    /// immediately and record the moment in the grace-window map so a
+    /// later <c>just entered the Realm</c> within the window can
+    /// auto-invite them back.
+    /// </summary>
+    private void OnPlayerDisconnects(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        bool wasMember = false;
+        foreach (PartyMember m in State.Members)
+        {
+            if (m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) { wasMember = true; break; }
+        }
+        if (!wasMember) return;
+        RemoveMember(name);
+        _recentlyDisconnected[name] = NowProvider();
+    }
+
+    /// <summary>
+    /// "X just entered the Realm." — if X is in the grace-window map
+    /// AND we're the party leader, auto-invite. The reconnect window
+    /// is short (default 30 s) so this only fires for actual quick
+    /// dropoffs, not for someone who left an hour ago.
+    /// </summary>
+    private void OnPlayerEnters(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        if (!_recentlyDisconnected.TryGetValue(name, out DateTimeOffset droppedAt)) return;
+        if (NowProvider() - droppedAt > DisconnectGraceWindow)
+        {
+            // Past the window — clear the stale entry and bail.
+            _recentlyDisconnected.Remove(name);
+            return;
+        }
+        _recentlyDisconnected.Remove(name);
+        if (!State.SelfIsLeader) return;
+        // Send the invite if we have a wire-sender wired. The wire
+        // command is the plain MajorMUD "invite <name>" — the server
+        // does the rest.
+        if (_wireSender is null) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {name}\r");
+        _wireSender(bytes);
+    }
+
+    /// <summary>
+    /// "X has been slain by Y." — if X is in our roster, remove them
+    /// immediately. No grace window for death (death isn't recoverable
+    /// the way a disconnect is — the leader doesn't auto-invite a corpse).
+    /// </summary>
+    private void OnMemberDeath(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        foreach (PartyMember m in State.Members)
+        {
+            if (m.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                RemoveMember(name);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Test seam — read-only view of the disconnect grace window.</summary>
+    internal IReadOnlyDictionary<string, DateTimeOffset> RecentlyDisconnected => _recentlyDisconnected;
 
     // ----- par-block row parser ------------------------------------------
 
@@ -248,17 +361,23 @@ public sealed partial class PartyManager : IDisposable
 
     private void RemoveMember(string name)
     {
+        bool removedSelf = false;
         for (int i = State.Members.Count - 1; i >= 0; i--)
         {
             if (State.Members[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
             {
+                if (State.Members[i].IsSelf) removedSelf = true;
                 State.Members.RemoveAt(i);
             }
         }
         if (State.LeaderName is { } lead && lead.Equals(name, StringComparison.OrdinalIgnoreCase))
             State.LeaderName = null;
         State.IsInParty = State.Members.Count > 0;
-        State.SelfIsLeader = false;
+        // Only revoke self-leadership when the row removed WAS self —
+        // a follower leaving doesn't change who's leading. Without this
+        // a leader watching a follower disconnect would lose their own
+        // leader badge and the PR 6.5 auto-invite path would deny.
+        if (removedSelf) State.SelfIsLeader = false;
     }
 
     private static PlayerPosition ParsePosition(string raw) => raw.ToLowerInvariant() switch
