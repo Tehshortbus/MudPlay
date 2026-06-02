@@ -202,11 +202,16 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
-        AddOrTouchMember(name);
-        AddSelfIfKnown(isLeader: true);
+        // Flip IsInParty FIRST so any CollectionChanged.Add subscriber
+        // (PartyPoller's on-join @health round-trip in particular)
+        // sees the state already consistent at the moment of the add.
+        // Without this the @health request was being suppressed by
+        // defensive gates that checked IsInParty before it propagated.
+        State.IsInParty    = true;
         State.SelfIsLeader = true;
         State.LeaderName ??= LocalCharacterName;
-        State.IsInParty = State.Members.Count > 0;
+        AddOrTouchMember(name);
+        AddSelfIfKnown(isLeader: true);
     }
 
     /// <summary>
@@ -219,12 +224,17 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string leaderName = result.Groups[0];
         if (string.IsNullOrEmpty(leaderName)) return;
+        // Same early-set rationale as OnFollowsYou — derived state
+        // (IsInParty + LeaderName + SelfIsLeader) needs to be
+        // consistent at the moment the CollectionChanged.Add fires
+        // so the on-join @health round-trip + future event-driven
+        // consumers see the right snapshot.
+        State.IsInParty    = true;
+        State.LeaderName   = leaderName;
+        State.SelfIsLeader = false;
         PartyMember leader = AddOrTouchMember(leaderName);
         leader.IsLeader = true;
         AddSelfIfKnown(isLeader: false);
-        State.LeaderName = leaderName;
-        State.SelfIsLeader = false;
-        State.IsInParty = State.Members.Count > 0;
     }
 
     private void OnStopsFollowing(MatchResult result)

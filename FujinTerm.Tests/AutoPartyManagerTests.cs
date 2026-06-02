@@ -28,6 +28,12 @@ public sealed class AutoPartyManagerTests
         PartyState party = new();
         AutoPartyManager engine = new(router, players, party);
         engine.NowProvider = () => Now;
+        // Bind a no-op wire-sender so the engine doesn't short-circuit
+        // before recording to LastSentForTests. The wire-sender-null
+        // guard exists to prevent TTL burn during the startup window
+        // where AutoPartyManager subscribes before MainWindowViewModel
+        // binds the sender — tests model the post-bind state.
+        engine.SetWireSender(_ => { });
         return (engine, router, players, party);
     }
 
@@ -245,5 +251,38 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "Fujin has invited you to follow him.");
 
         Assert.Empty(engine.LastSentForTests);
+    }
+
+    // ===== Wire-sender-null guard =====
+
+    [Fact]
+    public void AlsoHere_WithoutWireSender_DoesNotBurnTtl()
+    {
+        // Construct WITHOUT the no-op sender Setup binds. Mirrors the
+        // startup window where AutoPartyManager subscribes before
+        // MainWindowViewModel binds SendUserInput as the sender.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new();
+        PartyState party = new();
+        AutoPartyManager engine = new(router, players, party) { NowProvider = () => Now };
+        // NOTE: no SetWireSender. The pre-fix path would still record
+        // to LastSentForTests (because that happened in SendWire after
+        // setting the TTL), AND set _recentlyInvited[given]=now — so
+        // the next dispatch within 60 s would TTL-suppress even after
+        // the wire-sender was bound. Post-fix the engine bails before
+        // either of those side-effects.
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+
+        Dispatch(router, "Also here: Raijin.");
+        Assert.Empty(engine.LastSentForTests);
+
+        // Now bind the sender and re-fire — the TTL must NOT have been
+        // burned, so this dispatch should produce the invite.
+        engine.SetWireSender(_ => { });
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", System.Text.Encoding.Latin1.GetString(sent));
     }
 }

@@ -156,12 +156,14 @@ public sealed partial class PartyPoller : IDisposable
         if (_wireSender is null) return;
         if (e.Action != NotifyCollectionChangedAction.Add) return;
         if (e.NewItems is null) return;
-        // Defense in depth — if PartyManager spuriously re-adds someone
-        // (e.g. a par-block parser hangover after dissolution) we still
-        // want to avoid firing @health round-trips. The par poll itself
-        // already gates on IsInParty in DoParPoll; mirror that here so
-        // the @health-on-join path has the same safety floor.
-        if (!_state.IsInParty) return;
+        // Note: no IsInParty gate here. PartyManager's OnFollowsYou /
+        // OnYouFollowing fire CollectionChanged.Add BEFORE setting
+        // IsInParty (it's derived from Members.Count > 0 after all
+        // adds settle), so an IsInParty check would block the legit
+        // on-join @health round-trip. The dissolution ghost-add
+        // scenario this gate was originally protecting against is now
+        // fixed at the source — OnPartyDissolved flushes _parState=Idle
+        // so the par-row parser can't re-add stale rows.
         foreach (object? item in e.NewItems)
         {
             if (item is not PartyMember m) continue;

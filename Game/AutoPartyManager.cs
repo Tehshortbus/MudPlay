@@ -148,6 +148,15 @@ public sealed class AutoPartyManager : IDisposable
         if (!FindCustomization(given, out PlayerCustomization c)) return;
         if (!c.InviteToPartyIfSeen) return;
 
+        // Bail BEFORE the TTL bookkeeping if we can't actually send.
+        // Without this guard a too-early "Also here:" line (e.g. the
+        // engine subscribed before MainWindowViewModel bound the wire-
+        // sender) would burn the cooldown on a wire-less attempt, then
+        // every subsequent "Also here:" within 60 s would be TTL-
+        // suppressed and the user would never get auto-invited that
+        // session.
+        if (_wireSender is null) return;
+
         // TTL suppression — skip if we've invited them in the cooldown
         // window. Lazy pruning happens here on read.
         DateTime now = NowProvider();

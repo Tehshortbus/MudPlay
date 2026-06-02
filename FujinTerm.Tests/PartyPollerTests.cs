@@ -86,13 +86,13 @@ public sealed class PartyPollerTests
     [Fact]
     public void NewMember_AddedToParty_TriggersHealthTelepath()
     {
+        // No IsInParty gate on the poller's OnMembersChanged path —
+        // PartyManager fires the CollectionChanged.Add BEFORE
+        // flipping IsInParty (the field is set early in OnFollowsYou
+        // but still: the CollectionChanged shouldn't have any
+        // dependency on derived state at the moment of fire). The
+        // poller's only gates are IsSelf + non-empty name.
         var (poller, _, state, _, _, wire) = Setup();
-        // IsInParty is the gate the poller now consults for defense in
-        // depth (the par-block parser can spuriously re-add a name when
-        // dissolution leaves the state machine in ReadingRows; the
-        // poller shouldn't fire @health round-trips for those
-        // ghost-adds). Flip it first to model an active party.
-        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Helper" });
 
         // CollectionChanged Add fires synchronously from the
@@ -105,7 +105,6 @@ public sealed class PartyPollerTests
     public void SelfMember_AddedToParty_DoesNotTelepathSelf()
     {
         var (poller, _, state, _, _, wire) = Setup();
-        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Forged", IsSelf = true });
         Assert.Empty(wire);
     }
@@ -114,7 +113,6 @@ public sealed class PartyPollerTests
     public void MultipleMembers_AddedAtOnce_TelepathsEach()
     {
         var (poller, _, state, _, _, wire) = Setup();
-        state.IsInParty = true;
         state.Members.Add(new PartyMember { Name = "Helper" });
         state.Members.Add(new PartyMember { Name = "Tank" });
         state.Members.Add(new PartyMember { Name = "Cleric" });
@@ -126,15 +124,30 @@ public sealed class PartyPollerTests
     }
 
     [Fact]
-    public void MemberAddedWhileNotInParty_DoesNotTelepath()
+    public void FollowsYouLine_TriggersHealthRoundTrip_EndToEnd()
     {
-        // The defense-in-depth gate — IsInParty stays false (a stale
-        // par-block parser hangover scenario). The poller should not
-        // emit any @health round-trip for these ghost-adds.
-        var (poller, _, state, _, _, wire) = Setup();
-        // IsInParty intentionally NOT set.
-        state.Members.Add(new PartyMember { Name = "Helper" });
-        Assert.Empty(wire);
+        // Regression for the live bug: after Fujin manually invited
+        // Raijin and Raijin started following, no /Raijin @health was
+        // sent. Root cause was a defensive IsInParty gate on the
+        // poller that fired before PartyManager flipped the field.
+        // This pins the full flow — dispatching the real BBS line
+        // through the router should add Raijin to Members AND
+        // produce the @health wire-send.
+        var (_, mgr, state, _, router, wire) = Setup();
+        mgr.LocalCharacterName = "Fujin";
+
+        router.Dispatch(new Terminal.LineExtractor.EmittedLine(
+            "Raijin started to follow you.",
+            new Terminal.CellAttributes[32],
+            DateTimeOffset.UnixEpoch,
+            IsPromptLine: false));
+
+        Assert.True(state.IsInParty);
+        Assert.Contains(state.Members,
+            m => m.Name.Equals("Raijin", StringComparison.OrdinalIgnoreCase));
+        // Only the new member triggers @health — self is skipped.
+        Assert.Contains(wire,
+            b => Encoding.Latin1.GetString(b) == "/Raijin @health\r");
     }
 
     [Fact]
