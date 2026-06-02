@@ -42,12 +42,12 @@ public sealed class PartySettings
     /// watching for a dropped party member to return. Drives
     /// <see cref="Game.PartyManager.DisconnectGraceWindow"/>: when a
     /// member's "X just hung up!!!" / "X just disconnected!!!." line
-    /// fires, we record the moment and re-invite them if they re-enter
-    /// the realm within this window. Stored as total seconds; the UI
-    /// splits it into minutes + seconds inputs. Range 0..3600 s
-    /// (1 hour). Default 120 = 2 minutes.
+    /// fires (or par observes them missing without a per-player
+    /// signal), we record the moment and re-invite them if they
+    /// re-enter the realm within this window. Stored as total
+    /// seconds. Range 0..3600 (1 hour). Default 90.
     /// </summary>
-    public int IfLeadingWaitTotalSec { get; set; } = 120;
+    public int IfLeadingWaitTotalSec { get; set; } = 90;
 
     /// <summary>
     /// On loop / Auto-Lair start (Phase 7 trigger), broadcast

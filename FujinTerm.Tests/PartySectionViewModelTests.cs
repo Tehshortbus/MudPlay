@@ -50,8 +50,8 @@ public sealed class PartySectionViewModelTests
         Assert.True(dto.ResetStatisticsOnLoopStart);
         Assert.Equal(PartyRank.Mid, dto.Rank);
         // "If leading, wait only" — drives the disconnect grace window
-        // used by the Re-invite lost party members flow. Default 2 min.
-        Assert.Equal(120,          dto.IfLeadingWaitTotalSec);
+        // used by the Re-invite lost party members flow. Default 90 s.
+        Assert.Equal(90,           dto.IfLeadingWaitTotalSec);
     }
 
     [Fact]

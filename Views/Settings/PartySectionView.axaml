@@ -277,19 +277,13 @@
                     <TextBlock Classes="FieldLabel" Text="%"/>
                 </StackPanel>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only (min / s)"/>
-                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown Value="{Binding IfLeadingWaitMinutes, Mode=TwoWay}"
-                                   Minimum="0" Maximum="60" Increment="1"
-                                   FormatString="0" ShowButtonSpinner="True"
-                                   Width="120" MinWidth="120"
-                                   ToolTip.Tip="Grace window for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Defaults to 2 m."/>
-                    <NumericUpDown Value="{Binding IfLeadingWaitSeconds, Mode=TwoWay}"
-                                   Minimum="0" Maximum="59" Increment="1"
-                                   FormatString="0" ShowButtonSpinner="True"
-                                   Width="120" MinWidth="120"
-                                   ToolTip.Tip="Seconds component of the leader-side grace window."/>
-                </StackPanel>
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only (s)"/>
+                <NumericUpDown Grid.Row="2" Grid.Column="1"
+                               Value="{Binding IfLeadingWaitTotalSec, Mode=TwoWay}"
+                               Minimum="0" Maximum="3600" Increment="10"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="Grace window in seconds for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Arrows step by 10; type a value directly for finer control (e.g. 94 for 1 m 34 s). Default 90."/>
 
                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency (s)"/>
                 <NumericUpDown Grid.Row="3" Grid.Column="1"

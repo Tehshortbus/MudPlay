@@ -77,35 +77,10 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
     [ObservableProperty] private int _joinNagMaxTotalSec = 55;
 
-    // ----- "If leading, wait only" — minutes / seconds split bound to a
-    //       single underlying total-seconds field. Drives the disconnect
-    //       grace window used by the re-invite-lost-members flow.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IfLeadingWaitMinutes))]
-    [NotifyPropertyChangedFor(nameof(IfLeadingWaitSeconds))]
-    private int _ifLeadingWaitTotalSec = 120;
-
-    /// <summary>UI mirror — minutes component of <see cref="IfLeadingWaitTotalSec"/>. 0..60.</summary>
-    public int IfLeadingWaitMinutes
-    {
-        get => IfLeadingWaitTotalSec / 60;
-        set
-        {
-            int clamped = Math.Clamp(value, 0, 60);
-            IfLeadingWaitTotalSec = clamped * 60 + (IfLeadingWaitTotalSec % 60);
-        }
-    }
-
-    /// <summary>UI mirror — seconds component of <see cref="IfLeadingWaitTotalSec"/>. 0..59.</summary>
-    public int IfLeadingWaitSeconds
-    {
-        get => IfLeadingWaitTotalSec % 60;
-        set
-        {
-            int clamped = Math.Clamp(value, 0, 59);
-            IfLeadingWaitTotalSec = (IfLeadingWaitTotalSec / 60) * 60 + clamped;
-        }
-    }
+    // ----- "If leading, wait only" — disconnect grace window in seconds.
+    //       Single field; UI uses one NumericUpDown with Increment=10
+    //       and free-text entry for non-multiples of 10. Default 90.
+    [ObservableProperty] private int _ifLeadingWaitTotalSec = 90;
 
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
