@@ -9,7 +9,7 @@
         x:Class="FujinTerm.Views.PartyWindow"
         x:DataType="vm:PartyViewModel"
         Title="{Binding HeaderText}"
-        Width="520" Height="240"
+        Width="520" Height="290"
         MinWidth="380" MinHeight="80"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
