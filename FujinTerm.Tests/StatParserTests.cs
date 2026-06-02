@@ -179,6 +179,25 @@ public sealed class StatParserTests
         Assert.Equal(1, stats.Lives);
     }
 
+    [Theory]
+    [InlineData("You now have 7 lives remaining.", 7)]   // post-suicide form (the bug)
+    [InlineData("You now have 1 life remaining.", 1)]    // singular post-suicide
+    [InlineData("You have 4 lives left.", 4)]            // miracle-save form
+    [InlineData("You have 1 life left.", 1)]             // singular miracle-save
+    public void LivesUpdateLine_HandlesBothPhrasings(string text, int expected)
+    {
+        // Regression: the @suicide hard-block was bypassed because
+        // remote chained @suicides emit "You now have N lives
+        // remaining." (not "You have N lives left.") and the parser
+        // only matched the latter form. Both phrasings must update
+        // Lives so LivesProvider returns the fresh count to the
+        // hard-block.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.FeedTestLine(text);
+        Assert.Equal(expected, stats.Lives);
+    }
+
     // ===== Fix A: close-on-prompt-after-capture =====
 
     [Fact]

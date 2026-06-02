@@ -263,7 +263,7 @@ public sealed partial class StatParser : IDisposable
         Stats.Lives = lives;
         HasParsed = true;
         _log?.Log(LogSeverity.Info, "StatParser",
-            $"Updated Lives → {lives} from miracle-save line.");
+            $"Updated Lives → {lives} (post-suicide / miracle-save line).");
     }
 
     private void TryString(string text, Regex rx, string field, Action<string> set)
@@ -372,9 +372,17 @@ public sealed partial class StatParser : IDisposable
     [GeneratedRegex(@"\bMagicRes:\s+\*?\s*(\d+)",                       RegexOptions.CultureInvariant)] private static partial Regex MagicResRx();
     [GeneratedRegex(@"\bSpellcasting:\s+\*?\s*(\d+)",                   RegexOptions.CultureInvariant)] private static partial Regex SpellcastingRx();
 
-    // Always-on miracle-save line — fires outside the stat-screen
-    // window. "You have N lives left." / "You have 1 life left."
-    [GeneratedRegex(@"^You have (\d+) (?:lives?|life) left\.",          RegexOptions.CultureInvariant)] private static partial Regex LivesRemainingRx();
+    // Always-on lives-update line — fires outside the stat-screen
+    // window. MajorMUD emits this in two phrasings:
+    //   "You now have N lives remaining."   ← after a suicide
+    //   "You have N lives left."            ← after a miracle save
+    // Plus the singular forms (1 life). Both routes update Lives so
+    // the @suicide hard-block sees the fresh count without waiting
+    // for the next `stat` poll. Without "You now have ..." matching,
+    // remote @suicides chained because the LivesProvider returned
+    // the stale value from the last manual `stat`.
+    [GeneratedRegex(@"^You (?:now have|have) (\d+) (?:lives?|life) (?:remaining|left)\.",
+        RegexOptions.CultureInvariant)] private static partial Regex LivesRemainingRx();
 
     // Chat-line shape — matched at line start. Any of the standard
     // MajorMUD chat verbs after a single-word speaker means the
