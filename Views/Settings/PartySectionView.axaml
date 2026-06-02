@@ -280,11 +280,15 @@
                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="If leading, wait only"/>
                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <NumericUpDown Value="{Binding IfLeadingWaitMinutes, Mode=TwoWay}"
-                                   Minimum="0" Maximum="60" Width="90"
+                                   Minimum="0" Maximum="60" Increment="1"
+                                   FormatString="0" ShowButtonSpinner="True"
+                                   Width="120" MinWidth="120"
                                    ToolTip.Tip="Grace window for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Defaults to 2 m."/>
                     <TextBlock Classes="FieldLabel" Text="min"/>
                     <NumericUpDown Value="{Binding IfLeadingWaitSeconds, Mode=TwoWay}"
-                                   Minimum="0" Maximum="59" Width="90"
+                                   Minimum="0" Maximum="59" Increment="1"
+                                   FormatString="0" ShowButtonSpinner="True"
+                                   Width="120" MinWidth="120"
                                    ToolTip.Tip="Seconds component of the leader-side grace window."/>
                     <TextBlock Classes="FieldLabel" Text="s"/>
                 </StackPanel>
