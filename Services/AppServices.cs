@@ -525,6 +525,17 @@ public sealed class AppServices
     public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
 
     /// <summary>
+    /// Sniffs outbound user-typed commands and tells
+    /// <see cref="RoomTracker"/> about <c>look &lt;dir&gt;</c> peeks
+    /// (so the next room display is dropped instead of mistaken for a
+    /// move) and text-exit movement verbs (<c>go path</c>,
+    /// <c>enter portal</c>, etc., so the step is captured in
+    /// <see cref="Models.Profile.CharacterProfile.RecentSteps"/>).
+    /// Hooked from <c>MainWindowViewModel.SendUserInput</c>.
+    /// </summary>
+    public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
+
+    /// <summary>
     /// BFS pathfinding + planar layout over the active
     /// <see cref="RoomGraph"/>. Consumed by the walker, loop runner,
     /// auto-lair scheduler (pathfinding), and the Navigation
@@ -909,6 +920,12 @@ public sealed class AppServices
         Profile.ProfileLoaded += p => RoomTracker.Hydrate(p);
         Profile.ProfileClosed += () => RoomTracker.OnProfileClosed();
         if (Profile.Current is { } loaded) RoomTracker.Hydrate(loaded);
+
+        // Outbound-command observer — recognises `look <dir>` peeks and
+        // text-exit movement (go path / enter portal / climb tree / …)
+        // typed at the terminal or conversation window. Hooked into the
+        // wire-send pipeline by MainWindowViewModel.SendUserInput.
+        OutboundMovement = new Game.Map.OutboundMovementObserver(RoomTracker, Log);
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
         // cache invalidates on every graph reload.

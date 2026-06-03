@@ -1408,6 +1408,10 @@ public partial class MainWindowViewModel : ObservableObject
         // containing "Strength: 60" or similar can't bleed into the
         // PlayerStats snapshot.
         AppServices.Current.Stats.ObserveOutbound(data);
+        // Movement observer — peeks for `look <dir>` (so the next room
+        // display is dropped as a peek) and text-exit movement verbs
+        // (so the step is captured for replay-from-last-Confirmed).
+        AppServices.Current.OutboundMovement.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }

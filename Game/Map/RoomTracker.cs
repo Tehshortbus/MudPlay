@@ -74,6 +74,17 @@ public sealed class RoomTracker
     /// </summary>
     private CharacterProfile? _profile;
 
+    /// <summary>
+    /// Look-direction suppression deadline. While the wall clock is at
+    /// or before this timestamp, the next
+    /// <see cref="NoteRoomObserved"/> call is treated as a peek (room
+    /// preview from a <c>look &lt;dir&gt;</c> command) and discarded.
+    /// The 3-second window auto-clears even if no peek display arrives,
+    /// so the suppression can't eat a future genuine observation.
+    /// </summary>
+    private DateTimeOffset? _suppressObservationUntil;
+    private const int LookSuppressWindowMs = 3000;
+
     /// <summary>The state class itself — bound by the UI, mutated only by this tracker.</summary>
     public RoomState State { get; } = new();
 
@@ -194,6 +205,21 @@ public sealed class RoomTracker
     }
 
     /// <summary>
+    /// The user typed a peek command (<c>look &lt;dir&gt;</c> or
+    /// equivalent). Arm the suppression flag so the next room display
+    /// is treated as a preview and dropped instead of being parsed as
+    /// a move outcome. The flag auto-clears after
+    /// <see cref="LookSuppressWindowMs"/>.
+    /// </summary>
+    public void NoteLookSent(DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        _suppressObservationUntil = when.AddMilliseconds(LookSuppressWindowMs);
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            "Look-direction sent — next observation will be ignored as a peek.");
+    }
+
+    /// <summary>
     /// The server-side observation parser reports the room it just
     /// saw — name + the set of directions on the
     /// <c>Obvious exits:</c> line. The tracker reconciles this against
@@ -202,6 +228,18 @@ public sealed class RoomTracker
     public void NoteRoomObserved(RoomObservation observation, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+
+        if (_suppressObservationUntil is { } until)
+        {
+            _suppressObservationUntil = null;
+            if (when <= until)
+            {
+                _log?.Log(LogSeverity.Info, "RoomTracker",
+                    $"Dropped peek observation: '{observation.Name}'.");
+                return;
+            }
+            // window expired — fall through and process normally
+        }
 
         switch (State.Confidence)
         {
