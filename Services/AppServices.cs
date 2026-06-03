@@ -897,7 +897,8 @@ public sealed class AppServices
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator();
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
-            MovementCoordinator, filter: Movement, log: Log);
+            MovementCoordinator, filter: Movement, log: Log,
+            promptScanner: PromptScanner);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

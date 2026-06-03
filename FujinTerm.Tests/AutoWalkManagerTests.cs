@@ -329,6 +329,62 @@ public sealed class AutoWalkManagerTests : IDisposable
         public bool IsAvoided(RoomKey key) => Avoided.Contains(key);
     }
 
+    // ----- door-aware walks (PR 7.7b) -------------------------------
+
+    private const string DoorGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Outside",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2 (Door)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Foyer",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1 (Door)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_DoorExit_SendsOpenDoorThenMove()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // First byte payload should be "open door east\r".
+        Assert.Single(h.Sent);
+        Assert.Equal("open door east\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Simulate the server prompt confirming the door-open command.
+        h.Walker.FirePromptForTests();
+
+        // Second payload should be the actual move.
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[1]));
+
+        // Confirm the move lands.
+        h.Tracker.NoteMoveSent(Direction.E);
+        h.Tracker.NoteRoomObserved(new RoomObservation("Foyer",
+            new HashSet<Direction> { Direction.W }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
+    [Fact]
+    public void Walker_DoorExit_ExpandedPathSurfacesAsSteps()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Two steps: CommandStep open-door + MoveStep east.
+        Assert.Equal(2, h.Walker.Steps.Count);
+        Assert.IsType<CommandStep>(h.Walker.Steps[0]);
+        Assert.IsType<MoveStep>(h.Walker.Steps[1]);
+    }
+
     // ----- unbound wire sender --------------------------------------
 
     [Fact]
