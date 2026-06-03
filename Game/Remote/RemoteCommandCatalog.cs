@@ -123,6 +123,15 @@ public static class RemoteCommandCatalog
             ["@blind"]        = PlayerRemoteControls.None,
             ["@diseased"]     = PlayerRemoteControls.None,
             ["@held"]         = PlayerRemoteControls.None,
+            // @party stays at the None party-whitelist tier — its
+            // canonical use is among party members: leaders broadcast
+            // status queries or sub-commands ("@party rest") in the
+            // room, and only active members can act on it. Non-party
+            // players who want our status use @par (QueryHealthStatus
+            // tier — both commands share the same status-reply handler,
+            // so the reply text matches the user spec either way).
+            // Hard-blocks (@party suicide, @party reroll) bypass this
+            // tier at engine level via IsHardBlocked.
             ["@party"]        = PlayerRemoteControls.None,
             ["@kill"]         = PlayerRemoteControls.None,
             ["@share"]        = PlayerRemoteControls.None,

@@ -55,11 +55,41 @@ public sealed partial class PartyPoller : IDisposable
     private readonly PartyState _state;
     private readonly PartyManager _manager;
     private readonly DispatcherTimer? _timer;
+    private DispatcherTimer? _healthNagTimer;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
     /// <summary>How often to send <c>par</c> on the wire. Default 5 s per the Phase 6 spec.</summary>
     public TimeSpan ParCadence { get; private set; } = TimeSpan.FromSeconds(5);
+
+    // ----- @health nag escalation knobs (shared with @join nag) ----------
+    // Pushed in by AppServices.ApplyPartyFromActiveProfile from the same
+    // Settings.Party JoinNag* fields AutoPartyManager reads. The label in
+    // the UI is "@join/@health nag settings" — both nag flows share the
+    // cadence because they share the user intent ("after asking for X,
+    // wait this long, retry this often, give up after this window").
+
+    /// <summary>Wait this long after the initial <c>/given @health</c> before the first retry.</summary>
+    public TimeSpan HealthNagInitialDelay { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Cadence for subsequent <c>/given @health</c> resends.</summary>
+    public TimeSpan HealthNagFrequency { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>Hard cap on the total nag window measured from the initial send.</summary>
+    public TimeSpan HealthNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
+
+    /// <summary>Test seam — overrides <see cref="DateTime.UtcNow"/> for the nag tick clock.</summary>
+    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>Per-given-name nag state. Created on the initial @health send; cleared on baseline arrival / member-leave / cap.</summary>
+    private readonly Dictionary<string, HealthNagState> _activeNags =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed class HealthNagState
+    {
+        public string Given { get; set; } = string.Empty;
+        public DateTime FirstSentAt { get; set; }
+        public DateTime? LastSentAt { get; set; }
+        public int Sends { get; set; }
+    }
 
     /// <summary>
     /// Canonical reply regex for the @health round-trip. Matches the
@@ -147,12 +177,25 @@ public sealed partial class PartyPoller : IDisposable
         _state.Members.CollectionChanged -= OnMembersChanged;
         _chat.EntryClassified -= OnChatEntry;
         _timer?.Stop();
+        StopHealthNagTimer();
     }
 
     // ----- @health round-trip --------------------------------------------
 
     private void OnMembersChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        // Removed members — cancel any pending @health nag so we don't
+        // keep telepathing a player who just left the party.
+        if (e.OldItems is not null)
+        {
+            foreach (object? item in e.OldItems)
+            {
+                if (item is not PartyMember m) continue;
+                if (string.IsNullOrEmpty(m.Name)) continue;
+                CancelHealthNag(GivenName(m.Name));
+            }
+        }
+
         if (_wireSender is null) return;
         if (e.Action != NotifyCollectionChangedAction.Add) return;
         if (e.NewItems is null) return;
@@ -177,9 +220,28 @@ public sealed partial class PartyPoller : IDisposable
             // are interpreted as `say`; addressing by full "Given Family"
             // is also rejected — given name only.
             string given = GivenName(m.Name);
-            byte[] bytes = Encoding.Latin1.GetBytes($"/{given} @health\r");
-            _wireSender(bytes);
+            SendHealthRequest(given);
+            // Start the @health nag. If a baseline is already on file
+            // (rare — typically happens when PartyManager merges a
+            // duplicate row through AddOrTouchMember instead of
+            // re-adding), short-circuit.
+            if (m.BaselineHp > 0) continue;
+            DateTime now = NowProvider();
+            _activeNags[given] = new HealthNagState
+            {
+                Given       = given,
+                FirstSentAt = now,
+                Sends       = 1,
+            };
+            EnsureHealthNagTimerRunning();
         }
+    }
+
+    private void SendHealthRequest(string given)
+    {
+        if (_wireSender is null) return;
+        byte[] bytes = Encoding.Latin1.GetBytes($"/{given} @health\r");
+        _wireSender(bytes);
     }
 
     private static string GivenName(string name)
@@ -209,6 +271,89 @@ public sealed partial class PartyPoller : IDisposable
         int mpCur = m.Groups["mp"].Success    ? int.Parse(m.Groups["mp"].Value,    inv) : 0;
         int mpMax = m.Groups["mpmax"].Success ? int.Parse(m.Groups["mpmax"].Value, inv) : 0;
         _manager.SetMemberHealthSnapshot(entry.Speaker, hpCur, hpMax, mpCur, mpMax);
+        // Baseline now on file — kill the @health nag for this sender.
+        CancelHealthNag(GivenName(entry.Speaker));
+    }
+
+    // ----- @health nag escalation ----------------------------------------
+
+    private void EnsureHealthNagTimerRunning()
+    {
+        if (_healthNagTimer is not null) return;
+        _healthNagTimer = new DispatcherTimer(
+            interval: TimeSpan.FromMilliseconds(500),
+            priority: DispatcherPriority.Background,
+            callback: (_, _) => TickHealthNags());
+        _healthNagTimer.Start();
+    }
+
+    private void StopHealthNagTimer()
+    {
+        _healthNagTimer?.Stop();
+        _healthNagTimer = null;
+    }
+
+    private void CancelHealthNag(string given)
+    {
+        if (string.IsNullOrEmpty(given)) return;
+        if (!_activeNags.Remove(given)) return;
+        if (_activeNags.Count == 0) StopHealthNagTimer();
+    }
+
+    /// <summary>Test seam — runs one pass of the @health nag loop without a real timer.</summary>
+    internal void TickHealthNagsForTests() => TickHealthNags();
+
+    private void TickHealthNags()
+    {
+        if (_activeNags.Count == 0) { StopHealthNagTimer(); return; }
+        DateTime now = NowProvider();
+
+        foreach (string given in _activeNags.Keys.ToArray())
+        {
+            if (!_activeNags.TryGetValue(given, out HealthNagState? s)) continue;
+
+            // Hard cap from the first send — give up regardless.
+            if (now - s.FirstSentAt >= HealthNagMaxTotal)
+            {
+                CancelHealthNag(given);
+                continue;
+            }
+
+            // Baseline arrived between ticks? The OnChatEntry path
+            // also cancels, but check defensively in case the member
+            // was added with a baseline already set (e.g. a future
+            // refresh path).
+            if (BaselineKnownFor(given))
+            {
+                CancelHealthNag(given);
+                continue;
+            }
+
+            // Decide whether to fire. The first send already went out
+            // in OnMembersChanged; LastSentAt is null until the first
+            // retry, so the initial-delay window measures from
+            // FirstSentAt for the first retry and from LastSentAt for
+            // every subsequent one.
+            DateTime since = s.LastSentAt ?? s.FirstSentAt;
+            TimeSpan wait  = s.LastSentAt is null ? HealthNagInitialDelay : HealthNagFrequency;
+            if (now - since < wait) continue;
+
+            SendHealthRequest(given);
+            s.LastSentAt = now;
+            s.Sends++;
+        }
+    }
+
+    private bool BaselineKnownFor(string given)
+    {
+        foreach (PartyMember m in _state.Members)
+        {
+            if (GivenName(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase))
+                return m.BaselineHp > 0;
+        }
+        // Member no longer in the roster — treat as "known" so the
+        // nag cancels rather than continuing to telepath a stranger.
+        return true;
     }
 
     // ----- par poll ------------------------------------------------------

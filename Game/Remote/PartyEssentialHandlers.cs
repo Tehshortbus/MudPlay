@@ -39,6 +39,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     {
         "@version", "@health", "@status", "@par", "@where",
         "@party", "@wait", "@ok",
+        "@lives", "@invite", "@join",
     };
 
     private readonly RemoteCommandManager _engine;
@@ -70,7 +71,10 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// </summary>
     public event Action<bool>? PauseGateChanged;
 
-    public PartyEssentialHandlers(RemoteCommandManager engine, PlayerState player, PartyState party)
+    public PartyEssentialHandlers(
+        RemoteCommandManager engine,
+        PlayerState player,
+        PartyState party)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -88,11 +92,14 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@version", OnVersion);
         Register("@health",  OnHealth);
         Register("@status",  OnStatus);
-        Register("@par",     OnPar);
+        Register("@par",     OnPartyStatus);  // alias for @party query form
         Register("@where",   OnWhere);
         Register("@party",   OnParty);
         Register("@wait",    OnWait);
         Register("@ok",      OnOk);
+        Register("@lives",   OnLives);
+        Register("@invite",  OnInvite);
+        Register("@join",    OnJoin);
     }
 
     /// <summary>
@@ -172,17 +179,46 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply(_player.Position.ToString());
     }
 
-    private void OnPar(RemoteCommandContext ctx)
+    /// <summary>
+    /// Status form of <c>@par</c> / <c>@party</c> (no args, or any
+    /// channel other than Local). Three exclusive outcomes:
+    /// <list type="bullet">
+    ///   <item>solo (no active party) → <c>no active party</c></item>
+    ///   <item>self is following → <c>I'm following &lt;leader-given&gt;</c></item>
+    ///   <item>self is leading → <c>I'm leading: &lt;follower-given&gt;, …</c></item>
+    /// </list>
+    /// Followers list is given-names only, in roster order, skipping
+    /// self + leader. Family names are omitted because MajorMUD
+    /// commands and the rest of the @-command layer only ever address
+    /// players by their given name.
+    /// </summary>
+    private void OnPartyStatus(RemoteCommandContext ctx)
     {
-        if (_party.Members.Count == 0) { ctx.Reply("No party active"); return; }
-        StringBuilder sb = new();
-        sb.Append($"Party ({_party.Members.Count}):");
+        if (!_party.IsInParty || _party.Members.Count == 0)
+        {
+            ctx.Reply("no active party");
+            return;
+        }
+        if (!_party.SelfIsLeader)
+        {
+            string leader = GivenName(_party.LeaderName ?? string.Empty);
+            ctx.Reply(string.IsNullOrEmpty(leader)
+                ? "I'm following an unknown leader"
+                : $"I'm following {leader}");
+            return;
+        }
+        // Leader path — list followers' given names. Skip self + the
+        // leader row (which is self, but be defensive about ordering).
+        List<string> followers = new();
         foreach (PartyMember m in _party.Members)
         {
-            string lead = m.IsLeader ? "*" : " ";
-            sb.Append($" {lead}{m.Name} H:{m.HpPercent}% M:{m.MpPercent}% ({m.Position})");
+            if (m.IsSelf || m.IsLeader) continue;
+            string g = GivenName(m.Name);
+            if (!string.IsNullOrEmpty(g)) followers.Add(g);
         }
-        ctx.Reply(sb.ToString());
+        ctx.Reply(followers.Count == 0
+            ? "I'm leading: (no followers)"
+            : $"I'm leading: {string.Join(", ", followers)}");
     }
 
     private void OnWhere(RemoteCommandContext ctx)
@@ -194,7 +230,43 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply("Location unknown (room tracker pending)");
     }
 
-    // ----- Party-whitelist handler (@party <sub>) ------------------------
+    // ----- @party (channel-aware: status query or sub-command dispatch) --
+
+    /// <summary>
+    /// Channel-aware handler for <c>@party</c>:
+    /// <list type="bullet">
+    ///   <item><b>Telepath / Gangpath</b> — always reply with the status
+    ///         form (alias for <c>@par</c>); args are ignored. The
+    ///         destructive party sub-commands (attack / rest / etc.)
+    ///         are leader → party-room coordination, not back-channel
+    ///         whispers, so we refuse to honour them off-channel.</item>
+    ///   <item><b>Local (Say) with no args</b> — also status form. Lets
+    ///         the leader broadcast <c>@party</c> in the room and have
+    ///         every present follower call out their status without
+    ///         doing anything destructive.</item>
+    ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
+    ///         <see cref="DispatchPartySubCommand"/>.</item>
+    /// </list>
+    /// Engine-level gating: <c>@party</c> sits in the
+    /// <see cref="PlayerRemoteControls.None"/> party-whitelist tier, so
+    /// the engine's <see cref="RemoteCommandManager.IsAuthorised"/>
+    /// only invokes this handler for active party members (and shuts
+    /// off entirely when
+    /// <see cref="RemoteCommandManager.DisablePartyWhitelist"/> is on).
+    /// Non-party players who want our party status use <c>@par</c>
+    /// instead (QueryHealthStatus tier — same status-reply handler).
+    /// Hard-blocks for <c>@party suicide</c> / <c>@party reroll</c>
+    /// fire at engine level before this handler runs.
+    /// </summary>
+    private void OnParty(RemoteCommandContext ctx)
+    {
+        if (ctx.Channel != RemoteChannel.Local || ctx.Args.Count == 0)
+        {
+            OnPartyStatus(ctx);
+            return;
+        }
+        DispatchPartySubCommand(ctx);
+    }
 
     /// <summary>
     /// Map the leader's <c>@party &lt;sub&gt;</c> directive onto the local
@@ -202,10 +274,9 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// sub-commands are silently ignored — they're not party-essentials
     /// and shouldn't trip the wire from a typo.
     /// </summary>
-    private void OnParty(RemoteCommandContext ctx)
+    private void DispatchPartySubCommand(RemoteCommandContext ctx)
     {
         if (_wireSender is null) return;
-        if (ctx.Args.Count == 0) return;
         string sub = ctx.Args[0].ToLowerInvariant();
         string? local = sub switch
         {
@@ -221,6 +292,97 @@ public sealed class PartyEssentialHandlers : IDisposable
         };
         if (local is null) return;
         byte[] bytes = Encoding.Latin1.GetBytes(local + "\r");
+        _wireSender(bytes);
+    }
+
+    // ----- Lives / invite / join -----------------------------------------
+
+    /// <summary>
+    /// Reply with the local character's remaining lives count via the
+    /// engine's <see cref="RemoteCommandManager.LivesProvider"/> —
+    /// same source the <c>@suicide</c> hard-block consults. Returns
+    /// <c>lives unknown</c> until the user has typed <c>stat</c> at
+    /// least once this session so we don't volunteer a possibly-stale
+    /// number to a caller deciding whether to send <c>@suicide</c>.
+    /// </summary>
+    private void OnLives(RemoteCommandContext ctx)
+    {
+        int? lives = _engine.LivesProvider?.Invoke();
+        if (lives is null) { ctx.Reply("lives unknown"); return; }
+        ctx.Reply($"{lives} {(lives == 1 ? "life" : "lives")} remaining");
+    }
+
+    /// <summary>
+    /// <c>@invite</c> — sender is asking us to invite them into our
+    /// party. Three exclusive outcomes:
+    /// <list type="bullet">
+    ///   <item>self is following → reply <c>I'm following X; denied.</c>
+    ///         to prevent leader-follower chains (per user spec).</item>
+    ///   <item>party full (6 members) → reply with the follower roster
+    ///         so the sender knows why and can pick a different party.</item>
+    ///   <item>otherwise → send <c>invite &lt;sender-given&gt;</c> on the
+    ///         wire. The invite itself IS the confirmation; no
+    ///         additional telepath reply.</item>
+    /// </list>
+    /// The follower-deny reply is gated on
+    /// <see cref="RemoteCommandManager.WarnOnDenial"/> per the same
+    /// remote-command reply policy that gates the suicide policy-block
+    /// reply — denials are user-suppressible noise. The full-party
+    /// reply is informational coordination, not a denial, and fires
+    /// regardless.
+    /// </summary>
+    private void OnInvite(RemoteCommandContext ctx)
+    {
+        if (_party.IsInParty && !_party.SelfIsLeader)
+        {
+            if (!_engine.WarnOnDenial) return;
+            string leader = GivenName(_party.LeaderName ?? string.Empty);
+            ctx.Reply(string.IsNullOrEmpty(leader)
+                ? "I'm following someone; denied."
+                : $"I'm following {leader}; denied.");
+            return;
+        }
+        if (_party.Members.Count >= 6)
+        {
+            // Full party — list the 5 followers (excluding self).
+            List<string> followers = new();
+            foreach (PartyMember m in _party.Members)
+            {
+                if (m.IsSelf) continue;
+                string g = GivenName(m.Name);
+                if (!string.IsNullOrEmpty(g)) followers.Add(g);
+            }
+            string list = followers.Count == 0 ? "(roster unknown)" : string.Join(", ", followers);
+            ctx.Reply($"My Party is full, {list} are following me.");
+            return;
+        }
+        if (_wireSender is null) return;
+        string senderGiven = GivenName(ctx.Sender);
+        byte[] bytes = Encoding.Latin1.GetBytes($"invite {senderGiven}\r");
+        _wireSender(bytes);
+    }
+
+    /// <summary>
+    /// <c>@join</c> — sender wants us to type <c>join &lt;them&gt;</c>
+    /// to enter their party. Symmetric to <see cref="OnInvite"/>: deny
+    /// when we're already following someone (no chain mutation), else
+    /// send the join command. No confirmation reply — the join itself
+    /// is the answer.
+    /// </summary>
+    private void OnJoin(RemoteCommandContext ctx)
+    {
+        if (_party.IsInParty && !_party.SelfIsLeader)
+        {
+            if (!_engine.WarnOnDenial) return;
+            string leader = GivenName(_party.LeaderName ?? string.Empty);
+            ctx.Reply(string.IsNullOrEmpty(leader)
+                ? "I'm following someone; denied."
+                : $"I'm following {leader}; denied.");
+            return;
+        }
+        if (_wireSender is null) return;
+        string senderGiven = GivenName(ctx.Sender);
+        byte[] bytes = Encoding.Latin1.GetBytes($"join {senderGiven}\r");
         _wireSender(bytes);
     }
 

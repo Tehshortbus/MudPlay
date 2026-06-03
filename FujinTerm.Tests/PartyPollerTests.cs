@@ -309,4 +309,131 @@ public sealed class PartyPollerTests
         byte[] sent = Assert.Single(wire);
         Assert.Equal("/Raijin @health\r", Encoding.Latin1.GetString(sent));
     }
+
+    // ===== @health nag retry (shares JoinNag* settings) ==================
+
+    /// <summary>
+    /// Build a poller wired with a frozen-clock NowProvider and short
+    /// nag cadences so the tick-based tests don't need real time
+    /// to elapse.
+    /// </summary>
+    private static (PartyPoller poller, PartyManager mgr, PartyState state, ChatRouter chat, MessageRouter router, List<byte[]> wire, Func<DateTime> clock, Action<TimeSpan> advance)
+        SetupWithClock()
+    {
+        var setup = Setup();
+        DateTime t = Now;
+        setup.poller.NowProvider = () => t;
+        setup.poller.HealthNagInitialDelay = TimeSpan.FromSeconds(5);
+        setup.poller.HealthNagFrequency    = TimeSpan.FromSeconds(10);
+        setup.poller.HealthNagMaxTotal     = TimeSpan.FromSeconds(55);
+        Action<TimeSpan> advance = span => t = t.Add(span);
+        return (setup.poller, setup.mgr, setup.state, setup.chat, setup.router, setup.wire, () => t, advance);
+    }
+
+    [Fact]
+    public void HealthNag_BeforeInitialDelay_DoesNotResend()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        // Initial @health already fired in OnMembersChanged.
+        Assert.Single(wire);
+
+        // Tick 1s in — still inside the initial-delay window (5s).
+        advance(TimeSpan.FromSeconds(1));
+        poller.TickHealthNagsForTests();
+
+        Assert.Single(wire);
+    }
+
+    [Fact]
+    public void HealthNag_PastInitialDelay_SendsFirstRetry()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        advance(TimeSpan.FromSeconds(6));
+        poller.TickHealthNagsForTests();
+
+        Assert.Single(wire);
+        Assert.Equal("/Helper @health\r", Encoding.Latin1.GetString(wire[0]));
+    }
+
+    [Fact]
+    public void HealthNag_PastFrequency_SendsSubsequentRetries()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        // First retry at 6s.
+        advance(TimeSpan.FromSeconds(6));
+        poller.TickHealthNagsForTests();
+        // Second retry — needs Frequency (10s) past the first retry.
+        advance(TimeSpan.FromSeconds(11));
+        poller.TickHealthNagsForTests();
+
+        Assert.Equal(2, wire.Count);
+    }
+
+    [Fact]
+    public void HealthNag_BaselineArrives_CancelsNag()
+    {
+        var (poller, _, state, _, router, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        // Reply lands before the first retry — should cancel.
+        DispatchTelepath(router, "Helper", "{HP=100/100,MA=50/50}");
+
+        // Plenty of time elapsed — should NOT retry now.
+        advance(TimeSpan.FromSeconds(20));
+        poller.TickHealthNagsForTests();
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void HealthNag_PastMaxTotal_GivesUp()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        // Jump past the max-total cap (55s) — no retry, no further work.
+        advance(TimeSpan.FromSeconds(60));
+        poller.TickHealthNagsForTests();
+        // Tick again to confirm the timer is now idle.
+        advance(TimeSpan.FromSeconds(10));
+        poller.TickHealthNagsForTests();
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void HealthNag_MemberLeaves_CancelsNag()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        state.Members.RemoveAt(0);
+        // Plenty of time elapsed — should NOT retry; member is gone.
+        advance(TimeSpan.FromSeconds(20));
+        poller.TickHealthNagsForTests();
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void HealthNag_SelfMember_NoNagScheduled()
+    {
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        state.Members.Add(new PartyMember { Name = "Forged", IsSelf = true });
+
+        advance(TimeSpan.FromSeconds(60));
+        poller.TickHealthNagsForTests();
+
+        Assert.Empty(wire);
+    }
 }

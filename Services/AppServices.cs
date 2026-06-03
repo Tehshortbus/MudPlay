@@ -567,6 +567,10 @@ public sealed class AppServices
         // Phase 6 PR 6.2 — engine. Phase 7 / Phase 12 register additional
         // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
+        // Stat-screen parser ahead of LivesProvider hookup below so
+        // both the engine's @suicide hard-block and the @lives reply
+        // path share the same "unknown until first stat poll" source.
+        Stats = new Game.StatParser(PlayerStats, Log);
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
         PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
@@ -602,13 +606,12 @@ public sealed class AppServices
         SuicidePassword = new Game.SuicidePasswordTracker(
             Router, EngineGate, Profile, Passwords, Log);
 
-        // Stat-screen parser — populates PlayerStats from the in-game
-        // `stat` output. Feeds RemoteCommands.LivesProvider so the
-        // @suicide hard-block uses the real lives count once the user
-        // has typed `stat` at least once this session. Before that,
-        // LivesProvider returns null and the hard-block treats lives
-        // as unknown (= blocked) per spec.
-        Stats = new Game.StatParser(PlayerStats, Log);
+        // LivesProvider — feeds the engine-level @suicide hard-block
+        // and the @lives handler's reply. Returns null until the user
+        // types `stat` for the first time this session so the
+        // hard-block treats lives as unknown (= blocked) per spec.
+        // Stats itself is constructed above where PartyEssentials needs
+        // PlayerStats injected.
         RemoteCommands.LivesProvider = () => Stats.HasParsed ? PlayerStats.Lives : (int?)null;
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
@@ -807,9 +810,19 @@ public sealed class AppServices
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
-        AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
-        AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
-        AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        // Shared nag cadence — same Settings.Party knobs feed both the
+        // AutoPartyManager @join-after-invite loop and the PartyPoller
+        // on-join @health retry. UI groups them under one section
+        // header ("@join/@health nag settings").
+        TimeSpan nagInitial = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
+        TimeSpan nagFreq    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
+        TimeSpan nagMax     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        AutoParty.JoinNagInitialDelay = nagInitial;
+        AutoParty.JoinNagFrequency    = nagFreq;
+        AutoParty.JoinNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagInitialDelay = nagInitial;
+        PartyPoller.HealthNagFrequency    = nagFreq;
+        PartyPoller.HealthNagMaxTotal     = nagMax;
     }
 
     private void ResetPartyToDefaults()
@@ -820,9 +833,15 @@ public sealed class AppServices
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
-        AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);
-        AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(defaults.JoinNagFrequencySec);
-        AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(defaults.JoinNagMaxTotalSec);
+        TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);
+        TimeSpan nagFreq    = TimeSpan.FromSeconds(defaults.JoinNagFrequencySec);
+        TimeSpan nagMax     = TimeSpan.FromSeconds(defaults.JoinNagMaxTotalSec);
+        AutoParty.JoinNagInitialDelay = nagInitial;
+        AutoParty.JoinNagFrequency    = nagFreq;
+        AutoParty.JoinNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagInitialDelay = nagInitial;
+        PartyPoller.HealthNagFrequency    = nagFreq;
+        PartyPoller.HealthNagMaxTotal     = nagMax;
     }
 
     /// <summary>

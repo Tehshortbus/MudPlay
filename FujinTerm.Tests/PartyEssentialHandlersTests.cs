@@ -56,15 +56,16 @@ public sealed class PartyEssentialHandlersTests
     // ===== Registration shape =====
 
     [Fact]
-    public void Ctor_RegistersAllEightCommands()
+    public void Ctor_RegistersAllElevenCommands()
     {
         var (engine, _, _, _, _, _) = Setup();
-        // 8 commands: @version @health @status @par @where @party @wait @ok
-        Assert.Equal(8, engine.HandlerCount);
+        // 11 commands: @version @health @status @par @where @party @wait @ok
+        // @lives @invite @join
+        Assert.Equal(11, engine.HandlerCount);
     }
 
     [Fact]
-    public void Dispose_UnregistersAllEight()
+    public void Dispose_UnregistersAll()
     {
         var (engine, handlers, _, _, _, _) = Setup();
         handlers.Dispose();
@@ -204,40 +205,107 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Par_NoParty_RepliesNoPartyActive()
+    public void Par_NoParty_RepliesNoActiveParty()
     {
         var (engine, _, _, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
         engine.DispatchForTests(Telepath("Friend", "@par"));
 
-        Assert.Contains("No party", LastReply(engine));
+        Assert.Contains("no active party", LastReply(engine));
     }
 
     [Fact]
-    public void Par_WithMembers_EmitsRosterSummary()
+    public void Par_WhenFollowing_RepliesImFollowing()
     {
         var (engine, _, _, party, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        party.Members.Add(new PartyMember
-        {
-            Name = "Forged", IsLeader = true,
-            HpPercent = 100, MpPercent = 100, Position = PlayerPosition.Standing,
-        });
-        party.Members.Add(new PartyMember
-        {
-            Name = "Helper", IsLeader = false,
-            HpPercent = 94, MpPercent = 80, Position = PlayerPosition.Resting,
-        });
+        party.Members.Add(new PartyMember { Name = "Fujin Wuz", IsLeader = true });
+        party.Members.Add(new PartyMember { Name = "Raijin", IsSelf = true });
+        party.LeaderName = "Fujin Wuz";
         party.IsInParty = true;
+        party.SelfIsLeader = false;
 
         engine.DispatchForTests(Telepath("Friend", "@par"));
 
+        // Given name only — family is stripped (the @-command layer
+        // never addresses players by family name).
+        Assert.Contains("{I'm following Fujin}", LastReply(engine));
+    }
+
+    [Fact]
+    public void Par_WhenLeading_RepliesImLeadingWithFollowerGivenNames()
+    {
+        var (engine, _, _, party, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true, IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin Wuz" });
+        party.Members.Add(new PartyMember { Name = "Helper" });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@par"));
+
+        // Family-stripped given names, comma-separated, roster order,
+        // excluding self + leader.
+        Assert.Contains("{I'm leading: Raijin, Helper}", LastReply(engine));
+    }
+
+    [Fact]
+    public void Party_FromTelepath_ReturnsStatusReplyEvenWithArgs()
+    {
+        // Telepath/Gangpath always status — ignore args so a back-
+        // channel @party rest can't trigger the destructive verb path.
+        // Sender is a party member (engine party-whitelist gate).
+        var (engine, _, _, party, _, relay) = Setup();
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true, IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Helper" });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+
+        engine.DispatchForTests(Telepath("Helper", "@party rest"));
+
+        Assert.Contains("{I'm leading: Helper}", LastReply(engine));
+        // No sub-command dispatched.
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Party_FromSay_NoArgs_ReturnsStatusReply()
+    {
+        // Solo case — sender is themselves in our (non-existent) party
+        // only by virtue of the engine's party-whitelist gate accepting
+        // ALL senders when IsInParty=false... actually no: the engine
+        // denies when not in a party. So this scenario requires the
+        // sender to be in the party. Reflect the realistic case: party
+        // member says "@party" in the room with no args.
+        var (engine, _, _, party, _, _) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+
+        ChatLogEntry say = new(Now, ChatChannel.Local, "Leader",
+            "@party", "Leader says: @party");
+        engine.DispatchForTests(say);
+
+        // We're "leading" Leader (the only member) — leader path with
+        // no followers other than self.
         string reply = LastReply(engine);
-        Assert.Contains("Party (2)", reply);
-        Assert.Contains("*Forged", reply);   // leader marker
-        Assert.Contains("Helper",   reply);
-        Assert.Contains("94%",      reply);
-        Assert.Contains("(Resting)", reply);
+        Assert.True(
+            reply.Contains("I'm leading") || reply.Contains("I'm following") || reply.Contains("no active party"),
+            $"Unexpected reply: {reply}");
+    }
+
+    [Fact]
+    public void Party_FromSay_WithArgs_DispatchesWhenPartyMember()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+
+        ChatLogEntry say = new(Now, ChatChannel.Local, "Leader",
+            "@party rest", "Leader says: @party rest");
+        engine.DispatchForTests(say);
+
+        Assert.Equal("rest\r", Encoding.Latin1.GetString(relay[0]));
     }
 
     [Fact]
@@ -251,14 +319,20 @@ public sealed class PartyEssentialHandlersTests
         Assert.Contains("Location unknown", LastReply(engine));
     }
 
-    // ===== @party <sub> whitelist =====
+    // ===== @party <sub> whitelist (Say-channel sub-command dispatch) ====
+    // Dispatch only happens in Local (say) channel — telepath/gangpath
+    // always return the status reply (covered in the Party_FromTelepath_*
+    // tests above).
+
+    private static ChatLogEntry Say(string sender, string msg) =>
+        new(Now, ChatChannel.Local, sender, msg, $"{sender} says: {msg}");
 
     [Fact]
     public void PartyRest_FromPartyMember_SendsRestToWire()
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Telepath("Leader", "@party rest"));
+        engine.DispatchForTests(Say("Leader", "@party rest"));
 
         Assert.Equal("rest\r", Encoding.Latin1.GetString(relay[0]));
     }
@@ -268,7 +342,7 @@ public sealed class PartyEssentialHandlersTests
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Telepath("Leader", "@party meditate"));
+        engine.DispatchForTests(Say("Leader", "@party meditate"));
 
         Assert.Equal("medi\r", Encoding.Latin1.GetString(relay[0]));
     }
@@ -278,7 +352,7 @@ public sealed class PartyEssentialHandlersTests
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Telepath("Leader", "@party go n"));
+        engine.DispatchForTests(Say("Leader", "@party go n"));
 
         Assert.Equal("n\r", Encoding.Latin1.GetString(relay[0]));
     }
@@ -288,9 +362,9 @@ public sealed class PartyEssentialHandlersTests
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Telepath("Leader", "@party stat"));
-        engine.DispatchForTests(Telepath("Leader", "@party i"));
-        engine.DispatchForTests(Telepath("Leader", "@party par"));
+        engine.DispatchForTests(Say("Leader", "@party stat"));
+        engine.DispatchForTests(Say("Leader", "@party i"));
+        engine.DispatchForTests(Say("Leader", "@party par"));
 
         Assert.Equal(3, relay.Count);
         Assert.Equal("stat\r", Encoding.Latin1.GetString(relay[0]));
@@ -303,18 +377,22 @@ public sealed class PartyEssentialHandlersTests
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Telepath("Leader", "@party doSomethingWeird"));
+        engine.DispatchForTests(Say("Leader", "@party doSomethingWeird"));
 
         Assert.Empty(relay);
     }
 
     [Fact]
-    public void PartyFromNonMember_NotRelayed()
+    public void PartyFromNonMember_NotDispatched()
     {
-        // The party-whitelist gate in the engine already denies this, but
-        // belt-and-braces: the handler shouldn't reach the wire either.
-        var (engine, _, _, _, _, relay) = Setup();
-        engine.DispatchForTests(Telepath("Stranger", "@party rest"));
+        // Non-party say-@party still gets a status reply (engine
+        // accepts QueryHealthStatus from players with that permission)
+        // but the sub-command dispatch is gated on IsActivePartyMember,
+        // so the wire-relay stays empty. We seed the stranger with
+        // QueryHealthStatus so the engine doesn't refuse first.
+        var (engine, _, _, _, players, relay) = Setup();
+        SeedPlayer(players, "Stranger", PlayerRemoteControls.QueryHealthStatus);
+        engine.DispatchForTests(Say("Stranger", "@party rest"));
 
         Assert.Empty(relay);
     }
@@ -422,5 +500,172 @@ public sealed class PartyEssentialHandlersTests
         engine.DispatchForTests(Telepath("Stranger", "@wait"));
 
         Assert.False(row.IsWaiting);
+    }
+
+    // ===== @lives =====
+
+    [Fact]
+    public void Lives_NoLivesProvider_RepliesUnknown()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.LivesProvider = null;
+
+        engine.DispatchForTests(Telepath("Friend", "@lives"));
+
+        Assert.Contains("lives unknown", LastReply(engine));
+    }
+
+    [Fact]
+    public void Lives_ProviderReturnsNull_RepliesUnknown()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.LivesProvider = () => null;
+
+        engine.DispatchForTests(Telepath("Friend", "@lives"));
+
+        Assert.Contains("lives unknown", LastReply(engine));
+    }
+
+    [Fact]
+    public void Lives_ProviderReturnsValue_RepliesWithCount()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.LivesProvider = () => 4;
+
+        engine.DispatchForTests(Telepath("Friend", "@lives"));
+
+        Assert.Contains("4 lives remaining", LastReply(engine));
+    }
+
+    [Fact]
+    public void Lives_SingularGrammar_WhenOneLeft()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        engine.LivesProvider = () => 1;
+
+        engine.DispatchForTests(Telepath("Friend", "@lives"));
+
+        Assert.Contains("1 life remaining", LastReply(engine));
+    }
+
+    // ===== @invite =====
+
+    [Fact]
+    public void Invite_WhenSolo_SendsInviteWithSenderGivenName()
+    {
+        var (engine, _, _, _, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    [Fact]
+    public void Invite_WhenFollower_DeniesWithLeaderName()
+    {
+        var (engine, _, _, party, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        party.Members.Add(new PartyMember { Name = "Fujin Wuz", IsLeader = true });
+        party.Members.Add(new PartyMember { Name = "Helper", IsSelf = true });
+        party.LeaderName = "Fujin Wuz";
+        party.IsInParty = true;
+        party.SelfIsLeader = false;
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        Assert.Contains("{I'm following Fujin; denied.}", LastReply(engine));
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Invite_WhenFollower_AndWarnDenialOff_StaysSilent()
+    {
+        var (engine, _, _, party, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true });
+        party.Members.Add(new PartyMember { Name = "Helper", IsSelf = true });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = false;
+        engine.WarnOnDenial = false;
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Invite_WhenPartyFull_RepliesWithFollowerRoster()
+    {
+        var (engine, _, _, party, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        // 6 members: self + 5 followers — that's the MajorMUD cap.
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true, IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Helper" });
+        party.Members.Add(new PartyMember { Name = "Buddy" });
+        party.Members.Add(new PartyMember { Name = "Lou Last" });
+        party.Members.Add(new PartyMember { Name = "Sam" });
+        party.Members.Add(new PartyMember { Name = "Pal" });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        // Comma-joined given names of the 5 followers (skipping self).
+        Assert.Contains("{My Party is full, Helper, Buddy, Lou, Sam, Pal are following me.}", LastReply(engine));
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Invite_WhenLeaderWithRoom_SendsInvite()
+    {
+        var (engine, _, _, party, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true, IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Helper" });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    // ===== @join =====
+
+    [Fact]
+    public void Join_WhenSolo_SendsJoinWithSenderGivenName()
+    {
+        var (engine, _, _, _, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+
+        engine.DispatchForTests(Telepath("Raijin", "@join"));
+
+        Assert.Equal("join Raijin\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    [Fact]
+    public void Join_WhenFollower_DeniesWithLeaderName()
+    {
+        var (engine, _, _, party, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        party.Members.Add(new PartyMember { Name = "Fujin", IsLeader = true });
+        party.Members.Add(new PartyMember { Name = "Helper", IsSelf = true });
+        party.LeaderName = "Fujin";
+        party.IsInParty = true;
+        party.SelfIsLeader = false;
+
+        engine.DispatchForTests(Telepath("Raijin", "@join"));
+
+        Assert.Contains("{I'm following Fujin; denied.}", LastReply(engine));
+        Assert.Empty(relay);
     }
 }
