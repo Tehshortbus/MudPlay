@@ -222,7 +222,7 @@ public sealed class LoopRunner
         if (_loop is null || _index >= _loop.Steps.Count) return;
         if (_loop.Steps[_index] is not MoveLoopStep) return;
 
-        if (t.NewConfidence != RoomConfidence.Located) return;
+        if (t.NewConfidence != RoomConfidence.Confirmed) return;
         if (t.NewRoom?.Key is not { } key) return;
 
         if (key.Equals(_expectedMoveTarget))

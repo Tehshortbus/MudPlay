@@ -134,8 +134,8 @@ public sealed class AutoWalkManagerTests : IDisposable
 
         h.Walker.WalkTo(new RoomKey(1, 3));
 
-        // Simulate the server confirming step 1 (now at 1/2).
-        h.Tracker.NoteMoveSent(Direction.N);
+        // Walker.SendStep already invoked NoteMoveSent on the tracker;
+        // simulate the server confirming step 1 (now at 1/2).
         h.Tracker.NoteRoomObserved(new RoomObservation("B",
             new HashSet<Direction> { Direction.N, Direction.S }));
 
@@ -144,7 +144,6 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
 
         // Confirm step 2 (now at 1/3).
-        h.Tracker.NoteMoveSent(Direction.N);
         h.Tracker.NoteRoomObserved(new RoomObservation("C",
             new HashSet<Direction> { Direction.S }));
 
@@ -162,17 +161,15 @@ public sealed class AutoWalkManagerTests : IDisposable
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 3));
 
-        // Server refuses the move — tracker reverts Pending → Located
-        // at the SAME room (1/1).
-        h.Tracker.NoteMoveSent(Direction.N);
+        // Walker already announced the move; the server refuses it →
+        // tracker reverts Pending → Confirmed at the SAME room (1/1).
         h.Tracker.NoteMoveBlocked();
 
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Retrying);
         Assert.Equal(2, h.Sent.Count);                       // retry sent
         Assert.Equal(WalkState.Walking, h.Walker.State);
 
-        // Now the retry succeeds.
-        h.Tracker.NoteMoveSent(Direction.N);
+        // Now the retry succeeds (walker re-announced the move on send).
         h.Tracker.NoteRoomObserved(new RoomObservation("B",
             new HashSet<Direction> { Direction.N, Direction.S }));
 
@@ -186,10 +183,8 @@ public sealed class AutoWalkManagerTests : IDisposable
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 3));
 
-        h.Tracker.NoteMoveSent(Direction.N);
         h.Tracker.NoteMoveBlocked();
         // The retry above sent step #2. Block again.
-        h.Tracker.NoteMoveSent(Direction.N);
         h.Tracker.NoteMoveBlocked();
 
         Assert.Equal(WalkState.Idle, h.Walker.State);
@@ -363,8 +358,8 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[1]));
 
-        // Confirm the move lands.
-        h.Tracker.NoteMoveSent(Direction.E);
+        // Walker.SendStep already called NoteMoveSent; confirm the
+        // move lands.
         h.Tracker.NoteRoomObserved(new RoomObservation("Foyer",
             new HashSet<Direction> { Direction.W }));
 

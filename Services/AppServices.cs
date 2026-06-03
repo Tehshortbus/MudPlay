@@ -901,21 +901,14 @@ public sealed class AppServices
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
 
-        // Persist the player's current room on every successful
-        // locate so the next session can open the map already
-        // centred on it. Save happens on the regular profile-save
-        // cycle (app close / settings Apply / explicit save) — we
-        // don't write per-step to disk.
-        RoomTracker.StateChanged += t =>
-        {
-            if (t.NewConfidence != Game.Map.RoomConfidence.Located) return;
-            if (t.NewRoom is not { } room) return;
-            if (Profile.Current is not { } prof) return;
-            if (prof.LastKnownRoom is { } prev
-                && prev.Map == room.Key.Map && prev.Room == room.Key.Room)
-                return;
-            prof.LastKnownRoom = new Models.Profile.RoomRef(room.Key.Map, room.Key.Room);
-        };
+        // Hand the loaded profile to the tracker so it can hydrate
+        // LastKnownRoom + RecentSteps (replay-from-last-Confirmed
+        // recovery) and write back on every Confirmed transition /
+        // step. Persistence flushes to disk on the regular profile-save
+        // cycle (app close / settings Apply / explicit save).
+        Profile.ProfileLoaded += p => RoomTracker.Hydrate(p);
+        Profile.ProfileClosed += () => RoomTracker.OnProfileClosed();
+        if (Profile.Current is { } loaded) RoomTracker.Hydrate(loaded);
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
         // cache invalidates on every graph reload.

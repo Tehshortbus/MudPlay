@@ -76,7 +76,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
 
         detector.FeedTestLine(line);
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
@@ -112,6 +112,6 @@ public sealed class MovementRefusalDetectorTests : IDisposable
 
         detector.FeedTestLine("You can't go that way.");
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
 }

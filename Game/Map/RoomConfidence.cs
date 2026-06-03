@@ -17,8 +17,13 @@ public enum RoomConfidence
     /// </summary>
     Unknown = 0,
 
-    /// <summary>Current room is trusted. Walker / loop / auto-lair may use it as a source.</summary>
-    Located = 1,
+    /// <summary>
+    /// Current room is trusted. Walker / loop / auto-lair may use it as
+    /// a source. This is the "happy path" state; the tracker writes
+    /// <see cref="Models.Profile.CharacterProfile.LastKnownRoom"/> on
+    /// every entry so the next session opens at the same spot.
+    /// </summary>
+    Confirmed = 1,
 
     /// <summary>
     /// A move was sent and we're waiting on confirmation. The
@@ -28,18 +33,22 @@ public enum RoomConfidence
     Pending = 2,
 
     /// <summary>
-    /// Latest observation didn't line up with what we expected. The
-    /// tracker is searching for a single matching graph candidate;
-    /// when ambiguous it stays here until the user disambiguates
-    /// (Tier 3 manual pick or the deferred Tier 2 footprint match).
+    /// Latest observation didn't line up with what we expected, but the
+    /// previous <see cref="RoomState.CurrentRoom"/> is preserved as our
+    /// best-guess anchor. A counter on <see cref="RoomState.SuspectStrikes"/>
+    /// increments on each subsequent mismatch; at the configured strike
+    /// limit the tracker tries replay-from-last-Confirmed recovery and
+    /// falls through to <see cref="Lost"/> when replay fails. Suspect
+    /// is internal-only — the badge stays green so the UI doesn't churn
+    /// on transient observation glitches.
     /// </summary>
-    Reconciling = 3,
+    Suspect = 3,
 
     /// <summary>
-    /// No candidate could be matched. Manual "I am here" override
-    /// (Tier 3) is the only path back to <see cref="Located"/> until
-    /// Tier 1 replay + Tier 2 footprint matching ship later in the
-    /// phase.
+    /// Replay-from-last-Confirmed failed and no graph candidate matched.
+    /// Room is null. Recovery paths: a future confirming observation
+    /// resolves us back to <see cref="Confirmed"/>, or the user clicks
+    /// "I am here" on the Navigation map.
     /// </summary>
     Lost = 4,
 }

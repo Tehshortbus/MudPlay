@@ -70,7 +70,7 @@ public sealed class RoomDisplayParserTests : IDisposable
             "Obvious exits: north."
         });
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
@@ -87,7 +87,7 @@ public sealed class RoomDisplayParserTests : IDisposable
             "Obvious exits: north."
         });
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
@@ -107,7 +107,7 @@ public sealed class RoomDisplayParserTests : IDisposable
         // Town Gates has only N in the graph — so the (Name, ExitMask)
         // tuple won't match a 1-of-1; parser still emits the
         // observation but the tracker lands Lost (no candidate).
-        Assert.NotEqual(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.NotEqual(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public sealed class RoomDisplayParserTests : IDisposable
             "Obvious exits: up."
         });
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(2, 5), tracker.State.CurrentRoom!.Key);
     }
 
@@ -340,7 +340,7 @@ public sealed class RoomDisplayParserTests : IDisposable
             ColoredLine("Obvious exits: north.", DefaultAttr),
         });
 
-        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 

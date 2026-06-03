@@ -412,13 +412,17 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshFromTracker()
     {
         RoomState state = _services.RoomTracker.State;
+        // Suspect is internal-only — UI stays green to avoid churn on
+        // transient observation glitches; replay-recovery or a fresh
+        // Confirmed obs resolves it without user intervention. Only
+        // Lost surfaces as an alarm.
         (StatusLabel, StatusBadgeBrush) = state.Confidence switch
         {
-            RoomConfidence.Located     => ("Located",     "#3DDC97"),
-            RoomConfidence.Pending     => ("Pending",     "#F8B500"),
-            RoomConfidence.Reconciling => ("Reconciling", "#F25C54"),
-            RoomConfidence.Lost        => ("Lost",        "#F25C54"),
-            _                          => ("Unknown",     "#888"),
+            RoomConfidence.Confirmed => ("Located", "#3DDC97"),
+            RoomConfidence.Suspect   => ("Located", "#3DDC97"),
+            RoomConfidence.Pending   => ("Pending", "#F8B500"),
+            RoomConfidence.Lost      => ("Lost",    "#F25C54"),
+            _                        => ("Unknown", "#888"),
         };
         CurrentRoomLabel = state.CurrentRoom is { } room
             ? $"{room.Name}  ·  {room.Key}"

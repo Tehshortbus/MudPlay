@@ -21,4 +21,15 @@ public sealed partial class RoomState : ObservableObject
     [ObservableProperty] [field: Owner(typeof(RoomTracker))] private Room? _currentRoom;
     [ObservableProperty] [field: Owner(typeof(RoomTracker))] private RoomConfidence _confidence;
     [ObservableProperty] [field: Owner(typeof(RoomTracker))] private DateTimeOffset _lastUpdatedAt;
+
+    /// <summary>
+    /// Running count of consecutive mismatching observations while in
+    /// <see cref="RoomConfidence.Suspect"/>. Resets to zero on every
+    /// transition to <see cref="RoomConfidence.Confirmed"/>. At the
+    /// configured limit the tracker tries replay-from-last-Confirmed
+    /// recovery; failure drops us to <see cref="RoomConfidence.Lost"/>.
+    /// Surfaced for debug bindings; the user-facing badge stays green
+    /// until Lost.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(RoomTracker))] private int _suspectStrikes;
 }

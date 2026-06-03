@@ -397,7 +397,7 @@ public sealed class AutoWalkManager
         if (_path is null || _index >= _path.Count) return;
         if (_path[_index] is not MoveStep) return;
 
-        if (transition.NewConfidence != RoomConfidence.Located) return;
+        if (transition.NewConfidence != RoomConfidence.Confirmed) return;
 
         RoomKey? newKey = transition.NewRoom?.Key;
         if (newKey is null) return;

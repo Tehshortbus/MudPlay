@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -11,35 +13,66 @@ namespace FujinTerm.Game.Map;
 /// </summary>
 /// <remarks>
 /// <para>
-/// PR 7.1 ships the FSM core; the wire-side parser that turns
-/// MessageRouter events into <see cref="RoomObservation"/>s and the
-/// pattern catalogue for movement-refusal lines land in PR 7.1b. Tier 1
-/// replay-from-last-known and Tier 2 footprint matching land in PR 7.2
-/// (and the late-phase Tier 2 follow-up per the planning conversation).
-/// </para>
-/// <para>
 /// State semantics:
+/// </para>
 /// <list type="bullet">
 ///   <item><see cref="RoomConfidence.Unknown"/> — fresh tracker, no observation yet.</item>
-///   <item><see cref="RoomConfidence.Located"/> — current room is trusted.</item>
-///   <item><see cref="RoomConfidence.Pending"/> — move sent, awaiting confirmation.</item>
-///   <item><see cref="RoomConfidence.Reconciling"/> — observation didn't match; searching for a single graph candidate.</item>
-///   <item><see cref="RoomConfidence.Lost"/> — no candidate matched; only manual override can recover (until PR 7.2).</item>
+///   <item><see cref="RoomConfidence.Confirmed"/> — current room is trusted.</item>
+///   <item><see cref="RoomConfidence.Pending"/> — one or more moves sent, awaiting confirmation.</item>
+///   <item><see cref="RoomConfidence.Suspect"/> — observation didn't line up; current room preserved as best guess; counter incremented. Internal-only, no UI churn.</item>
+///   <item><see cref="RoomConfidence.Lost"/> — replay-from-last-Confirmed failed; user must manually pick or wait for a confirming observation.</item>
 /// </list>
+/// <para>
+/// Recovery: a single tier — replay the persisted
+/// <see cref="CharacterProfile.RecentSteps"/> from the last Confirmed
+/// room through the graph; if the endpoint matches the current
+/// observation, we Confirm there. No fuzzy footprint matching.
+/// </para>
+/// <para>
+/// Persistence: every <see cref="RoomConfidence.Confirmed"/> transition
+/// updates <see cref="CharacterProfile.LastKnownRoom"/> and resets
+/// <see cref="CharacterProfile.RecentSteps"/>. Every
+/// <see cref="NoteMoveSent(Direction, DateTimeOffset?)"/> appends a
+/// step. The profile flushes to disk on the normal save cycle (app
+/// close, settings Apply, explicit save).
 /// </para>
 /// </remarks>
 public sealed class RoomTracker
 {
-    private readonly RoomGraphManager _graph;
-    private readonly LogService? _log;
+    /// <summary>
+    /// Maximum back-to-back moves we'll track in flight. Anything beyond
+    /// this is dropped to keep the queue bounded — a sustained
+    /// observation drought past 15 moves is a parser problem, not a
+    /// tracking one.
+    /// </summary>
+    private const int PendingQueueCap = 15;
 
     /// <summary>
-    /// Direction of the last move sent from a <see cref="RoomConfidence.Located"/>
-    /// or <see cref="RoomConfidence.Pending"/> state, or <c>null</c>
-    /// when no move is in flight. Reset on every transition out of
-    /// <see cref="RoomConfidence.Pending"/>.
+    /// Confirmed-position rolling history retained for debugging /
+    /// future tier-2 recovery. Capped to keep memory bounded.
     /// </summary>
-    private Direction? _pendingDirection;
+    private const int HistoryCap = 50;
+
+    /// <summary>
+    /// Strike count at which the next mismatch triggers replay-recovery
+    /// instead of incrementing further. Matches the user's "3 strikes
+    /// before Lost" directive.
+    /// </summary>
+    private const int SuspectStrikeLimit = 3;
+
+    private readonly RoomGraphManager _graph;
+    private readonly LogService? _log;
+    private readonly ConcurrentQueue<PendingMove> _pending = new();
+    private readonly LinkedList<HistoryEntry> _history = new();
+    private readonly List<DirectionDto> _recentSteps = new();
+
+    /// <summary>
+    /// Profile the tracker is currently writing into. Set by
+    /// <see cref="Hydrate"/>; cleared by <see cref="OnProfileClosed"/>.
+    /// When null, persistence operations are no-ops — the tracker still
+    /// runs in memory but doesn't touch any profile.
+    /// </summary>
+    private CharacterProfile? _profile;
 
     /// <summary>The state class itself — bound by the UI, mutated only by this tracker.</summary>
     public RoomState State { get; } = new();
@@ -59,50 +92,104 @@ public sealed class RoomTracker
         ArgumentNullException.ThrowIfNull(graph);
         _graph = graph;
         _log = log;
-
-        // Set the initial timestamp; CurrentRoom stays null and
-        // Confidence stays Unknown until the first observation lands.
         State.LastUpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    // ----- profile hydrate / save -------------------------------------
+
+    /// <summary>
+    /// Adopt the supplied profile as our persistence target and seed
+    /// state from its <see cref="CharacterProfile.LastKnownRoom"/> +
+    /// <see cref="CharacterProfile.RecentSteps"/>. Called by
+    /// <see cref="AppServices"/> on
+    /// <see cref="ProfileService.ProfileLoaded"/>. Idempotent — calling
+    /// twice with the same profile reuses the seed.
+    /// </summary>
+    /// <remarks>
+    /// Seeding strategy: if <c>LastKnownRoom</c> resolves to a room in
+    /// the active graph, we land Confirmed there and prime the
+    /// <c>_recentSteps</c> list with the persisted entries (so a
+    /// subsequent failed observation triggers replay). If the room
+    /// can't be resolved (stale profile, different game-data set,
+    /// graph not yet loaded), the tracker stays Unknown and the
+    /// next observation lands normally.
+    /// </remarks>
+    public void Hydrate(CharacterProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+
+        if (profile.LastKnownRoom is not { } persisted) return;
+        Room? room = _graph.GetRoom(new RoomKey(persisted.Map, persisted.Room));
+        if (room is null)
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Hydrate: LastKnownRoom {persisted.Map}/{persisted.Room} not in active graph; staying Unknown.");
+            return;
+        }
+
+        _recentSteps.Clear();
+        if (profile.RecentSteps is { } steps) _recentSteps.AddRange(steps);
+
+        // Set Confirmed without writing back to the profile (we just
+        // read from it). Bypass the SetRoom persistence path so we
+        // don't immediately wipe RecentSteps before they're useful.
+        Room? prev = State.CurrentRoom;
+        RoomConfidence prevConf = State.Confidence;
+        State.CurrentRoom = room;
+        State.Confidence = RoomConfidence.Confirmed;
+        State.SuspectStrikes = 0;
+        State.LastUpdatedAt = DateTimeOffset.UtcNow;
+        PushHistory(room.Key, State.LastUpdatedAt);
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            $"Hydrate: Confirmed at {room.Name} {room.Key} with {_recentSteps.Count} pending replay steps.");
+        RaiseStateChanged(prevConf, RoomConfidence.Confirmed, prev, room);
+    }
+
+    /// <summary>Called when the profile unloads. Detaches the persistence target.</summary>
+    public void OnProfileClosed()
+    {
+        _profile = null;
     }
 
     // ----- inputs -----------------------------------------------------
 
     /// <summary>
     /// The walker (or any other caller that just sent a move) reports
-    /// the direction. The tracker remembers it so the next
-    /// <see cref="NoteRoomObserved"/> can be validated against the
-    /// expected exit target.
+    /// the direction. The tracker enqueues a pending move and prepares
+    /// to validate against the next observation.
     /// </summary>
-    /// <remarks>
-    /// Calling this from <see cref="RoomConfidence.Reconciling"/> or
-    /// <see cref="RoomConfidence.Lost"/> is a no-op for FSM purposes —
-    /// we can't predict where the move will land, so we just keep
-    /// waiting for a usable observation. PR 7.2 will use these moves to
-    /// drive the replay-from-last-known recovery.
-    /// </remarks>
     public void NoteMoveSent(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        EnqueuePending(PendingMove.FromDirection(direction, when));
+        AppendStep(new DirectionDto(direction));
 
-        switch (State.Confidence)
+        if (State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending)
         {
-            case RoomConfidence.Located:
-            case RoomConfidence.Pending:
-                // Pending → Pending is a chain (we sent another move
-                // before the previous landed). The pending direction
-                // updates to the latest; the FSM treats the next
-                // observation as confirmation of the latest move only.
-                _pendingDirection = direction;
-                SetConfidence(RoomConfidence.Pending, when, "move sent");
-                break;
+            SetConfidence(RoomConfidence.Pending, when, $"move {direction} sent");
+        }
+        // From Unknown / Suspect / Lost we still enqueue and persist
+        // the step — replay needs the full step record — but we don't
+        // flip to Pending because we don't have a confirmed anchor to
+        // hang the prediction on.
+    }
 
-            case RoomConfidence.Unknown:
-            case RoomConfidence.Reconciling:
-            case RoomConfidence.Lost:
-                // Record nothing; next observation will be evaluated on
-                // its own merits via the 1-of-1 path. (Replay buffer is
-                // PR 7.2's concern.)
-                break;
+    /// <summary>
+    /// Text-exit move (e.g. <c>"go path"</c>) — used by the
+    /// look-direction-interception work for arbitrary text commands
+    /// that don't map to a <see cref="Direction"/>.
+    /// </summary>
+    public void NoteMoveSent(string command, Direction? cardinal = null, DateTimeOffset? whenUtc = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        EnqueuePending(new PendingMove(cardinal, command, when));
+        AppendStep(new DirectionDto(cardinal, command));
+
+        if (State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending)
+        {
+            SetConfidence(RoomConfidence.Pending, when, $"move '{command}' sent");
         }
     }
 
@@ -119,23 +206,23 @@ public sealed class RoomTracker
         switch (State.Confidence)
         {
             case RoomConfidence.Unknown:
-                // First observation — promote to Located only if the
-                // graph contains exactly one candidate matching
-                // (name, exits). Anything else lands in Reconciling
-                // (multiple candidates) or Lost (no candidates).
                 LandFromCandidateSearch(observation, when);
                 break;
 
-            case RoomConfidence.Located:
-                ReconcileFromLocated(observation, when);
+            case RoomConfidence.Confirmed:
+                ReconcileFromConfirmed(observation, when);
                 break;
 
             case RoomConfidence.Pending:
                 ReconcileFromPending(observation, when);
                 break;
 
-            case RoomConfidence.Reconciling:
+            case RoomConfidence.Suspect:
+                ReconcileFromSuspect(observation, when);
+                break;
+
             case RoomConfidence.Lost:
+                // Lost → only an unambiguous candidate resolves us.
                 LandFromCandidateSearch(observation, when);
                 break;
         }
@@ -143,28 +230,31 @@ public sealed class RoomTracker
 
     /// <summary>
     /// A movement-refusal line was seen (e.g. "You are too paralyzed
-    /// to move." / "You can't go that way."). If we were in
-    /// <see cref="RoomConfidence.Pending"/>, the move didn't actually
-    /// take place — revert to <see cref="RoomConfidence.Located"/> at
-    /// the current room.
+    /// to move." / "You can't go that way."). Drains the most recently
+    /// queued pending move (since that's the one the server just
+    /// refused) and reverts toward Confirmed at the current room.
     /// </summary>
     public void NoteMoveBlocked(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
 
+        // Drop the most recent pending move + its persisted step — the
+        // server refused, so it never happened.
+        DropMostRecentPending();
+
         if (State.Confidence == RoomConfidence.Pending)
         {
-            _pendingDirection = null;
-            SetConfidence(RoomConfidence.Located, when, "move blocked");
+            RoomConfidence target = _pending.IsEmpty
+                ? RoomConfidence.Confirmed
+                : RoomConfidence.Pending;
+            SetConfidence(target, when, "move blocked");
         }
-        // From any other state, a refusal is just noise — nothing in
-        // flight to revert.
     }
 
     /// <summary>
-    /// Tier 3 manual override — the user pointed at a room on the map
-    /// and said "I'm here". Hard sets the current room and promotes
-    /// to <see cref="RoomConfidence.Located"/>.
+    /// Tier-3 manual override — the user pointed at a room on the map
+    /// and said "I'm here". Hard sets the current room and promotes to
+    /// <see cref="RoomConfidence.Confirmed"/>.
     /// </summary>
     public void SetLocated(RoomKey key, DateTimeOffset? whenUtc = null)
     {
@@ -173,15 +263,13 @@ public sealed class RoomTracker
         Room? room = _graph.GetRoom(key);
         if (room is null)
         {
-            // The user picked a room that isn't in the active set —
-            // refuse to set state to something we can't reason about.
             _log?.Log(LogSeverity.Warn, "RoomTracker",
                 $"Manual locate refused: room key {key} not present in active graph.");
             return;
         }
 
-        _pendingDirection = null;
-        SetRoom(room, RoomConfidence.Located, when, "manual locate");
+        ClearPendingAndSteps();
+        SetRoom(room, RoomConfidence.Confirmed, when, "manual locate");
     }
 
     /// <summary>
@@ -192,13 +280,14 @@ public sealed class RoomTracker
     public void OnGraphReloaded(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        _pendingDirection = null;
+        ClearPendingAndSteps();
+        _history.Clear();
         SetRoom(room: null, RoomConfidence.Unknown, when, "graph reloaded");
     }
 
     // ----- FSM internals ----------------------------------------------
 
-    private void ReconcileFromLocated(RoomObservation observation, DateTimeOffset when)
+    private void ReconcileFromConfirmed(RoomObservation observation, DateTimeOffset when)
     {
         Room? current = State.CurrentRoom;
         if (current is not null && MatchesPredicted(current, observation))
@@ -207,56 +296,120 @@ public sealed class RoomTracker
             // match tolerates exits the live display hides relative
             // to the graph (closed doors, hidden / searchable, gated).
             State.LastUpdatedAt = when;
-            RaiseStateChanged(RoomConfidence.Located, RoomConfidence.Located, current, current);
+            RaiseStateChanged(RoomConfidence.Confirmed, RoomConfidence.Confirmed, current, current);
             return;
         }
 
-        // We thought we knew where we were but the room display
-        // disagrees. Search for a single matching candidate.
-        LandFromCandidateSearch(observation, when);
+        // We thought we knew where we were but the observation
+        // disagrees. Two possibilities: (a) a 1-of-1 candidate exists
+        // in the graph and the user got teleported / dragged → land
+        // Confirmed at the new room; (b) ambiguous / zero → escalate
+        // to Suspect at the current room.
+        IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
+        if (candidates.Count == 1
+            && _graph.GetRoom(candidates[0]) is { } single)
+        {
+            ClearPendingAndSteps();
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 silent desync");
+            return;
+        }
+
+        EnterSuspect(when, $"observation mismatched from Confirmed; candidates={candidates.Count}");
     }
 
     private void ReconcileFromPending(RoomObservation observation, DateTimeOffset when)
     {
         Room? source = State.CurrentRoom;
-        Direction? dir = _pendingDirection;
 
-        if (source is not null
-            && dir is { } direction
+        // Try to match against the head pending move first — that's the
+        // oldest move the server is most likely to be confirming.
+        if (_pending.TryPeek(out PendingMove head)
+            && source is not null
+            && head.Cardinal is { } direction
             && source.Exits.TryGetValue(direction, out RoomExit exit))
         {
             Room? expected = _graph.GetRoom(exit.Target);
 
-            // Strategy 1 — predicted neighbour matches by name AND
-            // observed exits are at least a subset of the graph's
-            // exits. Subset (not strict equality) tolerates exits the
-            // game hides on the "Obvious exits:" line (closed doors,
-            // hidden / searchable exits, conditional exits) — those
-            // surface in the graph but not in the live observation.
+            // Strategy 1 — predicted neighbour matches.
             if (expected is not null && MatchesPredicted(expected, observation))
             {
-                _pendingDirection = null;
-                SetRoom(expected, RoomConfidence.Located, when, $"move {direction} confirmed");
+                _pending.TryDequeue(out _);
+                State.SuspectStrikes = 0;
+                if (_pending.IsEmpty)
+                    SetRoom(expected, RoomConfidence.Confirmed, when, $"move {direction} confirmed");
+                else
+                {
+                    // More moves still in flight — land Confirmed at
+                    // the new room (we know where we are) but keep
+                    // Pending posture if more confirmations are due.
+                    SetRoom(expected, RoomConfidence.Pending, when, $"move {direction} confirmed, queue not empty");
+                }
                 return;
             }
 
-            // Strategy 1b — refused-move redisplay. A single move
-            // command can land us at the predicted neighbour OR keep
-            // us at the source (server refused / delayed: combat
-            // re-engaged, paralysed without an explicit refusal line,
-            // follower lag). If the observation matches the source
-            // room we're at, treat it as a refusal and stay put.
+            // Strategy 1b — refused-move redisplay (same room as source).
             if (MatchesPredicted(source, observation))
             {
-                _pendingDirection = null;
-                SetConfidence(RoomConfidence.Located, when, "move-refused redisplay");
+                _pending.TryDequeue(out _);
+                DropMostRecentStep();                       // the move didn't actually take place
+                State.SuspectStrikes = 0;
+                RoomConfidence target = _pending.IsEmpty
+                    ? RoomConfidence.Confirmed
+                    : RoomConfidence.Pending;
+                // CurrentRoom already == source; reuse SetConfidence so
+                // history stays correctly seeded with the unchanged room.
+                if (target == RoomConfidence.Confirmed)
+                    PersistConfirmedAnchor(source, when);
+                SetConfidence(target, when, "move-refused redisplay");
                 return;
             }
         }
 
-        // Neither predicted nor refused — search the graph.
-        _pendingDirection = null;
-        LandFromCandidateSearch(observation, when);
+        // Neither predicted nor refused — fall back to graph search.
+        IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
+        if (candidates.Count == 1
+            && _graph.GetRoom(candidates[0]) is { } single)
+        {
+            ClearPendingAndSteps();
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate after Pending miss");
+            return;
+        }
+
+        EnterSuspect(when, $"Pending observation didn't match queue head; candidates={candidates.Count}");
+    }
+
+    private void ReconcileFromSuspect(RoomObservation observation, DateTimeOffset when)
+    {
+        Room? current = State.CurrentRoom;
+        if (current is not null && MatchesPredicted(current, observation))
+        {
+            // Glitch resolved — server caught up. Back to Confirmed.
+            State.SuspectStrikes = 0;
+            ClearPendingAndSteps();
+            PersistConfirmedAnchor(current, when);
+            SetConfidence(RoomConfidence.Confirmed, when, "suspect resolved (current room re-confirmed)");
+            return;
+        }
+
+        IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
+        if (candidates.Count == 1
+            && _graph.GetRoom(candidates[0]) is { } single)
+        {
+            ClearPendingAndSteps();
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate from Suspect");
+            return;
+        }
+
+        // Still mismatched. Either escalate or replay.
+        if (State.SuspectStrikes + 1 >= SuspectStrikeLimit)
+        {
+            if (TryReplayRecover(observation, when)) return;
+            SetRoom(room: null, RoomConfidence.Lost, when,
+                $"suspect strike limit ({SuspectStrikeLimit}) reached; replay failed");
+            return;
+        }
+
+        EnterSuspect(when, $"suspect mismatch continues; candidates={candidates.Count}");
     }
 
     private void LandFromCandidateSearch(RoomObservation observation, DateTimeOffset when)
@@ -272,46 +425,81 @@ public sealed class RoomTracker
                     SetRoom(room: null, RoomConfidence.Lost, when, "graph inconsistency");
                     return;
                 }
-                SetRoom(room, RoomConfidence.Located, when, "1-of-1 candidate");
+                ClearPendingAndSteps();
+                SetRoom(room, RoomConfidence.Confirmed, when, "1-of-1 candidate");
                 break;
 
             case 0:
-                SetRoom(room: null, RoomConfidence.Lost, when, "no graph candidate");
+                if (TryReplayRecover(observation, when)) return;
+                SetRoom(room: null, RoomConfidence.Lost, when, "no graph candidate; replay failed");
                 break;
 
             default:
-                // Ambiguous — clear the room and wait for Tier 2/3 to pick.
-                // Holding the previous room around would let walker /
-                // loop / auto-lair callers act on stale state; null is
-                // honest about "we don't know".
-                SetRoom(room: null, RoomConfidence.Reconciling, when,
-                    $"{candidates.Count} candidates");
+                // Ambiguous from Unknown / Lost — drop into Suspect with
+                // no anchor room (we never had one). Counter stays
+                // distinct so the next observation can either resolve
+                // or trip Lost on its own merits.
+                SetRoom(room: null, RoomConfidence.Suspect, when,
+                    $"{candidates.Count} candidates (ambiguous)");
                 break;
         }
     }
 
     /// <summary>
-    /// Strict match used by <see cref="LandFromCandidateSearch"/> —
-    /// name AND exit set must match exactly. Used when we have no
-    /// other anchor to narrow ambiguous candidates.
+    /// Walk <see cref="_recentSteps"/> through the graph starting at
+    /// the most-recent <see cref="HistoryEntry"/>. If the projected
+    /// endpoint matches <paramref name="observation"/>, land Confirmed
+    /// there. Returns <c>true</c> when recovery succeeded; the caller
+    /// proceeds to Lost on <c>false</c>.
     /// </summary>
-    private static bool MatchesCurrent(Room current, RoomObservation observation)
+    private bool TryReplayRecover(RoomObservation observation, DateTimeOffset when)
     {
-        if (!string.Equals(current.Name, observation.Name, StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (_history.First is null) return false;
+        if (_recentSteps.Count == 0) return false;
 
-        uint observedMask = 0;
-        foreach (Direction d in observation.Exits) observedMask |= 1u << (int)d;
-        return observedMask == current.ExitMask;
+        // Walk forward from the newest confirmed room through the
+        // persisted steps.
+        RoomKey start = _history.First.Value.Room;
+        Room? cursor = _graph.GetRoom(start);
+        if (cursor is null) return false;
+
+        foreach (DirectionDto step in _recentSteps)
+        {
+            if (step.Cardinal is not { } direction) return false;     // text exits aren't replayable through the graph
+            if (!cursor.Exits.TryGetValue(direction, out RoomExit exit)) return false;
+            Room? next = _graph.GetRoom(exit.Target);
+            if (next is null) return false;
+            cursor = next;
+        }
+
+        if (!MatchesPredicted(cursor, observation)) return false;
+
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            $"Replay-recovery succeeded: {start} + {_recentSteps.Count} steps → {cursor.Key} ({cursor.Name}).");
+
+        ClearPendingAndSteps();
+        SetRoom(cursor, RoomConfidence.Confirmed, when, "replay-from-last-Confirmed succeeded");
+        return true;
+    }
+
+    private void EnterSuspect(DateTimeOffset when, string reason)
+    {
+        int strikes = State.SuspectStrikes + 1;
+        State.SuspectStrikes = strikes;
+        Room? prevRoom = State.CurrentRoom;
+        RoomConfidence prev = State.Confidence;
+        State.Confidence = RoomConfidence.Suspect;
+        State.LastUpdatedAt = when;
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            $"Suspect strike {strikes}/{SuspectStrikeLimit}: {reason}.");
+        RaiseStateChanged(prev, RoomConfidence.Suspect, prevRoom, prevRoom);
     }
 
     /// <summary>
-    /// Looser match used when we already have a predicted target
-    /// (Strategy 1 / 1b) — name match plus observed-exits-are-subset
-    /// of graph-exits. Tolerates "Obvious exits:" hiding closed
-    /// doors / searchable / conditional exits the graph still knows
-    /// about. Strict equality fired too often on real game data
-    /// where the live display omits the gated exits.
+    /// Looser match: name match plus observed-exits-are-subset of
+    /// graph-exits. Tolerates "Obvious exits:" hiding closed doors /
+    /// searchable / conditional exits the graph still knows about.
+    /// Strict equality fired too often on real game data.
     /// </summary>
     private static bool MatchesPredicted(Room target, RoomObservation observation)
     {
@@ -333,6 +521,13 @@ public sealed class RoomTracker
         State.CurrentRoom = room;
         State.Confidence = confidence;
         State.LastUpdatedAt = when;
+        if (confidence == RoomConfidence.Confirmed) State.SuspectStrikes = 0;
+
+        if (confidence == RoomConfidence.Confirmed && room is not null)
+        {
+            PushHistory(room.Key, when);
+            PersistConfirmedAnchor(room, when);
+        }
 
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"{prev} → {confidence} ({reason}): " +
@@ -351,6 +546,7 @@ public sealed class RoomTracker
         }
         State.Confidence = confidence;
         State.LastUpdatedAt = when;
+        if (confidence == RoomConfidence.Confirmed) State.SuspectStrikes = 0;
 
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"{prev} → {confidence} ({reason}).");
@@ -367,7 +563,74 @@ public sealed class RoomTracker
         StateChanged?.Invoke(new RoomTransition(
             previousConfidence, newConfidence, previousRoom, newRoom, State.LastUpdatedAt));
     }
+
+    // ----- queue / step / history housekeeping ------------------------
+
+    private void EnqueuePending(PendingMove move)
+    {
+        _pending.Enqueue(move);
+        // Bounded queue — drain oldest entries past the cap.
+        while (_pending.Count > PendingQueueCap && _pending.TryDequeue(out _)) { /* drop */ }
+    }
+
+    private void DropMostRecentPending()
+    {
+        if (_pending.IsEmpty) return;
+        // ConcurrentQueue has no remove-tail; rebuild by drain + reinsert.
+        var keep = new List<PendingMove>(_pending.Count);
+        while (_pending.TryDequeue(out PendingMove m)) keep.Add(m);
+        for (int i = 0; i < keep.Count - 1; i++) _pending.Enqueue(keep[i]);
+        DropMostRecentStep();
+    }
+
+    private void AppendStep(DirectionDto step)
+    {
+        _recentSteps.Add(step);
+        PersistSteps();
+    }
+
+    private void DropMostRecentStep()
+    {
+        if (_recentSteps.Count == 0) return;
+        _recentSteps.RemoveAt(_recentSteps.Count - 1);
+        PersistSteps();
+    }
+
+    private void ClearPendingAndSteps()
+    {
+        while (_pending.TryDequeue(out _)) { /* drain */ }
+        if (_recentSteps.Count == 0) return;
+        _recentSteps.Clear();
+        PersistSteps();
+    }
+
+    private void PushHistory(RoomKey key, DateTimeOffset when)
+    {
+        _history.AddFirst(new HistoryEntry(key, when));
+        while (_history.Count > HistoryCap) _history.RemoveLast();
+    }
+
+    private void PersistConfirmedAnchor(Room room, DateTimeOffset when)
+    {
+        if (_profile is null) return;
+        _profile.LastKnownRoom = new RoomRef(room.Key.Map, room.Key.Room);
+        // RecentSteps reset on Confirmed — clear in-memory + persist.
+        _recentSteps.Clear();
+        _profile.RecentSteps = null;
+        _ = when;                                                // reserved for future per-step timestamp persistence
+    }
+
+    private void PersistSteps()
+    {
+        if (_profile is null) return;
+        _profile.RecentSteps = _recentSteps.Count == 0
+            ? null
+            : new List<DirectionDto>(_recentSteps);
+    }
 }
+
+/// <summary>One entry in the rolling confirmed-position history buffer.</summary>
+internal readonly record struct HistoryEntry(RoomKey Room, DateTimeOffset ConfirmedAt);
 
 /// <summary>
 /// Payload of <see cref="RoomTracker.StateChanged"/>. Both
