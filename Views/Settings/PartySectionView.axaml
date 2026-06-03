@@ -30,32 +30,7 @@
             <TextBlock Text="{Binding Title}"
                        Foreground="{StaticResource ChromeFgBrush}"
                        FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"/>
-
-            <Border Padding="4,2"
-                    Background="{StaticResource ChromeBgElevBrush}"
-                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}"
-                    HorizontalAlignment="Left"
-                    Margin="0,4,0,4">
-                <TextBlock Text="{Binding PhaseTag}"
-                           Foreground="{StaticResource AccentAmberBrush}"
-                           FontFamily="{StaticResource FontMono}"
-                           FontSize="11"/>
-            </Border>
-
-            <TextBlock Text="{Binding Description}"
-                       Foreground="{StaticResource ChromeFgSecBrush}"
-                       FontSize="{StaticResource FontSizeMd}"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,4"/>
-
-            <TextBlock Text="Surface preview only — every control below is disabled. Hover for the phase / PR that will wire it."
-                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                       FontSize="{StaticResource FontSizeSm}"
-                       FontStyle="Italic"
-                       TextWrapping="Wrap"
+                       FontWeight="SemiBold"
                        Margin="0,0,0,8"/>
 
             <!-- ============ Party behavior ============ -->

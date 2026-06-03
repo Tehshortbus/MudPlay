@@ -33,13 +33,6 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
 
-    public string PhaseTag => "Phase 6 (PartyManager) + Phase 12 PR 12.D (CastingDirector — party)";
-
-    public string Description =>
-        "Party-coordination knobs plus the party-cast spell picks. Heal rows put the spell and threshold side by " +
-        "side; bless takes 10 slots without per-slot timeouts (the bless engine handles re-cast cadence on its " +
-        "own). Cure / buff / heal priority is configured once on the Spells tab and applies to both self and party.";
-
     public override Control View => _view ??= new PartySectionView { DataContext = this };
 
     public override IEnumerable<string> SearchableLabels => new[]
