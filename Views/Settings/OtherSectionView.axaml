@@ -116,6 +116,32 @@
                                ToolTip.Tip="Caps the `disarm trap &lt;dir&gt;` retry loop after the trap has been spotted. Default 5. Damage-aware abort (stop early on HP loss) ships with the Phase 13 HealthManager wiring."/>
             </Grid>
 
+            <!-- Walker door bash / pick caps (commit 2). Bash row above
+                 pick row by default; the "Pick locks instead of bashing"
+                 toggle below flips the walker's verb preference. -->
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,12,0,0" ColumnSpacing="8" RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Door max bash"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                               Value="{Binding MaxBashAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="100" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `bash &lt;dir&gt;` retry loop when opening a door. Default 10. Hits when the player's strength is below the door requirement and the server replies with `attempts to bash through fail`."/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Door max pick"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                               Value="{Binding MaxPickAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="100" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `pick &lt;dir&gt;` retry loop when opening a door. Default 10. Picking is probabilistic — the skill can fail even when the value meets the requirement."/>
+
+                <CheckBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                          Content="Pick locks instead of bashing"
+                          IsChecked="{Binding PicklocksOverBash, Mode=TwoWay}"
+                          ToolTip.Tip="When checked, the walker prefers `pick &lt;dir&gt;` over `bash &lt;dir&gt;` on doors where both verbs are viable. Bash is louder and breaks stealth; thieves typically flip this on."/>
+            </Grid>
+
             <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
                  Database after [spinner] days." — spinner widened from
                  90→120 so 4-digit values (e.g. 3650-day max) render

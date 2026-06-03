@@ -60,6 +60,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Enter realm";
             yield return "Logoff";
             yield return "@hangup";
+            yield return "Attempt bash";
+            yield return "Pick locks instead of bashing";
+            yield return "Attempt pick-lock";
+            yield return "Lockpicks";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -106,6 +110,31 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private int _maxTrapSearchAttempts = 20;
     [ObservableProperty] private int _maxTrapDisarmAttempts = 5;
+
+    // ----- Door open/bash/pick caps (wired) -----
+    // Graduated from Phase-4 stubs by commit 2. Read live by
+    // DoorOpenManager on each enqueue via providers in AppServices
+    // (no push needed — the manager reads through the resolver on
+    // every request).
+
+    /// <summary>
+    /// Walker max <c>bash &lt;dir&gt;</c> retries before falling back
+    /// to pick / failing. Default 10 per user direction.
+    /// </summary>
+    [ObservableProperty] private int _maxBashAttempts = 10;
+
+    /// <summary>
+    /// Walker max <c>pick &lt;dir&gt;</c> retries before falling back
+    /// to bash / failing. Default 10 per user direction.
+    /// </summary>
+    [ObservableProperty] private int _maxPickAttempts = 10;
+
+    /// <summary>
+    /// When checked, the walker prefers <c>pick &lt;dir&gt;</c> over
+    /// <c>bash &lt;dir&gt;</c> on doors where both verbs are viable.
+    /// Thieves typically flip this on.
+    /// </summary>
+    [ObservableProperty] private bool _picklocksOverBash;
 
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
@@ -158,16 +187,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         }),
         new StubGroup("Locks & traps", new[]
         {
-            // Label = prose prefix, suffix = unit; the inline-numeric
-            // row template renders "Attempt bash [picker] times" so
-            // the picker is positioned exactly where the "N" was
-            // written into the label before.
-            //
-            // Toggles sit immediately ABOVE the picker they gate, so
-            // the user reads "decide → set the cap" top-down.
-            new StubField("Attempt bash",                  StubFieldKind.Numeric, "Phase 7 — retry cap on door / chest bash.",                      "times"),
-            new StubField("Pick locks instead of bashing", StubFieldKind.Check,   "Phase 13 — walker prefers lockpicking when the skill is trained."),
-            new StubField("Attempt pick-lock",             StubFieldKind.Numeric, "Phase 7 — retry cap on lockpicking.",                            "times"),
+            // Attempt-bash / Pick-locks-over-bash / Attempt-pick-lock
+            // graduated to wired fields by commit 2 (DoorOpenManager).
+            // They render in the wired section above; this group keeps
+            // the remaining trap-disarm toggles only.
             new StubField("Attempt to disarm traps",       StubFieldKind.Check,   "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
             new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
         }),
@@ -210,6 +233,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             GameExitCommand  = (GameExitCommand  ?? string.Empty).Trim(),
             MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
             MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
+            MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
+            MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
+            PicklocksOverBash     = PicklocksOverBash,
         };
 
         profile.Settings ??= new();
@@ -262,6 +288,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         GameExitCommand  = dto.GameExitCommand;
         MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
         MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
+        MaxBashAttempts       = dto.MaxBashAttempts;
+        MaxPickAttempts       = dto.MaxPickAttempts;
+        PicklocksOverBash     = dto.PicklocksOverBash;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -319,6 +348,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
     partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();
+    partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();
+    partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
+    partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
 
     private void MarkDirty()
     {

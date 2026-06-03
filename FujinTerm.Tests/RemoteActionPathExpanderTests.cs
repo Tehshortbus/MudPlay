@@ -74,33 +74,36 @@ public sealed class RemoteActionPathExpanderTests : IDisposable
     }
 
     [Fact]
-    public void DoorExit_InsertsOpenDoorBeforeMove()
+    public void DoorExit_EmitsMoveStepOnly_WalkerHandlesAtRuntime()
     {
+        // Door handling moved from expand-time to step-send-time —
+        // the walker routes Door-hint MoveSteps through
+        // DoorOpenManager (bash/pick/open) before the cardinal move
+        // bytes go out. The expander no longer inserts a CommandStep
+        // for the door.
         RoomGraphManager graph = NewGraph();
         var steps = RemoteActionPathExpander.Expand(
             graph, new RoomKey(1, 1), new[] { Direction.E });
 
-        Assert.Equal(2, steps.Count);
-        Assert.IsType<CommandStep>(steps[0]);
-        Assert.Equal("open door east", ((CommandStep)steps[0]).Command);
-        Assert.IsType<MoveStep>(steps[1]);
-        Assert.Equal(Direction.E, ((MoveStep)steps[1]).Direction);
+        Assert.Single(steps);
+        Assert.IsType<MoveStep>(steps[0]);
+        Assert.Equal(Direction.E, ((MoveStep)steps[0]).Direction);
     }
 
     [Fact]
-    public void MultiHopWithDoor_InterleavesCorrectly()
+    public void MultiHopWithDoor_AllMoveSteps()
     {
         RoomGraphManager graph = NewGraph();
 
-        // 1/1 → 1/3 via E (door) then N.
+        // 1/1 → 1/3 via E (door) then N. No CommandStep — door
+        // handling is runtime now.
         var steps = RemoteActionPathExpander.Expand(
             graph, new RoomKey(1, 1),
             new[] { Direction.E, Direction.N });
 
-        Assert.Equal(3, steps.Count);
-        Assert.Equal("open door east", ((CommandStep)steps[0]).Command);
-        Assert.Equal(Direction.E, ((MoveStep)steps[1]).Direction);
-        Assert.Equal(Direction.N, ((MoveStep)steps[2]).Direction);
+        Assert.Equal(2, steps.Count);
+        Assert.Equal(Direction.E, ((MoveStep)steps[0]).Direction);
+        Assert.Equal(Direction.N, ((MoveStep)steps[1]).Direction);
     }
 
     [Fact]
@@ -132,46 +135,4 @@ public sealed class RemoteActionPathExpanderTests : IDisposable
         Assert.Empty(steps);
     }
 
-    [Fact]
-    public void AllPlanarDirections_HaveLongFormWords()
-    {
-        // Build a synthetic graph with every direction as a door exit,
-        // verify the expander emits the right verb form for each.
-        const string Json = """
-            [
-              { "Map Number": 1, "Room Number": 1, "Name": "Hub",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
-                "N": "1/2 (Door)", "S": "1/3 (Door)", "E": "1/4 (Door)", "W": "1/5 (Door)",
-                "NE": "1/6 (Door)", "NW": "1/7 (Door)",
-                "SE": "1/8 (Door)", "SW": "1/9 (Door)",
-                "U": "1/10 (Door)", "D": "1/11 (Door)" }
-              ,{ "Map Number": 1, "Room Number": 2, "Name": "N",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
-                "N": "0", "S": "0", "E": "0", "W": "0",
-                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
-            ]
-            """;
-        RoomGraphManager graph = NewGraph(Json);
-
-        (Direction dir, string word)[] cases =
-        {
-            (Direction.N,  "open door north"),
-            (Direction.S,  "open door south"),
-            (Direction.E,  "open door east"),
-            (Direction.W,  "open door west"),
-            (Direction.NE, "open door northeast"),
-            (Direction.NW, "open door northwest"),
-            (Direction.SE, "open door southeast"),
-            (Direction.SW, "open door southwest"),
-            (Direction.U,  "open door up"),
-            (Direction.D,  "open door down"),
-        };
-        foreach ((Direction dir, string expected) in cases)
-        {
-            var steps = RemoteActionPathExpander.Expand(
-                graph, new RoomKey(1, 1), new[] { dir });
-            Assert.Equal(2, steps.Count);
-            Assert.Equal(expected, ((CommandStep)steps[0]).Command);
-        }
-    }
 }

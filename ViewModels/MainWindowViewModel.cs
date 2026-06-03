@@ -468,6 +468,11 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Do.SetWireSender(engineSend);
         // @trap auto-disarm — gate-wrapped (same reason).
         AppServices.Current.TrapDisarm.SetWireSender(engineSend);
+        // DoorOpenManager wire-sender — gate-wrapped so the bash/pick
+        // sequence can't land in a password-entry prompt. Walker
+        // routes door exits through Door.Enqueue at step-send time.
+        AppServices.Current.Door.SetWireSender(engineSend);
+        AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
         // Phase 7 walker + loop runner — gate-wrapped so a long walk
         // doesn't blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);

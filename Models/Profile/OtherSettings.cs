@@ -101,4 +101,31 @@ public sealed class OtherSettings
     /// we lose HP) ships with the Phase 13 HealthManager wiring.
     /// </summary>
     public int MaxTrapDisarmAttempts { get; set; } = 5;
+
+    // ----- Door / lock handling --------------------------------------
+
+    /// <summary>
+    /// Walker's max <c>bash &lt;dir&gt;</c> retries before giving up
+    /// on a single door. Hits when the player's strength is below
+    /// the door's requirement and the server keeps replying with
+    /// <c>"attempts to bash through fail"</c>. Default 10 per user
+    /// direction.
+    /// </summary>
+    public int MaxBashAttempts { get; set; } = 10;
+
+    /// <summary>
+    /// Walker's max <c>pick &lt;dir&gt;</c> retries before giving up
+    /// on a single door. Picking is probabilistic — the skill can
+    /// fail even when the value meets the door requirement. Default
+    /// 10 per user direction.
+    /// </summary>
+    public int MaxPickAttempts { get; set; } = 10;
+
+    /// <summary>
+    /// When <c>true</c>, the walker prefers <c>pick &lt;dir&gt;</c>
+    /// over <c>bash &lt;dir&gt;</c> on doors where both verbs are
+    /// viable. Bash is louder and breaks stealth; thieves typically
+    /// flip this on. Default <c>false</c> (bash-first).
+    /// </summary>
+    public bool PicklocksOverBash { get; set; }
 }

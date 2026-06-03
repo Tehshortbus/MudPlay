@@ -234,6 +234,18 @@ public sealed class AppServices
     public Game.TrapDisarmManager TrapDisarm { get; }
 
     /// <summary>
+    /// Walker's door-handling FSM — bash / pick / open with
+    /// configurable attempt caps. Subscribes to <see cref="Router"/>
+    /// for the door-message patterns; the walker calls
+    /// <see cref="Game.Map.DoorOpenManager.Enqueue"/> at door-exit
+    /// step time and resumes on the callback's terminal
+    /// <see cref="Game.Map.DoorOpenResult"/>. Attempt caps + verb
+    /// preference (bash vs pick) read live from Settings.Other on
+    /// each request.
+    /// </summary>
+    public Game.Map.DoorOpenManager Door { get; }
+
+    /// <summary>
     /// Auth boundary + queue gate for <c>@trap</c>: parses the
     /// direction, runs the channel-aware Traps-skill gate, and hands
     /// off to <see cref="TrapDisarm"/>. <c>@trap stop</c> drains the
@@ -798,6 +810,17 @@ public sealed class AppServices
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
+
+        // DoorOpenManager — walker's bash/pick/open FSM. Attempt caps
+        // + verb preference are pulled live from the resolved Other
+        // settings so the user can edit thresholds mid-session without
+        // restarting an engine. Wire-sender is bound by MainWindowVM
+        // alongside the trap one (gate-wrapped SendUserInput).
+        Door = new Game.Map.DoorOpenManager(Router, PlayerStats,
+            maxBashAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxBashAttempts,
+            maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
+            picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
+            log: Log);
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by

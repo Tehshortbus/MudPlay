@@ -347,6 +347,27 @@ public static class DefaultPatterns
             @"^You notice nothing different to the (?<dir>\w+)\.?\s*$");
         yield return new RegexPattern(KnownPatterns.TrapDisarmedSuccess,
             @"^You successfully disarmed the trap to the (?<dir>\w+)\.?\s*$");
+
+        // ----- Door handling (Phase 7 DoorOpenManager) ----------------
+        // Single-shot match — DoorOpenManager runs one request at a time,
+        // so we don't need direction capture in the match. Both "door"
+        // and "gate" nouns covered.
+        yield return new RegexPattern(KnownPatterns.DoorBashSuccess,
+            @"\bbashed the (?:door|gate) open\b");
+        yield return new RegexPattern(KnownPatterns.DoorBashFailure,
+            @"\battempts? to bash through fails?\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickSuccess,
+            @"\bsuccessfully unlocks? the (?:door|gate)\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickFailure,
+            @"\b(?:lockpicking )?skill fails you\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickNotLocked,
+            @"\b(?:door|gate|exit|passage) (?:was|is) not locked\b");
+        yield return new RegexPattern(KnownPatterns.DoorOpenedNow,
+            @"\b(?:door|gate) is now open\b");
+        yield return new RegexPattern(KnownPatterns.DoorAlreadyOpen,
+            @"\b(?:door|gate) is already open\b");
+        yield return new RegexPattern(KnownPatterns.DoorIsLocked,
+            @"\b(?:door|gate) is locked\b");
     }
 
 }

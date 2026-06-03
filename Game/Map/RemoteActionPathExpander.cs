@@ -53,8 +53,14 @@ public static class RemoteActionPathExpander
             if (room is null) break;
             if (!room.Exits.TryGetValue(dir, out RoomExit exit)) break;
 
-            if (exit.Hint == RoomExitHint.Door)
-                result.Add(new CommandStep($"open door {DirectionWord(dir)}"));
+            // Door + KeyLocked prerequisites are no longer encoded as
+            // CommandStep at expand-time. The walker checks
+            // exit.Hint at step-send time and routes through
+            // DoorOpenManager (commit 2) / the keyed-door FSM
+            // (commit 3) before letting the MoveStep bytes go out.
+            // The old `open door <dir>` synthesis was the source of
+            // the "Syntax: OPEN {Direction|Item}" failure — the real
+            // verb is `open <dir>` (no "door" word).
 
             result.Add(new MoveStep(dir, exit.Target));
             current = exit.Target;
@@ -63,18 +69,4 @@ public static class RemoteActionPathExpander
         return result;
     }
 
-    private static string DirectionWord(Direction dir) => dir switch
-    {
-        Direction.N  => "north",
-        Direction.S  => "south",
-        Direction.E  => "east",
-        Direction.W  => "west",
-        Direction.NE => "northeast",
-        Direction.NW => "northwest",
-        Direction.SE => "southeast",
-        Direction.SW => "southwest",
-        Direction.U  => "up",
-        Direction.D  => "down",
-        _ => throw new ArgumentOutOfRangeException(nameof(dir), dir, "unknown direction"),
-    };
 }

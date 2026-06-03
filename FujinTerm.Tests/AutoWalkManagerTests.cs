@@ -339,27 +339,45 @@ public sealed class AutoWalkManagerTests : IDisposable
         ]
         """;
 
+    private sealed class FakeDoorEnqueuer
+    {
+        public List<(Direction Direction, int StatReq, bool CanBash, string Sender, Action<DoorOpenResult> Reply)> Calls { get; } = new();
+        public void Enqueue(Direction direction, int statReq, bool canBash, string sender, Action<DoorOpenResult> reply)
+            => Calls.Add((direction, statReq, canBash, sender, reply));
+    }
+
     [Fact]
-    public void Walker_DoorExit_SendsOpenDoorThenMove()
+    public void Walker_DoorExit_RoutesThroughDoorEnqueuer_BeforeMoveBytes()
     {
         Harness h = NewHarness(DoorGraphJson);
-        h.Tracker.SetLocated(new RoomKey(1, 1));
+        FakeDoorEnqueuer door = new();
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
 
+        h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 2));
 
-        // First byte payload should be "open door east\r".
+        // Door enqueue fired; no move bytes from the walker yet.
+        Assert.Single(door.Calls);
+        Assert.Equal(Direction.E, door.Calls[0].Direction);
+        Assert.Equal("walker",    door.Calls[0].Sender);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Walker_DoorOpenSucceeds_SendsMoveBytesAndAdvances()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Manager reports the door open — walker sends the move.
+        door.Calls[0].Reply(DoorOpenResult.Opened.Instance);
+
         Assert.Single(h.Sent);
-        Assert.Equal("open door east\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
 
-        // Simulate the server prompt confirming the door-open command.
-        h.Walker.FirePromptForTests();
-
-        // Second payload should be the actual move.
-        Assert.Equal(2, h.Sent.Count);
-        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[1]));
-
-        // Walker.SendStep already called NoteMoveSent; confirm the
-        // move lands.
         h.Tracker.NoteRoomObserved(new RoomObservation("Foyer",
             new HashSet<Direction> { Direction.W }));
 
@@ -368,16 +386,33 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
-    public void Walker_DoorExit_ExpandedPathSurfacesAsSteps()
+    public void Walker_DoorOpenFails_FailsTheWalk()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        door.Calls[0].Reply(new DoorOpenResult.Failed("bash exhausted"));
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void Walker_DoorExit_PathHasOnlyMoveStep()
     {
         Harness h = NewHarness(DoorGraphJson);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 2));
 
-        // Two steps: CommandStep open-door + MoveStep east.
-        Assert.Equal(2, h.Walker.Steps.Count);
-        Assert.IsType<CommandStep>(h.Walker.Steps[0]);
-        Assert.IsType<MoveStep>(h.Walker.Steps[1]);
+        // Door handling is now runtime, not path-expansion. The
+        // path is just MoveStep; the walker routes through
+        // DoorOpenManager at step-send time.
+        Assert.Single(h.Walker.Steps);
+        Assert.IsType<MoveStep>(h.Walker.Steps[0]);
     }
 
     // ----- trapped exits (PR 7.22) -----------------------------------

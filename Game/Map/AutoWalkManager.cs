@@ -43,6 +43,8 @@ public sealed class AutoWalkManager
     private readonly WirePromptScanner? _promptScanner;
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
+    private Action<Direction, int, bool, string, Action<DoorOpenResult>>? _doorEnqueuer;
+    private bool _awaitingDoorOpen;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -161,6 +163,19 @@ public sealed class AutoWalkManager
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _trapEnqueuer = enqueuer;
+    }
+
+    /// <summary>
+    /// Door-open enqueuer — the walker calls this when stepping toward
+    /// a <see cref="RoomExitHint.Door"/> exit, passes the direction +
+    /// the door's stat requirement + bashable flag, and resumes the
+    /// move on the callback's terminal <see cref="DoorOpenResult"/>.
+    /// MainWindowVM binds this to <see cref="DoorOpenManager.Enqueue"/>.
+    /// </summary>
+    public void SetDoorEnqueuer(Action<Direction, int, bool, string, Action<DoorOpenResult>> enqueuer)
+    {
+        ArgumentNullException.ThrowIfNull(enqueuer);
+        _doorEnqueuer = enqueuer;
     }
 
     /// <summary>
@@ -297,6 +312,22 @@ public sealed class AutoWalkManager
             return;
         }
 
+        // Door exits — route through DoorOpenManager to bash/pick/open
+        // before the move bytes go out. Sub-states mirror MudProxy's
+        // door FSM: walker pauses on the open verb, resumes the move
+        // when the door is confirmed open. Failure aborts the walk.
+        if (exit.Hint == RoomExitHint.Door && _doorEnqueuer is not null)
+        {
+            _awaitingDoorOpen = true;
+            _log?.Info("Walker",
+                $"step {_index + 1}/{_path!.Count}: opening door {step.Direction}"
+                + (exit.StatRequirement > 0
+                    ? $" (req {exit.StatRequirement}, canBash {exit.CanBash})"
+                    : ""));
+            _doorEnqueuer(step.Direction, exit.StatRequirement, exit.CanBash, "walker", OnDoorReply);
+            return;
+        }
+
         // Inform the tracker before the bytes go out so a synchronous
         // wire path or test harness sees Pending before any landing
         // observation arrives.
@@ -304,6 +335,42 @@ public sealed class AutoWalkManager
 
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
+    }
+
+    private void OnDoorReply(DoorOpenResult result)
+    {
+        if (!_awaitingDoorOpen) return;
+        _awaitingDoorOpen = false;
+
+        switch (result)
+        {
+            case DoorOpenResult.Opened:
+                if (_path is null || _index >= _path.Count
+                    || _path[_index] is not MoveStep step)
+                {
+                    Reset();
+                    return;
+                }
+                Room? current = _tracker.State.CurrentRoom;
+                if (current is null
+                    || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
+                {
+                    Raise(new WalkEvent(WalkEventKind.Failed,
+                        "post-door-open: step source has no matching exit", _destination));
+                    Reset();
+                    return;
+                }
+                _tracker.NoteMoveSent(step.Direction);
+                byte[] bytes = EncodeMove(step.Direction);
+                WriteBytes(bytes, $"move {step.Direction} (post-door)");
+                return;
+
+            case DoorOpenResult.Failed failed:
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    $"door open failed: {failed.Reason}", _destination));
+                Reset();
+                return;
+        }
     }
 
     private void OnTrapReply(string reply)
