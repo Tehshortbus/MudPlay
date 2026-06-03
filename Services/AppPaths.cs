@@ -297,6 +297,15 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
     /// <summary>
+    /// Per-BBS folder holding navigation loops, walk-to favourites,
+    /// and auto-lair path definitions (Phase 7 PR 7.8). Each entry is
+    /// a <c>{loop-name}.json</c> file the <see cref="LoopStore"/>
+    /// round-trips.
+    /// </summary>
+    public static string BbsLoopsFolder(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "Loops");
+
+    /// <summary>
     /// Per-BBS observed-players side-file. One PlayerObservation per
     /// player ever seen on this BBS; the Phase 5 PR 5.20 design keeps
     /// observations at the BBS tier so the same display name on a

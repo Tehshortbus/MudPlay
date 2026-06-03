@@ -553,6 +553,13 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.AutoWalkManager Walker { get; private set; } = null!;
 
+    /// <summary>
+    /// Per-BBS saved-loop catalogue. CRUD over
+    /// <c>Data/BBS/{bbs}/Loops/</c>; consumers re-bind when the active
+    /// BBS changes. PR 7.8.
+    /// </summary>
+    public Game.Map.LoopManager Loops { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -899,6 +906,11 @@ public sealed class AppServices
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner);
+
+        // Phase 7 PR 7.8 — per-BBS loop catalogue. The active BBS is
+        // bound by MainWindowViewModel / Settings → BBS Apply at the
+        // same time as the rest of the per-BBS subsystems.
+        Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
