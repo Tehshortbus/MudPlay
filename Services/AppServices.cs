@@ -514,6 +514,16 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.RoomGraphManager RoomGraph { get; private set; } = null!;
 
+    /// <summary>
+    /// Trust-by-default room tracker. Owns
+    /// <see cref="Game.Map.RoomState"/>; the Navigation status strip
+    /// and any source-room-required engine (walker, loop runner,
+    /// auto-lair scheduler) bind here. PR 7.1 ships the FSM; PR 7.1b
+    /// wires the wire-side parser that feeds it
+    /// <c>NoteRoomObserved</c> / <c>NoteMoveBlocked</c>.
+    /// </summary>
+    public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -834,6 +844,12 @@ public sealed class AppServices
         GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
+
+        // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
+        // graph reload because per-room references are invalidated
+        // when the active set rebuilds.
+        RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
+        RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
