@@ -194,25 +194,27 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
-    public void Build_FieldOrder_NameAlsoHereLightDescBlankShopBlankExitsBlankLightMaxRegen()
+    public void Build_FieldOrder_NameAlsoHereBlankShopBlankExitsBlankLightLightDescMaxRegen()
     {
         var (graph, cache) = NewGraph();
         Room dark = graph.GetRoom(new RoomKey(1, 2))!;     // dark lair room
         string text = RoomTooltipBuilder.Build(dark, graph, cache);
 
-        // Sequential order: Name → Also Here → light desc → exits → Room Light → Max Regen.
-        // 1/2 has no Shop / Spell, so no shop section.
+        // Sequential order: Name → Also Here → exits → Room Light → light desc → Max Regen.
+        // The light-description phrase now sits BELOW the numeric
+        // "Room Light: -N" line (per the user's request); 1/2 has
+        // no Shop / Spell, so no shop section.
         int posName   = text.IndexOf("North Square (1/2)");
         int posAlso   = text.IndexOf("Also Here (2):");
-        int posLight  = text.IndexOf("very dark");
         int posExits  = text.IndexOf("Obvious exits:");
         int posRLight = text.IndexOf("Room Light: -180");
+        int posDesc   = text.IndexOf("very dark");
         int posRegen  = text.IndexOf("Max Regen: 2");
 
         Assert.True(posName < posAlso);
-        Assert.True(posAlso < posLight);
-        Assert.True(posLight < posExits);
+        Assert.True(posAlso < posExits);
         Assert.True(posExits < posRLight);
-        Assert.True(posRLight < posRegen);
+        Assert.True(posRLight < posDesc);
+        Assert.True(posDesc < posRegen);
     }
 }

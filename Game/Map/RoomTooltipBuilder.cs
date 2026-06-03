@@ -55,10 +55,6 @@ public static class RoomTooltipBuilder
         string alsoHere = BuildAlsoHere(room, data);
         if (alsoHere.Length > 0) sb.Append('\n').Append(alsoHere);
 
-        // 3. Light description
-        string lightDesc = BuildLightDescription(room.Light);
-        if (lightDesc.Length > 0) sb.Append('\n').Append(lightDesc);
-
         // 4-7. Shop / Room Spell (blank line separator above when any).
         string shopLine = room.Shop > 0
             ? "Shop: " + (LookupName(data, "Shops", room.Shop) ?? $"#{room.Shop}")
@@ -80,13 +76,20 @@ public static class RoomTooltipBuilder
             sb.Append('\n').Append('\n').Append(exitsBlock);
         }
 
-        // 10. Room Light detail (always when non-zero).
+        // 10. Room Light line + the descriptive phrase immediately
+        // beneath it ("pitch black" / "very dark" / "barely visible"
+        // / "dimly lit"). Description renders even when the numeric
+        // line is suppressed (Light == 0 but still a dark room is
+        // impossible by the encoding, so the description follows the
+        // numeric line unconditionally).
         bool needBottomBlank = exitsBlock.Length > 0;
         if (room.Light != 0)
         {
             if (needBottomBlank) { sb.Append('\n'); needBottomBlank = false; }
             sb.Append('\n').Append("Room Light: ").Append(room.Light > 0 ? "+" : "")
               .Append(room.Light);
+            string lightDesc = BuildLightDescription(room.Light);
+            if (lightDesc.Length > 0) sb.Append('\n').Append(lightDesc);
         }
 
         // 11. Max Regen + regen time.
