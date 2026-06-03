@@ -490,4 +490,73 @@ public sealed class SuicidePasswordTrackerTests
         }
         finally { Directory.Delete(tmp, recursive: true); }
     }
+
+    // ===== Invalid-password rejection variants ============================
+    // Real-Playpen observed two distinct rejection lines depending on
+    // which prompt the wrong password was typed at:
+    //   "Invalid password specified."  — `suicide` use-form
+    //   "Invalid password!"            — `set suicide` with wrong CURRENT
+    // Both must disarm the sniffer + unlock the gate. The original
+    // regex only matched the first variant, leaving the sniffer armed
+    // after a typo in the change-password flow.
+
+    [Theory]
+    [InlineData("Invalid password specified.")]
+    [InlineData("Invalid password!")]
+    [InlineData("Invalid password — try again")]
+    [InlineData("invalid password specified.")]  // case tolerance
+    public void Sniffer_InvalidPasswordVariantsAllDisarm(string serverLine)
+    {
+        var (tracker, router, gate, profile, _, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("wrongpw\r"));
+            Dispatch(router, serverLine);
+            Assert.False(gate.IsLocked);
+            Assert.Equal(SuicidePasswordTracker.FlowState.Idle, tracker.State);
+
+            // Stray "Password changed" after a disarmed flow must NOT commit.
+            Dispatch(router, "Password changed");
+            Assert.Null(profile.Current!.EncryptedSuicidePassword);
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void ChangePassword_WrongOldThenRetry_SecondAttemptCommitsCleanly()
+    {
+        // Real-world recovery flow from Tehshortbus's screenshot:
+        // attempt 1 sets the password successfully, attempt 2 types
+        // the wrong CURRENT password and server says "Invalid
+        // password!", attempt 3 types it correctly and commits.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            // Attempt 1: first-time set (no old phase).
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("asdf\r"));
+            Dispatch(router, "Password changed");
+            Assert.Equal("asdf", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+
+            // Attempt 2: change with WRONG current password.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            Dispatch(router, "Enter the current password:");
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("wrongguess\r"));
+            Dispatch(router, "Invalid password!");
+            // Attempt 1's stored value must survive untouched.
+            Assert.Equal("asdf", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
+
+            // Attempt 3: correct flow this time, new password commits.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            Dispatch(router, "Enter the current password:");
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("asdf\r"));
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("zxcv\r"));
+            Dispatch(router, "Password changed");
+            Assert.Equal("zxcv", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
 }

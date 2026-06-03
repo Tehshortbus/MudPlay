@@ -310,8 +310,15 @@ public static class DefaultPatterns
             @"^Enter New Password:");
         yield return new RegexPattern(KnownPatterns.SuicidePromptUseSuicide,
             @"^Enter your suicide password:");
+        // Two observed variants of the rejection line on Playpen:
+        //   "Invalid password specified."  — `suicide` use-form with wrong password
+        //   "Invalid password!"            — `set suicide` with wrong CURRENT password
+        // Match anything starting with "Invalid password" followed by a
+        // non-word boundary so any future realm variant
+        // ("Invalid password?" / "Invalid password — try again" / etc.)
+        // still disarms the sniffer + unlocks the gate.
         yield return new RegexPattern(KnownPatterns.SuicideInvalidPassword,
-            @"^Invalid password specified\.");
+            @"(?i)^Invalid password\b");
         yield return new RegexPattern(KnownPatterns.SuicideNotSet,
             @"^You do not have a suicide password set\.");
         // Playpen renders the success line as "Password changed"
