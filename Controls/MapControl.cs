@@ -249,6 +249,11 @@ public sealed class MapControl : Control
     private static readonly IPen   DownBorderPen   = new Pen(new SolidColorBrush(Color.Parse("#B4B400")), 1.5);
     private static readonly IPen   UpDownBorderPen = new Pen(new SolidColorBrush(Color.Parse("#FFD250")), 1.5);
     private static readonly IPen   SelectionPen   = new Pen(new SolidColorBrush(Color.Parse("#00DDDD")), 2.0);
+    // "You are here" overlay for the player's current room — a
+    // saturated amber dot drawn over whatever the room-node fill is.
+    private static readonly IBrush PlayerDotFill  = new SolidColorBrush(Color.Parse("#FFE03A"));
+    private static readonly IPen   PlayerDotPen   = new Pen(new SolidColorBrush(Color.Parse("#3A1F00")), 1.5);
+    private static readonly IPen   PlayerOuterPen = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.5);
     private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
     {
         LineCap = PenLineCap.Round,
@@ -293,6 +298,28 @@ public sealed class MapControl : Control
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty);
+
+        // Auto-centre on the player's current room every time it
+        // changes (MudProxy's CenterOnRoom is called from the
+        // map-update path). Selection moves trigger a centre too so
+        // the user always sees the room they just stepped to.
+        CurrentRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
+        {
+            if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
+        });
+        SelectedRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
+        {
+            if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
+        });
+        // When the layout itself rebuilds (new floor / new origin),
+        // re-centre on whichever room the host considers active —
+        // selection takes precedence so floor-stepping lands on the
+        // new room.
+        LayoutProperty.Changed.AddClassHandler<MapControl>((c, _) =>
+        {
+            RoomKey? focus = c.SelectedRoomKey ?? c.CurrentRoomKey;
+            if (focus is { } k) c.CenterOnRoom(k);
+        });
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -432,14 +459,11 @@ public sealed class MapControl : Control
         if (ChordMatches(e, UpStepChord))   { TryStepFloor(Direction.U); e.Handled = true; return; }
         if (ChordMatches(e, DownStepChord)) { TryStepFloor(Direction.D); e.Handled = true; return; }
 
-        // Home re-centres on the live current room.
+        // Home re-centres on the live current room (the selection
+        // change handler in the ctor performs the actual centre call).
         if (e.Key == Key.Home)
         {
-            if (CurrentRoomKey is { } cur)
-            {
-                SelectedRoomKey = cur;
-                EnsureSelectionVisible();
-            }
+            if (CurrentRoomKey is { } cur) SelectedRoomKey = cur;
             e.Handled = true;
             return;
         }
@@ -481,9 +505,24 @@ public sealed class MapControl : Control
         RoomKey here = CrawlOrigin();
         if (Graph.GetRoom(here) is not { } room) return;
         if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return;
-        if (!Layout.Positions.ContainsKey(exit.Target)) return;       // off this floor
-        SelectedRoomKey = exit.Target;
-        EnsureSelectionVisible();
+
+        // Destination IS the room across the exit. Three cases:
+        //   1. Placed in the current layout → just move the selection
+        //      and the centre-on-selection handler will pan to it.
+        //   2. Not in the layout but still in the active graph →
+        //      treat as an out-of-floor / non-Euclidean step and ask
+        //      the host to rebuild the layout from the new origin
+        //      (matches the U/D PageUp/PageDown path).
+        //   3. Not in the graph at all → no-op.
+        if (Layout.Positions.ContainsKey(exit.Target))
+        {
+            SelectedRoomKey = exit.Target;
+            return;
+        }
+        if (Graph.GetRoom(exit.Target) is not null)
+        {
+            FloorChangeRequested?.Invoke(exit.Target);
+        }
     }
 
     private void TryStepFloor(Direction dir)
@@ -495,34 +534,10 @@ public sealed class MapControl : Control
         FloorChangeRequested?.Invoke(exit.Target);
     }
 
-    private void EnsureSelectionVisible()
-    {
-        if (Layout is null || SelectedRoomKey is not { } key) return;
-        if (!Layout.Positions.TryGetValue(key, out (int X, int Y) coord)) return;
-
-        double tilePixels = TileWorldSize * _zoom;
-        if (tilePixels < 4) return;
-
-        // Selection screen position with current pan.
-        double cx = Bounds.Width  / 2 + _panX + coord.X * tilePixels;
-        double cy = Bounds.Height / 2 + _panY + coord.Y * tilePixels;
-        double half = tilePixels / 2;
-        // Inset margin so we don't pan only when the cell is on the
-        // razor edge — keep a half-cell buffer around the viewport.
-        double margin = half + tilePixels;
-
-        bool offLeft   = cx - half < margin;
-        bool offRight  = cx + half > Bounds.Width  - margin;
-        bool offTop    = cy - half < margin;
-        bool offBottom = cy + half > Bounds.Height - margin;
-
-        if (!offLeft && !offRight && !offTop && !offBottom) return;
-
-        // Re-centre on the selected cell.
-        _panX = -coord.X * tilePixels;
-        _panY = -coord.Y * tilePixels;
-        InvalidateVisual();
-    }
+    // EnsureSelectionVisible removed — SelectedRoomKeyProperty's
+    // ChangeHandler in the ctor now calls CenterOnRoom on every move
+    // (MudProxy CenterOnRoom rule), so the explicit margin check is
+    // no longer needed.
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
@@ -542,22 +557,27 @@ public sealed class MapControl : Control
         e.Handled = true;
     }
 
-    /// <summary>Re-centre the view on the current room.</summary>
+    /// <summary>
+    /// Centre the view on the room at <paramref name="key"/>. Modelled
+    /// on MudProxy's <c>MapRenderer.CenterOnRoom</c> — pan = -coord *
+    /// zoom puts the cell's world point exactly at screen centre.
+    /// No-op when the room isn't in the active layout.
+    /// </summary>
+    public void CenterOnRoom(RoomKey key)
+    {
+        if (Layout is null) return;
+        if (!Layout.Positions.TryGetValue(key, out (int X, int Y) coord)) return;
+        _panX = -coord.X * TileWorldSize * _zoom;
+        _panY = -coord.Y * TileWorldSize * _zoom;
+        InvalidateVisual();
+    }
+
+    /// <summary>Re-centre on the player's current room (Home key / explicit recenter).</summary>
     public void FitToCurrent()
     {
         if (Layout is null) return;
         RoomKey origin = CurrentRoomKey ?? Layout.Origin;
-        if (!Layout.Positions.TryGetValue(origin, out (int X, int Y) coord))
-        {
-            _panX = 0;
-            _panY = 0;
-        }
-        else
-        {
-            _panX = -coord.X * TileWorldSize * _zoom;
-            _panY = -coord.Y * TileWorldSize * _zoom;
-        }
-        InvalidateVisual();
+        CenterOnRoom(origin);
     }
 
     // ----- render ----------------------------------------------------
@@ -851,10 +871,20 @@ public sealed class MapControl : Control
 
         if (isCurrent)
         {
-            // Outer yellow ring on the cell so the current room reads
-            // even when the user has zoomed out past the node size.
+            // Thick amber ring on the cell perimeter.
             Rect ring = cell.Deflate(2);
-            ctx.DrawRectangle(null, CurrentPen, ring);
+            ctx.DrawRectangle(null, PlayerOuterPen, ring);
+
+            // "You are here" dot over the node centre — reads even
+            // when the room-node fill is amber (current/auto-lair),
+            // blue-grey (shop), magenta (lair), purple (spell), or
+            // U/D coloured. The dark border around the dot keeps it
+            // legible against bright fills.
+            double dotSize = Math.Max(cell.Width * 0.22, 4.0);
+            double dx = cell.X + (cell.Width  - dotSize) / 2;
+            double dy = cell.Y + (cell.Height - dotSize) / 2;
+            Rect dot = new(dx, dy, dotSize, dotSize);
+            ctx.DrawGeometry(PlayerDotFill, PlayerDotPen, new EllipseGeometry(dot));
         }
     }
 
