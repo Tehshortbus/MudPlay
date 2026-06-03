@@ -179,6 +179,18 @@
                         <Border Width="14" Height="14" Background="#DC821E"/>
                         <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="#DDD"/>
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#00C800"/>
+                        <TextBlock Text="Up exit" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#DCDC00"/>
+                        <TextBlock Text="Down exit" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#FFB432"/>
+                        <TextBlock Text="Up + down" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
                     <Separator Margin="0,4"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="2" Background="#3A3A3A"/>

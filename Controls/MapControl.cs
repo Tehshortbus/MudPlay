@@ -181,6 +181,13 @@ public sealed class MapControl : Control
     private static readonly IBrush LairFill      = new SolidColorBrush(Color.Parse("#A05F8C"));
     private static readonly IBrush ShopFill      = new SolidColorBrush(Color.Parse("#5F8DA8"));
     private static readonly IBrush SpellFill     = new SolidColorBrush(Color.Parse("#6428A0"));
+    // Vertical-exit indicators (MudProxy convention): green = up only,
+    // yellow = down only, orange = both. Applied as the room-node fill
+    // when no higher-priority highlight (current / auto-lair / lair /
+    // shop / spell) takes the cell.
+    private static readonly IBrush UpFill        = new SolidColorBrush(Color.Parse("#00C800"));
+    private static readonly IBrush DownFill      = new SolidColorBrush(Color.Parse("#DCDC00"));
+    private static readonly IBrush UpDownFill    = new SolidColorBrush(Color.Parse("#FFB432"));
 
     private static readonly IPen   TileBorderPen = new Pen(new SolidColorBrush(Color.Parse("#2A2A2A")), 1.0);
     private static readonly IPen   ExitPen       = new Pen(new SolidColorBrush(Color.Parse("#C0C0C0")), 2.0);
@@ -190,6 +197,9 @@ public sealed class MapControl : Control
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#C77FAC")), 1.5);
     private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#7FB0CC")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
+    private static readonly IPen   UpBorderPen     = new Pen(new SolidColorBrush(Color.Parse("#00A000")), 1.5);
+    private static readonly IPen   DownBorderPen   = new Pen(new SolidColorBrush(Color.Parse("#B4B400")), 1.5);
+    private static readonly IPen   UpDownBorderPen = new Pen(new SolidColorBrush(Color.Parse("#FFD250")), 1.5);
     private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
     {
         LineCap = PenLineCap.Round,
@@ -412,48 +422,144 @@ public sealed class MapControl : Control
         double cy = Bounds.Height / 2 + _panY;
         Rect viewport = new(Bounds.Size);
 
+        // Pass 1: cell backgrounds + borders.
         foreach (KeyValuePair<(int X, int Y), RoomKey> kvp in Layout.CoordToRoom)
         {
-            (int gx, int gy) = kvp.Key;
-            double centerX = cx + gx * tilePixels;
-            double centerY = cy + gy * tilePixels;
-            Rect cell = new(
-                centerX - tilePixels / 2,
-                centerY - tilePixels / 2,
-                tilePixels,
-                tilePixels);
-
-            // Cull off-screen cells.
+            Rect cell = ComputeCellRect(kvp.Key, tilePixels, cx, cy);
             if (!cell.Intersects(viewport)) continue;
-
-            // 1. Cell background + faint grid border.
             context.FillRectangle(TileBg, cell);
             context.DrawRectangle(null, TileBorderPen, cell);
+        }
 
-            // 2. Exit stubs — one per direction in EdgesFromCoord[here].
-            DrawExitStubs(context, cell, kvp.Key);
+        // Pass 2: exit lines, deduplicated. Full continuous line
+        // when both endpoints are placed (no overlap seam, no
+        // bump); a single half-stub when the destination is
+        // dangling.
+        DrawAllExitLines(context, tilePixels, cx, cy, viewport);
 
-            // 3. Room node (smaller centered rectangle).
+        // Pass 3: room nodes + per-cell overlays.
+        foreach (KeyValuePair<(int X, int Y), RoomKey> kvp in Layout.CoordToRoom)
+        {
+            Rect cell = ComputeCellRect(kvp.Key, tilePixels, cx, cy);
+            if (!cell.Intersects(viewport)) continue;
+
             DrawRoomNode(context, cell, kvp.Value);
 
-            // 4. Avoid-X overlay (red X on cells the user has flagged).
             if (AvoidedRooms is not null && AvoidedRooms.Contains(kvp.Value))
                 DrawAvoidX(context, cell);
 
-            // 5. Loop sequence number (bold white centred glyph).
             if (LoopSequenceNumbers is not null
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
                 && tilePixels >= 16)
                 DrawSequenceNumber(context, cell, seq);
         }
 
-        // 6. Overlay polylines drawn on top of every cell. Loop path
-        // first so the walk path lies above it (the user normally
-        // wants the *current* leg to dominate visually).
+        // Pass 4: top-of-stack polylines.
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
         IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
         DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
     }
+
+    private static Rect ComputeCellRect((int X, int Y) coord, double tilePixels, double cx, double cy)
+    {
+        double centerX = cx + coord.X * tilePixels;
+        double centerY = cy + coord.Y * tilePixels;
+        return new Rect(
+            centerX - tilePixels / 2,
+            centerY - tilePixels / 2,
+            tilePixels,
+            tilePixels);
+    }
+
+    /// <summary>
+    /// Walks <see cref="RoomLayout.EdgesFromCoord"/> once and draws
+    /// each (source, target) pair exactly once. When both endpoints
+    /// are placed cells, draws a single line between the two cell
+    /// centres — no overlap seam, no thickness bump. When the target
+    /// is dangling (an asymmetric / Euclidean-clashing exit), draws a
+    /// stub from the source cell's centre to its edge.
+    /// </summary>
+    private void DrawAllExitLines(DrawingContext ctx, double tilePixels, double cx, double cy, Rect viewport)
+    {
+        if (Layout is null) return;
+
+        var drawn = new HashSet<((int X, int Y) A, (int X, int Y) B)>();
+
+        foreach (KeyValuePair<(int X, int Y), IReadOnlySet<Direction>> entry in Layout.EdgesFromCoord)
+        {
+            (int X, int Y) source = entry.Key;
+            double srcX = cx + source.X * tilePixels;
+            double srcY = cy + source.Y * tilePixels;
+            Point srcPt = new(srcX, srcY);
+
+            foreach (Direction dir in entry.Value)
+            {
+                if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+                (int X, int Y) target = (source.X + dx, source.Y + dy);
+
+                ((int X, int Y) A, (int X, int Y) B) pair = SortPair(source, target);
+                if (!drawn.Add(pair)) continue;
+
+                bool isTrap = IsTrapEdge(source, dir)
+                           || IsTrapEdge(target, Opposite(dir));
+                IPen pen = isTrap ? TrapPen : ExitPen;
+
+                if (Layout.CoordToRoom.ContainsKey(target))
+                {
+                    // Both endpoints placed — single continuous line.
+                    double tgtX = cx + target.X * tilePixels;
+                    double tgtY = cy + target.Y * tilePixels;
+                    Point tgtPt = new(tgtX, tgtY);
+                    ctx.DrawLine(pen, srcPt, tgtPt);
+                }
+                else
+                {
+                    // Dangling — stub from source cell centre to edge.
+                    Rect cell = ComputeCellRect(source, tilePixels, cx, cy);
+                    DrawStub(ctx, pen, cell, srcX, srcY, dir);
+                }
+            }
+        }
+    }
+
+    private bool IsTrapEdge((int X, int Y) coord, Direction dir)
+    {
+        if (Layout?.TrapEdgesFromCoord is null) return false;
+        return Layout.TrapEdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? set)
+            && set.Contains(dir);
+    }
+
+    private static ((int X, int Y) A, (int X, int Y) B) SortPair((int X, int Y) a, (int X, int Y) b)
+        => (a.X < b.X || (a.X == b.X && a.Y < b.Y)) ? (a, b) : (b, a);
+
+    private static bool TryPlanarOffset(Direction dir, out int dx, out int dy)
+    {
+        switch (dir)
+        {
+            case Direction.N:  dx =  0; dy = -1; return true;
+            case Direction.S:  dx =  0; dy =  1; return true;
+            case Direction.E:  dx =  1; dy =  0; return true;
+            case Direction.W:  dx = -1; dy =  0; return true;
+            case Direction.NE: dx =  1; dy = -1; return true;
+            case Direction.NW: dx = -1; dy = -1; return true;
+            case Direction.SE: dx =  1; dy =  1; return true;
+            case Direction.SW: dx = -1; dy =  1; return true;
+            default:           dx = dy = 0;     return false;
+        }
+    }
+
+    private static Direction Opposite(Direction dir) => dir switch
+    {
+        Direction.N  => Direction.S,
+        Direction.S  => Direction.N,
+        Direction.E  => Direction.W,
+        Direction.W  => Direction.E,
+        Direction.NE => Direction.SW,
+        Direction.SW => Direction.NE,
+        Direction.NW => Direction.SE,
+        Direction.SE => Direction.NW,
+        _            => dir,
+    };
 
     private void DrawPathPolyline(DrawingContext ctx, IReadOnlyList<RoomKey>? path, IPen pen,
         double tilePixels, double cx, double cy)
@@ -497,50 +603,25 @@ public sealed class MapControl : Control
         ctx.DrawText(ft, p);
     }
 
-    private void DrawExitStubs(DrawingContext ctx, Rect cell, (int X, int Y) coord)
-    {
-        if (Layout is null) return;
-
-        HashSet<Direction>? trapDirs = null;
-        if (Layout.TrapEdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? trapSet))
-            trapDirs = new HashSet<Direction>(trapSet);
-
-        if (!Layout.EdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? dirs))
-            return;
-
-        double midX = cell.X + cell.Width  / 2;
-        double midY = cell.Y + cell.Height / 2;
-
-        foreach (Direction dir in dirs)
-        {
-            bool isTrap = trapDirs is not null && trapDirs.Contains(dir);
-            IPen pen = isTrap ? TrapPen : ExitPen;
-            DrawStub(ctx, pen, cell, midX, midY, dir);
-        }
-    }
-
     /// <summary>
-    /// Per-direction stub extension past the cell edge. Sub-pixel
-    /// anti-aliasing of two endpoints that resolve to the same logical
-    /// pixel can leave a tiny gap where the stubs meet — especially
-    /// at high zoom where the cell rect's float position lands on
-    /// non-integer pixel boundaries. 3 px overlap saturates the
-    /// anti-aliasing seam at every zoom level we clamp to (0.4×–4×).
+    /// Draws a half-line from the cell centre to one edge. Only used
+    /// by the dangling-exit branch in <see cref="DrawAllExitLines"/>
+    /// — full lines between two placed cells are drawn end-to-end
+    /// without overlap. No StubOverlap here: there's no adjacent
+    /// stub to meet, so the segment ends flush at the cell edge.
     /// </summary>
-    private const double StubOverlap = 3.0;
-
     private static void DrawStub(DrawingContext ctx, IPen pen, Rect cell, double mx, double my, Direction dir)
     {
         switch (dir)
         {
-            case Direction.N:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Top    - StubOverlap)); break;
-            case Direction.S:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Bottom + StubOverlap)); break;
-            case Direction.E:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, my)); break;
-            case Direction.W:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, my)); break;
-            case Direction.NE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, cell.Top    - StubOverlap)); break;
-            case Direction.NW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, cell.Top    - StubOverlap)); break;
-            case Direction.SE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, cell.Bottom + StubOverlap)); break;
-            case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, cell.Bottom + StubOverlap)); break;
+            case Direction.N:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Top)); break;
+            case Direction.S:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Bottom)); break;
+            case Direction.E:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, my)); break;
+            case Direction.W:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  my)); break;
+            case Direction.NE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Top)); break;
+            case Direction.NW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Top)); break;
+            case Direction.SE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Bottom)); break;
+            case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Bottom)); break;
             // U / D — not planar, not rendered as stubs.
         }
     }
@@ -582,6 +663,16 @@ public sealed class MapControl : Control
         {
             fill = SpellFill;
             pen = SpellBorderPen;
+        }
+        else if (Layout?.VerticalHints is { } vhints && vhints.TryGetValue(key, out VerticalHint hint))
+        {
+            (fill, pen) = hint switch
+            {
+                VerticalHint.Both => ((IBrush)UpDownFill, (IPen)UpDownBorderPen),
+                VerticalHint.Up   => (UpFill,             UpBorderPen),
+                VerticalHint.Down => (DownFill,           DownBorderPen),
+                _                 => ((IBrush)RoomFill,   (IPen)RoomBorderPen),
+            };
         }
         else
         {
