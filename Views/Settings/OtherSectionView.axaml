@@ -95,6 +95,27 @@
                            ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
             </Grid>
 
+            <!-- @trap auto-disarm attempt caps. Search-attempts row sits
+                 ABOVE disarm-attempts per user spec — the search runs
+                 first, then disarm. -->
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,12,0,0" ColumnSpacing="8" RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="@trap max searches"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                               Value="{Binding MaxTrapSearchAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="100" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `sea &lt;dir&gt;` retry loop when handling an @trap. After this many failed searches we give up and telepath the sender. Default 20."/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="@trap max disarms"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                               Value="{Binding MaxTrapDisarmAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="50" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `disarm trap &lt;dir&gt;` retry loop after the trap has been spotted. Default 5. Damage-aware abort (stop early on HP loss) ships with the Phase 13 HealthManager wiring."/>
+            </Grid>
+
             <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
                  Database after [spinner] days." — spinner widened from
                  90→120 so 4-digit values (e.g. 3650-day max) render

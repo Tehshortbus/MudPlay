@@ -224,6 +224,24 @@ public sealed class AppServices
     public Game.Remote.DoHandler Do { get; }
 
     /// <summary>
+    /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
+    /// search → disarm state machine + FIFO request queue + Stats-
+    /// skill gate. Bound by <see cref="TrapRemote"/>'s handler at
+    /// dispatch time, configured via the
+    /// <see cref="Models.Profile.OtherSettings.MaxTrapSearchAttempts"/>
+    /// / <c>MaxTrapDisarmAttempts</c> knobs in Settings → Other.
+    /// </summary>
+    public Game.TrapDisarmManager TrapDisarm { get; }
+
+    /// <summary>
+    /// Auth boundary + queue gate for <c>@trap</c>: parses the
+    /// direction, runs the channel-aware Traps-skill gate, and hands
+    /// off to <see cref="TrapDisarm"/>. <c>@trap stop</c> drains the
+    /// queue + aborts the in-flight request.
+    /// </summary>
+    public Game.Remote.TrapHandler TrapRemote { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
     /// Authorised callers (Elevated-Commands permission, lives above
     /// the suicide threshold) trigger the suicide round-trip; on
@@ -669,6 +687,12 @@ public sealed class AppServices
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
         Do = new Game.Remote.DoHandler(RemoteCommands, Log);
+        // @trap auto-disarm flow — manager owns the state machine,
+        // handler owns the @-command auth boundary. Wire-sender +
+        // OtherSettings cadence knobs bind in MainWindowVM /
+        // ApplyOtherFromActiveProfile.
+        TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
+        TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by
@@ -950,6 +974,9 @@ public sealed class AppServices
         GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
             ? new Models.Profile.OtherSettings().GameExitCommand
             : dto.GameExitCommand;
+        // @trap auto-disarm attempt caps.
+        TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
+        TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
     }
 
     private void ResetOtherToDefaults()
@@ -958,6 +985,8 @@ public sealed class AppServices
         RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
         GameCommands.EntryCommand = defaults.GameEntryCommand;
         GameCommands.ExitCommand  = defaults.GameExitCommand;
+        TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
+        TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
     }
 
     /// <summary>

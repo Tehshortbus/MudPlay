@@ -335,6 +335,18 @@ public static class DefaultPatterns
         // tweak shouldn't break commit suppression silently.
         yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
             @"(?i)^Password NOT changed\b");
+
+        // ----- Trap-disarm flow ------------------------------------------
+        // Direction capture is the LONG form (north / northeast / up /
+        // etc.) since that's what the game's first-person output uses.
+        // TrapDisarmManager normalises both sides to short form ("n",
+        // "ne", "u") for the matching key.
+        yield return new RegexPattern(KnownPatterns.TrapFoundInSearch,
+            @"^You found a trap to the (?<dir>\w+)!?\s*$");
+        yield return new RegexPattern(KnownPatterns.TrapNoneInSearch,
+            @"^You notice nothing different to the (?<dir>\w+)\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.TrapDisarmedSuccess,
+            @"^You successfully disarmed the trap to the (?<dir>\w+)\.?\s*$");
     }
 
 }

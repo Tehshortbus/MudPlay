@@ -103,6 +103,12 @@ public static class RemoteCommandCatalog
             ["@equip-all"]    = PlayerRemoteControls.ExecuteCommands,
             ["@deposit-all"]  = PlayerRemoteControls.ExecuteCommands,
             ["@do"]           = PlayerRemoteControls.ExecuteCommands,
+            // @trap <dir> asks a Traps-skilled character to search +
+            // disarm a trap on the sender's behalf; @trap stop aborts.
+            // Soft-gated on Stats.Traps > 0 inside the handler; the
+            // permission tier covers the "do something on my behalf"
+            // semantic.
+            ["@trap"]         = PlayerRemoteControls.ExecuteCommands,
 
             // ===== Movement / Loops =====
             ["@goto"]         = PlayerRemoteControls.MovePlayer,

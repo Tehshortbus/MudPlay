@@ -98,6 +98,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _gameEntryCommand = "E";
     [ObservableProperty] private string _gameExitCommand  = "=x";
 
+    // ----- @trap auto-disarm attempt caps (wired) -----
+    // Both push into TrapDisarmManager on Apply via ApplyToServices,
+    // and via AppServices.ApplyOtherFromActiveProfile on ProfileLoaded /
+    // ProfileMutated. Search row sits above disarm in the rendered
+    // panel per user spec.
+
+    [ObservableProperty] private int _maxTrapSearchAttempts = 20;
+    [ObservableProperty] private int _maxTrapDisarmAttempts = 5;
+
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
@@ -199,6 +208,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             IgnoreDiseased  = IgnoreDiseased,
             GameEntryCommand = (GameEntryCommand ?? string.Empty).Trim(),
             GameExitCommand  = (GameExitCommand  ?? string.Empty).Trim(),
+            MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
+            MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
         };
 
         profile.Settings ??= new();
@@ -249,6 +260,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         IgnoreDiseased  = dto.IgnoreDiseased;
         GameEntryCommand = dto.GameEntryCommand;
         GameExitCommand  = dto.GameExitCommand;
+        MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
+        MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -282,6 +295,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         svcs.GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
             ? new OtherSettings().GameExitCommand
             : dto.GameExitCommand;
+        // @trap attempt caps — push into the live manager so the next
+        // queued @trap honours the edit without a profile reload.
+        svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
+        svcs.TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
     }
 
     // ----- IsDirty plumbing -----
@@ -300,6 +317,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnGameEntryCommandChanged(string value) => MarkDirty();
     partial void OnGameExitCommandChanged(string value)  => MarkDirty();
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
+    partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
+    partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();
 
     private void MarkDirty()
     {

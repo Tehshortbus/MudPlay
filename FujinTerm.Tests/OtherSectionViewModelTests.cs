@@ -24,6 +24,8 @@ public sealed class OtherSectionViewModelTests
             IgnoreDiseased  = true,
             GameEntryCommand = "enter",
             GameExitCommand  = "bye",
+            MaxTrapSearchAttempts = 30,
+            MaxTrapDisarmAttempts = 8,
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -37,6 +39,8 @@ public sealed class OtherSectionViewModelTests
         Assert.True(back.IgnoreDiseased);
         Assert.Equal("enter", back.GameEntryCommand);
         Assert.Equal("bye",   back.GameExitCommand);
+        Assert.Equal(30, back.MaxTrapSearchAttempts);
+        Assert.Equal(8,  back.MaxTrapDisarmAttempts);
     }
 
     [Fact]
@@ -59,5 +63,9 @@ public sealed class OtherSectionViewModelTests
         // E to enter the realm, =x to log off from the main menu.
         Assert.Equal("E",  dto.GameEntryCommand);
         Assert.Equal("=x", dto.GameExitCommand);
+        // @trap auto-disarm attempt caps — user-spec defaults:
+        // 20 search retries, 5 disarm retries.
+        Assert.Equal(20, dto.MaxTrapSearchAttempts);
+        Assert.Equal(5,  dto.MaxTrapDisarmAttempts);
     }
 }

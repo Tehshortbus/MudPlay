@@ -129,4 +129,13 @@ public static class KnownPatterns
     public const string SuicideNotSet            = "suicide.not-set";      // "You do not have a suicide password set."  (response to `pro`)
     public const string SuicidePasswordChanged   = "suicide.changed";      // "Password Changed"             (success commit)
     public const string SuicidePasswordNotChanged = "suicide.not-changed"; // "Password NOT changed"         (empty-CR into new-password prompt)
+
+    // ----- Trap-disarm flow (Phase 6 @trap handler) ----------------------
+    // Drives TrapDisarmManager's search → disarm state machine. Failure
+    // messages for the disarm phase are tracked in the per-realm
+    // Messages catalogue today; once the canonical handler stabilises
+    // they'll migrate here so the catalogue can prune its trap entries.
+    public const string TrapFoundInSearch     = "trap.found-in-search";   // "You found a trap to the <dir>!"
+    public const string TrapNoneInSearch      = "trap.none-in-search";    // "You notice nothing different to the <dir>."
+    public const string TrapDisarmedSuccess   = "trap.disarmed-success";  // "You successfully disarmed the trap to the <dir>."
 }

@@ -83,4 +83,22 @@ public sealed class OtherSettings
     /// handler ships now and uses this verbatim.
     /// </summary>
     public string GameExitCommand  { get; set; } = "=x";
+
+    /// <summary>
+    /// Caps the search loop in the @trap handler — how many
+    /// <c>sea &lt;dir&gt;</c> attempts we'll make before giving up and
+    /// telepathing the sender that we couldn't find a trap. Default
+    /// 20, range 1..100. Surfaced above the disarm-attempts row in
+    /// Settings → Other.
+    /// </summary>
+    public int MaxTrapSearchAttempts { get; set; } = 20;
+
+    /// <summary>
+    /// Caps the disarm-retry loop in the @trap handler — how many
+    /// <c>disarm trap &lt;dir&gt;</c> attempts we'll make after the
+    /// trap has been spotted before giving up. Default 5, range
+    /// 1..50. Damage-aware abort (stop early if the trap fires and
+    /// we lose HP) ships with the Phase 13 HealthManager wiring.
+    /// </summary>
+    public int MaxTrapDisarmAttempts { get; set; } = 5;
 }
