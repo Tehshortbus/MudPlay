@@ -27,10 +27,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
+        _services.Loops.LoopsChanged += OnLoopsChanged;
         Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
         RefreshLayout();
+        RefreshLoops();
     }
 
     public void Dispose()
@@ -39,6 +41,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
+        _services.Loops.LoopsChanged -= OnLoopsChanged;
     }
 
     // ----- Status strip ---------------------------------------------
@@ -108,6 +111,32 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // Re-layout from the selected room so the map pans to it.
         Layout = _services.Bfs.BuildLayout(result.Key);
         SearchQuery = string.Empty;
+    }
+
+    // ----- Loops list (PR 7.13) -------------------------------------
+
+    /// <summary>Loops in the active BBS, ordered by LoopManager (alphabetical).</summary>
+    public ObservableCollection<LoopRowViewModel> Loops { get; } = new();
+
+    public bool HasLoops => Loops.Count > 0;
+
+    private void OnLoopsChanged() => RefreshLoops();
+
+    private void RefreshLoops()
+    {
+        Loops.Clear();
+        foreach (Loop loop in _services.Loops.Loops)
+            Loops.Add(new LoopRowViewModel(loop));
+        OnPropertyChanged(nameof(HasLoops));
+    }
+
+    [RelayCommand]
+    private void RunLoop(LoopRowViewModel? row)
+    {
+        // PR 7.16 wires the loop runner; for now stamp LastRunAt so
+        // the badge updates and we can verify the path round-trips.
+        if (row is null) return;
+        _services.Loops.NoteRun(row.Source.Name);
     }
 
     // ----- Mode bar -------------------------------------------------

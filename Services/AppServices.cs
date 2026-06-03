@@ -910,10 +910,13 @@ public sealed class AppServices
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
 
-        // Phase 7 PR 7.8 — per-BBS loop catalogue. The active BBS is
-        // bound by MainWindowViewModel / Settings → BBS Apply at the
-        // same time as the rest of the per-BBS subsystems.
+        // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
+        // BBS-change signals so the catalogue reloads on profile load
+        // and on explicit BBS pin from Settings → BBS Apply.
         Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
+        Profile.ProfileLoaded += p => Loops.LoadAll(p.BbsName);
+        Profile.BbsPinApplied += p => Loops.LoadAll(p.BbsName);
+        Profile.ProfileClosed += () => Loops.LoadAll(null);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

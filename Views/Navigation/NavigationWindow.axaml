@@ -131,8 +131,34 @@
                                    Foreground="#555" FontSize="11"/>
 
                         <TextBlock Classes="SectionHeader" Text="LOOPS"/>
-                        <TextBlock Text="Saved loops land in PR 7.13."
-                                   Foreground="#555" FontSize="11"/>
+                        <TextBlock Text="No loops saved on this BBS."
+                                   Foreground="#666" FontSize="11"
+                                   IsVisible="{Binding !HasLoops}"/>
+                        <ItemsControl ItemsSource="{Binding Loops}"
+                                      IsVisible="{Binding HasLoops}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LoopRowViewModel">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="12"
+                                                       Foreground="#DDD"/>
+                                            <TextBlock FontSize="10" Foreground="#777">
+                                                <Run Text="{Binding SubLabel}"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{Binding LastRunBadge}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Content="Run"
+                                                FontSize="11" Padding="8,2"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </Grid>
             </Border>
