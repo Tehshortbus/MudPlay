@@ -501,6 +501,19 @@ public sealed class AppServices
     /// </summary>
     public SpellCoverageAuditor SpellCoverage { get; private set; } = null!;
 
+    /// <summary>
+    /// In-memory graph of every room in the active game-data set, built
+    /// once at set-switch time from <c>Rooms.json</c>. Phase 7's
+    /// navigation stack (room tracker, BFS mapper, walker, loop
+    /// manager, auto-lair scheduler) all read from this; Phase 7 PR
+    /// 7.4 ships the loader + indexer. Subscribes to
+    /// <see cref="GameDataCache.ActiveSetChanged"/> in
+    /// <see cref="Initialize"/>; consumers subscribe to
+    /// <see cref="Game.Map.RoomGraphManager.GraphReloaded"/> to drop
+    /// any cached room references.
+    /// </summary>
+    public Game.Map.RoomGraphManager RoomGraph { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -813,6 +826,14 @@ public sealed class AppServices
         // detail-handler registration itself lives in App startup
         // (it needs DialogService to spawn the modeless window).
         SpellCoverage = new SpellCoverageAuditor(GameData, Messages, Log);
+
+        // Phase 7 room graph — seeded from the active set's Rooms.json
+        // every time the set switches. Built once per swap; consumers
+        // hold typed Room references for the lifetime of the set.
+        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log);
+        GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

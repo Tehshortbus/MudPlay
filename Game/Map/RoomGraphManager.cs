@@ -1,0 +1,291 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using FujinTerm.Services;
+
+namespace FujinTerm.Game.Map;
+
+/// <summary>
+/// In-memory graph of every room in the active game-data set —
+/// primary lookup for the Phase 7 navigation stack (room tracker,
+/// BFS mapper, walker, loop manager, auto-lair scheduler).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Seeding</b>: the graph reads <c>Rooms.json</c> through
+/// <see cref="GameDataCache.GetRawTable"/> once per active-set switch.
+/// Every row turns into a typed <see cref="Room"/> indexed by
+/// <see cref="RoomKey"/>. <see cref="Game.Map.RoomExit"/> values are
+/// produced inline from the per-direction MDB cells
+/// (<c>"1/3"</c> / <c>"1/3 (Door)"</c> / <c>"0"</c>). The raw
+/// <see cref="JsonDocument"/> is evicted from <see cref="GameDataCache"/>
+/// immediately after conversion (per the project's memory-hygiene
+/// pattern set by <see cref="MonsterOverlaySeedStore"/>).
+/// </para>
+/// <para>
+/// <b>Uniqueness index</b>: a side table keyed on <c>(Name, ExitMask)</c>
+/// gives the room tracker its "is this a 1-of-1 room?" answer in O(1).
+/// When the user lands in a room whose tuple resolves to exactly one
+/// candidate, the tracker promotes to <c>Located</c> without further
+/// reconciliation. Buckets with &gt; 1 candidate are surfaced via
+/// <see cref="FindCandidates"/> for the Tier-2 footprint matcher.
+/// </para>
+/// <para>
+/// <b>Wiring</b>: <see cref="AppServices"/> subscribes
+/// <see cref="OnActiveSetChanged"/> to
+/// <see cref="GameDataCache.ActiveSetChanged"/> at construction time —
+/// every set swap rebuilds the graph from scratch. Subscribers to
+/// <see cref="GraphReloaded"/> drop any per-set room references they
+/// were holding.
+/// </para>
+/// </remarks>
+public sealed class RoomGraphManager
+{
+    private readonly GameDataCache _cache;
+    private readonly LogService? _log;
+    private readonly Dictionary<RoomKey, Room> _rooms = new();
+    private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
+
+    /// <summary>Set the graph was last built from, or <c>null</c> if empty.</summary>
+    public string? ActiveSet { get; private set; }
+
+    /// <summary>Number of rooms in the active graph (<c>0</c> when no set is active or load failed).</summary>
+    public int RoomCount => _rooms.Count;
+
+    /// <summary>
+    /// Fires after every successful (re)load, including the
+    /// transition to no-set-active (empty graph). Subscribers should
+    /// drop any cached room references and re-pull what they need.
+    /// </summary>
+    public event Action? GraphReloaded;
+
+    public RoomGraphManager(GameDataCache cache) : this(cache, log: null) { }
+
+    public RoomGraphManager(GameDataCache cache, LogService? log)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        _cache = cache;
+        _log = log;
+    }
+
+    /// <summary>
+    /// Direct lookup by primary key. Returns <c>null</c> when the key
+    /// doesn't resolve in the active set's graph.
+    /// </summary>
+    public Room? GetRoom(RoomKey key) =>
+        _rooms.TryGetValue(key, out Room? room) ? room : null;
+
+    /// <summary>
+    /// All rooms in the active set whose <see cref="Room.Name"/> matches
+    /// <paramref name="name"/> case-insensitively. Empty when no match.
+    /// </summary>
+    public IReadOnlyList<Room> FindByName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return Array.Empty<Room>();
+        return _byName.TryGetValue(name, out List<Room>? rooms)
+            ? rooms
+            : (IReadOnlyList<Room>)Array.Empty<Room>();
+    }
+
+    /// <summary>
+    /// All rooms in the active set whose <c>(Name, exit-set)</c> tuple
+    /// matches. Used by RoomTracker to detect the 1-of-1 case — when
+    /// the result has exactly one entry, the tracker can promote to
+    /// <c>Located</c> without further reconciliation.
+    /// </summary>
+    public IReadOnlyList<RoomKey> FindCandidates(string name, IReadOnlySet<Direction> exits)
+    {
+        if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
+        ArgumentNullException.ThrowIfNull(exits);
+
+        uint mask = MaskFromSet(exits);
+        return _byNameAndExits.TryGetValue((name, mask), out List<RoomKey>? keys)
+            ? keys
+            : (IReadOnlyList<RoomKey>)Array.Empty<RoomKey>();
+    }
+
+    /// <summary>
+    /// True when the active set contains exactly one room with this
+    /// room's <c>(Name, ExitMask)</c> tuple. False for ambiguous tuples
+    /// and for rooms not in the active graph.
+    /// </summary>
+    public bool IsUnique(RoomKey key)
+    {
+        if (!_rooms.TryGetValue(key, out Room? room)) return false;
+        return _byNameAndExits.TryGetValue((room.Name, room.ExitMask), out List<RoomKey>? keys)
+               && keys.Count == 1;
+    }
+
+    /// <summary>
+    /// Rebuild the graph from <paramref name="setName"/>'s
+    /// <c>Rooms.json</c>. Pass <c>null</c> to clear. Safe to call
+    /// repeatedly; idempotent on no-op transitions (same set still
+    /// fires <see cref="GraphReloaded"/> because the caller may have
+    /// re-imported the underlying file).
+    /// </summary>
+    public void OnActiveSetChanged(string? setName)
+    {
+        Clear();
+        ActiveSet = setName;
+
+        if (string.IsNullOrWhiteSpace(setName))
+        {
+            _log?.Log(LogSeverity.Info, "RoomGraph", "No active game-data set; room graph cleared.");
+            GraphReloaded?.Invoke();
+            return;
+        }
+
+        JsonDocument? doc = _cache.GetRawTable("Rooms");
+        if (doc is null)
+        {
+            _log?.Log(LogSeverity.Warn, "RoomGraph",
+                $"Active set '{setName}' has no Rooms.json; room graph is empty.");
+            GraphReloaded?.Invoke();
+            return;
+        }
+
+        int parsed = 0;
+        int skipped = 0;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!TryReadRoom(row, out Room? room))
+            {
+                skipped++;
+                continue;
+            }
+            // Last write wins on duplicate keys — the MDB shouldn't
+            // emit duplicates but we don't trust hand-edited data.
+            _rooms[room.Key] = room;
+            parsed++;
+        }
+
+        BuildSecondaryIndexes();
+
+        // Free the raw JSON; the typed graph is the source of truth now.
+        _cache.EvictTable("Rooms");
+
+        _log?.Log(LogSeverity.Info, "RoomGraph",
+            $"Loaded {parsed} room(s) from '{setName}' Rooms.json"
+            + (skipped > 0 ? $" ({skipped} malformed row(s) skipped)." : "."));
+
+        GraphReloaded?.Invoke();
+    }
+
+    private void Clear()
+    {
+        _rooms.Clear();
+        _byName.Clear();
+        _byNameAndExits.Clear();
+    }
+
+    private void BuildSecondaryIndexes()
+    {
+        foreach (Room room in _rooms.Values)
+        {
+            if (!_byName.TryGetValue(room.Name, out List<Room>? nameBucket))
+            {
+                nameBucket = new List<Room>();
+                _byName[room.Name] = nameBucket;
+            }
+            nameBucket.Add(room);
+
+            var tuple = (room.Name, room.ExitMask);
+            if (!_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
+            {
+                exitBucket = new List<RoomKey>();
+                _byNameAndExits[tuple] = exitBucket;
+            }
+            exitBucket.Add(room.Key);
+        }
+    }
+
+    private static bool TryReadRoom(JsonElement row, out Room room)
+    {
+        room = null!;
+        if (row.ValueKind != JsonValueKind.Object) return false;
+
+        if (!TryReadInt(row, "Map Number", out int map)) return false;
+        if (!TryReadInt(row, "Room Number", out int roomNumber)) return false;
+        if (map <= 0 || roomNumber <= 0) return false;
+
+        string? name = TryReadString(row, "Name");
+        if (string.IsNullOrWhiteSpace(name)) return false;
+
+        var exits = new Dictionary<Direction, RoomExit>();
+        uint mask = 0;
+        foreach (Direction dir in s_directions)
+        {
+            string? cell = TryReadString(row, s_exitPropertyNames[(int)dir]);
+            if (!RoomExit.TryParseWire(cell, out RoomExit exit)) continue;
+            exits[dir] = exit;
+            mask |= 1u << (int)dir;
+        }
+
+        string? lairRaw = TryReadString(row, "Lair");
+        if (IsLairSentinel(lairRaw)) lairRaw = null;
+
+        room = new Room
+        {
+            Key = new RoomKey(map, roomNumber),
+            Name = name,
+            Light = TryReadIntOrZero(row, "Light"),
+            Shop  = TryReadIntOrZero(row, "Shop"),
+            Delay = TryReadIntOrZero(row, "Delay"),
+            RawLairTag = lairRaw,
+            Exits = exits,
+            ExitMask = mask,
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// MDB exports the empty cell as either <c>" "</c> (NUL),
+    /// a literal blank, or whitespace. Treat any of those as "no lair".
+    /// </summary>
+    private static bool IsLairSentinel(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+        // The NUL-as-single-character case from the MDB importer.
+        if (raw.Length == 1 && raw[0] == '\0') return true;
+        return false;
+    }
+
+    private static bool TryReadInt(JsonElement row, string property, out int value)
+    {
+        if (row.TryGetProperty(property, out JsonElement el) &&
+            el.ValueKind == JsonValueKind.Number &&
+            el.TryGetInt32(out value))
+            return true;
+        value = 0;
+        return false;
+    }
+
+    private static int TryReadIntOrZero(JsonElement row, string property)
+        => TryReadInt(row, property, out int v) ? v : 0;
+
+    private static string? TryReadString(JsonElement row, string property)
+        => row.TryGetProperty(property, out JsonElement el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString()
+            : null;
+
+    private static uint MaskFromSet(IReadOnlySet<Direction> exits)
+    {
+        uint mask = 0;
+        foreach (Direction d in exits) mask |= 1u << (int)d;
+        return mask;
+    }
+
+    // Direction-to-MDB-property-name table — order matches the enum.
+    private static readonly Direction[] s_directions =
+    {
+        Direction.N, Direction.S, Direction.E, Direction.W,
+        Direction.NE, Direction.NW, Direction.SE, Direction.SW,
+        Direction.U, Direction.D,
+    };
+
+    private static readonly string[] s_exitPropertyNames =
+    {
+        "N", "S", "E", "W", "NE", "NW", "SE", "SW", "U", "D",
+    };
+}
