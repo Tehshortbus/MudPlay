@@ -71,6 +71,14 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<RoomKey?> SelectedRoomKeyProperty =
         AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(SelectedRoomKey));
 
+    public static readonly StyledProperty<FujinTerm.Models.Profile.KeyChord> UpStepChordProperty =
+        AvaloniaProperty.Register<MapControl, FujinTerm.Models.Profile.KeyChord>(nameof(UpStepChord),
+            new FujinTerm.Models.Profile.KeyChord(Key.PageUp));
+
+    public static readonly StyledProperty<FujinTerm.Models.Profile.KeyChord> DownStepChordProperty =
+        AvaloniaProperty.Register<MapControl, FujinTerm.Models.Profile.KeyChord>(nameof(DownStepChord),
+            new FujinTerm.Models.Profile.KeyChord(Key.PageDown));
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -161,6 +169,24 @@ public sealed class MapControl : Control
     /// different floor and therefore isn't in the current layout).
     /// </summary>
     public event Action<RoomKey>? FloorChangeRequested;
+
+    /// <summary>
+    /// Key chord that steps the crawler one floor up. Bound from
+    /// the user's macro configured to send <c>u</c> to the game so
+    /// the same chord drives both in-game movement and the map
+    /// crawler. Defaults to <c>PageUp</c> when the macro isn't bound.
+    /// </summary>
+    public FujinTerm.Models.Profile.KeyChord UpStepChord
+    {
+        get => GetValue(UpStepChordProperty);
+        set => SetValue(UpStepChordProperty, value);
+    }
+
+    public FujinTerm.Models.Profile.KeyChord DownStepChord
+    {
+        get => GetValue(DownStepChordProperty);
+        set => SetValue(DownStepChordProperty, value);
+    }
 
     // ----- view-state ------------------------------------------------
 
@@ -399,9 +425,12 @@ public sealed class MapControl : Control
         if (Graph is null || Layout is null) return;
 
         // Floor change — U / D step the crawler onto a different
-        // floor; the host rebuilds the layout from the new room.
-        if (e.Key == Key.PageUp)   { TryStepFloor(Direction.U); e.Handled = true; return; }
-        if (e.Key == Key.PageDown) { TryStepFloor(Direction.D); e.Handled = true; return; }
+        // floor. Matched against the user's configured up/down macros
+        // (via the UpStepChord / DownStepChord bindings) so the same
+        // chord that walks the character up/down in-game drives the
+        // map crawler when the map has focus.
+        if (ChordMatches(e, UpStepChord))   { TryStepFloor(Direction.U); e.Handled = true; return; }
+        if (ChordMatches(e, DownStepChord)) { TryStepFloor(Direction.D); e.Handled = true; return; }
 
         // Home re-centres on the live current room.
         if (e.Key == Key.Home)
@@ -432,6 +461,15 @@ public sealed class MapControl : Control
             TryStepSelection(d);
             e.Handled = true;
         }
+    }
+
+    private static bool ChordMatches(Avalonia.Input.KeyEventArgs e, FujinTerm.Models.Profile.KeyChord chord)
+    {
+        if (chord.IsEmpty || chord.Key != e.Key) return false;
+        bool ctrl  = (e.KeyModifiers & KeyModifiers.Control) != 0;
+        bool shift = (e.KeyModifiers & KeyModifiers.Shift)   != 0;
+        bool alt   = (e.KeyModifiers & KeyModifiers.Alt)     != 0;
+        return chord.Ctrl == ctrl && chord.Shift == shift && chord.Alt == alt;
     }
 
     private RoomKey CrawlOrigin() =>

@@ -36,10 +36,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
         Graph = _services.RoomGraph;
+        _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
         RefreshFromWalker();
         RefreshLayout();
         RefreshLoops();
+        RefreshCrawlerChords();
     }
 
     public void Dispose()
@@ -53,6 +55,33 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
+        _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
+    }
+
+    private void OnMacrosCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => RefreshCrawlerChords();
+
+    private void RefreshCrawlerChords()
+    {
+        // Find first enabled macro whose Command sends a bare "u" or
+        // "d" (ignoring whitespace + case). If none, fall back to the
+        // historic PageUp / PageDown defaults so the crawler always
+        // has SOMETHING bound for floor stepping.
+        UpStepChord   = FindChordForDirectionCommand("u") ?? new(Avalonia.Input.Key.PageUp);
+        DownStepChord = FindChordForDirectionCommand("d") ?? new(Avalonia.Input.Key.PageDown);
+    }
+
+    private FujinTerm.Models.Profile.KeyChord? FindChordForDirectionCommand(string direction)
+    {
+        foreach (FujinTerm.Models.GameData.Macro m in _services.Macros.Macros)
+        {
+            if (!m.Enabled) continue;
+            string cmd = m.Command?.Trim() ?? string.Empty;
+            if (!string.Equals(cmd, direction, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!Enum.TryParse<Avalonia.Input.Key>(m.Key, ignoreCase: true, out Avalonia.Input.Key avk)) continue;
+            return new FujinTerm.Models.Profile.KeyChord(avk, m.Ctrl, m.Shift, m.Alt);
+        }
+        return null;
     }
 
     private void OnAutoLairMarkedChanged()
@@ -138,6 +167,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
     [ObservableProperty] private bool _isAutoLairing;
     [ObservableProperty] private RoomKey? _selectedRoomKey;
+
+    // Map crawler floor-step chords — kept in sync with the user's
+    // u / d movement macros (Settings → Macros). When the user has
+    // no macro for either direction we fall back to the MapControl's
+    // default chord (PageUp / PageDown).
+    [ObservableProperty] private FujinTerm.Models.Profile.KeyChord _upStepChord
+        = new(Avalonia.Input.Key.PageUp);
+    [ObservableProperty] private FujinTerm.Models.Profile.KeyChord _downStepChord
+        = new(Avalonia.Input.Key.PageDown);
 
     // ----- Search ---------------------------------------------------
 
