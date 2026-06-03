@@ -98,7 +98,11 @@
                                  Graph="{Binding Graph}"
                                  HighlightLairs="{Binding HighlightLairs}"
                                  HighlightShops="{Binding HighlightShops}"
-                                 HighlightSpells="{Binding HighlightSpells}">
+                                 HighlightSpells="{Binding HighlightSpells}"
+                                 WalkPath="{Binding WalkPath}"
+                                 LoopPath="{Binding LoopPath}"
+                                 AvoidedRooms="{Binding AvoidedRooms}"
+                                 LoopSequenceNumbers="{Binding LoopSequenceNumbers}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"

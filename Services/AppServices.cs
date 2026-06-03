@@ -932,9 +932,11 @@ public sealed class AppServices
 
         // Phase 7 PR 7.16 — loop execution engine. MainWindowViewModel
         // binds the wire-sender once telnet is up (same pattern as
-        // the walker).
+        // the walker). RoomGraph passed in so the runner can resolve
+        // MoveLoopStep sequences into room-key polylines for the map
+        // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
-            PromptScanner, Log);
+            PromptScanner, Log, RoomGraph);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

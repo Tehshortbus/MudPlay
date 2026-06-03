@@ -50,6 +50,18 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<bool> HighlightSpellsProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightSpells), defaultValue: true);
 
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> WalkPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(WalkPath));
+
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopPath));
+
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
+
+    public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LoopSequenceNumbersProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LoopSequenceNumbers));
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -84,6 +96,30 @@ public sealed class MapControl : Control
     {
         get => GetValue(HighlightSpellsProperty);
         set => SetValue(HighlightSpellsProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? WalkPath
+    {
+        get => GetValue(WalkPathProperty);
+        set => SetValue(WalkPathProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? LoopPath
+    {
+        get => GetValue(LoopPathProperty);
+        set => SetValue(LoopPathProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? AvoidedRooms
+    {
+        get => GetValue(AvoidedRoomsProperty);
+        set => SetValue(AvoidedRoomsProperty, value);
+    }
+
+    public IReadOnlyDictionary<RoomKey, int>? LoopSequenceNumbers
+    {
+        get => GetValue(LoopSequenceNumbersProperty);
+        set => SetValue(LoopSequenceNumbersProperty, value);
     }
 
     // ----- view-state ------------------------------------------------
@@ -121,6 +157,21 @@ public sealed class MapControl : Control
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#C77FAC")), 1.5);
     private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#7FB0CC")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
+    private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
+    {
+        LineCap = PenLineCap.Round,
+        LineJoin = PenLineJoin.Round,
+    };
+    private static readonly IPen   LoopPathPen    = new Pen(new SolidColorBrush(Color.Parse("#4C82E6")), 3.0)
+    {
+        LineCap = PenLineCap.Round,
+        LineJoin = PenLineJoin.Round,
+    };
+    private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
+    {
+        LineCap = PenLineCap.Round,
+    };
+    private static readonly IBrush SeqNumberFill  = new SolidColorBrush(Color.Parse("#FFFFFF"));
 
     // ----- lifecycle -------------------------------------------------
 
@@ -129,7 +180,8 @@ public sealed class MapControl : Control
         Focusable = true;
         ClipToBounds = true;
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
-            HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty);
+            HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
+            WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty);
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -284,7 +336,65 @@ public sealed class MapControl : Control
 
             // 3. Room node (smaller centered rectangle).
             DrawRoomNode(context, cell, kvp.Value);
+
+            // 4. Avoid-X overlay (red X on cells the user has flagged).
+            if (AvoidedRooms is not null && AvoidedRooms.Contains(kvp.Value))
+                DrawAvoidX(context, cell);
+
+            // 5. Loop sequence number (bold white centred glyph).
+            if (LoopSequenceNumbers is not null
+                && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
+                && tilePixels >= 16)
+                DrawSequenceNumber(context, cell, seq);
         }
+
+        // 6. Overlay polylines drawn on top of every cell. Loop path
+        // first so the walk path lies above it (the user normally
+        // wants the *current* leg to dominate visually).
+        DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
+        DrawPathPolyline(context, WalkPath, WalkPathPen, tilePixels, cx, cy);
+    }
+
+    private void DrawPathPolyline(DrawingContext ctx, IReadOnlyList<RoomKey>? path, IPen pen,
+        double tilePixels, double cx, double cy)
+    {
+        if (path is null || path.Count < 2 || Layout is null) return;
+
+        Point? prev = null;
+        foreach (RoomKey key in path)
+        {
+            if (!Layout.Positions.TryGetValue(key, out (int X, int Y) coord))
+            {
+                prev = null;                                  // gap — skip until next placed room
+                continue;
+            }
+            Point here = new(cx + coord.X * tilePixels, cy + coord.Y * tilePixels);
+            if (prev is { } p) ctx.DrawLine(pen, p, here);
+            prev = here;
+        }
+    }
+
+    private static void DrawAvoidX(DrawingContext ctx, Rect cell)
+    {
+        double inset = cell.Width * 0.25;
+        Point topLeft     = new(cell.X + inset, cell.Y + inset);
+        Point topRight    = new(cell.Right - inset, cell.Y + inset);
+        Point bottomLeft  = new(cell.X + inset, cell.Bottom - inset);
+        Point bottomRight = new(cell.Right - inset, cell.Bottom - inset);
+        ctx.DrawLine(AvoidXPen, topLeft, bottomRight);
+        ctx.DrawLine(AvoidXPen, topRight, bottomLeft);
+    }
+
+    private void DrawSequenceNumber(DrawingContext ctx, Rect cell, int seq)
+    {
+        Typeface tf = new("Inter", FontStyle.Normal, FontWeight.Bold);
+        double size = Math.Clamp(cell.Width * 0.32, 8, 16);
+        FormattedText ft = new(seq.ToString(), System.Globalization.CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight, tf, size, SeqNumberFill);
+        Point p = new(
+            cell.X + (cell.Width  - ft.Width)  / 2,
+            cell.Y + (cell.Height - ft.Height) / 2);
+        ctx.DrawText(ft, p);
     }
 
     private void DrawExitStubs(DrawingContext ctx, Rect cell, (int X, int Y) coord)

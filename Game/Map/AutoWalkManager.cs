@@ -78,6 +78,30 @@ public sealed class AutoWalkManager
         ? (IReadOnlyList<WalkStep>)Array.Empty<WalkStep>()
         : _path;
 
+    /// <summary>
+    /// Remaining walk path as a sequence of room keys — current
+    /// room followed by each subsequent <see cref="MoveStep"/>'s
+    /// <see cref="MoveStep.ExpectedTarget"/>. The map renderer
+    /// (PR 7.x walk-path overlay) draws this as a blue polyline so
+    /// the user can see exactly where the walker is heading.
+    /// </summary>
+    public IReadOnlyList<RoomKey> RemainingRoomKeys
+    {
+        get
+        {
+            if (_path is null || State == WalkState.Idle)
+                return Array.Empty<RoomKey>();
+
+            var keys = new List<RoomKey>(_path.Count - _index + 1);
+            if (_tracker.State.CurrentRoom is { } current) keys.Add(current.Key);
+            for (int i = _index; i < _path.Count; i++)
+            {
+                if (_path[i] is MoveStep move) keys.Add(move.ExpectedTarget);
+            }
+            return keys;
+        }
+    }
+
     public event Action<WalkEvent>? Event;
 
     public AutoWalkManager(

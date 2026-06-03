@@ -29,6 +29,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.Loops.LoopsChanged += OnLoopsChanged;
         _services.LoopRunner.Event += OnLoopRunnerEvent;
+        _services.Movement.AvoidedChanged += OnAvoidedChanged;
+        OnAvoidedChanged();
         Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
@@ -44,9 +46,42 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.Loops.LoopsChanged -= OnLoopsChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
+        _services.Movement.AvoidedChanged -= OnAvoidedChanged;
     }
 
-    private void OnLoopRunnerEvent(LoopEvent _) => OnPropertyChanged(nameof(IsLoopRunning));
+    private void OnAvoidedChanged()
+    {
+        AvoidedRooms = new HashSet<RoomKey>(_services.Movement.Avoided);
+    }
+
+    private void OnLoopRunnerEvent(LoopEvent _)
+    {
+        OnPropertyChanged(nameof(IsLoopRunning));
+        RefreshLoopOverlays();
+    }
+
+    private void RefreshLoopOverlays()
+    {
+        Game.Map.LoopRunner runner = _services.LoopRunner;
+        if (runner.CurrentLoop is not { } loop
+            || _services.RoomTracker.State.CurrentRoom is not { } current)
+        {
+            LoopPath = null;
+            LoopSequenceNumbers = null;
+            return;
+        }
+
+        // Resolve the loop's MoveLoopSteps into a room-key sequence.
+        IReadOnlyList<RoomKey> keys = runner.ResolveLoopRoomKeys(current.Key);
+        LoopPath = keys.Count >= 2 ? keys : null;
+
+        // Sequence numbers: 1..N at each successive room. Duplicate
+        // keys (loops with revisits) keep the LAST sighting's number
+        // — matches MudProxy's convention.
+        var seq = new Dictionary<RoomKey, int>();
+        for (int i = 0; i < keys.Count; i++) seq[keys[i]] = i + 1;
+        LoopSequenceNumbers = seq;
+    }
 
     // ----- Status strip ---------------------------------------------
 
@@ -72,6 +107,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private RoomLayout? _layout;
     [ObservableProperty] private RoomKey? _currentRoomKey;
     [ObservableProperty] private RoomGraphManager? _graph;
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _walkPath;
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
+    [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
 
     // ----- Search ---------------------------------------------------
 
@@ -347,6 +386,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         IsWalking = _services.Walker.State == WalkState.Walking
                  || _services.Walker.State == WalkState.Paused;
+
+        WalkPath = IsWalking
+            ? _services.Walker.RemainingRoomKeys
+            : null;
     }
 }
 

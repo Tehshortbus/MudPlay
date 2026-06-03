@@ -33,6 +33,31 @@ public sealed class LoopRunner
     public Loop? CurrentLoop => _loop;
     public int CurrentIndex => _index;
 
+    private readonly RoomGraphManager? _graph;
+
+    /// <summary>
+    /// Resolves the active loop's <see cref="MoveLoopStep"/>s into a
+    /// list of room keys starting at <paramref name="source"/>. Used
+    /// by the Navigation map renderer (loop-path overlay + sequence
+    /// numbers). Returns empty when no loop is active.
+    /// </summary>
+    public IReadOnlyList<RoomKey> ResolveLoopRoomKeys(RoomKey source)
+    {
+        if (_loop is null || _graph is null) return Array.Empty<RoomKey>();
+        var keys = new List<RoomKey> { source };
+        RoomKey here = source;
+        foreach (LoopStep step in _loop.Steps)
+        {
+            if (step is not MoveLoopStep move) continue;
+            Room? room = _graph.GetRoom(here);
+            if (room is null) break;
+            if (!room.Exits.TryGetValue(move.Direction, out RoomExit exit)) break;
+            here = exit.Target;
+            keys.Add(here);
+        }
+        return keys;
+    }
+
     /// <summary>Bytes sent by the runner — captured for tests when no wire is bound.</summary>
     public IReadOnlyList<byte[]> LastSentForTests => _sent;
     private readonly List<byte[]> _sent = new();
@@ -40,7 +65,8 @@ public sealed class LoopRunner
     public event Action<LoopEvent>? Event;
 
     public LoopRunner(RoomTracker tracker, MovementCoordinator coordinator,
-        WirePromptScanner? promptScanner = null, LogService? log = null)
+        WirePromptScanner? promptScanner = null, LogService? log = null,
+        RoomGraphManager? graph = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -48,6 +74,7 @@ public sealed class LoopRunner
         _coordinator = coordinator;
         _promptScanner = promptScanner;
         _log = log;
+        _graph = graph;
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnPauseChanged;
