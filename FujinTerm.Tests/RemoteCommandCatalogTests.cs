@@ -109,7 +109,6 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@wait")]
     [InlineData("@ok")]
     [InlineData("@comeback")]
-    [InlineData("@heal")]
     [InlineData("@blind")]
     [InlineData("@diseased")]
     [InlineData("@held")]
@@ -120,6 +119,16 @@ public sealed class RemoteCommandCatalogTests
         // None = "any active party member" — engine routes these through
         // the party-whitelist branch instead of the per-player flag.
         => Assert.Equal(PlayerRemoteControls.None, Lookup(cmd));
+
+    [Fact]
+    public void Heal_RoutesToExecuteCommands_NotPartyWhitelist()
+        // @heal asks the receiver to cast a heal on the sender — that's
+        // an action request ("do something on my behalf"), not a
+        // coordination signal. A sender may legitimately need it even
+        // when the receiver's auto-heal thresholds don't naturally
+        // pick them up (settings mismatch). Phase 12 CastingDirector
+        // wires the handler.
+        => Assert.Equal(PlayerRemoteControls.ExecuteCommands, Lookup("@heal"));
 
     [Fact]
     public void Party_RoutesToQueryHealthStatusWithPartyMemberFallback()

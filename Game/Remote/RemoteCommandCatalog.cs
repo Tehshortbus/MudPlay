@@ -42,12 +42,23 @@ namespace FujinTerm.Game.Remote;
 /// </list>
 /// </para>
 /// <para>
-/// Party-coordination commands (@wait / @ok / @comeback / @heal / @blind /
+/// Party-coordination commands (@wait / @ok / @comeback / @blind /
 /// @diseased / @held / @party / @kill / @share / @panic) map to
 /// <see cref="PlayerRemoteControls.None"/> — they're gated by the engine's
 /// party-whitelist branch instead of the per-player flag check. Any
 /// active party member can issue them by default; the user disables them
 /// wholesale via Settings.Talk → Disallow @party commands.
+/// </para>
+/// <para>
+/// <c>@heal</c> is the exception in that family: it's
+/// <see cref="PlayerRemoteControls.ExecuteCommands"/> rather than
+/// party-whitelist. The semantic is "do something on my behalf"
+/// (cast a heal on the sender) rather than a coordination signal,
+/// and a sender may legitimately need it even when the receiver's
+/// auto-heal thresholds don't naturally pick them up (settings
+/// mismatch between healer and target). Requires the receiver to
+/// have granted the sender ExecuteCommands explicitly. Phase 12
+/// CastingDirector wires the handler.
 /// </para>
 /// </remarks>
 public static class RemoteCommandCatalog
@@ -119,7 +130,13 @@ public static class RemoteCommandCatalog
             ["@wait"]         = PlayerRemoteControls.None,
             ["@ok"]           = PlayerRemoteControls.None,
             ["@comeback"]     = PlayerRemoteControls.None,
-            ["@heal"]         = PlayerRemoteControls.None,
+            // @heal sits at ExecuteCommands rather than None: it's an
+            // action request ("cast heal on me"), not a coordination
+            // signal. A sender may legitimately need it even when the
+            // receiver's auto-heal thresholds don't naturally pick
+            // them up (settings mismatch between healer and target).
+            // Phase 12 CastingDirector wires the handler.
+            ["@heal"]         = PlayerRemoteControls.ExecuteCommands,
             ["@blind"]        = PlayerRemoteControls.None,
             ["@diseased"]     = PlayerRemoteControls.None,
             ["@held"]         = PlayerRemoteControls.None,

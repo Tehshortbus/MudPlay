@@ -423,8 +423,8 @@ public sealed class RemoteCommandManager : IDisposable
     {
         // Special case: requiredCategory == None means "party whitelist —
         // allowed for any active party member". Used by @wait / @ok /
-        // @kill / @heal / etc. Settings.Talk → Disallow @party commands
-        // flips this off even for active members.
+        // @kill / @comeback / etc. Settings.Talk → Disallow @party
+        // commands flips this off even for active members.
         if (requiredCategory == PlayerRemoteControls.None)
             return !DisablePartyWhitelist && IsActivePartyMember(sender);
 
