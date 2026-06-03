@@ -203,6 +203,44 @@ public sealed class PartyPollerTests
     }
 
     [Fact]
+    public void HealthReply_NegativeCurrentHp_ParsesAndCancelsNag()
+    {
+        // MajorMUD's "dropped" state: HP can go from 0 to the BBS's
+        // death threshold (negative) while the player is still alive
+        // but immobile. The @health reply legitimately carries a
+        // negative cur value in that range. Pre-fix the `\d+` cur
+        // regex silently failed to match, BaselineHp stayed 0, and
+        // the nag retried until max-total instead of cancelling.
+        var (_, _, state, _, router, _) = Setup();
+        state.Members.Add(new PartyMember { Name = "Raijin" });
+
+        DispatchTelepath(router, "Raijin", "{HP=-5/40,MA=10/34}");
+
+        PartyMember m = state.Members[0];
+        // Baseline = max half (always positive).
+        Assert.Equal(40, m.BaselineHp);
+        // Percent reflects the actual negative value (-5/40 = -12).
+        // The ProgressBar control will clamp at 0; HpDisplay surfaces
+        // the real "-2/40" so the user can see they're dropped.
+        Assert.Equal(-12, m.HpPercent);
+        Assert.Equal(34, m.BaselineMp);
+    }
+
+    [Fact]
+    public void HealthReply_ZeroCurrentHp_StillParses()
+    {
+        // Edge of the dropped range — 0 HP is the immobile threshold.
+        var (_, _, state, _, router, _) = Setup();
+        state.Members.Add(new PartyMember { Name = "Raijin" });
+
+        DispatchTelepath(router, "Raijin", "{HP=0/40}");
+
+        PartyMember m = state.Members[0];
+        Assert.Equal(40, m.BaselineHp);
+        Assert.Equal(0,  m.HpPercent);
+    }
+
+    [Fact]
     public void HealthReply_WithKai_UpdatesBaselinesAndPercents()
     {
         var (_, _, state, _, router, _) = Setup();

@@ -102,7 +102,15 @@ public sealed partial class PartyPoller : IDisposable
     /// HP/MA numbers for baseline capture.
     /// </summary>
     [GeneratedRegex(
-        @"^\{?HP=(?<hp>\d+)/(?<hpmax>\d+)(?:,(?:MA|KAI)=(?<mp>\d+)/(?<mpmax>\d+))?(?:,\s*\w+)?\}?\s*$",
+        // `cur` halves accept an optional leading `-` because MajorMUD
+        // lets HP go from 0 down to a BBS-set death threshold (the
+        // "dropped" state — alive but immobile, bleeding out unless
+        // someone `aid`s them). Without the optional minus the regex
+        // silently fails to match a dropped member's @health reply,
+        // BaselineHp stays 0, and PartyPoller's nag retries until
+        // max-total instead of cancelling on first valid reply.
+        // Max halves stay `\d+` — max HP / MA are always positive.
+        @"^\{?HP=(?<hp>-?\d+)/(?<hpmax>\d+)(?:,(?:MA|KAI)=(?<mp>-?\d+)/(?<mpmax>\d+))?(?:,\s*\w+)?\}?\s*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
