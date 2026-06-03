@@ -79,10 +79,6 @@
                 <Button Grid.Column="4" Classes="ModeChip" Content="Lair mode"
                         Command="{Binding ToggleLairModeCommand}"
                         Classes.Active="{Binding IsLairMode}"/>
-                <Button Grid.Column="4" Classes="ModeChip" Content="Auto-roam"
-                        Command="{Binding ToggleAutoRoamCommand}"
-                        Classes.Active="{Binding IsAutoRoaming}"
-                        Margin="0,0,4,0" HorizontalAlignment="Right"/>
                 <Button Grid.Column="5" Classes="ModeChip" Content="Pause"
                         Command="{Binding PauseOrResumeCommand}"
                         IsVisible="{Binding !IsPaused}"/>
@@ -107,8 +103,8 @@
                                  LoopPath="{Binding LoopPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
-                                 AutoRoamRooms="{Binding AutoRoamRooms}"
-                                 WalkPathIsAutoRoam="{Binding IsAutoRoaming}">
+                                 AutoLairRooms="{Binding AutoLairRooms}"
+                                 WalkPathIsAutoLair="{Binding IsAutoLairing}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
@@ -123,11 +119,33 @@
                                   Command="{Binding ToggleContextRoomAvoidedCommand}"/>
                         <MenuItem Header="Toggle: Stash room"
                                   Command="{Binding ToggleContextRoomStashCommand}"/>
-                        <MenuItem Header="Toggle: Auto-roam this room"
-                                  Command="{Binding ToggleContextRoomAutoRoamCommand}"/>
+                        <MenuItem Header="Toggle: Auto-lair this room"
+                                  Command="{Binding ToggleContextRoomAutoLairCommand}"/>
                     </ContextMenu>
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
+
+            <!-- Hover tooltip popup. Chrome modelled on MMUD-Explorer
+                 (pale yellow + black, rounded). Positioned manually
+                 by the window's code-behind via Margin on the host
+                 Border so the popup tracks the cursor without an
+                 Avalonia Popup's window-level placement plumbing. -->
+            <Border Grid.Column="0"
+                    Name="HoverTooltip"
+                    IsVisible="False"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Background="#FFFFC0"
+                    BorderBrush="#888" BorderThickness="1"
+                    CornerRadius="6" Padding="8,6"
+                    IsHitTestVisible="False"
+                    MaxWidth="520">
+                <TextBlock Name="HoverTooltipText"
+                           Text=""
+                           FontFamily="{StaticResource FontMono}"
+                           FontSize="11"
+                           Foreground="#000000"
+                           TextWrapping="Wrap"/>
+            </Border>
 
             <!-- Legend overlay (PR 7.17). Floats over the map; the
                  user toggles it from the top-bar Legend chip. -->
@@ -159,7 +177,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#DC821E"/>
-                        <TextBlock Text="Auto-roam mark" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="#DDD"/>
                     </StackPanel>
                     <Separator Margin="0,4"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">

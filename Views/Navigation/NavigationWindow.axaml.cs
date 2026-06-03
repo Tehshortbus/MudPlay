@@ -30,7 +30,40 @@ public partial class NavigationWindow : Window
         {
             map.RoomRightClicked += OnMapRoomRightClicked;
             map.RoomLeftClicked  += OnMapRoomLeftClicked;
+            map.RoomHovered      += OnMapRoomHovered;
         }
+    }
+
+    private void OnMapRoomHovered(Game.Map.RoomKey? key, Point cursor)
+    {
+        Border? popup = this.FindControl<Border>("HoverTooltip");
+        TextBlock? label = this.FindControl<TextBlock>("HoverTooltipText");
+        if (popup is null || label is null) return;
+
+        if (key is not { } k)
+        {
+            popup.IsVisible = false;
+            return;
+        }
+
+        Services.AppServices svc = FujinTerm.Services.AppServices.Current;
+        if (svc.RoomGraph.GetRoom(k) is not { } room)
+        {
+            popup.IsVisible = false;
+            return;
+        }
+
+        label.Text = Game.Map.RoomTooltipBuilder.Build(room, svc.RoomGraph, svc.GameData);
+
+        // Anchor the popup near the cursor — offset a few pixels so
+        // it doesn't sit directly under the pointer. The MapControl
+        // shares the Grid column with this Border (Grid.Column="0"),
+        // so the popup's Margin acts as a (Left, Top) offset within
+        // the column.
+        const double offsetX = 14;
+        const double offsetY = 18;
+        popup.Margin = new Thickness(cursor.X + offsetX, cursor.Y + offsetY, 0, 0);
+        popup.IsVisible = true;
     }
 
     private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)

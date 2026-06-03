@@ -7,13 +7,13 @@ using Xunit;
 
 namespace FujinTerm.Tests;
 
-public sealed class AutoRoamManagerTests : IDisposable
+public sealed class AutoLairManagerTests : IDisposable
 {
     private readonly string _root;
 
-    public AutoRoamManagerTests()
+    public AutoLairManagerTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "fujinterm-autoroam-tests-" + Path.GetRandomFileName());
+        _root = Path.Combine(Path.GetTempPath(), "fujinterm-autolair-tests-" + Path.GetRandomFileName());
         Directory.CreateDirectory(_root);
     }
 
@@ -45,7 +45,7 @@ public sealed class AutoRoamManagerTests : IDisposable
     {
         public required RoomTracker Tracker { get; init; }
         public required AutoWalkManager Walker { get; init; }
-        public required AutoRoamManager Roam { get; init; }
+        public required AutoLairManager Roam { get; init; }
         public void Dispose() => Roam.Dispose();
     }
 
@@ -62,7 +62,7 @@ public sealed class AutoRoamManagerTests : IDisposable
         MovementCoordinator coord = new();
         AutoWalkManager walker = new(graph, bfs, tracker, coord);
         walker.SetWireSender(_ => { });
-        AutoRoamManager roam = new(walker, tracker);
+        AutoLairManager roam = new(walker, tracker);
         return new Harness { Tracker = tracker, Walker = walker, Roam = roam };
     }
 

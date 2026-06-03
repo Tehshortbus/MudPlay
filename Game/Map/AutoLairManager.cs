@@ -12,7 +12,7 @@ namespace FujinTerm.Game.Map;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Adapted from MudProxy's <c>AutoWalkManager</c> auto-roam surface.
+/// Adapted from MudProxy's <c>AutoWalkManager</c> auto-lair surface.
 /// Differences:
 /// <list type="bullet">
 ///   <item>Session-only state (matches MudProxy). Auto-Lair gets
@@ -29,7 +29,7 @@ namespace FujinTerm.Game.Map;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class AutoRoamManager : IDisposable
+public sealed class AutoLairManager : IDisposable
 {
     private readonly AutoWalkManager _walker;
     private readonly RoomTracker _tracker;
@@ -38,7 +38,7 @@ public sealed class AutoRoamManager : IDisposable
     private readonly Random _rng = new();
     private readonly System.Timers.Timer _retryTimer;
 
-    public AutoRoamManager(AutoWalkManager walker, RoomTracker tracker, LogService? log = null)
+    public AutoLairManager(AutoWalkManager walker, RoomTracker tracker, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -75,14 +75,14 @@ public sealed class AutoRoamManager : IDisposable
     public void Mark(RoomKey key)
     {
         if (!_marked.Add(key)) return;
-        _log?.Info("AutoRoam", $"marked {key}");
+        _log?.Info("AutoLair", $"marked {key}");
         MarkedChanged?.Invoke();
     }
 
     public void Unmark(RoomKey key)
     {
         if (!_marked.Remove(key)) return;
-        _log?.Info("AutoRoam", $"unmarked {key}");
+        _log?.Info("AutoLair", $"unmarked {key}");
         MarkedChanged?.Invoke();
     }
 
@@ -109,18 +109,18 @@ public sealed class AutoRoamManager : IDisposable
         if (IsActive) return true;
         if (_marked.Count < 2)
         {
-            _log?.Warn("AutoRoam", $"need at least 2 marked rooms; have {_marked.Count}.");
+            _log?.Warn("AutoLair", $"need at least 2 marked rooms; have {_marked.Count}.");
             return false;
         }
         if (_tracker.State.CurrentRoom is null)
         {
-            _log?.Warn("AutoRoam", "no current room — locate before starting auto-roam.");
+            _log?.Warn("AutoLair", "no current room — locate before starting auto-lair.");
             return false;
         }
 
         IsActive = true;
         ActiveChanged?.Invoke(true);
-        _log?.Info("AutoRoam", $"start ({_marked.Count} marked rooms)");
+        _log?.Info("AutoLair", $"start ({_marked.Count} marked rooms)");
         PickAndDispatchNextLeg();
         return true;
     }
@@ -131,10 +131,10 @@ public sealed class AutoRoamManager : IDisposable
         IsActive = false;
         _retryTimer.Stop();
         ActiveChanged?.Invoke(false);
-        _log?.Info("AutoRoam", $"stop: {reason}");
+        _log?.Info("AutoLair", $"stop: {reason}");
 
         // Cancel any in-flight leg we own.
-        if (_walker.State != WalkState.Idle) _walker.Stop("auto-roam stop");
+        if (_walker.State != WalkState.Idle) _walker.Stop("auto-lair stop");
     }
 
     // ----- internals -------------------------------------------------
@@ -153,12 +153,12 @@ public sealed class AutoRoamManager : IDisposable
         if (candidates.Length == 0) return;
 
         RoomKey target = candidates[_rng.Next(candidates.Length)];
-        _log?.Info("AutoRoam", $"next leg: {current.Key} → {target}");
+        _log?.Info("AutoLair", $"next leg: {current.Key} → {target}");
 
         if (!_walker.WalkTo(target))
         {
             // No path — retry in 2s with a fresh pick.
-            _log?.Warn("AutoRoam", $"path to {target} failed; retrying in 2s.");
+            _log?.Warn("AutoLair", $"path to {target} failed; retrying in 2s.");
             _retryTimer.Stop();
             _retryTimer.Start();
         }
@@ -178,7 +178,7 @@ public sealed class AutoRoamManager : IDisposable
             case WalkEventKind.Failed:
                 // The walker failed mid-leg. Schedule a retry after
                 // the tracker has a chance to settle.
-                _log?.Warn("AutoRoam", $"walker failed: {evt.Detail}");
+                _log?.Warn("AutoLair", $"walker failed: {evt.Detail}");
                 _retryTimer.Stop();
                 _retryTimer.Start();
                 break;

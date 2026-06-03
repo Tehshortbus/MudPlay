@@ -62,11 +62,11 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LoopSequenceNumbersProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LoopSequenceNumbers));
 
-    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AutoRoamRoomsProperty =
-        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoRoamRooms));
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AutoLairRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoLairRooms));
 
-    public static readonly StyledProperty<bool> WalkPathIsAutoRoamProperty =
-        AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoRoam));
+    public static readonly StyledProperty<bool> WalkPathIsAutoLairProperty =
+        AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoLair));
 
     public RoomLayout? Layout
     {
@@ -128,16 +128,16 @@ public sealed class MapControl : Control
         set => SetValue(LoopSequenceNumbersProperty, value);
     }
 
-    public IReadOnlySet<RoomKey>? AutoRoamRooms
+    public IReadOnlySet<RoomKey>? AutoLairRooms
     {
-        get => GetValue(AutoRoamRoomsProperty);
-        set => SetValue(AutoRoamRoomsProperty, value);
+        get => GetValue(AutoLairRoomsProperty);
+        set => SetValue(AutoLairRoomsProperty, value);
     }
 
-    public bool WalkPathIsAutoRoam
+    public bool WalkPathIsAutoLair
     {
-        get => GetValue(WalkPathIsAutoRoamProperty);
-        set => SetValue(WalkPathIsAutoRoamProperty, value);
+        get => GetValue(WalkPathIsAutoLairProperty);
+        set => SetValue(WalkPathIsAutoLairProperty, value);
     }
 
     // ----- view-state ------------------------------------------------
@@ -153,6 +153,21 @@ public sealed class MapControl : Control
     private bool _leftPressed;
     private bool _isDragging;
     private Point _pressPos;
+
+    // Hover-tooltip tracking.
+    private RoomKey? _hoverRoom;
+    private Point _hoverPos;
+    private readonly Avalonia.Threading.DispatcherTimer _hoverTimer;
+    private const int HoverDelayMs = 250;
+
+    /// <summary>
+    /// Fires once the pointer has dwelled over a room cell for
+    /// <see cref="HoverDelayMs"/>, AND any time the hovered room
+    /// changes. Carries the room key + screen-local pointer position
+    /// so the host can position a popup. Null payload means
+    /// "no room is being hovered" — host should dismiss the popup.
+    /// </summary>
+    public event Action<RoomKey?, Point>? RoomHovered;
     private double _panStartX;
     private double _panStartY;
     private const double DragThresholdPixels = 4.0;
@@ -190,12 +205,12 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
     };
     private static readonly IBrush SeqNumberFill  = new SolidColorBrush(Color.Parse("#FFFFFF"));
-    private static readonly IBrush AutoRoamFill   = new SolidColorBrush(Color.Parse("#DC821E"));
-    private static readonly IPen   AutoRoamBorder = new Pen(new SolidColorBrush(Color.Parse("#FFA500")), 2.0)
+    private static readonly IBrush AutoLairFill   = new SolidColorBrush(Color.Parse("#DC821E"));
+    private static readonly IPen   AutoLairBorder = new Pen(new SolidColorBrush(Color.Parse("#FFA500")), 2.0)
     {
         DashStyle = new DashStyle(new double[] { 3, 2 }, 0),
     };
-    private static readonly IPen   AutoRoamWalkPen = new Pen(new SolidColorBrush(Color.Parse("#DC821E")), 3.0)
+    private static readonly IPen   AutoLairWalkPen = new Pen(new SolidColorBrush(Color.Parse("#DC821E")), 3.0)
     {
         LineCap = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
@@ -207,10 +222,18 @@ public sealed class MapControl : Control
     {
         Focusable = true;
         ClipToBounds = true;
+        _hoverTimer = new(TimeSpan.FromMilliseconds(HoverDelayMs),
+            Avalonia.Threading.DispatcherPriority.Background,
+            (_, _) =>
+            {
+                _hoverTimer!.Stop();
+                if (_hoverRoom is { } k) RoomHovered?.Invoke(k, _hoverPos);
+            });
+        _hoverTimer.Stop();
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
-            AutoRoamRoomsProperty, WalkPathIsAutoRoamProperty);
+            AutoLairRoomsProperty, WalkPathIsAutoLairProperty);
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -267,23 +290,70 @@ public sealed class MapControl : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (!_leftPressed) return;
-
         Point now = e.GetPosition(this);
-        double dx = now.X - _pressPos.X;
-        double dy = now.Y - _pressPos.Y;
 
-        if (!_isDragging
-            && dx * dx + dy * dy >= DragThresholdPixels * DragThresholdPixels)
+        if (_leftPressed)
         {
-            _isDragging = true;
+            double dx = now.X - _pressPos.X;
+            double dy = now.Y - _pressPos.Y;
+
+            if (!_isDragging
+                && dx * dx + dy * dy >= DragThresholdPixels * DragThresholdPixels)
+            {
+                _isDragging = true;
+            }
+
+            if (_isDragging)
+            {
+                _panX = _panStartX + dx;
+                _panY = _panStartY + dy;
+                InvalidateVisual();
+
+                // Hide any open tooltip while dragging — the room
+                // under the cursor changes constantly during a pan.
+                if (_hoverRoom is not null)
+                {
+                    _hoverRoom = null;
+                    RoomHovered?.Invoke(null, now);
+                }
+                _hoverTimer.Stop();
+                return;
+            }
         }
 
-        if (_isDragging)
+        // Hover hit-testing — fires when the pointer settles over a
+        // new room cell. Movement within the same cell keeps the
+        // tooltip in place (no flicker).
+        _hoverPos = now;
+        TryHitTestRoom(now, out RoomKey hit);
+        bool overRoom = hit.Map > 0;
+        if (!overRoom)
         {
-            _panX = _panStartX + dx;
-            _panY = _panStartY + dy;
-            InvalidateVisual();
+            if (_hoverRoom is not null)
+            {
+                _hoverRoom = null;
+                RoomHovered?.Invoke(null, now);
+            }
+            _hoverTimer.Stop();
+            return;
+        }
+        if (_hoverRoom is { } prev && prev.Equals(hit)) return;
+        _hoverRoom = hit;
+        // Dismiss the current tooltip immediately; reopen after the
+        // dwell delay.
+        RoomHovered?.Invoke(null, now);
+        _hoverTimer.Stop();
+        _hoverTimer.Start();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _hoverTimer.Stop();
+        if (_hoverRoom is not null)
+        {
+            _hoverRoom = null;
+            RoomHovered?.Invoke(null, _hoverPos);
         }
     }
 
@@ -381,7 +451,7 @@ public sealed class MapControl : Control
         // first so the walk path lies above it (the user normally
         // wants the *current* leg to dominate visually).
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
-        IPen walkPen = WalkPathIsAutoRoam ? AutoRoamWalkPen : WalkPathPen;
+        IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
         DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
     }
 
@@ -449,18 +519,28 @@ public sealed class MapControl : Control
         }
     }
 
+    /// <summary>
+    /// Per-direction stub extension past the cell edge. Sub-pixel
+    /// anti-aliasing of two endpoints that resolve to the same logical
+    /// pixel can still leave a 1–2 pixel gap where the stubs meet;
+    /// extending the segment beyond the boundary by 1.5 px guarantees
+    /// the two adjacent stubs overlap into a continuous line at every
+    /// zoom level.
+    /// </summary>
+    private const double StubOverlap = 1.5;
+
     private static void DrawStub(DrawingContext ctx, IPen pen, Rect cell, double mx, double my, Direction dir)
     {
         switch (dir)
         {
-            case Direction.N:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Top));    break;
-            case Direction.S:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Bottom)); break;
-            case Direction.E:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, my)); break;
-            case Direction.W:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  my)); break;
-            case Direction.NE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Top));    break;
-            case Direction.NW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Top));    break;
-            case Direction.SE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Bottom)); break;
-            case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Bottom)); break;
+            case Direction.N:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Top    - StubOverlap)); break;
+            case Direction.S:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Bottom + StubOverlap)); break;
+            case Direction.E:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, my)); break;
+            case Direction.W:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, my)); break;
+            case Direction.NE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, cell.Top    - StubOverlap)); break;
+            case Direction.NW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, cell.Top    - StubOverlap)); break;
+            case Direction.SE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right + StubOverlap, cell.Bottom + StubOverlap)); break;
+            case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left  - StubOverlap, cell.Bottom + StubOverlap)); break;
             // U / D — not planar, not rendered as stubs.
         }
     }
@@ -473,7 +553,7 @@ public sealed class MapControl : Control
         Rect node = new(nx, ny, nodeSize, nodeSize);
 
         bool isCurrent = CurrentRoomKey is { } current && current.Equals(key);
-        bool isAutoRoam = AutoRoamRooms is not null && AutoRoamRooms.Contains(key);
+        bool isAutoLair = AutoLairRooms is not null && AutoLairRooms.Contains(key);
         Room? room = Graph?.GetRoom(key);
 
         IBrush fill;
@@ -483,10 +563,10 @@ public sealed class MapControl : Control
             fill = CurrentFill;
             pen = CurrentPen;
         }
-        else if (isAutoRoam)
+        else if (isAutoLair)
         {
-            fill = AutoRoamFill;
-            pen = AutoRoamBorder;
+            fill = AutoLairFill;
+            pen = AutoLairBorder;
         }
         else if (HighlightLairs && room is { HasLair: true })
         {

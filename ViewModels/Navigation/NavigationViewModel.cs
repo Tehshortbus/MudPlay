@@ -31,10 +31,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
         OnAvoidedChanged();
-        _services.AutoRoam.MarkedChanged += OnAutoRoamMarkedChanged;
-        _services.AutoRoam.ActiveChanged += OnAutoRoamActiveChanged;
-        OnAutoRoamMarkedChanged();
-        IsAutoRoaming = _services.AutoRoam.IsActive;
+        _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
+        _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        OnAutoLairMarkedChanged();
+        IsAutoLairing = _services.AutoLair.IsActive;
         Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
@@ -51,26 +51,26 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Loops.LoopsChanged -= OnLoopsChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
-        _services.AutoRoam.MarkedChanged -= OnAutoRoamMarkedChanged;
-        _services.AutoRoam.ActiveChanged -= OnAutoRoamActiveChanged;
+        _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
+        _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
     }
 
-    private void OnAutoRoamMarkedChanged()
-        => AutoRoamRooms = new HashSet<RoomKey>(_services.AutoRoam.Marked);
+    private void OnAutoLairMarkedChanged()
+        => AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
 
-    private void OnAutoRoamActiveChanged(bool active) => IsAutoRoaming = active;
+    private void OnAutoLairActiveChanged(bool active) => IsAutoLairing = active;
 
     [RelayCommand]
-    private void ToggleAutoRoam()
+    private void ToggleAutoLair()
     {
-        if (_services.AutoRoam.IsActive) _services.AutoRoam.Stop();
-        else _services.AutoRoam.Start();
+        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
+        else _services.AutoLair.Start();
     }
 
     [RelayCommand]
-    private void ToggleContextRoomAutoRoam()
+    private void ToggleContextRoomAutoLair()
     {
-        if (ContextRoomKey is { } k) _services.AutoRoam.Toggle(k);
+        if (ContextRoomKey is { } k) _services.AutoLair.Toggle(k);
     }
 
     private void OnAvoidedChanged()
@@ -135,8 +135,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
-    [ObservableProperty] private IReadOnlySet<RoomKey>? _autoRoamRooms;
-    [ObservableProperty] private bool _isAutoRoaming;
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
+    [ObservableProperty] private bool _isAutoLairing;
 
     // ----- Search ---------------------------------------------------
 
