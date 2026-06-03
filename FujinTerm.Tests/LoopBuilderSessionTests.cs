@@ -9,18 +9,27 @@ namespace FujinTerm.Tests;
 public sealed class LoopBuilderSessionTests : IDisposable
 {
     private readonly string _bbs;
+    private readonly string _setName;
 
     public LoopBuilderSessionTests()
     {
-        _bbs = "test-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+        string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
+        _bbs = "test-" + suffix;
+        _setName = "test-set-" + suffix;
     }
 
     public void Dispose()
     {
         try
         {
-            string folder = AppPaths.BbsFolder(_bbs);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            string bbsFolder = AppPaths.BbsFolder(_bbs);
+            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
+        }
+        catch { /* best-effort */ }
+        try
+        {
+            string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
+            if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
         }
         catch { /* best-effort */ }
     }
@@ -44,13 +53,16 @@ public sealed class LoopBuilderSessionTests : IDisposable
 
     private (LoopBuilderSessionViewModel Session, LoopManager Loops) NewSession()
     {
-        string setRoot = Path.Combine(AppPaths.GameDataRoot, "alpha");
+        // Unique per-test set name so concurrent tests don't collide
+        // and Dispose can clean up. AppPaths.GameDataRoot can't be
+        // sandboxed (cached at static-init).
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), GraphJson);
         GameDataCache cache = new();
-        cache.SwitchSet("alpha");
+        cache.SwitchSet(_setName);
         RoomGraphManager graph = new(cache);
-        graph.OnActiveSetChanged("alpha");
+        graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
         LoopManager loops = new(bfs, graph);
         loops.LoadAll(_bbs);
@@ -146,14 +158,14 @@ public sealed class LoopBuilderSessionTests : IDisposable
                 "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
             ]
             """;
-        string setRoot = Path.Combine(AppPaths.GameDataRoot, "alpha");
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), DisconnectedGraph);
         GameDataCache cache = new();
-        cache.SwitchSet("alpha");
+        cache.SwitchSet(_setName);
         cache.Reload();
         RoomGraphManager graph = new(cache);
-        graph.OnActiveSetChanged("alpha");
+        graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
         LoopManager loops = new(bfs, graph);
         loops.LoadAll(_bbs);

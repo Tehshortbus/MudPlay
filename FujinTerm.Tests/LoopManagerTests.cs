@@ -13,22 +13,32 @@ namespace FujinTerm.Tests;
 public sealed class LoopManagerTests : IDisposable
 {
     // AppPaths caches its roots at static-init time, so XDG_DATA_HOME
-    // can't be swapped between tests. We isolate via a per-test BBS
-    // name instead; the test cleans up its own Loops folder on
-    // Dispose.
+    // can't be swapped between tests. We isolate via per-test GUID
+    // suffixes on BOTH the BBS name AND the game-data set name; the
+    // test cleans them up on Dispose so nothing leaks into the user's
+    // real Data/ tree.
     private readonly string _bbs;
+    private readonly string _setName;
 
     public LoopManagerTests()
     {
-        _bbs = "test-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+        string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
+        _bbs = "test-" + suffix;
+        _setName = "test-set-" + suffix;
     }
 
     public void Dispose()
     {
         try
         {
-            string folder = AppPaths.BbsFolder(_bbs);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            string bbsFolder = AppPaths.BbsFolder(_bbs);
+            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
+        }
+        catch { /* best-effort */ }
+        try
+        {
+            string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
+            if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
         }
         catch { /* best-effort */ }
     }
@@ -57,15 +67,18 @@ public sealed class LoopManagerTests : IDisposable
 
     private LoopManager NewManager()
     {
-        // GameDataCache uses AppPaths.GameDataRoot under the XDG root.
-        string setRoot = Path.Combine(AppPaths.GameDataRoot, "alpha");
+        // GameDataCache uses AppPaths.GameDataRoot under the XDG root —
+        // we can't sandbox it because AppPaths caches the root at
+        // static-init. Use the unique per-test set name so concurrent
+        // tests don't collide and Dispose can clean up cleanly.
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), GraphJson);
 
         GameDataCache cache = new();
-        cache.SwitchSet("alpha");
+        cache.SwitchSet(_setName);
         RoomGraphManager graph = new(cache);
-        graph.OnActiveSetChanged("alpha");
+        graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
         return new LoopManager(bfs, graph);
     }
