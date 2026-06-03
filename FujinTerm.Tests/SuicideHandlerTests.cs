@@ -51,7 +51,7 @@ public sealed class SuicideHandlerTests
                 MaxSuicideLivesThreshold = 3,
             };
             Engine.SetWireSender(Wire.Add);
-            Handler = new SuicideHandler(Engine, Router, Profile, Protector);
+            Handler = new SuicideHandler(Engine, Router, Profile, Protector, Log);
             Handler.SetWireSender(Wire.Add);
         }
 
@@ -99,18 +99,117 @@ public sealed class SuicideHandlerTests
     }
 
     [Fact]
-    public void SuicideWithoutStoredPassword_SendsCommandOnly()
+    public void NoStoredPassword_SendsProFirst_NotSuicideImmediately()
     {
+        // Updated flow: with no stored password, we don't know
+        // whether the realm has a password set. Type `pro` first
+        // and disambiguate from the response. If we sent bare
+        // `suicide` straight away and the realm DID have a password,
+        // we'd hang at the "Enter your suicide password:" prompt
+        // with no answer.
         using Harness h = new();
         GrantElevated(h.Players, "Trusted");
-        // No password stored.
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
 
+        // First wire-send from the handler is `pro\r`; suicide must
+        // NOT be on the wire yet (waiting on `pro` response).
         string joined = string.Join("|", h.Wire.Select(b => Encoding.Latin1.GetString(b)));
-        Assert.Contains("suicide\r", joined);
-        // No password follow-up because nothing's stored.
-        Assert.DoesNotContain("hunter2", joined);
+        Assert.Contains("pro\r", joined);
+        Assert.DoesNotContain("suicide\r", joined);
+    }
+
+    [Fact]
+    public void NoStoredPw_RealmConfirmsNotSet_SendsSuicideUnprompted()
+    {
+        // pro pre-check: server confirms "You do not have a suicide
+        // password set." → we know suicide is unprompted on this
+        // realm, fire it.
+        using Harness h = new();
+        GrantElevated(h.Players, "Trusted");
+
+        DispatchTelepath(h.Router, "Trusted", "@suicide");
+        h.Wire.Clear();   // drop the `pro` send
+
+        DispatchLine(h.Router, "You do not have a suicide password set.");
+
+        byte[] sent = Assert.Single(h.Wire);
+        Assert.Equal("suicide\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void NoStoredPw_TimeoutWithoutNotSet_RepliesMismatch()
+    {
+        // Realm has a password but we don't have it stored: pro
+        // response doesn't include "not set", window expires, we
+        // bail with a mismatch reply + LogPane warning.
+        using Harness h = new();
+        GrantElevated(h.Players, "Trusted");
+
+        DispatchTelepath(h.Router, "Trusted", "@suicide");
+        h.Wire.Clear();
+
+        h.Handler.TimeoutProCheckForTests();
+
+        byte[] sent = Assert.Single(h.Wire);
+        string text = Encoding.Latin1.GetString(sent);
+        Assert.Contains("/Trusted", text);
+        Assert.Contains("no stored password but realm has one set", text);
+        Assert.Contains("run `set suicide`", text);
+    }
+
+    [Fact]
+    public void NoStoredPw_TimeoutWithWarnOnDenialOff_StaysSilent()
+    {
+        using Harness h = new();
+        h.Engine.WarnOnDenial = false;
+        GrantElevated(h.Players, "Trusted");
+
+        DispatchTelepath(h.Router, "Trusted", "@suicide");
+        h.Wire.Clear();
+
+        h.Handler.TimeoutProCheckForTests();
+
+        Assert.Empty(h.Wire);
+    }
+
+    [Fact]
+    public void NoStoredPw_SecondAttemptDuringProCheck_Refused()
+    {
+        // Second @suicide arrives while the pro window is open from
+        // the first one — refuse the second defensively so we don't
+        // double-send `pro` or end up in tangled state.
+        using Harness h = new();
+        GrantElevated(h.Players, "Trusted");
+        GrantElevated(h.Players, "AlsoTrusted");
+
+        DispatchTelepath(h.Router, "Trusted", "@suicide");
+        h.Wire.Clear();
+
+        DispatchTelepath(h.Router, "AlsoTrusted", "@suicide");
+
+        // Second invocation gets a denial reply (single send),
+        // no extra `pro` on the wire.
+        byte[] sent = Assert.Single(h.Wire);
+        string text = Encoding.Latin1.GetString(sent);
+        Assert.Contains("/AlsoTrusted", text);
+        Assert.Contains("already in-flight", text);
+    }
+
+    [Fact]
+    public void NoStoredPw_NotSetLineOutsidePending_NotAReply()
+    {
+        // User typed `pro` manually (no @suicide pending). The
+        // "not set" line fires but we shouldn't send suicide on the
+        // wire — only @suicide-initiated checks should drive that.
+        using Harness h = new();
+        // No DispatchTelepath @suicide call — handler has no pending state.
+
+        DispatchLine(h.Router, "You do not have a suicide password set.");
+
+        // No `suicide\r` from the handler.
+        Assert.DoesNotContain(h.Wire,
+            b => Encoding.Latin1.GetString(b).Contains("suicide\r"));
     }
 
     [Fact]

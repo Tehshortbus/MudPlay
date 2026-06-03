@@ -698,7 +698,7 @@ public sealed class AppServices
         // sending while the password tracker locks the gate. Bound by
         // MainWindowViewModel a few lines after the other engine
         // wire-senders, deliberately to the un-wrapped SendUserInput.
-        Suicide = new Game.Remote.SuicideHandler(RemoteCommands, Router, Profile, Passwords);
+        Suicide = new Game.Remote.SuicideHandler(RemoteCommands, Router, Profile, Passwords, Log);
         // Main-menu entry automation — armed by MainWindowVM when
         // LoginAutomator.LoggedIntoGame fires; observes the
         // MainMenuEnterRealm pattern and sends GameCommands.EntryCommand
