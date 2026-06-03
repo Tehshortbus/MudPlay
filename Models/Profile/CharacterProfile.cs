@@ -140,4 +140,16 @@ public sealed class CharacterProfile
     /// "use the XAML defaults".
     /// </summary>
     public Dictionary<string, double>? SplitterRatios { get; set; }
+
+    /// <summary>
+    /// Snapshot of the most recent <c>stat</c> + <c>exp</c>
+    /// observations. Written by <see cref="Game.StatParser"/> after
+    /// each successful capture; hydrated back into the live
+    /// <see cref="Game.PlayerStats"/> on
+    /// <see cref="Services.ProfileService.ProfileLoaded"/> so the
+    /// status bar / @-command query handlers / Workshop view
+    /// (Phase 9) start the next session with the user's last-known
+    /// values instead of zeros. <c>null</c> until the first capture.
+    /// </summary>
+    public LastKnownStats? LastKnownStats { get; set; }
 }

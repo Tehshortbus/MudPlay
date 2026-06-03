@@ -628,6 +628,24 @@ public sealed class AppServices
         // Stats itself is constructed above where PartyEssentials needs
         // PlayerStats injected.
         RemoteCommands.LivesProvider = () => Stats.HasParsed ? PlayerStats.Lives : (int?)null;
+
+        // Persist stat captures onto the loaded profile so the next
+        // session starts hydrated with the last-observed values
+        // (Save-on-close at MainWindow.Closing flushes the in-memory
+        // profile to disk). Drafts (no name) are still snapshotted —
+        // ProfileService.Save no-ops on them, so the data just lives
+        // for the rest of the session.
+        Stats.ScreenParsed += snapshot =>
+        {
+            if (Profile.Current is { } p) p.LastKnownStats = snapshot;
+        };
+        // Restore the snapshot back into live PlayerStats whenever a
+        // profile loads. StatParser owns the PlayerStats fields, so
+        // hydration MUST route through Stats.Hydrate; passing null
+        // resets every field to default (covers fresh / never-stat'd
+        // profiles cleanly).
+        Profile.ProfileLoaded += p => Stats.Hydrate(p.LastKnownStats);
+        Profile.ProfileClosed += () => Stats.Hydrate(null);
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup. Also raises the

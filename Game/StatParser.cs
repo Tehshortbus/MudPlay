@@ -67,12 +67,164 @@ public sealed partial class StatParser : IDisposable
     /// <summary>True once any stat-screen line has been parsed this session.</summary>
     public bool HasParsed { get; private set; }
 
+    /// <summary>
+    /// Fires once per scan window AFTER one or more fields commit and
+    /// the gate closes (whatever the close reason — prompt, expiry,
+    /// etc.). Carries a fresh <see cref="LastKnownStats"/> snapshot
+    /// built from the current <see cref="Stats"/> values. AppServices
+    /// subscribes and writes the snapshot onto the loaded character
+    /// profile's <see cref="CharacterProfile.LastKnownStats"/> so the
+    /// next session starts hydrated instead of zeroed. Never fires for
+    /// no-capture windows (no point in churning the profile when
+    /// nothing changed).
+    /// </summary>
+    public event Action<Models.Profile.LastKnownStats>? ScreenParsed;
+
     public StatParser(PlayerStats stats, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(stats);
         _log   = log;
         Stats  = stats;
     }
+
+    /// <summary>
+    /// Restore <see cref="Stats"/> from a persisted
+    /// <see cref="LastKnownStats"/> snapshot. Called by AppServices on
+    /// <see cref="ProfileService.ProfileLoaded"/> so the live state
+    /// surfaces start with the user's last-observed values instead of
+    /// zeros. StatParser owns these fields (per
+    /// <see cref="OwnerAttribute"/> + the single-writer IL test), so
+    /// hydration MUST route through this method rather than the caller
+    /// writing to <see cref="Stats"/> directly. A <c>null</c> snapshot
+    /// resets every field back to its default — used when the user
+    /// switches to a fresh profile that has never run <c>stat</c>.
+    /// </summary>
+    public void Hydrate(Models.Profile.LastKnownStats? snapshot)
+    {
+        if (snapshot is null)
+        {
+            // Reset everything back to defaults — same as a freshly-
+            // constructed PlayerStats. Avoids leaking the previous
+            // profile's values into a fresh profile load.
+            Stats.Name = string.Empty;
+            Stats.Race = string.Empty;
+            Stats.Class = string.Empty;
+            Stats.Level = 0;
+            Stats.Exp = 0;
+            Stats.Lives = 0;
+            Stats.Cp = 0;
+            Stats.ExpToNext = 0;
+            Stats.LevelExpSpan = 0;
+            Stats.LevelPercent = 0;
+            Stats.Hits = 0;
+            Stats.MaxHits = 0;
+            Stats.Mana = 0;
+            Stats.MaxMana = 0;
+            Stats.Kai = 0;
+            Stats.MaxKai = 0;
+            Stats.ArmourClass = 0;
+            Stats.MaxArmourClass = 0;
+            Stats.Strength = 0;
+            Stats.Intellect = 0;
+            Stats.Willpower = 0;
+            Stats.Agility = 0;
+            Stats.Health = 0;
+            Stats.Charm = 0;
+            Stats.Perception = 0;
+            Stats.Stealth = 0;
+            Stats.Thievery = 0;
+            Stats.Traps = 0;
+            Stats.Picklocks = 0;
+            Stats.Tracking = 0;
+            Stats.MartialArts = 0;
+            Stats.MagicRes = 0;
+            Stats.Spellcasting = 0;
+            HasParsed = false;
+            return;
+        }
+
+        Stats.Name = snapshot.Name;
+        Stats.Race = snapshot.Race;
+        Stats.Class = snapshot.Class;
+        Stats.Level = snapshot.Level;
+        Stats.Exp = snapshot.Exp;
+        Stats.Lives = snapshot.Lives;
+        Stats.Cp = snapshot.Cp;
+        Stats.ExpToNext = snapshot.ExpToNext;
+        Stats.LevelExpSpan = snapshot.LevelExpSpan;
+        Stats.LevelPercent = snapshot.LevelPercent;
+        Stats.Hits = snapshot.Hits;
+        Stats.MaxHits = snapshot.MaxHits;
+        Stats.Mana = snapshot.Mana;
+        Stats.MaxMana = snapshot.MaxMana;
+        Stats.Kai = snapshot.Kai;
+        Stats.MaxKai = snapshot.MaxKai;
+        Stats.ArmourClass = snapshot.ArmourClass;
+        Stats.MaxArmourClass = snapshot.MaxArmourClass;
+        Stats.Strength = snapshot.Strength;
+        Stats.Intellect = snapshot.Intellect;
+        Stats.Willpower = snapshot.Willpower;
+        Stats.Agility = snapshot.Agility;
+        Stats.Health = snapshot.Health;
+        Stats.Charm = snapshot.Charm;
+        Stats.Perception = snapshot.Perception;
+        Stats.Stealth = snapshot.Stealth;
+        Stats.Thievery = snapshot.Thievery;
+        Stats.Traps = snapshot.Traps;
+        Stats.Picklocks = snapshot.Picklocks;
+        Stats.Tracking = snapshot.Tracking;
+        Stats.MartialArts = snapshot.MartialArts;
+        Stats.MagicRes = snapshot.MagicRes;
+        Stats.Spellcasting = snapshot.Spellcasting;
+        // Flip the gate true so consumers (e.g. RemoteCommandManager's
+        // LivesProvider) trust the hydrated values immediately — the
+        // next live stat will reconfirm them.
+        HasParsed = true;
+    }
+
+    /// <summary>
+    /// Build a snapshot of the current <see cref="Stats"/> values
+    /// suitable for persisting to
+    /// <see cref="CharacterProfile.LastKnownStats"/>. Allocated each
+    /// call (cheap — flat DTO) so the recipient can store the
+    /// reference without worrying about subsequent mutations.
+    /// </summary>
+    public Models.Profile.LastKnownStats Snapshot() => new()
+    {
+        Name = Stats.Name,
+        Race = Stats.Race,
+        Class = Stats.Class,
+        Level = Stats.Level,
+        Exp = Stats.Exp,
+        Lives = Stats.Lives,
+        Cp = Stats.Cp,
+        ExpToNext = Stats.ExpToNext,
+        LevelExpSpan = Stats.LevelExpSpan,
+        LevelPercent = Stats.LevelPercent,
+        Hits = Stats.Hits,
+        MaxHits = Stats.MaxHits,
+        Mana = Stats.Mana,
+        MaxMana = Stats.MaxMana,
+        Kai = Stats.Kai,
+        MaxKai = Stats.MaxKai,
+        ArmourClass = Stats.ArmourClass,
+        MaxArmourClass = Stats.MaxArmourClass,
+        Strength = Stats.Strength,
+        Intellect = Stats.Intellect,
+        Willpower = Stats.Willpower,
+        Agility = Stats.Agility,
+        Health = Stats.Health,
+        Charm = Stats.Charm,
+        Perception = Stats.Perception,
+        Stealth = Stats.Stealth,
+        Thievery = Stats.Thievery,
+        Traps = Stats.Traps,
+        Picklocks = Stats.Picklocks,
+        Tracking = Stats.Tracking,
+        MartialArts = Stats.MartialArts,
+        MagicRes = Stats.MagicRes,
+        Spellcasting = Stats.Spellcasting,
+    };
 
     /// <summary>
     /// Bind the per-session <see cref="LineExtractor"/>. Same shape as
@@ -356,7 +508,8 @@ public sealed partial class StatParser : IDisposable
     private void CloseGate(string reason)
     {
         if (_windowOpenedAt is null) return;
-        if (_fieldsCapturedThisArm > 0)
+        bool capturedSomething = _fieldsCapturedThisArm > 0;
+        if (capturedSomething)
         {
             // Quick-glance digest of the most-load-bearing fields so
             // the INF log doesn't require expanding DBG entries to
@@ -374,6 +527,10 @@ public sealed partial class StatParser : IDisposable
         _windowOpenedAt = null;
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
+        // Fire ScreenParsed only when something actually changed —
+        // there's no value in churning the profile snapshot for an
+        // empty window.
+        if (capturedSomething) ScreenParsed?.Invoke(Snapshot());
     }
 
     // ----- Regexes -------------------------------------------------------
