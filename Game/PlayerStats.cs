@@ -42,6 +42,22 @@ public sealed partial class PlayerStats : ObservableObject
     /// <summary>Character points available to spend — the other half of <c>Lives/CP: N/M</c>.</summary>
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _cp;
 
+    /// <summary>
+    /// Exp delta to the next level — the first <c>N</c> in the
+    /// <c>exp</c> command's output line:
+    /// <c>"Exp needed for next level: N (M) [P%]"</c>.
+    /// Shrinks as the character earns XP.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(StatParser))] private int _expToNext;
+    /// <summary>
+    /// Absolute exp threshold at which the next level fires — the
+    /// parenthesized <c>(M)</c> in the exp line. Constant for the
+    /// current level; equals <see cref="Exp"/> + <see cref="ExpToNext"/>.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(StatParser))] private int _nextLevelExp;
+    /// <summary>Progress to the next level as a percent (0–100) — the <c>[P%]</c> on the exp line.</summary>
+    [ObservableProperty] [field: Owner(typeof(StatParser))] private int _levelPercent;
+
     // ----- Vitals (snapshot, not live) -----------------------------------
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _hits;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _maxHits;

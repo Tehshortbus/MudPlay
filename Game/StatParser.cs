@@ -109,12 +109,21 @@ public sealed partial class StatParser : IDisposable
         if (bytes.IsEmpty || bytes.Length > 16) return;
         string raw = Encoding.Latin1.GetString(bytes);
         string cmd = raw.TrimEnd('\r', '\n', '\0').Trim().ToLowerInvariant();
-        if (cmd != "stat") return;
+        // `stat` — opens scan for the full stat-screen output.
+        // any prefix of "experience" from 3 chars up — opens scan for
+        // the single-line exp output. MajorMUD accepts every prefix
+        // from `exp` through `experience` (3..10 chars) as the same
+        // command; 2-char `ex` falls through to the `say "ex"` no-op
+        // which the gate correctly ignores.
+        bool isStat = cmd == "stat";
+        bool isExp  = cmd.Length >= 3 && cmd.Length <= 10
+                      && "experience".StartsWith(cmd, StringComparison.Ordinal);
+        if (!isStat && !isExp) return;
         _windowOpenedAt = NowProvider();
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
         _log?.Log(LogSeverity.Info, "StatParser",
-            $"Observed outbound `stat` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
+            $"Observed outbound `{cmd}` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
     }
 
     // ----- Test seam -----------------------------------------------------
@@ -242,6 +251,41 @@ public sealed partial class StatParser : IDisposable
         TryInt(text, MartialArtsRx(),  "Martial Arts", v => Stats.MartialArts  = v);
         TryInt(text, MagicResRx(),     "MagicRes",     v => Stats.MagicRes     = v);
         TryInt(text, SpellcastingRx(), "Spellcasting", v => Stats.Spellcasting = v);
+
+        // The exp-command output is a single line packing five
+        // numbers — match-or-skip with one regex rather than five.
+        // Anchored at the line start so a chat line like
+        // "Foo gossips: my Exp: 0 is lame" can't fake the prefix.
+        TryExpLine(text);
+    }
+
+    /// <summary>
+    /// Parse the one-line <c>exp</c>-command output:
+    /// <c>"Exp: N Level: M Exp needed for next level: P (Q) [R%]"</c>.
+    /// All five fields commit atomically on a successful match.
+    /// </summary>
+    private void TryExpLine(string text)
+    {
+        Match m = ExpLineRx().Match(text);
+        if (!m.Success) return;
+        System.Globalization.NumberStyles ns = System.Globalization.NumberStyles.Integer;
+        System.Globalization.CultureInfo inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (!int.TryParse(m.Groups[1].Value, ns, inv, out int exp))      return;
+        if (!int.TryParse(m.Groups[2].Value, ns, inv, out int level))    return;
+        if (!int.TryParse(m.Groups[3].Value, ns, inv, out int toNext))   return;
+        if (!int.TryParse(m.Groups[4].Value, ns, inv, out int threshold))return;
+        if (!int.TryParse(m.Groups[5].Value, ns, inv, out int percent))  return;
+        Stats.Exp           = exp;
+        Stats.Level         = level;
+        Stats.ExpToNext     = toNext;
+        Stats.NextLevelExp  = threshold;
+        Stats.LevelPercent  = percent;
+        HasParsed = true;
+        // Single-line capture = 5 fields per match, count them all so
+        // the gate-close summary reads truthfully.
+        _fieldsCapturedThisArm += 5;
+        _log?.Log(LogSeverity.Debug, "StatParser",
+            $"Exp = {exp}  Level = {level}  ExpToNext = {toNext}  NextLevelExp = {threshold}  LevelPercent = {percent}");
     }
 
     /// <summary>
@@ -371,6 +415,13 @@ public sealed partial class StatParser : IDisposable
     [GeneratedRegex(@"\bMartial Arts:\s+\*?\s*(\d+)",                   RegexOptions.CultureInvariant)] private static partial Regex MartialArtsRx();
     [GeneratedRegex(@"\bMagicRes:\s+\*?\s*(\d+)",                       RegexOptions.CultureInvariant)] private static partial Regex MagicResRx();
     [GeneratedRegex(@"\bSpellcasting:\s+\*?\s*(\d+)",                   RegexOptions.CultureInvariant)] private static partial Regex SpellcastingRx();
+
+    // The single-line `exp`-command output. Anchored at line start
+    // so a chat line embedding "Exp: ..." can't match. Five
+    // captures: current exp, current level, exp delta to next
+    // level, absolute next-level threshold, percent progress.
+    [GeneratedRegex(@"^Exp:\s+(\d+)\s+Level:\s+(\d+)\s+Exp needed for next level:\s+(\d+)\s+\((\d+)\)\s+\[(\d+)%\]",
+        RegexOptions.CultureInvariant)] private static partial Regex ExpLineRx();
 
     // Always-on lives-update line — fires outside the stat-screen
     // window. MajorMUD emits this in two phrasings:

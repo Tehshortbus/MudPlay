@@ -271,6 +271,94 @@ public sealed class StatParserTests
         Assert.Equal(0, s.Strength);
     }
 
+    // ===== Exp command =====
+
+    [Fact]
+    public void ExpLine_FullCapture()
+    {
+        // Line transcribed from the user's screenshot, fresh char:
+        //   "Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]"
+        var (p, s) = Setup();
+        p.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
+        Assert.Equal(0,    s.Exp);
+        Assert.Equal(1,    s.Level);
+        Assert.Equal(2950, s.ExpToNext);
+        Assert.Equal(2950, s.NextLevelExp);
+        Assert.Equal(0,    s.LevelPercent);
+    }
+
+    [Fact]
+    public void ExpLine_PartialProgressCaptures()
+    {
+        // Partway to next level — ExpToNext + Exp = NextLevelExp.
+        var (p, s) = Setup();
+        p.FeedTestLine("Exp: 1500 Level: 2 Exp needed for next level: 1450 (2950) [50%]");
+        Assert.Equal(1500, s.Exp);
+        Assert.Equal(2,    s.Level);
+        Assert.Equal(1450, s.ExpToNext);
+        Assert.Equal(2950, s.NextLevelExp);
+        Assert.Equal(50,   s.LevelPercent);
+    }
+
+    [Theory]
+    [InlineData("exp")]         // minimum prefix
+    [InlineData("expe")]
+    [InlineData("exper")]
+    [InlineData("experi")]
+    [InlineData("experie")]
+    [InlineData("experien")]
+    [InlineData("experienc")]
+    [InlineData("experience")]  // full word
+    public void OutboundExpPrefix_ArmsGate(string command)
+    {
+        // Every prefix from 3 chars up arms the scan window — matches
+        // MajorMUD's partial-command behaviour visible in the
+        // screenshot.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
+        parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
+        Assert.Equal(2950, stats.NextLevelExp);
+    }
+
+    [Theory]
+    [InlineData("ex")]         // 2-char "say ex" — must NOT arm
+    [InlineData("ezpense")]    // not a prefix
+    [InlineData("examine")]    // shares 'ex' but not a prefix of 'experience'
+    [InlineData("expansion")]  // shares 'exp' but diverges
+    public void OutboundNonExpCommand_DoesNotArmGate(string command)
+    {
+        // Only true prefixes of "experience" arm the gate. Random
+        // ex* commands fall through.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
+        parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
+        Assert.Equal(0, stats.NextLevelExp);
+    }
+
+    [Fact]
+    public void ExpLine_WithoutOutbound_IsIgnored()
+    {
+        // Chat-noise protection — the same gate that protects stat
+        // fields covers exp fields too.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
+        Assert.Equal(0, stats.NextLevelExp);
+    }
+
+    [Fact]
+    public void ExpLine_AnchoredAtLineStart_ChatCannotFake()
+    {
+        // The exp regex is anchored to line start — a chat line
+        // embedding the entire payload can't write to the fields
+        // even with the gate open.
+        var (p, s) = Setup();
+        p.FeedTestLine("Foo gossips: Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
+        Assert.Equal(0, s.NextLevelExp);
+    }
+
     [Fact]
     public void NonChatLine_StillCaptures()
     {
