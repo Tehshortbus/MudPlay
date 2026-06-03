@@ -28,7 +28,10 @@ public sealed record RoomLayout(
     RoomKey Origin,
     IReadOnlyDictionary<RoomKey, (int X, int Y)> Positions,
     IReadOnlyDictionary<RoomKey, VerticalHint> VerticalHints,
-    IReadOnlyList<RoomKey> OffGrid);
+    IReadOnlyList<RoomKey> OffGrid,
+    IReadOnlyDictionary<(int X, int Y), RoomKey> CoordToRoom,
+    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> EdgesFromCoord,
+    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord);
 
 /// <summary>Whether a room exposes an up/down exit that the planar layout drops.</summary>
 [Flags]

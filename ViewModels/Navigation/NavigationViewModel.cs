@@ -323,7 +323,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshLayout()
     {
         Graph = _services.RoomGraph;
+
+        // Build eagerly as soon as the graph has rooms — the user
+        // should be able to browse the map immediately on game-data
+        // load without first locating in-game. Prefer the tracker's
+        // current room when known; otherwise pick the first room in
+        // the active graph (typically Map 1, Room 1).
         RoomKey? key = _services.RoomTracker.State.CurrentRoom?.Key;
+        if (key is null && _services.RoomGraph.RoomCount > 0)
+        {
+            foreach (Room first in _services.RoomGraph.Rooms)
+            {
+                key = first.Key;
+                break;
+            }
+        }
         Layout = key is { } k ? _services.Bfs.BuildLayout(k) : null;
     }
 

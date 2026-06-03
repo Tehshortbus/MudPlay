@@ -138,7 +138,10 @@ public sealed class BfsMapper
                 Origin: origin,
                 Positions: new Dictionary<RoomKey, (int X, int Y)>(),
                 VerticalHints: new Dictionary<RoomKey, VerticalHint>(),
-                OffGrid: Array.Empty<RoomKey>());
+                OffGrid: Array.Empty<RoomKey>(),
+                CoordToRoom: new Dictionary<(int X, int Y), RoomKey>(),
+                EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
+                TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>());
             _layoutCache[cacheKey] = empty;
             return empty;
         }
@@ -147,6 +150,12 @@ public sealed class BfsMapper
         {
             [origin] = (0, 0),
         };
+        var coordToRoom = new Dictionary<(int X, int Y), RoomKey>
+        {
+            [(0, 0)] = origin,
+        };
+        var edgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
+        var trapEdgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
         var vertical = new Dictionary<RoomKey, VerticalHint>();
         var offGrid = new List<RoomKey>();
         var depth = new Dictionary<RoomKey, int> { [origin] = 0 };
@@ -166,14 +175,22 @@ public sealed class BfsMapper
             Room? room = _graph.GetRoom(here);
             if (room is null) continue;
 
-            // Current node may itself be off-grid (a Cellar reached via
-            // D, or a collision-routed room). When that's the case, all
-            // descendants discovered through it are off-grid too —
-            // there's no planar coord to extend from.
             bool herePlanar = positions.TryGetValue(here, out (int X, int Y) hereXY);
 
             foreach ((Direction dir, RoomExit exit) in room.Exits)
             {
+                // MudProxy-style edge recording: every planar exit
+                // contributes a stub from the source cell regardless
+                // of whether the destination ends up placed. The
+                // renderer draws the stub from cell-centre to
+                // cell-edge, so adjacent cells' stubs meet visually.
+                if (herePlanar && IsPlanar(dir))
+                {
+                    AddEdge(edgesFromCoord, hereXY, dir);
+                    if (exit.Hint == RoomExitHint.Trap)
+                        AddEdge(trapEdgesFromCoord, hereXY, dir);
+                }
+
                 RoomKey next = exit.Target;
                 if (positions.ContainsKey(next) || offGrid.Contains(next)) continue;
                 Room? nextRoom = _graph.GetRoom(next);
@@ -205,15 +222,41 @@ public sealed class BfsMapper
                 }
 
                 positions[next] = target;
+                coordToRoom[target] = next;
                 depth[next] = hereDepth + 1;
                 queue.Enqueue(next);
             }
         }
 
-        RoomLayout layout = new(origin, positions, vertical, offGrid);
+        RoomLayout layout = new(
+            Origin: origin,
+            Positions: positions,
+            VerticalHints: vertical,
+            OffGrid: offGrid,
+            CoordToRoom: coordToRoom,
+            EdgesFromCoord: edgesFromCoord.ToDictionary(
+                kvp => kvp.Key,
+                kvp => (IReadOnlySet<Direction>)kvp.Value),
+            TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
+                kvp => kvp.Key,
+                kvp => (IReadOnlySet<Direction>)kvp.Value));
         _layoutCache[cacheKey] = layout;
         return layout;
     }
+
+    private static void AddEdge(Dictionary<(int X, int Y), HashSet<Direction>> map,
+        (int X, int Y) coord, Direction dir)
+    {
+        if (!map.TryGetValue(coord, out HashSet<Direction>? set))
+        {
+            set = new HashSet<Direction>();
+            map[coord] = set;
+        }
+        set.Add(dir);
+    }
+
+    private static bool IsPlanar(Direction d) =>
+        d != Direction.U && d != Direction.D;
 
     /// <summary>
     /// Subscribed by <see cref="Services.AppServices"/> to

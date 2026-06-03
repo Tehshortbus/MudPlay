@@ -309,6 +309,82 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Empty(layout.OffGrid);
     }
 
+    // ----- MudProxy-style edge tracking ------------------------------
+
+    [Fact]
+    public void EdgesFromCoord_RecordsEveryPlanarExit_FromTheSourceCell()
+    {
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // 1/1 sits at (0,0) and has N→1/2 + E→1/4 — both planar.
+        Assert.True(layout.EdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? edges));
+        Assert.NotNull(edges);
+        Assert.Contains(Direction.N, edges!);
+        Assert.Contains(Direction.E, edges!);
+    }
+
+    [Fact]
+    public void TrapEdgesFromCoord_Empty_WhenNoTraps()
+    {
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+        Assert.Empty(layout.TrapEdgesFromCoord);
+    }
+
+    [Fact]
+    public void TrapEdgesFromCoord_RecordsTrappedDirections()
+    {
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "A",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2 (Trap)", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "B",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        Assert.True(layout.TrapEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? trapDirs));
+        Assert.Contains(Direction.N, trapDirs!);
+    }
+
+    [Fact]
+    public void CoordToRoom_MapsBack_FromGridPositionToRoomKey()
+    {
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        Assert.Equal(new RoomKey(1, 1), layout.CoordToRoom[(0, 0)]);
+        Assert.Equal(new RoomKey(1, 2), layout.CoordToRoom[(0, -1)]);
+        Assert.Equal(new RoomKey(1, 6), layout.CoordToRoom[(1, -2)]);
+    }
+
+    [Fact]
+    public void EdgesFromCoord_RecordsExitEvenWhenDestinationIsOffGrid()
+    {
+        // GridJson includes 1/6 → D → 1/7 (Cellar). 1/7 lands in
+        // off-grid, but 1/6 should still carry its D-exit on the
+        // edge-tracking surface so the renderer can draw a stub.
+        // U/D are non-planar so they're omitted from EdgesFromCoord;
+        // the renderer uses VerticalHints for that. We assert the
+        // planar W exit on 1/6 is recorded as usual.
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        (int X, int Y) sixCoord = layout.Positions[new RoomKey(1, 6)];
+        Assert.True(layout.EdgesFromCoord.TryGetValue(sixCoord, out IReadOnlySet<Direction>? sixEdges));
+        Assert.Contains(Direction.W, sixEdges!);
+        // U / D not recorded — they're vertical hints, not stubs.
+        Assert.DoesNotContain(Direction.D, sixEdges!);
+        Assert.DoesNotContain(Direction.U, sixEdges!);
+    }
+
     [Fact]
     public void BuildLayout_MaxRadius_LimitsReach()
     {
