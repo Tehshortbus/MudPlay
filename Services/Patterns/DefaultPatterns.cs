@@ -314,10 +314,20 @@ public static class DefaultPatterns
             @"^Invalid password specified\.");
         yield return new RegexPattern(KnownPatterns.SuicideNotSet,
             @"^You do not have a suicide password set\.");
+        // Playpen renders the success line as "Password changed"
+        // (lowercase 'c'); previous regex required capital C and
+        // silently failed to match, so the encrypted blob never landed
+        // on the profile and the Settings → BBS suicide-password row
+        // stayed hidden. Use the case-insensitive inline flag so any
+        // realm variant ("Password CHANGED" / "Password Changed" /
+        // "Password changed") commits the captured candidate.
         yield return new RegexPattern(KnownPatterns.SuicidePasswordChanged,
-            @"^Password Changed\b");
+            @"(?i)^Password Changed\b");
+        // Same tolerance for the negative form — the existing literal
+        // happened to match Playpen's casing, but a future realm
+        // tweak shouldn't break commit suppression silently.
         yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
-            @"^Password NOT changed\b");
+            @"(?i)^Password NOT changed\b");
     }
 
 }

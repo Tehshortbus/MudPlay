@@ -59,8 +59,11 @@ public sealed class SuicidePasswordTrackerTests
             // User types "hunter2" then Enter — wire-send observes.
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("hunter2\r"));
 
-            // Server confirms.
-            Dispatch(router, "Password Changed");
+            // Server confirms — Playpen renders this as lowercase
+            // "Password changed". Regex tolerates either casing now,
+            // but this test pins the realm-observed literal so a
+            // future regression to capital-only would fail here.
+            Dispatch(router, "Password changed");
 
             Assert.False(gate.IsLocked);
             Assert.Equal(SuicidePasswordTracker.FlowState.Idle, tracker.State);
