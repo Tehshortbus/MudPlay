@@ -1,0 +1,105 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+        x:Class="FujinTerm.Views.Navigation.NavigationWindow"
+        x:DataType="vm:NavigationViewModel"
+        Title="Navigation"
+        Width="1280" Height="720"
+        MinWidth="780" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <Style Selector="Border.StatusBadge">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Border.StatusBadge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Button.ModeChip">
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.ModeChip.Active">
+            <Setter Property="Background" Value="#F8B500"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#888"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Top status + mode bar -->
+        <Border Grid.Row="0" Background="#1A1A1A" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="12,8">
+                <TextBlock Grid.Column="0" Text="Navigation" FontSize="12"
+                           FontWeight="SemiBold" VerticalAlignment="Center"
+                           Margin="0,0,12,0"/>
+                <Border Grid.Column="1" Classes="StatusBadge"
+                        Background="{Binding StatusBadgeBrush}">
+                    <TextBlock Text="{Binding StatusLabel}"/>
+                </Border>
+                <TextBlock Grid.Column="2" Text="{Binding CurrentRoomLabel}"
+                           Margin="10,0" VerticalAlignment="Center"
+                           Foreground="#BBB" FontSize="12"/>
+                <Button Grid.Column="3" Classes="ModeChip" Content="Loop mode"
+                        Command="{Binding ToggleLoopModeCommand}"
+                        Classes.Active="{Binding IsLoopMode}"/>
+                <Button Grid.Column="4" Classes="ModeChip" Content="Lair mode"
+                        Command="{Binding ToggleLairModeCommand}"
+                        Classes.Active="{Binding IsLairMode}"/>
+                <Button Grid.Column="5" Classes="ModeChip" Content="Pause"
+                        Command="{Binding PauseOrResumeCommand}"
+                        IsVisible="{Binding !IsPaused}"/>
+                <Button Grid.Column="5" Classes="ModeChip" Content="Resume"
+                        Command="{Binding PauseOrResumeCommand}"
+                        IsVisible="{Binding IsPaused}"/>
+            </Grid>
+        </Border>
+
+        <!-- Main: map placeholder | right rail -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,260">
+
+            <Border Grid.Column="0" Background="#0E0E0E">
+                <TextBlock Text="Map renders here (PR 7.11 MapControl)"
+                           Foreground="#555" FontSize="11"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+
+            <Border Grid.Column="1" Background="#141414"
+                    BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">
+                <StackPanel Margin="12,8">
+                    <TextBlock Classes="SectionHeader" Text="CURRENT NAV"/>
+                    <TextBlock Text="No active navigation."
+                               Foreground="#666" FontSize="11"
+                               IsVisible="{Binding !IsWalking}"/>
+                    <TextBlock Text="Walking — see status strip above."
+                               Foreground="#3DDC97" FontSize="11"
+                               IsVisible="{Binding IsWalking}"/>
+
+                    <TextBlock Classes="SectionHeader" Text="GOTO"/>
+                    <TextBlock Text="Favourites land in PR 7.13."
+                               Foreground="#555" FontSize="11"/>
+
+                    <TextBlock Classes="SectionHeader" Text="LOOPS"/>
+                    <TextBlock Text="Saved loops land in PR 7.13."
+                               Foreground="#555" FontSize="11"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

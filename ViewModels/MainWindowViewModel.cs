@@ -2153,18 +2153,29 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
+    /// <summary>Singleton handle for the live NavigationWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private Views.Navigation.NavigationWindow? _navigationWindow;
+
     [RelayCommand]
     private void OpenNavigation()
-        => OpenPlaceholder(
-            id: "navigation",
-            panelName: "Navigation",
-            phaseTag: "Phase 7",
-            headline: "Map + walk + loops + Auto-Lair",
-            description:
-                "Single unified window. Always-visible map (BFS planar layout from " +
-                "MDB Rooms+Paths). Left rail: room tree, favorites, saved loops. " +
-                "Trust-by-default RoomTracker; walk-from-anywhere; Auto-Lair " +
-                "scheduler with entry-triggered respawn + wait-room logic.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_navigationWindow is { } existing) { existing.Close(); return; }
+
+        Views.Navigation.NavigationWindow window = new()
+        {
+            DataContext = new ViewModels.Navigation.NavigationViewModel(AppServices.Current),
+        };
+        window.Closed += (_, _) =>
+        {
+            if (window.DataContext is IDisposable d) d.Dispose();
+            _navigationWindow = null;
+        };
+        _navigationWindow = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenSpellBook()
