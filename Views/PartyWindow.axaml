@@ -233,16 +233,32 @@
                                         IsVisible="{Binding IsWaiting}">
                                     <TextBlock Text="WAIT" Foreground="{StaticResource AccentPrimaryBrush}"/>
                                 </Border>
+                                <!-- INVITED chip — visible while waiting on the
+                                     player to accept our `invite`. PartyManager
+                                     adds the row from the "You have invited X to
+                                     follow you." server echo; flips to false on
+                                     the "X started to follow you." acceptance. -->
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentCyanBrush}"
+                                        IsVisible="{Binding IsInvited}">
+                                    <TextBlock Text="INVITED" Foreground="{StaticResource AccentCyanBrush}"/>
+                                </Border>
                             </StackPanel>
 
-                            <!-- (5) Uninvite — only meaningful for the leader -->
+                            <!-- (5) Uninvite — enabled when we're the leader.
+                                 PartyManager flips SelfIsLeader=true the moment
+                                 we send an invite (on the "You have invited X to
+                                 follow you." echo), so this gate covers BOTH
+                                 the kick-a-follower and withdraw-a-pending-
+                                 invite paths with one binding. -->
                             <Button Grid.Column="5"
                                     Content="⨯"
                                     Width="22" Height="22"
                                     Padding="0"
                                     Margin="4,0,0,0"
                                     FontSize="13"
-                                    ToolTip.Tip="Uninvite from party"
+                                    ToolTip.Tip="Uninvite from party (or withdraw a pending invitation)"
                                     Command="{Binding $parent[ItemsControl].DataContext.UninviteCommand}"
                                     CommandParameter="{Binding}"
                                     IsEnabled="{Binding $parent[ItemsControl].DataContext.State.SelfIsLeader}"/>

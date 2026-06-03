@@ -175,4 +175,18 @@ public sealed partial class PartyMember : ObservableObject
     /// collection.
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(Remote.PartyEssentialHandlers))] private bool _isWaiting;
+
+    /// <summary>
+    /// True when we've sent <c>invite X</c> on the wire (or observed
+    /// the server's "You have invited X to follow you." confirmation)
+    /// but X hasn't yet accepted via <c>follow</c>. Drives the
+    /// "Invited" chip + <c>×</c> uninvite button in the PartyWindow.
+    /// Flipped <c>false</c> when <see cref="PartyManager.OnFollowsYou"/>
+    /// fires for the same given name; the row is removed entirely on
+    /// the "X has been removed from your followers." uninvite
+    /// confirmation. HP / MA columns + on-join @health round-trip
+    /// suppress themselves while this is true — invited rows carry
+    /// no health data until they actually join.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _isInvited;
 }

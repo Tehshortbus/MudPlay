@@ -814,4 +814,83 @@ public sealed class PartyManagerTests
         Assert.Equal(850, self.BaselineHp);
         Assert.Equal(0,   self.BaselineMp);
     }
+
+    // ===== Pending-invite tracking ("You have invited X to follow you.") =====
+
+    [Fact]
+    public void YouInvited_AddsRowWithIsInvitedTrue()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("You have invited Helper to follow you."));
+
+        Assert.True(p.State.IsInParty);
+        Assert.True(p.State.SelfIsLeader);
+        // Two members: self (leader) + the invitee row.
+        Assert.Equal(2, p.State.Members.Count);
+        PartyMember invitee = p.State.Members.Single(m => m.Name == "Helper");
+        Assert.True(invitee.IsInvited);
+        Assert.False(invitee.IsLeader);
+        Assert.False(invitee.IsSelf);
+    }
+
+    [Fact]
+    public void YouInvited_SetsSelfIsLeaderSoUninviteButtonEnables()
+    {
+        // The PartyWindow's X-button IsEnabled binds to
+        // State.SelfIsLeader. Sending an invite while solo must flip
+        // the flag so the user can withdraw the offer immediately,
+        // without waiting for the invitee to accept.
+        var (router, p) = Setup(localCharacterName: "Forged");
+        Assert.False(p.State.SelfIsLeader);
+
+        router.Dispatch(Line("You have invited Helper to follow you."));
+
+        Assert.True(p.State.SelfIsLeader);
+    }
+
+    [Fact]
+    public void Acceptance_ClearsIsInvitedOnSameRow()
+    {
+        // Invite then acceptance — the SAME row's IsInvited flips
+        // to false; no second row added (matched by given name).
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("You have invited Helper to follow you."));
+        Assert.True(p.State.Members.Single(m => m.Name == "Helper").IsInvited);
+
+        router.Dispatch(Line("Helper started to follow you."));
+
+        Assert.Equal(2, p.State.Members.Count);
+        Assert.False(p.State.Members.Single(m => m.Name == "Helper").IsInvited);
+    }
+
+    [Fact]
+    public void Uninvite_SendsWireCommandWithGivenName()
+    {
+        // Manager-level Uninvite is the wire-send escape hatch the
+        // PartyWindow row's X button reuses (via PartyViewModel.Uninvite,
+        // which routes through SendUserInput in production). Verify the
+        // shape directly here so the wire matches "uninvite X\r" with
+        // family stripped.
+        var (_, p) = Setup();
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+
+        p.Uninvite("Helper Lastname");
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("uninvite Helper\r", System.Text.Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void Uninvite_BlankName_NoOps()
+    {
+        var (_, p) = Setup();
+        List<byte[]> wire = new();
+        p.SetWireSender(wire.Add);
+
+        p.Uninvite(string.Empty);
+        p.Uninvite("   ");
+
+        Assert.Empty(wire);
+    }
 }

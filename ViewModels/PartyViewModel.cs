@@ -177,9 +177,11 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Per-row Uninvite. Only sends a wire command when the local
-    /// character is the party leader — otherwise the in-game command
-    /// would just bounce back as "you're not the leader" noise.
+    /// Per-row Uninvite. Sends <c>uninvite X</c> on the wire when the
+    /// local character is the party leader — covers BOTH the
+    /// withdraw-pending-invite path (PartyManager flips SelfIsLeader
+    /// true the moment "You have invited X to follow you." fires) and
+    /// the existing kick-a-real-follower path.
     /// </summary>
     [RelayCommand]
     private void Uninvite(PartyMember? member)

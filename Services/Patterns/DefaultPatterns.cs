@@ -217,6 +217,13 @@ public static class DefaultPatterns
             @"^You are now following (?<player>\w+)\.?$");
         yield return new RegexPattern(KnownPatterns.PartyStopsFollowing,
             @"^(?<player>\w+) (?:stops following you|has stopped following you)\.?");
+        // Outbound-invite confirmation — the server echoes this every
+        // time we (or AutoPartyManager / RemoteCommandManager invite
+        // handler) sends `invite X` on the wire. PartyManager adds an
+        // IsInvited row for X on this line so the user sees the
+        // pending invitee in PartyWindow before they accept.
+        yield return new RegexPattern(KnownPatterns.PartyYouInvited,
+            @"^You have invited (?<player>\w+) to follow you\.?$");
         // par-header — MajorMUD actually labels it "The following people
         // are in your travel party:" (not "Party Status:" which was my
         // earlier guess). Anchors PartyManager's stateful row parser.

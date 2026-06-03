@@ -158,6 +158,7 @@ public sealed partial class PartyManager : IDisposable
         _subs.Add(_router.Subscribe(KnownPatterns.PartyFollowsYou,     OnFollowsYou));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyYouFollowing,   OnYouFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyStopsFollowing, OnStopsFollowing));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyYouInvited,     OnYouInvited));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyHeader,         OnParHeader));
         // Phase 6 PR 6.5 — disconnect / death / reconnect grace window.
         // We watch every "X just disconnected" / "X just entered the
@@ -198,6 +199,40 @@ public sealed partial class PartyManager : IDisposable
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
+
+    /// <summary>
+    /// Send <c>uninvite X</c> on the wire — drops X's pending invite
+    /// (or, on a member who already joined, kicks them from the
+    /// party). Used by the PartyWindow's <c>×</c> button on invited
+    /// rows; safe to call for any roster row. No-op when no
+    /// wire-sender is bound (pre-connect / tests inspect
+    /// <see cref="LastSentForTests"/> directly).
+    /// </summary>
+    /// <remarks>
+    /// We do NOT pre-emptively remove the row from
+    /// <see cref="PartyState.Members"/> — the server-side echo
+    /// (<c>"X has been removed from your followers."</c>) goes through
+    /// <see cref="OnFollowerRemoved"/> and removes the row through the
+    /// normal path. Removing here first would race with the server's
+    /// own state and leave a brief window where the row is gone
+    /// locally but still tracked server-side; routing through the
+    /// echo keeps both sides authoritative.
+    /// </remarks>
+    public void Uninvite(string playerGiven)
+    {
+        if (string.IsNullOrWhiteSpace(playerGiven)) return;
+        // MajorMUD addresses players by given name only — strip any
+        // family suffix the caller passed through (a PartyWindow row
+        // might bind to "Raijin WuzHere").
+        string given = GivenNameOf(playerGiven);
+        if (string.IsNullOrEmpty(given)) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {given}\r");
+        LastSentForTests.Add(bytes);
+        _wireSender?.Invoke(bytes);
+    }
+
+    /// <summary>Test seam — most recent bytes the manager asked to write to the wire.</summary>
+    internal List<byte[]> LastSentForTests { get; } = new();
 
     /// <summary>
     /// Bind the live <see cref="PlayerState"/> so the local
@@ -325,12 +360,61 @@ public sealed partial class PartyManager : IDisposable
         State.IsInParty    = true;
         State.SelfIsLeader = true;
         State.LeaderName ??= LocalCharacterName;
-        AddOrTouchMember(name);
+        PartyMember joiner = AddOrTouchMember(name);
+        // Acceptance — clear any pending invite chip on the same row
+        // (added by OnYouInvited when we sent `invite X`). The
+        // PartyPoller's on-join @health round-trip subscribes to
+        // PropertyChanged on this row so flipping IsInvited triggers
+        // the round-trip without us needing a re-Add.
+        joiner.IsInvited = false;
         AddSelfIfKnown(isLeader: true);
         // No rank-preference command on the leader path — MajorMUD
         // forces leaders to frontrank, and the server rejects the
         // rerank attempt. The follower path (OnYouFollowing) is the
         // only place LocalRankPreference matters.
+    }
+
+    /// <summary>
+    /// "You have invited X to follow you." — fires on the leader-side
+    /// echo whenever <c>invite X</c> lands on the wire (whether typed
+    /// manually, sent by <see cref="AutoPartyManager"/>, or returned
+    /// by <see cref="Remote.PartyEssentialHandlers"/>'s @invite
+    /// handler). Adds X to the roster with <see cref="PartyMember.IsInvited"/>
+    /// true so the PartyWindow renders an "Invited" chip + <c>×</c>
+    /// uninvite button — the user gets visible accountability for
+    /// every pending invitation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sending an invite makes us a leader-in-the-making —
+    /// <see cref="PartyState.SelfIsLeader"/> flips to true here so
+    /// the existing leader-only PartyWindow controls (the <c>×</c>
+    /// uninvite button in particular) activate immediately. If the
+    /// invitee declines or times out the row is removed via
+    /// <see cref="OnFollowerRemoved"/>; if no rows remain after a
+    /// dissolution-side cleanup, leadership decays back through the
+    /// normal <see cref="OnPartyDissolved"/> path.
+    /// </para>
+    /// <para>
+    /// If X is already on the roster as a real member (e.g. someone
+    /// fat-fingers a second invite while they're already partying),
+    /// AddOrTouchMember just touches the existing row and we set
+    /// IsInvited=true on it. That's a harmless visual state for one
+    /// par poll cycle; the next par will reflect the actual roster
+    /// without the chip.
+    /// </para>
+    /// </remarks>
+    private void OnYouInvited(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        State.IsInParty    = true;
+        State.SelfIsLeader = true;
+        State.LeaderName ??= LocalCharacterName;
+        AddSelfIfKnown(isLeader: true);
+        PartyMember row = AddOrTouchMember(name);
+        row.IsInvited = true;
     }
 
     /// <summary>

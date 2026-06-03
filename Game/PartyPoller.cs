@@ -184,57 +184,78 @@ public sealed partial class PartyPoller : IDisposable
 
     private void OnMembersChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // Removed members — cancel any pending @health nag so we don't
-        // keep telepathing a player who just left the party.
+        // Removed members — cancel any pending @health nag + detach
+        // the per-row PropertyChanged subscription so an evicted row
+        // can be GC'd cleanly.
         if (e.OldItems is not null)
         {
             foreach (object? item in e.OldItems)
             {
                 if (item is not PartyMember m) continue;
+                m.PropertyChanged -= OnMemberPropertyChanged;
                 if (string.IsNullOrEmpty(m.Name)) continue;
                 CancelHealthNag(GivenName(m.Name));
             }
         }
 
-        if (_wireSender is null) return;
         if (e.Action != NotifyCollectionChangedAction.Add) return;
         if (e.NewItems is null) return;
-        // Note: no IsInParty gate here. PartyManager's OnFollowsYou /
-        // OnYouFollowing fire CollectionChanged.Add BEFORE setting
-        // IsInParty (it's derived from Members.Count > 0 after all
-        // adds settle), so an IsInParty check would block the legit
-        // on-join @health round-trip. The dissolution ghost-add
-        // scenario this gate was originally protecting against is now
-        // fixed at the source — OnPartyDissolved flushes _parState=Idle
-        // so the par-row parser can't re-add stale rows.
+        // Subscribe + fire the on-join round-trip in a single helper
+        // so the "added as IsInvited, then accepted later" path can
+        // reuse the same trigger from the PropertyChanged handler
+        // without duplicating wire-send code.
         foreach (object? item in e.NewItems)
         {
             if (item is not PartyMember m) continue;
-            // Skip self — our own HP/MA flows in through PromptParser
-            // on every statline, which is fresher than this round-trip
-            // would be. Skip if name is missing too.
-            if (m.IsSelf) continue;
-            if (string.IsNullOrEmpty(m.Name)) continue;
-            // MajorMUD telepath syntax on Playpen BBS is `/<given> <msg>`
-            // (slash + given name, no space). Short forms `t` and `tel`
-            // are interpreted as `say`; addressing by full "Given Family"
-            // is also rejected — given name only.
-            string given = GivenName(m.Name);
-            SendHealthRequest(given);
-            // Start the @health nag. If a baseline is already on file
-            // (rare — typically happens when PartyManager merges a
-            // duplicate row through AddOrTouchMember instead of
-            // re-adding), short-circuit.
-            if (m.BaselineHp > 0) continue;
-            DateTime now = NowProvider();
-            _activeNags[given] = new HealthNagState
-            {
-                Given       = given,
-                FirstSentAt = now,
-                Sends       = 1,
-            };
-            EnsureHealthNagTimerRunning();
+            m.PropertyChanged += OnMemberPropertyChanged;
+            TryFireOnJoinHealth(m);
         }
+    }
+
+    /// <summary>
+    /// Per-row PropertyChanged handler — fires the on-join @health
+    /// round-trip when an existing row flips from IsInvited=true to
+    /// IsInvited=false (the acceptance path: PartyManager's
+    /// OnYouInvited adds the row, then OnFollowsYou clears the chip).
+    /// Without this hook the round-trip would only fire on
+    /// CollectionChanged.Add and an invitee who accepts would never
+    /// get their baseline captured until the user manually typed
+    /// <c>par</c>.
+    /// </summary>
+    private void OnMemberPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(PartyMember.IsInvited)) return;
+        if (sender is not PartyMember m) return;
+        if (m.IsInvited) return;   // we only fire on the invited→accepted transition
+        TryFireOnJoinHealth(m);
+    }
+
+    private void TryFireOnJoinHealth(PartyMember m)
+    {
+        if (_wireSender is null) return;
+        // Skip self — our own HP/MA flows in through PromptParser on
+        // every statline. Skip missing names. Skip pending invitees
+        // (the row exists for the PartyWindow chip; no health data
+        // yet). Skip rows that already have a baseline captured
+        // (re-Add scenarios + acceptance-after-cached-baseline edge).
+        if (m.IsSelf) return;
+        if (m.IsInvited) return;
+        if (string.IsNullOrEmpty(m.Name)) return;
+        // MajorMUD telepath syntax on Playpen BBS is `/<given> <msg>`
+        // (slash + given name, no space). Short forms `t` and `tel`
+        // are interpreted as `say`; addressing by full "Given Family"
+        // is also rejected — given name only.
+        string given = GivenName(m.Name);
+        SendHealthRequest(given);
+        if (m.BaselineHp > 0) return;
+        DateTime now = NowProvider();
+        _activeNags[given] = new HealthNagState
+        {
+            Given       = given,
+            FirstSentAt = now,
+            Sends       = 1,
+        };
+        EnsureHealthNagTimerRunning();
     }
 
     private void SendHealthRequest(string given)

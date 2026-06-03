@@ -436,4 +436,61 @@ public sealed class PartyPollerTests
 
         Assert.Empty(wire);
     }
+
+    // ===== Invited row gating ============================================
+
+    [Fact]
+    public void InvitedMember_AddedToParty_SkipsOnJoinHealthRoundTrip()
+    {
+        // PartyManager adds an IsInvited=true row when "You have
+        // invited X to follow you." fires. The PartyWindow needs the
+        // row for the INVITED chip + X button, but we must NOT
+        // telepath /X @health while X hasn't joined — they'd see a
+        // confused @health request from a stranger.
+        var (poller, _, state, _, _, wire) = Setup();
+        _ = poller;
+        state.Members.Add(new PartyMember { Name = "Helper", IsInvited = true });
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void InvitedThenAccepted_FiresHealthRoundTrip()
+    {
+        // Acceptance path: PartyManager.OnFollowsYou flips IsInvited
+        // false on the SAME row. PartyPoller's per-row PropertyChanged
+        // hook catches the transition and fires the @health round-
+        // trip that the CollectionChanged.Add path would normally
+        // trigger for a fresh row.
+        var (poller, _, state, _, _, wire) = Setup();
+        _ = poller;
+        PartyMember row = new() { Name = "Helper", IsInvited = true };
+        state.Members.Add(row);
+        Assert.Empty(wire);
+
+        row.IsInvited = false;
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("/Helper @health\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void InvitedMember_Removed_DetachesPropertyChangedHandler()
+    {
+        // If the user uninvites before acceptance and the row is
+        // removed, mutating the orphaned PartyMember instance must
+        // not produce wire traffic — the poller's PropertyChanged
+        // subscription on the row must have been detached.
+        var (poller, _, state, _, _, wire) = Setup();
+        _ = poller;
+        PartyMember row = new() { Name = "Helper", IsInvited = true };
+        state.Members.Add(row);
+        state.Members.Remove(row);
+        Assert.Empty(wire);
+
+        // Orphaned mutation: poller should NOT react.
+        row.IsInvited = false;
+
+        Assert.Empty(wire);
+    }
 }
