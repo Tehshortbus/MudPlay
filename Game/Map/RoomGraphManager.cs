@@ -106,6 +106,14 @@ public sealed class RoomGraphManager
     }
 
     /// <summary>
+    /// Read-only snapshot of every room in the active set, in load
+    /// order. The Navigation search (PR 7.12) iterates this for
+    /// substring matches; the room tree / favourites populators reuse
+    /// the same enumeration. Empty when no set is active.
+    /// </summary>
+    public IEnumerable<Room> Rooms => _rooms.Values;
+
+    /// <summary>
     /// Every room in the active set that carries at least one trapped
     /// exit (per the imported <c>(Trap)</c> hint). The
     /// <c>MapControl</c> (PR 7.11) iterates this to overlay red

@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
@@ -50,6 +53,62 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private RoomLayout? _layout;
     [ObservableProperty] private RoomKey? _currentRoomKey;
     [ObservableProperty] private RoomGraphManager? _graph;
+
+    // ----- Search ---------------------------------------------------
+
+    [ObservableProperty] private string _searchQuery = string.Empty;
+
+    /// <summary>Top 50 matches by name (case-insensitive substring), sorted by step distance then name.</summary>
+    public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
+
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    partial void OnSearchQueryChanged(string value) => RebuildSearchResults(value);
+
+    private void RebuildSearchResults(string query)
+    {
+        SearchResults.Clear();
+        if (Graph is null) { OnPropertyChanged(nameof(HasSearchResults)); return; }
+
+        string needle = query?.Trim() ?? string.Empty;
+        if (needle.Length < 2) { OnPropertyChanged(nameof(HasSearchResults)); return; }
+
+        // FindByName is exact-match; we want substring. Scan the live
+        // graph instead. (The graph is one realm — typically <2000
+        // rooms — so the per-keystroke scan is cheap.)
+        RoomKey? sourceKey = CurrentRoomKey;
+        List<RoomSearchResult> matches = new();
+        foreach (Room room in EnumerateAllRooms(Graph))
+        {
+            if (room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                int? steps = sourceKey is { } src
+                    ? _services.Bfs.DistanceBetween(src, room.Key, _services.Movement)
+                    : null;
+                matches.Add(new RoomSearchResult(room.Key, room.Name, steps));
+                if (matches.Count >= 200) break;     // cap before sort
+            }
+        }
+        foreach (RoomSearchResult m in matches
+                     .OrderBy(m => m.StepsFromCurrent ?? int.MaxValue)
+                     .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                     .Take(50))
+        {
+            SearchResults.Add(m);
+        }
+        OnPropertyChanged(nameof(HasSearchResults));
+    }
+
+    private static IEnumerable<Room> EnumerateAllRooms(RoomGraphManager graph) => graph.Rooms;
+
+    [RelayCommand]
+    private void SelectSearchResult(RoomSearchResult? result)
+    {
+        if (result is null) return;
+        // Re-layout from the selected room so the map pans to it.
+        Layout = _services.Bfs.BuildLayout(result.Key);
+        SearchQuery = string.Empty;
+    }
 
     // ----- Mode bar -------------------------------------------------
     //

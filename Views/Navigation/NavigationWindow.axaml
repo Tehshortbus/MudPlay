@@ -82,23 +82,59 @@
 
             <Border Grid.Column="1" Background="#141414"
                     BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">
-                <StackPanel Margin="12,8">
-                    <TextBlock Classes="SectionHeader" Text="CURRENT NAV"/>
-                    <TextBlock Text="No active navigation."
-                               Foreground="#666" FontSize="11"
-                               IsVisible="{Binding !IsWalking}"/>
-                    <TextBlock Text="Walking — see status strip above."
-                               Foreground="#3DDC97" FontSize="11"
-                               IsVisible="{Binding IsWalking}"/>
+                <Grid RowDefinitions="Auto,*" Margin="12,8">
 
-                    <TextBlock Classes="SectionHeader" Text="GOTO"/>
-                    <TextBlock Text="Favourites land in PR 7.13."
-                               Foreground="#555" FontSize="11"/>
+                    <!-- Search box always on top so the user can find a
+                         room while a walk is in progress. -->
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Classes="SectionHeader" Text="SEARCH ROOMS"/>
+                        <TextBox Text="{Binding SearchQuery, Mode=TwoWay}"
+                                 FontSize="11"
+                                 BorderBrush="#2A2A2A"/>
+                        <ListBox ItemsSource="{Binding SearchResults}"
+                                 Margin="0,6,0,0"
+                                 MaxHeight="220"
+                                 IsVisible="{Binding HasSearchResults}"
+                                 Background="Transparent"
+                                 BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RoomSearchResult">
+                                    <Border Padding="6,3"
+                                            PointerPressed="OnSearchResultClicked"
+                                            Background="Transparent">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       FontSize="12"
+                                                       Foreground="#DDD"/>
+                                            <TextBlock Text="{Binding DisplayLocation}"
+                                                       FontSize="10"
+                                                       Foreground="#777"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
 
-                    <TextBlock Classes="SectionHeader" Text="LOOPS"/>
-                    <TextBlock Text="Saved loops land in PR 7.13."
-                               Foreground="#555" FontSize="11"/>
-                </StackPanel>
+                    <!-- Rest of the rail. -->
+                    <StackPanel Grid.Row="1">
+                        <TextBlock Classes="SectionHeader" Text="CURRENT NAV"/>
+                        <TextBlock Text="No active navigation."
+                                   Foreground="#666" FontSize="11"
+                                   IsVisible="{Binding !IsWalking}"/>
+                        <TextBlock Text="Walking — see status strip above."
+                                   Foreground="#3DDC97" FontSize="11"
+                                   IsVisible="{Binding IsWalking}"/>
+
+                        <TextBlock Classes="SectionHeader" Text="GOTO"/>
+                        <TextBlock Text="Favourites land in PR 7.13."
+                                   Foreground="#555" FontSize="11"/>
+
+                        <TextBlock Classes="SectionHeader" Text="LOOPS"/>
+                        <TextBlock Text="Saved loops land in PR 7.13."
+                                   Foreground="#555" FontSize="11"/>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
