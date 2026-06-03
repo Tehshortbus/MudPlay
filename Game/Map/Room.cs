@@ -63,6 +63,18 @@ public sealed record Room
     public int Delay { get; init; }
 
     /// <summary>
+    /// <c>CMD</c> field from the MDB — when non-zero, indexes a row in
+    /// <see cref="Services.TBInfoStore"/> whose <c>Action</c> chain
+    /// resolves to a text-keyword → teleport command. The presence of
+    /// <c>Cmd &gt; 0</c> is the discriminator that promotes an
+    /// <c>(Item: N)</c> exit on this room from a plain inventory check
+    /// (<see cref="RoomExitHint.Item"/>) to a party-breaking teleport
+    /// (<see cref="RoomExitHint.Teleport"/>). <c>0</c> means no
+    /// associated TBInfo entry.
+    /// </summary>
+    public int Cmd { get; init; }
+
+    /// <summary>
     /// Raw <c>Lair</c> cell from the MDB. <c>null</c> when the row
     /// stored the NUL/empty sentinel (no lair); non-null otherwise.
     /// Detailed parsing (mob list, <c>GroupIndex</c> back-reference) is

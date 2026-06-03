@@ -228,12 +228,25 @@ public sealed class RoomGraphManager
         string? name = TryReadString(row, "Name");
         if (string.IsNullOrWhiteSpace(name)) return false;
 
+        int cmd = TryReadIntOrZero(row, "CMD");
+
         var exits = new Dictionary<Direction, RoomExit>();
         uint mask = 0;
         foreach (Direction dir in s_directions)
         {
             string? cell = TryReadString(row, s_exitPropertyNames[(int)dir]);
             if (!RoomExit.TryParseWire(cell, out RoomExit exit)) continue;
+
+            // Item → Teleport promotion: an (Item: N) exit on a room
+            // whose CMD field is non-zero is the party-breaking
+            // teleport pattern (TBInfo chain → text keyword →
+            // teleport directive). The exit parser can't see Room.Cmd,
+            // so the promotion happens here.
+            if (exit.Hint == RoomExitHint.Item && cmd > 0)
+            {
+                exit = exit with { Hint = RoomExitHint.Teleport };
+            }
+
             exits[dir] = exit;
             mask |= 1u << (int)dir;
         }
@@ -249,6 +262,7 @@ public sealed class RoomGraphManager
             Shop  = TryReadIntOrZero(row, "Shop"),
             Spell = TryReadIntOrZero(row, "Spell"),
             Delay = TryReadIntOrZero(row, "Delay"),
+            Cmd   = cmd,
             RawLairTag = lairRaw,
             Exits = exits,
             ExitMask = mask,

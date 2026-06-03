@@ -116,15 +116,36 @@ public sealed class RoomGraphManagerTests : IDisposable
     }
 
     [Theory]
-    [InlineData("1/2 (Key: 5)",                 "Key: 5")]
     [InlineData("1/2 (Level: 30 to 999)",       "Level: 30 to 999")]
     [InlineData("1/2 (Alignment: Saint to Outlaw)", "Alignment: Saint to Outlaw")]
-    [InlineData("1/2 (Hidden)",                 "Hidden")]
     public void RoomExit_GatedExits_FallThroughToNoneButPreserveRaw(string wire, string rawHint)
     {
+        // Level / Alignment / Class / Race / Ability restrictions
+        // aren't classified yet — they round-trip via RawHint until
+        // the path-time gate land in a later PR.
         Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
         Assert.Equal(RoomExitHint.None, exit.Hint);
         Assert.Equal(rawHint, exit.RawHint);
+    }
+
+    [Fact]
+    public void RoomExit_KeyHint_NowClassified()
+    {
+        // Previously fell through to None; commit-1 schema extension
+        // promotes (Key: N) to KeyLocked with item id captured.
+        Assert.True(RoomExit.TryParseWire("1/2 (Key: 5)", out RoomExit exit));
+        Assert.Equal(RoomExitHint.KeyLocked, exit.Hint);
+        Assert.Equal(5, exit.KeyItemId);
+    }
+
+    [Fact]
+    public void RoomExit_HiddenHint_NowClassifiedAsSearchable()
+    {
+        // Previously fell through to None; commit-1 schema extension
+        // promotes plain (Hidden) to SearchableHidden so the walker
+        // knows to `sea <dir>` before stepping.
+        Assert.True(RoomExit.TryParseWire("1/2 (Hidden)", out RoomExit exit));
+        Assert.Equal(RoomExitHint.SearchableHidden, exit.Hint);
     }
 
     [Fact]
@@ -494,5 +515,85 @@ public sealed class RoomGraphManagerTests : IDisposable
 
         Assert.Equal(1, graph.RoomCount);
         Assert.NotNull(graph.GetRoom(new RoomKey(1, 1)));
+    }
+
+    // ----- Room.Cmd + Item → Teleport promotion ----------------------
+
+    [Fact]
+    public void Room_Cmd_FieldIsReadFromJson()
+    {
+        const string json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Casino",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 997, "Lair": "",
+                "Delay": 5, "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? room = graph.GetRoom(new RoomKey(1, 1));
+        Assert.NotNull(room);
+        Assert.Equal(997, room!.Cmd);
+    }
+
+    [Fact]
+    public void Item_OnExit_WithCmdOnSourceRoom_PromotesToTeleport()
+    {
+        // Source room CMD=5 + (Item: 474) on the exit → Teleport.
+        const string json = """
+            [
+              { "Map Number": 7, "Room Number": 130, "Name": "Grove",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 5, "Lair": "",
+                "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "7/131 (Item: 474)", "SW": "0",
+                "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? room = graph.GetRoom(new RoomKey(7, 130));
+        Assert.NotNull(room);
+        Assert.True(room!.Exits.TryGetValue(Direction.SE, out RoomExit ex));
+        Assert.Equal(RoomExitHint.Teleport, ex.Hint);
+        Assert.Equal(474, ex.KeyItemId);
+    }
+
+    [Fact]
+    public void Item_OnExit_WithoutCmd_StaysItem()
+    {
+        // Source room CMD=0 + (Item: 474) on the exit → Item check
+        // only (inventory requirement), not a teleport.
+        const string json = """
+            [
+              { "Map Number": 7, "Room Number": 131, "Name": "Stone Arch",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "",
+                "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "7/133 (Item: 474)", "NW": "0", "SE": "0", "SW": "0",
+                "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? room = graph.GetRoom(new RoomKey(7, 131));
+        Assert.NotNull(room);
+        Assert.True(room!.Exits.TryGetValue(Direction.NE, out RoomExit ex));
+        Assert.Equal(RoomExitHint.Item, ex.Hint);
+        Assert.Equal(474, ex.KeyItemId);
     }
 }

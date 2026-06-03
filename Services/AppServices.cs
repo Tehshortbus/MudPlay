@@ -515,6 +515,15 @@ public sealed class AppServices
     public Game.Map.RoomGraphManager RoomGraph { get; private set; } = null!;
 
     /// <summary>
+    /// TextBlock Info index for the active game-data set. Loaded from
+    /// <c>TBInfo.json</c>; consumed by the teleport handler (room
+    /// <c>CMD &gt; 0</c> + <c>(Item: N)</c> exit promotes to
+    /// <see cref="Game.Map.RoomExitHint.Teleport"/>, then the walker
+    /// follows the chain to extract keyword + destination).
+    /// </summary>
+    public TBInfoStore TBInfo { get; private set; } = null!;
+
+    /// <summary>
     /// Trust-by-default room tracker. Owns
     /// <see cref="Game.Map.RoomState"/>; the Navigation status strip
     /// and any source-room-required engine (walker, loop runner,
@@ -917,6 +926,15 @@ public sealed class AppServices
         GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
+
+        // TBInfo store — TextBlock Info table indexed by Room.Cmd. Used
+        // by the teleport / NPC-service / gambling code paths (commit 5+
+        // wires the teleport resolver). Mirrors RoomGraph's load shape:
+        // active-set-driven, raw JSON evicted after typed conversion.
+        TBInfo = new TBInfoStore(GameData, Log);
+        GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            TBInfo.OnActiveSetChanged(GameData.ActiveSet);
 
         // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
