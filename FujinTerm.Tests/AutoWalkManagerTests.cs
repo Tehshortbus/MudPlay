@@ -1,0 +1,355 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using FujinTerm.Game.Map;
+using FujinTerm.Services;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// PR 7.7 walker coverage — single-shot walk happy path, retry on
+/// blocked move, abort on desync, pause/resume via coordinator,
+/// destination-equals-source short-circuit, and superseding starts.
+/// </summary>
+public sealed class AutoWalkManagerTests : IDisposable
+{
+    private readonly string _root;
+
+    public AutoWalkManagerTests()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "fujinterm-walker-tests-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(_root);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); }
+        catch { /* best-effort */ }
+    }
+
+    // ----- fixtures --------------------------------------------------
+    //
+    // 1/1 ──N── 1/2 ──N── 1/3
+    //
+    private const string LineGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/3", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "C",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private sealed class Harness : IDisposable
+    {
+        public required RoomGraphManager Graph { get; init; }
+        public required BfsMapper Bfs { get; init; }
+        public required RoomTracker Tracker { get; init; }
+        public required MovementCoordinator Coordinator { get; init; }
+        public required AutoWalkManager Walker { get; init; }
+        public List<byte[]> Sent { get; } = new();
+        public List<WalkEvent> Events { get; } = new();
+        public void Dispose() { /* nothing to dispose */ }
+    }
+
+    private Harness NewHarness(string json = LineGraphJson)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), json);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+        Harness h = new()
+        {
+            Graph = graph,
+            Bfs = bfs,
+            Tracker = tracker,
+            Coordinator = coord,
+            Walker = walker,
+        };
+        walker.SetWireSender(b => h.Sent.Add(b));
+        walker.Event += evt => h.Events.Add(evt);
+        return h;
+    }
+
+    // ----- happy path -----------------------------------------------
+
+    [Fact]
+    public void WalkTo_NoSourceRoom_FailsImmediately()
+    {
+        Harness h = NewHarness();
+        // RoomTracker stays Unknown — no observation has been fed.
+        bool started = h.Walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.False(started);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+    }
+
+    [Fact]
+    public void WalkTo_AlreadyAtDestination_FiresFinished()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 1)));
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void WalkTo_FirstStep_PutsDirectionOnWire()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Started);
+    }
+
+    [Fact]
+    public void Walker_AdvancesThroughPath_OnConfirmedSteps()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        // Simulate the server confirming step 1 (now at 1/2).
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Equal(2, h.Sent.Count);                       // step 2 sent
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
+
+        // Confirm step 2 (now at 1/3).
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteRoomObserved(new RoomObservation("C",
+            new HashSet<Direction> { Direction.S }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.Equal(2, h.Events.Count(e => e.Kind == WalkEventKind.StepCompleted));
+    }
+
+    // ----- blocked retry --------------------------------------------
+
+    [Fact]
+    public void BlockedStep_RetriesOnce_ThenAdvances()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        // Server refuses the move — tracker reverts Pending → Located
+        // at the SAME room (1/1).
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteMoveBlocked();
+
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Retrying);
+        Assert.Equal(2, h.Sent.Count);                       // retry sent
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        // Now the retry succeeds.
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(3, h.Sent.Count);                       // next step
+    }
+
+    [Fact]
+    public void BlockedTwice_AbortsWithFailed()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteMoveBlocked();
+        // The retry above sent step #2. Block again.
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteMoveBlocked();
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    // ----- desync ---------------------------------------------------
+
+    [Fact]
+    public void DesyncedLanding_FailsAndStops()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        // Server reports a room that's neither expected nor source.
+        // 1/3 itself (we expected 1/2) is the cleanest "wrong place".
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteRoomObserved(new RoomObservation("C",
+            new HashSet<Direction> { Direction.S }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    // ----- pause / resume -------------------------------------------
+
+    [Fact]
+    public void CoordinatorPause_DuringWalk_HoldsWalker()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        int sentBeforePause = h.Sent.Count;
+
+        h.Coordinator.AssertGate("user");
+
+        Assert.Equal(WalkState.Paused, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Paused);
+
+        // Tracker confirming step 1 while paused must NOT send step 2.
+        h.Tracker.NoteMoveSent(Direction.N);
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(sentBeforePause, h.Sent.Count);
+        Assert.Equal(WalkState.Paused, h.Walker.State);
+    }
+
+    [Fact]
+    public void CoordinatorResume_AfterPause_ResumesWalk()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        h.Coordinator.AssertGate("user");
+        h.Coordinator.ClearGate("user");
+
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Resumed);
+    }
+
+    [Fact]
+    public void WalkTo_WhileCoordinatorPaused_StartsInPausedState()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Coordinator.AssertGate("user");
+
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.Equal(WalkState.Paused, h.Walker.State);
+        Assert.Empty(h.Sent);                                // nothing on wire
+    }
+
+    // ----- stop / supersede -----------------------------------------
+
+    [Fact]
+    public void Stop_DuringWalk_GoesIdleAndFiresStopped()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        h.Walker.Stop();
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
+    }
+
+    [Fact]
+    public void WalkTo_DuringActiveWalk_SupersedesPrior()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Equal(2, h.Events.Count(e => e.Kind == WalkEventKind.Started));
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
+    }
+
+    // ----- avoided rooms --------------------------------------------
+
+    [Fact]
+    public void Walker_RespectsRoomFilter_FromConstructor()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), LineGraphJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+
+        // Avoid the only intermediate hop.
+        SimpleFilter filter = new();
+        filter.Avoided.Add(new RoomKey(1, 2));
+
+        AutoWalkManager walker = new(graph, bfs, tracker, coord, filter: filter);
+        List<WalkEvent> events = new();
+        walker.Event += events.Add;
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        bool ok = walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.False(ok);
+        Assert.Contains(events, e => e.Kind == WalkEventKind.Failed && e.Detail == "no path");
+    }
+
+    private sealed class SimpleFilter : IRoomFilter
+    {
+        public HashSet<RoomKey> Avoided { get; } = new();
+        public bool IsAvoided(RoomKey key) => Avoided.Contains(key);
+    }
+
+    // ----- unbound wire sender --------------------------------------
+
+    [Fact]
+    public void NoWireSender_RecordsButSuppressesSend()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), LineGraphJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        walker.WalkTo(new RoomKey(1, 3));
+
+        // LastSentForTests captures bytes even with no wire bound, so
+        // tests can validate the wire payload without a network.
+        Assert.Single(walker.LastSentForTests);
+    }
+}

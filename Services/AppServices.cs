@@ -539,6 +539,20 @@ public sealed class AppServices
     /// </summary>
     public MovementFilter Movement { get; private set; } = null!;
 
+    /// <summary>
+    /// Shared pause-gate aggregator for every Phase 7 movement engine
+    /// (walker, loop runner, auto-lair scheduler). A pause from any
+    /// source halts whichever engine is active. PR 7.7.
+    /// </summary>
+    public Game.Map.MovementCoordinator MovementCoordinator { get; private set; } = null!;
+
+    /// <summary>
+    /// Walk-to engine — sends one move at a time, waits for the room
+    /// tracker to confirm before advancing, and honours
+    /// <see cref="MovementCoordinator"/> pause gates. PR 7.7.
+    /// </summary>
+    public Game.Map.AutoWalkManager Walker { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -875,6 +889,15 @@ public sealed class AppServices
         // Constructor subscribes ProfileLoaded / ProfileClosed and
         // hydrates from the currently-loaded profile if there is one.
         Movement = new MovementFilter(Profile, Log);
+
+        // Phase 7 PR 7.7 — coordinator + walker. Coordinator is the
+        // single pause-gate hub for every movement engine (walker now,
+        // loop / auto-lair later). Walker's wire sender is bound by
+        // MainWindowViewModel once the telnet client is up (matching
+        // the PartyPoller / AutoPartyManager pattern).
+        MovementCoordinator = new Game.Map.MovementCoordinator();
+        Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
+            MovementCoordinator, filter: Movement, log: Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
