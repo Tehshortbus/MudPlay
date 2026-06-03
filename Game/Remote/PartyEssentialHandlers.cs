@@ -245,16 +245,20 @@ public sealed class PartyEssentialHandlers : IDisposable
     ///         every present follower call out their status without
     ///         doing anything destructive.</item>
     ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
-    ///         <see cref="DispatchPartySubCommand"/>.</item>
+    ///         <see cref="DispatchPartySubCommand"/>. Gated on
+    ///         <see cref="IsActivePartyMember"/> +
+    ///         <see cref="RemoteCommandManager.DisablePartyWhitelist"/>
+    ///         because the engine's authorize tier for <c>@party</c> is
+    ///         QueryHealthStatus (so a non-party caller with that grant
+    ///         can use it as a status-query alias for <c>@par</c>) — the
+    ///         destructive verb path needs its own party-member gate.</item>
     /// </list>
-    /// Engine-level gating: <c>@party</c> sits in the
-    /// <see cref="PlayerRemoteControls.None"/> party-whitelist tier, so
-    /// the engine's <see cref="RemoteCommandManager.IsAuthorised"/>
-    /// only invokes this handler for active party members (and shuts
-    /// off entirely when
-    /// <see cref="RemoteCommandManager.DisablePartyWhitelist"/> is on).
-    /// Non-party players who want our party status use <c>@par</c>
-    /// instead (QueryHealthStatus tier — same status-reply handler).
+    /// Engine-level wiring: <c>@party</c> sits at QueryHealthStatus in
+    /// the catalog plus an <c>@party</c>-specific party-member fallback
+    /// in <see cref="RemoteCommandManager.IsAuthorised"/>, so this
+    /// handler fires for (a) any active party member regardless of
+    /// per-player grants and (b) any non-party caller with an explicit
+    /// QueryHealthStatus grant.
     /// Hard-blocks for <c>@party suicide</c> / <c>@party reroll</c>
     /// fire at engine level before this handler runs.
     /// </summary>
@@ -265,7 +269,24 @@ public sealed class PartyEssentialHandlers : IDisposable
             OnPartyStatus(ctx);
             return;
         }
+        // Local + args → sub-command dispatch. Re-check party whitelist
+        // here because the engine-level authorize tier (QueryHealthStatus)
+        // lets non-party players reach this handler for the status form;
+        // the destructive verb path is party-member-only by design.
+        if (_engine.DisablePartyWhitelist) return;
+        if (!IsActivePartyMember(ctx.Sender)) return;
         DispatchPartySubCommand(ctx);
+    }
+
+    private bool IsActivePartyMember(string sender)
+    {
+        string senderGiven = GivenName(sender);
+        foreach (PartyMember m in _party.Members)
+        {
+            if (m.Name.Equals(sender, StringComparison.OrdinalIgnoreCase)) return true;
+            if (GivenName(m.Name).Equals(senderGiven, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     /// <summary>

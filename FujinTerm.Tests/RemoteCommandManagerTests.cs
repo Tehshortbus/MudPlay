@@ -177,6 +177,109 @@ public sealed class RemoteCommandManagerTests
         Assert.False(fired);
     }
 
+    // ===== @party-specific party-member fallback ========================
+    // @party in the production catalog sits at QueryHealthStatus so
+    // non-party callers with that grant can use it as a status-query
+    // alias for @par. The engine adds an @party-specific party-member
+    // fallback so the Phase 6 "base @party always allowed inside an
+    // active party" rule still holds even for party members who lack
+    // an explicit per-player grant.
+
+    [Fact]
+    public void PartyFallback_PartyMemberWithoutGrant_StillReachesHandler()
+    {
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        // No SeedPlayer call — Buddy has zero per-player grants.
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@party"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void PartyFallback_NonPartyWithGrant_StillReachesHandler()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Friend", "@party"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void PartyFallback_NonPartyWithoutGrant_DeniedAtEngine()
+    {
+        var (engine, _, _) = Setup();
+        // Stranger isn't in the party AND has no per-player grant.
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Stranger", "@party"));
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void PartyFallback_DisablePartyWhitelist_RevokesMemberFallback()
+    {
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        engine.DisablePartyWhitelist = true;
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@party"));
+
+        // No per-player grant + whitelist disabled = engine denies.
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void PartyFallback_DisablePartyWhitelist_DoesNotBlockExplicitGrant()
+    {
+        // DisablePartyWhitelist only kills the party-member-without-grant
+        // path; a sender (party member or not) who DOES carry the
+        // per-player QueryHealthStatus grant is still admitted.
+        var (engine, party, players) = Setup();
+        SeedPartyMember(party, "Buddy");
+        SeedPlayer(players, "Buddy", PlayerRemoteControls.QueryHealthStatus);
+        engine.DisablePartyWhitelist = true;
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@party"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void PartyFallback_OtherQueryHealthStatusCommand_NoFallback()
+    {
+        // Fallback is @party-specific — @health (also QueryHealthStatus)
+        // does NOT auto-grant for party members. They must still carry
+        // the per-player flag to issue @health, per the existing model.
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@health"));
+
+        Assert.False(fired);
+    }
+
     // ===== Hard-blocks =====
 
     [Fact]

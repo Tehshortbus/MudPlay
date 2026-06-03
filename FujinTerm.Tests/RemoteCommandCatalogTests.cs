@@ -114,7 +114,6 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@blind")]
     [InlineData("@diseased")]
     [InlineData("@held")]
-    [InlineData("@party")]
     [InlineData("@kill")]
     [InlineData("@share")]
     [InlineData("@panic")]
@@ -122,6 +121,15 @@ public sealed class RemoteCommandCatalogTests
         // None = "any active party member" — engine routes these through
         // the party-whitelist branch instead of the per-player flag.
         => Assert.Equal(PlayerRemoteControls.None, Lookup(cmd));
+
+    [Fact]
+    public void Party_RoutesToQueryHealthStatusWithPartyMemberFallback()
+        // @party is QueryHealthStatus tier so non-party callers with
+        // that grant can use it as a status-query alias for @par. The
+        // engine adds an @party-specific party-member fallback so the
+        // Phase 6 "base @party always allowed inside an active party"
+        // rule still holds for members who lack an explicit grant.
+        => Assert.Equal(PlayerRemoteControls.QueryHealthStatus, Lookup("@party"));
 
     [Fact]
     public void PanicWithBang_AlsoResolves()

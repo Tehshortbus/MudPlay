@@ -278,7 +278,7 @@ public sealed class RemoteCommandManager : IDisposable
         }
 
         // Authorisation: party-whitelist OR per-player flag.
-        if (!IsAuthorised(entry.Speaker, registration.RequiredCategory))
+        if (!IsAuthorised(entry.Speaker, registration.RequiredCategory, command))
         {
             _log?.Log(LogSeverity.Debug, "RemoteCmd",
                 $"Denied {command} from {entry.Speaker} (lacks {registration.RequiredCategory}).");
@@ -419,12 +419,12 @@ public sealed class RemoteCommandManager : IDisposable
         return false;
     }
 
-    private bool IsAuthorised(string sender, PlayerRemoteControls requiredCategory)
+    private bool IsAuthorised(string sender, PlayerRemoteControls requiredCategory, string command)
     {
         // Special case: requiredCategory == None means "party whitelist —
-        // allowed for any active party member". Used by @party <sub>.
-        // Settings.Talk → Disallow @party commands flips this off even
-        // for active members.
+        // allowed for any active party member". Used by @wait / @ok /
+        // @kill / @heal / etc. Settings.Talk → Disallow @party commands
+        // flips this off even for active members.
         if (requiredCategory == PlayerRemoteControls.None)
             return !DisablePartyWhitelist && IsActivePartyMember(sender);
 
@@ -435,10 +435,28 @@ public sealed class RemoteCommandManager : IDisposable
             if (rec.DisplayName.Equals(sender, StringComparison.OrdinalIgnoreCase)
                 || rec.GivenName.Equals(sender, StringComparison.OrdinalIgnoreCase))
             {
-                return (rec.RemoteControls & requiredCategory) == requiredCategory;
+                if ((rec.RemoteControls & requiredCategory) == requiredCategory)
+                    return true;
+                break;
             }
         }
-        // Never-seen sender → deny.
+
+        // @party fallback — the Phase 6 spec guarantees that base @party
+        // commands are always allowed inside an active party regardless
+        // of per-player grants (it's the social baseline of party play).
+        // The catalog puts @party at QueryHealthStatus so non-party
+        // callers with that grant can use it as a status-query alias for
+        // @par; this fallback restores the party-whitelist semantics for
+        // members who don't carry an explicit grant. DisablePartyWhitelist
+        // still kills the whitelist path, matching the None-tier rule.
+        if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)
+            && !DisablePartyWhitelist
+            && IsActivePartyMember(sender))
+        {
+            return true;
+        }
+
+        // Never-seen / un-granted sender → deny.
         return false;
     }
 

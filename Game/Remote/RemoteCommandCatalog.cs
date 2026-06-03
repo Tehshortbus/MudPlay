@@ -123,16 +123,18 @@ public static class RemoteCommandCatalog
             ["@blind"]        = PlayerRemoteControls.None,
             ["@diseased"]     = PlayerRemoteControls.None,
             ["@held"]         = PlayerRemoteControls.None,
-            // @party stays at the None party-whitelist tier — its
-            // canonical use is among party members: leaders broadcast
-            // status queries or sub-commands ("@party rest") in the
-            // room, and only active members can act on it. Non-party
-            // players who want our status use @par (QueryHealthStatus
-            // tier — both commands share the same status-reply handler,
-            // so the reply text matches the user spec either way).
-            // Hard-blocks (@party suicide, @party reroll) bypass this
-            // tier at engine level via IsHardBlocked.
-            ["@party"]        = PlayerRemoteControls.None,
+            // @party at QueryHealthStatus — non-party players with that
+            // grant can use it as an alias for @par (status query). The
+            // engine ALSO applies an @party-specific party-member
+            // fallback in IsAuthorised so the Phase 6 "base @party
+            // always allowed inside an active party" rule still holds
+            // even when the sender has no per-player grant. The
+            // destructive sub-command dispatch path (Local channel +
+            // args) lives in PartyEssentialHandlers.OnParty and gates
+            // on IsActivePartyMember + !DisablePartyWhitelist itself.
+            // Hard-blocks (@party suicide, @party reroll) bypass both
+            // at engine level via IsHardBlocked.
+            ["@party"]        = PlayerRemoteControls.QueryHealthStatus,
             ["@kill"]         = PlayerRemoteControls.None,
             ["@share"]        = PlayerRemoteControls.None,
             ["@panic"]        = PlayerRemoteControls.None,  // wiki form is `@panic!`; match the bang-stripped command name
