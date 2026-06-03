@@ -25,9 +25,9 @@
             <Setter Property="Foreground" Value="#0E0E0E"/>
         </Style>
         <Style Selector="Button.ModeChip">
-            <Setter Property="Padding" Value="10,4"/>
-            <Setter Property="Margin" Value="4,0,0,0"/>
-            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="3,0,0,0"/>
+            <Setter Property="MinWidth" Value="60"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="Button.ModeChip.Active">
@@ -138,7 +138,7 @@
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="6" Padding="8,6"
                     IsHitTestVisible="False"
-                    MaxWidth="520">
+                    MaxWidth="820">
                 <TextBlock Name="HoverTooltipText"
                            Text=""
                            FontFamily="{StaticResource FontTerminal}"
