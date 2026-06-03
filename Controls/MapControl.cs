@@ -208,6 +208,20 @@ public sealed class MapControl : Control
     private readonly Avalonia.Threading.DispatcherTimer _hoverTimer;
     private const int HoverDelayMs = 250;
 
+    // Auto-follow suppression — after any explicit pan-drag or
+    // crawler step, the player-room auto-centre is paused for this
+    // many seconds so the user can browse without the view yanking
+    // back to live position. The selection-driven centre (crawler
+    // step / Home / search jump) is always honoured.
+    private DateTime _autoFollowSuppressedUntil = DateTime.MinValue;
+    private const int AutoFollowSuppressionSeconds = 10;
+
+    private void SuppressAutoFollow()
+        => _autoFollowSuppressedUntil = DateTime.UtcNow.AddSeconds(AutoFollowSuppressionSeconds);
+
+    private bool IsAutoFollowSuppressed
+        => DateTime.UtcNow < _autoFollowSuppressedUntil;
+
     /// <summary>
     /// Fires once the pointer has dwelled over a room cell for
     /// <see cref="HoverDelayMs"/>, AND any time the hovered room
@@ -300,13 +314,17 @@ public sealed class MapControl : Control
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty);
 
         // Auto-centre on the player's current room every time it
-        // changes (MudProxy's CenterOnRoom is called from the
-        // map-update path). Selection moves trigger a centre too so
-        // the user always sees the room they just stepped to.
+        // changes (MudProxy's CenterOnRoom rule) — but only when the
+        // user isn't actively browsing. Drag-pan and crawler steps
+        // both arm a 10-second suppression window during which
+        // CurrentRoomKey updates are visually ignored.
         CurrentRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
         {
+            if (c.IsAutoFollowSuppressed) return;
             if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
         });
+        // Selection moves always centre — the user just asked for the
+        // cursor to be there.
         SelectedRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
         {
             if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
@@ -314,7 +332,9 @@ public sealed class MapControl : Control
         // When the layout itself rebuilds (new floor / new origin),
         // re-centre on whichever room the host considers active —
         // selection takes precedence so floor-stepping lands on the
-        // new room.
+        // new room. Layout rebuilds are typically the result of an
+        // explicit user gesture (PageUp/Down, search jump) so we
+        // ignore the browse-suppression window here.
         LayoutProperty.Changed.AddClassHandler<MapControl>((c, _) =>
         {
             RoomKey? focus = c.SelectedRoomKey ?? c.CurrentRoomKey;
@@ -396,6 +416,11 @@ public sealed class MapControl : Control
                 _panY = _panStartY + dy;
                 InvalidateVisual();
 
+                // Arm the auto-follow suppression window — the user
+                // is actively browsing; don't yank back to live
+                // player position for the next 10 s.
+                SuppressAutoFollow();
+
                 // Hide any open tooltip while dragging — the room
                 // under the cursor changes constantly during a pan.
                 if (_hoverRoom is not null)
@@ -460,9 +485,12 @@ public sealed class MapControl : Control
         if (ChordMatches(e, DownStepChord)) { TryStepFloor(Direction.D); e.Handled = true; return; }
 
         // Home re-centres on the live current room (the selection
-        // change handler in the ctor performs the actual centre call).
+        // change handler in the ctor performs the actual centre call)
+        // and clears any active auto-follow suppression so live
+        // movement starts following the player again.
         if (e.Key == Key.Home)
         {
+            _autoFollowSuppressedUntil = DateTime.MinValue;
             if (CurrentRoomKey is { } cur) SelectedRoomKey = cur;
             e.Handled = true;
             return;
@@ -514,6 +542,7 @@ public sealed class MapControl : Control
         //      the host to rebuild the layout from the new origin
         //      (matches the U/D PageUp/PageDown path).
         //   3. Not in the graph at all → no-op.
+        SuppressAutoFollow();
         if (Layout.Positions.ContainsKey(exit.Target))
         {
             SelectedRoomKey = exit.Target;
@@ -531,6 +560,7 @@ public sealed class MapControl : Control
         RoomKey here = CrawlOrigin();
         if (Graph.GetRoom(here) is not { } room) return;
         if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return;
+        SuppressAutoFollow();
         FloorChangeRequested?.Invoke(exit.Target);
     }
 
