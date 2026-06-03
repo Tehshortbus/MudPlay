@@ -43,19 +43,28 @@ public sealed partial class PlayerStats : ObservableObject
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _cp;
 
     /// <summary>
-    /// Exp delta to the next level — the first <c>N</c> in the
-    /// <c>exp</c> command's output line:
-    /// <c>"Exp needed for next level: N (M) [P%]"</c>.
-    /// Shrinks as the character earns XP.
+    /// Exp still needed to hit the next level — the first <c>N</c>
+    /// in the <c>exp</c> command's output line
+    /// (<c>"Exp needed for next level: N (M) [P%]"</c>). Shrinks as
+    /// XP comes in; <b>clamped to 0</b> server-side when the
+    /// character already has enough exp to level (won't go
+    /// negative even if they've accumulated way past the
+    /// threshold).
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _expToNext;
     /// <summary>
-    /// Absolute exp threshold at which the next level fires — the
-    /// parenthesized <c>(M)</c> in the exp line. Constant for the
-    /// current level; equals <see cref="Exp"/> + <see cref="ExpToNext"/>.
+    /// Total exp required to span the current level — the
+    /// parenthesized <c>(M)</c> in the exp line. NOT the cumulative
+    /// threshold; the DELTA between the current-level floor and
+    /// the next-level floor. Constant for the current level; the
+    /// running progress is <c>M - ExpToNext</c>.
     /// </summary>
-    [ObservableProperty] [field: Owner(typeof(StatParser))] private int _nextLevelExp;
-    /// <summary>Progress to the next level as a percent (0–100) — the <c>[P%]</c> on the exp line.</summary>
+    [ObservableProperty] [field: Owner(typeof(StatParser))] private int _levelExpSpan;
+    /// <summary>
+    /// Progress through the current level as a percent (0–100) —
+    /// the <c>[P%]</c> on the exp line. Computed server-side as
+    /// <c>(LevelExpSpan - ExpToNext) / LevelExpSpan × 100</c>.
+    /// </summary>
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _levelPercent;
 
     // ----- Vitals (snapshot, not live) -----------------------------------

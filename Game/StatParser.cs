@@ -278,14 +278,14 @@ public sealed partial class StatParser : IDisposable
         Stats.Exp           = exp;
         Stats.Level         = level;
         Stats.ExpToNext     = toNext;
-        Stats.NextLevelExp  = threshold;
+        Stats.LevelExpSpan  = threshold;
         Stats.LevelPercent  = percent;
         HasParsed = true;
         // Single-line capture = 5 fields per match, count them all so
         // the gate-close summary reads truthfully.
         _fieldsCapturedThisArm += 5;
         _log?.Log(LogSeverity.Debug, "StatParser",
-            $"Exp = {exp}  Level = {level}  ExpToNext = {toNext}  NextLevelExp = {threshold}  LevelPercent = {percent}");
+            $"Exp = {exp}  Level = {level}  ExpToNext = {toNext}  LevelExpSpan = {threshold}  LevelPercent = {percent}");
     }
 
     /// <summary>

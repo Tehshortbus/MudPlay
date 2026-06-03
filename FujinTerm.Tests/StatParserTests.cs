@@ -278,26 +278,48 @@ public sealed class StatParserTests
     {
         // Line transcribed from the user's screenshot, fresh char:
         //   "Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]"
+        // Exp = cumulative total earned; LevelExpSpan = total exp
+        // delta to span this level (constant per level); ExpToNext
+        // is currently 2950 because no progress has been made.
         var (p, s) = Setup();
         p.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
         Assert.Equal(0,    s.Exp);
         Assert.Equal(1,    s.Level);
         Assert.Equal(2950, s.ExpToNext);
-        Assert.Equal(2950, s.NextLevelExp);
+        Assert.Equal(2950, s.LevelExpSpan);
         Assert.Equal(0,    s.LevelPercent);
     }
 
     [Fact]
     public void ExpLine_PartialProgressCaptures()
     {
-        // Partway to next level — ExpToNext + Exp = NextLevelExp.
+        // Halfway through level 1 — earned 1475 of the 2950-exp
+        // span, so ExpToNext is 1475 remaining and the line reads
+        // "Exp: 1475 ... 1475 (2950) [50%]". The Exp field is the
+        // cumulative total; at level 1 with no prior levels, it
+        // equals the within-level earned.
         var (p, s) = Setup();
-        p.FeedTestLine("Exp: 1500 Level: 2 Exp needed for next level: 1450 (2950) [50%]");
-        Assert.Equal(1500, s.Exp);
-        Assert.Equal(2,    s.Level);
-        Assert.Equal(1450, s.ExpToNext);
-        Assert.Equal(2950, s.NextLevelExp);
+        p.FeedTestLine("Exp: 1475 Level: 1 Exp needed for next level: 1475 (2950) [50%]");
+        Assert.Equal(1475, s.Exp);
+        Assert.Equal(1,    s.Level);
+        Assert.Equal(1475, s.ExpToNext);
+        Assert.Equal(2950, s.LevelExpSpan);
         Assert.Equal(50,   s.LevelPercent);
+    }
+
+    [Fact]
+    public void ExpLine_OvershootClampedAtZero()
+    {
+        // Server clamps ExpToNext at 0 when the character has
+        // overshot the level threshold (mass-XP drop without an
+        // auto-train, etc.). Percent saturates at 100 in that
+        // window. Pin both behaviours.
+        var (p, s) = Setup();
+        p.FeedTestLine("Exp: 5000 Level: 1 Exp needed for next level: 0 (2950) [100%]");
+        Assert.Equal(5000, s.Exp);
+        Assert.Equal(0,    s.ExpToNext);
+        Assert.Equal(2950, s.LevelExpSpan);
+        Assert.Equal(100,  s.LevelPercent);
     }
 
     [Theory]
@@ -318,7 +340,7 @@ public sealed class StatParserTests
         StatParser parser = new(stats);
         parser.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
         parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
-        Assert.Equal(2950, stats.NextLevelExp);
+        Assert.Equal(2950, stats.LevelExpSpan);
     }
 
     [Theory]
@@ -334,7 +356,7 @@ public sealed class StatParserTests
         StatParser parser = new(stats);
         parser.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
         parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
-        Assert.Equal(0, stats.NextLevelExp);
+        Assert.Equal(0, stats.LevelExpSpan);
     }
 
     [Fact]
@@ -345,7 +367,7 @@ public sealed class StatParserTests
         PlayerStats stats = new();
         StatParser parser = new(stats);
         parser.FeedTestLine("Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
-        Assert.Equal(0, stats.NextLevelExp);
+        Assert.Equal(0, stats.LevelExpSpan);
     }
 
     [Fact]
@@ -356,7 +378,7 @@ public sealed class StatParserTests
         // even with the gate open.
         var (p, s) = Setup();
         p.FeedTestLine("Foo gossips: Exp: 0 Level: 1 Exp needed for next level: 2950 (2950) [0%]");
-        Assert.Equal(0, s.NextLevelExp);
+        Assert.Equal(0, s.LevelExpSpan);
     }
 
     [Fact]
