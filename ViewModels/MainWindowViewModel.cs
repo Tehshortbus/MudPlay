@@ -2330,24 +2330,6 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
 
-    /// <summary>Help → License… Project + third-party license summary.</summary>
-    [RelayCommand]
-    private void OpenLicense()
-        => ShowInfoDialog("Licenses — FujinTerm",
-            """
-            FujinTerm is open source. See the LICENSE file in the project root
-            for the full text.
-
-            Third-party components used in this build:
-
-              • Avalonia UI                — MIT
-              • CommunityToolkit.Mvvm       — MIT
-              • JetDatabaseReader           — MIT (Phase 5 MDB import)
-
-            Other dependencies arrive with their respective phases; their
-            licenses will appear here once they're added.
-            """);
-
     // ----- Live-bound input-gesture labels for menu items ---------------
     // Each property reads the current chord for one BuiltInAction.
     // Refreshed in bulk by RefreshKeybindLabels() when KeybindingStore

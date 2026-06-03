@@ -154,7 +154,6 @@
                 <Separator/>
                 <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
-                <MenuItem Header="License…"            Command="{Binding OpenLicenseCommand}"/>
                 <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
         </Menu>
