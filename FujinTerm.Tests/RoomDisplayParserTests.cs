@@ -226,4 +226,137 @@ public sealed class RoomDisplayParserTests : IDisposable
         // tracker landing in Lost rather than Unknown is the proxy.)
         _ = expected;                                       // suppress unused warning
     }
+
+    // ----- command-echo filter (the original bug) ------------------
+
+    [Fact]
+    public void CommandEcho_SingleLetterDirection_DoesNotBecomeRoomName()
+    {
+        // The bug: player types "e", terminal echoes "e", next room
+        // arrives. Buffer is ["e", "Newhaven, Narrow Road"]. The old
+        // text heuristic picked "e" as the name. The new echo filter
+        // must skip "e" and pick "Newhaven, Narrow Road".
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "Town Gates",
+            "Obvious exits: north."
+        });
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+
+        parser.FeedTestLines(new[]
+        {
+            "n",
+            "North Square",
+            "Obvious exits: south."
+        });
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Theory]
+    [InlineData("look n")]
+    [InlineData("l e")]
+    [InlineData("sea sword")]
+    [InlineData("exa torch")]
+    public void CommandEcho_VerbWithArg_DoesNotBecomeRoomName(string echo)
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            echo,
+            "Town Gates",
+            "Obvious exits: north."
+        });
+
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void CommandEcho_BareDirectionWord_DoesNotBecomeRoomName()
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "north",
+            "Town Gates",
+            "Obvious exits: north."
+        });
+
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void PromptLikeLine_AsBoundary_IsolatesNextRoom()
+    {
+        // A stray "[HP=..." that slipped past LineExtractor's split
+        // should still act as a block boundary so the next room's name
+        // is picked correctly.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "You strike the goblin for 12 damage.",
+            "[HP=80/MA=20]: ",
+            "Town Gates",
+            "Obvious exits: north."
+        });
+
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    // ----- colour-anchored detection --------------------------------
+
+    private static LineExtractor.EmittedLine ColoredLine(string text, CellAttributes attr)
+    {
+        CellAttributes[] attrs = new CellAttributes[text.Length];
+        for (int i = 0; i < text.Length; i++) attrs[i] = attr;
+        return new LineExtractor.EmittedLine(text, attrs, DateTimeOffset.UtcNow, false);
+    }
+
+    private static readonly CellAttributes BrightCyanSgr96 = new(
+        TerminalColor.Indexed(14), TerminalColor.Default, CellFlags.None);
+
+    private static readonly CellAttributes BrightCyanSgr1Then36 = new(
+        TerminalColor.Indexed(6), TerminalColor.Default, CellFlags.Bold);
+
+    private static readonly CellAttributes DefaultAttr = CellAttributes.Default;
+
+    [Fact]
+    public void ColorAnchor_BrightCyan_PicksRoomNameOverPriorLines()
+    {
+        // Two non-blank lines with no boundary between them. Text
+        // fallback would pick the first ("Some narrative."). The
+        // colour-anchored pass should prefer the second because it's
+        // bright cyan.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestEmittedLines(new[]
+        {
+            ColoredLine("Some narrative line that isn't the room name.", DefaultAttr),
+            ColoredLine("Town Gates", BrightCyanSgr96),
+            ColoredLine("Obvious exits: north.", DefaultAttr),
+        });
+
+        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void ColorAnchor_BoldCyan_AlsoQualifiesAsBrightCyan()
+    {
+        // SGR 1;36 → palette index 6 + Bold flag. Same visual as SGR 96.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestEmittedLines(new[]
+        {
+            ColoredLine("Pre-room narrative.", DefaultAttr),
+            ColoredLine("Town Gates", BrightCyanSgr1Then36),
+            ColoredLine("Obvious exits: north.", DefaultAttr),
+        });
+
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
 }
