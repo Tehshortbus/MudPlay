@@ -582,6 +582,16 @@ public sealed class MapControl : Control
 
         if (!wasDragging && TryHitTestRoom(releasePos, out RoomKey hit))
         {
+            // Move the crawler selection to the clicked room. The
+            // SelectedRoomKeyProperty change handler centres the
+            // view; arming auto-follow suppression keeps the click
+            // sticky for the next 10 s instead of bouncing back to
+            // live player position on the next in-game move.
+            SuppressAutoFollow();
+            SelectedRoomKey = hit;
+
+            // Notify the host (NavigationViewModel → loop builder
+            // when LoopMode is active).
             RoomLeftClicked?.Invoke(hit, releasePos);
         }
         e.Handled = true;
