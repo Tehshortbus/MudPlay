@@ -66,6 +66,9 @@
                     <Button Classes="ModeChip" Content="Shops"
                             Command="{Binding ToggleShopsCommand}"
                             Classes.Active="{Binding HighlightShops}"/>
+                    <Button Classes="ModeChip" Content="Spells"
+                            Command="{Binding ToggleSpellsCommand}"
+                            Classes.Active="{Binding HighlightSpells}"/>
                     <Button Classes="ModeChip" Content="Legend"
                             Command="{Binding ToggleLegendCommand}"
                             Classes.Active="{Binding LegendVisible}"/>
@@ -94,7 +97,8 @@
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
                                  Graph="{Binding Graph}"
                                  HighlightLairs="{Binding HighlightLairs}"
-                                 HighlightShops="{Binding HighlightShops}">
+                                 HighlightShops="{Binding HighlightShops}"
+                                 HighlightSpells="{Binding HighlightSpells}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
@@ -136,6 +140,10 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#5F8DA8"/>
                         <TextBlock Text="Shop / banks" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#6428A0"/>
+                        <TextBlock Text="Spell room" FontSize="11" Foreground="#DDD"/>
                     </StackPanel>
                     <Separator Margin="0,4"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">

@@ -201,9 +201,11 @@ public sealed class RoomTracker
     private void ReconcileFromLocated(RoomObservation observation, DateTimeOffset when)
     {
         Room? current = State.CurrentRoom;
-        if (current is not null && MatchesCurrent(current, observation))
+        if (current is not null && MatchesPredicted(current, observation))
         {
-            // Same room — refresh timestamp, no state churn.
+            // Same room — refresh timestamp, no state churn. Subset
+            // match tolerates exits the live display hides relative
+            // to the graph (closed doors, hidden / searchable, gated).
             State.LastUpdatedAt = when;
             RaiseStateChanged(RoomConfidence.Located, RoomConfidence.Located, current, current);
             return;
@@ -224,15 +226,35 @@ public sealed class RoomTracker
             && source.Exits.TryGetValue(direction, out RoomExit exit))
         {
             Room? expected = _graph.GetRoom(exit.Target);
-            if (expected is not null && MatchesCurrent(expected, observation))
+
+            // Strategy 1 — predicted neighbour matches by name AND
+            // observed exits are at least a subset of the graph's
+            // exits. Subset (not strict equality) tolerates exits the
+            // game hides on the "Obvious exits:" line (closed doors,
+            // hidden / searchable exits, conditional exits) — those
+            // surface in the graph but not in the live observation.
+            if (expected is not null && MatchesPredicted(expected, observation))
             {
                 _pendingDirection = null;
                 SetRoom(expected, RoomConfidence.Located, when, $"move {direction} confirmed");
                 return;
             }
+
+            // Strategy 1b — refused-move redisplay. A single move
+            // command can land us at the predicted neighbour OR keep
+            // us at the source (server refused / delayed: combat
+            // re-engaged, paralysed without an explicit refusal line,
+            // follower lag). If the observation matches the source
+            // room we're at, treat it as a refusal and stay put.
+            if (MatchesPredicted(source, observation))
+            {
+                _pendingDirection = null;
+                SetConfidence(RoomConfidence.Located, when, "move-refused redisplay");
+                return;
+            }
         }
 
-        // Move didn't land where we predicted — search the graph.
+        // Neither predicted nor refused — search the graph.
         _pendingDirection = null;
         LandFromCandidateSearch(observation, when);
     }
@@ -268,16 +290,39 @@ public sealed class RoomTracker
         }
     }
 
+    /// <summary>
+    /// Strict match used by <see cref="LandFromCandidateSearch"/> —
+    /// name AND exit set must match exactly. Used when we have no
+    /// other anchor to narrow ambiguous candidates.
+    /// </summary>
     private static bool MatchesCurrent(Room current, RoomObservation observation)
     {
         if (!string.Equals(current.Name, observation.Name, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // Compare the exits as sets — observation never carries
-        // targets, just directions, so a bit mask compare is enough.
         uint observedMask = 0;
         foreach (Direction d in observation.Exits) observedMask |= 1u << (int)d;
         return observedMask == current.ExitMask;
+    }
+
+    /// <summary>
+    /// Looser match used when we already have a predicted target
+    /// (Strategy 1 / 1b) — name match plus observed-exits-are-subset
+    /// of graph-exits. Tolerates "Obvious exits:" hiding closed
+    /// doors / searchable / conditional exits the graph still knows
+    /// about. Strict equality fired too often on real game data
+    /// where the live display omits the gated exits.
+    /// </summary>
+    private static bool MatchesPredicted(Room target, RoomObservation observation)
+    {
+        if (!string.Equals(target.Name, observation.Name, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        uint observedMask = 0;
+        foreach (Direction d in observation.Exits) observedMask |= 1u << (int)d;
+
+        // Subset: every observed exit is present in the graph.
+        return (observedMask & target.ExitMask) == observedMask;
     }
 
     private void SetRoom(Room? room, RoomConfidence confidence, DateTimeOffset when, string reason)

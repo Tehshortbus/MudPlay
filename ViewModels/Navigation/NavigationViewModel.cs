@@ -59,10 +59,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _highlightLairs = true;
     [ObservableProperty] private bool _highlightShops = true;
+    [ObservableProperty] private bool _highlightSpells = true;
     [ObservableProperty] private bool _legendVisible;
 
     [RelayCommand] private void ToggleLairs()  => HighlightLairs  = !HighlightLairs;
     [RelayCommand] private void ToggleShops()  => HighlightShops  = !HighlightShops;
+    [RelayCommand] private void ToggleSpells() => HighlightSpells = !HighlightSpells;
     [RelayCommand] private void ToggleLegend() => LegendVisible   = !LegendVisible;
 
     // ----- Map binding ----------------------------------------------

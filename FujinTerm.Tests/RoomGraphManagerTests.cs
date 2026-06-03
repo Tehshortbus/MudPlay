@@ -93,6 +93,40 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal("Trap", exit.RawHint);
     }
 
+    [Theory]
+    [InlineData("1/2 (Trap, 30 damage)",   "Trap, 30 damage")]
+    [InlineData("1/2 (Trap, 45 damage)",   "Trap, 45 damage")]
+    [InlineData("1/2 (Trap, 120 damage)",  "Trap, 120 damage")]
+    [InlineData("1/2 (Spell Trap: 905)",   "Spell Trap: 905")]
+    public void RoomExit_TrapVariants_ClassifyAsTrap(string wire, string rawHint)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.Trap, exit.Hint);
+        Assert.Equal(rawHint, exit.RawHint);
+    }
+
+    [Theory]
+    [InlineData("1/2 (Door)",           "Door")]
+    [InlineData("1/2 (Door 1234)",      "Door 1234")]
+    public void RoomExit_DoorVariants_ClassifyAsDoor(string wire, string rawHint)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.Door, exit.Hint);
+        Assert.Equal(rawHint, exit.RawHint);
+    }
+
+    [Theory]
+    [InlineData("1/2 (Key: 5)",                 "Key: 5")]
+    [InlineData("1/2 (Level: 30 to 999)",       "Level: 30 to 999")]
+    [InlineData("1/2 (Alignment: Saint to Outlaw)", "Alignment: Saint to Outlaw")]
+    [InlineData("1/2 (Hidden)",                 "Hidden")]
+    public void RoomExit_GatedExits_FallThroughToNoneButPreserveRaw(string wire, string rawHint)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.None, exit.Hint);
+        Assert.Equal(rawHint, exit.RawHint);
+    }
+
     [Fact]
     public void RoomExit_UnknownHint_FallsThroughToNoneButPreservesRaw()
     {

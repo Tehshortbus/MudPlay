@@ -179,6 +179,58 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Null(tracker.State.CurrentRoom);
     }
 
+    [Fact]
+    public void Pending_RefusedMoveRedisplay_StaysAtSource()
+    {
+        // Tracker is Located at Town Gates (1/1). We send N — the
+        // server refuses silently (no "can't move" line) and just
+        // redisplays the SAME room. Observation == current room name
+        // + exits. Tracker should stay at 1/1, not chase candidates.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+
+        // Observe Town Gates again (same as current).
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
+
+        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void Pending_PredictedTarget_NameMatch_SubsetExits_Accepts()
+    {
+        // Live "Obvious exits:" often omits closed-door / hidden /
+        // gated exits the graph still knows about. Subset matching
+        // accepts the observation as the predicted target as long
+        // as every observed exit is present in the graph.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));        // Town Gates N→1/3, E→1/4
+        tracker.NoteMoveSent(Direction.N);
+
+        // Predicted: North Square (1/3) with graph exits {S}.
+        // Observation lists {} — server hid the south exit somehow.
+        // Subset of {S} is satisfied; should still resolve to 1/3.
+        tracker.NoteRoomObserved(new RoomObservation("North Square",
+            new HashSet<Direction>()));
+
+        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void Located_SameRoomRedisplay_WithFewerVisibleExits_StaysLocated()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));        // {N, E}
+
+        // No move sent; re-observe Town Gates with only N visible.
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N));
+
+        Assert.Equal(RoomConfidence.Located, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- Pending → Located (move blocked) --------------------------
 
     [Fact]

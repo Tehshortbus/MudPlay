@@ -47,6 +47,9 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<bool> HighlightShopsProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightShops), defaultValue: true);
 
+    public static readonly StyledProperty<bool> HighlightSpellsProperty =
+        AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightSpells), defaultValue: true);
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -77,6 +80,12 @@ public sealed class MapControl : Control
         set => SetValue(HighlightShopsProperty, value);
     }
 
+    public bool HighlightSpells
+    {
+        get => GetValue(HighlightSpellsProperty);
+        set => SetValue(HighlightSpellsProperty, value);
+    }
+
     // ----- view-state ------------------------------------------------
 
     /// <summary>World tile size in layout units. Multiplied by <see cref="_zoom"/> to get screen pixels.</summary>
@@ -102,14 +111,16 @@ public sealed class MapControl : Control
     private static readonly IBrush CurrentFill   = new SolidColorBrush(Color.Parse("#F8B500"));
     private static readonly IBrush LairFill      = new SolidColorBrush(Color.Parse("#A05F8C"));
     private static readonly IBrush ShopFill      = new SolidColorBrush(Color.Parse("#5F8DA8"));
+    private static readonly IBrush SpellFill     = new SolidColorBrush(Color.Parse("#6428A0"));
 
     private static readonly IPen   TileBorderPen = new Pen(new SolidColorBrush(Color.Parse("#2A2A2A")), 1.0);
     private static readonly IPen   ExitPen       = new Pen(new SolidColorBrush(Color.Parse("#C0C0C0")), 2.0);
     private static readonly IPen   TrapPen       = new Pen(new SolidColorBrush(Color.Parse("#DC3C3C")), 2.0);
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
-    private static readonly IPen   LairBorderPen = new Pen(new SolidColorBrush(Color.Parse("#C77FAC")), 1.5);
-    private static readonly IPen   ShopBorderPen = new Pen(new SolidColorBrush(Color.Parse("#7FB0CC")), 1.5);
+    private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#C77FAC")), 1.5);
+    private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#7FB0CC")), 1.5);
+    private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
 
     // ----- lifecycle -------------------------------------------------
 
@@ -118,7 +129,7 @@ public sealed class MapControl : Control
         Focusable = true;
         ClipToBounds = true;
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
-            HighlightLairsProperty, HighlightShopsProperty);
+            HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty);
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -340,6 +351,11 @@ public sealed class MapControl : Control
         {
             fill = ShopFill;
             pen = ShopBorderPen;
+        }
+        else if (HighlightSpells && room is { Spell: > 0 })
+        {
+            fill = SpellFill;
+            pen = SpellBorderPen;
         }
         else
         {

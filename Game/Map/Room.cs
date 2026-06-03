@@ -50,6 +50,15 @@ public sealed record Room
     /// </summary>
     public int Shop { get; init; }
 
+    /// <summary>
+    /// Spell record number triggered when the player steps into this
+    /// room (<c>0</c> = none). Surfaced as the purple Spell room
+    /// type on the map, per the MajorMUD convention for cast-on-enter
+    /// effects. Detailed interpretation of the spell payload is the
+    /// SpellMessages consumer's concern.
+    /// </summary>
+    public int Spell { get; init; }
+
     /// <summary>Per-room delay seconds from the MDB. Preserved for completeness; not used by Phase 7.</summary>
     public int Delay { get; init; }
 

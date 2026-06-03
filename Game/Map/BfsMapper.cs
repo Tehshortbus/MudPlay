@@ -36,6 +36,7 @@ public sealed class BfsMapper
 {
     private readonly RoomGraphManager _graph;
     private readonly Dictionary<(RoomKey Origin, int Radius), RoomLayout> _layoutCache = new();
+    private readonly object _cacheLock = new();
 
     public BfsMapper(RoomGraphManager graph)
     {
@@ -130,7 +131,10 @@ public sealed class BfsMapper
     public RoomLayout BuildLayout(RoomKey origin, int maxRadius = int.MaxValue)
     {
         (RoomKey, int) cacheKey = (origin, maxRadius);
-        if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? cached)) return cached;
+        lock (_cacheLock)
+        {
+            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? cached)) return cached;
+        }
 
         if (_graph.GetRoom(origin) is null)
         {
@@ -142,7 +146,7 @@ public sealed class BfsMapper
                 CoordToRoom: new Dictionary<(int X, int Y), RoomKey>(),
                 EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
                 TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>());
-            _layoutCache[cacheKey] = empty;
+            lock (_cacheLock) _layoutCache[cacheKey] = empty;
             return empty;
         }
 
@@ -240,7 +244,15 @@ public sealed class BfsMapper
             TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value));
-        _layoutCache[cacheKey] = layout;
+        lock (_cacheLock)
+        {
+            // Cache the layout; if a concurrent prewarm landed it
+            // first, prefer the existing entry so consumers continue
+            // to share the same instance.
+            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? existing))
+                return existing;
+            _layoutCache[cacheKey] = layout;
+        }
         return layout;
     }
 
@@ -263,7 +275,39 @@ public sealed class BfsMapper
     /// <see cref="RoomGraphManager.GraphReloaded"/> — flushes the
     /// layout cache since per-room references are invalidated.
     /// </summary>
-    public void OnGraphReloaded() => _layoutCache.Clear();
+    public void OnGraphReloaded()
+    {
+        lock (_cacheLock) _layoutCache.Clear();
+    }
+
+    /// <summary>
+    /// Eagerly build (and cache) the layout from the first room in
+    /// the active graph on a thread-pool task. Called by AppServices
+    /// after <see cref="OnGraphReloaded"/> so the Navigation window's
+    /// first render doesn't pay the BFS cost on the UI thread —
+    /// real realms have ~2000 rooms and the BFS allocates a few
+    /// hundred KB worth of dictionaries.
+    /// </summary>
+    public void PrewarmAsync()
+    {
+        Room? first = null;
+        foreach (Room room in _graph.Rooms) { first = room; break; }
+        if (first is null) return;
+        RoomKey origin = first.Key;
+
+        // Build off the UI thread; the cache itself is plain
+        // Dictionary so all reads serialize through BuildLayout's
+        // first-call path — concurrent reads while warming would
+        // see the cached entry as soon as the warm task writes it.
+        // We don't expose partial results, so a fresh BuildLayout
+        // call on the UI thread before the prewarm finishes simply
+        // computes the same layout (slight waste, no correctness
+        // risk) and the prewarm's later cache.Add becomes a no-op.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { BuildLayout(origin); } catch { /* best-effort */ }
+        });
+    }
 
     // ----- helpers ---------------------------------------------------
 

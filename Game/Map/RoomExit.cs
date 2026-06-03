@@ -52,8 +52,23 @@ public readonly record struct RoomExit(RoomKey Target, RoomExitHint Hint, string
     private static RoomExitHint ClassifyHint(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) return RoomExitHint.None;
-        if (raw.Equals("Door", StringComparison.OrdinalIgnoreCase)) return RoomExitHint.Door;
-        if (raw.Equals("Trap", StringComparison.OrdinalIgnoreCase)) return RoomExitHint.Trap;
+
+        // Real MDB hints are prefix-tagged with optional trailing
+        // detail — e.g. "Trap, 30 damage", "Trap, 45 damage",
+        // "Spell Trap: 905", "Door", "Door 1234", etc. Match by
+        // prefix so the detail variants all classify correctly.
+        if (raw.StartsWith("Spell Trap", StringComparison.OrdinalIgnoreCase)
+         || raw.StartsWith("Trap",       StringComparison.OrdinalIgnoreCase))
+            return RoomExitHint.Trap;
+
+        if (raw.StartsWith("Door", StringComparison.OrdinalIgnoreCase))
+            return RoomExitHint.Door;
+
+        // Other gated-exit categories (Key / Level / Class / Race /
+        // Alignment / Hidden / Item / Cast / Ticket / Timed / Toll /
+        // Ability / Max / Text) round-trip through RawHint for the
+        // editor; the map doesn't surface them as a distinct stub
+        // colour yet. Add Hint values when the user calls them out.
         return RoomExitHint.None;
     }
 }

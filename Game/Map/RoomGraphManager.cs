@@ -247,6 +247,7 @@ public sealed class RoomGraphManager
             Name = name,
             Light = TryReadIntOrZero(row, "Light"),
             Shop  = TryReadIntOrZero(row, "Shop"),
+            Spell = TryReadIntOrZero(row, "Spell"),
             Delay = TryReadIntOrZero(row, "Delay"),
             RawLairTag = lairRaw,
             Exits = exits,

@@ -899,6 +899,10 @@ public sealed class AppServices
         // cache invalidates on every graph reload.
         Bfs = new Game.Map.BfsMapper(RoomGraph);
         RoomGraph.GraphReloaded += Bfs.OnGraphReloaded;
+        // Pre-warm the layout on a thread-pool task so the user
+        // doesn't pay the BFS cost on the UI thread when they first
+        // open the Navigation window.
+        RoomGraph.GraphReloaded += Bfs.PrewarmAsync;
 
         // Phase 7 PR 7.6 — per-character avoided + stash rooms.
         // Constructor subscribes ProfileLoaded / ProfileClosed and
