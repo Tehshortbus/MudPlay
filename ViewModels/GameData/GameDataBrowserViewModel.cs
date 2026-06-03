@@ -66,9 +66,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly SettingsResolver? _resolver;
     private readonly DialogService? _dialogs;
     private readonly KeybindingStore? _keybindings;
+    private readonly ProfileService? _profile;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -83,6 +84,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         KeybindingStore? keybindings = null,
+        ProfileService? profile = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -98,6 +100,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _resolver = resolver;
         _dialogs = dialogs;
         _keybindings = keybindings;
+        _profile = profile;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -187,7 +190,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- Engine-backed (top group) ----------------------------------
 
         if (_players is not null)
-            Sections.Add(new PlayersSectionViewModel(_players, _dialogs));
+            Sections.Add(new PlayersSectionViewModel(_players, _dialogs, _profile));
         else
             AddPlaceholder("players", "Players", "Phase 5",
                 "In-game `who` observations + manual overrides; per-player remote-command permission flags.");

@@ -22,6 +22,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
 {
     private readonly PlayerDatabase _db;
     private readonly DialogService? _dialogs;
+    private readonly ProfileService? _profile;
 
     public override string Id => "players";
     public override string Title => "Players";
@@ -52,14 +53,34 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     // Stored as a field so Dispose can detach — the database singleton
     // otherwise pins every section VM ever created across browser opens.
     private readonly NotifyCollectionChangedEventHandler _handler;
+    private readonly Action<Models.Profile.CharacterProfile>? _profileSwapHandler;
+    private readonly Action<Models.Profile.CharacterProfile>? _profileMutatedHandler;
+    private readonly Action? _profileClosedHandler;
 
-    public PlayersSectionViewModel(PlayerDatabase db, DialogService? dialogs = null)
+    public PlayersSectionViewModel(
+        PlayerDatabase db,
+        DialogService? dialogs = null,
+        ProfileService? profile = null)
     {
         ArgumentNullException.ThrowIfNull(db);
         _db = db;
         _dialogs = dialogs;
+        _profile = profile;
         _handler = (_, _) => Reload();
         _db.Players.CollectionChanged += _handler;
+        // Refresh the filter when the loaded character swaps so a
+        // freshly-loaded Raijin doesn't keep Fujin's row hidden (and
+        // vice versa). Drafts (no loaded profile) reload to "show
+        // everyone".
+        if (_profile is not null)
+        {
+            _profileSwapHandler    = _ => Reload();
+            _profileMutatedHandler = _ => Reload();
+            _profileClosedHandler  = ()  => Reload();
+            _profile.ProfileLoaded  += _profileSwapHandler;
+            _profile.ProfileMutated += _profileMutatedHandler;
+            _profile.ProfileClosed  += _profileClosedHandler;
+        }
         OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
         RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
@@ -76,13 +97,29 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     public override void Dispose()
     {
         _db.Players.CollectionChanged -= _handler;
+        if (_profile is not null)
+        {
+            if (_profileSwapHandler    is not null) _profile.ProfileLoaded  -= _profileSwapHandler;
+            if (_profileMutatedHandler is not null) _profile.ProfileMutated -= _profileMutatedHandler;
+            if (_profileClosedHandler  is not null) _profile.ProfileClosed  -= _profileClosedHandler;
+        }
         base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)
     {
+        // Hide the loaded character's own row — granting permissions to
+        // yourself doesn't make sense. Match on given name (the first
+        // whitespace-delimited token) so the filter still catches the
+        // row whether the BBS rendered it with or without the family
+        // suffix this session. Null / blank when no profile is loaded
+        // (draft) means "show everyone".
+        string? selfGiven = ExtractGiven(_profile?.Current?.Name);
         foreach (PlayerRecord p in _db.Players)
         {
+            if (selfGiven is not null
+                && p.GivenName.Equals(selfGiven, StringComparison.OrdinalIgnoreCase))
+                continue;
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Given Name"]  = p.GivenName,
@@ -92,6 +129,19 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
             };
             rows.Add(GameDataRow.FromDictionary(dict, Columns));
         }
+    }
+
+    /// <summary>
+    /// First whitespace-delimited token of a display name, lower-cased
+    /// for the comparer. <c>null</c> when the input is null or
+    /// whitespace-only — caller uses that sentinel to mean "no
+    /// self-filter".
+    /// </summary>
+    private static string? ExtractGiven(string? displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName)) return null;
+        int space = displayName.IndexOf(' ');
+        return space >= 0 ? displayName[..space] : displayName;
     }
 
     /// <summary>"None" / "Some" / "All" summary of the remote-control bitmask for the table cell.</summary>
