@@ -40,6 +40,12 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<RoomGraphManager?> GraphProperty =
         AvaloniaProperty.Register<MapControl, RoomGraphManager?>(nameof(Graph));
 
+    public static readonly StyledProperty<bool> HighlightLairsProperty =
+        AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightLairs), defaultValue: true);
+
+    public static readonly StyledProperty<bool> HighlightShopsProperty =
+        AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightShops), defaultValue: true);
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -56,6 +62,18 @@ public sealed class MapControl : Control
     {
         get => GetValue(GraphProperty);
         set => SetValue(GraphProperty, value);
+    }
+
+    public bool HighlightLairs
+    {
+        get => GetValue(HighlightLairsProperty);
+        set => SetValue(HighlightLairsProperty, value);
+    }
+
+    public bool HighlightShops
+    {
+        get => GetValue(HighlightShopsProperty);
+        set => SetValue(HighlightShopsProperty, value);
     }
 
     // ----- view-state -----------------------------------------------
@@ -97,7 +115,8 @@ public sealed class MapControl : Control
     {
         Focusable = true;
         ClipToBounds = true;
-        AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty);
+        AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
+            HighlightLairsProperty, HighlightShopsProperty);
     }
 
     /// <summary>
@@ -243,8 +262,8 @@ public sealed class MapControl : Control
             bool isCurrent = CurrentRoomKey is { } current && current.Equals(kvp.Key);
             Room? room = Graph?.GetRoom(kvp.Key);
             IBrush fill = isCurrent ? CurrentFill
-                        : room is { HasLair: true } ? LairFill
-                        : room is { Shop: > 0 } ? ShopFill
+                        : HighlightLairs && room is { HasLair: true } ? LairFill
+                        : HighlightShops && room is { Shop: > 0 }    ? ShopFill
                         : RoomFill;
 
             context.FillRectangle(fill, rect);

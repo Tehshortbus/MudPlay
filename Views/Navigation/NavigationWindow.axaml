@@ -57,6 +57,19 @@
                 <TextBlock Grid.Column="2" Text="{Binding CurrentRoomLabel}"
                            Margin="10,0" VerticalAlignment="Center"
                            Foreground="#BBB" FontSize="12"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                            HorizontalAlignment="Right" Spacing="4"
+                            VerticalAlignment="Center">
+                    <Button Classes="ModeChip" Content="Lairs"
+                            Command="{Binding ToggleLairsCommand}"
+                            Classes.Active="{Binding HighlightLairs}"/>
+                    <Button Classes="ModeChip" Content="Shops"
+                            Command="{Binding ToggleShopsCommand}"
+                            Classes.Active="{Binding HighlightShops}"/>
+                    <Button Classes="ModeChip" Content="Legend"
+                            Command="{Binding ToggleLegendCommand}"
+                            Classes.Active="{Binding LegendVisible}"/>
+                </StackPanel>
                 <Button Grid.Column="3" Classes="ModeChip" Content="Loop mode"
                         Command="{Binding ToggleLoopModeCommand}"
                         Classes.Active="{Binding IsLoopMode}"/>
@@ -79,7 +92,9 @@
                                  Name="MapHost"
                                  Layout="{Binding Layout}"
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
-                                 Graph="{Binding Graph}">
+                                 Graph="{Binding Graph}"
+                                 HighlightLairs="{Binding HighlightLairs}"
+                                 HighlightShops="{Binding HighlightShops}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
@@ -97,6 +112,46 @@
                     </ContextMenu>
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
+
+            <!-- Legend overlay (PR 7.17). Floats over the map; the
+                 user toggles it from the top-bar Legend chip. -->
+            <Border Grid.Column="0"
+                    IsVisible="{Binding LegendVisible}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,12,12,0"
+                    Background="#1A1A1AEE"
+                    BorderBrush="#2A2A2A" BorderThickness="1"
+                    CornerRadius="4" Padding="10">
+                <StackPanel Spacing="4" MinWidth="180">
+                    <TextBlock Text="MAP LEGEND" FontSize="10"
+                               FontWeight="SemiBold" Foreground="#888"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#F8B500"/>
+                        <TextBlock Text="Current room" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#A85FA8"/>
+                        <TextBlock Text="Lair" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#5F8DA8"/>
+                        <TextBlock Text="Shop / banks" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <Separator Margin="0,4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="2" Background="#3A3A3A"/>
+                        <TextBlock Text="Plain exit" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="2" Background="#5F8DA8"/>
+                        <TextBlock Text="Door exit" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="2" Background="#F25C54"/>
+                        <TextBlock Text="Trap exit" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <Border Grid.Column="1" Background="#141414"
                     BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">

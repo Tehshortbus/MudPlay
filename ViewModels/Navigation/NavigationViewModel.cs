@@ -55,6 +55,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _currentRoomLabel = "—";
     [ObservableProperty] private bool _isPaused;
 
+    // ----- Highlight chips + legend (PR 7.17) -----------------------
+
+    [ObservableProperty] private bool _highlightLairs = true;
+    [ObservableProperty] private bool _highlightShops = true;
+    [ObservableProperty] private bool _legendVisible;
+
+    [RelayCommand] private void ToggleLairs()  => HighlightLairs  = !HighlightLairs;
+    [RelayCommand] private void ToggleShops()  => HighlightShops  = !HighlightShops;
+    [RelayCommand] private void ToggleLegend() => LegendVisible   = !LegendVisible;
+
     // ----- Map binding ----------------------------------------------
 
     [ObservableProperty] private RoomLayout? _layout;
