@@ -124,24 +124,21 @@ public static class RemoteCommandCatalog
             ["@diseased"]     = PlayerRemoteControls.None,
             ["@held"]         = PlayerRemoteControls.None,
             // @party at QueryHealthStatus — non-party players with that
-            // grant can use it as an alias for @par (status query). The
-            // engine ALSO applies an @party-specific party-member
-            // fallback in IsAuthorised so the Phase 6 "base @party
-            // always allowed inside an active party" rule still holds
-            // even when the sender has no per-player grant. The
-            // destructive sub-command dispatch path (Local channel +
-            // args) lives in PartyEssentialHandlers.OnParty and gates
-            // on IsActivePartyMember + !DisablePartyWhitelist itself.
+            // grant can use the no-args form as a status query
+            // ("are you solo / leading / following?"). The engine
+            // ALSO applies an @party-specific party-member fallback
+            // in IsAuthorised so the Phase 6 "base @party always
+            // allowed inside an active party" rule still holds even
+            // when the sender has no per-player grant. The destructive
+            // sub-command dispatch path (Local channel + args) lives
+            // in PartyEssentialHandlers.OnParty and gates on
+            // IsActivePartyMember + !DisablePartyWhitelist itself.
             // Hard-blocks (@party suicide, @party reroll) bypass both
             // at engine level via IsHardBlocked.
             ["@party"]        = PlayerRemoteControls.QueryHealthStatus,
             ["@kill"]         = PlayerRemoteControls.None,
             ["@share"]        = PlayerRemoteControls.None,
             ["@panic"]        = PlayerRemoteControls.None,  // wiki form is `@panic!`; match the bang-stripped command name
-            // Engine-only convenience — FujinTerm uses `@par` as a roster
-            // request alongside @health-style queries. Same scope as the
-            // rest of the health-status family.
-            ["@par"]          = PlayerRemoteControls.QueryHealthStatus,
         };
 
     /// <summary>

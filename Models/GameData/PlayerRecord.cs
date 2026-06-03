@@ -193,7 +193,7 @@ public enum PlayerRemoteControls
     /// <summary>Experience snapshot — <c>@exp</c>.</summary>
     QueryExperience     = 1 << 1,
 
-    /// <summary>Vital signs + status — <c>@health</c>, <c>@par</c>.</summary>
+    /// <summary>Vital signs + status — <c>@health</c>, <c>@status</c>, <c>@lives</c>, <c>@party</c> (status form).</summary>
     QueryHealthStatus   = 1 << 2,
 
     /// <summary>Where am I — <c>@where</c>.</summary>

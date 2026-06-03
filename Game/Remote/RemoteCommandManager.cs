@@ -16,7 +16,7 @@ namespace FujinTerm.Game.Remote;
 /// <para>
 /// PR 6.2 ships the engine only — no handlers are registered here.
 /// PR 6.3 lands the party-essential set (<c>@health</c> / <c>@where</c>
-/// / <c>@version</c> / <c>@status</c> / <c>@par</c> + the
+/// / <c>@version</c> / <c>@status</c> / <c>@party</c> status + the
 /// <c>@party &lt;sub&gt;</c> whitelist + receive-side <c>@wait</c> /
 /// <c>@ok</c>). Phase 7 / Phase 12 register more handlers by calling
 /// <see cref="RegisterHandler"/>; the engine stays untouched.
@@ -445,10 +445,11 @@ public sealed class RemoteCommandManager : IDisposable
         // commands are always allowed inside an active party regardless
         // of per-player grants (it's the social baseline of party play).
         // The catalog puts @party at QueryHealthStatus so non-party
-        // callers with that grant can use it as a status-query alias for
-        // @par; this fallback restores the party-whitelist semantics for
-        // members who don't carry an explicit grant. DisablePartyWhitelist
-        // still kills the whitelist path, matching the None-tier rule.
+        // callers with that grant can reach the status-query path;
+        // this fallback restores the party-whitelist semantics for
+        // members who don't carry an explicit grant.
+        // DisablePartyWhitelist still kills the whitelist path,
+        // matching the None-tier rule.
         if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)
             && !DisablePartyWhitelist
             && IsActivePartyMember(sender))

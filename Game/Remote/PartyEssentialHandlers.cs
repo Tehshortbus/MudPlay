@@ -11,11 +11,12 @@ namespace FujinTerm.Game.Remote;
 /// <remarks>
 /// <list type="bullet">
 ///   <item><b>Query-tier</b> — <c>@version</c>, <c>@health</c>, <c>@status</c>,
-///         <c>@par</c>, <c>@where</c>. Each replies via the channel the
-///         command arrived on with a short response derived from local
-///         state (<see cref="PlayerState"/>, <see cref="PartyState"/>).
-///         <c>@where</c> ships a placeholder reply here — Phase 7's
-///         RoomTracker enriches it when room state is available.</item>
+///         <c>@lives</c>, <c>@where</c>. Each replies via the channel
+///         the command arrived on with a short response derived from
+///         local state (<see cref="PlayerState"/>, <see cref="PartyState"/>,
+///         <see cref="PlayerStats"/>). <c>@where</c> ships a placeholder
+///         reply here — Phase 7's RoomTracker enriches it when room
+///         state is available.</item>
 ///   <item><b>Party whitelist</b> — <c>@party &lt;sub&gt;</c>. Dispatches
 ///         on the first arg token to translate the leader's directive
 ///         (<c>attack</c> / <c>rest</c> / <c>meditate</c> / <c>go &lt;dir&gt;</c>
@@ -37,7 +38,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// <summary>Commands this consumer registers. Used by <see cref="Dispose"/> to clean up.</summary>
     private static readonly string[] RegisteredCommands =
     {
-        "@version", "@health", "@status", "@par", "@where",
+        "@version", "@health", "@status", "@where",
         "@party", "@wait", "@ok",
         "@lives", "@invite", "@join",
     };
@@ -92,7 +93,6 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@version", OnVersion);
         Register("@health",  OnHealth);
         Register("@status",  OnStatus);
-        Register("@par",     OnPartyStatus);  // alias for @party query form
         Register("@where",   OnWhere);
         Register("@party",   OnParty);
         Register("@wait",    OnWait);
@@ -180,8 +180,8 @@ public sealed class PartyEssentialHandlers : IDisposable
     }
 
     /// <summary>
-    /// Status form of <c>@par</c> / <c>@party</c> (no args, or any
-    /// channel other than Local). Three exclusive outcomes:
+    /// Status form of <c>@party</c> (no args, or any channel other
+    /// than Local). Three exclusive outcomes:
     /// <list type="bullet">
     ///   <item>solo (no active party) → <c>no active party</c></item>
     ///   <item>self is following → <c>I'm following &lt;leader-given&gt;</c></item>
@@ -235,23 +235,25 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// <summary>
     /// Channel-aware handler for <c>@party</c>:
     /// <list type="bullet">
-    ///   <item><b>Telepath / Gangpath</b> — always reply with the status
-    ///         form (alias for <c>@par</c>); args are ignored. The
-    ///         destructive party sub-commands (attack / rest / etc.)
-    ///         are leader → party-room coordination, not back-channel
-    ///         whispers, so we refuse to honour them off-channel.</item>
-    ///   <item><b>Local (Say) with no args</b> — also status form. Lets
-    ///         the leader broadcast <c>@party</c> in the room and have
-    ///         every present follower call out their status without
-    ///         doing anything destructive.</item>
+    ///   <item><b>Telepath / Gangpath</b> — always reply with the
+    ///         status form (solo / leading / following); args are
+    ///         ignored. The destructive party sub-commands
+    ///         (attack / rest / etc.) are leader → party-room
+    ///         coordination, not back-channel whispers, so we refuse
+    ///         to honour them off-channel.</item>
+    ///   <item><b>Local (Say) with no args</b> — also status form.
+    ///         Lets the leader broadcast <c>@party</c> in the room
+    ///         and have every present follower call out their status
+    ///         without doing anything destructive.</item>
     ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
     ///         <see cref="DispatchPartySubCommand"/>. Gated on
     ///         <see cref="IsActivePartyMember"/> +
     ///         <see cref="RemoteCommandManager.DisablePartyWhitelist"/>
     ///         because the engine's authorize tier for <c>@party</c> is
-    ///         QueryHealthStatus (so a non-party caller with that grant
-    ///         can use it as a status-query alias for <c>@par</c>) — the
-    ///         destructive verb path needs its own party-member gate.</item>
+    ///         QueryHealthStatus (so a non-party caller with that
+    ///         grant reaches this handler for the status form too) —
+    ///         the destructive verb path needs its own party-member
+    ///         gate.</item>
     /// </list>
     /// Engine-level wiring: <c>@party</c> sits at QueryHealthStatus in
     /// the catalog plus an <c>@party</c>-specific party-member fallback

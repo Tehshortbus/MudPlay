@@ -233,6 +233,18 @@ public partial class MainWindowViewModel : ObservableObject
         CarrierLost,
         /// <summary>Socket died after a long quiet stretch — TCP keepalive caught a hung server.</summary>
         NoResponse,
+        /// <summary>
+        /// Deliberate hangup originated client-side — remote
+        /// <c>@hangup</c> from a trusted player, or a future
+        /// hang-up-if-naked / hang-up-if-low-HP automation. Never
+        /// auto-retries (user is presumed to be in a dangerous spot
+        /// and needs to manually decide whether to come back). The
+        /// matching
+        /// <see cref="Game.MainMenuEntryAutomation.Arm"/> also skips
+        /// when this fired, so the user manually re-enters and the
+        /// post-entry stat/exp/i refresh doesn't spam the wire.
+        /// </summary>
+        HangupInitiated,
     }
 
     private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
@@ -939,6 +951,19 @@ public partial class MainWindowViewModel : ObservableObject
         CleanupWarning? maybeWarning = AppServices.Current.Cleanup.Latest;
         if (maybeWarning is not { } warning) return;
 
+        // Intentional hangup beats a stale cleanup warning. If the
+        // user observed a shutdown notice earlier in the session AND
+        // then chose to hang up (or a hangup-automation engine did it
+        // for them), the hangup intent is the more recent signal — the
+        // user is presumed to be in a dangerous spot and shouldn't
+        // be auto-redialed just because a cleanup warning was on file.
+        if (_lastDisconnectCause == DisconnectCause.HangupInitiated)
+        {
+            AppServices.Current.Log.Debug("Cleanup",
+                "Warning observed but disconnect was hangup-initiated — not scheduling.");
+            return;
+        }
+
         BbsProfile? bbs = ResolveActiveBbs();
         if (bbs is null || !bbs.ReconnectAfterCleanup)
         {
@@ -1044,9 +1069,11 @@ public partial class MainWindowViewModel : ObservableObject
     /// toggle matches <see cref="_lastDisconnectCause"/>. Shares
     /// <see cref="_cleanupReconnectCts"/> with the predictive cleanup
     /// scheduler so only one reconnect can be pending at a time. Never
-    /// fires for <see cref="DisconnectCause.UserInitiated"/> regardless
-    /// of any toggle state — that's the "user said no, don't dial back"
-    /// safeguard.
+    /// fires for <see cref="DisconnectCause.UserInitiated"/> or
+    /// <see cref="DisconnectCause.HangupInitiated"/> regardless of any
+    /// toggle state — both are explicit "don't dial back" signals
+    /// (user clicked Disconnect, or an automation hung us up because
+    /// we were in a dangerous spot).
     /// </summary>
     private void TryScheduleReactiveReconnect()
     {
@@ -1055,8 +1082,9 @@ public partial class MainWindowViewModel : ObservableObject
 
         // FailedConnect is fully handled inside ConnectWithRetriesAsync
         // (its retry-loop IS the response to ReconnectOnFailedConnect);
-        // UserInitiated never auto-retries by policy. That leaves
-        // CarrierLost / NoResponse — each gated on its own toggle.
+        // UserInitiated and HangupInitiated never auto-retry by policy.
+        // That leaves CarrierLost / NoResponse — each gated on its own
+        // toggle.
         bool shouldRetry = _lastDisconnectCause switch
         {
             DisconnectCause.CarrierLost => bbs.ReconnectOnCarrierLost,
@@ -1260,15 +1288,21 @@ public partial class MainWindowViewModel : ObservableObject
                 IsConnected = false;
 
                 // Categorise: if the user clicked Disconnect, the flag was
-                // set in DisconnectInternalAsync. Otherwise distinguish a
-                // server-side carrier drop from a TCP keepalive timeout by
-                // looking at how long the wire was silent before the drop:
-                // long silence + keepalive-enabled implies the OS's probe
-                // train detected an unresponsive server.
+                // set in DisconnectInternalAsync. Otherwise check for a
+                // pending intentional-hangup signal (raised by
+                // HangupHandler / future hang-up-if-naked / -if-low-HP
+                // automation right before the wire `=x` lands). Only
+                // when neither user-flag nor hangup-signal is set do we
+                // fall back to server-side classification (carrier vs
+                // keepalive-timeout) based on wire-silence duration.
                 if (_userInitiatedDisconnect)
                 {
                     _userInitiatedDisconnect = false;
                     _lastDisconnectCause = DisconnectCause.UserInitiated;
+                }
+                else if (AppServices.Current.HangupSignal.ConsumeDisconnectIntent())
+                {
+                    _lastDisconnectCause = DisconnectCause.HangupInitiated;
                 }
                 else if (wasConnected)
                 {

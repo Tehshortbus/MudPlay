@@ -159,9 +159,11 @@ public sealed class AppServices
     /// <summary>
     /// Phase 6 PR 6.3 — registers the party-essential @-command handlers
     /// against <see cref="RemoteCommands"/>: <c>@health</c>, <c>@where</c>,
-    /// <c>@version</c>, <c>@status</c>, <c>@par</c>, <c>@party &lt;sub&gt;</c>,
-    /// <c>@wait</c>, <c>@ok</c>. Later phases register additional handlers
-    /// without going through this class.
+    /// <c>@version</c>, <c>@status</c>, <c>@lives</c>,
+    /// <c>@party</c> (status query + sub-command dispatch),
+    /// <c>@invite</c>, <c>@join</c>, <c>@wait</c>, <c>@ok</c>. Later
+    /// phases register additional handlers without going through this
+    /// class.
     /// </summary>
     public Game.Remote.PartyEssentialHandlers PartyEssentials { get; }
 
@@ -326,6 +328,19 @@ public sealed class AppServices
     /// pollute the input.
     /// </summary>
     public EngineSendGate EngineGate { get; } = new();
+
+    /// <summary>
+    /// Two-flag one-shot coordinator for "intentional hangup" intent.
+    /// Set by every engine that deliberately drops the carrier
+    /// (<see cref="Game.Remote.HangupHandler"/> today; Phase 13
+    /// hang-up-if-naked / hang-up-if-low-HP automation later).
+    /// Consumed by <see cref="ViewModels.MainWindowViewModel"/> (to
+    /// suppress reactive auto-reconnect) and by
+    /// <see cref="Game.MainMenuEntryAutomation"/> (to suppress the
+    /// auto-entry latch on the next connect so the user can read
+    /// what's on screen and decide).
+    /// </summary>
+    public HangupSignal HangupSignal { get; } = new();
 
     /// <summary>
     /// Passive observer for the in-game <c>set suicide</c> /
@@ -615,8 +630,12 @@ public sealed class AppServices
         RemoteCommands.LivesProvider = () => Stats.HasParsed ? PlayerStats.Lives : (int?)null;
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
-        // the Players-tab record) telepaths @hangup.
-        Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands);
+        // the Players-tab record) telepaths @hangup. Also raises the
+        // HangupSignal so MainWindowVM suppresses auto-reconnect and
+        // MainMenuEntryAutomation skips the entry-latch on the next
+        // connect — user manually re-enters the realm after reading
+        // what's on the screen.
+        Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by
@@ -626,9 +645,13 @@ public sealed class AppServices
         // Main-menu entry automation — armed by MainWindowVM when
         // LoginAutomator.LoggedIntoGame fires; observes the
         // MainMenuEnterRealm pattern and sends GameCommands.EntryCommand
-        // exactly once per arm. Closed by default so in-game chat
-        // matching the menu pattern can never trick it.
-        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, Log);
+        // exactly once per arm, followed by the post-entry refresh
+        // sequence (CR + stat + exp + i) to seed PlayerStats. Closed
+        // by default so in-game chat matching the menu pattern can
+        // never trick it; ALSO skips on the first connect after a
+        // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
+        // read the screen before they decide to act.
+        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, HangupSignal, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.

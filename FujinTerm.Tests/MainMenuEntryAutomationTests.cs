@@ -18,17 +18,18 @@ public sealed class MainMenuEntryAutomationTests
 {
     private static readonly DateTime Now = new(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
 
-    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands) Setup()
+    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands, HangupSignal signal) Setup()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         GameCommands commands = new();   // defaults: "E" / "=x"
-        MainMenuEntryAutomation engine = new(router, commands)
+        HangupSignal signal = new();
+        MainMenuEntryAutomation engine = new(router, commands, signal)
         {
             NowProvider = () => Now,
         };
         engine.SetWireSender(_ => { });
-        return (engine, router, commands);
+        return (engine, router, commands, signal);
     }
 
     private static void DispatchMenuLine(MessageRouter router)
@@ -46,7 +47,7 @@ public sealed class MainMenuEntryAutomationTests
     {
         // The default state — engine sitting idle, an in-game chat or
         // room description matching the pattern. Must not fire.
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         DispatchMenuLine(router);
         Assert.Empty(engine.LastSentForTests);
     }
@@ -54,7 +55,7 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void Arm_ThenMenuLine_SendsEntryCommand()
     {
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         engine.Arm();
 
         DispatchMenuLine(router);
@@ -68,7 +69,7 @@ public sealed class MainMenuEntryAutomationTests
     {
         // Latch must be one-shot — once the entry command goes out,
         // a subsequent menu line (in-game chat etc.) is ignored.
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         engine.Arm();
 
         DispatchMenuLine(router);
@@ -84,7 +85,7 @@ public sealed class MainMenuEntryAutomationTests
         // Login completed but main menu never rendered (BBS hung,
         // dropped, whatever). After the arm window, an in-game
         // matching line must NOT fire.
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         DateTime t0 = Now;
         engine.NowProvider = () => t0;
         engine.ArmWindow = TimeSpan.FromSeconds(15);
@@ -100,7 +101,7 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void Arm_BeforeWindowExpires_StillFires()
     {
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         DateTime t0 = Now;
         engine.NowProvider = () => t0;
         engine.ArmWindow = TimeSpan.FromSeconds(15);
@@ -116,7 +117,7 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void RespectsCustomEntryCommand()
     {
-        var (engine, router, commands) = Setup();
+        var (engine, router, commands, _) = Setup();
         commands.EntryCommand = "enter";
         engine.Arm();
 
@@ -130,7 +131,7 @@ public sealed class MainMenuEntryAutomationTests
     {
         // Defensive — a user-misconfigured blank entry command shouldn't
         // dump a lone CR on the wire when armed.
-        var (engine, router, commands) = Setup();
+        var (engine, router, commands, _) = Setup();
         commands.EntryCommand = string.Empty;
         engine.Arm();
 
@@ -142,7 +143,7 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void IsArmed_ReflectsLatchState()
     {
-        var (engine, _, _) = Setup();
+        var (engine, _, _, _) = Setup();
         DateTime t0 = Now;
         engine.NowProvider = () => t0;
 
@@ -159,7 +160,7 @@ public sealed class MainMenuEntryAutomationTests
     {
         // Some BBSes pad the brackets differently — regex should be
         // tolerant of the spacing variants.
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         engine.Arm();
         LineExtractor.EmittedLine line = new(
             "[E]  .  Enter the Realm   (something extra)",
@@ -174,12 +175,152 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void Dispose_StopsHearingPattern()
     {
-        var (engine, router, _) = Setup();
+        var (engine, router, _, _) = Setup();
         engine.Arm();
         engine.Dispose();
 
         DispatchMenuLine(router);
 
         Assert.Empty(engine.LastSentForTests);
+    }
+
+    // ===== Hangup-signal suppression =====================================
+
+    [Fact]
+    public void Arm_AfterHangupSignal_StaysClosed()
+    {
+        // HangupSignal.SignalHangup() was called earlier in the
+        // session (remote @hangup, future hang-up-if-naked /
+        // hang-up-if-low-HP). The user manually reconnects, login
+        // automation completes, MainWindowVM calls Arm — but the
+        // entry latch must stay shut so the user reads what's on
+        // screen and types `E` themselves.
+        var (engine, router, _, signal) = Setup();
+        signal.SignalHangup();
+
+        engine.Arm();
+        DispatchMenuLine(router);
+
+        Assert.Empty(engine.LastSentForTests);
+        Assert.False(engine.IsArmed);
+    }
+
+    [Fact]
+    public void Arm_AfterHangupSignal_ConsumesFlag()
+    {
+        // The suppression is one-shot — a SECOND connect later in the
+        // session arms normally. Without this, every subsequent
+        // reconnect would skip auto-entry forever after a single
+        // hangup, which would surprise the user.
+        var (engine, router, _, signal) = Setup();
+        signal.SignalHangup();
+
+        // First Arm — suppressed.
+        engine.Arm();
+        DispatchMenuLine(router);
+        Assert.Empty(engine.LastSentForTests);
+
+        // Second Arm — normal behaviour.
+        engine.Arm();
+        DispatchMenuLine(router);
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Arm_WithoutHangupSignal_BehavesNormally()
+    {
+        // Sanity: the suppression check must not slow down or skip
+        // the normal path.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    // ===== Post-entry startup sequence ==================================
+
+    [Fact]
+    public void EntryFires_QueuesStartupSequence_FirstStepIsBareCR()
+    {
+        // The MOTD between Enter and the in-game prompt can pause on
+        // a "press any key" pagination — a bare CR flushes it before
+        // we send the actual stat/exp/i refresh.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        // Entry command in slot [0], no startup steps yet.
+        Assert.Equal("E\r", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
+
+        engine.TickStartupSequenceForTests();
+
+        Assert.Equal(2, engine.LastSentForTests.Count);
+        // Step 1 = bare CR (empty string + the wire-sender's trailing \r).
+        Assert.Equal("\r", Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+    }
+
+    [Fact]
+    public void StartupSequence_OrderedCRStatExpI()
+    {
+        // The full four-step sequence, in order, ending with `i`. The
+        // exact list is the public StartupSequence read-only so future
+        // settings UI can introspect it.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
+            engine.TickStartupSequenceForTests();
+
+        // First slot is the entry command, then the 4 startup steps.
+        Assert.Equal(5, engine.LastSentForTests.Count);
+        Assert.Equal("E\r",    Encoding.Latin1.GetString(engine.LastSentForTests[0]));
+        Assert.Equal("\r",     Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+        Assert.Equal("stat\r", Encoding.Latin1.GetString(engine.LastSentForTests[2]));
+        Assert.Equal("exp\r",  Encoding.Latin1.GetString(engine.LastSentForTests[3]));
+        Assert.Equal("i\r",    Encoding.Latin1.GetString(engine.LastSentForTests[4]));
+    }
+
+    [Fact]
+    public void StartupSequence_DoesNotOverrun()
+    {
+        // Once the four steps fire, ticking further must NOT send any
+        // additional commands — the sequence must terminate cleanly.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count + 5; i++)
+            engine.TickStartupSequenceForTests();
+
+        // Entry + 4 startup steps, no more.
+        Assert.Equal(5, engine.LastSentForTests.Count);
+    }
+
+    [Fact]
+    public void HangupSuppressedEntry_DoesNotQueueStartupSequence()
+    {
+        // If the latch refused to arm because of a hangup intent, the
+        // startup sequence must ALSO not fire — the whole point of
+        // the suppression is to stop the wire-spam refresh while the
+        // user is in a dangerous spot.
+        var (engine, router, _, signal) = Setup();
+        signal.SignalHangup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count + 1; i++)
+            engine.TickStartupSequenceForTests();
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void StartupSequence_PublicListIsCRStatExpI()
+    {
+        // Pins the public read-only list so a future "let me add `who`
+        // to the startup" edit can't silently change semantics; the
+        // user-direction "CR, stat, exp, i" stays observable from tests.
+        Assert.Collection(MainMenuEntryAutomation.StartupSequence,
+            s => Assert.Equal(string.Empty, s),   // bare CR
+            s => Assert.Equal("stat", s),
+            s => Assert.Equal("exp", s),
+            s => Assert.Equal("i", s));
     }
 }

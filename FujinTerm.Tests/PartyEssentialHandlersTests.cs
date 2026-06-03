@@ -56,12 +56,12 @@ public sealed class PartyEssentialHandlersTests
     // ===== Registration shape =====
 
     [Fact]
-    public void Ctor_RegistersAllElevenCommands()
+    public void Ctor_RegistersAllTenCommands()
     {
         var (engine, _, _, _, _, _) = Setup();
-        // 11 commands: @version @health @status @par @where @party @wait @ok
+        // 10 commands: @version @health @status @where @party @wait @ok
         // @lives @invite @join
-        Assert.Equal(11, engine.HandlerCount);
+        Assert.Equal(10, engine.HandlerCount);
     }
 
     [Fact]
@@ -205,17 +205,17 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Par_NoParty_RepliesNoActiveParty()
+    public void PartyTelepath_NoParty_RepliesNoActiveParty()
     {
         var (engine, _, _, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        engine.DispatchForTests(Telepath("Friend", "@par"));
+        engine.DispatchForTests(Telepath("Friend", "@party"));
 
         Assert.Contains("no active party", LastReply(engine));
     }
 
     [Fact]
-    public void Par_WhenFollowing_RepliesImFollowing()
+    public void PartyTelepath_WhenFollowing_RepliesImFollowing()
     {
         var (engine, _, _, party, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
@@ -225,7 +225,7 @@ public sealed class PartyEssentialHandlersTests
         party.IsInParty = true;
         party.SelfIsLeader = false;
 
-        engine.DispatchForTests(Telepath("Friend", "@par"));
+        engine.DispatchForTests(Telepath("Friend", "@party"));
 
         // Given name only — family is stripped (the @-command layer
         // never addresses players by family name).
@@ -233,7 +233,7 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Par_WhenLeading_RepliesImLeadingWithFollowerGivenNames()
+    public void PartyTelepath_WhenLeading_RepliesImLeadingWithFollowerGivenNames()
     {
         var (engine, _, _, party, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
@@ -244,7 +244,7 @@ public sealed class PartyEssentialHandlersTests
         party.IsInParty = true;
         party.SelfIsLeader = true;
 
-        engine.DispatchForTests(Telepath("Friend", "@par"));
+        engine.DispatchForTests(Telepath("Friend", "@party"));
 
         // Family-stripped given names, comma-separated, roster order,
         // excluding self + leader.

@@ -20,7 +20,6 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@health",      PlayerRemoteControls.QueryHealthStatus)]
     [InlineData("@status",      PlayerRemoteControls.QueryHealthStatus)]
     [InlineData("@lives",       PlayerRemoteControls.QueryHealthStatus)]
-    [InlineData("@par",         PlayerRemoteControls.QueryHealthStatus)]
     [InlineData("@exp",         PlayerRemoteControls.QueryExperience)]
     [InlineData("@level",       PlayerRemoteControls.QueryExperience)]
     [InlineData("@where",       PlayerRemoteControls.QueryLocation)]
@@ -125,7 +124,7 @@ public sealed class RemoteCommandCatalogTests
     [Fact]
     public void Party_RoutesToQueryHealthStatusWithPartyMemberFallback()
         // @party is QueryHealthStatus tier so non-party callers with
-        // that grant can use it as a status-query alias for @par. The
+        // that grant can use the no-args form as a status query. The
         // engine adds an @party-specific party-member fallback so the
         // Phase 6 "base @party always allowed inside an active party"
         // rule still holds for members who lack an explicit grant.
@@ -185,7 +184,7 @@ public sealed class RemoteCommandCatalogTests
     [InlineData(PlayerRemoteControls.QueryHealthStatus, "@health")]
     [InlineData(PlayerRemoteControls.QueryHealthStatus, "@status")]
     [InlineData(PlayerRemoteControls.QueryHealthStatus, "@lives")]
-    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@par")]
+    [InlineData(PlayerRemoteControls.QueryHealthStatus, "@party")]
     [InlineData(PlayerRemoteControls.QueryLocation,     "@where")]
     [InlineData(PlayerRemoteControls.QueryLocation,     "@who")]
     [InlineData(PlayerRemoteControls.MovePlayer,        "@goto")]
