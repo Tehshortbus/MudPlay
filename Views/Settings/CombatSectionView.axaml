@@ -224,6 +224,15 @@
                                ToolTip.Tip="Minimum mana required to cast this spell."/>
             </Grid>
 
+            <!-- ============ Display ============ -->
+            <!-- Moved from the BBS tab's Display group — combat round
+                 totals are a combat-engine concern, so they live with
+                 the rest of the combat configuration and will be wired
+                 by Phase 13 PR 13.A. -->
+            <TextBlock Classes="SectionHeader" Text="Display"/>
+            <CheckBox Content="Show combat round totals" IsEnabled="False"
+                      ToolTip.Tip="Phase 13 PR 13.A — append the per-round damage roll-up to the terminal canvas after each round."/>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

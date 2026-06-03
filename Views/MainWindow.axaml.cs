@@ -16,6 +16,8 @@ namespace FujinTerm.Views;
 public partial class MainWindow : Window
 {
     private TextBlock? _combatTickLabel;
+    /// <summary>Set once the user (or programmatic shutdown) has confirmed exit, so the second Close call sails through.</summary>
+    private bool _exitConfirmed;
 
     public MainWindow()
     {
@@ -34,6 +36,11 @@ public partial class MainWindow : Window
             if (DataContext is MainWindowViewModel vm)
                 vm.SendUserInput(bytes);
         };
+        // Local-line-edit buffer — printable keystrokes accumulate
+        // client-side and only flush to the wire on Enter. Engine
+        // auto-sends (par poll, AutoParty invite, @health round-trip)
+        // can fire freely without interleaving into half-typed input.
+        Terminal.InputBuffer = AppServices.Current.InputBuffer;
 
         // Subscribe to VM PropertyChanged so we can react to IsConnected.
         // Hooking via DataContextChanged covers the case where the VM is
@@ -59,15 +66,33 @@ public partial class MainWindow : Window
             AppServices.Current.Tick.CombatTickElapsed -= OnCombatTickElapsed;
         };
 
-        // Auto-save the loaded profile before exit. ProfileService.Save
-        // no-ops on blank drafts (no name on disk to write to) and when
-        // nothing is loaded, so the only path that hits disk is the
-        // common case: a named profile is open. Saves the current
-        // in-memory state so any per-session edits (BBS pin, settings
-        // tab changes, etc.) survive a relaunch without requiring the
-        // user to remember Ctrl+S.
-        Closing += (_, _) =>
+        // Confirm-exit prompt + auto-save the loaded profile before exit.
+        //
+        // When the user has "Confirm exit" turned on in Settings → BBS,
+        // intercept the first Closing fire, cancel it, run the modeless
+        // confirm dialog async, then re-issue Close() if the user said
+        // yes. The _exitConfirmed latch makes the second Close skip the
+        // prompt so we don't loop. App-initiated shutdowns (none today)
+        // would set _exitConfirmed=true before calling Close.
+        //
+        // ProfileService.Save no-ops on blank drafts (no name on disk to
+        // write to) and when nothing is loaded, so the only path that
+        // hits disk is the common case: a named profile is open. Saves
+        // the current in-memory state so any per-session edits (BBS
+        // pin, settings tab changes, etc.) survive a relaunch without
+        // requiring the user to remember Ctrl+S.
+        Closing += async (_, e) =>
         {
+            if (!_exitConfirmed && AppServices.Current.Confirm.Settings.ConfirmExit)
+            {
+                e.Cancel = true;
+                bool ok = await AppServices.Current.Confirm.ConfirmExitAsync();
+                if (!ok) return;
+                _exitConfirmed = true;
+                Close();
+                return;
+            }
+
             try { AppServices.Current.Profile.Save(); }
             catch (Exception ex)
             {

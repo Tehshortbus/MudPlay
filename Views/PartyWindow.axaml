@@ -1,0 +1,271 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:game="using:FujinTerm.Game"
+        xmlns:profile="using:FujinTerm.Models.Profile"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="240"
+        x:Class="FujinTerm.Views.PartyWindow"
+        x:DataType="vm:PartyViewModel"
+        Title="{Binding HeaderText}"
+        Width="520" Height="290"
+        MinWidth="380" MinHeight="80"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <!-- Rank chip (F/M/B) — rendered per member.
+             Matches the StatusChip style on the same row: dark elevated
+             background with a coloured border + foreground driven by the
+             rank's accent. White-text-on-tinted-fill (the previous
+             style) was unreadable for the amber and cyan ranks. -->
+        <Style Selector="Border.RankChip">
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="MinWidth" Value="16"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Status-flag chip (REST / PSN / WAIT / etc.). -->
+        <Style Selector="Border.StatusChip">
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="Border.StatusChip > TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Compact HP/MA bar. -->
+        <Style Selector="ProgressBar.HpBar">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="ProgressBar.MaBar">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ===== Empty-state hint ===== -->
+        <TextBlock DockPanel.Dock="Top"
+                   Margin="10,12,10,0"
+                   Text="No party active. Members appear here as soon as someone follows you (or you follow someone)."
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding !State.IsInParty}"/>
+
+        <!-- ===== Member rows =====
+             Column header row dropped — column purpose is obvious from
+             the rendered row (star · rank chip · name/class · bars · chips ·
+             uninvite). Leader name + HP% lives in the window Title instead
+             of an internal strip. -->
+
+        <ItemsControl ItemsSource="{Binding State.Members}"
+                      Background="{StaticResource ChromeBgSunkenBrush}"
+                      Padding="2"
+                      IsVisible="{Binding State.IsInParty}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="game:PartyMember">
+                    <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="6,4">
+                        <!-- Fixed-pixel widths on every column whose presence
+                             varies per row (leader-star, rank-chip, HP, MA,
+                             position). Auto columns wouldn't sync across
+                             rows so a leaderless follower row had its HP bar
+                             land at a different X than the leader's. Only the
+                             name column (*) and the status-chip column (Auto)
+                             vary — both come BEFORE/AFTER the bars so they
+                             don't affect HP/MA alignment. -->
+                        <!-- Column layout matches the header Border above.
+                             Position text column dropped — stance is covered by
+                             the REST / MED status chips. HP + MA collapsed into
+                             one stacked column (HEALTH · MANA) per the skeleton
+                             design — each row renders bar + "X:cur/max pct%". -->
+                        <Grid ColumnDefinitions="20,28,*,190,Auto,Auto"
+                              VerticalAlignment="Center">
+
+                            <!-- (0) Leader star — visible only on the leader -->
+                            <TextBlock Grid.Column="0"
+                                       Text="★"
+                                       FontSize="13"
+                                       Margin="0,0,4,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentPrimaryBrush}"
+                                       IsVisible="{Binding IsLeader}"/>
+
+                            <!-- (1) Rank chip — every row, colour-coded per rank.
+                                 Front = red (melee), Mid = amber (default), Back =
+                                 cyan (caster). Parsed from the par row's last
+                                 column (Frontrank / Midrank / Backrank) into the
+                                 PartyMember.Rank enum. RankBrushConverter drives
+                                 both border + text colour so the chip reads the
+                                 same way as the StatusChip strip on the same row. -->
+                            <Border Grid.Column="1"
+                                    Classes="RankChip"
+                                    Background="{StaticResource ChromeBgElevBrush}"
+                                    BorderBrush="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}">
+                                <TextBlock Text="{Binding Rank, Converter={x:Static vm:RankChipConverter.Instance}}"
+                                           VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{Binding Rank, Converter={x:Static vm:RankBrushConverter.Instance}}"/>
+                            </Border>
+
+                            <!-- (2) Name on top line; class on a small muted
+                                 subtitle below — mirrors the skeleton design's
+                                 two-line member cell. -->
+                            <StackPanel Grid.Column="2" Orientation="Vertical"
+                                        VerticalAlignment="Center" Margin="6,0,0,0">
+                                <TextBlock Text="{Binding Name}"
+                                           FontSize="12"
+                                           Foreground="{StaticResource ChromeFgBrush}"/>
+                                <TextBlock Text="{Binding Class}"
+                                           FontSize="9"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding Class, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+
+                            <!-- (3) HP + MA stacked, single column (HEALTH · MANA).
+                                 Skeleton-design layout: each member gets two
+                                 vertical rows — HP bar + "H:cur/max pct%" on top,
+                                 MA bar + "M:cur/max pct%" below. The MA sub-row
+                                 hides when BaselineMp=0 (warrior / no-mana class
+                                 / pre-@health-exchange) so the row collapses to
+                                 HP-only height. -->
+                            <StackPanel Grid.Column="3" Orientation="Vertical"
+                                        Margin="6,0,8,0" VerticalAlignment="Center"
+                                        Width="190" Spacing="2">
+                                <!-- HP sub-row -->
+                                <Grid ColumnDefinitions="60,8,*" VerticalAlignment="Center">
+                                    <ProgressBar Grid.Column="0"
+                                                 Classes="HpBar"
+                                                 Value="{Binding HpPercent}"
+                                                 Maximum="100"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding HpRichDisplay}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgBrush}"/>
+                                </Grid>
+                                <!-- MA sub-row — hidden when no mana pool. -->
+                                <Grid ColumnDefinitions="60,8,*" VerticalAlignment="Center"
+                                      IsVisible="{Binding BaselineMp, Converter={x:Static vm:GreaterThanZeroConverter.Instance}}">
+                                    <ProgressBar Grid.Column="0"
+                                                 Classes="MaBar"
+                                                 Value="{Binding MpPercent}"
+                                                 Maximum="100"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding MaRichDisplay}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Left"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgBrush}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- (4) Status-flag chips. Each chip self-collapses when the
+                                 corresponding flag is false. REST / MED communicate
+                                 stance (from par's state column); the four ailments
+                                 (BLD / PSN / DIS / CNF) will be lit by the combat
+                                 engine once it parses applied / cured messages; WAIT
+                                 fires from the @wait / @ok protocol handlers. -->
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentGreenBrush}"
+                                        IsVisible="{Binding Resting}">
+                                    <TextBlock Text="REST" Foreground="{StaticResource AccentGreenBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentCyanBrush}"
+                                        IsVisible="{Binding Meditating}">
+                                    <TextBlock Text="MED" Foreground="{StaticResource AccentCyanBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Blinded}">
+                                    <TextBlock Text="BLD" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Poisoned}">
+                                    <TextBlock Text="PSN" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Diseased}">
+                                    <TextBlock Text="DIS" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentAmberBrush}"
+                                        IsVisible="{Binding Confused}">
+                                    <TextBlock Text="CNF" Foreground="{StaticResource AccentAmberBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentPrimaryBrush}"
+                                        IsVisible="{Binding IsWaiting}">
+                                    <TextBlock Text="WAIT" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                                </Border>
+                                <!-- INVITED chip — visible while waiting on the
+                                     player to accept our `invite`. PartyManager
+                                     adds the row from the "You have invited X to
+                                     follow you." server echo; flips to false on
+                                     the "X started to follow you." acceptance. -->
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentCyanBrush}"
+                                        IsVisible="{Binding IsInvited}">
+                                    <TextBlock Text="INVITED" Foreground="{StaticResource AccentCyanBrush}"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- (5) Uninvite — enabled when we're the leader.
+                                 PartyManager flips SelfIsLeader=true the moment
+                                 we send an invite (on the "You have invited X to
+                                 follow you." echo), so this gate covers BOTH
+                                 the kick-a-follower and withdraw-a-pending-
+                                 invite paths with one binding. -->
+                            <Button Grid.Column="5"
+                                    Content="⨯"
+                                    Width="22" Height="22"
+                                    Padding="0"
+                                    Margin="4,0,0,0"
+                                    FontSize="13"
+                                    ToolTip.Tip="Uninvite from party (or withdraw a pending invitation)"
+                                    Command="{Binding $parent[ItemsControl].DataContext.UninviteCommand}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding $parent[ItemsControl].DataContext.State.SelfIsLeader}"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </DockPanel>
+</Window>

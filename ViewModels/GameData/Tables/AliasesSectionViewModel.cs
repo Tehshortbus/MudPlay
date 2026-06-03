@@ -62,7 +62,7 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
-    public IRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
     ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
@@ -80,7 +80,7 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
 
         OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
-        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+        RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
 
         PropertyChanged += (_, e) =>
         {
@@ -124,12 +124,16 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
         _engine.Add(created);
     }
 
-    private void RemoveSelected()
+    private async Task RemoveSelectedAsync()
     {
-        List<Alias> targets = new();
         IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
             ? SelectedRows.ToList()
             : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this alias" : $"{selection.Count} aliases";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
+
+        List<Alias> targets = new();
         foreach (GameDataRow row in selection)
         {
             if (_rowToAlias.TryGetValue(row, out Alias? t)) targets.Add(t);

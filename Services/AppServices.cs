@@ -41,6 +41,13 @@ public sealed class AppServices
     /// <summary>Modeless-only window spawner (no <c>ShowDialog</c> wrapper).</summary>
     public DialogService Dialogs { get; }
 
+    /// <summary>
+    /// Single source of truth for "are you sure?" prompts (exit /
+    /// hangup / save / delete). Lives at Global tier; mirrored from
+    /// <see cref="SettingsService"/> on startup and every save.
+    /// </summary>
+    public ConfirmService Confirm { get; }
+
     /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
     public LogService Log { get; }
 
@@ -119,6 +126,16 @@ public sealed class AppServices
     /// read by the Phase 6 PR 6.2 remote-command engine to gate the
     /// <c>@party &lt;sub&gt;</c> whitelist.
     /// </summary>
+    /// <summary>
+    /// Client-side terminal line buffer. Routes user keystrokes through
+    /// a local 254-char accumulator that only flushes to the wire on
+    /// Enter. Without this, engine auto-sends (par poll, AutoParty
+    /// invite, @health round-trip, etc.) interleave into half-typed
+    /// user input on the server's line buffer and submit as garbage
+    /// commands. See <see cref="Terminal.LocalInputBuffer"/>.
+    /// </summary>
+    public Terminal.LocalInputBuffer InputBuffer { get; } = new();
+
     public Game.PartyState PartyState { get; }
 
     /// <summary>
@@ -128,6 +145,155 @@ public sealed class AppServices
     /// the Phase 3 PR 3.5 single-writer IL scan.
     /// </summary>
     public Game.PartyManager Party { get; }
+
+    /// <summary>
+    /// Phase 6 remote-command engine. Subscribes to <see cref="Chat"/>'s
+    /// <see cref="Game.ChatRouter.EntryClassified"/>, identifies
+    /// <c>@-prefixed</c> messages from other players, enforces hard-blocks
+    /// and per-player <see cref="Models.GameData.PlayerRemoteControls"/>
+    /// permissions, and dispatches to registered handlers. PR 6.2 ships
+    /// the engine; PR 6.3 onward registers the actual command handlers.
+    /// </summary>
+    public Game.Remote.RemoteCommandManager RemoteCommands { get; }
+
+    /// <summary>
+    /// Phase 6 PR 6.3 — registers the party-essential @-command handlers
+    /// against <see cref="RemoteCommands"/>: <c>@health</c>, <c>@where</c>,
+    /// <c>@version</c>, <c>@status</c>, <c>@lives</c>,
+    /// <c>@party</c> (status query + sub-command dispatch),
+    /// <c>@invite</c>, <c>@join</c>, <c>@wait</c>, <c>@ok</c>. Later
+    /// phases register additional handlers without going through this
+    /// class.
+    /// </summary>
+    public Game.Remote.PartyEssentialHandlers PartyEssentials { get; }
+
+    /// <summary>
+    /// Phase 6 PR 6.4 — drives the on-join <c>@health</c> exchange that
+    /// captures each new <see cref="Game.PartyMember"/>'s absolute HP/MA
+    /// baseline, plus the periodic <c>par</c> poll (5 s default cadence;
+    /// PR 6.9 wires Settings.Party for user-configurable frequency).
+    /// </summary>
+    public Game.PartyPoller PartyPoller { get; }
+
+    /// <summary>
+    /// Phase 6 PR 6.7 — emit side of <c>@wait</c> / <c>@ok</c>. Observes
+    /// <see cref="PlayerState.Position"/> transitions and telepaths the
+    /// leader when the local character enters / leaves a rest state.
+    /// Receive side ships in PR 6.3 via
+    /// <see cref="Game.Remote.PartyEssentialHandlers"/>.
+    /// </summary>
+    public Game.PartyRestSync PartyRest { get; }
+
+    /// <summary>
+    /// Phase 6 PR 6.8 — one-to-many @-command sender. Used now for
+    /// Auto-Exp-Reset (<c>@Reset</c> broadcast on loop / Auto-Lair start
+    /// once Phase 7 wires those triggers); Phase 12's panic / kill
+    /// broadcasts will share this service.
+    /// </summary>
+    public Game.Remote.PartyBroadcaster PartyBroadcaster { get; }
+
+    /// <summary>
+    /// Live mirror of the per-character game-menu commands
+    /// (<see cref="GameCommands.EntryCommand"/> /
+    /// <see cref="GameCommands.ExitCommand"/>). Hydrated from the
+    /// Other-tab settings on every profile load + Apply; engines
+    /// (<see cref="Game.Remote.HangupHandler"/>, future cleanup-flow
+    /// automation) read from here instead of going through
+    /// <see cref="Profile"/> directly.
+    /// </summary>
+    public GameCommands GameCommands { get; } = new();
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
+    /// permission category — currently just <c>@hangup</c>. Sends the
+    /// configured <see cref="Services.GameCommands.ExitCommand"/> to
+    /// the wire when a permitted sender requests it.
+    /// </summary>
+    public Game.Remote.HangupHandler Hangup { get; }
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.ExecuteCommands"/>
+    /// permission category's <c>@do &lt;command&gt;</c> passthrough.
+    /// Joins the sender's args back into a single command string and
+    /// ships it on the wire. Engine-level hard-blocks (reroll,
+    /// suicide-lives-threshold) already gate the catalogue's
+    /// destructive verbs before this handler runs.
+    /// </summary>
+    public Game.Remote.DoHandler Do { get; }
+
+    /// <summary>
+    /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
+    /// search → disarm state machine + FIFO request queue + Stats-
+    /// skill gate. Bound by <see cref="TrapRemote"/>'s handler at
+    /// dispatch time, configured via the
+    /// <see cref="Models.Profile.OtherSettings.MaxTrapSearchAttempts"/>
+    /// / <c>MaxTrapDisarmAttempts</c> knobs in Settings → Other.
+    /// </summary>
+    public Game.TrapDisarmManager TrapDisarm { get; }
+
+    /// <summary>
+    /// Auth boundary + queue gate for <c>@trap</c>: parses the
+    /// direction, runs the channel-aware Traps-skill gate, and hands
+    /// off to <see cref="TrapDisarm"/>. <c>@trap stop</c> drains the
+    /// queue + aborts the in-flight request.
+    /// </summary>
+    public Game.Remote.TrapHandler TrapRemote { get; }
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
+    /// Authorised callers (Elevated-Commands permission, lives above
+    /// the suicide threshold) trigger the suicide round-trip; on
+    /// "Invalid password specified." the handler telepaths the
+    /// caller back so they know our stored password is stale.
+    /// </summary>
+    public Game.Remote.SuicideHandler Suicide { get; private set; } = null!;
+
+    /// <summary>Snapshot of the most recent <c>stat</c>-screen parse. Written exclusively by <see cref="Stats"/>.</summary>
+    public Game.PlayerStats PlayerStats { get; } = new();
+
+    /// <summary>
+    /// Parses the in-game <c>stat</c> screen and writes every field
+    /// onto <see cref="PlayerStats"/>. Feeds
+    /// <see cref="RemoteCommands"/>'s LivesProvider so the
+    /// <c>@suicide</c> hard-block has a real value to gate against.
+    /// </summary>
+    public Game.StatParser Stats { get; private set; } = null!;
+
+    /// <summary>
+    /// Sends the configured <see cref="GameCommands.EntryCommand"/>
+    /// when the MajorMUD main-menu screen is recognised at the tail
+    /// end of the automated BBS-login sequence. Latched closed by
+    /// default — only briefly armed when <see cref="Services.LoginAutomator.LoggedIntoGame"/>
+    /// fires, so an in-game chat line that happens to look like the
+    /// menu (gossip / telepath / room description) can't trick the
+    /// engine into auto-entering when the player wanted to stay
+    /// out-of-realm.
+    /// </summary>
+    public Game.MainMenuEntryAutomation MainMenuEntry { get; }
+
+    /// <summary>
+    /// Consumer of the per-player
+    /// <see cref="Models.GameData.PlayerCustomization.InviteToPartyIfSeen"/>
+    /// and
+    /// <see cref="Models.GameData.PlayerCustomization.JoinPartyIfInvited"/>
+    /// flags. Watches "Also here:" room-occupant lines + incoming
+    /// "X invites you to join their party" messages and drives the
+    /// matching <c>invite</c> / <c>follow</c> commands. Wire-sender
+    /// bound from <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.AutoPartyManager AutoParty { get; }
+
+    /// <summary>
+    /// Detects the in-game <c>train stats</c> menu round-trip so we can
+    /// refresh party state after the user returns to the realm. Armed
+    /// by observing outbound <c>train stats</c> on the wire-send path
+    /// (<see cref="ViewModels.MainWindowViewModel.SendUserInput"/> calls
+    /// <see cref="Game.TrainerMenuTracker.ObserveOutbound"/>) and
+    /// confirmed by the anchored <c>"Point Cost Chart"</c> marker.
+    /// </summary>
+    public Game.TrainerMenuTracker TrainerMenu { get; }
 
     /// <summary>
     /// Scans the post-IAC wire stream for status-line prompts. Feeds
@@ -183,6 +349,37 @@ public sealed class AppServices
     /// per-user key lives at <c>Data/.credkey</c>.
     /// </summary>
     public PasswordProtector Passwords { get; } = new();
+
+    /// <summary>
+    /// One-flag pause switch wrapping every engine's wire-sender.
+    /// Raised by <see cref="Game.SuicidePasswordTracker"/> while a
+    /// password-entry prompt is active so engine auto-sends don't
+    /// pollute the input.
+    /// </summary>
+    public EngineSendGate EngineGate { get; } = new();
+
+    /// <summary>
+    /// Two-flag one-shot coordinator for "intentional hangup" intent.
+    /// Set by every engine that deliberately drops the carrier
+    /// (<see cref="Game.Remote.HangupHandler"/> today; Phase 13
+    /// hang-up-if-naked / hang-up-if-low-HP automation later).
+    /// Consumed by <see cref="ViewModels.MainWindowViewModel"/> (to
+    /// suppress reactive auto-reconnect) and by
+    /// <see cref="Game.MainMenuEntryAutomation"/> (to suppress the
+    /// auto-entry latch on the next connect so the user can read
+    /// what's on screen and decide).
+    /// </summary>
+    public HangupSignal HangupSignal { get; } = new();
+
+    /// <summary>
+    /// Passive observer for the in-game <c>set suicide</c> /
+    /// <c>suicide</c> password flows. Locks
+    /// <see cref="EngineGate"/> for the duration of each prompt and
+    /// captures the user-typed new password (committed to the
+    /// profile's <see cref="Models.Profile.CharacterProfile.EncryptedSuicidePassword"/>
+    /// on the server-side <c>Password Changed</c> confirmation).
+    /// </summary>
+    public Game.SuicidePasswordTracker SuicidePassword { get; private set; } = null!;
 
     /// <summary>
     /// Live cache of imported MajorMUD game data. Loads JSON tables on
@@ -359,6 +556,12 @@ public sealed class AppServices
         Resolver = new SettingsResolver(Settings, Bbs, Profile, () => GameData.ActiveSet);
 
         Dialogs = new DialogService();
+        Confirm = new ConfirmService(Dialogs);
+        // Hydrate the live confirm mirror from Global tier now and on
+        // every subsequent global-settings save (Settings → BBS's
+        // confirm checkboxes write to Global through this path).
+        ApplyConfirmFromGlobalSettings();
+        Settings.GlobalSettingsChanged += _ => ApplyConfirmFromGlobalSettings();
         // Log already set by ctor parameter — bootstrap log carries the
         // DataMigration entries from before AppServices was constructed.
         Panels = new FloatingPanelHost();
@@ -383,8 +586,16 @@ public sealed class AppServices
         Player = new Game.PromptParser(PromptScanner, PlayerState);
         PartyState = new Game.PartyState();
         Party = new Game.PartyManager(Router, PartyState);
+        // Mirror the local character's live HP/MA into the self party
+        // row on every prompt — without this the self row only updates
+        // on a par poll, so per-prompt damage between polls doesn't
+        // surface in the PartyWindow.
+        Party.AttachPlayerState(PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        // RemoteCommands is constructed AFTER Chat / Party / Players are
+        // ready (they're all dependencies). Handler registration ships
+        // in PR 6.3 — the engine is empty here; we just wire the plumbing.
         Triggers = new TriggerEngine(Profile, Chat, Log);
         Aliases = new AliasEngine(Profile);
         Macros = new MacroStore(Profile);
@@ -397,10 +608,119 @@ public sealed class AppServices
         // through ResolveActiveBbs so Quick Connect and the BBS pin
         // resolution chain stay the single source of truth.
         Players = new PlayerDatabase(Profile, ResolveActiveBbs);
+        // Phase 6 PR 6.2 — engine. Phase 7 / Phase 12 register additional
+        // handlers without touching the engine.
+        RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
+        // Stat-screen parser ahead of LivesProvider hookup below so
+        // both the engine's @suicide hard-block and the @lives reply
+        // path share the same "unknown until first stat poll" source.
+        Stats = new Game.StatParser(PlayerStats, Log);
+        // Phase 6 PR 6.3 — first consumer; registers the party-essential
+        // handler set against the engine.
+        PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
+        // Phase 6 PR 6.4 — drives the on-join @health exchange + the
+        // periodic par poll. Wire-sender + cadence-from-settings hookup
+        // happens in MainWindowViewModel / PR 6.9.
+        PartyPoller = new Game.PartyPoller(Chat, PartyState, Party);
+        // Phase 6 PR 6.7 — emit side of @wait/@ok. Observes our own
+        // position transitions and telepaths the leader when we enter
+        // / leave a rest state. Wire-sender hookup in MainWindowVM.
+        PartyRest = new Game.PartyRestSync(PartyState);
+        // Phase 6 PR 6.8 — one-to-many @-command sender. Auto-Exp-Reset
+        // is the first consumer (Phase 7 LoopManager will call
+        // BroadcastExpReset on loop start); the broadcaster's also the
+        // canonical spot for Phase 12 panic / kill broadcasts.
+        PartyBroadcaster = new Game.Remote.PartyBroadcaster(PartyState);
+        // Auto-party flag consumer — invites flagged players when they
+        // appear in our room, accepts invites from flagged players.
+        // Wire-sender is bound by MainWindowViewModel once the telnet
+        // client is up; pre-binding, the engine still observes events
+        // but produces no wire output.
+        // TrainerMenuTracker before AutoPartyManager so we can pass it
+        // in as a constructor dep — AutoParty subscribes to MenuExited
+        // to re-fire `invite` for any party member that the trainer-
+        // menu round-trip dropped from the follower's view.
+        TrainerMenu = new Game.TrainerMenuTracker(Router, PartyState, Log);
+        AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
+        // Suicide-password observer + engine-gate consumer. Drives
+        // EngineGate.IsLocked during password-entry prompts so
+        // MainWindowViewModel's wrapped engine wire-senders silently
+        // no-op for the duration; on commit, stores the encrypted
+        // password to CharacterProfile.EncryptedSuicidePassword.
+        SuicidePassword = new Game.SuicidePasswordTracker(
+            Router, EngineGate, Profile, Passwords, Log);
+
+        // LivesProvider — feeds the engine-level @suicide hard-block
+        // and the @lives handler's reply. Returns null until the user
+        // types `stat` for the first time this session so the
+        // hard-block treats lives as unknown (= blocked) per spec.
+        // Stats itself is constructed above where PartyEssentials needs
+        // PlayerStats injected.
+        RemoteCommands.LivesProvider = () => Stats.HasParsed ? PlayerStats.Lives : (int?)null;
+
+        // Persist stat captures onto the loaded profile so the next
+        // session starts hydrated with the last-observed values
+        // (Save-on-close at MainWindow.Closing flushes the in-memory
+        // profile to disk). Drafts (no name) are still snapshotted —
+        // ProfileService.Save no-ops on them, so the data just lives
+        // for the rest of the session.
+        Stats.ScreenParsed += snapshot =>
+        {
+            if (Profile.Current is { } p) p.LastKnownStats = snapshot;
+        };
+        // Restore the snapshot back into live PlayerStats whenever a
+        // profile loads. StatParser owns the PlayerStats fields, so
+        // hydration MUST route through Stats.Hydrate; passing null
+        // resets every field to default (covers fresh / never-stat'd
+        // profiles cleanly).
+        Profile.ProfileLoaded += p => Stats.Hydrate(p.LastKnownStats);
+        Profile.ProfileClosed += () => Stats.Hydrate(null);
+        // @hangup handler — sends the configured GameCommands.ExitCommand
+        // when an authorised sender (HangupDisconnect permission on
+        // the Players-tab record) telepaths @hangup. Also raises the
+        // HangupSignal so MainWindowVM suppresses auto-reconnect and
+        // MainMenuEntryAutomation skips the entry-latch on the next
+        // connect — user manually re-enters the realm after reading
+        // what's on the screen.
+        Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
+        // @do passthrough — wire-sender bound in MainWindowVM after the
+        // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
+        // at engine level before this handler runs.
+        Do = new Game.Remote.DoHandler(RemoteCommands, Log);
+        // @trap auto-disarm flow — manager owns the state machine,
+        // handler owns the @-command auth boundary. Wire-sender +
+        // OtherSettings cadence knobs bind in MainWindowVM /
+        // ApplyOtherFromActiveProfile.
+        TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
+        TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
+        // SuicideHandler — needs the raw wire-sender (NOT the gate-
+        // wrapped one) because it owns the suicide flow and must keep
+        // sending while the password tracker locks the gate. Bound by
+        // MainWindowViewModel a few lines after the other engine
+        // wire-senders, deliberately to the un-wrapped SendUserInput.
+        Suicide = new Game.Remote.SuicideHandler(RemoteCommands, Router, Profile, Passwords, PromptScanner, Log);
+        // Main-menu entry automation — armed by MainWindowVM when
+        // LoginAutomator.LoggedIntoGame fires; observes the
+        // MainMenuEnterRealm pattern and sends GameCommands.EntryCommand
+        // exactly once per arm, followed by the post-entry refresh
+        // sequence (CR + stat + exp + i) to seed PlayerStats. Closed
+        // by default so in-game chat matching the menu pattern can
+        // never trick it; ALSO skips on the first connect after a
+        // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
+        // read the screen before they decide to act.
+        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, HangupSignal, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
         Profile.ProfileLoaded += p => Panels.ApplyLayouts(p.PanelLayouts);
+
+        // Phase 6: PartyManager needs the local character's name so its
+        // par-row parser can tag the right row IsSelf=true (par's
+        // "Given Family" name is compared against the loaded profile
+        // name). Cleared on profile close so IsSelf goes back to false
+        // for every row across the swap.
+        Profile.ProfileLoaded += p => Party.LocalCharacterName = p.Name;
+        Profile.ProfileClosed += ()  => Party.LocalCharacterName = null;
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
@@ -421,6 +741,25 @@ public sealed class AppServices
         Profile.ProfileLoaded += _ => ApplyToolbarFromActiveProfile();
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
+
+        // Bridge: per-character Party / Talk / Other settings into
+        // their live engine knobs. Pre-fix the section VMs handled
+        // their own ApplyToServices on Apply, but the load-from-disk
+        // path required the user to OPEN the Settings window before
+        // the cadence / engine flags actually took effect — so
+        // running two characters with different par-poll cadences
+        // both ran at the 5 s default until the user visited Settings
+        // on each. These subscriptions push the per-character DTOs
+        // automatically on every profile load + mutate.
+        Profile.ProfileLoaded  += _ => ApplyPartyFromActiveProfile();
+        Profile.ProfileClosed  += ResetPartyToDefaults;
+        Profile.ProfileMutated += _ => ApplyPartyFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyTalkFromActiveProfile();
+        Profile.ProfileClosed  += ResetTalkToDefaults;
+        Profile.ProfileMutated += _ => ApplyTalkFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyOtherFromActiveProfile();
+        Profile.ProfileClosed  += ResetOtherToDefaults;
+        Profile.ProfileMutated += _ => ApplyOtherFromActiveProfile();
 
         // Bridge: follow the pinned BBS's preferred game-data set.
         // Active set lives at BBS scope (every character on the same
@@ -501,7 +840,7 @@ public sealed class AppServices
 
     private void ApplyToolbarFromActiveProfile()
     {
-        Models.Profile.ToolbarSettings dto = ReadToolbar(Profile.Current);
+        Models.Profile.ToolbarSettings dto = ReadSection<Models.Profile.ToolbarSettings>(Profile.Current, "Toolbar");
         Toolbar.ApplyFrom(dto);
     }
 
@@ -510,12 +849,179 @@ public sealed class AppServices
         Toolbar.ApplyFrom(new Models.Profile.ToolbarSettings());
     }
 
-    private static Models.Profile.ToolbarSettings ReadToolbar(Models.Profile.CharacterProfile? profile)
+    /// <summary>
+    /// Generic per-section settings reader. Returns a fresh default-
+    /// constructed DTO when the profile is null, has no Settings dict,
+    /// is missing the named entry, or the JSON is malformed — the
+    /// callers all want a non-null DTO they can apply unconditionally.
+    /// </summary>
+    private static T ReadSection<T>(Models.Profile.CharacterProfile? profile, string key)
+        where T : new()
     {
-        if (profile?.Settings is null) return new();
-        if (!profile.Settings.TryGetValue("Toolbar", out System.Text.Json.JsonElement json)) return new();
-        return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.ToolbarSettings>(json.GetRawText())
-               ?? new Models.Profile.ToolbarSettings();
+        if (profile?.Settings is null) return new T();
+        if (!profile.Settings.TryGetValue(key, out System.Text.Json.JsonElement json)) return new T();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json.GetRawText()) ?? new T();
+        }
+        catch
+        {
+            return new T();
+        }
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.PartySettings"/>
+    /// into the live <see cref="PartyPoller"/> / <see cref="Party"/> /
+    /// <see cref="PartyBroadcaster"/>. Subscribed to
+    /// <see cref="ProfileService.ProfileLoaded"/> +
+    /// <see cref="ProfileService.ProfileMutated"/> so a per-character
+    /// cadence (e.g. par-poll-frequency=15s) is honoured the moment the
+    /// profile auto-loads at startup — not just when the user opens the
+    /// Settings window. Pre-fix the cadence stayed at the 5 s default
+    /// for every character because the section-VM-only ApplyToServices
+    /// never fired until Settings was opened.
+    /// </summary>
+    public void ApplyPartyFromActiveProfile()
+    {
+        Models.Profile.PartySettings dto = ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party");
+        PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
+        Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
+        Party.DisconnectGraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        Party.LocalRankPreference = dto.Rank;
+        PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
+        // Shared nag cadence — same Settings.Party knobs feed both the
+        // AutoPartyManager @join-after-invite loop and the PartyPoller
+        // on-join @health retry. UI groups them under one section
+        // header ("@join/@health nag settings").
+        TimeSpan nagInitial = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
+        TimeSpan nagFreq    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
+        TimeSpan nagMax     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        AutoParty.JoinNagInitialDelay = nagInitial;
+        AutoParty.JoinNagFrequency    = nagFreq;
+        AutoParty.JoinNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagInitialDelay = nagInitial;
+        PartyPoller.HealthNagFrequency    = nagFreq;
+        PartyPoller.HealthNagMaxTotal     = nagMax;
+    }
+
+    private void ResetPartyToDefaults()
+    {
+        Models.Profile.PartySettings defaults = new();
+        PartyPoller.SetParCadence(TimeSpan.FromSeconds(defaults.ParPollFrequencySec));
+        Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
+        Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        Party.LocalRankPreference = defaults.Rank;
+        PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
+        TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);
+        TimeSpan nagFreq    = TimeSpan.FromSeconds(defaults.JoinNagFrequencySec);
+        TimeSpan nagMax     = TimeSpan.FromSeconds(defaults.JoinNagMaxTotalSec);
+        AutoParty.JoinNagInitialDelay = nagInitial;
+        AutoParty.JoinNagFrequency    = nagFreq;
+        AutoParty.JoinNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagInitialDelay = nagInitial;
+        PartyPoller.HealthNagFrequency    = nagFreq;
+        PartyPoller.HealthNagMaxTotal     = nagMax;
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.TalkSettings"/>
+    /// into the live <see cref="RemoteCommands"/> engine. Same shape +
+    /// rationale as <see cref="ApplyPartyFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyTalkFromActiveProfile()
+    {
+        Models.Profile.TalkSettings dto = ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk");
+        RemoteCommands.MasterDisable          = dto.DisallowAllRemoteCommands;
+        RemoteCommands.DisablePartyWhitelist  = dto.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisableTelepathChannel = dto.DisallowRemoteFromTelepaths;
+        RemoteCommands.DisableGangpathChannel = dto.DisallowRemoteFromGangpaths;
+        RemoteCommands.DisableLocalChannel    = dto.DisallowRemoteFromLocal;
+        RemoteCommands.WarnOnDenial           = dto.WarnOnInvalidRemoteCommand;
+        RemoteCommands.FailureMessage         = dto.RemoteCommandFailureMessage ?? string.Empty;
+    }
+
+    private void ResetTalkToDefaults()
+    {
+        Models.Profile.TalkSettings defaults = new();
+        RemoteCommands.MasterDisable          = defaults.DisallowAllRemoteCommands;
+        RemoteCommands.DisablePartyWhitelist  = defaults.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisableTelepathChannel = defaults.DisallowRemoteFromTelepaths;
+        RemoteCommands.DisableGangpathChannel = defaults.DisallowRemoteFromGangpaths;
+        RemoteCommands.DisableLocalChannel    = defaults.DisallowRemoteFromLocal;
+        RemoteCommands.WarnOnDenial           = defaults.WarnOnInvalidRemoteCommand;
+        RemoteCommands.FailureMessage         = defaults.RemoteCommandFailureMessage ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Push the loaded character's <see cref="Models.Profile.OtherSettings"/>
+    /// into the live engine knobs (currently
+    /// <see cref="Game.Remote.RemoteCommandManager.MaxSuicideLivesThreshold"/>).
+    /// Same shape + rationale as <see cref="ApplyPartyFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyOtherFromActiveProfile()
+    {
+        Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
+        RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 9);
+        // Game-menu commands — HangupHandler consumes ExitCommand
+        // synchronously on @hangup; the future cleanup-flow + first-
+        // login automation will consume both. Blank entries fall back
+        // to the DTO defaults (E / =x) so a misconfiguration can't
+        // leave the engine with empty wire-sends.
+        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
+            ? new Models.Profile.OtherSettings().GameEntryCommand
+            : dto.GameEntryCommand;
+        GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
+            ? new Models.Profile.OtherSettings().GameExitCommand
+            : dto.GameExitCommand;
+        // @trap auto-disarm attempt caps.
+        TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
+        TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+    }
+
+    private void ResetOtherToDefaults()
+    {
+        Models.Profile.OtherSettings defaults = new();
+        RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
+        GameCommands.EntryCommand = defaults.GameEntryCommand;
+        GameCommands.ExitCommand  = defaults.GameExitCommand;
+        TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
+        TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
+    }
+
+    /// <summary>
+    /// Pull <see cref="Models.Settings.ConfirmSettings"/> out of the
+    /// Global-tier <c>"Confirm"</c> bucket and push it into
+    /// <see cref="Confirm"/>. Confirm prefs are Global tier (one
+    /// install-wide preference, not per-character) so this fires off
+    /// <see cref="SettingsService.GlobalSettingsChanged"/>, not the
+    /// per-profile events.
+    /// </summary>
+    private void ApplyConfirmFromGlobalSettings()
+    {
+        Models.Settings.ConfirmSettings dto =
+            ReadGlobalSection<Models.Settings.ConfirmSettings>("Confirm");
+        Confirm.ApplyFrom(dto);
+    }
+
+    /// <summary>
+    /// Read a typed DTO out of the Global-tier <c>Settings</c>
+    /// dictionary, returning a default-constructed instance when the
+    /// bucket is missing or unparseable.
+    /// </summary>
+    private T ReadGlobalSection<T>(string key) where T : new()
+    {
+        Dictionary<string, System.Text.Json.JsonElement>? bucket = Settings.Current.Settings;
+        if (bucket is null) return new T();
+        if (!bucket.TryGetValue(key, out System.Text.Json.JsonElement json)) return new T();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json) ?? new T();
+        }
+        catch
+        {
+            return new T();
+        }
     }
 
     /// <summary>

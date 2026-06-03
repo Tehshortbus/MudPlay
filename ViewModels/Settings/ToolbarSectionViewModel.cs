@@ -44,6 +44,42 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     /// <summary>Editable per-row view-models for the layout.</summary>
     public ObservableCollection<ToolbarRowViewModel> Rows { get; } = new();
 
+    // ----- Visibility + orientation (Phase 4 wired) -----------------------
+    // Three editor knobs that map onto ToolbarSettings.Visible / Vertical /
+    // Side. RadioButton bindings go via IsLeftSide / IsRightSide mirrors
+    // (Avalonia's RadioButton.IsChecked can't bind to an enum directly).
+
+    /// <summary>Master visibility toggle (Show toolbar).</summary>
+    [ObservableProperty] private bool _showToolbar = true;
+
+    /// <summary>True = vertical orientation; false = horizontal top mount.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VerticalSideEnabled))]
+    private bool _verticalToolbar;
+
+    /// <summary>Edge picked for the vertical mount; ignored when <see cref="VerticalToolbar"/> = false.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLeftSide))]
+    [NotifyPropertyChangedFor(nameof(IsRightSide))]
+    private ToolbarSide _verticalSide = ToolbarSide.Left;
+
+    /// <summary>Left radio bound here — two-way mirror of <see cref="VerticalSide"/>.</summary>
+    public bool IsLeftSide
+    {
+        get => VerticalSide == ToolbarSide.Left;
+        set { if (value) VerticalSide = ToolbarSide.Left; }
+    }
+
+    /// <summary>Right radio bound here — two-way mirror of <see cref="VerticalSide"/>.</summary>
+    public bool IsRightSide
+    {
+        get => VerticalSide == ToolbarSide.Right;
+        set { if (value) VerticalSide = ToolbarSide.Right; }
+    }
+
+    /// <summary>Radios are disabled until the user opts into vertical mode.</summary>
+    public bool VerticalSideEnabled => VerticalToolbar;
+
     /// <summary>
     /// Currently-selected row in the editor — the Up / Down / Delete
     /// commands act on this one.
@@ -138,7 +174,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
         ToolbarSettings dto = new()
         {
-            Layout = Rows.Select(r => r.ToModel()).ToList(),
+            Layout   = Rows.Select(r => r.ToModel()).ToList(),
+            Visible  = ShowToolbar,
+            Vertical = VerticalToolbar,
+            Side     = VerticalSide,
         };
 
         profile.Settings ??= new();
@@ -170,7 +209,8 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private void LoadFromProfile()
     {
-        List<ToolbarItem> items = ReadOrDefault();
+        ToolbarSettings dto = ReadDtoOrDefault();
+        List<ToolbarItem> items = dto.Layout is { Count: > 0 } layout ? layout : ToolbarDefaults.Build();
         Rows.Clear();
         foreach (ToolbarItem item in items)
         {
@@ -179,16 +219,25 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
                 row.RefreshShortcutHint(_keybindings.Get(a));
             Rows.Add(row);
         }
+        ShowToolbar     = dto.Visible;
+        VerticalToolbar = dto.Vertical;
+        VerticalSide    = dto.Side;
         RefreshAvailableActions();
     }
 
-    private List<ToolbarItem> ReadOrDefault()
+    private ToolbarSettings ReadDtoOrDefault()
     {
         CharacterProfile? profile = _profile.Current;
-        if (profile?.Settings is null) return ToolbarDefaults.Build();
-        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return ToolbarDefaults.Build();
-        ToolbarSettings? dto = JsonSerializer.Deserialize<ToolbarSettings>(json.GetRawText());
-        return dto?.Layout is { Count: > 0 } layout ? layout : ToolbarDefaults.Build();
+        if (profile?.Settings is null) return new ToolbarSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new ToolbarSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<ToolbarSettings>(json.GetRawText()) ?? new ToolbarSettings();
+        }
+        catch
+        {
+            return new ToolbarSettings();
+        }
     }
 
     private void RefreshAvailableActions()
@@ -278,9 +327,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private bool CanMoveDown() => SelectedRow is not null && Rows.IndexOf(SelectedRow) < Rows.Count - 1;
 
     [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    private void DeleteSelected()
+    private async Task DeleteSelectedAsync()
     {
         if (SelectedRow is null) return;
+        string what = SelectedRow.IsSeparator
+            ? "this separator"
+            : $"the toolbar row '{SelectedRow.DisplayLabel}'";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
         Rows.Remove(SelectedRow);
         SelectedRow = null;
         RefreshAvailableActions();
@@ -328,6 +381,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     }
 
     private bool CanChangeKeybind() => SelectedRow?.BoundAction is not null;
+
+    // Auto-generated PropertyChanged hooks for the visibility / orientation
+    // observables — re-route into the shared Dirty() helper so the Apply
+    // button lights up on any of the three knobs.
+    partial void OnShowToolbarChanged(bool value)         => Dirty();
+    partial void OnVerticalToolbarChanged(bool value)     => Dirty();
+    partial void OnVerticalSideChanged(ToolbarSide value) => Dirty();
 
     private void Dirty()
     {

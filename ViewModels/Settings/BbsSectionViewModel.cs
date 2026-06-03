@@ -29,6 +29,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private readonly ProfileService _profile;
     private readonly PasswordProtector _passwords;
     private readonly DisplayConfig _display;
+    private readonly SettingsService _globalSettings;
     private readonly Dictionary<string, BbsProfile> _loaded = new(StringComparer.OrdinalIgnoreCase);
     private string? _pendingPassword;          // null = unchanged; "" = clear; else write
     private bool _suppressDirty = true;
@@ -45,8 +46,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
-        "Show information messages", "Show reason for running", "Show data being sent",
-        "Combat round totals",
     };
 
     public override Control View => _view ??= new BbsSectionView { DataContext = this };
@@ -99,6 +98,30 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty] private bool _showPassword;
 
+    // Suicide-password display only — captured passively by
+    // SuicidePasswordTracker when the user runs `set suicide` in-game.
+    // No editor; the BBS-tab field is read-only and hidden when nothing
+    // is stored. ShowSuicidePassword toggles the obfuscation char.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSuicidePassword))]
+    private string _suicidePassword = string.Empty;
+
+    [ObservableProperty] private bool _showSuicidePassword;
+
+    /// <summary>True when the loaded profile carries a stored suicide password.</summary>
+    public bool HasSuicidePassword => !string.IsNullOrEmpty(SuicidePassword);
+
+    // ----- Confirm prompts (Global tier — install-wide UX preferences) -----
+    // Persisted in GlobalSettings.Settings["Confirm"] and mirrored live
+    // onto AppServices.Current.Confirm by ApplyConfirmFromGlobalSettings.
+    // Explicit `= false` defaults — fresh installs / first-open of this
+    // tab render every checkbox unchecked so no nagging dialogs land on
+    // a user who hasn't asked for them.
+    [ObservableProperty] private bool _confirmExit = false;
+    [ObservableProperty] private bool _confirmHangup = false;
+    [ObservableProperty] private bool _confirmSaveSettings = false;
+    [ObservableProperty] private bool _confirmDeletes = false;
+
     /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
@@ -128,20 +151,29 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         BbsProfileStore bbsStore,
         ProfileService profile,
         PasswordProtector passwords,
-        DisplayConfig display)
+        DisplayConfig display,
+        SettingsService globalSettings)
     {
         ArgumentNullException.ThrowIfNull(bbsStore);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(passwords);
         ArgumentNullException.ThrowIfNull(display);
+        ArgumentNullException.ThrowIfNull(globalSettings);
         _bbsStore = bbsStore;
         _profile = profile;
         _passwords = passwords;
         _display = display;
+        _globalSettings = globalSettings;
 
         _profile.ProfileLoaded += _ => RefreshProfileState();
         _profile.ProfileClosed += RefreshProfileState;
+        // SuicidePasswordTracker writes a new encrypted blob and
+        // calls NotifyMutated on commit; pick that up so the
+        // Settings → BBS field reflects the freshly-captured value
+        // without requiring the user to reload the section.
+        _profile.ProfileMutated += _ => RefreshSuicidePassword();
         RefreshProfileState();
+        LoadConfirmFromGlobalSettings();
 
         ReloadBbsList();
         // Default selection to the loaded character's active BBS when it's
@@ -187,8 +219,60 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
 
         ApplyToCurrentProfile();
+        SaveConfirmToGlobalSettings();
 
         ClearDirty();
+    }
+
+    /// <summary>
+    /// Hydrate the four Confirm* observables from the Global-tier
+    /// settings file. Runs once at ctor time; Discard re-runs it to
+    /// roll back unsaved edits.
+    /// </summary>
+    private void LoadConfirmFromGlobalSettings()
+    {
+        ConfirmSettings dto = new();
+        Dictionary<string, System.Text.Json.JsonElement>? bucket =
+            _globalSettings.Current.Settings;
+        if (bucket is not null
+            && bucket.TryGetValue("Confirm", out System.Text.Json.JsonElement json))
+        {
+            try
+            {
+                dto = System.Text.Json.JsonSerializer.Deserialize<ConfirmSettings>(json) ?? new();
+            }
+            catch
+            {
+                dto = new ConfirmSettings();
+            }
+        }
+        bool prev = _suppressDirty;
+        _suppressDirty = true;
+        ConfirmExit         = dto.ConfirmExit;
+        ConfirmHangup       = dto.ConfirmHangup;
+        ConfirmSaveSettings = dto.ConfirmSaveSettings;
+        ConfirmDeletes      = dto.ConfirmDeletes;
+        _suppressDirty = prev;
+    }
+
+    /// <summary>
+    /// Persist the four Confirm* observables back into the Global tier
+    /// and trigger the live mirror via
+    /// <see cref="SettingsService.GlobalSettingsChanged"/>.
+    /// </summary>
+    private void SaveConfirmToGlobalSettings()
+    {
+        ConfirmSettings dto = new()
+        {
+            ConfirmExit         = ConfirmExit,
+            ConfirmHangup       = ConfirmHangup,
+            ConfirmSaveSettings = ConfirmSaveSettings,
+            ConfirmDeletes      = ConfirmDeletes,
+        };
+        _globalSettings.Current.Settings ??= new Dictionary<string, System.Text.Json.JsonElement>();
+        _globalSettings.Current.Settings["Confirm"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        _globalSettings.Save();
     }
 
     /// <summary>
@@ -280,6 +364,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             _suppressDirty = false;
         }
 
+        // Roll Confirm* observables back to their on-disk values too —
+        // they're independent of the BBS cache but share this section's
+        // dirty bit.
+        LoadConfirmFromGlobalSettings();
+
         // Roll the live DisplayConfig back to the *active* BBS, not the
         // BBS that happened to be selected in the editor. Otherwise the
         // terminal canvas keeps the discarded preview font.
@@ -316,9 +405,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     }
 
     [RelayCommand]
-    private void DeleteBbs()
+    private async Task DeleteBbsAsync()
     {
         if (SelectedBbsName is not { } name) return;
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync($"the BBS '{name}'")) return;
         _bbsStore.Delete(name);
         _loaded.Remove(name);
         ReloadBbsList();
@@ -422,6 +512,28 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             LoadCredentialsFor(SelectedBbsName);
             _suppressDirty = false;
         }
+        RefreshSuicidePassword();
+    }
+
+    /// <summary>
+    /// Hydrate <see cref="SuicidePassword"/> from the loaded profile's
+    /// encrypted blob. Runs on every profile load / mutate / close so
+    /// the field reflects the live state — including the wipe case
+    /// where <see cref="Game.SuicidePasswordTracker"/> saw <c>pro</c>'s
+    /// "You do not have a suicide password set." line and cleared the
+    /// stored value.
+    /// </summary>
+    private void RefreshSuicidePassword()
+    {
+        string decrypted = string.Empty;
+        if (_profile.Current is { } profile
+            && profile.EncryptedSuicidePassword is { Length: > 0 } blob)
+        {
+            decrypted = _passwords.Unprotect(blob) ?? string.Empty;
+        }
+        _suppressDirty = true;
+        SuicidePassword = decrypted;
+        _suppressDirty = false;
     }
 
     private void ResetFields()
@@ -542,6 +654,14 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     partial void OnFontSizeChanged(double value)                { PushToCache(); Dirty(); }
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
+
+    // Confirm flags are Global-tier, not per-BBS — they don't push into
+    // the per-BBS cache, just mark the section dirty so Apply commits
+    // them via SaveConfirmToGlobalSettings.
+    partial void OnConfirmExitChanged(bool value)               { Dirty(); }
+    partial void OnConfirmHangupChanged(bool value)             { Dirty(); }
+    partial void OnConfirmSaveSettingsChanged(bool value)       { Dirty(); }
+    partial void OnConfirmDeletesChanged(bool value)            { Dirty(); }
 
     [RelayCommand]
     private void AddMenuStep()

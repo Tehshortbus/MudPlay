@@ -44,7 +44,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     /// <summary>Open the per-record edit dialog for the row currently double-clicked.</summary>
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
-    public IRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
     ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
@@ -67,7 +67,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         _store.Messages.CollectionChanged += _handler;
         OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
-        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+        RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
 
         PropertyChanged += (_, e) =>
         {
@@ -196,17 +196,21 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     }
 
     /// <summary>Remove the selected row's record from the store.</summary>
-    private void RemoveSelected()
+    private async Task RemoveSelectedAsync()
     {
         // Snapshot the multi-selection (or fall back to the single
         // SelectedRow when nothing has been multi-selected) before
         // mutating the store — Remove triggers CollectionChanged →
         // Reload, which clears SelectedRows mid-loop and would
         // truncate the operation.
-        List<MessageRecord> targets = new();
         IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
             ? SelectedRows.ToList()
             : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this message" : $"{selection.Count} messages";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
+
+        List<MessageRecord> targets = new();
         foreach (GameDataRow row in selection)
         {
             if (row.Tag is MessageRecord target) targets.Add(target);

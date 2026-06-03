@@ -233,6 +233,18 @@ public partial class MainWindowViewModel : ObservableObject
         CarrierLost,
         /// <summary>Socket died after a long quiet stretch — TCP keepalive caught a hung server.</summary>
         NoResponse,
+        /// <summary>
+        /// Deliberate hangup originated client-side — remote
+        /// <c>@hangup</c> from a trusted player, or a future
+        /// hang-up-if-naked / hang-up-if-low-HP automation. Never
+        /// auto-retries (user is presumed to be in a dangerous spot
+        /// and needs to manually decide whether to come back). The
+        /// matching
+        /// <see cref="Game.MainMenuEntryAutomation.Arm"/> also skips
+        /// when this fired, so the user manually re-enters and the
+        /// post-entry stat/exp/i refresh doesn't spam the wire.
+        /// </summary>
+        HangupInitiated,
     }
 
     private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
@@ -291,6 +303,9 @@ public partial class MainWindowViewModel : ObservableObject
         RefreshStatusBarTicks();
 
         // Seed File → Recent profile slots + Save profile label.
+        // Notify both the display labels (Recent0..4 — "name - bbs")
+        // and the raw profile names (ProfileName0..4 — used as the
+        // OpenRecentProfile command parameter) on every list change.
         RecentProfiles.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(Recent0));
@@ -298,6 +313,11 @@ public partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(Recent2));
             OnPropertyChanged(nameof(Recent3));
             OnPropertyChanged(nameof(Recent4));
+            OnPropertyChanged(nameof(ProfileName0));
+            OnPropertyChanged(nameof(ProfileName1));
+            OnPropertyChanged(nameof(ProfileName2));
+            OnPropertyChanged(nameof(ProfileName3));
+            OnPropertyChanged(nameof(ProfileName4));
             OnPropertyChanged(nameof(HasRecents));
         };
         RebuildRecentProfiles();
@@ -367,19 +387,78 @@ public partial class MainWindowViewModel : ObservableObject
         // state machine needs the per-session LineExtractor. Same wiring
         // shape as TriggerEngine.AttachLineExtractor.
         AppServices.Current.Party.AttachLineExtractor(Lines);
+        // StatParser — same per-session LineExtractor binding so it can
+        // see the lines emitted by the `stat` screen. Writes every
+        // field onto AppServices.Current.PlayerStats; feeds
+        // RemoteCommandManager.LivesProvider for the @suicide gate.
+        AppServices.Current.Stats.AttachLineExtractor(Lines);
+        // Every engine wire-sender is routed through EngineGate's
+        // wrapper. The wrapper short-circuits while
+        // EngineGate.IsLocked is true (today: while
+        // SuicidePasswordTracker is in a password-entry prompt),
+        // so a stray par poll / auto-invite / @health round-trip
+        // can't end up sent as the user's suicide password. User-
+        // typed input doesn't go through this wrapper — TerminalControl
+        // calls SendUserInput directly via the local-input buffer
+        // flush.
+        Action<byte[]> engineSend = AppServices.Current.EngineGate.WrapEngineSender(SendUserInput);
+
+        // Phase 6 PR 6.5 — auto-invite on reconnect needs a wire-sender
+        // to send "invite <name>" when a disconnected member returns
+        // within the grace window AND we're the party leader.
+        AppServices.Current.Party.SetWireSender(engineSend);
 
         // Macro dispatcher needs a wire-send callback before it can fire.
         // TerminalControl + ConversationWindow's input both call into the
         // dispatcher on KeyDown — without a sender bound, the call returns
         // false and the keystroke falls through to normal handling.
-        AppServices.Current.MacroDispatcher.SetSender(SendUserInput);
+        AppServices.Current.MacroDispatcher.SetSender(engineSend);
 
         // Trigger engine subscribes to the LineExtractor for game-message
         // dispatch (chat + system-log subscriptions wired in its ctor) and
         // borrows the same wire sender so a fired trigger's Response goes
         // through the canonical SendUserInput path.
         AppServices.Current.Triggers.AttachLineExtractor(Lines);
-        AppServices.Current.Triggers.SetSender(SendUserInput);
+        AppServices.Current.Triggers.SetSender(engineSend);
+
+        // Remote-command engine borrows the same wire-sender so a handler's
+        // ctx.Reply(text) routes through SendUserInput exactly like a
+        // typed command would. The Phase 6 PR 6.3 PartyEssentialHandlers
+        // also need their own copy for the @party <sub> → local-command
+        // relay (uses the wire-sender directly, bypassing ctx.Reply).
+        AppServices.Current.RemoteCommands.SetWireSender(engineSend);
+        AppServices.Current.PartyEssentials.SetWireSender(engineSend);
+        // Phase 6 PR 6.4 — poller needs the same wire-sender to send
+        // @health round-trip requests and the periodic par poll.
+        AppServices.Current.PartyPoller.SetWireSender(engineSend);
+        // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
+        // when we finish, so the party leader's pause-gate can react.
+        AppServices.Current.PartyRest.SetWireSender(engineSend);
+        // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
+        // broadcasts go through PartyBroadcaster.
+        AppServices.Current.PartyBroadcaster.SetWireSender(engineSend);
+        // AutoPartyManager — consumes per-player InviteToPartyIfSeen
+        // and JoinPartyIfInvited flags, sends `invite <given>` and
+        // `follow <given>` over the wire.
+        AppServices.Current.AutoParty.SetWireSender(engineSend);
+        // HangupHandler — sends the configured GameExitCommand when
+        // an authorised sender telepaths @hangup.
+        AppServices.Current.Hangup.SetWireSender(engineSend);
+        // @do passthrough — gate-wrapped because a malicious caller's
+        // payload shouldn't be able to land mid-suicide-password entry.
+        AppServices.Current.Do.SetWireSender(engineSend);
+        // @trap auto-disarm — gate-wrapped (same reason).
+        AppServices.Current.TrapDisarm.SetWireSender(engineSend);
+        // SuicideHandler — bypasses the engine gate because it OWNS
+        // the suicide flow (and needs its `suicide` + password sends
+        // to land even while SuicidePasswordTracker has the gate
+        // locked for the password-prompt phase). Uses the raw
+        // SendUserInput, not the wrapped engineSend.
+        AppServices.Current.Suicide.SetWireSender(SendUserInput);
+        // MainMenuEntryAutomation — same sender; armed below when
+        // LoginAutomator's LoggedIntoGame fires (only point in the
+        // session where the entry command is allowed to auto-fire).
+        AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
@@ -594,7 +673,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
-        if (IsConnected)        { await DisconnectInternalAsync();   return; }
+        if (IsConnected)
+        {
+            // User-initiated disconnect path — prompt if the Confirm
+            // hangup flag is on. Programmatic disconnects (carrier-lost
+            // auto-reconnect cycle, remote @hangup, future health-
+            // threshold drops) call DisconnectInternalAsync directly
+            // and bypass this prompt.
+            if (!await AppServices.Current.Confirm.ConfirmHangupAsync()) return;
+            await DisconnectInternalAsync();
+            return;
+        }
         if (IsConnecting)       { _connectCts?.Cancel();             return; }
         // Auto-reconnect armed (predictive cleanup OR reactive carrier-lost):
         // first click cancels the pending redial — the user is opting out of
@@ -732,7 +821,7 @@ public partial class MainWindowViewModel : ObservableObject
 
             // Loop fell through — every attempt failed.
             _lastDisconnectCause = DisconnectCause.FailedConnect;
-            WriteTerminalStatus($"[GIVING UP AFTER {maxAttempts} ATTEMPT{(maxAttempts == 1 ? "" : "S")}.]",
+            WriteTerminalStatus($"[GAVE UP AFTER {maxAttempts} ATTEMPT{(maxAttempts == 1 ? "" : "S")}.]",
                                 TerminalStatusKind.Error);
             AppServices.Current.Log.Error("Connect",
                 $"Gave up after {maxAttempts} attempt(s).");
@@ -782,6 +871,13 @@ public partial class MainWindowViewModel : ObservableObject
         {
             AppServices.Current.Log.Info("LoginAuto", $"Login automation complete for '{bbsName}'.");
             DetachLoginKillSwitch();
+            // Arm the main-menu-entry automation NOW — the BBS-login
+            // sequence just completed, so we expect the MajorMUD main
+            // menu to render shortly. If it does, the engine sends the
+            // configured GameEntryCommand. If it doesn't render in the
+            // arm window, the latch closes — protects against in-game
+            // chat that happens to look like the menu line.
+            AppServices.Current.MainMenuEntry.Arm();
         };
         automator.Aborted += reason =>
         {
@@ -859,6 +955,19 @@ public partial class MainWindowViewModel : ObservableObject
     {
         CleanupWarning? maybeWarning = AppServices.Current.Cleanup.Latest;
         if (maybeWarning is not { } warning) return;
+
+        // Intentional hangup beats a stale cleanup warning. If the
+        // user observed a shutdown notice earlier in the session AND
+        // then chose to hang up (or a hangup-automation engine did it
+        // for them), the hangup intent is the more recent signal — the
+        // user is presumed to be in a dangerous spot and shouldn't
+        // be auto-redialed just because a cleanup warning was on file.
+        if (_lastDisconnectCause == DisconnectCause.HangupInitiated)
+        {
+            AppServices.Current.Log.Debug("Cleanup",
+                "Warning observed but disconnect was hangup-initiated — not scheduling.");
+            return;
+        }
 
         BbsProfile? bbs = ResolveActiveBbs();
         if (bbs is null || !bbs.ReconnectAfterCleanup)
@@ -965,9 +1074,11 @@ public partial class MainWindowViewModel : ObservableObject
     /// toggle matches <see cref="_lastDisconnectCause"/>. Shares
     /// <see cref="_cleanupReconnectCts"/> with the predictive cleanup
     /// scheduler so only one reconnect can be pending at a time. Never
-    /// fires for <see cref="DisconnectCause.UserInitiated"/> regardless
-    /// of any toggle state — that's the "user said no, don't dial back"
-    /// safeguard.
+    /// fires for <see cref="DisconnectCause.UserInitiated"/> or
+    /// <see cref="DisconnectCause.HangupInitiated"/> regardless of any
+    /// toggle state — both are explicit "don't dial back" signals
+    /// (user clicked Disconnect, or an automation hung us up because
+    /// we were in a dangerous spot).
     /// </summary>
     private void TryScheduleReactiveReconnect()
     {
@@ -976,8 +1087,9 @@ public partial class MainWindowViewModel : ObservableObject
 
         // FailedConnect is fully handled inside ConnectWithRetriesAsync
         // (its retry-loop IS the response to ReconnectOnFailedConnect);
-        // UserInitiated never auto-retries by policy. That leaves
-        // CarrierLost / NoResponse — each gated on its own toggle.
+        // UserInitiated and HangupInitiated never auto-retry by policy.
+        // That leaves CarrierLost / NoResponse — each gated on its own
+        // toggle.
         bool shouldRetry = _lastDisconnectCause switch
         {
             DisconnectCause.CarrierLost => bbs.ReconnectOnCarrierLost,
@@ -1181,15 +1293,21 @@ public partial class MainWindowViewModel : ObservableObject
                 IsConnected = false;
 
                 // Categorise: if the user clicked Disconnect, the flag was
-                // set in DisconnectInternalAsync. Otherwise distinguish a
-                // server-side carrier drop from a TCP keepalive timeout by
-                // looking at how long the wire was silent before the drop:
-                // long silence + keepalive-enabled implies the OS's probe
-                // train detected an unresponsive server.
+                // set in DisconnectInternalAsync. Otherwise check for a
+                // pending intentional-hangup signal (raised by
+                // HangupHandler / future hang-up-if-naked / -if-low-HP
+                // automation right before the wire `=x` lands). Only
+                // when neither user-flag nor hangup-signal is set do we
+                // fall back to server-side classification (carrier vs
+                // keepalive-timeout) based on wire-silence duration.
                 if (_userInitiatedDisconnect)
                 {
                     _userInitiatedDisconnect = false;
                     _lastDisconnectCause = DisconnectCause.UserInitiated;
+                }
+                else if (AppServices.Current.HangupSignal.ConsumeDisconnectIntent())
+                {
+                    _lastDisconnectCause = DisconnectCause.HangupInitiated;
                 }
                 else if (wasConnected)
                 {
@@ -1261,6 +1379,18 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public void SendUserInput(byte[] data)
     {
+        // Observe outbound for the trainer-menu watcher — it gates on
+        // the user's own `train stats` / `train` going out before
+        // accepting the "Point Cost Chart" marker as menu confirmation.
+        AppServices.Current.TrainerMenu.ObserveOutbound(data);
+        // Suicide-password capture — during the AwaitingNewPassword
+        // state, the next bytes the user types ARE the password. We
+        // peek here (the bytes still flow to the server unchanged).
+        AppServices.Current.SuicidePassword.ObserveOutbound(data);
+        // Stat-screen parser — gates on outbound `stat` so chat lines
+        // containing "Strength: 60" or similar can't bleed into the
+        // PlayerStats snapshot.
+        AppServices.Current.Stats.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }
@@ -1501,17 +1631,27 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Singleton handle for the live PartyWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private PartyWindow? _partyWindow;
+
     [RelayCommand]
     private void OpenParty()
-        => OpenPlaceholder(
-            id: "party",
-            panelName: "Party",
-            phaseTag: "Phase 6",
-            headline: "Party tracker",
-            description:
-                "Leader at top, HP / MA bars per member, leader-star highlight. " +
-                "Driven by PartyManager (par-poller + follows-you / stops-following " +
-                "pattern matchers). Compact and detail modes.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_partyWindow is { } existing) { existing.Close(); return; }
+
+        PartyWindow window = new()
+        {
+            DataContext = new PartyViewModel(
+                AppServices.Current.PartyState,
+                SendUserInput),
+        };
+        window.Closed += (_, _) => _partyWindow = null;
+        _partyWindow = window;
+        window.Show(main);
+    }
 
     private SettingsWindow? _settings;
 
@@ -1531,11 +1671,32 @@ public partial class MainWindowViewModel : ObservableObject
     // the DataContext (the command resolution via $parent[Window] is
     // fragile across popup ownership). Binding to the parent VM directly
     // sidesteps that entirely.
-    public string? Recent0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
-    public string? Recent1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
-    public string? Recent2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
-    public string? Recent3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
-    public string? Recent4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+    //
+    // RecentLabel format: "<profile> - <bbs>" (or just "<profile>" when
+    // no BBS is pinned yet). The menu XAML prepends the slot number /
+    // mnemonic "_N)  ". Lets the user disambiguate generically-named
+    // profiles by the BBS they connect to.
+    public string? Recent0 => RecentLabel(0);
+    public string? Recent1 => RecentLabel(1);
+    public string? Recent2 => RecentLabel(2);
+    public string? Recent3 => RecentLabel(3);
+    public string? Recent4 => RecentLabel(4);
+
+    // ProfileNameN parallel accessors — kept as the raw profile name
+    // for the click handler. Recent0..4 are display strings only.
+    public string? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public string? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public string? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public string? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public string? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+
+    private string? RecentLabel(int index)
+    {
+        if (index < 0 || index >= RecentProfiles.Count) return null;
+        string name = RecentProfiles[index];
+        string? bbs = AppServices.Current.Profile.PeekBbs(name);
+        return string.IsNullOrEmpty(bbs) ? name : $"{name} - {bbs}";
+    }
 
     /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
     public bool HasRecents => RecentProfiles.Count > 0;
@@ -1841,6 +2002,7 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Resolver,
                 AppServices.Current.Dialogs,
                 AppServices.Current.Keybindings,
+                AppServices.Current.Profile,
                 initialSectionId),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;

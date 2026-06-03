@@ -36,5 +36,6 @@ public sealed class CombatSectionViewModel : SettingsSectionViewModel
         "Multi-attack", "Debuff single target", "Debuff AOE",
         "Normal attack spell", "Alternate attack spell",
         "Min enemies", "Max consecutive casts", "Minimum mana per cast",
+        "Show combat round totals", "Display",
     };
 }

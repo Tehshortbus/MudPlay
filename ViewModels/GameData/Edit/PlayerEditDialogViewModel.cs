@@ -2,6 +2,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Remote;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -45,6 +46,46 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         RcQueryVersion && RcQueryExperience && RcQueryHealthStatus && RcQueryLocation &&
         RcQueryInventory && RcRequestInvite && RcMovePlayer && RcExecuteCommands &&
         RcHangupDisconnect && RcAlterSettings && RcDivertConversations && RcSysopCommands;
+
+    // ----- Tooltips per checkbox ----------------------------------------
+    // Precomputed once from RemoteCommandCatalog so the checkbox tooltip
+    // names every @-command the player gains (or loses) when the
+    // category toggles. Single source of truth — adding an entry to the
+    // catalog automatically populates the right tooltip without touching
+    // this VM.
+
+    public string RcQueryVersionTip        { get; } = BuildTip(PlayerRemoteControls.QueryVersion);
+    public string RcQueryExperienceTip     { get; } = BuildTip(PlayerRemoteControls.QueryExperience);
+    public string RcQueryHealthStatusTip   { get; } = BuildTip(PlayerRemoteControls.QueryHealthStatus);
+    public string RcQueryLocationTip       { get; } = BuildTip(PlayerRemoteControls.QueryLocation);
+    public string RcQueryInventoryTip      { get; } = BuildTip(PlayerRemoteControls.QueryInventory);
+    public string RcRequestInviteTip       { get; } = BuildTip(PlayerRemoteControls.RequestInvite);
+    public string RcMovePlayerTip          { get; } = BuildTip(PlayerRemoteControls.MovePlayer);
+    public string RcExecuteCommandsTip     { get; } = BuildTip(PlayerRemoteControls.ExecuteCommands);
+    public string RcHangupDisconnectTip    { get; } = BuildTip(PlayerRemoteControls.HangupDisconnect);
+    public string RcAlterSettingsTip       { get; } = BuildTip(PlayerRemoteControls.AlterSettings);
+    public string RcDivertConversationsTip { get; } = BuildTip(PlayerRemoteControls.DivertConversations);
+    public string RcSysopCommandsTip       { get; } = BuildTip(PlayerRemoteControls.SysopCommands);
+
+    /// <summary>
+    /// Build the per-category tooltip text. Lists every @-command the
+    /// catalog maps to <paramref name="category"/>, sorted, with a clear
+    /// "ticked → grants / unticked → denies" framing so the user knows
+    /// which side of the box does what. Empty-category fallback is a
+    /// (no commands) placeholder so a future enum value that isn't yet
+    /// in the catalog renders something instead of throwing.
+    /// </summary>
+    private static string BuildTip(PlayerRemoteControls category)
+    {
+        string[] cmds = RemoteCommandCatalog.Map
+            .Where(kv => kv.Value == category)
+            .Select(kv => kv.Key)
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .ToArray();
+        if (cmds.Length == 0) return "(no @-commands in this category yet)";
+        return $"Ticked grants: {string.Join("  ", cmds)}\n"
+             + $"Unticked denies the same.";
+    }
 
     /// <summary>Window title — shows the player's current display name.</summary>
     public string Title => $"Player — {(_original.DisplayName.Length > 0 ? _original.DisplayName : "(new)")}";

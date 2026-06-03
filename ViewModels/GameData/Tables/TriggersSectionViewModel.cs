@@ -50,7 +50,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
-    public IRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
     ICommand? IEditableTableSectionViewModel.AddCommand     => AddAsyncCommand;
@@ -68,7 +68,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
 
         OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
         AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
-        RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedRow is not null);
+        RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
 
         PropertyChanged += (_, e) =>
         {
@@ -122,14 +122,18 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
         _engine.Add(created);
     }
 
-    private void RemoveSelected()
+    private async Task RemoveSelectedAsync()
     {
         // Snapshot the multi-selection before mutating the engine —
         // Remove triggers Reload which clears SelectedRows mid-loop.
-        List<Trigger> targets = new();
         IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
             ? SelectedRows.ToList()
             : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this trigger" : $"{selection.Count} triggers";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
+
+        List<Trigger> targets = new();
         foreach (GameDataRow row in selection)
         {
             if (_rowToTrigger.TryGetValue(row, out Trigger? t)) targets.Add(t);

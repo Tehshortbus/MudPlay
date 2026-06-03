@@ -59,6 +59,9 @@ public partial class App : Application
                 FujinTerm.ViewModels.GameData.Edit.PlayerEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.PlayerEditDialog>();
             AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.PlayerAddDialogViewModel,
+                FujinTerm.Views.GameData.Edit.PlayerAddDialog>();
+            AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.MacroEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.MacroEditDialog>();
             AppServices.Current.Dialogs.RegisterWindow<
@@ -88,6 +91,14 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
                 FujinTerm.Views.Settings.DataDirectoryRelocateDialog>();
+
+            // Generic "are you sure?" confirm dialog — owned by
+            // ConfirmService, surfaced by the exit / hangup / save /
+            // delete paths whose matching flag is on in Settings →
+            // BBS's Display group.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.ConfirmDialogViewModel,
+                FujinTerm.Views.ConfirmDialog>();
 
             // Register the LogPane double-click handler for the spell-
             // coverage auditor's summary entries. Opening reuses any

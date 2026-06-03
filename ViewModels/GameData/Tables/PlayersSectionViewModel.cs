@@ -22,6 +22,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
 {
     private readonly PlayerDatabase _db;
     private readonly DialogService? _dialogs;
+    private readonly ProfileService? _profile;
 
     public override string Id => "players";
     public override string Title => "Players";
@@ -42,33 +43,83 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
-    ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    public IRelayCommand AddAsyncCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
+
+    ICommand  IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.AddCommand      => AddAsyncCommand;
+    ICommand? IEditableTableSectionViewModel.RemoveCommand   => RemoveSelectedCommand;
 
     // Stored as a field so Dispose can detach — the database singleton
     // otherwise pins every section VM ever created across browser opens.
     private readonly NotifyCollectionChangedEventHandler _handler;
+    private readonly Action<Models.Profile.CharacterProfile>? _profileSwapHandler;
+    private readonly Action<Models.Profile.CharacterProfile>? _profileMutatedHandler;
+    private readonly Action? _profileClosedHandler;
 
-    public PlayersSectionViewModel(PlayerDatabase db, DialogService? dialogs = null)
+    public PlayersSectionViewModel(
+        PlayerDatabase db,
+        DialogService? dialogs = null,
+        ProfileService? profile = null)
     {
         ArgumentNullException.ThrowIfNull(db);
         _db = db;
         _dialogs = dialogs;
+        _profile = profile;
         _handler = (_, _) => Reload();
         _db.Players.CollectionChanged += _handler;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        // Refresh the filter when the loaded character swaps so a
+        // freshly-loaded Raijin doesn't keep Fujin's row hidden (and
+        // vice versa). Drafts (no loaded profile) reload to "show
+        // everyone".
+        if (_profile is not null)
+        {
+            _profileSwapHandler    = _ => Reload();
+            _profileMutatedHandler = _ => Reload();
+            _profileClosedHandler  = ()  => Reload();
+            _profile.ProfileLoaded  += _profileSwapHandler;
+            _profile.ProfileMutated += _profileMutatedHandler;
+            _profile.ProfileClosed  += _profileClosedHandler;
+        }
+        OpenEditAsyncCommand  = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        AddAsyncCommand       = new AsyncRelayCommand(AddAsync);
+        RemoveSelectedCommand = new AsyncRelayCommand(RemoveSelectedAsync, () => SelectedRow is not null);
+
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedRow))
+                RemoveSelectedCommand.NotifyCanExecuteChanged();
+        };
+
         Reload();
     }
 
     public override void Dispose()
     {
         _db.Players.CollectionChanged -= _handler;
+        if (_profile is not null)
+        {
+            if (_profileSwapHandler    is not null) _profile.ProfileLoaded  -= _profileSwapHandler;
+            if (_profileMutatedHandler is not null) _profile.ProfileMutated -= _profileMutatedHandler;
+            if (_profileClosedHandler  is not null) _profile.ProfileClosed  -= _profileClosedHandler;
+        }
         base.Dispose();
     }
 
     protected override void PopulateRows(IList<GameDataRow> rows)
     {
+        // Hide the loaded character's own row — granting permissions to
+        // yourself doesn't make sense. Match on given name (the first
+        // whitespace-delimited token) so the filter still catches the
+        // row whether the BBS rendered it with or without the family
+        // suffix this session. Null / blank when no profile is loaded
+        // (draft) means "show everyone".
+        string? selfGiven = ExtractGiven(_profile?.Current?.Name);
         foreach (PlayerRecord p in _db.Players)
         {
+            if (selfGiven is not null
+                && p.GivenName.Equals(selfGiven, StringComparison.OrdinalIgnoreCase))
+                continue;
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Given Name"]  = p.GivenName,
@@ -80,12 +131,57 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         }
     }
 
+    /// <summary>
+    /// First whitespace-delimited token of a display name, lower-cased
+    /// for the comparer. <c>null</c> when the input is null or
+    /// whitespace-only — caller uses that sentinel to mean "no
+    /// self-filter".
+    /// </summary>
+    private static string? ExtractGiven(string? displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName)) return null;
+        int space = displayName.IndexOf(' ');
+        return space >= 0 ? displayName[..space] : displayName;
+    }
+
     /// <summary>"None" / "Some" / "All" summary of the remote-control bitmask for the table cell.</summary>
     private static string RemoteControlsLabel(PlayerRemoteControls rc)
     {
         if (rc == PlayerRemoteControls.None) return "None";
         if (rc == PlayerRemoteControls.All)  return "All";
         return "Some";
+    }
+
+    private async Task AddAsync()
+    {
+        if (_dialogs is null) return;
+        PlayerAddDialogViewModel vm = new(_db);
+        PlayerAddResult? created = await _dialogs.OpenWindowAsync<PlayerAddDialogViewModel, PlayerAddResult>(vm);
+        if (created is null) return;
+        // Mint a fresh observation at "now" — the user can refine flags
+        // afterward via the existing edit dialog (double-click the row).
+        _db.AddManual(created.GivenName, created.FamilyName, DateTime.UtcNow);
+    }
+
+    private async Task RemoveSelectedAsync()
+    {
+        // Customizations stay attached to the profile so a future
+        // re-observation auto-rebinds the user's flags. Removing an
+        // observation is therefore safely reversible by next `who`.
+        IReadOnlyList<GameDataRow> selection = SelectedRows.Count > 0
+            ? SelectedRows.ToList()
+            : (SelectedRow is null ? Array.Empty<GameDataRow>() : new[] { SelectedRow });
+        if (selection.Count == 0) return;
+        string what = selection.Count == 1 ? "this player record" : $"{selection.Count} player records";
+        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
+
+        List<string> givens = new();
+        foreach (GameDataRow row in selection)
+        {
+            string given = row.Get("Given Name") ?? string.Empty;
+            if (!string.IsNullOrEmpty(given)) givens.Add(given);
+        }
+        foreach (string g in givens) _db.RemoveByGivenName(g);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
@@ -114,8 +210,12 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         if (result is null) return;
 
         // Save only the customization slice — observed fields stay
-        // observation-only and never get stomped by the dialog.
-        _db.EditCustomization(result.OriginalDisplayName, result.Updated.ToCustomization());
+        // observation-only and never get stomped by the dialog. The
+        // customization layer is keyed on given name so the user's
+        // toggles follow the player across train-stats renames; the
+        // dialog's OriginalDisplayName carries the given as its first
+        // whitespace-delimited token and EditCustomization extracts it.
+        _db.EditCustomization(record.GivenName, result.Updated.ToCustomization());
         Reload();
     }
 }

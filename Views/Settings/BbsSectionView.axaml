@@ -200,7 +200,7 @@
                                Text="{Binding CredentialsHint}"/>
 
                     <Grid Margin="0,6,0,0" IsEnabled="{Binding HasProfile}"
-                          ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                          ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Username:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
                                    Text="{Binding Username, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
@@ -215,6 +215,31 @@
                                      PlaceholderText="(leave empty to keep the existing password)"/>
                             <ToggleButton Grid.Column="2"
                                           IsChecked="{Binding ShowPassword, Mode=TwoWay}"
+                                          Content="Show"
+                                          MinWidth="60"/>
+                        </Grid>
+
+                        <!-- Suicide password — read-only display.
+                             The value is captured passively by
+                             SuicidePasswordTracker when the user runs
+                             `set suicide` in-game; this row just
+                             exposes the stored value so the user can
+                             confirm what we have. Hidden when nothing
+                             is stored (per user spec: "show only if
+                             one is set"). -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                                   Text="Suicide Password:"
+                                   IsVisible="{Binding HasSuicidePassword}"/>
+                        <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="280,6,Auto"
+                              HorizontalAlignment="Left"
+                              IsVisible="{Binding HasSuicidePassword}">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding SuicidePassword, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     PasswordChar="{Binding ShowSuicidePassword, Converter={x:Static vm:PasswordCharConverter.Instance}}"
+                                     ToolTip.Tip="Captured from in-game `set suicide` flow. Run `set suicide` again to change; run `pro` and observe 'You do not have a suicide password set.' to wipe."/>
+                            <ToggleButton Grid.Column="2"
+                                          IsChecked="{Binding ShowSuicidePassword, Mode=TwoWay}"
                                           Content="Show"
                                           MinWidth="60"/>
                         </Grid>
@@ -264,53 +289,34 @@
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
                     </StackPanel>
 
-                    <!-- ===== Display options (Phase 4 PR 4.8 stubs) =====
-                         Persistence + behaviour wire in their owning phases:
-                         Confirm dialogs in Phase 0 polish; Show-* in the
-                         relevant subsystems; combat round totals in Phase 8.  -->
-                    <TextBlock Classes="GroupHeader" Text="Display"
-                               Margin="0,18,0,4"/>
-
-                    <Border Padding="4,2"
-                            Background="{StaticResource ChromeBgElevBrush}"
-                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                            BorderThickness="1"
-                            CornerRadius="{StaticResource CornerSm}"
-                            HorizontalAlignment="Left">
-                        <TextBlock Text="Phase 4 PR 4.8 stub — controls disabled until owning phase"
-                                   Foreground="{StaticResource AccentAmberBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="11"/>
-                    </Border>
-
-                    <Grid ColumnDefinitions="*,16,*" Margin="0,8,0,0">
-                        <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock Text="Show confirmations"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                            <CheckBox Content="Confirm exit"          IsEnabled="False"
-                                      ToolTip.Tip="Phase 0 polish — confirm prompt before File → Quit."/>
-                            <CheckBox Content="Confirm hangup"        IsEnabled="False"
-                                      ToolTip.Tip="Phase 0 polish — confirm prompt before disconnect."/>
-                            <CheckBox Content="Confirm save settings" IsEnabled="False"
-                                      ToolTip.Tip="Phase 0 polish — confirm prompt before Settings → OK / Apply."/>
-                            <CheckBox Content="Confirm deletes"       IsEnabled="False"
-                                      ToolTip.Tip="Phase 0 polish — confirm prompt before destructive list-row removes."/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" Spacing="2">
-                            <TextBlock Text="Show on canvas"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                            <CheckBox Content="Show information messages" IsEnabled="False"
-                                      ToolTip.Tip="Phase 1 — surface app-side info banners inline on the terminal canvas."/>
-                            <CheckBox Content="Show reason for running"   IsEnabled="False"
-                                      ToolTip.Tip="Phase 13 — annotate the flee with what triggered it."/>
-                            <CheckBox Content="Show data being sent"      IsEnabled="False"
-                                      ToolTip.Tip="Phase 0 PR 0.11 — echoes outgoing bytes inline (overlap with Wire Inspector)."/>
-                            <CheckBox Content="Show combat round totals"  IsEnabled="False"
-                                      ToolTip.Tip="Phase 8 — append the per-round damage roll-up to the canvas."/>
-                        </StackPanel>
-                    </Grid>
+                    <!-- ===== Confirmations =====
+                         Show-information / Show-data-being-sent /
+                         Show-reason-for-running were removed entirely —
+                         the system log covers what they would have
+                         exposed and we have no plans to surface them
+                         on the terminal canvas. Show-combat-round-totals
+                         moved to Settings → Combat. The "Display" group
+                         label was dropped — the bold "Show confirmations"
+                         header below already names what this group is.
+                         These four toggles persist at Global tier; the
+                         live mirror is ConfirmService. -->
+                    <StackPanel Spacing="2" Margin="0,18,0,0">
+                        <TextBlock Text="Show confirmations"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <CheckBox Content="Confirm exit"
+                                  IsChecked="{Binding ConfirmExit, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt 'Are you sure?' when closing FujinTerm (window X / File → Quit / hotkey)."/>
+                        <CheckBox Content="Confirm hangup"
+                                  IsChecked="{Binding ConfirmHangup, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before user-initiated disconnects (toolbar / hotkey / menu). App-initiated disconnects (carrier-lost, @hangup, health drops) bypass the prompt."/>
+                        <CheckBox Content="Confirm save settings"
+                                  IsChecked="{Binding ConfirmSaveSettings, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before Settings → OK / Apply and other JSON-write saves. 'No' returns to the editor without saving or closing."/>
+                        <CheckBox Content="Confirm deletes"
+                                  IsChecked="{Binding ConfirmDeletes, Mode=TwoWay}"
+                                  ToolTip.Tip="Prompt before destructive list-row removes (toolbar rows, BBS profiles, future game-data records)."/>
+                    </StackPanel>
 
                     <!-- ===== Realm-specific naming (Phase 4 PR 4.8 stub) =====
                          Per-BBS / per-realm label. Default is "runic"; users

@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="640"
+             x:Class="FujinTerm.Views.Settings.TalkSectionView"
+             x:DataType="vm:TalkSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.HelpText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="22,0,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="780" HorizontalAlignment="Left">
+
+            <!-- Tab title / phase tag / description deliberately omitted —
+                 the sidebar selection already labels the tab and the
+                 per-section group headers carry the structure. -->
+
+            <!-- ============ Remote-control master switches (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Remote-control master switches"/>
+
+            <CheckBox Content="Disallow all remote control commands"
+                      IsChecked="{Binding DisallowAllRemoteCommands, Mode=TwoWay}"
+                      ToolTip.Tip="Hard kill-switch. When on, the engine ignores every inbound @-command regardless of channel / sender / handler."/>
+            <TextBlock Classes="HelpText"
+                       Text="Above every per-channel + per-player permission. No handler fires, no reply is sent."/>
+
+            <CheckBox Content="Disallow @party commands (from leader)"
+                      IsChecked="{Binding DisallowPartyCommandsFromLeader, Mode=TwoWay}"
+                      ToolTip.Tip="Overrides the base @party &lt;sub&gt; whitelist for active party members."/>
+            <TextBlock Classes="HelpText"
+                       Text="Useful for solo runs inside a party where the leader's @party directives shouldn't steer this character."/>
+
+            <!-- ============ Per-channel disable (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Per-channel disable"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Only the three channels the engine listens on. Gossip / Auction / Broadcast / Yell are hard-excluded engine-wide and don't need a toggle."/>
+
+            <CheckBox Content="Disallow @-commands from telepaths / pages"
+                      IsChecked="{Binding DisallowRemoteFromTelepaths, Mode=TwoWay}"
+                      ToolTip.Tip="Drop @-commands arriving via /name or `t name`."/>
+            <CheckBox Content="Disallow @-commands from gangpaths"
+                      IsChecked="{Binding DisallowRemoteFromGangpaths, Mode=TwoWay}"
+                      ToolTip.Tip="Drop @-commands arriving on the gang / guild channel."/>
+            <CheckBox Content="Disallow @-commands from say (local)"
+                      IsChecked="{Binding DisallowRemoteFromLocal, Mode=TwoWay}"
+                      ToolTip.Tip="Drop @-commands arriving via local-room say."/>
+
+            <!-- ============ Denial reply (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Denial reply"/>
+
+            <CheckBox Content="Warn sender on invalid / denied remote command"
+                      IsChecked="{Binding WarnOnInvalidRemoteCommand, Mode=TwoWay}"
+                      ToolTip.Tip="Reply to the originator when a command is unknown or the sender lacks permission. Hard-blocks (reroll / suicide) and user-disabled paths (master / per-channel) stay silent regardless."/>
+
+            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Failure message"/>
+                <TextBox  Grid.Column="1"
+                          Text="{Binding RemoteCommandFailureMessage, Mode=TwoWay}"
+                          IsEnabled="{Binding WarnOnInvalidRemoteCommand}"
+                          MaxWidth="380" HorizontalAlignment="Left"
+                          ToolTip.Tip="Sent verbatim back to the originator on per-player denial / unknown-command / party-whitelist denial."/>
+            </Grid>
+
+            <!-- ============ AFK Mode (Phase 11 stub) ============ -->
+            <TextBlock Classes="SectionHeader" Text="AFK Mode  ·  Phase 11 — engine not yet wired"/>
+
+            <CheckBox Content="Disable all AFK settings" IsEnabled="False"
+                      ToolTip.Tip="Phase 11 — master kill-switch above every AFK behaviour below."/>
+            <Grid ColumnDefinitions="180,Auto,Auto,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Auto-AFK after"/>
+                <NumericUpDown Grid.Column="1" IsEnabled="False" Value="10" Minimum="0" Maximum="600" Width="100"
+                               ToolTip.Tip="Phase 11 — auto-flip into AFK after this many minutes of input idle. 0 disables."/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="min" Margin="6,0,0,0"/>
+            </Grid>
+            <CheckBox Content="Auto-AFK when window minimised" IsEnabled="False"
+                      Margin="0,4,0,0"
+                      ToolTip.Tip="Phase 11."/>
+            <CheckBox Content="User input cancels AFK mode" IsEnabled="False"
+                      ToolTip.Tip="Phase 11."/>
+            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="AFK response message"/>
+                <TextBox  Grid.Column="1" IsEnabled="False" Text="{}{AFK}" MaxWidth="380" HorizontalAlignment="Left"
+                          ToolTip.Tip="Phase 11 — reply text for incoming tells while AFK."/>
+            </Grid>
+
+            <!-- ============ Chat etiquette (Phase 13 stub) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Chat etiquette  ·  Phase 13 stub"/>
+            <CheckBox Content="Greet players when first met" IsEnabled="False"
+                      ToolTip.Tip="Phase 13 — emit a configured greet on first encounter with a new player."/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

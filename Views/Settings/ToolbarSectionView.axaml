@@ -65,21 +65,30 @@
               RowDefinitions="Auto,Auto,*,Auto"
               ColumnDefinitions="*,180">
 
-            <!-- Global toolbar options (Phase 4 PR 4.8 stubs).
-                 Show / Vertical land in a later PR; surface visible here
-                 so the eventual knobs are advertised on day one. -->
+            <!-- Visibility + orientation. ShowToolbar is the master gate;
+                 VerticalToolbar swaps between horizontal-top and vertical
+                 mounting; Left / Right pick the edge when vertical.
+                 Radios stay disabled until Vertical is on, since they're
+                 meaningless for the horizontal top mount. -->
             <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
                         Spacing="2" Margin="0,0,0,10">
                 <TextBlock Classes="SectionHeader" Text="Toolbar options"/>
-                <CheckBox Content="Show toolbar" IsEnabled="False"
-                          ToolTip.Tip="Stub (Phase 4 PR 4.8). Wires to MainWindow toolbar visibility in a later PR."/>
+                <CheckBox Content="Show toolbar"
+                          IsChecked="{Binding ShowToolbar, Mode=TwoWay}"
+                          ToolTip.Tip="Master visibility — uncheck to hide the toolbar entirely."/>
                 <StackPanel Orientation="Horizontal" Spacing="16">
-                    <CheckBox Content="Vertical toolbar" IsEnabled="False"
-                              ToolTip.Tip="Stub (Phase 4 PR 4.8). Rotates the toolbar to a vertical edge — needs MainWindow layout work."/>
-                    <RadioButton GroupName="VerticalSide" Content="Left"  IsEnabled="False"
-                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Dock the vertical toolbar to the left edge."/>
-                    <RadioButton GroupName="VerticalSide" Content="Right" IsEnabled="False"
-                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Dock the vertical toolbar to the right edge."/>
+                    <CheckBox Content="Vertical toolbar"
+                              IsChecked="{Binding VerticalToolbar, Mode=TwoWay}"
+                              IsEnabled="{Binding ShowToolbar}"
+                              ToolTip.Tip="Rotate the toolbar to a vertical edge instead of the top."/>
+                    <RadioButton GroupName="VerticalSide" Content="Left"
+                                 IsChecked="{Binding IsLeftSide, Mode=TwoWay}"
+                                 IsEnabled="{Binding VerticalSideEnabled}"
+                                 ToolTip.Tip="Dock the vertical toolbar to the left edge."/>
+                    <RadioButton GroupName="VerticalSide" Content="Right"
+                                 IsChecked="{Binding IsRightSide, Mode=TwoWay}"
+                                 IsEnabled="{Binding VerticalSideEnabled}"
+                                 ToolTip.Tip="Dock the vertical toolbar to the right edge."/>
                 </StackPanel>
             </StackPanel>
 

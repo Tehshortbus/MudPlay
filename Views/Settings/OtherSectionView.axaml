@@ -1,0 +1,192 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="760"
+             x:Class="FujinTerm.Views.Settings.OtherSectionView"
+             x:DataType="vm:OtherSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+        <Style Selector="TextBlock.FieldNote">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,2"/>
+        </Style>
+        <Style Selector="TextBlock.FieldSuffix">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+        <Style Selector="TextBlock.HelpText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="780" HorizontalAlignment="Left">
+
+            <!-- Title / phase tag / description deliberately omitted per
+                 user direction — section headers throughout this tab
+                 are removed too. The bound Title is still surfaced via
+                 SettingsWindowViewModel's sidebar selection. -->
+
+            <!-- Prose-style row matching the Player-Database row below.
+                 Width="120" on the spinner so the value renders without
+                 clipping (Avalonia's default NumericUpDown swallows
+                 short widths and shows just the up/down arrows).
+                 Range 0..9 with default 5 — small dial reflects the
+                 realistic safety buffer at typical mid-game lives
+                 counts. Subnote sits directly underneath the label. -->
+            <StackPanel Orientation="Vertical" Spacing="2" Margin="0,2,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Classes="FieldLabel" Text="Block @suicide commands when lives ≤"/>
+                    <NumericUpDown Value="{Binding MaxSuicideLivesThreshold, Mode=TwoWay}"
+                                   Minimum="0" Maximum="9" Increment="1"
+                                   FormatString="0" ShowButtonSpinner="True"
+                                   Width="120" MinWidth="120"/>
+                    <TextBlock Classes="FieldLabel" Text="lives"/>
+                </StackPanel>
+                <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" FontStyle="Italic"
+                           Text="0 = disabled"/>
+            </StackPanel>
+
+            <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: poison ticks don't trigger @wait. Always-on triggers (over-encumbered, MovementPrevented, Stunned) still pause regardless."/>
+            <CheckBox Content="Ignore blindness" IsChecked="{Binding IgnoreBlindness, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being blinded doesn't trigger @wait."/>
+            <CheckBox Content="Ignore confusion" IsChecked="{Binding IgnoreConfusion, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being confused doesn't trigger @wait. Caster parties often want to leave this UNCHECKED — confusion makes our cast fail randomly."/>
+            <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
+
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,8,0,0" ColumnSpacing="8" RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Game entry command"/>
+                <TextBox   Grid.Row="0" Grid.Column="1"
+                           Text="{Binding GameEntryCommand, Mode=TwoWay}"
+                           Width="120" FontFamily="{StaticResource FontMono}"
+                           ToolTip.Tip="Sent at the MajorMUD main menu to enter the realm. Default 'E'."/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Game exit command"/>
+                <TextBox   Grid.Row="1" Grid.Column="1"
+                           Text="{Binding GameExitCommand, Mode=TwoWay}"
+                           Width="120" FontFamily="{StaticResource FontMono}"
+                           ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
+            </Grid>
+
+            <!-- @trap auto-disarm attempt caps. Search-attempts row sits
+                 ABOVE disarm-attempts per user spec — the search runs
+                 first, then disarm. -->
+            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,12,0,0" ColumnSpacing="8" RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="@trap max searches"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                               Value="{Binding MaxTrapSearchAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="100" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `sea &lt;dir&gt;` retry loop when handling an @trap. After this many failed searches we give up and telepath the sender. Default 20."/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="@trap max disarms"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                               Value="{Binding MaxTrapDisarmAttempts, Mode=TwoWay}"
+                               Minimum="1" Maximum="50" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps the `disarm trap &lt;dir&gt;` retry loop after the trap has been spotted. Default 5. Damage-aware abort (stop early on HP loss) ships with the Phase 13 HealthManager wiring."/>
+            </Grid>
+
+            <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
+                 Database after [spinner] days." — spinner widened from
+                 90→120 so 4-digit values (e.g. 3650-day max) render
+                 without clipping. -->
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Classes="FieldLabel" Text="Cleanup Player Database after"/>
+                <NumericUpDown Value="{Binding PlayerCleanupDays, Mode=TwoWay}"
+                               Minimum="0" Maximum="3650" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Stale Players-tab records get dropped at startup once they're older than this. 0 disables auto-cleanup. Per-player 'Don't auto-delete' opts records out individually. Global setting — applies to every character on this install."/>
+                <TextBlock Classes="FieldLabel" Text="days."/>
+            </StackPanel>
+
+            <!-- ============ Inline stub catalog ============
+                 Section headers stripped per user direction — the
+                 catalog renders as a flat list of rows. The numeric-
+                 row template puts the picker INLINE between the
+                 label and the suffix (e.g. "Attempt bash [120] times")
+                 instead of using a fixed-width left column with the
+                 picker pushed right. -->
+            <ItemsControl ItemsSource="{Binding StubGroups}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StubGroup">
+                        <ItemsControl ItemsSource="{Binding Fields}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:StubField">
+                                    <Grid ColumnDefinitions="*"
+                                          Margin="0,3,0,3"
+                                          ToolTip.Tip="{Binding Tooltip}">
+                                        <!-- Check rows: just the disabled checkbox spanning the row. -->
+                                        <CheckBox IsEnabled="False"
+                                                  Content="{Binding Label}"
+                                                  IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Check}}"/>
+
+                                        <!-- Numeric rows: prose-style with the picker inline.
+                                             "Attempt bash [picker] times" — label + picker + suffix. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Numeric}}">
+                                            <TextBlock Classes="FieldLabel" Text="{Binding Label}"/>
+                                            <NumericUpDown IsEnabled="False"
+                                                           Value="0"
+                                                           Minimum="{Binding Min}"
+                                                           Maximum="{Binding Max}"
+                                                           Width="100"/>
+                                            <TextBlock Classes="FieldLabel"
+                                                       Text="{Binding Suffix}"
+                                                       IsVisible="{Binding Suffix, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
+
+                                        <!-- Text rows: label + textbox horizontally. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Center"
+                                                    IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Text}}">
+                                            <TextBlock Classes="FieldLabel" Text="{Binding Label}"/>
+                                            <TextBox IsEnabled="False" Width="220"/>
+                                        </StackPanel>
+
+                                        <!-- Note rows: italic prose, no control. -->
+                                        <TextBlock Classes="FieldNote"
+                                                   Text="{Binding Label}"
+                                                   IsVisible="{Binding Kind, Converter={x:Static vm:KindEqualsConverter.Note}}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -167,25 +167,186 @@ public static class DefaultPatterns
         // ----- Player presence ------------------------------------------ (source: classifier.js module)
         yield return new RegexPattern(KnownPatterns.PlayerDisconnects,
             @"^(?<player>\w+) just disconnected!!!\.");
+        // Clean logoff via the in-game hangup command. Distinct from the
+        // BBS-level "[Account] logs OFF" signal — that one's account-name
+        // keyed and we have no reliable account→character mapping at the
+        // observation layer, so we deliberately don't pattern-match it
+        // here. The "just hung up" line is the player-name-keyed form we
+        // can act on; some BBSes disable it but when it's on we use it.
+        yield return new RegexPattern(KnownPatterns.PlayerHungUp,
+            @"^(?<player>\w+) just hung up!!!\.?");
         yield return new RegexPattern(KnownPatterns.PlayerExits,
             @"^(?<player>\w+) just left the Realm\.");
         yield return new RegexPattern(KnownPatterns.PlayerEnters,
             @"^(?<player>\w+) just entered the Realm\.");
 
+        // Room-occupant list — fires on every room render that includes
+        // visible non-mob players. Single capture group holds the full
+        // comma-separated list (with optional "and" Oxford-comma form);
+        // the consumer (AutoPartyManager) splits the list itself so we
+        // don't have to express alternation N-ways in the regex.
+        // Examples observed: "Also here: Raijin." (single),
+        // "Also here: Foo, Bar." (two), "Also here: Foo, Bar and Baz."
+        // (three with Oxford-and).
+        yield return new RegexPattern(KnownPatterns.RoomAlsoHere,
+            @"^Also here: (?<players>.+?)\.\s*$");
+
+        // Incoming party invite from another player. Real Playpen BBS
+        // wording (verified live, 2026-06-01): "Fujin has invited you
+        // to follow him."
+        //
+        // MajorMUD gender vocabulary — apply consistently when adding
+        // future patterns that involve subject/object pronouns:
+        //   * Player characters: male | female (him / her only).
+        //   * Monsters: male | female | neuter (him / her / it).
+        // Party invites are always player→player so the alternation
+        // here is just him/her. Monster-flavour patterns (combat
+        // misses, mob taunts, etc.) need the third arm.
+        yield return new RegexPattern(KnownPatterns.PartyInviteReceived,
+            @"^(?<player>\w+) has invited you to follow (?:him|her)\.?\s*$");
+
         // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
-        // follows-you / stops-following are MajorMUD's party-membership
-        // signals. The par-block state machine in PartyManager handles
-        // the multi-line table; these single-line patterns cover the
-        // add/remove events between par polls.
+        // Real-BBS-verified patterns (Playpen BBS observation, Phase 6
+        // post-PR-6.8). Two distinct follow-direction signals:
+        //   - "X started to follow you."     ⇒ X joined OUR party (we lead)
+        //   - "You are now following X."     ⇒ WE joined X's party (X leads)
+        // Stop-following alternation covers both observed wordings.
         yield return new RegexPattern(KnownPatterns.PartyFollowsYou,
-            @"^(?<player>\w+) now follows you\.");
+            @"^(?<player>\w+) started to follow you\.");
+        yield return new RegexPattern(KnownPatterns.PartyYouFollowing,
+            @"^You are now following (?<player>\w+)\.?$");
         yield return new RegexPattern(KnownPatterns.PartyStopsFollowing,
-            @"^(?<player>\w+) stops following you\.");
-        // par-header anchors PartyManager's stateful row parser — switches
-        // it from Idle to ReadingParBlock so subsequent rows get parsed
-        // as member entries.
+            @"^(?<player>\w+) (?:stops following you|has stopped following you)\.?");
+        // Outbound-invite confirmation — the server echoes this every
+        // time we (or AutoPartyManager / RemoteCommandManager invite
+        // handler) sends `invite X` on the wire. PartyManager adds an
+        // IsInvited row for X on this line so the user sees the
+        // pending invitee in PartyWindow before they accept.
+        yield return new RegexPattern(KnownPatterns.PartyYouInvited,
+            @"^You have invited (?<player>\w+) to follow you\.?$");
+        // par-header — MajorMUD actually labels it "The following people
+        // are in your travel party:" (not "Party Status:" which was my
+        // earlier guess). Anchors PartyManager's stateful row parser.
         yield return new RegexPattern(KnownPatterns.PartyHeader,
-            @"^Party Status:");
+            @"^The following people are in your travel party:");
+        // Conservative member-death match — "X has been slain by Y" is
+        // the clearest PvP kill line in MajorMUD's vocabulary, with the
+        // victim's name as the load-bearing group. Generic "X has died"
+        // lines aren't matched here because they can fire for non-party
+        // mobs / NPCs in the same room and we don't want false-positive
+        // evictions from PartyState.Members.
+        yield return new RegexPattern(KnownPatterns.PartyMemberDeath,
+            @"^(?<player>\w+) has been slain by ");
+
+        // ----- Party dissolution (Playpen-verified, 2026-06-01) ---------
+        // Three signals that should evict members / wipe the party.
+        // Verified live by uninviting Raijin from Fujin's party — the
+        // game emits the first two from the leader's side and the
+        // third + "no longer following" from the follower's side.
+        //
+        //   "Raijin has been removed from your followers."
+        //     ⇒ leader's view of an uninvite (or self-leave). Remove X.
+        //   "You are no longer following Fujin."
+        //     ⇒ follower's view of the leader uninviting us, OR our own
+        //        `unfollow` command. Remove X from the roster.
+        //   "You are not in a party at the present time."
+        //     ⇒ authoritative dissolution — wipe the whole party.
+        yield return new RegexPattern(KnownPatterns.PartyFollowerRemoved,
+            @"^(?<player>\w+) has been removed from your followers\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.PartyYouNoLongerFollowing,
+            @"^You are no longer following (?<player>\w+)\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.PartyDissolved,
+            @"^You are not in a party at the present time\.?\s*$");
+
+        // ----- Per-member rank changes (Playpen-verified, 2026-06-02) ---
+        // When another party member reranks, the game prints one of three
+        // phrasings depending on which rank they moved to. The "middle"
+        // form drops the word "rank" ("...to the middle of your group");
+        // the "front"/"back" forms keep it ("...to the front rank in your
+        // group" / "...to the back rank in your group"). Capture the rank
+        // word so PartyManager can update PartyMember.Rank live without
+        // waiting for the next par poll.
+        //
+        // Player name is given/first only — matches PartyManager's
+        // GivenNameOf roster matching.
+        yield return new RegexPattern(KnownPatterns.PartyMemberRankChanged,
+            @"^(?<player>\w+) just moved to the (?<rank>front|middle|back) (?:rank in|of) your group\.?\s*$");
+        // Self's own rerank confirmation. No name to capture — applies to
+        // the local character row. Phrasing is consistently "ranks of"
+        // across all three (front/middle/back).
+        yield return new RegexPattern(KnownPatterns.PartySelfRankChanged,
+            @"^You have moved to the (?<rank>front|middle|back) ranks of your group\.?\s*$");
+
+        // ----- Main menu (BBS-customisable but options are stable) -----
+        // The "Enter the Realm" row is the universal signature — every
+        // BBS keeps the [E] option on the main menu even when banners,
+        // version strings and prompt text differ. The bracket-letter-
+        // period-space-text format is unique to the main menu (in-game
+        // status lines, room descriptions, chat etc. don't share it).
+        yield return new RegexPattern(KnownPatterns.MainMenuEnterRealm,
+            @"^\[E\]\s*\.\s*Enter the Realm\b");
+
+        // Marker for the train-stats menu's "Point Cost Chart" panel
+        // header. NOT anchored to line start/end — the panel sits in the
+        // upper-right of the menu and shares its terminal row with the
+        // left-side "MAJOR MUD Character Creation" box, so the
+        // LineExtractor emits a single row containing BOTH titles plus
+        // box-drawing chrome. Anchored matching missed entirely. The
+        // outbound-`train stats` gate in TrainerMenuTracker is the real
+        // defence against chat false positives — a chat line embedding
+        // "Point Cost Chart" within 5 s of someone sending `train stats`
+        // is essentially impossible in practice.
+        yield return new RegexPattern(KnownPatterns.MenuTrainerStatsMarker,
+            @"Point Cost Chart");
+
+        // ----- Suicide password flow patterns -----------------------------
+        // All anchored to the line start so a chat / gossip line embedding
+        // the phrase can't trigger them. SuicidePasswordTracker layers
+        // additional context on top — it only acts on these when it knows
+        // we're actively in a flow (user just sent `set s*` or `suicide`).
+        yield return new RegexPattern(KnownPatterns.SuicidePromptOldPassword,
+            @"^Enter the current password:");
+        yield return new RegexPattern(KnownPatterns.SuicidePromptNewPassword,
+            @"^Enter New Password:");
+        yield return new RegexPattern(KnownPatterns.SuicidePromptUseSuicide,
+            @"^Enter your suicide password:");
+        // Two observed variants of the rejection line on Playpen:
+        //   "Invalid password specified."  — `suicide` use-form with wrong password
+        //   "Invalid password!"            — `set suicide` with wrong CURRENT password
+        // Match anything starting with "Invalid password" followed by a
+        // non-word boundary so any future realm variant
+        // ("Invalid password?" / "Invalid password — try again" / etc.)
+        // still disarms the sniffer + unlocks the gate.
+        yield return new RegexPattern(KnownPatterns.SuicideInvalidPassword,
+            @"(?i)^Invalid password\b");
+        yield return new RegexPattern(KnownPatterns.SuicideNotSet,
+            @"^You do not have a suicide password set\.");
+        // Playpen renders the success line as "Password changed"
+        // (lowercase 'c'); previous regex required capital C and
+        // silently failed to match, so the encrypted blob never landed
+        // on the profile and the Settings → BBS suicide-password row
+        // stayed hidden. Use the case-insensitive inline flag so any
+        // realm variant ("Password CHANGED" / "Password Changed" /
+        // "Password changed") commits the captured candidate.
+        yield return new RegexPattern(KnownPatterns.SuicidePasswordChanged,
+            @"(?i)^Password Changed\b");
+        // Same tolerance for the negative form — the existing literal
+        // happened to match Playpen's casing, but a future realm
+        // tweak shouldn't break commit suppression silently.
+        yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
+            @"(?i)^Password NOT changed\b");
+
+        // ----- Trap-disarm flow ------------------------------------------
+        // Direction capture is the LONG form (north / northeast / up /
+        // etc.) since that's what the game's first-person output uses.
+        // TrapDisarmManager normalises both sides to short form ("n",
+        // "ne", "u") for the matching key.
+        yield return new RegexPattern(KnownPatterns.TrapFoundInSearch,
+            @"^You found a trap to the (?<dir>\w+)!?\s*$");
+        yield return new RegexPattern(KnownPatterns.TrapNoneInSearch,
+            @"^You notice nothing different to the (?<dir>\w+)\.?\s*$");
+        yield return new RegexPattern(KnownPatterns.TrapDisarmedSuccess,
+            @"^You successfully disarmed the trap to the (?<dir>\w+)\.?\s*$");
     }
 
 }
