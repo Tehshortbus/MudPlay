@@ -152,4 +152,22 @@ public sealed class CharacterProfile
     /// values instead of zeros. <c>null</c> until the first capture.
     /// </summary>
     public LastKnownStats? LastKnownStats { get; set; }
+
+    /// <summary>
+    /// Rooms the walker / loop / auto-lair scheduler must not route
+    /// through. Per-character only (each player picks their own no-go
+    /// list) — does not flow through <see cref="SettingsResolver"/>.
+    /// Persisted as a flat list of <see cref="RoomRef"/>; consumed at
+    /// runtime by <see cref="Services.MovementFilter"/>. <c>null</c>
+    /// or empty = no rooms avoided.
+    /// </summary>
+    public List<RoomRef>? AvoidedRooms { get; set; }
+
+    /// <summary>
+    /// Rooms the user has flagged as drop-off / stash points (Phase 7
+    /// — basic flag; downstream consumers like the cash auto-deposit
+    /// flow and the Workshop EQUIP sets land later). Per-character
+    /// only. <c>null</c> or empty = no stash rooms flagged.
+    /// </summary>
+    public List<RoomRef>? StashRooms { get; set; }
 }

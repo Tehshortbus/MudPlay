@@ -1,0 +1,242 @@
+using System.Linq;
+using FujinTerm.Game.Map;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// PR 7.6 coverage — per-character avoided + stash room state,
+/// IRoomFilter contract, profile-event lifecycle, and the round-trip
+/// through CharacterProfile so the next session sees the same list.
+/// </summary>
+public sealed class MovementFilterTests
+{
+    private static (ProfileService Profile, MovementFilter Filter) NewPair()
+    {
+        ProfileService profile = new();
+        MovementFilter filter = new(profile);
+        return (profile, filter);
+    }
+
+    [Fact]
+    public void FreshFilter_IsEmpty()
+    {
+        (_, MovementFilter filter) = NewPair();
+        Assert.False(filter.IsAvoided(new RoomKey(1, 1)));
+        Assert.False(filter.IsStash(new RoomKey(1, 1)));
+        Assert.Empty(filter.Avoided);
+        Assert.Empty(filter.Stash);
+    }
+
+    [Fact]
+    public void ProfileLoaded_HydratesFromPersistedLists()
+    {
+        ProfileService profile = new();
+        CharacterProfile draft = profile.LoadBlank();
+        draft.AvoidedRooms = new() { new RoomRef(1, 5), new RoomRef(2, 9) };
+        draft.StashRooms   = new() { new RoomRef(3, 7) };
+
+        // Subscribing the filter after the profile is already loaded
+        // is the AppServices wiring order — the ctor must catch it.
+        MovementFilter filter = new(profile);
+
+        Assert.True(filter.IsAvoided(new RoomKey(1, 5)));
+        Assert.True(filter.IsAvoided(new RoomKey(2, 9)));
+        Assert.False(filter.IsAvoided(new RoomKey(2, 8)));
+        Assert.True(filter.IsStash(new RoomKey(3, 7)));
+    }
+
+    [Fact]
+    public void ProfileClosed_ClearsBothSets()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        profile.LoadBlank();
+        filter.MarkAvoided(new RoomKey(1, 1));
+        filter.MarkStash(new RoomKey(1, 2));
+
+        profile.Close();
+
+        Assert.Empty(filter.Avoided);
+        Assert.Empty(filter.Stash);
+    }
+
+    [Fact]
+    public void MarkAvoided_NoProfile_IsNoOp()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.MarkAvoided(new RoomKey(1, 1));
+        Assert.False(filter.IsAvoided(new RoomKey(1, 1)));
+    }
+
+    [Fact]
+    public void MarkAvoided_AddsToSet_AndMirrorsBackToProfile()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        CharacterProfile draft = profile.LoadBlank();
+
+        filter.MarkAvoided(new RoomKey(1, 5));
+
+        Assert.True(filter.IsAvoided(new RoomKey(1, 5)));
+        Assert.NotNull(draft.AvoidedRooms);
+        Assert.Single(draft.AvoidedRooms);
+        Assert.Equal(1, draft.AvoidedRooms![0].Map);
+        Assert.Equal(5, draft.AvoidedRooms[0].Room);
+    }
+
+    [Fact]
+    public void MarkAvoided_Idempotent()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        CharacterProfile draft = profile.LoadBlank();
+
+        filter.MarkAvoided(new RoomKey(1, 5));
+        filter.MarkAvoided(new RoomKey(1, 5));
+
+        Assert.Single(filter.Avoided);
+        Assert.Single(draft.AvoidedRooms!);
+    }
+
+    [Fact]
+    public void UnmarkAvoided_RemovesFromBothInMemoryAndProfile()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        CharacterProfile draft = profile.LoadBlank();
+
+        filter.MarkAvoided(new RoomKey(1, 5));
+        filter.MarkAvoided(new RoomKey(2, 9));
+
+        filter.UnmarkAvoided(new RoomKey(1, 5));
+
+        Assert.False(filter.IsAvoided(new RoomKey(1, 5)));
+        Assert.True(filter.IsAvoided(new RoomKey(2, 9)));
+        Assert.Single(draft.AvoidedRooms!);
+        Assert.Equal(2, draft.AvoidedRooms![0].Map);
+    }
+
+    [Fact]
+    public void UnmarkAvoided_NotMarked_IsNoOp()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        profile.LoadBlank();
+
+        int events = 0;
+        filter.AvoidedChanged += () => events++;
+
+        filter.UnmarkAvoided(new RoomKey(1, 5));
+
+        Assert.Equal(0, events);
+    }
+
+    [Fact]
+    public void MarkStash_TracksSeparateSet_FromAvoided()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        CharacterProfile draft = profile.LoadBlank();
+
+        filter.MarkAvoided(new RoomKey(1, 1));
+        filter.MarkStash(new RoomKey(1, 2));
+
+        Assert.True(filter.IsAvoided(new RoomKey(1, 1)));
+        Assert.False(filter.IsStash(new RoomKey(1, 1)));
+        Assert.True(filter.IsStash(new RoomKey(1, 2)));
+        Assert.False(filter.IsAvoided(new RoomKey(1, 2)));
+
+        Assert.Single(draft.AvoidedRooms!);
+        Assert.Single(draft.StashRooms!);
+    }
+
+    [Fact]
+    public void Mark_Fires_ChangedEvents()
+    {
+        (ProfileService profile, MovementFilter filter) = NewPair();
+        profile.LoadBlank();
+
+        int avoidedFires = 0;
+        int stashFires = 0;
+        filter.AvoidedChanged += () => avoidedFires++;
+        filter.StashChanged   += () => stashFires++;
+
+        filter.MarkAvoided(new RoomKey(1, 1));
+        filter.MarkStash(new RoomKey(1, 2));
+        filter.UnmarkAvoided(new RoomKey(1, 1));
+        filter.UnmarkStash(new RoomKey(1, 2));
+
+        Assert.Equal(2, avoidedFires);
+        Assert.Equal(2, stashFires);
+    }
+
+    [Fact]
+    public void ProfileSwap_RehydratesIntoFreshSet()
+    {
+        ProfileService profile = new();
+        MovementFilter filter = new(profile);
+
+        CharacterProfile first = profile.LoadBlank();
+        first.AvoidedRooms = new() { new RoomRef(1, 1) };
+        // Drive a fresh ProfileLoaded so the filter rebuilds from the
+        // new state — same path Settings → BBS Apply uses.
+        profile.LoadBlank().AvoidedRooms = new() { new RoomRef(9, 9) };
+        profile.NotifyBbsPinApplied();
+
+        // After the second LoadBlank, only the new profile's lists
+        // should appear in the filter.
+        Assert.False(filter.IsAvoided(new RoomKey(1, 1)));
+        // The second LoadBlank's AvoidedRooms was assigned AFTER
+        // ProfileLoaded fired, so the filter snapshot from that load
+        // is empty — the filter only re-snapshots on Profile events.
+        // Verify the documented contract: snapshot at event time.
+        Assert.Empty(filter.Avoided);
+    }
+
+    // ----- IRoomFilter integration with BfsMapper -------------------
+
+    [Fact]
+    public void BfsMapper_HonoursMovementFilter()
+    {
+        // Two-row strip: 1/1 ──N── 1/2 ──N── 1/3.
+        // With 1/2 avoided, no path from 1/1 to 1/3.
+        string root = Path.Combine(Path.GetTempPath(),
+            "fujinterm-movementfilter-bfs-" + Path.GetRandomFileName());
+        try
+        {
+            string setDir = Path.Combine(root, "alpha");
+            Directory.CreateDirectory(setDir);
+            File.WriteAllText(Path.Combine(setDir, "Rooms.json"), """
+                [
+                  { "Map Number": 1, "Room Number": 1, "Name": "A",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "1/2", "S": "0", "E": "0", "W": "0",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+                  { "Map Number": 1, "Room Number": 2, "Name": "B",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "1/3", "S": "1/1", "E": "0", "W": "0",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+                  { "Map Number": 1, "Room Number": 3, "Name": "C",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "0", "S": "1/2", "E": "0", "W": "0",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+                ]
+                """);
+            GameDataCache cache = new(root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+            BfsMapper bfs = new(graph);
+
+            ProfileService profile = new();
+            profile.LoadBlank();
+            MovementFilter filter = new(profile);
+            filter.MarkAvoided(new RoomKey(1, 2));
+
+            Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3), filter));
+            Assert.NotNull(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3), filter: null));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch { /* best-effort */ }
+        }
+    }
+}

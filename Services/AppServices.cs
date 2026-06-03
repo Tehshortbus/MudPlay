@@ -532,6 +532,13 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.BfsMapper Bfs { get; private set; } = null!;
 
+    /// <summary>
+    /// Per-character avoided + stash room set. Implements
+    /// <see cref="Game.Map.IRoomFilter"/> so pathing layers can plug
+    /// it into <see cref="Bfs"/> without further wiring. PR 7.6.
+    /// </summary>
+    public MovementFilter Movement { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -863,6 +870,11 @@ public sealed class AppServices
         // cache invalidates on every graph reload.
         Bfs = new Game.Map.BfsMapper(RoomGraph);
         RoomGraph.GraphReloaded += Bfs.OnGraphReloaded;
+
+        // Phase 7 PR 7.6 — per-character avoided + stash rooms.
+        // Constructor subscribes ProfileLoaded / ProfileClosed and
+        // hydrates from the currently-loaded profile if there is one.
+        Movement = new MovementFilter(Profile, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
