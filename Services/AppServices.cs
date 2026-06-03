@@ -213,6 +213,17 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.ExecuteCommands"/>
+    /// permission category's <c>@do &lt;command&gt;</c> passthrough.
+    /// Joins the sender's args back into a single command string and
+    /// ships it on the wire. Engine-level hard-blocks (reroll,
+    /// suicide-lives-threshold) already gate the catalogue's
+    /// destructive verbs before this handler runs.
+    /// </summary>
+    public Game.Remote.DoHandler Do { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
     /// Authorised callers (Elevated-Commands permission, lives above
     /// the suicide threshold) trigger the suicide round-trip; on
@@ -654,6 +665,10 @@ public sealed class AppServices
         // connect — user manually re-enters the realm after reading
         // what's on the screen.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
+        // @do passthrough — wire-sender bound in MainWindowVM after the
+        // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
+        // at engine level before this handler runs.
+        Do = new Game.Remote.DoHandler(RemoteCommands, Log);
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by

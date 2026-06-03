@@ -32,7 +32,13 @@ namespace FujinTerm.Game.Remote;
 ///   <item><b>ExecuteCommands</b> — @do passthrough + bulk inventory actions
 ///         (@get-all / @drop-all / @equip-all / @deposit-all).</item>
 ///   <item><b>HangupDisconnect</b> — @hangup / @relog.</item>
-///   <item><b>AlterSettings</b> — auto-* toggles, @settings, @reset.</item>
+///   <item><b>AlterSettings</b> — auto-* toggles, @settings. Note:
+///         <c>@reset</c> also sits in this category in the catalog,
+///         but its actual home is Phase 8 SessionStats (it zeroes the
+///         live tracking metrics — exp earned per hour, combat
+///         round observations, etc.); the AlterSettings categorisation
+///         is just permission-grouping with the other "alter
+///         something on my behalf" verbs.</item>
 ///   <item><b>DivertConversations</b> — @divert.</item>
 ///   <item><b>SysopCommands</b> ("Elevated Commands" in the Players-tab
 ///         UI) — high-trust commands beyond ordinary control:

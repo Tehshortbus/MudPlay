@@ -444,6 +444,9 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // @do passthrough — gate-wrapped because a malicious caller's
+        // payload shouldn't be able to land mid-suicide-password entry.
+        AppServices.Current.Do.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate
