@@ -28,6 +28,7 @@ public sealed class SuicideHandlerTests
         public PlayerState PlayerState { get; } = new();
         public PlayerDatabase Players { get; } = new();
         public LogService Log { get; } = new();
+        public WirePromptScanner PromptScanner { get; } = new();
         public RemoteCommandManager Engine { get; }
         public SuicideHandler Handler { get; }
         public List<byte[]> Wire { get; } = new();
@@ -51,7 +52,7 @@ public sealed class SuicideHandlerTests
                 MaxSuicideLivesThreshold = 3,
             };
             Engine.SetWireSender(Wire.Add);
-            Handler = new SuicideHandler(Engine, Router, Profile, Protector, Log);
+            Handler = new SuicideHandler(Engine, Router, Profile, Protector, PromptScanner, Log);
             Handler.SetWireSender(Wire.Add);
         }
 
@@ -120,46 +121,52 @@ public sealed class SuicideHandlerTests
     }
 
     [Fact]
-    public void NoStoredPw_RealmConfirmsNotSet_SendsSuicideUnprompted()
+    public void NoStoredPw_RealmConfirmsNotSet_SendsSuicideAtNextStatline()
     {
-        // pro pre-check: server confirms "You do not have a suicide
-        // password set." → we know suicide is unprompted on this
-        // realm, fire it.
+        // pro pre-check: server response includes "You do not have a
+        // suicide password set." before the next statline arrives.
+        // Decision point is the NEXT prompt observation (which
+        // brackets pro output per the Playpen wire trace) — at that
+        // point _seenNotSetInProWindow is true, fire suicide.
         using Harness h = new();
         GrantElevated(h.Players, "Trusted");
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();   // drop the `pro` send
 
+        // Server response: "not set" line during the window...
         DispatchLine(h.Router, "You do not have a suicide password set.");
+        // ...then the next statline closes the window.
+        h.Handler.FireNextPromptForTests();
 
         byte[] sent = Assert.Single(h.Wire);
         Assert.Equal("suicide\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
-    public void NoStoredPw_TimeoutWithoutNotSet_RepliesMismatch()
+    public void NoStoredPw_NextStatlineWithoutNotSet_RepliesMismatch()
     {
-        // Realm has a password but we don't have it stored: pro
-        // response doesn't include "not set", window expires, we
-        // bail with a mismatch reply + LogPane warning.
+        // pro output doesn't include "not set" → realm has a password
+        // we don't have stored. Mismatch — telepath sender with the
+        // user-specified reply text.
         using Harness h = new();
         GrantElevated(h.Players, "Trusted");
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
 
-        h.Handler.TimeoutProCheckForTests();
+        // Pro output arrives + next statline closes the window
+        // without "not set" ever appearing.
+        h.Handler.FireNextPromptForTests();
 
         byte[] sent = Assert.Single(h.Wire);
         string text = Encoding.Latin1.GetString(sent);
         Assert.Contains("/Trusted", text);
-        Assert.Contains("no stored password but realm has one set", text);
-        Assert.Contains("run `set suicide`", text);
+        Assert.Contains("Suicide failed, password set in game but not stored.", text);
     }
 
     [Fact]
-    public void NoStoredPw_TimeoutWithWarnOnDenialOff_StaysSilent()
+    public void NoStoredPw_NextStatlineWithWarnOnDenialOff_StaysSilent()
     {
         using Harness h = new();
         h.Engine.WarnOnDenial = false;
@@ -168,7 +175,7 @@ public sealed class SuicideHandlerTests
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
 
-        h.Handler.TimeoutProCheckForTests();
+        h.Handler.FireNextPromptForTests();
 
         Assert.Empty(h.Wire);
     }

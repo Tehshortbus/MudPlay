@@ -1,5 +1,4 @@
 using System.Text;
-using Avalonia.Threading;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -29,14 +28,16 @@ namespace FujinTerm.Game.Remote;
 ///   <item><b>No stored password</b> — can't blindly send
 ///         <c>suicide</c> because if the realm actually has a
 ///         password set we'd hang at the prompt with no way to
-///         answer. Pre-check via <c>pro</c>: if the realm replies
-///         <c>"You do not have a suicide password set."</c> within
-///         <see cref="ProCheckWindow"/>, suicide is unprompted on
-///         the realm side and we just send <c>suicide\r</c> (kills
-///         immediately). If the line doesn't fire within the
-///         window, the realm has a password we don't have stored —
-///         log the profile/realm mismatch + telepath the sender to
-///         run <c>set suicide</c>.</item>
+///         answer. Pre-check via <c>pro</c>: between sending pro
+///         and the NEXT statline prompt arriving, watch for
+///         <c>"You do not have a suicide password set."</c>. If
+///         observed, the realm has no password set — fire
+///         <c>suicide\r</c> (kills immediately, no prompt). If the
+///         next statline arrives without the line firing, the
+///         realm DOES have a password we don't have stored;
+///         telepath the sender with <c>{Suicide failed, password
+///         set in game but not stored.}</c> and log the
+///         profile/realm mismatch.</item>
 /// </list>
 /// <para>
 /// Bypasses <see cref="EngineSendGate"/> deliberately — we're the
@@ -52,9 +53,11 @@ public sealed class SuicideHandler : IDisposable
     private readonly RemoteCommandManager _engine;
     private readonly ProfileService _profile;
     private readonly PasswordProtector _protector;
+    private readonly WirePromptScanner _promptScanner;
     private readonly LogService? _log;
     private readonly IDisposable _invalidSub;
     private readonly IDisposable _notSetSub;
+    private readonly Action<PromptObservation> _promptHandler;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -65,35 +68,34 @@ public sealed class SuicideHandler : IDisposable
     /// </summary>
     private Action<string>? _pendingReply;
 
-    /// <summary>State for an in-flight no-stored-password pro pre-check.</summary>
-    private ProCheckState? _proCheck;
-    private DispatcherTimer? _proCheckTimer;
-
     /// <summary>
-    /// How long we wait for the <c>"You do not have a suicide password
-    /// set."</c> line after sending <c>pro</c> before deciding the
-    /// realm DOES have a password set (and we don't have it stored).
-    /// Default 5 s — pro replies arrive within a second on a normal
-    /// connection; the extra slack covers laggy realms and partial-
-    /// chunk delivery.
+    /// Reply callback + window state for an in-flight no-stored-
+    /// password pro pre-check. <see cref="_seenNotSetInProWindow"/>
+    /// flips true when the canonical "not set" line fires during the
+    /// window; the next PromptObserved firing decides the outcome
+    /// based on that flag.
     /// </summary>
-    public TimeSpan ProCheckWindow { get; set; } = TimeSpan.FromSeconds(5);
+    private Action<string>? _proPendingReply;
+    private bool _seenNotSetInProWindow;
 
     public SuicideHandler(
         RemoteCommandManager engine,
         MessageRouter router,
         ProfileService profile,
         PasswordProtector protector,
+        WirePromptScanner promptScanner,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(protector);
-        _engine    = engine;
-        _profile   = profile;
-        _protector = protector;
-        _log       = log;
+        ArgumentNullException.ThrowIfNull(promptScanner);
+        _engine        = engine;
+        _profile       = profile;
+        _protector     = protector;
+        _promptScanner = promptScanner;
+        _log           = log;
 
         if (!RemoteCommandCatalog.TryGetCategory("@suicide", out PlayerRemoteControls category))
             throw new InvalidOperationException("RemoteCommandCatalog missing entry for '@suicide'.");
@@ -101,13 +103,17 @@ public sealed class SuicideHandler : IDisposable
 
         _invalidSub = router.Subscribe(KnownPatterns.SuicideInvalidPassword, _ => OnInvalid());
         // SuicideNotSet doubles as the no-stored-password pre-check
-        // confirmation: if we sent `pro` and this fires inside the
-        // window, suicide on this realm is unprompted and we can fire
-        // it immediately. SuicidePasswordTracker also subscribes to
-        // this pattern (to wipe stored values when the realm's view
-        // disagrees with ours); both fire independently, no
-        // interaction.
+        // confirmation: if we sent `pro` and this fires before the
+        // next statline arrives, suicide on this realm is unprompted
+        // and we can fire it on the prompt-observation path.
+        // SuicidePasswordTracker also subscribes to this pattern (to
+        // wipe stored values when the realm's view disagrees with
+        // ours); both fire independently, no interaction.
         _notSetSub = router.Subscribe(KnownPatterns.SuicideNotSet, _ => OnNotSetObserved());
+        // Next statline closes the pro window — fires the decision
+        // based on whether SuicideNotSet was seen during the window.
+        _promptHandler = OnPromptObserved;
+        _promptScanner.PromptObserved += _promptHandler;
     }
 
     /// <summary>
@@ -123,8 +129,8 @@ public sealed class SuicideHandler : IDisposable
         _wireSender = sender;
     }
 
-    /// <summary>Test seam — manually fire the pro-check timeout without a real timer.</summary>
-    internal void TimeoutProCheckForTests() => OnProCheckTimeout();
+    /// <summary>Test seam — fire the prompt-observation hook without feeding the scanner real bytes.</summary>
+    internal void FireNextPromptForTests() => OnPromptObserved(default);
 
     public void Dispose()
     {
@@ -133,7 +139,7 @@ public sealed class SuicideHandler : IDisposable
         foreach (string cmd in RegisteredCommands) _engine.UnregisterHandler(cmd);
         _invalidSub.Dispose();
         _notSetSub.Dispose();
-        StopProCheckTimer();
+        _promptScanner.PromptObserved -= _promptHandler;
     }
 
     private void OnSuicide(RemoteCommandContext ctx)
@@ -158,7 +164,7 @@ public sealed class SuicideHandler : IDisposable
         // No stored password — pre-check via `pro` to disambiguate
         // realm-has-no-password (safe to suicide) from realm-has-
         // password-we-don't (mismatch, refuse + warn).
-        if (_proCheck is not null)
+        if (_proPendingReply is not null)
         {
             // Another @suicide is already in the pre-check window —
             // refuse defensively rather than queueing.
@@ -166,11 +172,11 @@ public sealed class SuicideHandler : IDisposable
                 ctx.Reply("@suicide already in-flight, try again shortly");
             return;
         }
-        _proCheck = new ProCheckState(ctx.Reply);
+        _proPendingReply = ctx.Reply;
+        _seenNotSetInProWindow = false;
         _wireSender(Encoding.Latin1.GetBytes("pro\r"));
         _log?.Log(LogSeverity.Info, "Suicide",
-            "@suicide with no stored password — running `pro` to check realm state.");
-        StartProCheckTimer();
+            "@suicide with no stored password — running `pro`; will decide on next statline.");
     }
 
     private void OnInvalid()
@@ -192,69 +198,48 @@ public sealed class SuicideHandler : IDisposable
     }
 
     /// <summary>
-    /// "You do not have a suicide password set." observed. Two paths:
-    /// either we're in the pro pre-check window (suicide is unprompted
-    /// on this realm, fire it) OR the user typed <c>pro</c> manually
-    /// (no @suicide pending, ignore).
+    /// "You do not have a suicide password set." observed. While the
+    /// pro window is open we flag the observation; the
+    /// <see cref="OnPromptObserved"/> path then fires <c>suicide</c>
+    /// on the next statline arrival. We don't act immediately because
+    /// the line and the prompt arrive in the same wire chunk and we
+    /// want a single decision point per pro round-trip.
     /// </summary>
     private void OnNotSetObserved()
     {
-        if (_proCheck is null) return;
-        ProCheckState state = _proCheck;
-        _proCheck = null;
-        StopProCheckTimer();
-        _log?.Log(LogSeverity.Info, "Suicide",
-            "Realm confirmed no suicide password set — sending unprompted `suicide`.");
-        _wireSender?.Invoke(Encoding.Latin1.GetBytes("suicide\r"));
-        _ = state;  // reply not needed on success — realm will kill us
+        if (_proPendingReply is null) return;
+        _seenNotSetInProWindow = true;
     }
 
     /// <summary>
-    /// pro pre-check window expired without
-    /// <see cref="KnownPatterns.SuicideNotSet"/> firing — the realm
-    /// has a suicide password set that we don't have stored. Mismatch
-    /// case: log a warning so the user sees it in the LogPane, and
-    /// telepath the sender so they know to ask the local user to
-    /// re-run <c>set suicide</c>.
+    /// Next statline arrived after we sent <c>pro</c> — pro round-trip
+    /// is complete. If <see cref="_seenNotSetInProWindow"/> is true
+    /// the realm confirmed no password set; send the unprompted
+    /// suicide. Otherwise the realm has a password set that we don't
+    /// have stored; log the mismatch + telepath the sender.
     /// </summary>
-    private void OnProCheckTimeout()
+    private void OnPromptObserved(PromptObservation _)
     {
-        if (_proCheck is null) return;
-        ProCheckState state = _proCheck;
-        _proCheck = null;
-        StopProCheckTimer();
+        if (_proPendingReply is null) return;
+        Action<string> reply = _proPendingReply;
+        bool ok = _seenNotSetInProWindow;
+        _proPendingReply = null;
+        _seenNotSetInProWindow = false;
+
+        if (ok)
+        {
+            _log?.Log(LogSeverity.Info, "Suicide",
+                "Realm confirmed no suicide password set — sending unprompted `suicide`.");
+            _wireSender?.Invoke(Encoding.Latin1.GetBytes("suicide\r"));
+            return;
+        }
+
         _log?.Log(LogSeverity.Warn, "Suicide",
             "Profile has no stored suicide password, but `pro` did not report "
-            + "'You do not have a suicide password set.' within the check window — "
+            + "'You do not have a suicide password set.' before the next statline — "
             + "the realm has a password set that we don't have. Run `set suicide` "
             + "to capture it.");
         if (!_engine.WarnOnDenial) return;
-        state.Reply("@suicide: no stored password but realm has one set (run `set suicide` to capture)");
+        reply("Suicide failed, password set in game but not stored.");
     }
-
-    // ----- Timer plumbing ------------------------------------------------
-
-    private void StartProCheckTimer()
-    {
-        StopProCheckTimer();
-        _proCheckTimer = new DispatcherTimer(
-            interval: ProCheckWindow,
-            priority: DispatcherPriority.Background,
-            callback: (_, _) => OnProCheckTimeout());
-        _proCheckTimer.Start();
-    }
-
-    private void StopProCheckTimer()
-    {
-        _proCheckTimer?.Stop();
-        _proCheckTimer = null;
-    }
-
-    /// <summary>
-    /// State for an in-flight no-stored-password pro pre-check.
-    /// <see cref="Reply"/> is the channel-bound callback the engine
-    /// captured at OnSuicide dispatch time so the mismatch reply
-    /// lands back on the same channel the @suicide arrived on.
-    /// </summary>
-    private sealed record ProCheckState(Action<string> Reply);
 }
