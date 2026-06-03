@@ -893,4 +893,100 @@ public sealed class PartyManagerTests
 
         Assert.Empty(wire);
     }
+
+    // ===== par's invited-row form ========================================
+    // par re-seeds pending invitees alongside real members so the user
+    // can return mid-session (or after a relaunch) and recover the
+    // INVITED rows without needing to have witnessed the original
+    // "You have invited X to follow you." echo.
+
+    [Fact]
+    public void ParInvitedRow_AddsRowWithIsInvitedTrue()
+    {
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [Invited]",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        Assert.Equal(2, p.State.Members.Count);
+        PartyMember invitee = p.State.Members.Single(m => m.Name == "Raijin WuzHere");
+        Assert.True(invitee.IsInvited);
+        Assert.Equal("Priest", invitee.Class);
+        // The HP / position / rank fields stay at their defaults — par's
+        // invited form carries no live data for them.
+        Assert.Equal(0, invitee.HpPercent);
+        Assert.Equal(PlayerPosition.Standing, invitee.Position);
+    }
+
+    [Fact]
+    public void ParInvitedRow_FlipsSelfIsLeader()
+    {
+        // par's invited form is sufficient by itself to flip
+        // SelfIsLeader=true so the PartyWindow X button enables on
+        // the invitee's row immediately, even if we relaunched and
+        // never saw the original outbound echo.
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        Assert.False(p.State.SelfIsLeader);
+
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [Invited]",
+            string.Empty,
+        });
+
+        Assert.True(p.State.SelfIsLeader);
+        Assert.True(p.State.IsInParty);
+    }
+
+    [Fact]
+    public void ParInvitedRow_AcceptanceClearsIsInvited()
+    {
+        // Cross-session continuity check: par re-seeds the row as
+        // invited; then the player accepts via "X started to follow
+        // you." → existing OnFollowsYou flips IsInvited=false on the
+        // same row (matched by given name), no double-add.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [Invited]",
+            string.Empty,
+        });
+        Assert.True(p.State.Members.Single(m => m.Name == "Raijin WuzHere").IsInvited);
+
+        router.Dispatch(Line("Raijin started to follow you."));
+
+        Assert.Single(p.State.Members, m => m.Name.StartsWith("Raijin"));
+        Assert.False(p.State.Members.Single(m => m.Name.StartsWith("Raijin")).IsInvited);
+    }
+
+    [Fact]
+    public void ParInvitedRow_MixedWithNormalRows_BothParse()
+    {
+        // The two row regexes must not collide — the invited regex is
+        // strictly narrower and is tried first. A par block with both
+        // invited and real members should round-trip cleanly.
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Raijin WuzHere                  (Priest)        [Invited]",
+            "  Helper Lastname                 (Cleric)        [M:80%] [H:94%]   - Backrank",
+            "  Fujin WuzHere                   (Mystic)                  [H:100%]   - Frontrank",
+            string.Empty,
+        });
+
+        PartyMember invitee = p.State.Members.Single(m => m.Name == "Raijin WuzHere");
+        Assert.True(invitee.IsInvited);
+        PartyMember realMember = p.State.Members.Single(m => m.Name == "Helper Lastname");
+        Assert.False(realMember.IsInvited);
+        Assert.Equal(94, realMember.HpPercent);
+        Assert.Equal(80, realMember.MpPercent);
+        Assert.Equal(Models.Profile.PartyRank.Back, realMember.Rank);
+    }
 }

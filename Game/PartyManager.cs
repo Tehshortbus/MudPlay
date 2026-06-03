@@ -140,6 +140,22 @@ public sealed partial class PartyManager : IDisposable
     private static partial Regex ParRow();
 
     /// <summary>
+    /// Pending-invitee form of a par row:
+    /// <c>"   Raijin WuzHere                  (Priest)        [Invited]"</c>
+    /// The HP / MA / rank columns are absent because the player
+    /// hasn't accepted yet; the literal <c>[Invited]</c> marker
+    /// appears in their place. We treat this as an OR signal
+    /// alongside "You have invited X to follow you." — par re-seeds
+    /// the IsInvited row state if the user re-opens the client and
+    /// types par before the original outbound echo scrolls back into
+    /// view (or if they missed the echo entirely).
+    /// </summary>
+    [GeneratedRegex(
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*\[Invited\]\s*$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ParInvitedRow();
+
+    /// <summary>
     /// Construct with the app-singleton <see cref="MessageRouter"/> and a
     /// fresh <see cref="PartyState"/>. The per-session <see cref="LineExtractor"/>
     /// is supplied later via <see cref="AttachLineExtractor"/> — the
@@ -829,6 +845,32 @@ public sealed partial class PartyManager : IDisposable
             ReconcileMissingFromPar();
             return;
         }
+        // Pending-invitee row — check this first because the regex is
+        // strictly narrower than ParRow (no [H:]/[M:]/rank), and we
+        // need to skip the HP / Position / Rank assignments below
+        // (no data for them on an invited row).
+        Match invited = ParInvitedRow().Match(text);
+        if (invited.Success)
+        {
+            string inviteeName = invited.Groups["name"].Value.Trim();
+            if (inviteeName.Length == 0) return;
+            string inviteeClass = invited.Groups["class"].Success
+                ? invited.Groups["class"].Value.Trim()
+                : string.Empty;
+            _parBlockNames.Add(inviteeName);
+            PartyMember row = AddOrTouchMember(inviteeName);
+            if (inviteeClass.Length > 0) row.Class = inviteeClass;
+            row.IsInvited = true;
+            // Sending an invite implies leadership-in-the-making —
+            // mirrors what OnYouInvited does when the outbound echo
+            // fires, so the X-uninvite button is enabled even if the
+            // user came back to a session via par alone.
+            State.IsInParty    = true;
+            State.SelfIsLeader = true;
+            State.LeaderName ??= LocalCharacterName;
+            return;
+        }
+
         Match m = ParRow().Match(text);
         if (!m.Success)
         {
