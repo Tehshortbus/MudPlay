@@ -385,6 +385,115 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.IsType<MoveStep>(h.Walker.Steps[1]);
     }
 
+    // ----- trapped exits (PR 7.22) -----------------------------------
+
+    private const string TrapGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Safe",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Trap)", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Pit",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private sealed class FakeTrapEnqueuer
+    {
+        public List<(string Direction, string Sender, Action<string> Reply)> Calls { get; } = new();
+        public void Enqueue(string direction, string sender, Action<string> reply)
+            => Calls.Add((direction, sender, reply));
+    }
+
+    [Fact]
+    public void Walker_TrappedExit_RoutesThroughTrapEnqueuer_BeforeMoveBytes()
+    {
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Trap enqueue happened; no move bytes yet.
+        Assert.Single(trap.Calls);
+        Assert.Equal("north", trap.Calls[0].Direction);
+        Assert.Equal("walker", trap.Calls[0].Sender);
+        Assert.Empty(h.Sent);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.DisarmingTrap);
+    }
+
+    [Fact]
+    public void Walker_TrapDisarmSuccess_SendsMoveBytesAndAdvances()
+    {
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Fire the disarm-success reply.
+        trap.Calls[0].Reply("Trap to the north disarmed.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Confirm the move.
+        h.Tracker.NoteRoomObserved(new RoomObservation("Pit",
+            new HashSet<Direction> { Direction.S }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
+    [Fact]
+    public void Walker_TrapDisarmFailure_FailsTheWalk()
+    {
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        trap.Calls[0].Reply("Couldn't find trap to the north (20 attempts).");
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+        Assert.Empty(h.Sent);                                 // never sent the move
+    }
+
+    [Fact]
+    public void Walker_TrapStopped_CancelsWalk()
+    {
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        trap.Calls[0].Reply("Trap flow stopped.");
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Walker_TrappedExit_WithoutEnqueuerBound_SendsMoveDirectly()
+    {
+        // No trap enqueuer wired — walker falls back to the regular
+        // path. This is the "until production wires TrapDisarmManager"
+        // safety net.
+        Harness h = NewHarness(TrapGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
     // ----- unbound wire sender --------------------------------------
 
     [Fact]

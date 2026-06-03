@@ -906,6 +906,9 @@ public sealed class AppServices
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner);
+        // Phase 7 PR 7.22 — route walker over trapped exits through
+        // the Phase 6 TrapDisarmManager.
+        Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
 
         // Phase 7 PR 7.8 — per-BBS loop catalogue. The active BBS is
         // bound by MainWindowViewModel / Settings → BBS Apply at the

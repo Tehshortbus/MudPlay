@@ -42,6 +42,7 @@ public sealed class AutoWalkManager
     private readonly IRoomFilter? _filter;
     private readonly WirePromptScanner? _promptScanner;
     private Action<byte[]>? _wireSender;
+    private Action<string, string, Action<string>>? _trapEnqueuer;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -50,6 +51,7 @@ public sealed class AutoWalkManager
     private RoomKey? _destination;
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
+    private bool _awaitingTrapDisarm;
     private int _retryCount;
     private const int MaxRetriesPerStep = 1;
 
@@ -118,6 +120,24 @@ public sealed class AutoWalkManager
     }
 
     internal void SetWireSenderForTests(Action<byte[]> sender) => SetWireSender(sender);
+
+    /// <summary>
+    /// Bind the trap-disarm enqueuer (PR 7.22). Production wires this
+    /// to <see cref="Game.TrapDisarmManager.Enqueue"/> so trapped exits
+    /// route through the search-then-disarm flow before the move goes
+    /// out. Tests pass a capture-and-fire delegate.
+    /// </summary>
+    /// <remarks>
+    /// Signature: <c>(direction, sender, reply)</c>. The walker passes
+    /// the lowercase direction word, the literal string
+    /// <c>"walker"</c>, and a reply callback that resumes the walk on
+    /// success or aborts it on failure.
+    /// </remarks>
+    public void SetTrapEnqueuer(Action<string, string, Action<string>> enqueuer)
+    {
+        ArgumentNullException.ThrowIfNull(enqueuer);
+        _trapEnqueuer = enqueuer;
+    }
 
     /// <summary>
     /// Test seam — pretend the wire prompt scanner just fired, so the
@@ -239,6 +259,20 @@ public sealed class AutoWalkManager
         _expectedAfterCurrentMove = exit.Target;
         _stepInFlight = true;
 
+        // Trapped exits — route through TrapDisarmManager (PR 7.22)
+        // before the move bytes go out. The walker waits for the trap
+        // reply; the actual move bytes are sent from OnTrapReply.
+        if (exit.Hint == RoomExitHint.Trap && _trapEnqueuer is not null)
+        {
+            _awaitingTrapDisarm = true;
+            string dirWord = DirectionWord(step.Direction);
+            Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
+                $"trap on {dirWord}", _destination));
+            _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: disarm trap {dirWord}");
+            _trapEnqueuer(dirWord, "walker", OnTrapReply);
+            return;
+        }
+
         // Inform the tracker before the bytes go out so a synchronous
         // wire path or test harness sees Pending before any landing
         // observation arrives.
@@ -247,6 +281,71 @@ public sealed class AutoWalkManager
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
     }
+
+    private void OnTrapReply(string reply)
+    {
+        if (!_awaitingTrapDisarm) return;
+        _awaitingTrapDisarm = false;
+
+        // Stopped externally — bail without moving.
+        if (reply.Contains("flow stopped", StringComparison.OrdinalIgnoreCase))
+        {
+            Raise(new WalkEvent(WalkEventKind.Stopped,
+                "trap disarm cancelled", _destination));
+            Reset();
+            return;
+        }
+
+        // Success message from the TrapDisarmManager:
+        //   "Trap to the {direction} disarmed."
+        bool disarmed = reply.Contains("disarmed", StringComparison.OrdinalIgnoreCase);
+        if (!disarmed)
+        {
+            Raise(new WalkEvent(WalkEventKind.Failed,
+                $"trap disarm failed: {reply}", _destination));
+            Reset();
+            return;
+        }
+
+        // Trap cleared — fire the actual move now. The walker's
+        // _path[_index] is still the same MoveStep that triggered the
+        // disarm flow.
+        if (_path is null || _index >= _path.Count
+            || _path[_index] is not MoveStep step)
+        {
+            Reset();
+            return;
+        }
+
+        Room? current = _tracker.State.CurrentRoom;
+        if (current is null
+            || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
+        {
+            Raise(new WalkEvent(WalkEventKind.Failed,
+                "post-disarm: step source has no matching exit", _destination));
+            Reset();
+            return;
+        }
+
+        _tracker.NoteMoveSent(step.Direction);
+        byte[] bytes = EncodeMove(step.Direction);
+        WriteBytes(bytes, $"move {step.Direction} (post-disarm)");
+    }
+
+    private static string DirectionWord(Direction dir) => dir switch
+    {
+        Direction.N  => "north",
+        Direction.S  => "south",
+        Direction.E  => "east",
+        Direction.W  => "west",
+        Direction.NE => "northeast",
+        Direction.NW => "northwest",
+        Direction.SE => "southeast",
+        Direction.SW => "southwest",
+        Direction.U  => "up",
+        Direction.D  => "down",
+        _ => "?",
+    };
 
     private void SendCommandStep(CommandStep step)
     {
@@ -373,6 +472,7 @@ public sealed class AutoWalkManager
         _destination = null;
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
+        _awaitingTrapDisarm = false;
         _retryCount = 0;
         State = WalkState.Idle;
     }
@@ -416,6 +516,7 @@ public enum WalkEventKind
     Stopped = 5,
     Finished = 6,
     Failed = 7,
+    DisarmingTrap = 8,
 }
 
 public readonly record struct WalkEvent(WalkEventKind Kind, string Detail, RoomKey? Destination);
