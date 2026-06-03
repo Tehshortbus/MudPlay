@@ -85,6 +85,7 @@ public sealed class DoHandler : IDisposable
     private void OnDo(RemoteCommandContext ctx)
     {
         if (ctx.Args.Count == 0) return;
+        if (_wireSender is null) return;
         // Re-join the args with single spaces. The engine tokenised on
         // whitespace + RemoveEmptyEntries, so multi-space sequences in
         // the original message collapse to one space here. That's fine
@@ -94,8 +95,14 @@ public sealed class DoHandler : IDisposable
         string command = string.Join(" ", ctx.Args);
         byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
         LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
+        _wireSender(bytes);
         _log?.Log(LogSeverity.Info, "RemoteCmd",
             $"@do from {ctx.Sender}: '{command}'");
+        // Acknowledge the request — sender gets {ok} on the same
+        // channel they used, mirroring the existing curly-brace
+        // meta-line convention every other handler reply uses. Lets
+        // the sender know the command landed (not just that they got
+        // permission to send it).
+        ctx.Reply("ok");
     }
 }

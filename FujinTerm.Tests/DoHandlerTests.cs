@@ -57,6 +57,36 @@ public sealed class DoHandlerTests
     }
 
     [Fact]
+    public void Do_AcknowledgesSenderWithOkReply()
+    {
+        // After the wire-send lands, the sender gets {ok} back on the
+        // same channel they used — same curly-brace meta-line shape
+        // every other handler reply uses. Lets the sender confirm the
+        // command actually fired (not just that they were permitted).
+        var (engine, _, players, _) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.ExecuteCommands);
+
+        engine.DispatchForTests(Telepath("Trusted", "@do par"));
+
+        // Engine wraps the reply payload in { } at SendReply time and
+        // routes via telepath: `/Trusted {ok}\r`.
+        Assert.Equal("/Trusted {ok}\r",
+            Encoding.Latin1.GetString(engine.LastSentForTests[^1]));
+    }
+
+    [Fact]
+    public void Do_NoArgs_DoesNotAck()
+    {
+        // No work was done — no {ok} either.
+        var (engine, _, players, _) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.ExecuteCommands);
+
+        engine.DispatchForTests(Telepath("Trusted", "@do"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
     public void Do_MultiArgCommand_RejoinedWithSingleSpaces()
     {
         var (engine, _, players, wire) = Setup();
