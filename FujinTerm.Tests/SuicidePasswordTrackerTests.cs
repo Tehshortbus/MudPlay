@@ -236,4 +236,142 @@ public sealed class SuicidePasswordTrackerTests
         wrapped(Encoding.Latin1.GetBytes("par\r"));
         Assert.Equal(2, sent.Count);
     }
+
+    // ===== Char-mode capture (real MajorMUD path) ========================
+    // Password prompts use Telnet ECHO suppression — each keystroke
+    // ships as its own ObserveOutbound call, server echoes `*` per char.
+    // Pre-fix the tracker overwrote _pendingNewPassword each call and
+    // the trailing CR cleared it to null, leaving
+    // CharacterProfile.EncryptedSuicidePassword stuck at null on disk.
+
+    [Fact]
+    public void CharMode_CapturesAcrossMultipleSingleByteCalls()
+    {
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            Dispatch(router, "Enter New Password:");
+
+            // One byte per call — mirrors the real wire trace.
+            tracker.ObserveOutbound(new byte[] { (byte)'q' });
+            tracker.ObserveOutbound(new byte[] { (byte)'w' });
+            tracker.ObserveOutbound(new byte[] { (byte)'e' });
+            tracker.ObserveOutbound(new byte[] { (byte)'r' });
+            tracker.ObserveOutbound(new byte[] { 0x0D });   // Enter
+
+            Dispatch(router, "Password changed");
+
+            Assert.NotNull(profile.Current!.EncryptedSuicidePassword);
+            Assert.Equal("qwer", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void CharMode_BackspaceShrinksAccumulatedPassword()
+    {
+        // User mistypes 'x', backspaces, types the correct char.
+        // Server-side echo treats backspace as deleting one '*' from
+        // the displayed asterisks; our captured value must match.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            Dispatch(router, "Enter New Password:");
+
+            tracker.ObserveOutbound(new byte[] { (byte)'p' });
+            tracker.ObserveOutbound(new byte[] { (byte)'a' });
+            tracker.ObserveOutbound(new byte[] { (byte)'x' });
+            tracker.ObserveOutbound(new byte[] { 0x08 });  // backspace
+            tracker.ObserveOutbound(new byte[] { (byte)'s' });
+            tracker.ObserveOutbound(new byte[] { (byte)'s' });
+            tracker.ObserveOutbound(new byte[] { 0x0D });
+
+            Dispatch(router, "Password changed");
+
+            Assert.Equal("pass", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void CharMode_DelKey0x7F_AlsoShrinksBuffer()
+    {
+        // Some terminals send 0x7F (DEL) for the Backspace key instead
+        // of 0x08. Tracker treats both identically.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(new byte[] { (byte)'a', (byte)'b', 0x7F, (byte)'c', 0x0D });
+            Dispatch(router, "Password changed");
+
+            Assert.Equal("ac", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void CharMode_LoneEnterAfterPromptDoesNotCommit()
+    {
+        // User hits Enter immediately at the new-password prompt — the
+        // server fires "Password NOT changed" and we must leave the
+        // stored value untouched.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            // Pre-seed something so we can verify it's not overwritten.
+            profile.Current!.EncryptedSuicidePassword = protector.Protect("kept");
+
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(new byte[] { 0x0D });
+            Dispatch(router, "Password NOT changed");
+
+            Assert.Equal("kept", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void CharMode_OldPasswordPhase_DoesNotPollute_NewPasswordCapture()
+    {
+        // Full set-existing flow as the user actually sees it:
+        // current-password phase types pass through unobserved (state
+        // gate), then new-password phase captures only that phase's
+        // bytes. Pre-fix any leftover from the old phase could have
+        // ended up in the captured candidate.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            Dispatch(router, "Enter the current password:");
+            tracker.ObserveOutbound(new byte[] { (byte)'o', (byte)'l', (byte)'d', (byte)'p', (byte)'w', 0x0D });
+
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(new byte[] { (byte)'n' });
+            tracker.ObserveOutbound(new byte[] { (byte)'e' });
+            tracker.ObserveOutbound(new byte[] { (byte)'w' });
+            tracker.ObserveOutbound(new byte[] { 0x0D });
+
+            Dispatch(router, "Password changed");
+
+            Assert.Equal("new", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void CharMode_LFAlsoTerminatesLine()
+    {
+        // Some BBSes send LF instead of CR. Tracker treats both as
+        // line terminators so the password commits on whichever fires.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(new byte[] { (byte)'a', (byte)'b', (byte)'c', 0x0A });
+            Dispatch(router, "Password changed");
+
+            Assert.Equal("abc", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
 }

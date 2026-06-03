@@ -74,6 +74,22 @@ public sealed class SuicidePasswordTracker : IDisposable
     private FlowState _state = FlowState.Idle;
     private string? _pendingNewPassword;
 
+    /// <summary>
+    /// Char-by-char accumulator for the password capture. Lets
+    /// <see cref="ObserveOutbound"/> work regardless of whether the
+    /// wire-send path is line-mode (LocalInputBuffer flushes the whole
+    /// password + CR as one call) or char-mode (real path — MajorMUD's
+    /// password prompts use server-side Telnet ECHO suppression, so each
+    /// keystroke ships individually and the server echoes <c>*</c> back
+    /// per char). The pre-fix "overwrite _pendingNewPassword each call"
+    /// model silently lost everything but the latest char under char-
+    /// mode, and the trailing CR cleared the field entirely, surfacing
+    /// as "Password Changed observed but no captured candidate to
+    /// commit." in the LogPane and a stay-<c>null</c>
+    /// <see cref="CharacterProfile.EncryptedSuicidePassword"/> on disk.
+    /// </summary>
+    private readonly StringBuilder _passwordBuilder = new();
+
     /// <summary>Current state of the flow — exposed for tests + diagnostics.</summary>
     public FlowState State => _state;
 
@@ -118,23 +134,61 @@ public sealed class SuicidePasswordTracker : IDisposable
     /// need it: it's the same as the new one was, before they changed
     /// it) or the use-suicide attempt.
     /// </summary>
+    /// <remarks>
+    /// Bytes are accumulated into <see cref="_passwordBuilder"/> until
+    /// a CR / LF terminator arrives. Works for both wire-send modes:
+    /// <list type="bullet">
+    ///   <item><b>Char-mode</b> (real path on MajorMUD password
+    ///         prompts) — server uses Telnet ECHO suppression, each
+    ///         keystroke ships as its own ObserveOutbound call, server
+    ///         echoes <c>*</c> per char.</item>
+    ///   <item><b>Line-mode</b> — entire password + CR arrives in one
+    ///         call from LocalInputBuffer's flush. The loop below
+    ///         processes the chars and finalizes on the trailing CR
+    ///         the same way as char-mode.</item>
+    /// </list>
+    /// Backspace bytes (<c>0x08</c> / <c>0x7F</c>) shrink the buffer so
+    /// the user typing a wrong char and correcting it produces the
+    /// right captured value.
+    /// </remarks>
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
         if (_state != FlowState.AwaitingNewPassword) return;
         if (bytes.IsEmpty) return;
-        // The line ends with CR / LF; strip and capture.
-        string text = Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n', '\0');
-        if (string.IsNullOrEmpty(text))
+
+        foreach (byte b in bytes)
         {
-            // Empty line — user pressed Enter without typing. The
-            // server will fire "Password NOT changed" next; let that
-            // terminator handle the reset.
-            _pendingNewPassword = null;
-            return;
+            switch (b)
+            {
+                case 0x0D: // CR
+                case 0x0A: // LF
+                    // Line terminator — finalize whatever we
+                    // accumulated. Empty buffer = user just hit Enter
+                    // without typing; let the server's "Password NOT
+                    // changed" terminator drive the reset.
+                    if (_passwordBuilder.Length > 0)
+                    {
+                        _pendingNewPassword = _passwordBuilder.ToString();
+                        _log?.Log(LogSeverity.Info, "Suicide",
+                            $"Captured candidate new password ({_pendingNewPassword.Length} char), waiting for confirmation.");
+                    }
+                    else
+                    {
+                        _pendingNewPassword = null;
+                    }
+                    _passwordBuilder.Clear();
+                    return;
+                case 0x08: // backspace
+                case 0x7F: // delete
+                    if (_passwordBuilder.Length > 0) _passwordBuilder.Length--;
+                    break;
+                case 0x00: // NUL — skip
+                    break;
+                default:
+                    _passwordBuilder.Append((char)b);
+                    break;
+            }
         }
-        _pendingNewPassword = text;
-        _log?.Log(LogSeverity.Info, "Suicide",
-            $"Captured candidate new password ({text.Length} char), waiting for confirmation.");
     }
 
     // ----- Server-line handlers ------------------------------------------
@@ -159,6 +213,10 @@ public sealed class SuicidePasswordTracker : IDisposable
         _state = FlowState.AwaitingNewPassword;
         _gate.IsLocked = true;
         _pendingNewPassword = null;
+        // Reset the char accumulator — the old-password phase doesn't
+        // touch it (state gate is AwaitingNewPassword in ObserveOutbound)
+        // but defensive-clear in case a future state extension does.
+        _passwordBuilder.Clear();
         _log?.Log(LogSeverity.Info, "Suicide",
             "Awaiting new-password entry — engine gate LOCKED.");
     }
@@ -228,6 +286,10 @@ public sealed class SuicidePasswordTracker : IDisposable
     {
         _state = FlowState.Idle;
         _gate.IsLocked = false;
+        // Drop any in-flight char accumulation so a fresh flow doesn't
+        // inherit leftover bytes from an aborted one (e.g. user typed
+        // half a password then the server bailed with "Invalid").
+        _passwordBuilder.Clear();
         _log?.Log(LogSeverity.Info, "Suicide", $"Engine gate UNLOCKED — {reason}");
     }
 }
