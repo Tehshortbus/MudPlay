@@ -104,7 +104,8 @@
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
                                  AutoLairRooms="{Binding AutoLairRooms}"
-                                 WalkPathIsAutoLair="{Binding IsAutoLairing}">
+                                 WalkPathIsAutoLair="{Binding IsAutoLairing}"
+                                 SelectedRoomKey="{Binding SelectedRoomKey, Mode=TwoWay}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"

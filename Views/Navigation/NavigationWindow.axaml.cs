@@ -28,10 +28,16 @@ public partial class NavigationWindow : Window
         // just update ContextRoomKey before it opens.
         if (this.FindControl<MapControl>("MapHost") is { } map)
         {
-            map.RoomRightClicked += OnMapRoomRightClicked;
-            map.RoomLeftClicked  += OnMapRoomLeftClicked;
-            map.RoomHovered      += OnMapRoomHovered;
+            map.RoomRightClicked       += OnMapRoomRightClicked;
+            map.RoomLeftClicked        += OnMapRoomLeftClicked;
+            map.RoomHovered            += OnMapRoomHovered;
+            map.FloorChangeRequested   += OnMapFloorChangeRequested;
         }
+    }
+
+    private void OnMapFloorChangeRequested(Game.Map.RoomKey newOrigin)
+    {
+        if (DataContext is NavigationViewModel vm) vm.OnFloorChangeRequested(newOrigin);
     }
 
     private void OnMapRoomHovered(Game.Map.RoomKey? key, Point cursor)

@@ -137,6 +137,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
     [ObservableProperty] private bool _isAutoLairing;
+    [ObservableProperty] private RoomKey? _selectedRoomKey;
 
     // ----- Search ---------------------------------------------------
 
@@ -316,6 +317,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public void OnRoomLeftClicked(RoomKey key)
     {
         LoopBuilder?.AddClick(key);
+    }
+
+    /// <summary>
+    /// Called by the window when the map crawler hits an up/down
+    /// exit. Rebuilds the layout from the new room so the user can
+    /// continue crawling on the new floor.
+    /// </summary>
+    public void OnFloorChangeRequested(RoomKey newOrigin)
+    {
+        if (_services.RoomGraph.GetRoom(newOrigin) is null) return;
+        Layout = _services.Bfs.BuildLayout(newOrigin);
+        SelectedRoomKey = newOrigin;
     }
 
     [RelayCommand]

@@ -68,6 +68,9 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<bool> WalkPathIsAutoLairProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoLair));
 
+    public static readonly StyledProperty<RoomKey?> SelectedRoomKeyProperty =
+        AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(SelectedRoomKey));
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -140,6 +143,25 @@ public sealed class MapControl : Control
         set => SetValue(WalkPathIsAutoLairProperty, value);
     }
 
+    /// <summary>
+    /// Cursor for the keyboard map-crawler. Null = no selection (the
+    /// current room is implicitly active when the user first presses
+    /// a navigation key). Drawn as a cyan ring around the cell so it
+    /// reads distinctly from the amber current-room highlight.
+    /// </summary>
+    public RoomKey? SelectedRoomKey
+    {
+        get => GetValue(SelectedRoomKeyProperty);
+        set => SetValue(SelectedRoomKeyProperty, value);
+    }
+
+    /// <summary>
+    /// Fired when the user steps the crawler up or down — the layout
+    /// host is expected to rebuild from the new room (which lives on a
+    /// different floor and therefore isn't in the current layout).
+    /// </summary>
+    public event Action<RoomKey>? FloorChangeRequested;
+
     // ----- view-state ------------------------------------------------
 
     /// <summary>World tile size in layout units. Multiplied by <see cref="_zoom"/> to get screen pixels.</summary>
@@ -200,6 +222,7 @@ public sealed class MapControl : Control
     private static readonly IPen   UpBorderPen     = new Pen(new SolidColorBrush(Color.Parse("#00A000")), 1.5);
     private static readonly IPen   DownBorderPen   = new Pen(new SolidColorBrush(Color.Parse("#B4B400")), 1.5);
     private static readonly IPen   UpDownBorderPen = new Pen(new SolidColorBrush(Color.Parse("#FFD250")), 1.5);
+    private static readonly IPen   SelectionPen   = new Pen(new SolidColorBrush(Color.Parse("#00DDDD")), 2.0);
     private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
     {
         LineCap = PenLineCap.Round,
@@ -243,7 +266,7 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
-            AutoLairRoomsProperty, WalkPathIsAutoLairProperty);
+            AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty);
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -275,6 +298,7 @@ public sealed class MapControl : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        Focus();                                              // grab keyboard focus for the map crawler
         PointerPoint point = e.GetCurrentPoint(this);
 
         if (point.Properties.IsLeftButtonPressed)
@@ -367,6 +391,101 @@ public sealed class MapControl : Control
         }
     }
 
+    // ----- map crawler (keyboard navigation) -------------------------
+
+    protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (Graph is null || Layout is null) return;
+
+        // Floor change — U / D step the crawler onto a different
+        // floor; the host rebuilds the layout from the new room.
+        if (e.Key == Key.PageUp)   { TryStepFloor(Direction.U); e.Handled = true; return; }
+        if (e.Key == Key.PageDown) { TryStepFloor(Direction.D); e.Handled = true; return; }
+
+        // Home re-centres on the live current room.
+        if (e.Key == Key.Home)
+        {
+            if (CurrentRoomKey is { } cur)
+            {
+                SelectedRoomKey = cur;
+                EnsureSelectionVisible();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        Direction? dir = e.Key switch
+        {
+            Key.NumPad8 or Key.Up    => Direction.N,
+            Key.NumPad2 or Key.Down  => Direction.S,
+            Key.NumPad6 or Key.Right => Direction.E,
+            Key.NumPad4 or Key.Left  => Direction.W,
+            Key.NumPad7              => Direction.NW,
+            Key.NumPad9              => Direction.NE,
+            Key.NumPad1              => Direction.SW,
+            Key.NumPad3              => Direction.SE,
+            _                        => null,
+        };
+        if (dir is { } d)
+        {
+            TryStepSelection(d);
+            e.Handled = true;
+        }
+    }
+
+    private RoomKey CrawlOrigin() =>
+        SelectedRoomKey ?? CurrentRoomKey ?? Layout!.Origin;
+
+    private void TryStepSelection(Direction dir)
+    {
+        if (Layout is null || Graph is null) return;
+        RoomKey here = CrawlOrigin();
+        if (Graph.GetRoom(here) is not { } room) return;
+        if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return;
+        if (!Layout.Positions.ContainsKey(exit.Target)) return;       // off this floor
+        SelectedRoomKey = exit.Target;
+        EnsureSelectionVisible();
+    }
+
+    private void TryStepFloor(Direction dir)
+    {
+        if (Layout is null || Graph is null) return;
+        RoomKey here = CrawlOrigin();
+        if (Graph.GetRoom(here) is not { } room) return;
+        if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return;
+        FloorChangeRequested?.Invoke(exit.Target);
+    }
+
+    private void EnsureSelectionVisible()
+    {
+        if (Layout is null || SelectedRoomKey is not { } key) return;
+        if (!Layout.Positions.TryGetValue(key, out (int X, int Y) coord)) return;
+
+        double tilePixels = TileWorldSize * _zoom;
+        if (tilePixels < 4) return;
+
+        // Selection screen position with current pan.
+        double cx = Bounds.Width  / 2 + _panX + coord.X * tilePixels;
+        double cy = Bounds.Height / 2 + _panY + coord.Y * tilePixels;
+        double half = tilePixels / 2;
+        // Inset margin so we don't pan only when the cell is on the
+        // razor edge — keep a half-cell buffer around the viewport.
+        double margin = half + tilePixels;
+
+        bool offLeft   = cx - half < margin;
+        bool offRight  = cx + half > Bounds.Width  - margin;
+        bool offTop    = cy - half < margin;
+        bool offBottom = cy + half > Bounds.Height - margin;
+
+        if (!offLeft && !offRight && !offTop && !offBottom) return;
+
+        // Re-centre on the selected cell.
+        _panX = -coord.X * tilePixels;
+        _panY = -coord.Y * tilePixels;
+        InvalidateVisual();
+    }
+
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
@@ -452,6 +571,15 @@ public sealed class MapControl : Control
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
                 && tilePixels >= 16)
                 DrawSequenceNumber(context, cell, seq);
+
+            // Crawler selection ring — drawn inside the cell with a
+            // small inset so it sits between the cell border and the
+            // room node, distinct from the amber current-room ring.
+            if (SelectedRoomKey is { } sel && sel.Equals(kvp.Value))
+            {
+                Rect ring = cell.Deflate(1);
+                context.DrawRectangle(null, SelectionPen, ring);
+            }
         }
 
         // Pass 4: top-of-stack polylines.
