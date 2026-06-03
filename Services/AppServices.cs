@@ -524,6 +524,14 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
 
+    /// <summary>
+    /// BFS pathfinding + planar layout over the active
+    /// <see cref="RoomGraph"/>. Consumed by the walker, loop runner,
+    /// auto-lair scheduler (pathfinding), and the Navigation
+    /// <c>MapControl</c> (layout). PR 7.5.
+    /// </summary>
+    public Game.Map.BfsMapper Bfs { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -850,6 +858,11 @@ public sealed class AppServices
         // when the active set rebuilds.
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
+
+        // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
+        // cache invalidates on every graph reload.
+        Bfs = new Game.Map.BfsMapper(RoomGraph);
+        RoomGraph.GraphReloaded += Bfs.OnGraphReloaded;
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
