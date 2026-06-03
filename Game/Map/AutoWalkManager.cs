@@ -239,6 +239,11 @@ public sealed class AutoWalkManager
         _expectedAfterCurrentMove = exit.Target;
         _stepInFlight = true;
 
+        // Inform the tracker before the bytes go out so a synchronous
+        // wire path or test harness sees Pending before any landing
+        // observation arrives.
+        _tracker.NoteMoveSent(step.Direction);
+
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
     }

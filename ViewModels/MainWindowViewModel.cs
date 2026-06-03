@@ -48,6 +48,11 @@ public partial class MainWindowViewModel : ObservableObject
     // GC root for the look-on-player parser — sibling to the who-list
     // parser; populates race / class / equipment from `look <player>`.
     private readonly Game.LookParser _lookParser;
+    // GC root for the room-display + movement-refusal parsers (PR 7.1b).
+    // Both subscribe to LineExtractor in their ctors and stay alive
+    // with this view-model.
+    private readonly Game.Map.RoomDisplayParser _roomDisplayParser;
+    private readonly Game.Map.MovementRefusalDetector _movementRefusalDetector;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -381,6 +386,14 @@ public partial class MainWindowViewModel : ObservableObject
         // player into PlayerDatabase.
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
+
+        // Phase 7 PR 7.1b — room-display + movement-refusal parsers
+        // feeding RoomTracker. Same per-session LineExtractor binding
+        // shape as the who/look parsers above.
+        _roomDisplayParser       = new Game.Map.RoomDisplayParser(Lines,
+            AppServices.Current.RoomTracker, AppServices.Current.Log);
+        _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
+            AppServices.Current.RoomTracker, AppServices.Current.Log);
 
         // PartyManager lives at AppServices level (so the @-command engine
         // and PartyWindow can grab a stable reference), but its par-block
