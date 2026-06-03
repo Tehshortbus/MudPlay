@@ -415,6 +415,46 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.IsType<MoveStep>(h.Walker.Steps[0]);
     }
 
+    // ----- text exits (commit 4) -------------------------------------
+
+    private const string TextExitGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Docks",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2 (Text: borrow skiff, go skiff)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Pier",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/1", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_TextExit_SendsFirstTextCommand_NotCardinal()
+    {
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("borrow skiff\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
+    public void Walker_TextExit_RoomLandsAtTarget_AdvancesPath()
+    {
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("Pier",
+            new HashSet<Direction> { Direction.N }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
     // ----- trapped exits (PR 7.22) -----------------------------------
 
     private const string TrapGraphJson = """

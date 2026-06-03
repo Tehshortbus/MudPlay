@@ -473,6 +473,11 @@ public partial class MainWindowViewModel : ObservableObject
         // routes door exits through Door.Enqueue at step-send time.
         AppServices.Current.Door.SetWireSender(engineSend);
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
+        // HiddenExitRevealManager — same gate-wrapped sender so the
+        // sea loop can't land mid-password-prompt. Walker routes
+        // SearchableHidden exits here.
+        AppServices.Current.HiddenSearch.SetWireSender(engineSend);
+        AppServices.Current.Walker.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
         // Phase 7 walker + loop runner — gate-wrapped so a long walk
         // doesn't blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);

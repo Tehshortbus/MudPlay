@@ -128,4 +128,12 @@ public sealed class OtherSettings
     /// flip this on. Default <c>false</c> (bash-first).
     /// </summary>
     public bool PicklocksOverBash { get; set; }
+
+    /// <summary>
+    /// Walker max <c>sea &lt;dir&gt;</c> retries when revealing a
+    /// hidden exit (<c>(Hidden)</c> modifier) along the path. Default
+    /// 20 — mirrors the trap-search cap since it's the same verb,
+    /// kept separate so the user can tune them independently.
+    /// </summary>
+    public int MaxHiddenSearchAttempts { get; set; } = 20;
 }

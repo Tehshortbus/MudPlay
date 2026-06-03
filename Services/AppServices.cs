@@ -246,6 +246,15 @@ public sealed class AppServices
     public Game.Map.DoorOpenManager Door { get; }
 
     /// <summary>
+    /// Walker's hidden-exit reveal FSM — fires <c>sea &lt;dir&gt;</c>
+    /// in a retry loop until the exit appears on the room display.
+    /// Subscribes to <see cref="RoomTracker.StateChanged"/> for the
+    /// "exit now visible" signal; max retries pulled live from
+    /// <see cref="Models.Profile.OtherSettings.MaxHiddenSearchAttempts"/>.
+    /// </summary>
+    public Game.Map.HiddenExitRevealManager HiddenSearch { get; }
+
+    /// <summary>
     /// Auth boundary + queue gate for <c>@trap</c>: parses the
     /// direction, runs the channel-aware Traps-skill gate, and hands
     /// off to <see cref="TrapDisarm"/>. <c>@trap stop</c> drains the
@@ -830,6 +839,9 @@ public sealed class AppServices
             picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
             itemNameLookup:             id => ItemNames.GetName(id),
             log: Log);
+        // HiddenSearch is constructed later, after RoomTracker exists
+        // (it subscribes to RoomTracker.StateChanged for the reveal
+        // signal). See the wiring near RoomTracker = new(...).
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by
@@ -1000,6 +1012,16 @@ public sealed class AppServices
         // Death-message detector — bound to the per-session
         // LineExtractor by MainWindowViewModel.AttachLineExtractor.
         Death = new Game.DeathDetector(RoomTracker, Log);
+
+        // HiddenExitRevealManager — walker's sea-retry loop for
+        // SearchableHidden exits. Subscribes to RoomTracker.StateChanged
+        // for the "exit now visible" signal. Constructed here (after
+        // RoomTracker exists); the walker's enqueuer binding and the
+        // wire-sender land in MainWindowVM.
+        HiddenSearch = new Game.Map.HiddenExitRevealManager(
+            RoomTracker,
+            maxAttemptsProvider: () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxHiddenSearchAttempts,
+            log: Log);
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
         // cache invalidates on every graph reload.

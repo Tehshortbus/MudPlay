@@ -45,6 +45,8 @@ public sealed class AutoWalkManager
     private Action<string, string, Action<string>>? _trapEnqueuer;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private bool _awaitingDoorOpen;
+    private Action<Direction, string, Action<HiddenSearchResult>>? _hiddenSearchEnqueuer;
+    private bool _awaitingHiddenReveal;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -176,6 +178,19 @@ public sealed class AutoWalkManager
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _doorEnqueuer = enqueuer;
+    }
+
+    /// <summary>
+    /// Hidden-exit reveal enqueuer — walker calls this for
+    /// <see cref="RoomExitHint.SearchableHidden"/> exits to fire the
+    /// <c>sea &lt;dir&gt;</c> retry loop until the exit appears on
+    /// the room display. MainWindowVM binds this to
+    /// <see cref="HiddenExitRevealManager.Enqueue"/>.
+    /// </summary>
+    public void SetHiddenSearchEnqueuer(Action<Direction, string, Action<HiddenSearchResult>> enqueuer)
+    {
+        ArgumentNullException.ThrowIfNull(enqueuer);
+        _hiddenSearchEnqueuer = enqueuer;
     }
 
     /// <summary>
@@ -332,6 +347,32 @@ public sealed class AutoWalkManager
             return;
         }
 
+        // Text exits — `(Text: cmd1, cmd2, ...)` modifier. Any one of
+        // the alternatives moves the player (no follow-up cardinal).
+        // We send the first; future PRs may choose smarter (e.g.
+        // shortest, or last-known-good).
+        if (exit.Hint == RoomExitHint.Text && exit.TextCommands is { Count: > 0 } cmds)
+        {
+            string textCmd = cmds[0];
+            _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
+            byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
+            WriteBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
+            return;
+        }
+
+        // SearchableHidden — `(Hidden)` modifier. Send `sea <dir>`
+        // until the exit appears in the room tracker's CurrentRoom,
+        // then send the cardinal move. Capped by
+        // Settings.Other.MaxHiddenSearchAttempts.
+        if (exit.Hint == RoomExitHint.SearchableHidden && _hiddenSearchEnqueuer is not null)
+        {
+            _awaitingHiddenReveal = true;
+            _log?.Info("Walker",
+                $"step {_index + 1}/{_path!.Count}: revealing hidden exit {step.Direction}");
+            _hiddenSearchEnqueuer(step.Direction, "walker", OnHiddenRevealReply);
+            return;
+        }
+
         // Inform the tracker before the bytes go out so a synchronous
         // wire path or test harness sees Pending before any landing
         // observation arrives.
@@ -339,6 +380,42 @@ public sealed class AutoWalkManager
 
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
+    }
+
+    private void OnHiddenRevealReply(HiddenSearchResult result)
+    {
+        if (!_awaitingHiddenReveal) return;
+        _awaitingHiddenReveal = false;
+
+        switch (result)
+        {
+            case HiddenSearchResult.Revealed:
+                if (_path is null || _index >= _path.Count
+                    || _path[_index] is not MoveStep step)
+                {
+                    Reset();
+                    return;
+                }
+                Room? current = _tracker.State.CurrentRoom;
+                if (current is null
+                    || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
+                {
+                    Raise(new WalkEvent(WalkEventKind.Failed,
+                        "post-hidden-reveal: step source has no matching exit", _destination));
+                    Reset();
+                    return;
+                }
+                _tracker.NoteMoveSent(step.Direction);
+                byte[] bytes = EncodeMove(step.Direction);
+                WriteBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
+                return;
+
+            case HiddenSearchResult.Failed failed:
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    $"hidden exit search failed: {failed.Reason}", _destination));
+                Reset();
+                return;
+        }
     }
 
     private void OnDoorReply(DoorOpenResult result)
