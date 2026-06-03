@@ -134,6 +134,27 @@ public sealed class SuicideHandlerTests
     }
 
     [Fact]
+    public void InvalidResponse_WhenWarnOnDenialOff_StaysSilent()
+    {
+        // Per the engine-wide reply policy: WarnOnDenial gates ALL
+        // invalid / denial replies including specific-reason ones
+        // emitted by handlers. With the flag off, the
+        // invalid-password telepath is suppressed.
+        using Harness h = new();
+        h.Engine.WarnOnDenial = false;
+        GrantElevated(h.Players, "Trusted");
+        h.Profile.Current!.EncryptedSuicidePassword = h.Protector.Protect("wrongpw");
+
+        DispatchTelepath(h.Router, "Trusted", "@suicide");
+        h.Wire.Clear();
+
+        DispatchLine(h.Router, "Invalid password specified.");
+
+        Assert.DoesNotContain(h.Wire,
+            b => Encoding.Latin1.GetString(b).Contains("invalid suicide password is stored"));
+    }
+
+    [Fact]
     public void InvalidResponseWithNoPendingInvocation_IsIgnored()
     {
         // A "Invalid password specified." line from the user's own

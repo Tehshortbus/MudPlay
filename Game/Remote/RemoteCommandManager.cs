@@ -254,14 +254,16 @@ public sealed class RemoteCommandManager : IDisposable
         // Suicide lives-threshold — user-configured policy block.
         // UNLIKE the hard-blocks above, this DOES reply because the
         // caller is typically a trusted party member and the policy
-        // is explicit, not a safety net. Without the reply they'd
-        // assume our @-command engine is broken.
+        // is explicit, not a safety net. Routes through
+        // SendDenialReply so the WarnOnDenial master gate applies
+        // (specific reason wins over the generic FailureMessage
+        // when WarnOnDenial is on; nothing sent when it's off).
         string? suicideReply = GetSuicidePolicyBlockReply(command, args);
         if (suicideReply is not null)
         {
             _log?.Log(LogSeverity.Info, "RemoteCmd",
                 $"Suicide policy-blocked from {entry.Speaker}: {suicideReply}");
-            SendReply(channel.Value, entry.Speaker, suicideReply);
+            SendDenialReply(channel.Value, entry.Speaker, specificReason: suicideReply);
             return;
         }
 
@@ -313,17 +315,30 @@ public sealed class RemoteCommandManager : IDisposable
     };
 
     /// <summary>
-    /// Send the Settings.Talk-configured failure-message reply when the
-    /// engine has denied a command for one of the "sender expects an
-    /// answer" reasons (unknown command, per-player flag denial,
-    /// party-whitelist denial). No-op when <see cref="WarnOnDenial"/> is
-    /// false or the message is blank.
+    /// Send a denial reply to the sender. <paramref name="specificReason"/>
+    /// — when non-null — wins over the generic
+    /// <see cref="FailureMessage"/>; null falls through to the
+    /// configured generic text. Always gated by
+    /// <see cref="WarnOnDenial"/>: when off, ALL invalid / denial
+    /// replies are suppressed regardless of whether the reason is
+    /// specific or generic.
     /// </summary>
-    private void SendDenialReply(RemoteChannel channel, string sender)
+    /// <remarks>
+    /// Used by both the engine's own denial paths (unknown command,
+    /// per-player flag denial, party-whitelist denial — all use
+    /// the generic <see cref="FailureMessage"/>) and the suicide
+    /// policy-block path (passes a specific reason).
+    /// Handler-side failure replies (e.g.
+    /// <see cref="SuicideHandler"/>'s invalid-password telepath)
+    /// must check <see cref="WarnOnDenial"/> themselves before
+    /// invoking <see cref="RemoteCommandContext.Reply"/>.
+    /// </remarks>
+    private void SendDenialReply(RemoteChannel channel, string sender, string? specificReason = null)
     {
         if (!WarnOnDenial) return;
-        if (string.IsNullOrWhiteSpace(FailureMessage)) return;
-        SendReply(channel, sender, FailureMessage);
+        string text = specificReason ?? FailureMessage;
+        if (string.IsNullOrWhiteSpace(text)) return;
+        SendReply(channel, sender, text);
     }
 
     /// <summary>

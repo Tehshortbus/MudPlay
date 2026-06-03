@@ -647,6 +647,24 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
+    public void SuicidePolicyBlock_WarnOnDenialOff_StaysSilent()
+    {
+        // WarnOnDenial is the master gate for ALL invalid / denial
+        // replies — specific reasons included. When unchecked, the
+        // policy-block reply is suppressed.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.SysopCommands);
+        engine.MaxSuicideLivesThreshold = 5;
+        engine.LivesProvider = () => 4;
+        engine.WarnOnDenial = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => { });
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
     public void PartySuicide_StaysSilentEvenAboveThreshold()
     {
         // @party suicide is the unconditional hard-block path; should

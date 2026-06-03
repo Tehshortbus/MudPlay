@@ -127,6 +127,12 @@ public sealed class SuicideHandler : IDisposable
         if (_pendingReply is null) return;
         Action<string> reply = _pendingReply;
         _pendingReply = null;
+        // Gate the failure reply on the engine's WarnOnDenial flag,
+        // same policy the engine's own denial paths obey: when the
+        // user has unchecked "warn sender on invalid / denied",
+        // failure responses are suppressed regardless of how
+        // specific the reason is.
+        if (!_engine.WarnOnDenial) return;
         reply("invalid suicide password is stored, unable");
     }
 }
