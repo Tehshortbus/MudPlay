@@ -260,10 +260,47 @@ public sealed class RoomTracker
                 break;
 
             case RoomConfidence.Lost:
-                // Lost → only an unambiguous candidate resolves us.
+            case RoomConfidence.PendingRespawn:
+                // Lost / PendingRespawn → observation is authoritative;
+                // land via candidate search. PendingRespawn arrives via
+                // the same code path because the recovery semantics are
+                // identical: the next obs is wherever we are now.
                 LandFromCandidateSearch(observation, when);
                 break;
         }
+    }
+
+    /// <summary>
+    /// The death-message detector saw the post-suicide / killed-in-combat
+    /// <c>You now have N lives remaining.</c> line. Capture a
+    /// <see cref="DeathRecord"/> on the loaded profile (room captured =
+    /// where we were when the death message fired), drain pending
+    /// state, and transition to <see cref="RoomConfidence.PendingRespawn"/>
+    /// so the next observation lands as the new authoritative position
+    /// without churning Suspect strikes.
+    /// </summary>
+    public void NoteDeath(int livesRemaining, string? messageText = null, DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        Room? died = State.CurrentRoom;
+
+        if (_profile is not null)
+        {
+            var record = new DeathRecord(
+                when,
+                died is null ? null : new RoomRef(died.Key.Map, died.Key.Room),
+                livesRemaining,
+                messageText);
+            _profile.DeathHistory ??= new List<DeathRecord>();
+            _profile.DeathHistory.Add(record);
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Death recorded at {(died?.Key.ToString() ?? "(unknown room)")}; {livesRemaining} lives remaining.");
+        }
+
+        while (_pending.TryDequeue(out _)) { /* drain */ }
+        _recentSteps.Clear();
+        PersistSteps();
+        SetRoom(room: null, RoomConfidence.PendingRespawn, when, "death recorded");
     }
 
     /// <summary>

@@ -51,4 +51,15 @@ public enum RoomConfidence
     /// "I am here" on the Navigation map.
     /// </summary>
     Lost = 4,
+
+    /// <summary>
+    /// The character died — the death message just fired. The server
+    /// will respawn them at the realm's death-respawn room; the next
+    /// room observation arrives there. The tracker drains its pending
+    /// queue / steps, records the death on the profile, and treats the
+    /// next observation as authoritative source-of-truth (same as the
+    /// <see cref="Unknown"/> path: 1-of-1 candidate → Confirmed, else
+    /// ambiguous → Suspect, else Lost).
+    /// </summary>
+    PendingRespawn = 5,
 }

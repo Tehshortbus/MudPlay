@@ -192,4 +192,13 @@ public sealed class CharacterProfile
     /// steps to replay.
     /// </summary>
     public List<DirectionDto>? RecentSteps { get; set; }
+
+    /// <summary>
+    /// Append-only history of deaths observed for this character.
+    /// Written by <see cref="Game.DeathDetector"/> when the
+    /// <c>You now have N lives remaining.</c> message arrives;
+    /// consumed by the Phase 9 Workshop DEATH section. <c>null</c> /
+    /// empty means no deaths yet (the lucky case).
+    /// </summary>
+    public List<DeathRecord>? DeathHistory { get; set; }
 }

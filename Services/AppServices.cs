@@ -536,6 +536,18 @@ public sealed class AppServices
     public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
 
     /// <summary>
+    /// Death-message detector — watches lines for the post-suicide /
+    /// killed-in-combat <c>You now have N lives remaining.</c> shape
+    /// and fires <see cref="Game.Map.RoomTracker.NoteDeath"/>. Captures
+    /// a <see cref="Models.Profile.DeathRecord"/> on the loaded profile
+    /// for the Phase 9 Workshop DEATH section and pivots the tracker
+    /// into <see cref="Game.Map.RoomConfidence.PendingRespawn"/>.
+    /// Bound to the per-session LineExtractor by
+    /// <c>MainWindowViewModel</c>.
+    /// </summary>
+    public Game.DeathDetector Death { get; private set; } = null!;
+
+    /// <summary>
     /// BFS pathfinding + planar layout over the active
     /// <see cref="RoomGraph"/>. Consumed by the walker, loop runner,
     /// auto-lair scheduler (pathfinding), and the Navigation
@@ -926,6 +938,10 @@ public sealed class AppServices
         // typed at the terminal or conversation window. Hooked into the
         // wire-send pipeline by MainWindowViewModel.SendUserInput.
         OutboundMovement = new Game.Map.OutboundMovementObserver(RoomTracker, Log);
+
+        // Death-message detector — bound to the per-session
+        // LineExtractor by MainWindowViewModel.AttachLineExtractor.
+        Death = new Game.DeathDetector(RoomTracker, Log);
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
         // cache invalidates on every graph reload.

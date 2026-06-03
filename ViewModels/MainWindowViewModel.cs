@@ -405,6 +405,12 @@ public partial class MainWindowViewModel : ObservableObject
         // field onto AppServices.Current.PlayerStats; feeds
         // RemoteCommandManager.LivesProvider for the @suicide gate.
         AppServices.Current.Stats.AttachLineExtractor(Lines);
+        // DeathDetector — watches for the post-death
+        // "You now have N lives remaining." line; fires
+        // RoomTracker.NoteDeath which appends to
+        // CharacterProfile.DeathHistory and transitions to
+        // PendingRespawn ahead of the respawn-room display.
+        AppServices.Current.Death.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
