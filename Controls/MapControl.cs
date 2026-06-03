@@ -100,6 +100,16 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty);
     }
 
+    /// <summary>
+    /// Fired when the user right-clicks a placed room cell. Carries
+    /// the hit room key and the pointer position (in control-local
+    /// coordinates) so the host can open a context menu at the click.
+    /// </summary>
+    public event Action<RoomKey, Point>? RoomRightClicked;
+
+    /// <summary>Fired on a left-click of a placed room cell (used by the loop-builder mode in PR 7.15).</summary>
+    public event Action<RoomKey, Point>? RoomLeftClicked;
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -124,7 +134,46 @@ public sealed class MapControl : Control
             _panStartY = _panY;
             e.Pointer.Capture(this);
             e.Handled = true;
+            return;
         }
+
+        // Hit-test the room cells. Right-click opens the context menu
+        // via the host's RoomRightClicked handler; left-click is the
+        // generic select / add-to-loop signal.
+        if (TryHitTestRoom(point.Position, out RoomKey hit))
+        {
+            if (point.Properties.IsRightButtonPressed)
+                RoomRightClicked?.Invoke(hit, point.Position);
+            else if (point.Properties.IsLeftButtonPressed)
+                RoomLeftClicked?.Invoke(hit, point.Position);
+            e.Handled = true;
+        }
+    }
+
+    private bool TryHitTestRoom(Point position, out RoomKey hit)
+    {
+        hit = default;
+        if (Layout is null) return false;
+
+        double cell = CellSide * _zoom;
+        double stride = Stride * _zoom;
+        double cx = Bounds.Width  / 2 + _panX;
+        double cy = Bounds.Height / 2 + _panY;
+        double half = cell / 2;
+
+        foreach (KeyValuePair<RoomKey, (int X, int Y)> kvp in Layout.Positions)
+        {
+            (int gx, int gy) = kvp.Value;
+            double x = cx + gx * stride - half;
+            double y = cy + gy * stride - half;
+            if (position.X >= x && position.X <= x + cell
+                && position.Y >= y && position.Y <= y + cell)
+            {
+                hit = kvp.Key;
+                return true;
+            }
+        }
+        return false;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)

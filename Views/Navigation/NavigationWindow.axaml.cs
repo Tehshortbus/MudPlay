@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using FujinTerm.Controls;
 using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Views.Navigation;
@@ -19,6 +21,20 @@ public partial class NavigationWindow : Window
         InitializeComponent();
         GlobalHotkeys.Attach(this);
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "navigation");
+
+        // PR 7.14 — route the map's right-click events into the VM so
+        // the context menu items target the clicked room. The
+        // ContextMenu itself is wired declaratively in AXAML; here we
+        // just update ContextRoomKey before it opens.
+        if (this.FindControl<MapControl>("MapHost") is { } map)
+        {
+            map.RoomRightClicked += OnMapRoomRightClicked;
+        }
+    }
+
+    private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)
+    {
+        if (DataContext is NavigationViewModel vm) vm.ContextRoomKey = key;
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

@@ -139,6 +139,55 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Loops.NoteRun(row.Source.Name);
     }
 
+    // ----- Room context menu (PR 7.14) -------------------------------
+
+    /// <summary>Room currently surfaced in the context menu (set by the map's right-click handler).</summary>
+    [ObservableProperty] private RoomKey? _contextRoomKey;
+
+    /// <summary>Name of the context room — empty when none is selected.</summary>
+    public string ContextRoomName =>
+        ContextRoomKey is { } k && Graph?.GetRoom(k) is { } r ? r.Name : "(unknown)";
+
+    partial void OnContextRoomKeyChanged(RoomKey? value)
+    {
+        OnPropertyChanged(nameof(ContextRoomName));
+        OnPropertyChanged(nameof(ContextIsAvoided));
+        OnPropertyChanged(nameof(ContextIsStash));
+    }
+
+    public bool ContextIsAvoided => ContextRoomKey is { } k && _services.Movement.IsAvoided(k);
+    public bool ContextIsStash   => ContextRoomKey is { } k && _services.Movement.IsStash(k);
+
+    [RelayCommand]
+    private void WalkToContextRoom()
+    {
+        if (ContextRoomKey is { } k) _services.Walker.WalkTo(k);
+    }
+
+    [RelayCommand]
+    private void SetContextRoomLocated()
+    {
+        if (ContextRoomKey is { } k) _services.RoomTracker.SetLocated(k);
+    }
+
+    [RelayCommand]
+    private void ToggleContextRoomAvoided()
+    {
+        if (ContextRoomKey is not { } k) return;
+        if (_services.Movement.IsAvoided(k)) _services.Movement.UnmarkAvoided(k);
+        else _services.Movement.MarkAvoided(k);
+        OnPropertyChanged(nameof(ContextIsAvoided));
+    }
+
+    [RelayCommand]
+    private void ToggleContextRoomStash()
+    {
+        if (ContextRoomKey is not { } k) return;
+        if (_services.Movement.IsStash(k)) _services.Movement.UnmarkStash(k);
+        else _services.Movement.MarkStash(k);
+        OnPropertyChanged(nameof(ContextIsStash));
+    }
+
     // ----- Mode bar -------------------------------------------------
     //
     // PR 7.10 ships the visual toggles; the click handlers route

@@ -76,9 +76,27 @@
         <Grid Grid.Row="1" ColumnDefinitions="*,260">
 
             <controls:MapControl Grid.Column="0"
+                                 Name="MapHost"
                                  Layout="{Binding Layout}"
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
-                                 Graph="{Binding Graph}"/>
+                                 Graph="{Binding Graph}">
+                <controls:MapControl.ContextMenu>
+                    <ContextMenu Name="RoomContextMenu">
+                        <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
+                                  IsEnabled="False" FontWeight="SemiBold"/>
+                        <Separator/>
+                        <MenuItem Header="Walk here"
+                                  Command="{Binding WalkToContextRoomCommand}"/>
+                        <MenuItem Header="I am here (set located)"
+                                  Command="{Binding SetContextRoomLocatedCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="Toggle: Avoid this room"
+                                  Command="{Binding ToggleContextRoomAvoidedCommand}"/>
+                        <MenuItem Header="Toggle: Stash room"
+                                  Command="{Binding ToggleContextRoomStashCommand}"/>
+                    </ContextMenu>
+                </controls:MapControl.ContextMenu>
+            </controls:MapControl>
 
             <Border Grid.Column="1" Background="#141414"
                     BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">
