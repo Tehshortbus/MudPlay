@@ -84,6 +84,24 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
+    public void Version_RepliesWithNameAndVersion_MatchingOtherClientShape()
+    {
+        // Matches the format other clients use (e.g. MegaMUD replies
+        // "{MegaMud 1.03u}"): "<name> <version>" inside the braces.
+        // Version comes from AppInfo.Version which reads the
+        // compiled assembly's InformationalVersion — so a csproj
+        // <Version> bump propagates automatically.
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryVersion);
+        engine.DispatchForTests(Telepath("Friend", "@version"));
+
+        string reply = LastReply(engine);
+        Assert.Contains($"{{FujinTerm {Services.AppInfo.Version}}}", reply);
+        // Sanity: the version actually loaded (not the "unknown" fallback).
+        Assert.NotEqual("unknown", Services.AppInfo.Version);
+    }
+
+    [Fact]
     public void Health_NoPromptData_RepliesUnknown()
     {
         var (engine, _, _, _, players, _) = Setup();

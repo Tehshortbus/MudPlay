@@ -133,7 +133,10 @@ public sealed class PartyEssentialHandlers : IDisposable
     // ----- Query handlers -------------------------------------------------
 
     private void OnVersion(RemoteCommandContext ctx) =>
-        ctx.Reply(AppInfo.DisplayName);
+        // Matches the format other clients use for the same query
+        // (e.g. MegaMUD replies "{MegaMud 1.03u}"): "<name> <version>"
+        // bracketed by the engine's SendReply at wire time.
+        ctx.Reply(AppInfo.DisplayNameWithVersion);
 
     private void OnHealth(RemoteCommandContext ctx)
     {
