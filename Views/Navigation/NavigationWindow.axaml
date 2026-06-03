@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:controls="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
@@ -74,11 +75,10 @@
         <!-- Main: map placeholder | right rail -->
         <Grid Grid.Row="1" ColumnDefinitions="*,260">
 
-            <Border Grid.Column="0" Background="#0E0E0E">
-                <TextBlock Text="Map renders here (PR 7.11 MapControl)"
-                           Foreground="#555" FontSize="11"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <controls:MapControl Grid.Column="0"
+                                 Layout="{Binding Layout}"
+                                 CurrentRoomKey="{Binding CurrentRoomKey}"
+                                 Graph="{Binding Graph}"/>
 
             <Border Grid.Column="1" Background="#141414"
                     BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">

@@ -23,8 +23,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
+        _services.RoomGraph.GraphReloaded += OnGraphReloaded;
+        Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
+        RefreshLayout();
     }
 
     public void Dispose()
@@ -32,6 +35,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
+        _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
     }
 
     // ----- Status strip ---------------------------------------------
@@ -40,6 +44,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _statusBadgeBrush = "#888";
     [ObservableProperty] private string _currentRoomLabel = "—";
     [ObservableProperty] private bool _isPaused;
+
+    // ----- Map binding ----------------------------------------------
+
+    [ObservableProperty] private RoomLayout? _layout;
+    [ObservableProperty] private RoomKey? _currentRoomKey;
+    [ObservableProperty] private RoomGraphManager? _graph;
 
     // ----- Mode bar -------------------------------------------------
     //
@@ -103,6 +113,26 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         CurrentRoomLabel = state.CurrentRoom is { } room
             ? $"{room.Name}  ·  {room.Key}"
             : "—";
+
+        // Re-centre the layout on the new room when we land on one
+        // outside the cached layout (typical after a reconnect or a
+        // big walk). The map control re-fits visually via its own
+        // FitToCurrent helper when the binding changes.
+        CurrentRoomKey = state.CurrentRoom?.Key;
+        if (state.CurrentRoom is { } here && (Layout is null
+            || !Layout.Positions.ContainsKey(here.Key)))
+        {
+            Layout = _services.Bfs.BuildLayout(here.Key);
+        }
+    }
+
+    private void OnGraphReloaded() => RefreshLayout();
+
+    private void RefreshLayout()
+    {
+        Graph = _services.RoomGraph;
+        RoomKey? key = _services.RoomTracker.State.CurrentRoom?.Key;
+        Layout = key is { } k ? _services.Bfs.BuildLayout(k) : null;
     }
 
     private void RefreshFromWalker()
