@@ -152,6 +152,10 @@
                         <TextBlock Text="No loops saved on this BBS."
                                    Foreground="#666" FontSize="11"
                                    IsVisible="{Binding !HasLoops}"/>
+                        <Button Content="Stop running loop" FontSize="11"
+                                Padding="8,2" Margin="0,4,0,0"
+                                IsVisible="{Binding IsLoopRunning}"
+                                Command="{Binding StopLoopCommand}"/>
                         <ItemsControl ItemsSource="{Binding Loops}"
                                       IsVisible="{Binding HasLoops}">
                             <ItemsControl.ItemTemplate>

@@ -462,6 +462,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Do.SetWireSender(engineSend);
         // @trap auto-disarm — gate-wrapped (same reason).
         AppServices.Current.TrapDisarm.SetWireSender(engineSend);
+        // Phase 7 walker + loop runner — gate-wrapped so a long walk
+        // doesn't blast moves through a password-entry prompt.
+        AppServices.Current.Walker.SetWireSender(engineSend);
+        AppServices.Current.LoopRunner.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate

@@ -28,6 +28,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.Loops.LoopsChanged += OnLoopsChanged;
+        _services.LoopRunner.Event += OnLoopRunnerEvent;
         Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
@@ -42,7 +43,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.Loops.LoopsChanged -= OnLoopsChanged;
+        _services.LoopRunner.Event -= OnLoopRunnerEvent;
     }
+
+    private void OnLoopRunnerEvent(LoopEvent _) => OnPropertyChanged(nameof(IsLoopRunning));
 
     // ----- Status strip ---------------------------------------------
 
@@ -133,11 +137,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RunLoop(LoopRowViewModel? row)
     {
-        // PR 7.16 wires the loop runner; for now stamp LastRunAt so
-        // the badge updates and we can verify the path round-trips.
         if (row is null) return;
-        _services.Loops.NoteRun(row.Source.Name);
+        if (_services.LoopRunner.Start(row.Source))
+            _services.Loops.NoteRun(row.Source.Name);
     }
+
+    [RelayCommand]
+    private void StopLoop() => _services.LoopRunner.Stop();
+
+    public bool IsLoopRunning => _services.LoopRunner.State != LoopState.Idle;
 
     // ----- Room context menu (PR 7.14) -------------------------------
 

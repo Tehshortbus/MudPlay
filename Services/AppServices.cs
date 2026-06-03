@@ -560,6 +560,14 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.LoopManager Loops { get; private set; } = null!;
 
+    /// <summary>
+    /// Loop execution engine — Phase 7 PR 7.16. Shares
+    /// <see cref="MovementCoordinator"/> + <see cref="RoomTracker"/>
+    /// with the walker, plus <see cref="WirePromptScanner"/> for
+    /// command-step confirmation.
+    /// </summary>
+    public Game.Map.LoopRunner LoopRunner { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -917,6 +925,12 @@ public sealed class AppServices
         Profile.ProfileLoaded += p => Loops.LoadAll(p.BbsName);
         Profile.BbsPinApplied += p => Loops.LoadAll(p.BbsName);
         Profile.ProfileClosed += () => Loops.LoadAll(null);
+
+        // Phase 7 PR 7.16 — loop execution engine. MainWindowViewModel
+        // binds the wire-sender once telnet is up (same pattern as
+        // the walker).
+        LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
+            PromptScanner, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
