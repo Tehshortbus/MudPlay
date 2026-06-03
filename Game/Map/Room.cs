@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace FujinTerm.Game.Map;
 
@@ -85,4 +86,19 @@ public sealed record Room
     /// </summary>
     internal static readonly IReadOnlyDictionary<Direction, RoomExit> EmptyExits
         = new ReadOnlyDictionary<Direction, RoomExit>(new Dictionary<Direction, RoomExit>());
+
+    /// <summary>
+    /// <c>true</c> when at least one outbound exit carries
+    /// <see cref="RoomExitHint.Trap"/>. The map UI renders a red
+    /// half-connector glyph on the trapped exit, and the walker
+    /// (PR 7.22) routes through <c>TrapDisarmManager</c> before
+    /// stepping in that direction.
+    /// </summary>
+    public bool HasTrappedExits => Exits.Values.Any(e => e.Hint == RoomExitHint.Trap);
+
+    /// <summary>Directions whose <see cref="RoomExit.Hint"/> is <see cref="RoomExitHint.Trap"/>. Empty when none.</summary>
+    public IReadOnlyList<Direction> TrappedDirections =>
+        Exits.Where(kvp => kvp.Value.Hint == RoomExitHint.Trap)
+             .Select(kvp => kvp.Key)
+             .ToArray();
 }

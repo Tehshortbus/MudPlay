@@ -106,6 +106,14 @@ public sealed class RoomGraphManager
     }
 
     /// <summary>
+    /// Every room in the active set that carries at least one trapped
+    /// exit (per the imported <c>(Trap)</c> hint). The
+    /// <c>MapControl</c> (PR 7.11) iterates this to overlay red
+    /// half-connector glyphs without rescanning every room.
+    /// </summary>
+    public IEnumerable<Room> TrappedRooms => _rooms.Values.Where(r => r.HasTrappedExits);
+
+    /// <summary>
     /// True when the active set contains exactly one room with this
     /// room's <c>(Name, ExitMask)</c> tuple. False for ambiguous tuples
     /// and for rooms not in the active graph.
