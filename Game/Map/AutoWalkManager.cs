@@ -47,6 +47,8 @@ public sealed class AutoWalkManager
     private bool _awaitingDoorOpen;
     private Action<Direction, string, Action<HiddenSearchResult>>? _hiddenSearchEnqueuer;
     private bool _awaitingHiddenReveal;
+    private Func<RoomKey, RoomKey, string?>? _teleportResolver;
+    private Func<bool>? _isLeaderWithFollowers;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -191,6 +193,30 @@ public sealed class AutoWalkManager
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _hiddenSearchEnqueuer = enqueuer;
+    }
+
+    /// <summary>
+    /// Teleport-keyword resolver — given (source room, destination
+    /// room) the walker calls this to look up the verbatim command
+    /// it should send (from the source room's CMD chain in
+    /// <see cref="Services.TBInfoStore"/>). Bound by MainWindowVM.
+    /// </summary>
+    public void SetTeleportResolver(Func<RoomKey, RoomKey, string?> resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        _teleportResolver = resolver;
+    }
+
+    /// <summary>
+    /// Predicate the walker uses to decide whether to prefix a
+    /// teleport with <c>.@party &lt;cmd&gt;</c> so followers come
+    /// along. Returns <c>true</c> when the local character is party
+    /// leader AND there's at least one follower.
+    /// </summary>
+    public void SetPartyLeaderCheck(Func<bool> check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+        _isLeaderWithFollowers = check;
     }
 
     /// <summary>
@@ -357,6 +383,39 @@ public sealed class AutoWalkManager
             _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
             byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
             WriteBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
+            return;
+        }
+
+        // Teleport exits — `(Item: N)` modifier on a room whose CMD
+        // is non-zero. The CMD indexes a TBInfo Action chain whose
+        // matching `teleport <room> <map>` directive identifies the
+        // keyword(s) the player types. Party-breaking — leader
+        // broadcasts via `.@party <keyword>` so followers come along
+        // before the leader teleports.
+        if (exit.Hint == RoomExitHint.Teleport)
+        {
+            Room? source = _tracker.State.CurrentRoom;
+            string? keyword = (source is not null && _teleportResolver is not null)
+                ? _teleportResolver(source.Key, exit.Target)
+                : null;
+            if (keyword is null)
+            {
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    "no teleport keyword resolved (TBInfo entry missing or not for this destination)",
+                    _destination));
+                Reset();
+                return;
+            }
+
+            if (_isLeaderWithFollowers?.Invoke() == true)
+            {
+                byte[] partyBytes = Encoding.Latin1.GetBytes($".@party {keyword}\r");
+                WriteBytes(partyBytes, $"teleport party-relay '.@party {keyword}'");
+            }
+
+            _tracker.NoteMoveSent(keyword, cardinal: step.Direction);
+            byte[] tpBytes = Encoding.Latin1.GetBytes(keyword + "\r");
+            WriteBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
             return;
         }
 

@@ -455,6 +455,80 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
     }
 
+    // ----- teleport exits (commit 5) --------------------------------
+
+    // Source room (1/10) CMD=100 + (Item: 474) on a SW exit → Teleport.
+    private const string TeleportGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 10, "Name": "Grove",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0, "CMD": 100,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "7/131 (Item: 474)",
+            "U": "0", "D": "0" },
+          { "Map Number": 7, "Room Number": 131, "Name": "Stone Arch",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0",
+            "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_TeleportExit_NoResolver_FailsWithReason()
+    {
+        Harness h = NewHarness(TeleportGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 10));
+        // No SetTeleportResolver — walker can't dispatch.
+        h.Walker.WalkTo(new RoomKey(7, 131));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Failed && e.Detail.Contains("teleport"));
+    }
+
+    [Fact]
+    public void Walker_TeleportExit_WithResolver_SendsKeyword()
+    {
+        Harness h = NewHarness(TeleportGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 10));
+        h.Walker.SetTeleportResolver((src, dst) =>
+            src.Equals(new RoomKey(1, 10)) && dst.Equals(new RoomKey(7, 131))
+                ? "go arch"
+                : null);
+        h.Walker.WalkTo(new RoomKey(7, 131));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
+    public void Walker_TeleportExit_PartyLeaderWithFollowers_SendsAtPartyFirst()
+    {
+        Harness h = NewHarness(TeleportGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 10));
+        h.Walker.SetTeleportResolver((_, _) => "go arch");
+        h.Walker.SetPartyLeaderCheck(() => true);
+        h.Walker.WalkTo(new RoomKey(7, 131));
+
+        // Two payloads: .@party broadcast first, then self.
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal(".@party go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Equal("go arch\r",         Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
+    public void Walker_TeleportExit_SoloChar_SkipsAtPartyBroadcast()
+    {
+        Harness h = NewHarness(TeleportGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 10));
+        h.Walker.SetTeleportResolver((_, _) => "go arch");
+        h.Walker.SetPartyLeaderCheck(() => false);
+        h.Walker.WalkTo(new RoomKey(7, 131));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
     // ----- trapped exits (PR 7.22) -----------------------------------
 
     private const string TrapGraphJson = """

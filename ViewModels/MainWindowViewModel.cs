@@ -478,6 +478,21 @@ public partial class MainWindowViewModel : ObservableObject
         // SearchableHidden exits here.
         AppServices.Current.HiddenSearch.SetWireSender(engineSend);
         AppServices.Current.Walker.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
+        // Teleport-exit wiring — walker resolves (source, destination)
+        // → keyword via TBInfoTeleportResolver against the active
+        // TBInfoStore, and pre-broadcasts the keyword to followers via
+        // `.@party <kw>` when the local character is party leader.
+        AppServices.Current.Walker.SetTeleportResolver(
+            (source, dest) =>
+            {
+                Game.Map.Room? src = AppServices.Current.RoomGraph.GetRoom(source);
+                if (src is null || src.Cmd <= 0) return null;
+                return Game.Map.TBInfoTeleportResolver.Resolve(
+                    AppServices.Current.TBInfo, src.Cmd, dest);
+            });
+        AppServices.Current.Walker.SetPartyLeaderCheck(
+            () => AppServices.Current.Party.State.SelfIsLeader
+                && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf));
         // Phase 7 walker + loop runner — gate-wrapped so a long walk
         // doesn't blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);
