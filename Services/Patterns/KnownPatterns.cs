@@ -151,4 +151,6 @@ public static class KnownPatterns
     public const string DoorOpenedNow         = "door.opened.now";         // "is now open" (after open)
     public const string DoorAlreadyOpen       = "door.opened.already";     // "is already open"
     public const string DoorIsLocked          = "door.islocked";           // "is locked" (open hit a keyed door)
+    public const string DoorKeyUnlockSuccess  = "door.key.unlocked";       // "successfully unlocked" (after use <key> <dir>)
+    public const string DoorKeyUnknown        = "door.key.unknown";        // "have no <item>" / "you don't have" (use <key> failed)
 }

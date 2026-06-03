@@ -43,7 +43,7 @@ public sealed class AutoWalkManager
     private readonly WirePromptScanner? _promptScanner;
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
-    private Action<Direction, int, bool, string, Action<DoorOpenResult>>? _doorEnqueuer;
+    private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private bool _awaitingDoorOpen;
     private readonly LogService? _log;
 
@@ -172,7 +172,7 @@ public sealed class AutoWalkManager
     /// move on the callback's terminal <see cref="DoorOpenResult"/>.
     /// MainWindowVM binds this to <see cref="DoorOpenManager.Enqueue"/>.
     /// </summary>
-    public void SetDoorEnqueuer(Action<Direction, int, bool, string, Action<DoorOpenResult>> enqueuer)
+    public void SetDoorEnqueuer(Action<Direction, int, bool, int, string, Action<DoorOpenResult>> enqueuer)
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _doorEnqueuer = enqueuer;
@@ -312,19 +312,23 @@ public sealed class AutoWalkManager
             return;
         }
 
-        // Door exits — route through DoorOpenManager to bash/pick/open
-        // before the move bytes go out. Sub-states mirror MudProxy's
-        // door FSM: walker pauses on the open verb, resumes the move
-        // when the door is confirmed open. Failure aborts the walk.
-        if (exit.Hint == RoomExitHint.Door && _doorEnqueuer is not null)
+        // Door / KeyLocked exits — route through DoorOpenManager to
+        // bash/pick/open before the move bytes go out. The keyed-door
+        // path (KeyItemId > 0) tries bash/pick first to save key
+        // charges (per MudProxy 1280-1322) and falls back to the
+        // single-shot `use <keyName> <dir>` + `open <dir>` sequence
+        // when no stat-alt is viable or both verbs exhaust.
+        if ((exit.Hint == RoomExitHint.Door || exit.Hint == RoomExitHint.KeyLocked)
+            && _doorEnqueuer is not null)
         {
             _awaitingDoorOpen = true;
             _log?.Info("Walker",
                 $"step {_index + 1}/{_path!.Count}: opening door {step.Direction}"
                 + (exit.StatRequirement > 0
                     ? $" (req {exit.StatRequirement}, canBash {exit.CanBash})"
-                    : ""));
-            _doorEnqueuer(step.Direction, exit.StatRequirement, exit.CanBash, "walker", OnDoorReply);
+                    : "")
+                + (exit.KeyItemId > 0 ? $" (key {exit.KeyItemId})" : ""));
+            _doorEnqueuer(step.Direction, exit.StatRequirement, exit.CanBash, exit.KeyItemId, "walker", OnDoorReply);
             return;
         }
 

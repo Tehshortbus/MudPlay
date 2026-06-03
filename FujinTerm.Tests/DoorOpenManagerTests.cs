@@ -24,6 +24,7 @@ public sealed class DoorOpenManagerTests
         public PlayerStats Stats { get; }
         public DoorOpenManager Mgr { get; }
         public List<byte[]> Sent { get; } = new();
+        public Dictionary<int, string> Items { get; } = new();
         public int MaxBash { get; set; } = 10;
         public int MaxPick { get; set; } = 10;
         public bool PicklocksOverBash { get; set; }
@@ -35,8 +36,11 @@ public sealed class DoorOpenManagerTests
             Stats = new PlayerStats();
             Stats.Strength = 50;
             Stats.Picklocks = 50;
+            Items[172] = "black star key";
+            Items[1980] = "ancient brass key";
             Mgr = new DoorOpenManager(Router, Stats,
-                () => MaxBash, () => MaxPick, () => PicklocksOverBash);
+                () => MaxBash, () => MaxPick, () => PicklocksOverBash,
+                itemNameLookup: id => Items.TryGetValue(id, out string? name) ? name : null);
             Mgr.SetWireSender(Sent.Add);
         }
 
@@ -234,5 +238,119 @@ public sealed class DoorOpenManagerTests
         using Harness h = new();
         h.Mgr.Enqueue(dir, 0, true, "walker", _ => { });
         Assert.Equal(expected, h.LastSent);
+    }
+
+    // ----- keyed-door FSM (commit 3) --------------------------------
+
+    [Fact]
+    public void KeyedDoor_StatAltMet_TriesBashFirst_SavesKey()
+    {
+        // Keyed door with bashable alternative. Player meets stats.
+        // Manager prefers bash → save the key charge.
+        using Harness h = new();
+        h.Stats.Strength = 100;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.W, 50, canBash: true, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal("bash w", h.LastSent);
+        h.Line("you bashed the door open.");
+        Assert.IsType<DoorOpenResult.Opened>(result);
+    }
+
+    [Fact]
+    public void KeyedDoor_NoStatAlt_GoesStraightToUseKey()
+    {
+        // Keyed door, no stat req at all → use the key directly.
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.W, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        // canBash=false + picklocks=0 → no viable verb → key path.
+        Assert.Equal("use black star key w", h.LastSent);
+        Assert.Equal(DoorOpenManager.DoorState.WaitingUseKey, h.Mgr.CurrentState);
+    }
+
+    [Fact]
+    public void KeyedDoor_UseKey_Succeeds_ThenOpen_ThenOpened()
+    {
+        // Force the no-viable-verb path so we go straight to key.
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal("use black star key e", h.LastSent);
+
+        h.Line("You successfully unlocked the door.");
+        Assert.Equal("open e", h.LastSent);
+        Assert.Equal(DoorOpenManager.DoorState.WaitingOpen, h.Mgr.CurrentState);
+
+        h.Line("The door is now open.");
+        Assert.IsType<DoorOpenResult.Opened>(result);
+    }
+
+    [Fact]
+    public void KeyedDoor_StatAltExhausted_FallsBackToKey()
+    {
+        // Player meets stats; bash tried first; bash exhausts → key.
+        using Harness h = new() { MaxBash = 1, MaxPick = 1 };
+        h.Stats.Strength = 100;
+        h.Stats.Picklocks = 100;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.S, 50, canBash: true, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal("bash s", h.LastSent);
+        h.Line("Your attempts to bash through fail.");
+        Assert.Equal("pick s", h.LastSent);
+        h.Line("Your lockpicking skill fails you.");
+        // Bash + pick both exhausted → key fallback.
+        Assert.Equal("use black star key s", h.LastSent);
+    }
+
+    [Fact]
+    public void KeyedDoor_UseKey_MissingKey_RepliesFailed()
+    {
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        h.Line("You have no black star key.");
+        Assert.IsType<DoorOpenResult.Failed>(result);
+    }
+
+    [Fact]
+    public void KeyedDoor_UnknownKeyId_FailsImmediately()
+    {
+        // Item id not in the ItemNameStore → walker can't form the
+        // verb. Fail fast.
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 9999, "walker", r => result = r);
+
+        Assert.IsType<DoorOpenResult.Failed>(result);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void OpenHitsLocked_WithKeyAvailable_SwingsToUseKey()
+    {
+        // Edge case: pick succeeded → open sent → server replies "is
+        // locked" (the lock came back on, or pick was on a different
+        // chamber). With a key, fall back rather than fail.
+        using Harness h = new() { PicklocksOverBash = true };
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.N, 50, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        h.Line("You successfully unlock the door.");      // pick OK
+        Assert.Equal("open n", h.LastSent);
+        h.Line("The door is locked.");                    // open says locked
+        Assert.Equal("use black star key n", h.LastSent);
     }
 }

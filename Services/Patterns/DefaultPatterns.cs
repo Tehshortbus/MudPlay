@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace FujinTerm.Services.Patterns;
 
 /// <summary>
@@ -368,6 +370,19 @@ public static class DefaultPatterns
             @"\b(?:door|gate) is already open\b");
         yield return new RegexPattern(KnownPatterns.DoorIsLocked,
             @"\b(?:door|gate) is locked\b");
+        // "You successfully unlocked the door/gate" — after `use <key> <dir>`.
+        // Distinct id from DoorPickSuccess so the FSM can branch on which
+        // verb produced the unlock (pick goes to open; use-key also goes
+        // to open, but the source state determines the next step).
+        yield return new RegexPattern(KnownPatterns.DoorKeyUnlockSuccess,
+            @"\bsuccessfully unlocked the (?:door|gate)\b",
+            options: RegexOptions.IgnoreCase);
+        // "You have no <item>" / "You don't have a key for that"
+        // — generic missing-key reply. Coarse to cover both phrasings;
+        // the manager only consults it during WaitingUseKey.
+        yield return new RegexPattern(KnownPatterns.DoorKeyUnknown,
+            @"\b(?:you have no |you don'?t have|nothing happens)\b",
+            options: RegexOptions.IgnoreCase);
     }
 
 }

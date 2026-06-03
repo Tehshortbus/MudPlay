@@ -48,6 +48,7 @@ public sealed class DoorOpenManager : IDisposable
     private readonly Func<int> _maxBashProvider;
     private readonly Func<int> _maxPickProvider;
     private readonly Func<bool> _picklocksOverBashProvider;
+    private readonly Func<int, string?> _itemNameLookup;
     private readonly LogService? _log;
     private readonly IDisposable _bashOkSub;
     private readonly IDisposable _bashFailSub;
@@ -57,6 +58,8 @@ public sealed class DoorOpenManager : IDisposable
     private readonly IDisposable _openedSub;
     private readonly IDisposable _alreadyOpenSub;
     private readonly IDisposable _lockedSub;
+    private readonly IDisposable _keyOkSub;
+    private readonly IDisposable _keyUnknownSub;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -82,6 +85,7 @@ public sealed class DoorOpenManager : IDisposable
         Func<int> maxBashAttemptsProvider,
         Func<int> maxPickAttemptsProvider,
         Func<bool> picklocksOverBashProvider,
+        Func<int, string?>? itemNameLookup = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -94,16 +98,21 @@ public sealed class DoorOpenManager : IDisposable
         _maxBashProvider = maxBashAttemptsProvider;
         _maxPickProvider = maxPickAttemptsProvider;
         _picklocksOverBashProvider = picklocksOverBashProvider;
+        // Default to "no items known" so plain-door tests can construct
+        // the manager without an ItemNameStore.
+        _itemNameLookup = itemNameLookup ?? (_ => null);
         _log = log;
 
-        _bashOkSub      = _router.Subscribe(KnownPatterns.DoorBashSuccess,   OnBashSuccess);
-        _bashFailSub    = _router.Subscribe(KnownPatterns.DoorBashFailure,   OnBashFailure);
-        _pickOkSub      = _router.Subscribe(KnownPatterns.DoorPickSuccess,   OnPickSuccess);
-        _pickFailSub    = _router.Subscribe(KnownPatterns.DoorPickFailure,   OnPickFailure);
-        _notLockedSub   = _router.Subscribe(KnownPatterns.DoorPickNotLocked, OnPickNotLocked);
-        _openedSub      = _router.Subscribe(KnownPatterns.DoorOpenedNow,     OnOpened);
-        _alreadyOpenSub = _router.Subscribe(KnownPatterns.DoorAlreadyOpen,   OnOpened);
-        _lockedSub      = _router.Subscribe(KnownPatterns.DoorIsLocked,      OnIsLocked);
+        _bashOkSub      = _router.Subscribe(KnownPatterns.DoorBashSuccess,      OnBashSuccess);
+        _bashFailSub    = _router.Subscribe(KnownPatterns.DoorBashFailure,      OnBashFailure);
+        _pickOkSub      = _router.Subscribe(KnownPatterns.DoorPickSuccess,      OnPickSuccess);
+        _pickFailSub    = _router.Subscribe(KnownPatterns.DoorPickFailure,      OnPickFailure);
+        _notLockedSub   = _router.Subscribe(KnownPatterns.DoorPickNotLocked,    OnPickNotLocked);
+        _openedSub      = _router.Subscribe(KnownPatterns.DoorOpenedNow,        OnOpened);
+        _alreadyOpenSub = _router.Subscribe(KnownPatterns.DoorAlreadyOpen,      OnOpened);
+        _lockedSub      = _router.Subscribe(KnownPatterns.DoorIsLocked,         OnIsLocked);
+        _keyOkSub       = _router.Subscribe(KnownPatterns.DoorKeyUnlockSuccess, OnKeyUnlockSuccess);
+        _keyUnknownSub  = _router.Subscribe(KnownPatterns.DoorKeyUnknown,       OnKeyUnknown);
     }
 
     /// <summary>
@@ -131,13 +140,42 @@ public sealed class DoorOpenManager : IDisposable
         _openedSub.Dispose();
         _alreadyOpenSub.Dispose();
         _lockedSub.Dispose();
+        _keyOkSub.Dispose();
+        _keyUnknownSub.Dispose();
     }
 
     /// <summary>
     /// Queue a door-open request. The walker normalises
     /// <paramref name="direction"/> to short form (<c>"n"</c> /
     /// <c>"ne"</c> / <c>"u"</c>) before calling. The callback fires
-    /// exactly once on terminal state.
+    /// exactly once on terminal state. <paramref name="keyItemId"/>
+    /// is <c>0</c> for plain doors; non-zero indexes the door's key
+    /// in <see cref="ItemNameStore"/>. When the door is keyed and
+    /// has a stat alternative, the manager tries bash/pick first to
+    /// save the key's limited charges (per MudProxy's 1280-1322
+    /// pattern); only falls back to the single-shot
+    /// <c>use &lt;keyName&gt; &lt;dir&gt;</c> + <c>open &lt;dir&gt;</c>
+    /// when bash/pick are unviable or exhaust.
+    /// </summary>
+    public void Enqueue(
+        Direction direction,
+        int statRequirement,
+        bool canBash,
+        int keyItemId,
+        string sender,
+        Action<DoorOpenResult> reply)
+    {
+        ArgumentNullException.ThrowIfNull(reply);
+        _queue.Enqueue(new DoorRequest(direction, statRequirement, canBash, keyItemId, sender, reply));
+        _log?.Info("Door",
+            $"open {DirectionShort(direction)} queued (sender={sender}, key={keyItemId}, depth={_queue.Count}).");
+        TryStartNext();
+    }
+
+    /// <summary>
+    /// Backwards-compatible overload for plain-door callers (no key).
+    /// Equivalent to <see cref="Enqueue(Direction, int, bool, int, string, Action{DoorOpenResult})"/>
+    /// with <c>keyItemId = 0</c>.
     /// </summary>
     public void Enqueue(
         Direction direction,
@@ -145,13 +183,7 @@ public sealed class DoorOpenManager : IDisposable
         bool canBash,
         string sender,
         Action<DoorOpenResult> reply)
-    {
-        ArgumentNullException.ThrowIfNull(reply);
-        _queue.Enqueue(new DoorRequest(direction, statRequirement, canBash, sender, reply));
-        _log?.Info("Door",
-            $"open {DirectionShort(direction)} queued (sender={sender}, depth={_queue.Count}).");
-        TryStartNext();
-    }
+        => Enqueue(direction, statRequirement, canBash, keyItemId: 0, sender, reply);
 
     /// <summary>
     /// Abort the current request (if any) + drain the queue. Pending
@@ -192,6 +224,19 @@ public sealed class DoorOpenManager : IDisposable
     private void StartChosenVerb()
     {
         if (_current is not { } cur) return;
+
+        // Keyed doors with NO stat alternative go straight to the key
+        // path. StatRequirement == 0 on a keyed door means "no
+        // picklocks/strength alt" — distinct from a plain door where
+        // 0 means "open by anyone". The walker can't tell these apart
+        // from RoomExit alone; the keyed-door branch is the
+        // discriminator here.
+        if (cur.KeyItemId > 0 && cur.StatRequirement <= 0)
+        {
+            StartUseKey();
+            return;
+        }
+
         string? verb = DoorPolicy.ChooseVerb(
             cur.StatRequirement,
             cur.CanBash,
@@ -200,10 +245,32 @@ public sealed class DoorOpenManager : IDisposable
             _picklocksOverBashProvider());
         if (verb is null)
         {
+            // No bash/pick viable. Try the key path if available;
+            // otherwise we're stuck.
+            if (cur.KeyItemId > 0)
+            {
+                StartUseKey();
+                return;
+            }
             FailCurrent($"no viable open verb (req {cur.StatRequirement}, str {_stats.Strength}, picks {_stats.Picklocks}, canBash {cur.CanBash})");
             return;
         }
         StartVerb(verb);
+    }
+
+    private void StartUseKey()
+    {
+        if (_current is not { } cur) return;
+        string? keyName = _itemNameLookup(cur.KeyItemId);
+        if (string.IsNullOrWhiteSpace(keyName))
+        {
+            FailCurrent($"key item {cur.KeyItemId} not in active item table");
+            return;
+        }
+        _state = DoorState.WaitingUseKey;
+        SendWire($"use {keyName} {cur.DirectionShort}");
+        _log?.Info("Door",
+            $"use {keyName} {cur.DirectionShort} (single-shot — keys have limited charges).");
     }
 
     private void StartVerb(string verb)
@@ -294,15 +361,40 @@ public sealed class DoorOpenManager : IDisposable
         SucceedCurrent();
     }
 
+    private void OnKeyUnlockSuccess(MatchResult _)
+    {
+        if (_state != DoorState.WaitingUseKey) return;
+        if (_current is null) return;
+        _log?.Info("Door", $"key unlock {_current.DirectionShort} succeeded — sending open.");
+        SendOpen();
+    }
+
+    private void OnKeyUnknown(MatchResult _)
+    {
+        if (_state != DoorState.WaitingUseKey) return;
+        if (_current is null) return;
+        // "You have no <key>" / "You don't have" — terminal failure.
+        // Keys are single-shot; no retry on the use verb.
+        FailCurrent("use-key failed (key missing or wrong)");
+    }
+
     private void OnIsLocked(MatchResult _)
     {
-        if (_state != DoorState.WaitingOpen) return;
         if (_current is null) return;
-        // Open hit a locked door — plain doors shouldn't see this
-        // (we bash/pick first). Plain-door FSM fails here; the
-        // key-door FSM (commit 3) routes this back to a use-key
-        // sequence.
-        FailCurrent("door is locked (no key available)");
+
+        // Plain door open path hit a locked door. If a key is
+        // available, swing into the key sequence; otherwise fail.
+        if (_state == DoorState.WaitingOpen)
+        {
+            if (_current.KeyItemId > 0)
+            {
+                _log?.Info("Door",
+                    $"open {_current.DirectionShort}: door is locked — swinging to key sequence.");
+                StartUseKey();
+                return;
+            }
+            FailCurrent("door is locked (no key available)");
+        }
     }
 
     // ----- terminal transitions ---------------------------------------
@@ -312,6 +404,15 @@ public sealed class DoorOpenManager : IDisposable
         if (_current is not { } cur) return;
         if (_triedFallbackVerb)
         {
+            // Bash + pick both exhausted. Keyed doors get one more
+            // chance via the use-key path before we surrender.
+            if (cur.KeyItemId > 0)
+            {
+                _log?.Info("Door",
+                    $"{reason}; falling back to key for door {cur.DirectionShort}.");
+                StartUseKey();
+                return;
+            }
             FailCurrent($"{reason}; fallback verb also exhausted");
             return;
         }
@@ -325,6 +426,14 @@ public sealed class DoorOpenManager : IDisposable
             : (cur.StatRequirement <= 0 || _stats.Picklocks >= cur.StatRequirement);
         if (!otherViable || other is null)
         {
+            // No alt verb viable. Keyed doors fall through to the key.
+            if (cur.KeyItemId > 0)
+            {
+                _log?.Info("Door",
+                    $"{reason}; alt verb unviable, falling back to key for door {cur.DirectionShort}.");
+                StartUseKey();
+                return;
+            }
             FailCurrent($"{reason}; no viable fallback verb");
             return;
         }
@@ -394,12 +503,15 @@ public sealed class DoorOpenManager : IDisposable
         WaitingPick,
         /// <summary>Pick succeeded (or door was unlocked); sent <c>open &lt;dir&gt;</c>; awaiting opened line.</summary>
         WaitingOpen,
+        /// <summary>Sent <c>use &lt;keyName&gt; &lt;dir&gt;</c>; awaiting unlock-success / key-missing.</summary>
+        WaitingUseKey,
     }
 
     private sealed record DoorRequest(
         Direction Direction,
         int StatRequirement,
         bool CanBash,
+        int KeyItemId,
         string Sender,
         Action<DoorOpenResult> Reply)
     {

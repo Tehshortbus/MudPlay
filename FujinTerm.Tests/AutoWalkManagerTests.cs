@@ -341,9 +341,9 @@ public sealed class AutoWalkManagerTests : IDisposable
 
     private sealed class FakeDoorEnqueuer
     {
-        public List<(Direction Direction, int StatReq, bool CanBash, string Sender, Action<DoorOpenResult> Reply)> Calls { get; } = new();
-        public void Enqueue(Direction direction, int statReq, bool canBash, string sender, Action<DoorOpenResult> reply)
-            => Calls.Add((direction, statReq, canBash, sender, reply));
+        public List<(Direction Direction, int StatReq, bool CanBash, int KeyItemId, string Sender, Action<DoorOpenResult> Reply)> Calls { get; } = new();
+        public void Enqueue(Direction direction, int statReq, bool canBash, int keyItemId, string sender, Action<DoorOpenResult> reply)
+            => Calls.Add((direction, statReq, canBash, keyItemId, sender, reply));
     }
 
     [Fact]

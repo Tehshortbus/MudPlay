@@ -536,6 +536,14 @@ public sealed class AppServices
     public TBInfoStore TBInfo { get; private set; } = null!;
 
     /// <summary>
+    /// Item-id → name lookup for the active set. Consumed by the
+    /// keyed-door FSM (<see cref="Game.Map.DoorOpenManager"/>) to
+    /// translate an exit's <see cref="Game.Map.RoomExit.KeyItemId"/>
+    /// into the verbatim name fed to <c>use &lt;name&gt; &lt;dir&gt;</c>.
+    /// </summary>
+    public ItemNameStore ItemNames { get; private set; } = null!;
+
+    /// <summary>
     /// Trust-by-default room tracker. Owns
     /// <see cref="Game.Map.RoomState"/>; the Navigation status strip
     /// and any source-room-required engine (walker, loop runner,
@@ -820,6 +828,7 @@ public sealed class AppServices
             maxBashAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxBashAttempts,
             maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
             picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
+            itemNameLookup:             id => ItemNames.GetName(id),
             log: Log);
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
@@ -958,6 +967,14 @@ public sealed class AppServices
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // ItemNameStore — int→name index for the active Items.json so
+        // the keyed-door FSM can resolve KeyItemId → in-game name and
+        // send `use <name> <dir>`.
+        ItemNames = new ItemNameStore(GameData, Log);
+        GameData.ActiveSetChanged += ItemNames.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            ItemNames.OnActiveSetChanged(GameData.ActiveSet);
 
         // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
