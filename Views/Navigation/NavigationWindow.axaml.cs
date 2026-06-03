@@ -29,12 +29,18 @@ public partial class NavigationWindow : Window
         if (this.FindControl<MapControl>("MapHost") is { } map)
         {
             map.RoomRightClicked += OnMapRoomRightClicked;
+            map.RoomLeftClicked  += OnMapRoomLeftClicked;
         }
     }
 
     private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)
     {
         if (DataContext is NavigationViewModel vm) vm.ContextRoomKey = key;
+    }
+
+    private void OnMapRoomLeftClicked(Game.Map.RoomKey key, Point _)
+    {
+        if (DataContext is NavigationViewModel vm) vm.OnRoomLeftClicked(key);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

@@ -42,7 +42,7 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- Top status + mode bar -->
         <Border Grid.Row="0" Background="#1A1A1A" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
@@ -181,5 +181,43 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- Bottom strip: loop builder state. Visible only when
+             a loop session is active. -->
+        <Border Grid.Row="2" Background="#1A1A1A"
+                BorderBrush="#2A2A2A" BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsLoopBuilding}">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="12,8" ColumnSpacing="8">
+                <Border Grid.Column="0" Classes="StatusBadge" Background="#F8B500">
+                    <TextBlock Text="BUILDING LOOP"/>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <TextBlock FontSize="11" Foreground="#BBB">
+                        <Run Text="{Binding LoopBuilder.Clicks.Count, FallbackValue=0}"/>
+                        <Run Text=" room(s) clicked · "/>
+                        <Run Text="{Binding LoopBuilder.ExpandedStepCount, FallbackValue=0}"/>
+                        <Run Text=" step(s) total"/>
+                    </TextBlock>
+                    <TextBlock FontSize="11" Foreground="#F25C54"
+                               Text="{Binding LoopBuilder.UnreachableSummary}"
+                               IsVisible="{Binding LoopBuilder.UnreachableSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+                <TextBox Grid.Column="2"
+                         Text="{Binding LoopBuilder.ProposedName, Mode=TwoWay}"
+                         Width="180" FontSize="11"/>
+                <CheckBox Grid.Column="3"
+                          Content="Closed loop"
+                          IsChecked="{Binding LoopBuilder.CloseLoop, Mode=TwoWay}"
+                          VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                    <Button Content="Save"
+                            Command="{Binding SaveLoopBuilderCommand}"
+                            IsEnabled="{Binding LoopBuilder.CanSave, FallbackValue=False}"/>
+                    <Button Content="Discard"
+                            Command="{Binding DiscardLoopBuilderCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

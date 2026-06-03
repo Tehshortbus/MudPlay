@@ -204,10 +204,47 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsLairMode));
     }
 
+    /// <summary>Active loop-builder session when <see cref="CurrentMode"/> == LoopBuild; null otherwise.</summary>
+    public LoopBuilderSessionViewModel? LoopBuilder { get; private set; }
+
+    public bool IsLoopBuilding => LoopBuilder is not null;
+
     [RelayCommand]
     private void ToggleLoopMode()
-        => CurrentMode = CurrentMode == NavigationMode.LoopBuild
-            ? NavigationMode.Idle : NavigationMode.LoopBuild;
+    {
+        if (CurrentMode == NavigationMode.LoopBuild)
+        {
+            LoopBuilder = null;
+            CurrentMode = NavigationMode.Idle;
+        }
+        else
+        {
+            LoopBuilder = new LoopBuilderSessionViewModel(
+                _services.Loops, _services.RoomGraph, _services.Movement);
+            CurrentMode = NavigationMode.LoopBuild;
+        }
+        OnPropertyChanged(nameof(LoopBuilder));
+        OnPropertyChanged(nameof(IsLoopBuilding));
+    }
+
+    /// <summary>Called by the window when the map is left-clicked. Forwards to the loop builder when active.</summary>
+    public void OnRoomLeftClicked(RoomKey key)
+    {
+        LoopBuilder?.AddClick(key);
+    }
+
+    [RelayCommand]
+    private void SaveLoopBuilder()
+    {
+        LoopBuilder?.Save();
+        // Stay in loop mode so the user can immediately start another loop.
+    }
+
+    [RelayCommand]
+    private void DiscardLoopBuilder()
+    {
+        LoopBuilder?.Clear();
+    }
 
     [RelayCommand]
     private void ToggleLairMode()
