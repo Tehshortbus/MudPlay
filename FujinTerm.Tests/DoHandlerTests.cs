@@ -146,43 +146,21 @@ public sealed class DoHandlerTests
     }
 
     [Fact]
-    public void Do_Suicide_BlockedWhenLivesUnknown()
+    public void Do_Suicide_AlwaysBlocked_RegardlessOfLives()
     {
-        // LivesProvider returns null (default) — engine treats lives as
-        // unknown and blocks the @do suicide path defensively.
+        // Per user direction: forcible-death verbs route exclusively
+        // through @suicide (which has its own elevated-permission
+        // gate + lives-threshold + stored-password contract). @do
+        // suicide is unconditionally redirected — even at high lives
+        // and permissive threshold, the @do handler never runs.
         var (engine, _, players, wire) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.LivesProvider = () => 99;
+        engine.MaxSuicideLivesThreshold = 0;
 
         engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
 
-        Assert.Empty(wire);
-    }
-
-    [Fact]
-    public void Do_Suicide_BlockedWhenLivesAtOrBelowThreshold()
-    {
-        var (engine, _, players, wire) = Setup();
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-        engine.LivesProvider = () => 3;
-        engine.MaxSuicideLivesThreshold = 5;
-
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
-
-        Assert.Empty(wire);
-    }
-
-    [Fact]
-    public void Do_Suicide_AllowedWhenLivesAboveThreshold()
-    {
-        // 7 > 5 threshold → engine permits → handler ships "suicide\r"
-        var (engine, _, players, wire) = Setup();
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-        engine.LivesProvider = () => 7;
-        engine.MaxSuicideLivesThreshold = 5;
-
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
-
-        Assert.Equal("suicide\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+        Assert.Empty(wire);  // never reaches the @do handler's wire-sender
     }
 
     // ===== Channel filters / master kill-switch =====

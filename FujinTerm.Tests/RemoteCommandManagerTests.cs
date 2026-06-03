@@ -311,12 +311,20 @@ public sealed class RemoteCommandManagerTests
         Assert.False(fired);
     }
 
+    // ===== Forcible @do / @party suicide redirect =====
+    // Both unconditionally blocked even at lives > threshold + full
+    // permissions. Reply (gated on WarnOnDenial) hints the sender at
+    // the dedicated @suicide handler, which has its own elevated
+    // SysopCommands grant + the lives-threshold gate + stored
+    // password contract.
+
     [Fact]
-    public void HardBlock_PartySuicideAlwaysDenied()
+    public void ForcibleSuicide_PartySuicide_AlwaysBlockedWithRedirect()
     {
         var (engine, party, _) = Setup();
         SeedPartyMember(party, "Buddy");
-        // Even with high lives + permissive threshold, @party suicide is always blocked.
+        // Even with high lives + permissive threshold, @party suicide
+        // is unconditionally blocked.
         engine.LivesProvider = () => 99;
         engine.MaxSuicideLivesThreshold = 0;
 
@@ -326,26 +334,18 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Buddy", "@party suicide"));
 
         Assert.False(fired);
+        // Redirect reply landed on Buddy's telepath.
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("@party suicide is not allowed, use @suicide", reply);
     }
 
     [Fact]
-    public void HardBlock_DoSuicide_BlockedWhenLivesUnknown()
+    public void ForcibleSuicide_DoSuicide_AlwaysBlockedWithRedirect_EvenAboveThreshold()
     {
-        // LivesProvider null = unknown = blocked (conservative default).
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-
-        bool fired = false;
-        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
-
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
-
-        Assert.False(fired);
-    }
-
-    [Fact]
-    public void HardBlock_DoSuicide_AllowedWhenLivesAboveThreshold()
-    {
+        // Pre-fix this scenario PASSED through to the @do handler
+        // (lives 5 > threshold 3 satisfied the policy gate). User
+        // direction: forcible-death verbs route exclusively through
+        // @suicide, no exceptions.
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
         engine.LivesProvider = () => 5;
@@ -356,16 +356,17 @@ public sealed class RemoteCommandManagerTests
 
         engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
 
-        Assert.True(fired);
+        Assert.False(fired);
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("@do suicide is not allowed, use @suicide", reply);
     }
 
     [Fact]
-    public void HardBlock_DoSuicide_BlockedAtThreshold()
+    public void ForcibleSuicide_DoSuicide_AlwaysBlockedWithRedirect_EvenWithLivesUnknown()
     {
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-        engine.LivesProvider = () => 3;       // exactly at threshold
-        engine.MaxSuicideLivesThreshold = 3;
+        // LivesProvider null — redirect doesn't depend on lives.
 
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
@@ -373,6 +374,120 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
 
         Assert.False(fired);
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("@do suicide is not allowed, use @suicide", reply);
+    }
+
+    [Fact]
+    public void ForcibleSuicide_DoSuicide_WarnOnDenialOff_SilentlyBlocked()
+    {
+        // Master gate suppresses the redirect reply too — same as
+        // every other denial path.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.LivesProvider = () => 9;
+        engine.MaxSuicideLivesThreshold = 3;
+        engine.WarnOnDenial = false;
+
+        bool fired = false;
+        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void ForcibleSuicide_DoSuicide_TokenMatchAlsoCatchesNestedArgs()
+    {
+        // Defensive: any arg containing "suicide" trips the token
+        // match. Reply text is the @do redirect even when the arg
+        // isn't literally "suicide" — close enough; the block is
+        // correct.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+
+        bool fired = false;
+        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@do par suicide"));
+
+        Assert.False(fired);
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("@do suicide is not allowed", reply);
+    }
+
+    [Fact]
+    public void DirectSuicide_NotCaughtByRedirect_PolicyGateAppliesNormally()
+    {
+        // The redirect only fires for @do and @party prefixes. Direct
+        // @suicide flows through to the lives-threshold policy block.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.LivesProvider = () => 5;
+        engine.MaxSuicideLivesThreshold = 3;
+
+        bool fired = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.True(fired);  // policy gate satisfied (5 > 3)
+    }
+
+    [Fact]
+    public void DirectSuicide_BlockedByPolicy_DoesNotMentionRedirect()
+    {
+        // Direct @suicide blocked by lives threshold — reply should
+        // be the policy-block text ("suicide blocked, N lives <=
+        // threshold M"), NOT the redirect.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+        engine.LivesProvider = () => 3;
+        engine.MaxSuicideLivesThreshold = 3;
+
+        bool fired = false;
+        engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+
+        Assert.False(fired);
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("suicide blocked", reply);
+        Assert.DoesNotContain("use @suicide", reply);
+    }
+
+    // ===== Reroll family — hard-block stays silent =====
+
+    [Fact]
+    public void HardBlock_DoReroll_AlwaysSilent()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+
+        bool fired = false;
+        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);  // no reply, ever
+    }
+
+    [Fact]
+    public void HardBlock_PartyReroll_AlwaysSilent()
+    {
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@party reroll"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
     }
 
     // ===== Channel routing + Reply =====
@@ -768,11 +883,13 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void PartySuicide_StaysSilentEvenAboveThreshold()
+    public void PartySuicide_AlwaysBlocked_RedirectsToSuicideHandler()
     {
-        // @party suicide is the unconditional hard-block path; should
-        // never reach the policy-block reply even when lives are
-        // plenty.
+        // @party suicide is the unconditional forcible-block path —
+        // even at high lives + permissive threshold, the @party
+        // handler never runs. Reply text redirects the sender to the
+        // dedicated @suicide handler (which has its own elevated
+        // SysopCommands grant + lives gate).
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
         engine.MaxSuicideLivesThreshold = 0;
@@ -781,7 +898,8 @@ public sealed class RemoteCommandManagerTests
 
         engine.DispatchForTests(Telepath("Trusted", "@party suicide"));
 
-        Assert.Empty(engine.LastSentForTests);
+        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        Assert.Contains("@party suicide is not allowed, use @suicide", reply);
     }
 
     [Fact]

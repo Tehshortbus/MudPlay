@@ -251,6 +251,23 @@ public sealed class RemoteCommandManager : IDisposable
             return;
         }
 
+        // Forcible @do / @party suicide redirect — UNCONDITIONALLY
+        // blocked but DOES reply (gated on WarnOnDenial) with a hint
+        // pointing the sender at the dedicated @suicide handler that
+        // owns the elevated-permission + lives-threshold + stored-
+        // password contract. Has to run BEFORE the suicide policy
+        // block below because that one's permissive when lives >
+        // threshold; we don't want @do suicide to slip through
+        // just because we happen to have enough lives.
+        string? forcedSuicideRedirect = GetForcedSuicideRedirectReply(command, args);
+        if (forcedSuicideRedirect is not null)
+        {
+            _log?.Log(LogSeverity.Info, "RemoteCmd",
+                $"Forcible-suicide blocked from {entry.Speaker}: {forcedSuicideRedirect}");
+            SendDenialReply(channel.Value, entry.Speaker, specificReason: forcedSuicideRedirect);
+            return;
+        }
+
         // Suicide lives-threshold — user-configured policy block.
         // UNLIKE the hard-blocks above, this DOES reply because the
         // caller is typically a trusted party member and the policy
@@ -371,18 +388,12 @@ public sealed class RemoteCommandManager : IDisposable
     /// </summary>
     private bool IsHardBlocked(string command, string[] args, out string? reason)
     {
-        // reroll — token-level match across command + args
+        // reroll — token-level match across command + args. Catches
+        // direct @reroll (unknown command), @do reroll, @party reroll,
+        // and any other passthrough verb's reroll arg.
         if (ContainsToken(command, args, "reroll"))
         {
             reason = "reroll hard-block (always denied)";
-            return true;
-        }
-        // @party suicide is always blocked (the Phase 6 spec lists it
-        // alongside @party reroll as unconditional).
-        if (ContainsToken(command, args, "suicide")
-            && command.Equals("@party", StringComparison.OrdinalIgnoreCase))
-        {
-            reason = "@party suicide hard-block (always denied)";
             return true;
         }
         reason = null;
@@ -390,8 +401,46 @@ public sealed class RemoteCommandManager : IDisposable
     }
 
     /// <summary>
-    /// User-configured policy block for direct <c>@suicide</c> /
-    /// <c>@do suicide</c> based on the lives threshold. Distinct from
+    /// Forcible redirect for <c>@do suicide</c> and
+    /// <c>@party suicide</c>: both are unconditionally blocked even
+    /// at full permissions, but unlike the silent reroll hard-block
+    /// they reply with a hint pointing the sender at the dedicated
+    /// <c>@suicide</c> handler (which has its own SysopCommands /
+    /// Elevated-Commands grant AND the lives-threshold policy gate).
+    /// </summary>
+    /// <remarks>
+    /// Rationale per user direction: forcible-death actions should
+    /// route exclusively through <c>@suicide</c> because that
+    /// handler:
+    /// <list type="bullet">
+    ///   <item>requires the elevated SysopCommands permission tier,
+    ///         which is granted independently of the (much
+    ///         lower-trust) ExecuteCommands tier @do sits at;</item>
+    ///   <item>respects the per-character
+    ///         <see cref="MaxSuicideLivesThreshold"/>;</item>
+    ///   <item>uses the stored encrypted suicide-password blob
+    ///         autonomously via SuicideHandler, so the user's
+    ///         intent is captured at the moment they ran
+    ///         <c>set suicide</c> rather than inferred mid-session
+    ///         from a wire-sniff.</item>
+    /// </list>
+    /// Returns the reply payload (bare text — engine wraps in <c>{}</c>
+    /// at SendReply time) for the sender; <c>null</c> when the
+    /// command isn't a forcible @do / @party suicide attempt.
+    /// </remarks>
+    private static string? GetForcedSuicideRedirectReply(string command, string[] args)
+    {
+        if (!ContainsToken(command, args, "suicide")) return null;
+        bool isDo    = command.Equals("@do",    StringComparison.OrdinalIgnoreCase);
+        bool isParty = command.Equals("@party", StringComparison.OrdinalIgnoreCase);
+        if (!isDo && !isParty) return null;
+        string verb = isDo ? "@do" : "@party";
+        return $"{verb} suicide is not allowed, use @suicide";
+    }
+
+    /// <summary>
+    /// User-configured policy block for direct <c>@suicide</c> based
+    /// on the lives threshold. Distinct from
     /// <see cref="IsHardBlocked"/> because policy blocks SHOULD be
     /// communicated back to the sender — the caller is typically a
     /// trusted party member who needs to know why their command
@@ -400,6 +449,13 @@ public sealed class RemoteCommandManager : IDisposable
     /// when the command isn't a suicide attempt or the threshold is
     /// satisfied.
     /// </summary>
+    /// <remarks>
+    /// Forcible @do / @party suicide variants are caught earlier by
+    /// <see cref="GetForcedSuicideRedirectReply"/>; by the time this
+    /// runs the only suicide-token-bearing command left is direct
+    /// <c>@suicide</c> (or some future verb that legitimately uses
+    /// suicide as a sub-command).
+    /// </remarks>
     private string? GetSuicidePolicyBlockReply(string command, string[] args)
     {
         if (!ContainsToken(command, args, "suicide")) return null;
