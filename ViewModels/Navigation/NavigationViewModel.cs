@@ -391,12 +391,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         Graph = _services.RoomGraph;
 
-        // Build eagerly as soon as the graph has rooms — the user
-        // should be able to browse the map immediately on game-data
-        // load without first locating in-game. Prefer the tracker's
-        // current room when known; otherwise pick the first room in
-        // the active graph (typically Map 1, Room 1).
+        // Origin priority:
+        //   1. Tracker's current room (live in-game).
+        //   2. Profile.LastKnownRoom (where the player was at end of
+        //      the last session). Lets the map open already centred
+        //      on the player without waiting for a live locate.
+        //   3. First room in the active graph (typically Map 1 /
+        //      Room 1) — first-launch / fresh-profile fallback.
         RoomKey? key = _services.RoomTracker.State.CurrentRoom?.Key;
+        if (key is null && _services.Profile.Current?.LastKnownRoom is { } last
+            && _services.RoomGraph.GetRoom(new RoomKey(last.Map, last.Room)) is not null)
+        {
+            key = new RoomKey(last.Map, last.Room);
+        }
         if (key is null && _services.RoomGraph.RoomCount > 0)
         {
             foreach (Room first in _services.RoomGraph.Rooms)

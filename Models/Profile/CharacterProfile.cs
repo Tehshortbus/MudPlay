@@ -170,4 +170,14 @@ public sealed class CharacterProfile
     /// only. <c>null</c> or empty = no stash rooms flagged.
     /// </summary>
     public List<RoomRef>? StashRooms { get; set; }
+
+    /// <summary>
+    /// Last room the character was known to be standing in. Hydrated
+    /// from <see cref="Game.Map.RoomTracker"/> on a successful manual
+    /// or auto locate; saved with the rest of the profile and used as
+    /// the initial Navigation map origin on the next session so the
+    /// user opens the map already centred on where they left off.
+    /// <c>null</c> until the first successful locate.
+    /// </summary>
+    public RoomRef? LastKnownRoom { get; set; }
 }

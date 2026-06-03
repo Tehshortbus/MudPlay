@@ -141,8 +141,8 @@
                     MaxWidth="520">
                 <TextBlock Name="HoverTooltipText"
                            Text=""
-                           FontFamily="{StaticResource FontMono}"
-                           FontSize="11"
+                           FontFamily="{StaticResource FontTerminal}"
+                           FontSize="13"
                            Foreground="#000000"
                            TextWrapping="Wrap"/>
             </Border>

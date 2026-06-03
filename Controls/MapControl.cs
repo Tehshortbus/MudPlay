@@ -522,12 +522,12 @@ public sealed class MapControl : Control
     /// <summary>
     /// Per-direction stub extension past the cell edge. Sub-pixel
     /// anti-aliasing of two endpoints that resolve to the same logical
-    /// pixel can still leave a 1–2 pixel gap where the stubs meet;
-    /// extending the segment beyond the boundary by 1.5 px guarantees
-    /// the two adjacent stubs overlap into a continuous line at every
-    /// zoom level.
+    /// pixel can leave a tiny gap where the stubs meet — especially
+    /// at high zoom where the cell rect's float position lands on
+    /// non-integer pixel boundaries. 3 px overlap saturates the
+    /// anti-aliasing seam at every zoom level we clamp to (0.4×–4×).
     /// </summary>
-    private const double StubOverlap = 1.5;
+    private const double StubOverlap = 3.0;
 
     private static void DrawStub(DrawingContext ctx, IPen pen, Rect cell, double mx, double my, Direction dir)
     {

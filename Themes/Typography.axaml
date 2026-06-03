@@ -18,6 +18,10 @@
     <!-- ============ Font families ============ -->
     <FontFamily x:Key="FontChrome">avares://FujinTerm/Assets/Fonts/IBMPlexSans-Regular.ttf#IBM Plex Sans</FontFamily>
     <FontFamily x:Key="FontMono">avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono</FontFamily>
+    <!-- The CP437 bitmap font the TerminalControl renders; same family
+         shared with anything that needs to feel "in-terminal"
+         (e.g. the Navigation map hover tooltip). -->
+    <FontFamily x:Key="FontTerminal">avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16</FontFamily>
 
     <!-- ============ Font sizes ============ -->
     <!-- 13 px is the skeleton default for chrome text; 11 px is the

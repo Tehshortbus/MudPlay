@@ -214,19 +214,36 @@ public sealed class BfsMapperTests : IDisposable
     }
 
     [Fact]
-    public void BuildLayout_DownExit_IsOffGrid_WithVerticalHint()
+    public void BuildLayout_DownExit_NotVisited_SourceCellGetsVerticalHint()
     {
         var (bfs, _) = NewMapper();
         RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
 
-        // 1/7 Cellar is only reachable via D from 1/6; planar layout
-        // can't place it without contributing to (x,y).
+        // Planar-only BFS: U/D destinations are NEVER followed. The
+        // Cellar (1/7) is reachable only via D from 1/6 → it's not
+        // in the layout at all (no position, no off-grid entry).
         Assert.DoesNotContain(new RoomKey(1, 7), layout.Positions.Keys);
-        Assert.Contains(new RoomKey(1, 7), layout.OffGrid);
+        Assert.Empty(layout.OffGrid);                     // off-grid lane is gone
 
-        // 1/6 has a D exit → flagged as VerticalHint.Down.
+        // 1/6 still gets its VerticalHint.Down so the renderer can
+        // draw the down-arrow glyph on the source cell.
         Assert.True(layout.VerticalHints.TryGetValue(new RoomKey(1, 6), out VerticalHint hint));
         Assert.Equal(VerticalHint.Down, hint);
+    }
+
+    [Fact]
+    public void BuildLayout_VerticalExits_NotInEdgesFromCoord()
+    {
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // The map is a flat view — U / D exits don't render as stubs
+        // on the source cell at all. They surface only via
+        // VerticalHints.
+        (int X, int Y) sixCoord = layout.Positions[new RoomKey(1, 6)];
+        Assert.True(layout.EdgesFromCoord.TryGetValue(sixCoord, out IReadOnlySet<Direction>? edges));
+        Assert.DoesNotContain(Direction.U, edges!);
+        Assert.DoesNotContain(Direction.D, edges!);
     }
 
     [Fact]
@@ -366,21 +383,17 @@ public sealed class BfsMapperTests : IDisposable
     }
 
     [Fact]
-    public void EdgesFromCoord_RecordsExitEvenWhenDestinationIsOffGrid()
+    public void EdgesFromCoord_OnlyRecordsPlanarExits()
     {
-        // GridJson includes 1/6 → D → 1/7 (Cellar). 1/7 lands in
-        // off-grid, but 1/6 should still carry its D-exit on the
-        // edge-tracking surface so the renderer can draw a stub.
-        // U/D are non-planar so they're omitted from EdgesFromCoord;
-        // the renderer uses VerticalHints for that. We assert the
-        // planar W exit on 1/6 is recorded as usual.
         var (bfs, _) = NewMapper();
         RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
 
+        // 1/6 has a planar W exit + a D exit. The planar one is in
+        // the edge-tracking surface; the D is recorded ONLY as a
+        // VerticalHint on the cell (no stub).
         (int X, int Y) sixCoord = layout.Positions[new RoomKey(1, 6)];
         Assert.True(layout.EdgesFromCoord.TryGetValue(sixCoord, out IReadOnlySet<Direction>? sixEdges));
         Assert.Contains(Direction.W, sixEdges!);
-        // U / D not recorded — they're vertical hints, not stubs.
         Assert.DoesNotContain(Direction.D, sixEdges!);
         Assert.DoesNotContain(Direction.U, sixEdges!);
     }

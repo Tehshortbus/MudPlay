@@ -161,15 +161,24 @@ public sealed class BfsMapper
         var edgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
         var trapEdgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
         var vertical = new Dictionary<RoomKey, VerticalHint>();
-        var offGrid = new List<RoomKey>();
         var depth = new Dictionary<RoomKey, int> { [origin] = 0 };
-        var coordTaken = new HashSet<(int X, int Y)> { (0, 0) };
 
         var queue = new Queue<RoomKey>();
         queue.Enqueue(origin);
 
         AnnotateVertical(_graph.GetRoom(origin)!, vertical);
 
+        // Planar-only BFS — modeled on MMUD-Explorer's MapActivateCell
+        // (Case 8/9 GoTo DontActivate). U/D destinations are NEVER
+        // visited or enqueued; the flat 2D map renders the current
+        // floor only. When the player traverses U/D, the navigation
+        // VM rebuilds the layout from the new origin.
+        //
+        // Collisions: when a non-Euclidean exit produces a coord
+        // already occupied by another room, we skip the destination
+        // AND the edge. Drawing the edge stub without a destination
+        // produces a connector pointing into empty space, which was
+        // the user-visible bug in the prior off-grid-lane approach.
         while (queue.Count > 0)
         {
             RoomKey here = queue.Dequeue();
@@ -179,51 +188,61 @@ public sealed class BfsMapper
             Room? room = _graph.GetRoom(here);
             if (room is null) continue;
 
-            bool herePlanar = positions.TryGetValue(here, out (int X, int Y) hereXY);
+            // Every room in the queue has a position (origin was
+            // placed up-front; every enqueue below places before
+            // enqueueing).
+            (int X, int Y) hereXY = positions[here];
 
             foreach ((Direction dir, RoomExit exit) in room.Exits)
             {
-                // MudProxy-style edge recording: every planar exit
-                // contributes a stub from the source cell regardless
-                // of whether the destination ends up placed. The
-                // renderer draws the stub from cell-centre to
-                // cell-edge, so adjacent cells' stubs meet visually.
-                if (herePlanar && IsPlanar(dir))
+                if (!IsPlanar(dir))
                 {
-                    AddEdge(edgesFromCoord, hereXY, dir);
-                    if (exit.Hint == RoomExitHint.Trap)
-                        AddEdge(trapEdgesFromCoord, hereXY, dir);
+                    // U/D source cell still gets a vertical hint glyph
+                    // (already captured by AnnotateVertical) but no
+                    // edge stub on the flat layer — the user's design.
+                    continue;
                 }
 
                 RoomKey next = exit.Target;
-                if (positions.ContainsKey(next) || offGrid.Contains(next)) continue;
                 Room? nextRoom = _graph.GetRoom(next);
                 if (nextRoom is null) continue;
 
-                AnnotateVertical(nextRoom, vertical);
-
-                if (!herePlanar || !TryPlanarOffset(dir, out int dx, out int dy))
-                {
-                    // Either we're stepping off the plane (U/D) or we
-                    // started off-plane — either way, the descendant
-                    // joins the off-grid lane.
-                    offGrid.Add(next);
-                    depth[next] = hereDepth + 1;
-                    queue.Enqueue(next);
-                    continue;
-                }
-
+                // Tentative target coord — skip ALL edge recording
+                // when the coord clashes with an already-placed room
+                // (matches MudProxy's silent-skip behaviour; avoids
+                // dangling stubs into empty cells).
+                if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
                 (int X, int Y) target = (hereXY.X + dx, hereXY.Y + dy);
-                if (!coordTaken.Add(target))
+
+                // Already-placed destination via a different exit —
+                // still record the edge so the connector renders, but
+                // don't re-place / re-enqueue.
+                if (positions.TryGetValue(next, out (int X, int Y) existing))
                 {
-                    // Conflict — the same coord was already assigned
-                    // to a different room on a shorter / earlier path.
-                    // Park this room in the off-grid lane.
-                    offGrid.Add(next);
-                    depth[next] = hereDepth + 1;
-                    queue.Enqueue(next);
+                    if (existing.Equals(target))
+                    {
+                        // Reciprocal exit lines up with the existing
+                        // placement — record the stub from THIS cell.
+                        AddEdge(edgesFromCoord, hereXY, dir);
+                        if (exit.Hint == RoomExitHint.Trap)
+                            AddEdge(trapEdgesFromCoord, hereXY, dir);
+                    }
+                    // Non-Euclidean reciprocal (the planar offset
+                    // doesn't agree with the already-placed coord) —
+                    // skip silently. Drawing the stub would point at
+                    // an empty cell.
                     continue;
                 }
+
+                // First visit. Need a free target coord — if taken by
+                // a different room, skip both the placement and the
+                // edge so the connector doesn't dangle.
+                if (coordToRoom.ContainsKey(target)) continue;
+
+                AnnotateVertical(nextRoom, vertical);
+                AddEdge(edgesFromCoord, hereXY, dir);
+                if (exit.Hint == RoomExitHint.Trap)
+                    AddEdge(trapEdgesFromCoord, hereXY, dir);
 
                 positions[next] = target;
                 coordToRoom[target] = next;
@@ -236,7 +255,7 @@ public sealed class BfsMapper
             Origin: origin,
             Positions: positions,
             VerticalHints: vertical,
-            OffGrid: offGrid,
+            OffGrid: Array.Empty<RoomKey>(),
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
