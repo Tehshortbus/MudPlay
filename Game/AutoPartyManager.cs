@@ -49,6 +49,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly IDisposable _partyInviteSub;
     private readonly IDisposable _telepathSub;
     private readonly IDisposable _followerRemovedSub;
+    private readonly IDisposable _youInvitedSub;
     private bool _disposed;
 
     /// <summary>
@@ -152,6 +153,13 @@ public sealed class AutoPartyManager : IDisposable
         // map and kill any active nag so we don't immediately
         // re-invite + re-nag the person we just kicked.
         _followerRemovedSub = _router.Subscribe(KnownPatterns.PartyFollowerRemoved, OnFollowerRemoved);
+        // "You have invited X to follow you." — server echo on every
+        // `invite` we send, whether AutoPartyManager.TryAutoInvite
+        // routed it through the InviteToPartyIfSeen flag OR the user
+        // typed `invite X` manually at the prompt. Starting the @join
+        // nag here covers BOTH paths, so a manual invite escalates
+        // the same way an auto-invite does.
+        _youInvitedSub = _router.Subscribe(KnownPatterns.PartyYouInvited, OnYouInvited);
 
         // TTL housekeeping — drop the cooldown entry for any member that
         // leaves the roster (so a player who separates from us and then
@@ -273,6 +281,7 @@ public sealed class AutoPartyManager : IDisposable
         _partyInviteSub.Dispose();
         _telepathSub.Dispose();
         _followerRemovedSub.Dispose();
+        _youInvitedSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
         if (_trainerMenu is not null) _trainerMenu.MenuExited -= OnTrainerMenuExited;
@@ -303,6 +312,46 @@ public sealed class AutoPartyManager : IDisposable
         string sender = match.Groups[0];
         if (string.IsNullOrEmpty(sender)) return;
         TryAutoAccept(sender);
+    }
+
+    /// <summary>
+    /// "You have invited X to follow you." — server echo after any
+    /// outbound <c>invite X</c> we sent. Catches BOTH the
+    /// <see cref="TryAutoInvite"/> auto-path AND the manual-typed
+    /// path (user types <c>invite Raijin</c> at the prompt). Starts
+    /// the @join nag for X if one isn't already running, so the
+    /// escalation behaviour is identical regardless of who initiated
+    /// the invite. Idempotent — if <see cref="TryAutoInvite"/> just
+    /// fired and already started a nag for X, <see cref="StartNag"/>
+    /// would simply replace the entry with a fresh one (same
+    /// invited-at timestamp since both paths use NowProvider()).
+    /// </summary>
+    private void OnYouInvited(MatchResult match)
+    {
+        if (match.Groups.Count == 0) return;
+        string given = match.Groups[0];
+        if (string.IsNullOrEmpty(given)) return;
+        // Follower-state suppression — same rule TryAutoInvite uses
+        // for outbound invites. The server-echo shouldn't have fired
+        // if we're a follower (the realm would have rejected the
+        // command), but be defensive.
+        if (_party.IsInParty && !_party.SelfIsLeader) return;
+        // Already a real member? They accepted between the invite
+        // echo and now — no nag needed.
+        foreach (PartyMember m in _party.Members)
+        {
+            if (string.Equals(ExtractGiven(m.Name), given, StringComparison.OrdinalIgnoreCase))
+            {
+                // Pending-invite row is fine — that's what the nag
+                // is for. Real (non-invited) member is the skip.
+                if (!m.IsInvited) return;
+                break;
+            }
+        }
+        if (_activeNags.ContainsKey(given)) return;
+        StartNag(given, NowProvider());
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Started @join nag for {given} on manual `invite` echo.");
     }
 
     // ----- Behaviour ----------------------------------------------------

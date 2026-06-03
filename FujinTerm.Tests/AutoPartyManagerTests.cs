@@ -718,4 +718,119 @@ public sealed class AutoPartyManagerTests
         engine.TickNagsForTests();
         Assert.Empty(engine.LastSentForTests);
     }
+
+    // ===== Manual-invite path: @join nag starts on the server echo =======
+    // Tehshortbus's screenshot showed Raijin sitting at [Invited] in par
+    // after a manual `invite Raijin` typed at the prompt, but the @join
+    // nag never spun up. Pre-fix StartNag only fired from TryAutoInvite
+    // (gated on InviteToPartyIfSeen) and OnTrainerMenuExited; the manual
+    // path was uncovered. Subscribing to PartyYouInvited closes the gap.
+
+    [Fact]
+    public void YouInvited_StartsNag_EvenWithoutInviteOnSeenFlag()
+    {
+        // No customization for Raijin — pure manual invite. The server
+        // echo for `invite Raijin` should still spin up the @join nag.
+        var (engine, router, _, _) = Setup();
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
+
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        // First nag fires after JoinNagInitialDelay.
+        engine.NowProvider = () => t0.AddSeconds(6);
+        engine.TickNagsForTests();
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void YouInvited_AlreadyArmedNag_NoDuplicate()
+    {
+        // TryAutoInvite path fires StartNag immediately; the matching
+        // server echo arrives a tick later. The handler must detect
+        // the in-flight nag and skip — no duplicate state, no double
+        // sends.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
+
+        // Auto-path fires the invite + arms the nag.
+        Dispatch(router, "Also here: Raijin.");
+        Assert.Single(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        engine.LastSentForTests.Clear();
+
+        // Server echo arrives — handler is idempotent.
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        // Advance past the initial delay and tick — only ONE @join
+        // should fire (single armed nag entry).
+        engine.NowProvider = () => t0.AddSeconds(6);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void YouInvited_AsFollower_DoesNotStartNag()
+    {
+        // Defense-in-depth: we shouldn't be inviting people as a
+        // follower (the server would reject the command), but if a
+        // spoof echo arrived we shouldn't act on it.
+        var (engine, router, _, party) = Setup();
+        party.IsInParty    = true;
+        party.SelfIsLeader = false;
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        engine.NowProvider = () => t0.AddSeconds(6);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void YouInvited_PlayerAlreadyJoined_NoNag()
+    {
+        // Edge case: invitee accepted between the invite send and the
+        // echo (race). Skip nag.
+        var (engine, router, _, party) = Setup();
+        party.Members.Add(new PartyMember { Name = "Raijin", IsInvited = false });
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        engine.NowProvider = () => t0.AddSeconds(6);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void YouInvited_PendingInvitedRow_StillStartsNag()
+    {
+        // Common case: PartyManager.OnYouInvited has already added an
+        // IsInvited=true row to the roster on the same echo line.
+        // AutoPartyManager's handler should still arm the nag.
+        var (engine, router, _, party) = Setup();
+        party.Members.Add(new PartyMember { Name = "Raijin", IsInvited = true });
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        engine.NowProvider = () => t0.AddSeconds(6);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
+    }
 }
