@@ -568,6 +568,12 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.LoopRunner LoopRunner { get; private set; } = null!;
 
+    /// <summary>
+    /// Random-walk roam scheduler. Foundation for the deterministic
+    /// Auto-Lair scheduler. Session-only state.
+    /// </summary>
+    public Game.Map.AutoRoamManager AutoRoam { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -937,6 +943,9 @@ public sealed class AppServices
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
             PromptScanner, Log, RoomGraph);
+
+        // Random-walk roam scheduler — foundation for Auto-Lair.
+        AutoRoam = new Game.Map.AutoRoamManager(Walker, RoomTracker, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

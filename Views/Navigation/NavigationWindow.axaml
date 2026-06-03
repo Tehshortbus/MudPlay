@@ -79,6 +79,10 @@
                 <Button Grid.Column="4" Classes="ModeChip" Content="Lair mode"
                         Command="{Binding ToggleLairModeCommand}"
                         Classes.Active="{Binding IsLairMode}"/>
+                <Button Grid.Column="4" Classes="ModeChip" Content="Auto-roam"
+                        Command="{Binding ToggleAutoRoamCommand}"
+                        Classes.Active="{Binding IsAutoRoaming}"
+                        Margin="0,0,4,0" HorizontalAlignment="Right"/>
                 <Button Grid.Column="5" Classes="ModeChip" Content="Pause"
                         Command="{Binding PauseOrResumeCommand}"
                         IsVisible="{Binding !IsPaused}"/>
@@ -102,7 +106,9 @@
                                  WalkPath="{Binding WalkPath}"
                                  LoopPath="{Binding LoopPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
-                                 LoopSequenceNumbers="{Binding LoopSequenceNumbers}">
+                                 LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
+                                 AutoRoamRooms="{Binding AutoRoamRooms}"
+                                 WalkPathIsAutoRoam="{Binding IsAutoRoaming}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
@@ -117,6 +123,8 @@
                                   Command="{Binding ToggleContextRoomAvoidedCommand}"/>
                         <MenuItem Header="Toggle: Stash room"
                                   Command="{Binding ToggleContextRoomStashCommand}"/>
+                        <MenuItem Header="Toggle: Auto-roam this room"
+                                  Command="{Binding ToggleContextRoomAutoRoamCommand}"/>
                     </ContextMenu>
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
@@ -148,6 +156,10 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#6428A0"/>
                         <TextBlock Text="Spell room" FontSize="11" Foreground="#DDD"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#DC821E"/>
+                        <TextBlock Text="Auto-roam mark" FontSize="11" Foreground="#DDD"/>
                     </StackPanel>
                     <Separator Margin="0,4"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">

@@ -62,6 +62,12 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LoopSequenceNumbersProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LoopSequenceNumbers));
 
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AutoRoamRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoRoamRooms));
+
+    public static readonly StyledProperty<bool> WalkPathIsAutoRoamProperty =
+        AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoRoam));
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -122,6 +128,18 @@ public sealed class MapControl : Control
         set => SetValue(LoopSequenceNumbersProperty, value);
     }
 
+    public IReadOnlySet<RoomKey>? AutoRoamRooms
+    {
+        get => GetValue(AutoRoamRoomsProperty);
+        set => SetValue(AutoRoamRoomsProperty, value);
+    }
+
+    public bool WalkPathIsAutoRoam
+    {
+        get => GetValue(WalkPathIsAutoRoamProperty);
+        set => SetValue(WalkPathIsAutoRoamProperty, value);
+    }
+
     // ----- view-state ------------------------------------------------
 
     /// <summary>World tile size in layout units. Multiplied by <see cref="_zoom"/> to get screen pixels.</summary>
@@ -172,6 +190,16 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
     };
     private static readonly IBrush SeqNumberFill  = new SolidColorBrush(Color.Parse("#FFFFFF"));
+    private static readonly IBrush AutoRoamFill   = new SolidColorBrush(Color.Parse("#DC821E"));
+    private static readonly IPen   AutoRoamBorder = new Pen(new SolidColorBrush(Color.Parse("#FFA500")), 2.0)
+    {
+        DashStyle = new DashStyle(new double[] { 3, 2 }, 0),
+    };
+    private static readonly IPen   AutoRoamWalkPen = new Pen(new SolidColorBrush(Color.Parse("#DC821E")), 3.0)
+    {
+        LineCap = PenLineCap.Round,
+        LineJoin = PenLineJoin.Round,
+    };
 
     // ----- lifecycle -------------------------------------------------
 
@@ -181,7 +209,8 @@ public sealed class MapControl : Control
         ClipToBounds = true;
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
-            WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty);
+            WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
+            AutoRoamRoomsProperty, WalkPathIsAutoRoamProperty);
     }
 
     public event Action<RoomKey, Point>? RoomRightClicked;
@@ -352,7 +381,8 @@ public sealed class MapControl : Control
         // first so the walk path lies above it (the user normally
         // wants the *current* leg to dominate visually).
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
-        DrawPathPolyline(context, WalkPath, WalkPathPen, tilePixels, cx, cy);
+        IPen walkPen = WalkPathIsAutoRoam ? AutoRoamWalkPen : WalkPathPen;
+        DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
     }
 
     private void DrawPathPolyline(DrawingContext ctx, IReadOnlyList<RoomKey>? path, IPen pen,
@@ -443,6 +473,7 @@ public sealed class MapControl : Control
         Rect node = new(nx, ny, nodeSize, nodeSize);
 
         bool isCurrent = CurrentRoomKey is { } current && current.Equals(key);
+        bool isAutoRoam = AutoRoamRooms is not null && AutoRoamRooms.Contains(key);
         Room? room = Graph?.GetRoom(key);
 
         IBrush fill;
@@ -451,6 +482,11 @@ public sealed class MapControl : Control
         {
             fill = CurrentFill;
             pen = CurrentPen;
+        }
+        else if (isAutoRoam)
+        {
+            fill = AutoRoamFill;
+            pen = AutoRoamBorder;
         }
         else if (HighlightLairs && room is { HasLair: true })
         {

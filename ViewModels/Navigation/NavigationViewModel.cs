@@ -31,6 +31,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
         OnAvoidedChanged();
+        _services.AutoRoam.MarkedChanged += OnAutoRoamMarkedChanged;
+        _services.AutoRoam.ActiveChanged += OnAutoRoamActiveChanged;
+        OnAutoRoamMarkedChanged();
+        IsAutoRoaming = _services.AutoRoam.IsActive;
         Graph = _services.RoomGraph;
         RefreshFromTracker();
         RefreshFromWalker();
@@ -47,6 +51,26 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Loops.LoopsChanged -= OnLoopsChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
+        _services.AutoRoam.MarkedChanged -= OnAutoRoamMarkedChanged;
+        _services.AutoRoam.ActiveChanged -= OnAutoRoamActiveChanged;
+    }
+
+    private void OnAutoRoamMarkedChanged()
+        => AutoRoamRooms = new HashSet<RoomKey>(_services.AutoRoam.Marked);
+
+    private void OnAutoRoamActiveChanged(bool active) => IsAutoRoaming = active;
+
+    [RelayCommand]
+    private void ToggleAutoRoam()
+    {
+        if (_services.AutoRoam.IsActive) _services.AutoRoam.Stop();
+        else _services.AutoRoam.Start();
+    }
+
+    [RelayCommand]
+    private void ToggleContextRoomAutoRoam()
+    {
+        if (ContextRoomKey is { } k) _services.AutoRoam.Toggle(k);
     }
 
     private void OnAvoidedChanged()
@@ -111,6 +135,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _autoRoamRooms;
+    [ObservableProperty] private bool _isAutoRoaming;
 
     // ----- Search ---------------------------------------------------
 
