@@ -180,4 +180,16 @@ public sealed class CharacterProfile
     /// <c>null</c> until the first successful locate.
     /// </summary>
     public RoomRef? LastKnownRoom { get; set; }
+
+    /// <summary>
+    /// Ordered list of move commands sent since <see cref="LastKnownRoom"/>
+    /// was Confirmed — the tracker's replay-from-last-Confirmed input.
+    /// Written by <see cref="Game.Map.RoomTracker"/> on every successful
+    /// move, cleared on the next Confirmed transition (the new
+    /// <c>LastKnownRoom</c> takes over). Hydrated on profile load so the
+    /// next session can replay through the graph and recover position
+    /// without manual intervention. <c>null</c> or empty = no pending
+    /// steps to replay.
+    /// </summary>
+    public List<DirectionDto>? RecentSteps { get; set; }
 }
