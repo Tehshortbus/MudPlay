@@ -72,23 +72,29 @@ public sealed class SuicidePasswordTracker : IDisposable
     private bool _disposed;
 
     private FlowState _state = FlowState.Idle;
-    private string? _pendingNewPassword;
 
-    /// <summary>
-    /// Char-by-char accumulator for the password capture. Lets
-    /// <see cref="ObserveOutbound"/> work regardless of whether the
-    /// wire-send path is line-mode (LocalInputBuffer flushes the whole
-    /// password + CR as one call) or char-mode (real path — MajorMUD's
-    /// password prompts use server-side Telnet ECHO suppression, so each
-    /// keystroke ships individually and the server echoes <c>*</c> back
-    /// per char). The pre-fix "overwrite _pendingNewPassword each call"
-    /// model silently lost everything but the latest char under char-
-    /// mode, and the trailing CR cleared the field entirely, surfacing
-    /// as "Password Changed observed but no captured candidate to
-    /// commit." in the LogPane and a stay-<c>null</c>
-    /// <see cref="CharacterProfile.EncryptedSuicidePassword"/> on disk.
-    /// </summary>
-    private readonly StringBuilder _passwordBuilder = new();
+    // ----- Outbound-line sniffer (capture model) -------------------------
+    // The state-machine prompts are NOT reliable timing for password
+    // capture — the server's prompt-ack burst arrives AFTER the user
+    // has finished typing both old AND new passwords (Wire Inspector
+    // verified: "Enter the current password:****<CR>...Enter New
+    // Password:****<CR>...Password changed" all in one chunk). By the
+    // time OnNewPasswordPrompt flips state to AwaitingNewPassword, the
+    // user's bytes have already passed through ObserveOutbound with
+    // state stuck on Idle / AwaitingOldPassword — and the state gate
+    // early-returned every one of them.
+    //
+    // Resolved by sniffing OUTBOUND bytes continuously: when the user
+    // sends `set suicide`, arm capture; track the latest completed
+    // non-empty outbound line until "Password changed" lands; that
+    // latest line IS the new password (the old-password line gets
+    // shifted out by the sniffer's rolling-1-deep model). Disarm on
+    // any flow terminator.
+    private bool _captureArmed;
+    /// <summary>Char accumulator for the line currently being typed.</summary>
+    private readonly StringBuilder _currentOutLine = new();
+    /// <summary>Latest completed non-empty outbound line while armed — the new-password candidate at commit time.</summary>
+    private string? _latestArmedLine;
 
     /// <summary>Current state of the flow — exposed for tests + diagnostics.</summary>
     public FlowState State => _state;
@@ -127,33 +133,29 @@ public sealed class SuicidePasswordTracker : IDisposable
     }
 
     /// <summary>
-    /// Called by the wire-send path on every outbound payload so we
-    /// can capture the user-typed password during the
-    /// <see cref="FlowState.AwaitingNewPassword"/> phase. No-op in
-    /// every other state — we don't store the old password (we don't
-    /// need it: it's the same as the new one was, before they changed
-    /// it) or the use-suicide attempt.
+    /// Called by the wire-send path on every outbound byte so the
+    /// sniffer can track the user-typed lines that need to land as
+    /// the captured suicide password. Runs ALWAYS (not gated on the
+    /// state machine) because the inbound prompt acks can arrive in
+    /// a single burst AFTER the user has finished typing — gating on
+    /// state would silently miss every byte. The arming flag
+    /// (<see cref="_captureArmed"/>) decides whether the completed
+    /// line is the new-password candidate or unrelated traffic.
     /// </summary>
     /// <remarks>
-    /// Bytes are accumulated into <see cref="_passwordBuilder"/> until
-    /// a CR / LF terminator arrives. Works for both wire-send modes:
+    /// Handles both wire-send modes transparently:
     /// <list type="bullet">
-    ///   <item><b>Char-mode</b> (real path on MajorMUD password
-    ///         prompts) — server uses Telnet ECHO suppression, each
-    ///         keystroke ships as its own ObserveOutbound call, server
-    ///         echoes <c>*</c> per char.</item>
-    ///   <item><b>Line-mode</b> — entire password + CR arrives in one
-    ///         call from LocalInputBuffer's flush. The loop below
-    ///         processes the chars and finalizes on the trailing CR
-    ///         the same way as char-mode.</item>
+    ///   <item><b>Char-mode</b> (the real MajorMUD path — server uses
+    ///         Telnet ECHO suppression so each keystroke ships
+    ///         individually).</item>
+    ///   <item><b>Line-mode</b> (LocalInputBuffer flushes the entire
+    ///         line + CR in one call).</item>
     /// </list>
-    /// Backspace bytes (<c>0x08</c> / <c>0x7F</c>) shrink the buffer so
-    /// the user typing a wrong char and correcting it produces the
-    /// right captured value.
+    /// Backspace bytes (<c>0x08</c> / <c>0x7F</c>) shrink the in-flight
+    /// line so a typo + correct produces the right captured value.
     /// </remarks>
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
-        if (_state != FlowState.AwaitingNewPassword) return;
         if (bytes.IsEmpty) return;
 
         foreach (byte b in bytes)
@@ -162,33 +164,58 @@ public sealed class SuicidePasswordTracker : IDisposable
             {
                 case 0x0D: // CR
                 case 0x0A: // LF
-                    // Line terminator — finalize whatever we
-                    // accumulated. Empty buffer = user just hit Enter
-                    // without typing; let the server's "Password NOT
-                    // changed" terminator drive the reset.
-                    if (_passwordBuilder.Length > 0)
-                    {
-                        _pendingNewPassword = _passwordBuilder.ToString();
-                        _log?.Log(LogSeverity.Info, "Suicide",
-                            $"Captured candidate new password ({_pendingNewPassword.Length} char), waiting for confirmation.");
-                    }
-                    else
-                    {
-                        _pendingNewPassword = null;
-                    }
-                    _passwordBuilder.Clear();
-                    return;
+                    FinalizeOutboundLine();
+                    break;
                 case 0x08: // backspace
                 case 0x7F: // delete
-                    if (_passwordBuilder.Length > 0) _passwordBuilder.Length--;
+                    if (_currentOutLine.Length > 0) _currentOutLine.Length--;
                     break;
                 case 0x00: // NUL — skip
                     break;
                 default:
-                    _passwordBuilder.Append((char)b);
+                    _currentOutLine.Append((char)b);
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Process a completed outbound line. When the line is the
+    /// <c>set suicide</c> arming trigger, flip
+    /// <see cref="_captureArmed"/>. While armed, every subsequent
+    /// non-empty completed line becomes the new
+    /// <see cref="_latestArmedLine"/> — the rolling 1-deep buffer
+    /// preserves the LATEST candidate so the old-password line
+    /// (which the user typed first) is overwritten by the
+    /// new-password line (which they typed second), and
+    /// <see cref="OnPasswordChanged"/> commits the right value.
+    /// </summary>
+    private void FinalizeOutboundLine()
+    {
+        string completed = _currentOutLine.ToString();
+        _currentOutLine.Clear();
+        if (completed.Length == 0) return;
+
+        if (!_captureArmed)
+        {
+            // Arm on outbound `set suicide`. Case-insensitive because
+            // MUDs accept any casing. The bare `suicide` (use-pw form)
+            // does NOT change the password, so it doesn't arm.
+            if (completed.Trim().Equals("set suicide", StringComparison.OrdinalIgnoreCase))
+            {
+                _captureArmed = true;
+                _log?.Log(LogSeverity.Info, "Suicide",
+                    "Outbound `set suicide` observed — capture armed for the next 'Password changed'.");
+            }
+            return;
+        }
+
+        // Armed: rolling 1-deep buffer keeps only the latest line.
+        // Old-password ⇒ overwritten when new-password arrives ⇒
+        // OnPasswordChanged commits the new-password value.
+        _latestArmedLine = completed;
+        _log?.Log(LogSeverity.Debug, "Suicide",
+            $"Captured outbound line while armed ({completed.Length} char).");
     }
 
     // ----- Server-line handlers ------------------------------------------
@@ -206,17 +233,13 @@ public sealed class SuicidePasswordTracker : IDisposable
 
     private void OnNewPasswordPrompt()
     {
-        // Two paths land here:
+        // Gate-management only — capture timing lives in the outbound
+        // sniffer (see _captureArmed / _latestArmedLine). Two paths
+        // land here:
         //   * Fresh set, no existing password — flow opens here directly.
         //   * Change-password flow — already in AwaitingOldPassword.
-        // Either way we now expect the user to type the new password.
         _state = FlowState.AwaitingNewPassword;
         _gate.IsLocked = true;
-        _pendingNewPassword = null;
-        // Reset the char accumulator — the old-password phase doesn't
-        // touch it (state gate is AwaitingNewPassword in ObserveOutbound)
-        // but defensive-clear in case a future state extension does.
-        _passwordBuilder.Clear();
         _log?.Log(LogSeverity.Info, "Suicide",
             "Awaiting new-password entry — engine gate LOCKED.");
     }
@@ -235,35 +258,35 @@ public sealed class SuicidePasswordTracker : IDisposable
 
     private void OnInvalidPassword()
     {
-        // Server bailed the flow. Don't commit the pending value;
-        // unlock + reset.
-        _pendingNewPassword = null;
+        // Server bailed the flow. Don't commit the captured candidate;
+        // disarm the sniffer + unlock the gate.
         Reset(reason: "Invalid password — flow aborted by server.");
     }
 
     private void OnPasswordChanged()
     {
-        // Success. Commit the captured candidate to the profile.
-        if (_pendingNewPassword is not null && _profile.Current is { } profile)
+        // Success. Commit the sniffer's latest captured line as the
+        // new password. The rolling 1-deep buffer guarantees this is
+        // the new-password value (the old-password line was already
+        // overwritten when the user typed the new one).
+        if (_captureArmed && _latestArmedLine is { } candidate && _profile.Current is { } profile)
         {
-            profile.EncryptedSuicidePassword = _protector.Protect(_pendingNewPassword);
+            profile.EncryptedSuicidePassword = _protector.Protect(candidate);
             _profile.Save();
             _profile.NotifyMutated();
             _log?.Log(LogSeverity.Info, "Suicide",
-                $"Password Changed observed — stored encrypted on profile.");
+                $"Password Changed observed — stored encrypted on profile ({candidate.Length} char).");
         }
         else
         {
             _log?.Log(LogSeverity.Warn, "Suicide",
-                "Password Changed observed but no captured candidate to commit.");
+                $"Password Changed observed but no captured candidate to commit (armed={_captureArmed}, latest={_latestArmedLine?.Length ?? 0}).");
         }
-        _pendingNewPassword = null;
         Reset(reason: "Password Changed.");
     }
 
     private void OnPasswordNotChanged()
     {
-        _pendingNewPassword = null;
         Reset(reason: "Password NOT changed — no commit.");
     }
 
@@ -286,10 +309,13 @@ public sealed class SuicidePasswordTracker : IDisposable
     {
         _state = FlowState.Idle;
         _gate.IsLocked = false;
-        // Drop any in-flight char accumulation so a fresh flow doesn't
-        // inherit leftover bytes from an aborted one (e.g. user typed
-        // half a password then the server bailed with "Invalid").
-        _passwordBuilder.Clear();
+        // Disarm the outbound sniffer + drop any in-flight line so a
+        // fresh flow doesn't inherit leftover bytes from an aborted
+        // one (user typed half a password then server bailed with
+        // "Invalid", etc.).
+        _captureArmed = false;
+        _latestArmedLine = null;
+        _currentOutLine.Clear();
         _log?.Log(LogSeverity.Info, "Suicide", $"Engine gate UNLOCKED — {reason}");
     }
 }

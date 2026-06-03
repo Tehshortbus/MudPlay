@@ -46,55 +46,79 @@ public sealed class SuicidePasswordTrackerTests
             IsPromptLine: false));
 
     [Fact]
-    public void NewPasswordPrompt_LocksGate_AndCapturesOnPasswordChanged()
+    public void FirstTimeSet_PrimedByOutboundSetSuicide_CapturesOnPasswordChanged()
     {
         var (tracker, router, gate, profile, protector, tmp) = Setup();
         try
         {
-            // First-time set: server prompts directly with "Enter New Password:"
+            // User typed `set suicide` — this arms the outbound sniffer.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+
+            // Server prompts (first-time set: no old-password phase).
             Dispatch(router, "Enter New Password:");
             Assert.True(gate.IsLocked);
             Assert.Equal(SuicidePasswordTracker.FlowState.AwaitingNewPassword, tracker.State);
 
-            // User types "hunter2" then Enter — wire-send observes.
+            // User types "hunter2" then Enter.
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("hunter2\r"));
 
             // Server confirms — Playpen renders this as lowercase
-            // "Password changed". Regex tolerates either casing now,
-            // but this test pins the realm-observed literal so a
-            // future regression to capital-only would fail here.
+            // "Password changed". Regex tolerates either casing.
             Dispatch(router, "Password changed");
 
             Assert.False(gate.IsLocked);
             Assert.Equal(SuicidePasswordTracker.FlowState.Idle, tracker.State);
             Assert.NotNull(profile.Current!.EncryptedSuicidePassword);
-            string? roundtrip = protector.Unprotect(profile.Current.EncryptedSuicidePassword!);
-            Assert.Equal("hunter2", roundtrip);
+            Assert.Equal("hunter2", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
         }
         finally { Directory.Delete(tmp, recursive: true); }
     }
 
     [Fact]
-    public void ChangePassword_OldPromptThenNewPrompt_CapturesAndCommits()
+    public void ChangePassword_OldThenNew_RollingBufferKeepsNewOnly()
     {
+        // Existing password change: user types old THEN new. The
+        // outbound sniffer's 1-deep rolling buffer overwrites the
+        // old-password line with the new-password line, so the
+        // commit picks up the right value.
         var (tracker, router, gate, profile, protector, tmp) = Setup();
         try
         {
-            // Change-existing flow: old prompt first.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter the current password:");
-            Assert.True(gate.IsLocked);
-            Assert.Equal(SuicidePasswordTracker.FlowState.AwaitingOldPassword, tracker.State);
-            // User types old.
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("oldpw\r"));
-
-            // Server accepts and moves to new-password prompt.
             Dispatch(router, "Enter New Password:");
-            Assert.Equal(SuicidePasswordTracker.FlowState.AwaitingNewPassword, tracker.State);
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("newpw\r"));
-
             Dispatch(router, "Password Changed");
 
             Assert.False(gate.IsLocked);
+            Assert.Equal("newpw", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void BurstedServerResponse_StillCommitsCorrectly()
+    {
+        // Real failure mode the LogPane revealed: the server batches
+        // its prompt acks + "Password changed" into one parser tick
+        // AFTER the user has already finished typing both passwords.
+        // Pre-fix the state-machine-gated capture missed every byte.
+        // Sniffer model captures regardless of state-machine timing.
+        var (tracker, router, gate, profile, protector, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            // User types both passwords BEFORE any inbound prompts fire.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("oldpw\r"));
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("newpw\r"));
+
+            // NOW the server's burst arrives, firing all three patterns
+            // in one parser tick.
+            Dispatch(router, "Enter the current password:");
+            Dispatch(router, "Enter New Password:");
+            Dispatch(router, "Password changed");
+
             Assert.Equal("newpw", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
         }
         finally { Directory.Delete(tmp, recursive: true); }
@@ -109,6 +133,7 @@ public sealed class SuicidePasswordTrackerTests
             // Pre-seed an existing stored password.
             profile.Current!.EncryptedSuicidePassword = protector.Protect("original");
 
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter the current password:");
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("wrongoldpw\r"));
             Dispatch(router, "Invalid password specified.");
@@ -127,8 +152,10 @@ public sealed class SuicidePasswordTrackerTests
         var (tracker, router, gate, profile, protector, tmp) = Setup();
         try
         {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter New Password:");
-            // User just hits Enter — empty payload after stripping CR.
+            // User just hits Enter — empty line, sniffer ignores it
+            // (zero-length lines aren't candidates).
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("\r"));
 
             Dispatch(router, "Password NOT changed");
@@ -142,24 +169,23 @@ public sealed class SuicidePasswordTrackerTests
     [Fact]
     public void UseSuicidePrompt_LocksGateButDoesNotCapture()
     {
+        // `suicide` (use form) does NOT arm the sniffer — only
+        // `set suicide` does. So even if the user types something at
+        // the password challenge, the stored value stays untouched.
         var (tracker, router, gate, profile, protector, tmp) = Setup();
         try
         {
             profile.Current!.EncryptedSuicidePassword = protector.Protect("stored");
 
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("suicide\r"));
             Dispatch(router, "Enter your suicide password:");
             Assert.True(gate.IsLocked);
             Assert.Equal(SuicidePasswordTracker.FlowState.AwaitingUsePassword, tracker.State);
 
-            // User types whatever — must NOT overwrite stored.
             tracker.ObserveOutbound(Encoding.Latin1.GetBytes("anything\r"));
-
-            // Server eventually invalids or executes; either way the
-            // pattern that fires terminates. Test the invalid path.
             Dispatch(router, "Invalid password specified.");
 
             Assert.False(gate.IsLocked);
-            // Stored unchanged.
             Assert.Equal("stored", protector.Unprotect(profile.Current.EncryptedSuicidePassword!));
         }
         finally { Directory.Delete(tmp, recursive: true); }
@@ -240,9 +266,9 @@ public sealed class SuicidePasswordTrackerTests
     // ===== Char-mode capture (real MajorMUD path) ========================
     // Password prompts use Telnet ECHO suppression — each keystroke
     // ships as its own ObserveOutbound call, server echoes `*` per char.
-    // Pre-fix the tracker overwrote _pendingNewPassword each call and
-    // the trailing CR cleared it to null, leaving
-    // CharacterProfile.EncryptedSuicidePassword stuck at null on disk.
+    // The outbound-line sniffer accumulates bytes into a per-line
+    // builder and only commits the completed line, so capture works
+    // identically in char-mode and line-mode.
 
     [Fact]
     public void CharMode_CapturesAcrossMultipleSingleByteCalls()
@@ -250,6 +276,12 @@ public sealed class SuicidePasswordTrackerTests
         var (tracker, router, _, profile, protector, tmp) = Setup();
         try
         {
+            // Arm via outbound `set suicide` — same per-byte path as
+            // password entry. Could equally be one Latin1.GetBytes("set suicide\r")
+            // call; the sniffer accumulates either way.
+            foreach (byte b in Encoding.Latin1.GetBytes("set suicide\r"))
+                tracker.ObserveOutbound(new[] { b });
+
             Dispatch(router, "Enter New Password:");
 
             // One byte per call — mirrors the real wire trace.
@@ -276,6 +308,7 @@ public sealed class SuicidePasswordTrackerTests
         var (tracker, router, _, profile, protector, tmp) = Setup();
         try
         {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter New Password:");
 
             tracker.ObserveOutbound(new byte[] { (byte)'p' });
@@ -301,6 +334,7 @@ public sealed class SuicidePasswordTrackerTests
         var (tracker, router, _, profile, protector, tmp) = Setup();
         try
         {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter New Password:");
             tracker.ObserveOutbound(new byte[] { (byte)'a', (byte)'b', 0x7F, (byte)'c', 0x0D });
             Dispatch(router, "Password changed");
@@ -322,6 +356,7 @@ public sealed class SuicidePasswordTrackerTests
             // Pre-seed something so we can verify it's not overwritten.
             profile.Current!.EncryptedSuicidePassword = protector.Protect("kept");
 
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter New Password:");
             tracker.ObserveOutbound(new byte[] { 0x0D });
             Dispatch(router, "Password NOT changed");
@@ -334,14 +369,14 @@ public sealed class SuicidePasswordTrackerTests
     [Fact]
     public void CharMode_OldPasswordPhase_DoesNotPollute_NewPasswordCapture()
     {
-        // Full set-existing flow as the user actually sees it:
-        // current-password phase types pass through unobserved (state
-        // gate), then new-password phase captures only that phase's
-        // bytes. Pre-fix any leftover from the old phase could have
-        // ended up in the captured candidate.
+        // Full set-existing flow: current-password phase types arrive
+        // first, then new-password phase. The sniffer's rolling 1-deep
+        // buffer overwrites the old-password line with the new-password
+        // line, so the commit picks up the right value.
         var (tracker, router, _, profile, protector, tmp) = Setup();
         try
         {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
             Dispatch(router, "Enter the current password:");
             tracker.ObserveOutbound(new byte[] { (byte)'o', (byte)'l', (byte)'d', (byte)'p', (byte)'w', 0x0D });
 
@@ -363,14 +398,95 @@ public sealed class SuicidePasswordTrackerTests
     {
         // Some BBSes send LF instead of CR. Tracker treats both as
         // line terminators so the password commits on whichever fires.
+        // Arming line uses LF too for symmetry.
         var (tracker, router, _, profile, protector, tmp) = Setup();
         try
         {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\n"));
             Dispatch(router, "Enter New Password:");
             tracker.ObserveOutbound(new byte[] { (byte)'a', (byte)'b', (byte)'c', 0x0A });
             Dispatch(router, "Password changed");
 
             Assert.Equal("abc", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    // ===== Sniffer-specific edge cases ===================================
+
+    [Fact]
+    public void Sniffer_NotArmedWithoutSetSuicide_PasswordChangedNoOps()
+    {
+        // Stranger flow: somehow "Password changed" fires without us
+        // ever seeing outbound `set suicide`. Should NOT commit
+        // whatever happens to be the latest outbound line — could be
+        // a chat message, par poll, anything.
+        var (tracker, router, _, profile, _, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("par\r"));
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("who\r"));
+            Dispatch(router, "Password changed");
+
+            Assert.Null(profile.Current!.EncryptedSuicidePassword);
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void Sniffer_SetSuicideArmsCaseInsensitive()
+    {
+        // MUDs accept any casing on commands. Arming should follow.
+        var (tracker, router, _, profile, protector, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("SET SUICIDE\r"));
+            Dispatch(router, "Enter New Password:");
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("hunter2\r"));
+            Dispatch(router, "Password changed");
+
+            Assert.Equal("hunter2", protector.Unprotect(profile.Current!.EncryptedSuicidePassword!));
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void Sniffer_BareSuicideUseFormDoesNotArm()
+    {
+        // `suicide` (use form) does NOT change the password. Sniffer
+        // must not arm on it, even if "Password changed" somehow lands
+        // later.
+        var (tracker, router, _, profile, _, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("suicide\r"));
+            // Hypothetical: stale "Password changed" from a prior
+            // session's tail end. Sniffer is NOT armed, no commit.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("hunter2\r"));
+            Dispatch(router, "Password changed");
+
+            Assert.Null(profile.Current!.EncryptedSuicidePassword);
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
+    public void Sniffer_InvalidPasswordDisarms_SecondPasswordChangedDoesNotCommit()
+    {
+        // After Invalid, a fresh `set suicide` is needed to re-arm.
+        var (tracker, router, _, profile, _, tmp) = Setup();
+        try
+        {
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("set suicide\r"));
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("wrongpw\r"));
+            Dispatch(router, "Invalid password specified.");  // disarms
+
+            // Some other outbound line + a stray "Password changed"
+            // should NOT commit because we're no longer armed.
+            tracker.ObserveOutbound(Encoding.Latin1.GetBytes("chat hello\r"));
+            Dispatch(router, "Password changed");
+
+            Assert.Null(profile.Current!.EncryptedSuicidePassword);
         }
         finally { Directory.Delete(tmp, recursive: true); }
     }
