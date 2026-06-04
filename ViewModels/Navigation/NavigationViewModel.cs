@@ -489,20 +489,61 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Dictionary<int, List<RoomKey>> map = new();
         if (Graph is null) { _roomsByMonsterIdCache = map; return map; }
 
+        // Source 1: room.RawLairTag — monster ids listed in each
+        // room's lair string.
         foreach (Room room in Graph.Rooms)
         {
             if (string.IsNullOrEmpty(room.RawLairTag)) continue;
             RoomTooltipBuilder.ParseLairTag(room.RawLairTag, out _, out IReadOnlyList<int> ids);
-            foreach (int id in ids)
+            foreach (int id in ids) AddMonsterRoom(map, id, room.Key);
+        }
+
+        // Source 2: Monsters.json "Summoned By" — fixed boss / script
+        // spawns whose room placement lives on the monster record
+        // rather than the room's lair tag. Field examples:
+        //   "Room 10/271, Group: 10/271"
+        //   "Room 1/101, Room 1/224, Room 1/297"
+        //   "[16-8-8][5]Group(lair): 10/159"
+        //   "Group: 2/2551,Group: 2/2564,Group: 2/2569"
+        // Bracketed Lairs.json GroupIndex tokens use '-' between
+        // numbers; only the room references use '/'. Matching every
+        // "<digits>/<digits>" sweeps in every spawn site regardless
+        // of the surrounding label.
+        System.Text.Json.JsonDocument? doc = _services.GameData.GetRawTable("Monsters");
+        if (doc is not null)
+        {
+            foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
             {
-                if (!map.TryGetValue(id, out List<RoomKey>? rooms))
-                    map[id] = rooms = new List<RoomKey>();
-                rooms.Add(room.Key);
+                if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)
+                    || numEl.ValueKind != System.Text.Json.JsonValueKind.Number
+                    || !numEl.TryGetInt32(out int id)) continue;
+                if (!row.TryGetProperty("Summoned By", out System.Text.Json.JsonElement summonEl)
+                    || summonEl.ValueKind != System.Text.Json.JsonValueKind.String) continue;
+                string? text = summonEl.GetString();
+                if (string.IsNullOrEmpty(text)) continue;
+                foreach (System.Text.RegularExpressions.Match m
+                         in s_summonedRoomRegex.Matches(text))
+                {
+                    if (!int.TryParse(m.Groups[1].Value, out int mn) || mn <= 0) continue;
+                    if (!int.TryParse(m.Groups[2].Value, out int rn) || rn <= 0) continue;
+                    AddMonsterRoom(map, id, new RoomKey(mn, rn));
+                }
             }
         }
+
         _roomsByMonsterIdCache = map;
         return map;
     }
+
+    private static void AddMonsterRoom(Dictionary<int, List<RoomKey>> map, int monsterId, RoomKey key)
+    {
+        if (!map.TryGetValue(monsterId, out List<RoomKey>? rooms))
+            map[monsterId] = rooms = new List<RoomKey>();
+        if (!rooms.Contains(key)) rooms.Add(key);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex s_summonedRoomRegex
+        = new(@"(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private void InvalidateMonsterSearchCaches()
     {
