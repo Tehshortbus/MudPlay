@@ -265,10 +265,54 @@ public sealed class AutoWalkManager
         if (_awaitingPromptForCommand) OnPromptObservedCore();
     }
 
+    /// <summary>
+    /// When non-null, the user requested a walk while the tracker still
+    /// had pipelined moves outstanding (Confidence == Pending). Planning
+    /// is deferred until the tracker reaches Confirmed; the next
+    /// confirmation in <see cref="OnTrackerStateChanged"/> picks this
+    /// up and runs <see cref="WalkToImmediate"/> against the actually-
+    /// settled current room. Cleared by <see cref="Reset"/> so a Stop
+    /// or supersede invalidates the deferral.
+    /// </summary>
+    private RoomKey? _deferredWalkTarget;
+
     public bool WalkTo(RoomKey destination)
     {
         if (State is WalkState.Walking or WalkState.Paused)
             Stop(reason: "superseded by new walk");
+
+        // In-flight moves still on the wire (typical when the user
+        // clicks a new "walk to" before the current step has confirmed):
+        // planning from tracker.CurrentRoom now would use a stale
+        // source and our first send would interleave with the server's
+        // pending reply. Defer until the tracker settles to Confirmed.
+        if (_tracker.State.Confidence == RoomConfidence.Pending)
+        {
+            if (_graph.GetRoom(destination) is null)
+            {
+                Raise(new WalkEvent(WalkEventKind.Failed, "destination not in active graph", destination));
+                return false;
+            }
+            _deferredWalkTarget = destination;
+            _destination = destination;       // populated so status surfaces show the target
+            State = WalkState.Walking;
+            Raise(new WalkEvent(WalkEventKind.Started,
+                "deferred — waiting for in-flight moves to settle",
+                destination));
+            return true;
+        }
+
+        return WalkToImmediate(destination);
+    }
+
+    private bool WalkToImmediate(RoomKey destination)
+    {
+        // Callers may arrive here from the WalkTo entry (Idle) OR from
+        // the deferred dispatch in OnTrackerStateChanged (Walking with
+        // _path == null). Either way the next few branches need a
+        // clean slate — Reset takes us to Idle and clears any stale
+        // _destination so failures don't leave the walker stuck.
+        Reset();
 
         Room? source = _tracker.State.CurrentRoom;
         if (source is null)
@@ -692,6 +736,21 @@ public sealed class AutoWalkManager
 
     private void OnTrackerStateChanged(RoomTransition transition)
     {
+        // Deferred-plan dispatch — a WalkTo arrived while the tracker
+        // still had pipelined moves outstanding. The walker has been
+        // sitting in Walking state with _path == null waiting for a
+        // Confirmed observation. Now we have one — plan + send from
+        // the actually-settled current room.
+        if (_deferredWalkTarget is { } deferred
+            && transition.NewConfidence == RoomConfidence.Confirmed
+            && State == WalkState.Walking
+            && _path is null)
+        {
+            _deferredWalkTarget = null;
+            WalkToImmediate(deferred);
+            return;
+        }
+
         if (State != WalkState.Walking) return;
         if (!_stepInFlight) return;
         if (_path is null || _index >= _path.Count) return;
@@ -926,6 +985,7 @@ public sealed class AutoWalkManager
         _awaitingTrapDisarm = false;
         _awaitingDoorOpen = false;
         _awaitingHiddenReveal = false;
+        _deferredWalkTarget = null;
         _retryCount = 0;
         _replanCount = 0;
         State = WalkState.Idle;

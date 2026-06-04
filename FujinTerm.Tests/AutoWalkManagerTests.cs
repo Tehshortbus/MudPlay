@@ -505,6 +505,70 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
     }
 
+    [Fact]
+    public void WalkTo_MidStep_DefersUntilTrackerSettles_ThenPlansFromSettledRoom()
+    {
+        // Live bug: user clicks "walk to" mid-step. The old walk's
+        // in-flight move was still on the wire — the new walk planned
+        // from the stale source and immediately sent its first step,
+        // server processed BOTH moves in sequence, walker saw two
+        // confirmations (Pending → Pending → Confirmed) and only knew
+        // how to handle the final Confirmed which landed one room past
+        // the planned target → desync Failed → walker idle.
+        //
+        // Fix: when the tracker is Pending (in-flight queue not empty)
+        // at WalkTo time, defer planning until the next Confirmed.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));      // path: N, N
+        Assert.Single(h.Sent);                   // step 1 sent; tracker Pending
+        int beforeSecondCall = h.Sent.Count;
+
+        // Mid-step second WalkTo — tracker is still Pending (awaiting
+        // confirmation for step 1's N). Walker must NOT send a fresh
+        // first step yet — that would interleave with the old reply.
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Equal(beforeSecondCall, h.Sent.Count);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Started && e.Detail.Contains("deferred"));
+
+        // Old in-flight step lands — tracker → Confirmed at 1/2. The
+        // deferred plan fires, replans from 1/2 to 1/2 (already at dest)
+        // → Finished.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+    }
+
+    [Fact]
+    public void WalkTo_MidStep_DeferredPlanReissuesWalkFromSettledRoom()
+    {
+        // Same as above but the new destination ISN'T the in-flight
+        // landing — the deferred plan must build a fresh path from the
+        // settled room and send its first step.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));      // path: N, N
+        Assert.Single(h.Sent);
+
+        // Mid-step: user wants to go BACK to 1/1 instead.
+        h.Walker.WalkTo(new RoomKey(1, 1));
+        Assert.Single(h.Sent);                   // deferred, no fresh send
+
+        // Old in-flight settles at 1/2 — deferred plan kicks in,
+        // BFS from 1/2 to 1/1 = [S], walker sends "s".
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", System.Text.Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
     // ----- avoided rooms --------------------------------------------
 
     [Fact]
