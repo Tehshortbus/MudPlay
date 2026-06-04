@@ -106,6 +106,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.ManualCenterDialogViewModel,
                 FujinTerm.Views.ManualCenterDialog>();
 
+            // EngineRecoveryGate → "Lost — couldn't recover" info dialog.
+            // Single OK button; pops on tier-3 backtrack exhaustion.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.LostRecoveryDialogViewModel,
+                FujinTerm.Views.Navigation.LostRecoveryDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

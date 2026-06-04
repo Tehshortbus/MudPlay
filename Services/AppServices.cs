@@ -572,6 +572,14 @@ public sealed class AppServices
     public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
 
     /// <summary>
+    /// Shared tier-1/2/3 recovery gate for the walker / loop runner /
+    /// auto-lair scheduler. Engines attach themselves on Start and
+    /// detach on Stop; the gate owns the strict-1-of-1 anchor + the
+    /// executed-step history + tier-3 backtrack logic.
+    /// </summary>
+    public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
+
+    /// <summary>
     /// Writer that persists tracker-learned room names back into the
     /// active set's <c>Rooms.json</c>. Consumed by the
     /// MainWindowViewModel name-learned prompt handler after the user
@@ -1020,6 +1028,10 @@ public sealed class AppServices
         // when the active set rebuilds.
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
+
+        // Shared engine-level recovery gate. Walker / LoopRunner /
+        // AutoLair attach themselves on Start (next commits).
+        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
 
         // Writer that persists tracker-learned names back to
         // Rooms.json. The MainWindowVM subscribes to NameLearned to

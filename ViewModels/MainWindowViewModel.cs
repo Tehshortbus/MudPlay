@@ -383,6 +383,11 @@ public partial class MainWindowViewModel : ObservableObject
         // the new name back to Rooms.json; session-deduped so a single
         // walk doesn't re-prompt the same room on every observation.
         AppServices.Current.RoomTracker.NameLearned += OnRoomNameLearned;
+
+        // EngineRecoveryGate terminal failure → modeless "Lost" info
+        // dialog. The gate already aborted the engine; we just surface
+        // the message so the user knows automation gave up.
+        AppServices.Current.Recovery.RecoveryFailed += OnRecoveryFailed;
         RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
@@ -759,6 +764,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
         => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
+
+    private void OnRecoveryFailed(Game.Map.RecoveryFailedEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowLostRecoveryDialogAsync(e));
+
+    private async void ShowLostRecoveryDialogAsync(Game.Map.RecoveryFailedEvent e)
+    {
+        var vm = new ViewModels.Navigation.LostRecoveryDialogViewModel(e.EngineName, e.Detail);
+        await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.Navigation.LostRecoveryDialogViewModel, bool>(vm);
+    }
 
     /// <summary>
     /// Rooms we've already prompted about this session. Prevents
