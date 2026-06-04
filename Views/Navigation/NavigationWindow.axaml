@@ -343,7 +343,12 @@
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
 
-            <!-- Hover tooltip popup (unchanged) -->
+            <!-- Hover tooltip popup. NoWrap + no MaxWidth so the room
+                 block stays one logical line per row even when the
+                 cursor is near the rail edge — the user wants the
+                 tooltip to draw over neighbouring chrome rather than
+                 break lines mid-room-reference. Embedded "\n" from
+                 RoomTooltipBuilder still produces multi-row layouts. -->
             <Border Grid.Column="0"
                     Name="HoverTooltip"
                     IsVisible="False"
@@ -351,14 +356,13 @@
                     Background="#FFFFC0"
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="6" Padding="8,6"
-                    IsHitTestVisible="False"
-                    MaxWidth="820">
+                    IsHitTestVisible="False">
                 <TextBlock Name="HoverTooltipText"
                            Text=""
                            FontFamily="{StaticResource FontTerminal}"
                            FontSize="13"
                            Foreground="#000000"
-                           TextWrapping="Wrap"/>
+                           TextWrapping="NoWrap"/>
             </Border>
 
             <!-- Search dropdown — anchored under the search box,
