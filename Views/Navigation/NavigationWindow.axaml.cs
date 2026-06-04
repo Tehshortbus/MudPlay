@@ -129,19 +129,16 @@ public partial class NavigationWindow : Window
         const double offsetX = 14;
         const double offsetY = 18;
 
-        // Drop any pinned size from the previous hover AND make the
-        // popup visible BEFORE measuring — Avalonia returns
-        // DesiredSize=(0,0) for elements that are still
-        // IsVisible=false, which would then collapse the Width/Height
-        // pin below to zero and the user sees nothing. Opacity=0
-        // hides the flicker while we measure + position.
-        popup.Width   = double.NaN;
-        popup.Height  = double.NaN;
+        // Measure with the popup briefly visible so DesiredSize reflects
+        // real content rather than the (0,0) Avalonia returns for an
+        // IsVisible=false element. Opacity=0 hides the flicker while we
+        // compute + apply the final position.
         popup.Opacity = 0;
         popup.IsVisible = true;
+        popup.Margin = new Thickness(0);          // clear stale margin so measure isn't biased
         popup.InvalidateMeasure();
-        popup.Measure(Size.Infinity);
-        Size desired = popup.DesiredSize;
+        popup.UpdateLayout();                     // force layout pass to settle the measure
+        Size desired = popup.Bounds.Size;
         Size viewport = map.Bounds.Size;
 
         // Edge-flip: when the default below-and-right anchor would put
@@ -156,13 +153,6 @@ public partial class NavigationWindow : Window
         if (anchorY + desired.Height > viewport.Height - 4)
             anchorY = Math.Max(0, cursor.Y - offsetY - desired.Height);
 
-        // Lock the rendered size to what Measure produced. Otherwise the
-        // parent Grid's arrange pass shrinks the popup to fit the
-        // remaining cell width after the left-anchored Margin, and the
-        // TextBlock — although NoWrap — gets visually squished down to
-        // a few characters wide.
-        popup.Width  = desired.Width;
-        popup.Height = desired.Height;
         popup.Margin = new Thickness(anchorX, anchorY, 0, 0);
         popup.Opacity = 1;
     }
