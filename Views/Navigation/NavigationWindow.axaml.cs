@@ -129,20 +129,25 @@ public partial class NavigationWindow : Window
         const double offsetX = 14;
         const double offsetY = 18;
 
-        // Reset any pinned size from the previous hover so this hover's
-        // Measure pass reflects the new content rather than the prior
-        // text's dimensions.
-        popup.Width  = double.NaN;
-        popup.Height = double.NaN;
+        // Drop any pinned size from the previous hover AND make the
+        // popup visible BEFORE measuring — Avalonia returns
+        // DesiredSize=(0,0) for elements that are still
+        // IsVisible=false, which would then collapse the Width/Height
+        // pin below to zero and the user sees nothing. Opacity=0
+        // hides the flicker while we measure + position.
+        popup.Width   = double.NaN;
+        popup.Height  = double.NaN;
+        popup.Opacity = 0;
+        popup.IsVisible = true;
+        popup.InvalidateMeasure();
+        popup.Measure(Size.Infinity);
+        Size desired = popup.DesiredSize;
+        Size viewport = map.Bounds.Size;
 
         // Edge-flip: when the default below-and-right anchor would put
         // the tooltip past the bottom / right edge of the visible map,
         // swap to above / left of the cursor instead. Without this the
         // tooltip renders off-screen and the user has to pan first.
-        popup.Measure(Size.Infinity);
-        Size desired = popup.DesiredSize;
-        Size viewport = map.Bounds.Size;
-
         double anchorX = cursor.X + offsetX;
         if (anchorX + desired.Width > viewport.Width - 4)
             anchorX = Math.Max(0, cursor.X - offsetX - desired.Width);
@@ -154,12 +159,12 @@ public partial class NavigationWindow : Window
         // Lock the rendered size to what Measure produced. Otherwise the
         // parent Grid's arrange pass shrinks the popup to fit the
         // remaining cell width after the left-anchored Margin, and the
-        // TextBlock — although NoWrap — gets visually clipped down to a
-        // few characters wide.
+        // TextBlock — although NoWrap — gets visually squished down to
+        // a few characters wide.
         popup.Width  = desired.Width;
         popup.Height = desired.Height;
         popup.Margin = new Thickness(anchorX, anchorY, 0, 0);
-        popup.IsVisible = true;
+        popup.Opacity = 1;
     }
 
     private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)
