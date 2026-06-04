@@ -343,15 +343,14 @@
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
 
-            <!-- Hover tooltip popup. NoWrap + no MaxWidth so the room
-                 block stays one logical line per row even when the
-                 cursor is near the rail edge — the user wants the
-                 tooltip to draw over neighbouring chrome rather than
-                 break lines mid-room-reference. Embedded "\n" from
-                 RoomTooltipBuilder still produces multi-row layouts.
-                 ZIndex lifts the tooltip above the right rail and the
-                 loop-builder strip so it never disappears under
-                 sibling panels. -->
+            <!-- Hover tooltip popup. MaxWidth + Wrap on the text keeps
+                 long single-line content (e.g. multi-action commands
+                 with all their alternatives) readable instead of
+                 stretching half-way across the window. Embedded "\n"
+                 from RoomTooltipBuilder still produces multi-row
+                 layouts. ZIndex lifts the tooltip above the right rail
+                 and the loop-builder strip so it never disappears
+                 under sibling panels. -->
             <Border Grid.Column="0"
                     Name="HoverTooltip"
                     IsVisible="False"
@@ -360,13 +359,14 @@
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="6" Padding="8,6"
                     IsHitTestVisible="False"
-                    ZIndex="100">
+                    ZIndex="100"
+                    MaxWidth="540">
                 <TextBlock Name="HoverTooltipText"
                            Text=""
                            FontFamily="{StaticResource FontTerminal}"
                            FontSize="13"
                            Foreground="#000000"
-                           TextWrapping="NoWrap"/>
+                           TextWrapping="Wrap"/>
             </Border>
 
             <!-- Search dropdown — anchored under the search box,
