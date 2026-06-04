@@ -61,6 +61,16 @@ public sealed class AutoWalkManager
     private int _retryCount;
     private const int MaxRetriesPerStep = 1;
 
+    /// <summary>
+    /// Counter for mid-walk re-plans triggered by tracker entering
+    /// Suspect/Lost mid-step (typically caused by the user manually
+    /// typing a movement at the terminal during a walk). Reset on
+    /// every Confirmed step advance; capped to prevent infinite
+    /// ping-pong when the user keeps interleaving typed movement.
+    /// </summary>
+    private int _replanCount;
+    private const int MaxReplansPerWalk = 2;
+
     public IReadOnlyList<byte[]> LastSentForTests => _sentForTests;
     private readonly List<byte[]> _sentForTests = new();
 
@@ -661,6 +671,25 @@ public sealed class AutoWalkManager
         if (_path is null || _index >= _path.Count) return;
         if (_path[_index] is not MoveStep) return;
 
+        // Tracker lost confidence mid-step — the most common cause is
+        // the user typing a manual movement at the terminal while the
+        // walker was awaiting a confirmation. The tracker's observation
+        // matched neither the expected predecessor nor the expected
+        // target, so it bumped into Suspect (room preserved as best
+        // guess) or Lost (room cleared). Either way the walker can't
+        // safely continue; try to re-plan from the tracker's best-guess
+        // current room exactly once, then fail.
+        if (transition.NewConfidence is RoomConfidence.Suspect
+                                     or RoomConfidence.Lost
+                                     or RoomConfidence.Unknown)
+        {
+            // Unknown only reaches us mid-step via OnGraphReloaded
+            // (active-set switched while walking) — also a "can't
+            // continue" scenario, treated the same way.
+            TryReplanOrFail(transition.NewConfidence);
+            return;
+        }
+
         if (transition.NewConfidence != RoomConfidence.Confirmed) return;
 
         RoomKey? newKey = transition.NewRoom?.Key;
@@ -670,6 +699,7 @@ public sealed class AutoWalkManager
         {
             _stepInFlight = false;
             _retryCount = 0;
+            _replanCount = 0;
             AdvanceStep();
             return;
         }
@@ -697,6 +727,32 @@ public sealed class AutoWalkManager
             $"unexpected landing {newKey} (wanted {_expectedAfterCurrentMove})",
             _destination));
         Reset();
+    }
+
+    private void TryReplanOrFail(RoomConfidence newConfidence)
+    {
+        // Re-plan caps avoid infinite ping-pong when manual user
+        // typing keeps interfering with the walker's expectations.
+        if (_replanCount >= MaxReplansPerWalk
+            || _destination is not { } dest
+            || _tracker.State.CurrentRoom is not { } here)
+        {
+            Raise(new WalkEvent(WalkEventKind.Failed,
+                $"tracker entered {newConfidence} mid-step; walker can't continue",
+                _destination));
+            Reset();
+            return;
+        }
+
+        _replanCount++;
+        _stepInFlight = false;
+        Raise(new WalkEvent(WalkEventKind.Retrying,
+            $"tracker entered {newConfidence} mid-step; re-planning from {here.Key} (attempt {_replanCount}/{MaxReplansPerWalk})",
+            _destination));
+        // Re-source the path from the tracker's best-guess current
+        // room. WalkTo handles the existing Walking state by stopping
+        // and re-planning.
+        WalkTo(dest);
     }
 
     private void OnPromptObserved(PromptObservation _) => OnPromptObservedCore();
@@ -762,6 +818,7 @@ public sealed class AutoWalkManager
         _awaitingPromptForCommand = false;
         _awaitingTrapDisarm = false;
         _retryCount = 0;
+        _replanCount = 0;
         State = WalkState.Idle;
     }
 

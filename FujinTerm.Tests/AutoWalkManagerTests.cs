@@ -210,6 +210,115 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
     }
 
+    // Graph with duplicate names to force the ambiguous-Suspect
+    // path. Walker steps N from 1/1 expecting "B" at 1/2; the
+    // observation "Hall" with {S} matches both 1/3 and 1/4 → no
+    // 1-of-1 candidate, ReconcileFromPending enters Suspect.
+    private const string AmbiguousGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Hall",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Hall",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_TrackerEntersSuspectMidStep_RePlans()
+    {
+        // Live bug from a real run: user typed a manual movement at
+        // the terminal mid-walk, the next room observation no longer
+        // matched the walker's predicted target, tracker went Suspect.
+        // OnTrackerStateChanged previously only handled Confirmed
+        // transitions, so the walker sat with _stepInFlight=true
+        // forever. Now it re-plans from the tracker's best-guess
+        // current room — Suspect preserves the anchor, so re-planning
+        // is possible (vs Lost where the room is cleared and the
+        // walker fails cleanly).
+        Harness h = NewHarness(AmbiguousGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        int sentBeforeSuspect = h.Sent.Count;
+
+        // Observation matches neither the predicted target ("B") nor
+        // the source ("A"); two graph rooms match ("Hall" 1/3, 1/4)
+        // → ambiguous → Suspect (anchor 1/1 preserved).
+        h.Tracker.NoteRoomObserved(new RoomObservation("Hall",
+            new HashSet<Direction> { Direction.S }));
+
+        // Walker must emit a Retrying event referencing the re-plan
+        // (NOT silently stuck). With the anchor still on 1/1 and the
+        // destination still 1/2, the re-plan re-sends "n\r".
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Retrying
+                 && e.Detail.Contains("re-planning"));
+        Assert.True(h.Sent.Count > sentBeforeSuspect,
+            "Walker must re-send the next step after re-planning.");
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
+    [Fact]
+    public void Walker_TrackerEntersLostMidStep_FailsCleanly()
+    {
+        // Lost clears the tracker's CurrentRoom — re-planning isn't
+        // possible (no source to plan from). Walker fails with a
+        // clear reason and goes Idle (vs sitting silently).
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        // OnGraphReloaded resets the tracker straight to Unknown
+        // (currentRoom cleared), which surfaces to the walker as a
+        // not-Confirmed transition that lacks a usable anchor. The
+        // walker treats any non-Confirmed mid-step transition the
+        // same — try to re-plan from CurrentRoom; if null, fail.
+        h.Tracker.OnGraphReloaded();
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Failed
+                 && e.Detail.Contains("walker can't continue"));
+    }
+
+    [Fact]
+    public void Walker_TrackerEntersSuspectMidStep_RepeatedSuspect_FailsAfterCap()
+    {
+        // Re-plan cap (MaxReplansPerWalk = 2) — after that many
+        // Suspect-driven re-plans the walker gives up cleanly rather
+        // than ping-ponging forever when the user keeps typing manual
+        // movements that knock the tracker off the rails.
+        Harness h = NewHarness(AmbiguousGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Repeatedly knock the tracker into Suspect after each re-plan
+        // — same ambiguous "Hall" observation each round. Three rounds
+        // total (initial + cap of 2 re-plans).
+        for (int i = 0; i < 3; i++)
+        {
+            h.Tracker.NoteRoomObserved(new RoomObservation("Hall",
+                new HashSet<Direction> { Direction.S }));
+        }
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Failed
+                 && e.Detail.Contains("walker can't continue"));
+    }
+
     // ----- pause / resume -------------------------------------------
 
     [Fact]
