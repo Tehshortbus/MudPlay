@@ -348,12 +348,12 @@ public sealed class MapControl : Control
         LineJoin = PenLineJoin.Round,
     };
 
-    // Cross-hatch overlay for teleport-CMD rooms — semi-transparent
-    // white so it's legible over any cell-fill class (lair pink, shop
-    // blue, spell purple, plain gray) without overpowering the
-    // underlying classification.
+    // Cross-hatch overlay for teleport-CMD rooms. Fully-opaque bright
+    // cyan with a 1.5 px stroke so the pattern reads at default zoom
+    // without disappearing into the cell fill — the prior #B0FFFFFF
+    // at 1.0 px was nearly invisible on lair pink and shop blue.
     private static readonly IPen TeleportHashPen
-        = new Pen(new SolidColorBrush(Color.Parse("#B0FFFFFF")), 1.0);
+        = new Pen(new SolidColorBrush(Color.Parse("#FF50E6FF")), 1.5);
     private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
     {
         LineCap = PenLineCap.Round,
@@ -1117,7 +1117,7 @@ public sealed class MapControl : Control
     /// </summary>
     private static void DrawTeleportHash(DrawingContext ctx, Rect node)
     {
-        double spacing = Math.Max(node.Width * 0.22, 3.0);
+        double spacing = Math.Max(node.Width * 0.30, 4.0);
         using (ctx.PushClip(node))
         {
             // \\\\ direction
