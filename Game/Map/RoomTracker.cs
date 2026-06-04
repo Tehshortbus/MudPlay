@@ -29,9 +29,16 @@ namespace FujinTerm.Game.Map;
 /// observation, we Confirm there. No fuzzy footprint matching.
 /// </para>
 /// <para>
-/// Persistence: every <see cref="RoomConfidence.Confirmed"/> transition
-/// updates <see cref="CharacterProfile.LastKnownRoom"/> and resets
-/// <see cref="CharacterProfile.RecentSteps"/>. Every
+/// Persistence: <see cref="CharacterProfile.LastKnownRoom"/> is
+/// written ONLY on strict-1-of-1 Confirmed transitions
+/// (<c>FindCandidates(name, exits).Count == 1</c>) and on the user's
+/// manual locate. Predicted-neighbour / null-name-learned /
+/// replay-recovery Confirmed transitions update in-memory state but
+/// don't overwrite the on-disk anchor — the existing anchor is a
+/// stronger trust signal than any deduction. This is the contract the
+/// engine-level <c>EngineRecoveryGate</c> relies on for tier-3
+/// backtrack: the persisted anchor is always something we KNEW, not
+/// something we deduced. Every
 /// <see cref="NoteMoveSent(Direction, DateTimeOffset?)"/> appends a
 /// step. The profile flushes to disk on the normal save cycle (app
 /// close, settings Apply, explicit save).
@@ -386,7 +393,7 @@ public sealed class RoomTracker
         }
 
         ClearPendingAndSteps();
-        SetRoom(room, RoomConfidence.Confirmed, when, "manual locate");
+        SetRoom(room, RoomConfidence.Confirmed, when, "manual locate", isStrictAnchor: true);
     }
 
     /// <summary>
@@ -430,7 +437,7 @@ public sealed class RoomTracker
             && _graph.GetRoom(candidates[0]) is { } single)
         {
             ClearPendingAndSteps();
-            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 silent desync");
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 silent desync", isStrictAnchor: true);
             return;
         }
 
@@ -463,8 +470,12 @@ public sealed class RoomTracker
             {
                 _pending.TryDequeue(out _);
                 State.SuspectStrikes = 0;
+                // Predicted-neighbour is a deduction — only strict (i.e.
+                // worth persisting to LastKnownRoom) when the landing
+                // room is also a 1-of-1 graph match for the observation.
+                bool strict = _graph.FindCandidates(observation.Name, observation.Exits).Count == 1;
                 if (_pending.IsEmpty)
-                    SetRoom(expected, RoomConfidence.Confirmed, when, $"move {direction} confirmed");
+                    SetRoom(expected, RoomConfidence.Confirmed, when, $"move {direction} confirmed", isStrictAnchor: strict);
                 else
                 {
                     // More moves still in flight — land Confirmed at
@@ -513,8 +524,10 @@ public sealed class RoomTracker
                     : RoomConfidence.Pending;
                 // CurrentRoom already == source; reuse SetConfidence so
                 // history stays correctly seeded with the unchanged room.
-                if (target == RoomConfidence.Confirmed)
-                    PersistConfirmedAnchor(source, when);
+                // No PersistConfirmedAnchor here — the source room's
+                // strictness was already settled when it was first
+                // anchored; re-confirming after a refused move adds no
+                // new strict signal.
                 SetConfidence(target, when, "move-refused redisplay");
                 return;
             }
@@ -526,7 +539,7 @@ public sealed class RoomTracker
             && _graph.GetRoom(candidates[0]) is { } single)
         {
             ClearPendingAndSteps();
-            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate after Pending miss");
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate after Pending miss", isStrictAnchor: true);
             return;
         }
 
@@ -539,9 +552,11 @@ public sealed class RoomTracker
         if (current is not null && MatchesPredicted(current, observation))
         {
             // Glitch resolved — server caught up. Back to Confirmed.
+            // No PersistConfirmedAnchor — re-confirming the same room
+            // we were already at adds no strict signal beyond what was
+            // already on disk.
             State.SuspectStrikes = 0;
             ClearPendingAndSteps();
-            PersistConfirmedAnchor(current, when);
             SetConfidence(RoomConfidence.Confirmed, when, "suspect resolved (current room re-confirmed)");
             return;
         }
@@ -551,7 +566,7 @@ public sealed class RoomTracker
             && _graph.GetRoom(candidates[0]) is { } single)
         {
             ClearPendingAndSteps();
-            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate from Suspect");
+            SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate from Suspect", isStrictAnchor: true);
             return;
         }
 
@@ -581,7 +596,7 @@ public sealed class RoomTracker
                     return;
                 }
                 ClearPendingAndSteps();
-                SetRoom(room, RoomConfidence.Confirmed, when, "1-of-1 candidate");
+                SetRoom(room, RoomConfidence.Confirmed, when, "1-of-1 candidate", isStrictAnchor: true);
                 break;
 
             case 0:
@@ -719,7 +734,12 @@ public sealed class RoomTracker
         return true;
     }
 
-    private void SetRoom(Room? room, RoomConfidence confidence, DateTimeOffset when, string reason)
+    private void SetRoom(
+        Room? room,
+        RoomConfidence confidence,
+        DateTimeOffset when,
+        string reason,
+        bool isStrictAnchor = false)
     {
         Room? prevRoom = State.CurrentRoom;
         RoomConfidence prev = State.Confidence;
@@ -732,7 +752,14 @@ public sealed class RoomTracker
         if (confidence == RoomConfidence.Confirmed && room is not null)
         {
             PushHistory(room.Key, when);
-            PersistConfirmedAnchor(room, when);
+            // Only persist LastKnownRoom when this Confirmed transition
+            // is anchored on (a) a true 1-of-1 graph match or (b) the
+            // user's manual locate. Predicted-neighbour / null-name-
+            // learned / replay-recovery Confirmed transitions still
+            // update in-memory state but don't overwrite the on-disk
+            // anchor — the existing anchor is a stronger trust signal
+            // than any deduction.
+            if (isStrictAnchor) PersistConfirmedAnchor(room, when);
         }
 
         _log?.Log(LogSeverity.Info, "RoomTracker",
