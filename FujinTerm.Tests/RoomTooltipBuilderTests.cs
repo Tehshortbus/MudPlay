@@ -228,6 +228,42 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_AlsoHere_IncludesSummonedBossNotInLairTag()
+    {
+        // Live repro: 1/1678 Darkwood Forest, Webbed Clearing has no
+        // lair tag entry for "giant spider" (Monster 52), but the
+        // monster's "Summoned By" reads "Room 1/1678". The tooltip's
+        // Also Here line used to omit the boss entirely.
+        const string spawnRooms = """
+            [
+              { "Map Number": 1, "Room Number": 1678, "Name": "Darkwood Forest, Webbed Clearing",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string spawnMonsters = """
+            [
+              { "Number": 52, "Name": "giant spider", "RegenTime": 14, "Summoned By": "Room 1/1678" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),    spawnRooms);
+        File.WriteAllText(Path.Combine(setRoot, "Monsters.json"), spawnMonsters);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        MonsterSpawnIndex spawnIndex = new(cache);
+
+        Room room = graph.GetRoom(new RoomKey(1, 1678))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo: null, spawnIndex: spawnIndex);
+
+        Assert.Contains("Also Here: giant spider", text);
+    }
+
+    [Fact]
     public void Build_MultiActionHiddenExit_RendersRequiredCommands()
     {
         // Live repro: room 10/271 west "(Hidden/Needs 1 Actions, any order)"

@@ -545,6 +545,15 @@ public sealed class AppServices
     public TBInfoStore TBInfo { get; private set; } = null!;
 
     /// <summary>
+    /// Reverse index of <c>RoomKey → monster ids whose Monsters.json
+    /// "Summoned By" field references that room</c>. Lets the tooltip's
+    /// <c>Also Here</c> line surface boss / script-spawn monsters whose
+    /// presence lives only on the monster record (no room-side lair
+    /// tag entry). Lazily built on first lookup per active set.
+    /// </summary>
+    public MonsterSpawnIndex MonsterSpawns { get; private set; } = null!;
+
+    /// <summary>
     /// Item-id → name lookup for the active set. Consumed by the
     /// keyed-door FSM (<see cref="Game.Map.DoorOpenManager"/>) to
     /// translate an exit's <see cref="Game.Map.RoomExit.KeyItemId"/>
@@ -993,6 +1002,7 @@ public sealed class AppServices
         // wires the teleport resolver). Mirrors RoomGraph's load shape:
         // active-set-driven, raw JSON evicted after typed conversion.
         TBInfo = new TBInfoStore(GameData, Log);
+        MonsterSpawns = new MonsterSpawnIndex(GameData, Log);
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);

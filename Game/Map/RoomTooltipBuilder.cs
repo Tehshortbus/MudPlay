@@ -41,7 +41,8 @@ namespace FujinTerm.Game.Map;
 /// </remarks>
 public static class RoomTooltipBuilder
 {
-    public static string Build(Room room, RoomGraphManager graph, GameDataCache? data, TBInfoStore? tbinfo = null)
+    public static string Build(Room room, RoomGraphManager graph, GameDataCache? data,
+        TBInfoStore? tbinfo = null, MonsterSpawnIndex? spawnIndex = null)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
@@ -52,7 +53,7 @@ public static class RoomTooltipBuilder
         sb.Append(room.DisplayName).Append(" (").Append(room.Key).Append(')');
 
         // 2. Also Here
-        string alsoHere = BuildAlsoHere(room, data);
+        string alsoHere = BuildAlsoHere(room, data, spawnIndex);
         if (alsoHere.Length > 0) sb.Append('\n').Append(alsoHere);
 
         // 4-7. Shop / Room Spell (blank line separator above when any).
@@ -116,7 +117,7 @@ public static class RoomTooltipBuilder
 
     // ----- Also Here -------------------------------------------------
 
-    private static string BuildAlsoHere(Room room, GameDataCache? data)
+    private static string BuildAlsoHere(Room room, GameDataCache? data, MonsterSpawnIndex? spawnIndex)
     {
         var names = new List<string>();
         int? max = null;
@@ -125,6 +126,20 @@ public static class RoomTooltipBuilder
         {
             ParseLairTag(room.RawLairTag, out max, out IReadOnlyList<int> monsterIds);
             foreach (int id in monsterIds)
+            {
+                string? name = LookupName(data, "Monsters", id);
+                if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
+            }
+        }
+
+        // Append boss / script-spawn monsters whose presence in this
+        // room lives on the monster's "Summoned By" field instead of
+        // (or in addition to) the room's lair tag. These don't count
+        // against the lair tag's Max-N — they're separate respawn
+        // mechanics — so the count prefix stays driven by the lair tag.
+        if (spawnIndex is not null)
+        {
+            foreach (int id in spawnIndex.MonsterIdsSummonedAt(room.Key))
             {
                 string? name = LookupName(data, "Monsters", id);
                 if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);

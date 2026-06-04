@@ -74,6 +74,16 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AutoLairRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoLairRooms));
 
+    /// <summary>
+    /// Set of rooms with a CMD-driven teleport command (TBInfo Action
+    /// chain contains a <c>teleport &lt;r&gt; &lt;m&gt;</c> directive).
+    /// Rendered with diagonal cross-hatch lines over the cell fill so
+    /// the user can see at a glance which rooms hide a non-exit
+    /// movement option (e.g. 1/1182 "use chime" → 1/65).
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> TeleportRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(TeleportRooms));
+
     public static readonly StyledProperty<bool> WalkPathIsAutoLairProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoLair));
 
@@ -164,6 +174,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AutoLairRoomsProperty);
         set => SetValue(AutoLairRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? TeleportRooms
+    {
+        get => GetValue(TeleportRoomsProperty);
+        set => SetValue(TeleportRoomsProperty, value);
     }
 
     public bool WalkPathIsAutoLair
@@ -331,6 +347,13 @@ public sealed class MapControl : Control
         LineCap  = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
     };
+
+    // Cross-hatch overlay for teleport-CMD rooms — semi-transparent
+    // white so it's legible over any cell-fill class (lair pink, shop
+    // blue, spell purple, plain gray) without overpowering the
+    // underlying classification.
+    private static readonly IPen TeleportHashPen
+        = new Pen(new SolidColorBrush(Color.Parse("#B0FFFFFF")), 1.0);
     private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
     {
         LineCap = PenLineCap.Round,
@@ -365,7 +388,7 @@ public sealed class MapControl : Control
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
-            PreviewPathProperty);
+            PreviewPathProperty, TeleportRoomsProperty);
 
         // Auto-centre on the player's current room every time it
         // changes (MudProxy's CenterOnRoom rule) — but only when the
@@ -1000,6 +1023,16 @@ public sealed class MapControl : Control
         ctx.FillRectangle(fill, node);
         ctx.DrawRectangle(null, pen, node);
 
+        // Teleport-CMD overlay — diagonal cross-hatch so rooms with a
+        // keyword-triggered teleport (use chime → 1/65 etc.) read at
+        // a glance even when their cell fill is claimed by another
+        // class. Drawn under the U/D badge so the corner triangle
+        // stays the brightest signal.
+        if (TeleportRooms is { } tr && tr.Contains(key))
+        {
+            DrawTeleportHash(ctx, node);
+        }
+
         // Vertical-exit corner badges — always drawn when the room has
         // a U/D hint, regardless of the cell's primary fill class. Lets
         // the user see "this room goes up/down" even when the fill is
@@ -1072,6 +1105,35 @@ public sealed class MapControl : Control
                 g.EndFigure(true);
             }
             ctx.DrawGeometry(DownFill, null, geo);
+        }
+    }
+
+    /// <summary>
+    /// Draws diagonal cross-hatch lines across the cell node to mark a
+    /// room with a CMD-driven teleport command. Clipped to the node so
+    /// the lines don't bleed onto neighbouring connectors. Spacing
+    /// scales with the cell so the pattern stays readable when zoomed
+    /// in/out.
+    /// </summary>
+    private static void DrawTeleportHash(DrawingContext ctx, Rect node)
+    {
+        double spacing = Math.Max(node.Width * 0.22, 3.0);
+        using (ctx.PushClip(node))
+        {
+            // \\\\ direction
+            for (double offset = -node.Height; offset < node.Width; offset += spacing)
+            {
+                ctx.DrawLine(TeleportHashPen,
+                    new Point(node.Left + offset,              node.Top),
+                    new Point(node.Left + offset + node.Height, node.Bottom));
+            }
+            // //// direction
+            for (double offset = 0; offset < node.Width + node.Height; offset += spacing)
+            {
+                ctx.DrawLine(TeleportHashPen,
+                    new Point(node.Left + offset,              node.Top),
+                    new Point(node.Left + offset - node.Height, node.Bottom));
+            }
         }
     }
 

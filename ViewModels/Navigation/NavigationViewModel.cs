@@ -27,6 +27,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
+        _services.TBInfo.StoreReloaded    += RefreshTeleportRooms;
         _services.Loops.LoopsChanged += OnLoopsChanged;
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
@@ -43,6 +44,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLayout();
         RefreshLoops();
         RefreshCrawlerChords();
+        RefreshTeleportRooms();
     }
 
     public void Dispose()
@@ -51,6 +53,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
+        _services.TBInfo.StoreReloaded    -= RefreshTeleportRooms;
         _services.Loops.LoopsChanged -= OnLoopsChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
@@ -207,6 +210,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _teleportRooms;
     [ObservableProperty] private bool _isAutoLairing;
     [ObservableProperty] private RoomKey? _selectedRoomKey;
 
@@ -888,6 +892,27 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         InvalidateMonsterSearchCaches();
         InvalidateDistanceCache();
         RefreshLayout();
+        RefreshTeleportRooms();
+    }
+
+    /// <summary>
+    /// Walk every room with a non-zero Cmd and ask TBInfo whether the
+    /// CMD's Action chain contains a teleport directive. The resulting
+    /// set drives the map's diagonal hash-line overlay so the user
+    /// can spot non-exit movement spots at a glance.
+    /// </summary>
+    private void RefreshTeleportRooms()
+    {
+        if (Graph is null) { TeleportRooms = null; return; }
+        HashSet<RoomKey> set = new();
+        foreach (Room room in Graph.Rooms)
+        {
+            if (room.Cmd <= 0) continue;
+            using IEnumerator<(string, RoomKey)> e =
+                TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd).GetEnumerator();
+            if (e.MoveNext()) set.Add(room.Key);
+        }
+        TeleportRooms = set;
     }
 
     /// <summary>
