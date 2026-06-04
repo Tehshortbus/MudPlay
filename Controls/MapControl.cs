@@ -1046,7 +1046,7 @@ public sealed class MapControl : Control
     /// </summary>
     private static void DrawVerticalCornerBadge(DrawingContext ctx, Rect node, VerticalHint hint)
     {
-        double size = Math.Max(node.Width * 0.32, 5.0);
+        double size = Math.Max(node.Width * 0.50, 7.0);
 
         if (hint is VerticalHint.Up or VerticalHint.Both)
         {
