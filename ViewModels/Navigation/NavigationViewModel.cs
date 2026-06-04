@@ -687,10 +687,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public string RunStopLabel => IsAnyExecuting ? "Stop" : "Run";
 
     /// <summary>
-    /// Status text used by both the top-bar status indicator and the
-    /// CURRENT NAV header pill. Idle → <c>"Located: &lt;room&gt;"</c>;
-    /// active → <c>"WALKING to &lt;dest&gt; X/Y"</c> /
-    /// <c>"LOOPING &lt;name&gt; X/Y"</c> / <c>"AUTO-LAIR cycling N lairs"</c>.
+    /// Status text used by the top-bar status indicator. Idle →
+    /// <c>"Located: (M/R) - Name"</c>; active → walking with destination
+    /// formatted (M/R) - Name; looping with loop name; auto-lair with
+    /// marked-lair count.
     /// </summary>
     public string TopBarStatusText
     {
@@ -701,7 +701,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 case NavigationEngineKind.Walking:
                 {
                     string dest = _services.Walker.Destination is { } k
-                        ? (Graph?.GetRoom(k)?.DisplayName ?? k.ToString())
+                        ? FormatRoomRef(k)
                         : "?";
                     int total = _services.Walker.StepCount;
                     int idx = _services.Walker.CurrentStepIndex;
@@ -721,11 +721,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 default:
                 {
-                    string here = _services.RoomTracker.State.CurrentRoom?.DisplayName ?? "—";
-                    return $"Located: {here}";
+                    Room? here = _services.RoomTracker.State.CurrentRoom;
+                    return here is null ? "Located: —" : $"Located: {FormatRoomRef(here.Key)}";
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Canonical room reference format used across the Navigation
+    /// surfaces — <c>"(map/room) - Name"</c>. Falls back to "(M/R) - ???"
+    /// when the graph doesn't know the room (typical of unimported
+    /// MDB sets or null-name ganghouse rooms).
+    /// </summary>
+    private string FormatRoomRef(RoomKey key)
+    {
+        string name = Graph?.GetRoom(key)?.DisplayName ?? "???";
+        return $"({key.Map}/{key.Room}) - {name}";
     }
 
     /// <summary>Short tag the badge displays: WALKING / LOOPING / AUTO-LAIR / LOCATED.</summary>
@@ -759,9 +771,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool LairModeButtonIsStop => EngineActionKind == NavigationEngineKind.AutoLair;
 
-    /// <summary>Window title: <c>"Navigation — &lt;status&gt;"</c>.</summary>
-    public string WindowTitle => $"Navigation — {TopBarStatusBadge}: {TopBarStatusText}";
-
     private void RefreshDerivedState()
     {
         OnPropertyChanged(nameof(IsAnyExecuting));
@@ -774,11 +783,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LoopModeButtonIsStop));
         OnPropertyChanged(nameof(LairModeButtonLabel));
         OnPropertyChanged(nameof(LairModeButtonIsStop));
-        OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(CurrentNavHeader));
         OnPropertyChanged(nameof(CurrentNavProgress));
         OnPropertyChanged(nameof(CurrentNavHasProgress));
         RebuildCurrentNavRows();
+        OnPropertyChanged(nameof(CurrentNavSelectedRow));
     }
 
     /// <summary>
@@ -838,12 +847,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// <summary>Rows shown under CURRENT NAV — steps when walking/looping, marked lairs when auto-lairing.</summary>
     public ObservableCollection<CurrentNavRowViewModel> CurrentNavRows { get; } = new();
 
-    /// <summary>Header sentence under the section title: <c>"3 of 6 steps to X"</c> / <c>"Cycling marked lairs"</c>.</summary>
+    /// <summary>
+    /// Row the CURRENT NAV ListBox should keep in view — the active
+    /// step while walking, the next-ready lair while auto-lairing. The
+    /// window code-behind subscribes to property-change and calls
+    /// <c>ListBox.ScrollIntoView</c> so a long path scrolls along with
+    /// progress instead of forcing the entire rail to grow.
+    /// </summary>
+    public CurrentNavRowViewModel? CurrentNavSelectedRow
+    {
+        get
+        {
+            foreach (CurrentNavRowViewModel r in CurrentNavRows)
+                if (r.IsCurrent || r.IsReady) return r;
+            return CurrentNavRows.Count > 0 ? CurrentNavRows[0] : null;
+        }
+    }
+
+    /// <summary>Header sentence under the section title: <c>"3 of 6 steps to (M/R) - Name"</c> / <c>"Cycling marked lairs"</c>.</summary>
     public string CurrentNavHeader => EngineActionKind switch
     {
         NavigationEngineKind.Walking =>
             _services.Walker.Destination is { } k
-                ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {Graph?.GetRoom(k)?.DisplayName ?? k.ToString()}"
+                ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {FormatRoomRef(k)}"
                 : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
         NavigationEngineKind.Looping  => "Cycling loop steps",
         NavigationEngineKind.AutoLair => "Cycling marked lairs",
@@ -888,11 +914,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 int i = 1;
                 foreach (RoomKey key in _services.AutoLair.Marked)
                 {
-                    string name = Graph?.GetRoom(key)?.DisplayName ?? key.ToString();
                     // Status data isn't tracked yet — show "ready" for
                     // all marked lairs until LairTimerStore lands.
                     CurrentNavRows.Add(new CurrentNavRowViewModel(
-                        index: i++, label: name,
+                        index: i++, label: FormatRoomRef(key),
                         status: CurrentNavRowStatus.Ready,
                         subLabel: "ready",
                         removeKey: key));

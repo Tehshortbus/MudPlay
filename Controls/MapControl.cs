@@ -252,8 +252,8 @@ public sealed class MapControl : Control
     private static readonly IBrush TileBg        = new SolidColorBrush(Color.Parse("#1E1E1E"));
     private static readonly IBrush RoomFill      = new SolidColorBrush(Color.Parse("#9B9B9B"));
     private static readonly IBrush CurrentFill   = new SolidColorBrush(Color.Parse("#F8B500"));
-    private static readonly IBrush LairFill      = new SolidColorBrush(Color.Parse("#A05F8C"));
-    private static readonly IBrush ShopFill      = new SolidColorBrush(Color.Parse("#5F8DA8"));
+    private static readonly IBrush LairFill      = new SolidColorBrush(Color.Parse("#8E4F7B"));
+    private static readonly IBrush ShopFill      = new SolidColorBrush(Color.Parse("#4A7791"));
     private static readonly IBrush SpellFill     = new SolidColorBrush(Color.Parse("#6428A0"));
     // Vertical-exit indicators (MudProxy convention): green = up only,
     // yellow = down only, orange = both. Applied as the room-node fill
@@ -268,8 +268,8 @@ public sealed class MapControl : Control
     private static readonly IPen   TrapPen       = new Pen(new SolidColorBrush(Color.Parse("#DC3C3C")), 2.0);
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
-    private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#C77FAC")), 1.5);
-    private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#7FB0CC")), 1.5);
+    private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
+    private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#6A9CB6")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
     private static readonly IPen   UpBorderPen     = new Pen(new SolidColorBrush(Color.Parse("#00A000")), 1.5);
     private static readonly IPen   DownBorderPen   = new Pen(new SolidColorBrush(Color.Parse("#B4B400")), 1.5);

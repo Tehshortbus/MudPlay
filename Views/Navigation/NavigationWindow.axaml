@@ -7,14 +7,16 @@
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="FujinTerm.Views.Navigation.NavigationWindow"
         x:DataType="vm:NavigationViewModel"
-        Title="{Binding WindowTitle}"
+        Title="Navigation"
         Width="1280" Height="720"
         MinWidth="900" MinHeight="500"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
     <Window.Styles>
-        <!-- Display-toggle chip (Lairs / Shops / Spells / Legend) -->
+        <!-- Display-toggle chip (Lairs / Shops / Spells / Legend) — colour-
+             coded per chip to mirror the map fill brushes so the toggle's
+             active state matches the room glyphs the user is filtering. -->
         <Style Selector="Button.ToggleChip">
             <Setter Property="Padding" Value="9,3"/>
             <Setter Property="MinWidth" Value="56"/>
@@ -25,10 +27,29 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
         </Style>
-        <Style Selector="Button.ToggleChip.Active">
-            <Setter Property="Background" Value="{StaticResource AccentMagentaBrush}"/>
+        <!-- Lair: pink/magenta (MapControl.LairFill) -->
+        <Style Selector="Button.ToggleChip.LairFill">
+            <Setter Property="Background" Value="#8E4F7B"/>
+            <Setter Property="BorderBrush" Value="#8E4F7B"/>
             <Setter Property="Foreground" Value="#0E0E0E"/>
-            <Setter Property="BorderBrush" Value="{StaticResource AccentMagentaBrush}"/>
+        </Style>
+        <!-- Shop: blue (MapControl.ShopFill) -->
+        <Style Selector="Button.ToggleChip.ShopFill">
+            <Setter Property="Background" Value="#4A7791"/>
+            <Setter Property="BorderBrush" Value="#4A7791"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <!-- Spell: purple (MapControl.SpellFill) -->
+        <Style Selector="Button.ToggleChip.SpellFill">
+            <Setter Property="Background" Value="#6428A0"/>
+            <Setter Property="BorderBrush" Value="#6428A0"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+        <!-- Legend: neutral amber (no map equivalent) -->
+        <Style Selector="Button.ToggleChip.LegendFill">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
         </Style>
 
         <!-- Top-right action button (Run / Stop / Loop mode / Lair mode) -->
@@ -139,16 +160,16 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                     <Button Classes="ToggleChip" Content="Lairs"
                             Command="{Binding ToggleLairsCommand}"
-                            Classes.Active="{Binding HighlightLairs}"/>
+                            Classes.LairFill="{Binding HighlightLairs}"/>
                     <Button Classes="ToggleChip" Content="Shops"
                             Command="{Binding ToggleShopsCommand}"
-                            Classes.Active="{Binding HighlightShops}"/>
+                            Classes.ShopFill="{Binding HighlightShops}"/>
                     <Button Classes="ToggleChip" Content="Spells"
                             Command="{Binding ToggleSpellsCommand}"
-                            Classes.Active="{Binding HighlightSpells}"/>
+                            Classes.SpellFill="{Binding HighlightSpells}"/>
                     <Button Classes="ToggleChip" Content="Legend"
                             Command="{Binding ToggleLegendCommand}"
-                            Classes.Active="{Binding LegendVisible}"/>
+                            Classes.LegendFill="{Binding LegendVisible}"/>
                 </StackPanel>
 
                 <!-- Queued destination chip (centre) -->
@@ -312,11 +333,11 @@
                 </ListBox>
             </Border>
 
-            <!-- Legend overlay (unchanged shape, lifted as-is) -->
+            <!-- Legend overlay — bottom-left of the map per user direction. -->
             <Border Grid.Column="0"
                     IsVisible="{Binding LegendVisible}"
-                    HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Margin="0,12,12,0"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="12,0,0,12"
                     Background="#1A1A1AEE"
                     BorderBrush="{StaticResource ChromeBorderSoftBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="10">
@@ -328,11 +349,11 @@
                         <TextBlock Text="Current room" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="14" Background="#A85FA8"/>
+                        <Border Width="14" Height="14" Background="#8E4F7B"/>
                         <TextBlock Text="Lair" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="14" Background="#5F8DA8"/>
+                        <Border Width="14" Height="14" Background="#4A7791"/>
                         <TextBlock Text="Shop / banks" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -365,8 +386,31 @@
                                        FontSize="11"
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,4"/>
-                            <ItemsControl ItemsSource="{Binding CurrentNavRows}">
-                                <ItemsControl.ItemTemplate>
+                            <ListBox Name="CurrentNavList"
+                                     ItemsSource="{Binding CurrentNavRows}"
+                                     SelectedItem="{Binding CurrentNavSelectedRow, Mode=OneWay}"
+                                     MaxHeight="240"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Focusable="False"
+                                     SelectionMode="Single">
+                                <ListBox.Styles>
+                                    <!-- Strip default selection / hover chrome — our
+                                         NavRow border-classes (Completed / Current /
+                                         Upcoming / Ready) own the per-row visuals. -->
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:CurrentNavRowViewModel">
                                         <Border Classes="NavRow"
                                                 Classes.Completed="{Binding IsCompleted}"
@@ -394,13 +438,13 @@
                                                         Background="Transparent"
                                                         BorderThickness="0"
                                                         IsVisible="{Binding HasRemove}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).UnmarkAutoLairRoomCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).UnmarkAutoLairRoomCommand}"
                                                         CommandParameter="{Binding RemoveKey}"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
 
                             <!-- GOTO -->
                             <TextBlock Classes="RailSectionHeader" Text="GOTO"/>

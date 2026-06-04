@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using FujinTerm.Controls;
 using FujinTerm.ViewModels.Navigation;
 
@@ -52,7 +54,10 @@ public partial class NavigationWindow : Window
         DataContextChanged += (_, _) =>
         {
             if (DataContext is NavigationViewModel vm)
+            {
                 vm.CenterOnPlayerRequested += OnCenterOnPlayerRequested;
+                vm.PropertyChanged          += OnVmPropertyChanged;
+            }
         };
     }
 
@@ -60,6 +65,27 @@ public partial class NavigationWindow : Window
     {
         if (this.FindControl<MapControl>("MapHost") is { } map)
             map.RecenterOnPlayer();
+    }
+
+    /// <summary>
+    /// CURRENT NAV ListBox auto-scroll. The VM republishes
+    /// <see cref="NavigationViewModel.CurrentNavSelectedRow"/> on every
+    /// step advance / lair-state change; we mirror the row into the
+    /// ListBox's view via ScrollIntoView so a 60-step path doesn't
+    /// require the user to scroll the rail manually as the walker
+    /// progresses. Posted via the dispatcher so the call lands AFTER
+    /// the ItemsControl has materialised the new container.
+    /// </summary>
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(NavigationViewModel.CurrentNavSelectedRow)) return;
+        if (DataContext is not NavigationViewModel vm) return;
+        if (vm.CurrentNavSelectedRow is not { } row) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (this.FindControl<ListBox>("CurrentNavList") is { } list)
+                list.ScrollIntoView(row);
+        });
     }
 
     private void FocusMap()
