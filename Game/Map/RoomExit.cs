@@ -39,7 +39,8 @@ public readonly partial record struct RoomExit(
     int KeyItemId = 0,
     int TollGold = 0,
     IReadOnlyList<string>? TextCommands = null,
-    MultiActionExitData? MultiAction = null)
+    MultiActionExitData? MultiAction = null,
+    int TrapDamage = 0)
 {
     /// <summary>
     /// Parse a single MDB exit cell. Returns <c>false</c> for the
@@ -83,10 +84,12 @@ public readonly partial record struct RoomExit(
             out bool canBash,
             out int keyItemId,
             out int toll,
-            out IReadOnlyList<string>? textCommands);
+            out IReadOnlyList<string>? textCommands,
+            out int trapDamage);
 
         exit = new RoomExit(key, hint, rawHint,
-            statReq, canBash, keyItemId, toll, textCommands);
+            statReq, canBash, keyItemId, toll, textCommands,
+            MultiAction: null, TrapDamage: trapDamage);
         return true;
     }
 
@@ -97,7 +100,8 @@ public readonly partial record struct RoomExit(
         out bool canBash,
         out int keyItemId,
         out int toll,
-        out IReadOnlyList<string>? textCommands)
+        out IReadOnlyList<string>? textCommands,
+        out int trapDamage)
     {
         hint = RoomExitHint.None;
         statReq = 0;
@@ -105,6 +109,7 @@ public readonly partial record struct RoomExit(
         keyItemId = 0;
         toll = 0;
         textCommands = null;
+        trapDamage = 0;
 
         if (string.IsNullOrEmpty(raw)) return;
 
@@ -114,6 +119,11 @@ public readonly partial record struct RoomExit(
          || raw.StartsWith("Trap",       StringComparison.OrdinalIgnoreCase))
         {
             hint = RoomExitHint.Trap;
+            // "(Trap, 36 damage)" → 36. Many trap cells carry no
+            // damage figure (older exports); TrapDamage stays 0 and
+            // the tooltip / walker treat the absence as "unknown".
+            Match dmgM = TrapDamageRegex().Match(raw);
+            if (dmgM.Success) int.TryParse(dmgM.Groups[1].ValueSpan, out trapDamage);
             return;
         }
 
@@ -244,4 +254,8 @@ public readonly partial record struct RoomExit(
     /// <summary>Matches the picklock skill number — "[N picklocks" or "or N picklocks".</summary>
     [GeneratedRegex(@"(?:\[|\bor\s+)(\d+)\s+picklocks", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PicklockStatRx();
+
+    /// <summary>Matches a trap-damage figure inside the trap modifier — "Trap, 36 damage".</summary>
+    [GeneratedRegex(@"(\d+)\s+damage", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TrapDamageRegex();
 }

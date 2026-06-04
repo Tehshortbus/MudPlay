@@ -229,6 +229,9 @@ public static class RoomTooltipBuilder
             case RoomExitHint.Toll when exit.TollGold > 0:
                 return $"Toll: {exit.TollGold} gold";
 
+            case RoomExitHint.Trap when exit.TrapDamage > 0:
+                return $"Trap: {exit.TrapDamage} dmg";
+
             case RoomExitHint.Text when exit.TextCommands is { Count: > 0 }:
                 return "Text: " + string.Join(", ", exit.TextCommands);
 

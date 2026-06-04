@@ -228,6 +228,39 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_TrapExit_WithDamage_RendersDamageInline()
+    {
+        // Live repro: 2/1106 NW exit is "(Trap, 36 damage)" — the
+        // tooltip should surface the damage figure so the user knows
+        // what they're risking before walking into it.
+        const string trapRooms = """
+            [
+              { "Map Number": 2, "Room Number": 1106, "Name": "Hillside Path, Guard Post",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "NW": "2/1105 (Trap, 36 damage)", "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 2, "Room Number": 1105, "Name": "Hillside Path",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "2/1106", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), trapRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(2, 1106))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("(Trap: 36 dmg)", text);
+        Assert.DoesNotContain(" (Trap)", text);
+    }
+
+    [Fact]
     public void Build_AlsoHere_IncludesSummonedBossNotInLairTag()
     {
         // Live repro: 1/1678 Darkwood Forest, Webbed Clearing has no
