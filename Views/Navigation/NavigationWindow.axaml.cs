@@ -129,11 +129,16 @@ public partial class NavigationWindow : Window
         const double offsetX = 14;
         const double offsetY = 18;
 
+        // Reset any pinned size from the previous hover so this hover's
+        // Measure pass reflects the new content rather than the prior
+        // text's dimensions.
+        popup.Width  = double.NaN;
+        popup.Height = double.NaN;
+
         // Edge-flip: when the default below-and-right anchor would put
-        // the tooltip past the bottom / right edge of the visible map
-        // area, swap to above / left of the cursor instead. Without
-        // this the tooltip renders off-screen and the user has to pan
-        // before they can read it.
+        // the tooltip past the bottom / right edge of the visible map,
+        // swap to above / left of the cursor instead. Without this the
+        // tooltip renders off-screen and the user has to pan first.
         popup.Measure(Size.Infinity);
         Size desired = popup.DesiredSize;
         Size viewport = map.Bounds.Size;
@@ -146,6 +151,13 @@ public partial class NavigationWindow : Window
         if (anchorY + desired.Height > viewport.Height - 4)
             anchorY = Math.Max(0, cursor.Y - offsetY - desired.Height);
 
+        // Lock the rendered size to what Measure produced. Otherwise the
+        // parent Grid's arrange pass shrinks the popup to fit the
+        // remaining cell width after the left-anchored Margin, and the
+        // TextBlock — although NoWrap — gets visually clipped down to a
+        // few characters wide.
+        popup.Width  = desired.Width;
+        popup.Height = desired.Height;
         popup.Margin = new Thickness(anchorX, anchorY, 0, 0);
         popup.IsVisible = true;
     }
