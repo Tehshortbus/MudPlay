@@ -386,10 +386,20 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Ambiguity picker: fires when an observation matches 2+ rooms
         // in the graph and the FSM can't choose. The dedupe key is the
-        // (name, exit-mask) pair; cleared when the tracker lands a fresh
-        // Confirmed transition so the next ambiguous moment re-prompts.
-        AppServices.Current.RoomTracker.AmbiguityDetected += OnAmbiguityDetected;
-        AppServices.Current.RoomTracker.StateChanged     += OnTrackerStateForAmbiguityReset;
+        // sorted candidate-set fingerprint; cleared when the tracker
+        // lands a fresh Confirmed transition so the next ambiguous
+        // moment re-prompts. Tier-2 narrowing produces a different
+        // fingerprint, so the picker re-opens on narrowed sets even if
+        // the user dismissed an earlier prompt.
+        AppServices.Current.RoomTracker.AmbiguityDetected     += OnAmbiguityDetected;
+        AppServices.Current.RoomTracker.StateChanged         += OnTrackerStateForAmbiguityReset;
+        AppServices.Current.RoomTracker.GraphMismatchDetected += OnGraphMismatchDetected;
+
+        // Footprint count changes don't fire StateChanged (confidence
+        // doesn't change while the matcher narrows). Hook the state's
+        // own PropertyChanged so the engine-chip tier border + the
+        // "Locating: N candidates" status banner update mid-narrowing.
+        AppServices.Current.RoomTracker.State.PropertyChanged += OnTrackerStatePropertyChanged;
         RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
@@ -767,6 +777,17 @@ public partial class MainWindowViewModel : ObservableObject
     private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
         => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
+    private void OnTrackerStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Only the tier-affecting properties matter here — bail early
+        // on the dozens of other property events RoomState fires.
+        if (e.PropertyName is nameof(Game.Map.RoomState.FootprintCandidateCount)
+                           or nameof(Game.Map.RoomState.Confidence))
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
+        }
+    }
+
     /// <summary>
     /// Rooms we've already prompted about this session. Prevents
     /// asking the same yes/no twice when the player re-enters or the
@@ -798,13 +819,14 @@ public partial class MainWindowViewModel : ObservableObject
     // ----- ambiguity picker ------------------------------------------
 
     /// <summary>
-    /// (name, exit-mask) tuples the user has actively dismissed via
-    /// "I'll set it myself". Cleared on every fresh
-    /// <see cref="Game.Map.RoomConfidence.Confirmed"/> transition — once
-    /// we know where we are again, a future re-encounter of the same
-    /// ambiguous observation should re-prompt.
+    /// Candidate-set fingerprints the user has dismissed via "I'll set
+    /// it myself". A fingerprint is the comma-joined sorted RoomKey
+    /// list — so the tier-2 matcher narrowing from {A,B,C,D,E} to
+    /// {A,B,C} produces a different fingerprint and re-prompts.
+    /// Cleared on every fresh
+    /// <see cref="Game.Map.RoomConfidence.Confirmed"/> transition.
     /// </summary>
-    private readonly HashSet<(string Name, uint Mask)> _dismissedAmbiguities = new();
+    private readonly HashSet<string> _dismissedAmbiguities = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Currently-open dialog instance, tracked so a fresh ambiguity
@@ -818,14 +840,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private async void PromptForAmbiguityAsync(Game.Map.AmbiguityDetectedEvent e)
     {
-        uint mask = 0;
-        foreach (Game.Map.Direction d in e.ObservedExits) mask |= 1u << (int)d;
-        var dedupeKey = (e.ObservedName, mask);
+        string fingerprint = FingerprintCandidates(e.Candidates);
 
         // User already chose "I'll set it myself" for this exact
-        // observation tuple — stay out of their way until they land
-        // somewhere known.
-        if (_dismissedAmbiguities.Contains(dedupeKey)) return;
+        // candidate set — stay out of their way until tier 2 narrows
+        // to a different set or a Confirmed transition clears the
+        // suppression cache.
+        if (_dismissedAmbiguities.Contains(fingerprint)) return;
 
         // A fresh round of ambiguity supersedes any open picker —
         // close the old one (its candidates may now be stale).
@@ -845,6 +866,9 @@ public partial class MainWindowViewModel : ObservableObject
             e.ObservedName, exits, rows);
         _openAmbiguityVm = vm;
 
+        AppServices.Current.Log.Log(Services.LogSeverity.Info, "RoomTracker",
+            $"Tier3.surfaced: {e.Candidates.Count} candidates from '{e.ObservedName}'");
+
         Game.Map.RoomKey? picked = await AppServices.Current.Dialogs
             .OpenWindowAsync<ViewModels.Navigation.AmbiguousLocationDialogViewModel, Game.Map.RoomKey?>(vm);
 
@@ -852,15 +876,33 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (picked is { } key)
         {
+            Game.Map.Room? r = AppServices.Current.RoomGraph.GetRoom(key);
+            AppServices.Current.Log.Log(Services.LogSeverity.Info, "RoomTracker",
+                $"Tier3.picked → {key} ({r?.Name ?? "?"})");
             AppServices.Current.RoomTracker.SetLocated(key);
         }
         else
         {
-            // Deferred — remember this exact (name, mask) so we don't
-            // re-prompt until the next Confirmed transition clears the
-            // suppression set.
-            _dismissedAmbiguities.Add(dedupeKey);
+            // Deferred — remember this exact candidate set so we don't
+            // re-prompt until tier 2 narrows it further or a Confirmed
+            // transition clears the suppression cache.
+            _dismissedAmbiguities.Add(fingerprint);
+            AppServices.Current.Log.Log(Services.LogSeverity.Info, "RoomTracker",
+                $"Tier3.deferred: user dismissed picker ({e.Candidates.Count} candidates)");
         }
+    }
+
+    private static string FingerprintCandidates(IReadOnlyList<Game.Map.RoomKey> candidates)
+    {
+        // Sort + join so the fingerprint is stable irrespective of the
+        // input order. Used as a HashSet<string> key.
+        var sorted = candidates.ToArray();
+        Array.Sort(sorted, static (a, b) =>
+        {
+            int c = a.Map.CompareTo(b.Map);
+            return c != 0 ? c : a.Room.CompareTo(b.Room);
+        });
+        return string.Join(',', sorted.Select(static k => $"{k.Map}/{k.Room}"));
     }
 
     private void OnTrackerStateForAmbiguityReset(Game.Map.RoomTransition t)
@@ -870,6 +912,17 @@ public partial class MainWindowViewModel : ObservableObject
         {
             _dismissedAmbiguities.Clear();
         }
+    }
+
+    private void OnGraphMismatchDetected(Game.Map.GraphMismatchEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => HandleGraphMismatch(e));
+
+    private void HandleGraphMismatch(Game.Map.GraphMismatchEvent e)
+    {
+        AppServices.Current.Log.Log(Services.LogSeverity.Warn, "RoomTracker",
+            $"Map data near '{e.ObservedName}' appears stale (tier-2 footprint exhausted after {e.FootprintDepth} steps). " +
+            "Right-click a room and pick \"I am here\" to locate manually.");
+        RefreshLocationSlot();
     }
 
     private void RefreshLocationSlot()
@@ -884,11 +937,35 @@ public partial class MainWindowViewModel : ObservableObject
             : state.Confidence switch
             {
                 Game.Map.RoomConfidence.Pending        => "Pending move…",
+                Game.Map.RoomConfidence.Lost when state.FootprintCandidateCount > 0
+                                               => $"Locating: {state.FootprintCandidateCount} candidates…",
                 Game.Map.RoomConfidence.Lost           => "Lost — pick a room on the map",
                 Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
                 _                                      => "Unknown location",
             };
+
+        // Tier-state observable bools drive the engine chip's tier-coloured
+        // border. Tier 2 (matcher narrowing) overrides Tier 3 (plain Lost).
+        bool tier2 = state.FootprintCandidateCount > 0;
+        bool tier3 = !tier2 && state.Confidence == Game.Map.RoomConfidence.Lost;
+        if (tier2 != _isTier2)
+        {
+            _isTier2 = tier2;
+            OnPropertyChanged(nameof(IsTier2));
+        }
+        if (tier3 != _isTier3)
+        {
+            _isTier3 = tier3;
+            OnPropertyChanged(nameof(IsTier3));
+        }
     }
+
+    /// <summary>True when the tier-2 footprint matcher is actively narrowing — engine chip border goes yellow.</summary>
+    public bool IsTier2 => _isTier2;
+    /// <summary>True when the tracker is Lost without a narrowing matcher — engine chip border goes red.</summary>
+    public bool IsTier3 => _isTier3;
+    private bool _isTier2;
+    private bool _isTier3;
 
     private void RefreshStatusBarTicks()
     {
