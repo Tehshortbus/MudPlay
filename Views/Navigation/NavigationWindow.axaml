@@ -7,90 +7,205 @@
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
         x:Class="FujinTerm.Views.Navigation.NavigationWindow"
         x:DataType="vm:NavigationViewModel"
-        Title="Navigation"
+        Title="{Binding WindowTitle}"
         Width="1280" Height="720"
-        MinWidth="780" MinHeight="420"
+        MinWidth="900" MinHeight="500"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
     <Window.Styles>
-        <Style Selector="Border.StatusBadge">
-            <Setter Property="CornerRadius" Value="3"/>
-            <Setter Property="Padding" Value="6,1"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-        <Style Selector="Border.StatusBadge TextBlock">
-            <Setter Property="FontSize" Value="10"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#0E0E0E"/>
-        </Style>
-        <Style Selector="Button.ModeChip">
-            <Setter Property="Padding" Value="8,3"/>
-            <Setter Property="Margin" Value="3,0,0,0"/>
-            <Setter Property="MinWidth" Value="60"/>
+        <!-- Display-toggle chip (Lairs / Shops / Spells / Legend) -->
+        <Style Selector="Button.ToggleChip">
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="MinWidth" Value="56"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
         </Style>
-        <Style Selector="Button.ModeChip.Active">
-            <Setter Property="Background" Value="#F8B500"/>
+        <Style Selector="Button.ToggleChip.Active">
+            <Setter Property="Background" Value="{StaticResource AccentMagentaBrush}"/>
             <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentMagentaBrush}"/>
         </Style>
-        <Style Selector="TextBlock.SectionHeader">
+
+        <!-- Top-right action button (Run / Stop / Loop mode / Lair mode) -->
+        <Style Selector="Button.ActionChip">
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="MinWidth" Value="86"/>
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#888"/>
-            <Setter Property="Margin" Value="0,12,0,4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Active">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Stop">
+            <Setter Property="Background" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Primary">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+
+        <!-- Right-rail section header -->
+        <Style Selector="TextBlock.RailSectionHeader">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+
+        <!-- CURRENT NAV step row dynamic styling -->
+        <Style Selector="Border.NavRow">
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Margin" Value="0,1"/>
+        </Style>
+        <Style Selector="Border.NavRow.Current">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.NavRow.Current TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.NavRow.Completed TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="TextDecorations" Value="Strikethrough"/>
+        </Style>
+        <Style Selector="Border.NavRow.Upcoming TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        </Style>
+        <Style Selector="Border.NavRow.Ready TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Top status + mode bar -->
-        <Border Grid.Row="0" Background="#1A1A1A" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="12,8">
-                <TextBlock Grid.Column="0" Text="Navigation" FontSize="12"
-                           FontWeight="SemiBold" VerticalAlignment="Center"
-                           Margin="0,0,12,0"/>
-                <!-- Engine-action slot — replaces the redundant
-                     status-badge + current-room label. Current-room
-                     info is shown in the main UI's bottom status bar
-                     (the source-of-truth surface). -->
-                <TextBlock Grid.Column="1" Text="{Binding EngineActionLabel}"
+        <!-- Row 0: title + status badge + status text -->
+        <Border Grid.Row="0"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="12,6">
+                <TextBlock Grid.Column="0"
+                           Text="Navigation"
+                           FontSize="12" FontWeight="SemiBold"
                            VerticalAlignment="Center"
-                           Foreground="#BBB" FontSize="12"
+                           Margin="0,0,10,0"/>
+                <!-- Status badge (LOCATED / WALKING / LOOPING / AUTO-LAIR) -->
+                <Border Grid.Column="1"
+                        CornerRadius="3"
+                        Padding="6,1"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1">
+                    <TextBlock Text="{Binding TopBarStatusBadge}"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                </Border>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding TopBarStatusText}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="11"
                            TextTrimming="CharacterEllipsis"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal"
-                            HorizontalAlignment="Right" Spacing="4"
-                            VerticalAlignment="Center">
-                    <Button Classes="ModeChip" Content="Lairs"
-                            Command="{Binding ToggleLairsCommand}"
-                            Classes.Active="{Binding HighlightLairs}"/>
-                    <Button Classes="ModeChip" Content="Shops"
-                            Command="{Binding ToggleShopsCommand}"
-                            Classes.Active="{Binding HighlightShops}"/>
-                    <Button Classes="ModeChip" Content="Spells"
-                            Command="{Binding ToggleSpellsCommand}"
-                            Classes.Active="{Binding HighlightSpells}"/>
-                    <Button Classes="ModeChip" Content="Legend"
-                            Command="{Binding ToggleLegendCommand}"
-                            Classes.Active="{Binding LegendVisible}"/>
-                </StackPanel>
-                <Button Grid.Column="2" Classes="ModeChip" Content="Loop mode"
-                        Command="{Binding ToggleLoopModeCommand}"
-                        Classes.Active="{Binding IsLoopMode}"/>
-                <Button Grid.Column="3" Classes="ModeChip" Content="Lair mode"
-                        Command="{Binding ToggleLairModeCommand}"
-                        Classes.Active="{Binding IsLairMode}"/>
-                <Button Grid.Column="4" Classes="ModeChip" Content="Pause"
-                        Command="{Binding PauseOrResumeCommand}"
-                        IsVisible="{Binding !IsPaused}"/>
-                <Button Grid.Column="4" Classes="ModeChip" Content="Resume"
-                        Command="{Binding PauseOrResumeCommand}"
-                        IsVisible="{Binding IsPaused}"/>
             </Grid>
         </Border>
 
-        <!-- Main: map placeholder | right rail -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,260">
+        <!-- Row 1: chip row (display toggles + selected indicator + search + actions) -->
+        <Border Grid.Row="1"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
+                  Margin="12,6"
+                  ColumnSpacing="6">
+                <!-- Display-toggle chips -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="ToggleChip" Content="Lairs"
+                            Command="{Binding ToggleLairsCommand}"
+                            Classes.Active="{Binding HighlightLairs}"/>
+                    <Button Classes="ToggleChip" Content="Shops"
+                            Command="{Binding ToggleShopsCommand}"
+                            Classes.Active="{Binding HighlightShops}"/>
+                    <Button Classes="ToggleChip" Content="Spells"
+                            Command="{Binding ToggleSpellsCommand}"
+                            Classes.Active="{Binding HighlightSpells}"/>
+                    <Button Classes="ToggleChip" Content="Legend"
+                            Command="{Binding ToggleLegendCommand}"
+                            Classes.Active="{Binding LegendVisible}"/>
+                </StackPanel>
+
+                <!-- Queued destination chip (centre) -->
+                <Border Grid.Column="2"
+                        IsVisible="{Binding HasQueuedDestination}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,3"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0">
+                    <TextBlock Text="{Binding QueuedDestinationLabel}"
+                               FontSize="11"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="220"/>
+                </Border>
+
+                <!-- Search box -->
+                <TextBox Grid.Column="3"
+                         Name="SearchBox"
+                         Text="{Binding SearchQuery, Mode=TwoWay}"
+                         PlaceholderText="Search rooms, lairs, loops…"
+                         Width="220"
+                         FontSize="11"
+                         VerticalAlignment="Center"/>
+
+                <!-- Run / Stop -->
+                <Button Grid.Column="4"
+                        Classes="ActionChip"
+                        Classes.Primary="{Binding !IsAnyExecuting}"
+                        Classes.Stop="{Binding IsAnyExecuting}"
+                        Content="{Binding RunStopLabel}"
+                        Command="{Binding RunStopCommand}"
+                        IsEnabled="{Binding CanRun}"/>
+
+                <!-- Loop mode -->
+                <Button Grid.Column="5"
+                        Classes="ActionChip"
+                        Classes.Active="{Binding IsLoopMode}"
+                        Classes.Stop="{Binding LoopModeButtonIsStop}"
+                        Content="{Binding LoopModeButtonLabel}"
+                        Command="{Binding ToggleLoopModeCommand}"/>
+
+                <!-- Lair mode -->
+                <Button Grid.Column="6"
+                        Classes="ActionChip"
+                        Classes.Active="{Binding IsLairMode}"
+                        Classes.Stop="{Binding LairModeButtonIsStop}"
+                        Content="{Binding LairModeButtonLabel}"
+                        Command="{Binding ToggleLairModeCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 2: map + right rail -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,290">
 
             <controls:MapControl Grid.Column="0"
                                  Name="MapHost"
@@ -139,11 +254,7 @@
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>
 
-            <!-- Hover tooltip popup. Chrome modelled on MMUD-Explorer
-                 (pale yellow + black, rounded). Positioned manually
-                 by the window's code-behind via Margin on the host
-                 Border so the popup tracks the cursor without an
-                 Avalonia Popup's window-level placement plumbing. -->
+            <!-- Hover tooltip popup (unchanged) -->
             <Border Grid.Column="0"
                     Name="HoverTooltip"
                     IsVisible="False"
@@ -161,172 +272,224 @@
                            TextWrapping="Wrap"/>
             </Border>
 
-            <!-- Legend overlay (PR 7.17). Floats over the map; the
-                 user toggles it from the top-bar Legend chip. -->
+            <!-- Search dropdown — anchored under the search box,
+                 visible only when results exist. Code-behind sizes
+                 + positions via Margin. -->
+            <Border Grid.Column="0"
+                    Name="SearchDropdown"
+                    IsVisible="{Binding HasSearchResults}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,0,8,0"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Width="260" MaxHeight="320">
+                <ListBox ItemsSource="{Binding SearchResults}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RoomSearchResult">
+                            <Border Padding="8,5"
+                                    PointerPressed="OnSearchResultClicked"
+                                    Background="Transparent">
+                                <StackPanel>
+                                    <TextBlock FontSize="11"
+                                               Foreground="{StaticResource ChromeFgBrush}">
+                                        <Run Text="{Binding Key.Map}"/>
+                                        <Run Text="/"/>
+                                        <Run Text="{Binding Key.Room}"/>
+                                        <Run Text=" — "/>
+                                        <Run Text="{Binding DisplayName}"/>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding DisplayLocation}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Legend overlay (unchanged shape, lifted as-is) -->
             <Border Grid.Column="0"
                     IsVisible="{Binding LegendVisible}"
                     HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,12,12,0"
                     Background="#1A1A1AEE"
-                    BorderBrush="#2A2A2A" BorderThickness="1"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="10">
                 <StackPanel Spacing="4" MinWidth="180">
                     <TextBlock Text="MAP LEGEND" FontSize="10"
-                               FontWeight="SemiBold" Foreground="#888"/>
+                               FontWeight="SemiBold" Foreground="{StaticResource ChromeFgMutedBrush}"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#F8B500"/>
-                        <TextBlock Text="Current room" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Current room" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#A85FA8"/>
-                        <TextBlock Text="Lair" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Lair" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#5F8DA8"/>
-                        <TextBlock Text="Shop / banks" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Shop / banks" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#6428A0"/>
-                        <TextBlock Text="Spell room" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Spell room" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#DC821E"/>
-                        <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="14" Background="#00C800"/>
-                        <TextBlock Text="Up exit" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="14" Background="#DCDC00"/>
-                        <TextBlock Text="Down exit" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="14" Background="#FFB432"/>
-                        <TextBlock Text="Up + down" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <Separator Margin="0,4"/>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="2" Background="#3A3A3A"/>
-                        <TextBlock Text="Plain exit" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="2" Background="#5F8DA8"/>
-                        <TextBlock Text="Door exit" FontSize="11" Foreground="#DDD"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Border Width="14" Height="2" Background="#F25C54"/>
-                        <TextBlock Text="Trap exit" FontSize="11" Foreground="#DDD"/>
+                        <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Background="#141414"
-                    BorderBrush="#2A2A2A" BorderThickness="1,0,0,0">
-                <Grid RowDefinitions="Auto,*" Margin="12,8">
+            <!-- RIGHT RAIL -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource ChromeBgSunkenBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1,0,0,0">
+                <Grid RowDefinitions="*,Auto">
+                    <ScrollViewer Grid.Row="0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="10,6,10,6">
+                        <StackPanel Spacing="4">
 
-                    <!-- Search box always on top so the user can find a
-                         room while a walk is in progress. -->
-                    <StackPanel Grid.Row="0">
-                        <TextBlock Classes="SectionHeader" Text="SEARCH ROOMS"/>
-                        <TextBox Text="{Binding SearchQuery, Mode=TwoWay}"
-                                 FontSize="11"
-                                 BorderBrush="#2A2A2A"/>
-                        <ListBox ItemsSource="{Binding SearchResults}"
-                                 Margin="0,6,0,0"
-                                 MaxHeight="220"
-                                 IsVisible="{Binding HasSearchResults}"
-                                 Background="Transparent"
-                                 BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:RoomSearchResult">
-                                    <Border Padding="6,3"
-                                            PointerPressed="OnSearchResultClicked"
-                                            Background="Transparent">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       FontSize="12"
-                                                       Foreground="#DDD"/>
-                                            <TextBlock Text="{Binding DisplayLocation}"
-                                                       FontSize="10"
-                                                       Foreground="#777"/>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </StackPanel>
+                            <!-- CURRENT NAV -->
+                            <TextBlock Classes="RailSectionHeader" Text="CURRENT NAV"/>
+                            <TextBlock Text="{Binding CurrentNavHeader}"
+                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,4"/>
+                            <ItemsControl ItemsSource="{Binding CurrentNavRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CurrentNavRowViewModel">
+                                        <Border Classes="NavRow"
+                                                Classes.Completed="{Binding IsCompleted}"
+                                                Classes.Current="{Binding IsCurrent}"
+                                                Classes.Upcoming="{Binding IsUpcoming}"
+                                                Classes.Ready="{Binding IsReady}">
+                                            <Grid ColumnDefinitions="24,*,Auto,Auto">
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Index}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                           HorizontalAlignment="Left"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Label}"
+                                                               FontSize="11"/>
+                                                    <TextBlock Text="{Binding SubLabel}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               IsVisible="{Binding SubLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="3"
+                                                        Content="✕"
+                                                        FontSize="10"
+                                                        Padding="6,0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        IsVisible="{Binding HasRemove}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).UnmarkAutoLairRoomCommand}"
+                                                        CommandParameter="{Binding RemoveKey}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
-                    <!-- Rest of the rail. -->
-                    <StackPanel Grid.Row="1">
-                        <TextBlock Classes="SectionHeader" Text="CURRENT NAV"/>
-                        <TextBlock Text="No active navigation."
-                                   Foreground="#666" FontSize="11"
-                                   IsVisible="{Binding !IsWalking}"/>
-                        <TextBlock Text="Walking — see status strip above."
-                                   Foreground="#3DDC97" FontSize="11"
-                                   IsVisible="{Binding IsWalking}"/>
+                            <!-- GOTO -->
+                            <TextBlock Classes="RailSectionHeader" Text="GOTO"/>
+                            <TextBlock Text="Quick-access saved rooms land in a future PR."
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontSize="11"/>
 
-                        <TextBlock Classes="SectionHeader" Text="GOTO"/>
-                        <TextBlock Text="Favourites land in PR 7.13."
-                                   Foreground="#555" FontSize="11"/>
-
-                        <TextBlock Classes="SectionHeader" Text="LOOPS"/>
-                        <TextBlock Text="No loops saved on this BBS."
-                                   Foreground="#666" FontSize="11"
-                                   IsVisible="{Binding !HasLoops}"/>
-                        <Button Content="Stop running loop" FontSize="11"
-                                Padding="8,2" Margin="0,4,0,0"
-                                IsVisible="{Binding IsLoopRunning}"
-                                Command="{Binding StopLoopCommand}"/>
-                        <ItemsControl ItemsSource="{Binding Loops}"
-                                      IsVisible="{Binding HasLoops}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LoopRowViewModel">
-                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="12"
-                                                       Foreground="#DDD"/>
-                                            <TextBlock FontSize="10" Foreground="#777">
-                                                <Run Text="{Binding SubLabel}"/>
+                            <!-- LOOPS -->
+                            <TextBlock Classes="RailSectionHeader" Text="LOOPS"/>
+                            <TextBlock Text="No loops saved on this BBS."
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontSize="11"
+                                       IsVisible="{Binding !HasLoops}"/>
+                            <ItemsControl ItemsSource="{Binding Loops}"
+                                          IsVisible="{Binding HasLoops}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LoopRowViewModel">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                            <TextBlock Grid.Column="0"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="{Binding Name}"/>
                                                 <Run Text=" · "/>
-                                                <Run Text="{Binding LastRunBadge}"/>
+                                                <Run Text="{Binding SubLabel}"
+                                                     Foreground="{StaticResource ChromeFgMutedBrush}"/>
                                             </TextBlock>
-                                        </StackPanel>
-                                        <Button Grid.Column="1"
-                                                Content="Run"
-                                                FontSize="11" Padding="8,2"
-                                                VerticalAlignment="Center"
-                                                Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
-                                                CommandParameter="{Binding}"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                                            <Button Grid.Column="1"
+                                                    Content="Run" FontSize="10"
+                                                    Padding="8,2"
+                                                    Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Bottom action strip -->
+                    <Border Grid.Row="1"
+                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="0,1,0,0"
+                            Background="{StaticResource ChromeBgBrush}">
+                        <Grid ColumnDefinitions="*,*" Margin="6,4" ColumnSpacing="6">
+                            <Button Grid.Column="0"
+                                    Content="Import .mp"
+                                    FontSize="10"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    IsEnabled="False"
+                                    ToolTip.Tip="Wired with the MegaMUD .mp importer in a later PR"/>
+                            <Button Grid.Column="1"
+                                    Content="Manage"
+                                    FontSize="10"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    IsEnabled="False"
+                                    ToolTip.Tip="Loop / favourite manager UI lands in a later PR"/>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- Bottom strip: loop builder state. Visible only when
-             a loop session is active. -->
-        <Border Grid.Row="2" Background="#1A1A1A"
-                BorderBrush="#2A2A2A" BorderThickness="0,1,0,0"
+        <!-- Row 3: bottom strip — loop builder session (existing) -->
+        <Border Grid.Row="3"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
                 IsVisible="{Binding IsLoopBuilding}">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="12,8" ColumnSpacing="8">
-                <Border Grid.Column="0" Classes="StatusBadge" Background="#F8B500">
-                    <TextBlock Text="BUILDING LOOP"/>
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="12,6" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentAmberBrush}">
+                    <TextBlock Text="BUILDING LOOP"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="#0E0E0E"/>
                 </Border>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                             VerticalAlignment="Center">
-                    <TextBlock FontSize="11" Foreground="#BBB">
+                    <TextBlock FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}">
                         <Run Text="{Binding LoopBuilder.Clicks.Count, FallbackValue=0}"/>
                         <Run Text=" room(s) clicked · "/>
                         <Run Text="{Binding LoopBuilder.ExpandedStepCount, FallbackValue=0}"/>
                         <Run Text=" step(s) total"/>
                     </TextBlock>
-                    <TextBlock FontSize="11" Foreground="#F25C54"
+                    <TextBlock FontSize="11" Foreground="{StaticResource AccentRedBrush}"
                                Text="{Binding LoopBuilder.UnreachableSummary}"
                                IsVisible="{Binding LoopBuilder.UnreachableSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>

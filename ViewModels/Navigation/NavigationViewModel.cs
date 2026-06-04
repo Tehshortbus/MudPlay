@@ -87,7 +87,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     private void OnAutoLairMarkedChanged()
-        => AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
+    {
+        AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
+        RefreshDerivedState();
+    }
 
     private void OnAutoLairActiveChanged(bool active)
     {
@@ -221,6 +224,33 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool HasSearchResults => SearchResults.Count > 0;
 
+    /// <summary>
+    /// Destination armed for the Run button. Set by selecting a room from
+    /// the search dropdown (or clicking one in the room context menu's
+    /// "queue" command later); cleared on Run / Stop. When non-null, the
+    /// top-bar destination chip shows its display name + key and the Run
+    /// button is enabled.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(QueuedDestinationLabel))]
+    [NotifyPropertyChangedFor(nameof(HasQueuedDestination))]
+    [NotifyPropertyChangedFor(nameof(CanRun))]
+    private RoomKey? _queuedDestination;
+
+    public bool HasQueuedDestination => QueuedDestination is not null;
+
+    /// <summary>Display string for the top-bar chip: <c>"Name 1/123"</c> when set.</summary>
+    public string QueuedDestinationLabel
+    {
+        get
+        {
+            if (QueuedDestination is not { } k) return string.Empty;
+            Room? r = Graph?.GetRoom(k);
+            string name = r?.DisplayName ?? "???";
+            return $"{name} {k.Map}/{k.Room}";
+        }
+    }
+
     partial void OnSearchQueryChanged(string value) => RebuildSearchResults(value);
 
     private void RebuildSearchResults(string query)
@@ -272,8 +302,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void SelectSearchResult(RoomSearchResult? result)
     {
         if (result is null) return;
-        // Re-layout from the selected room so the map pans to it.
+        // Re-layout from the selected room so the map pans to it AND
+        // arm the Run button by queuing the destination — clicking Run
+        // walks there, mirroring the right-click → "Walk here" path.
         Layout = _services.Bfs.BuildLayout(result.Key);
+        SelectedRoomKey = result.Key;
+        QueuedDestination = result.Key;
         SearchQuery = string.Empty;
     }
 
@@ -401,6 +435,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsLoopMode));
         OnPropertyChanged(nameof(IsLairMode));
+        RefreshDerivedState();
     }
 
     /// <summary>Active loop-builder session when <see cref="CurrentMode"/> == LoopBuild; null otherwise.</summary>
@@ -486,7 +521,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- handlers --------------------------------------------------
 
-    private void OnTrackerStateChanged(RoomTransition _) => RefreshFromTracker();
+    private void OnTrackerStateChanged(RoomTransition _)
+    {
+        RefreshFromTracker();
+        RefreshDerivedState();
+    }
     private void OnWalkerEvent(WalkEvent _) => RefreshFromWalker();
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 
@@ -597,15 +636,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (_services.AutoLair.IsActive)
         {
             EngineActionLabel = "Auto-Lair";
-            return;
+            EngineActionKind = NavigationEngineKind.AutoLair;
         }
-        if (_services.LoopRunner.State != LoopState.Idle
+        else if (_services.LoopRunner.State != LoopState.Idle
             && _services.LoopRunner.CurrentLoop is { } loop)
         {
             EngineActionLabel = $"Looping: {loop.Name}";
-            return;
+            EngineActionKind = NavigationEngineKind.Looping;
         }
-        if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+        else if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
         {
             string dest = _services.Walker.Destination is { } key
                 ? (_services.RoomGraph.GetRoom(key) is { } room
@@ -614,10 +653,272 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 : "?";
             string verb = _services.Walker.State == WalkState.Paused ? "Paused walking" : "Walking";
             EngineActionLabel = $"{verb} to {dest}";
+            EngineActionKind = NavigationEngineKind.Walking;
+        }
+        else
+        {
+            EngineActionLabel = "Idle";
+            EngineActionKind = NavigationEngineKind.Idle;
+        }
+
+        RefreshDerivedState();
+    }
+
+    // ----- Run / Stop + mode-button state ---------------------------
+
+    /// <summary>
+    /// Which engine is currently driving — feeds top-bar status badge,
+    /// CURRENT NAV section rendering, and Run/Stop button behaviour.
+    /// </summary>
+    [ObservableProperty] private NavigationEngineKind _engineActionKind = NavigationEngineKind.Idle;
+
+    /// <summary>True when any movement engine is actively driving the player.</summary>
+    public bool IsAnyExecuting =>
+        EngineActionKind != NavigationEngineKind.Idle;
+
+    /// <summary>Run button enabled when idle and something is queued, OR when active (then it acts as Stop).</summary>
+    public bool CanRun =>
+        IsAnyExecuting
+        || QueuedDestination is not null
+        || (CurrentMode == NavigationMode.LoopBuild && LoopBuilder?.CanSave == true)
+        || (CurrentMode == NavigationMode.AutoLair && _services.AutoLair.Marked.Count > 0);
+
+    /// <summary>Button face: <c>"Run"</c> when idle, <c>"Stop"</c> while any engine runs.</summary>
+    public string RunStopLabel => IsAnyExecuting ? "Stop" : "Run";
+
+    /// <summary>
+    /// Status text used by both the top-bar status indicator and the
+    /// CURRENT NAV header pill. Idle → <c>"Located: &lt;room&gt;"</c>;
+    /// active → <c>"WALKING to &lt;dest&gt; X/Y"</c> /
+    /// <c>"LOOPING &lt;name&gt; X/Y"</c> / <c>"AUTO-LAIR cycling N lairs"</c>.
+    /// </summary>
+    public string TopBarStatusText
+    {
+        get
+        {
+            switch (EngineActionKind)
+            {
+                case NavigationEngineKind.Walking:
+                {
+                    string dest = _services.Walker.Destination is { } k
+                        ? (Graph?.GetRoom(k)?.DisplayName ?? k.ToString())
+                        : "?";
+                    int total = _services.Walker.StepCount;
+                    int idx = _services.Walker.CurrentStepIndex;
+                    return total > 0
+                        ? $"to {dest} {idx + 1}/{total}"
+                        : $"to {dest}";
+                }
+                case NavigationEngineKind.Looping:
+                {
+                    string name = _services.LoopRunner.CurrentLoop?.Name ?? "?";
+                    return $"{name}";
+                }
+                case NavigationEngineKind.AutoLair:
+                {
+                    int n = _services.AutoLair.Marked.Count;
+                    return $"cycling {n} marked lair{(n == 1 ? "" : "s")}";
+                }
+                default:
+                {
+                    string here = _services.RoomTracker.State.CurrentRoom?.DisplayName ?? "—";
+                    return $"Located: {here}";
+                }
+            }
+        }
+    }
+
+    /// <summary>Short tag the badge displays: WALKING / LOOPING / AUTO-LAIR / LOCATED.</summary>
+    public string TopBarStatusBadge => EngineActionKind switch
+    {
+        NavigationEngineKind.Walking  => "WALKING",
+        NavigationEngineKind.Looping  => "LOOPING",
+        NavigationEngineKind.AutoLair => "AUTO-LAIR",
+        _                             => "LOCATED",
+    };
+
+    public string TopBarStatusBadgeBrush => EngineActionKind switch
+    {
+        NavigationEngineKind.Walking  => "AccentGreenBrush",
+        NavigationEngineKind.Looping  => "AccentCyanBrush",
+        NavigationEngineKind.AutoLair => "AccentAmberBrush",
+        _                             => "AccentGreenBrush",
+    };
+
+    /// <summary>Loop-mode button face: idle → "Loop mode"; mode-on → "Building"; running → "Stop".</summary>
+    public string LoopModeButtonLabel => EngineActionKind == NavigationEngineKind.Looping
+        ? "Stop"
+        : (CurrentMode == NavigationMode.LoopBuild ? "Building" : "Loop mode");
+
+    public bool LoopModeButtonIsStop => EngineActionKind == NavigationEngineKind.Looping;
+
+    /// <summary>Lair-mode button face: idle → "Lair mode"; mode-on → "Marking"; running → "Stop".</summary>
+    public string LairModeButtonLabel => EngineActionKind == NavigationEngineKind.AutoLair
+        ? "Stop"
+        : (CurrentMode == NavigationMode.AutoLair ? "Marking" : "Lair mode");
+
+    public bool LairModeButtonIsStop => EngineActionKind == NavigationEngineKind.AutoLair;
+
+    /// <summary>Window title: <c>"Navigation — &lt;status&gt;"</c>.</summary>
+    public string WindowTitle => $"Navigation — {TopBarStatusBadge}: {TopBarStatusText}";
+
+    private void RefreshDerivedState()
+    {
+        OnPropertyChanged(nameof(IsAnyExecuting));
+        OnPropertyChanged(nameof(CanRun));
+        OnPropertyChanged(nameof(RunStopLabel));
+        OnPropertyChanged(nameof(TopBarStatusText));
+        OnPropertyChanged(nameof(TopBarStatusBadge));
+        OnPropertyChanged(nameof(TopBarStatusBadgeBrush));
+        OnPropertyChanged(nameof(LoopModeButtonLabel));
+        OnPropertyChanged(nameof(LoopModeButtonIsStop));
+        OnPropertyChanged(nameof(LairModeButtonLabel));
+        OnPropertyChanged(nameof(LairModeButtonIsStop));
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(CurrentNavHeader));
+        OnPropertyChanged(nameof(CurrentNavProgress));
+        OnPropertyChanged(nameof(CurrentNavHasProgress));
+        RebuildCurrentNavRows();
+    }
+
+    /// <summary>
+    /// Unified Run / Stop button. Behaviour by state:
+    /// <list type="bullet">
+    /// <item>Active (any engine) → stops it.</item>
+    /// <item>Loop builder open with savable session → save + run.</item>
+    /// <item>Auto-Lair mode with marked rooms → start the scheduler.</item>
+    /// <item>Otherwise, walk to the queued destination.</item>
+    /// </list>
+    /// </summary>
+    [RelayCommand]
+    private void RunStop()
+    {
+        // Stop path first — if anything is moving, the button stops it.
+        if (_services.AutoLair.IsActive)
+        {
+            _services.AutoLair.Stop();
             return;
         }
-        EngineActionLabel = "Idle";
+        if (_services.LoopRunner.State != LoopState.Idle)
+        {
+            _services.LoopRunner.Stop();
+            return;
+        }
+        if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+        {
+            _services.Walker.Stop("user stop from Navigation");
+            return;
+        }
+
+        // Start path — pick the queued action by current mode.
+        if (CurrentMode == NavigationMode.LoopBuild
+            && LoopBuilder?.CanSave == true)
+        {
+            LoopBuilder.Save();
+            if (_services.Loops.Loops.LastOrDefault() is { } saved
+                && _services.LoopRunner.Start(saved))
+                _services.Loops.NoteRun(saved.Name);
+            return;
+        }
+        if (CurrentMode == NavigationMode.AutoLair
+            && _services.AutoLair.Marked.Count > 0)
+        {
+            _services.AutoLair.Start();
+            return;
+        }
+        if (QueuedDestination is { } dest)
+        {
+            _services.Walker.WalkTo(dest);
+            QueuedDestination = null;
+        }
     }
+
+    // ----- CURRENT NAV row list -------------------------------------
+
+    /// <summary>Rows shown under CURRENT NAV — steps when walking/looping, marked lairs when auto-lairing.</summary>
+    public ObservableCollection<CurrentNavRowViewModel> CurrentNavRows { get; } = new();
+
+    /// <summary>Header sentence under the section title: <c>"3 of 6 steps to X"</c> / <c>"Cycling marked lairs"</c>.</summary>
+    public string CurrentNavHeader => EngineActionKind switch
+    {
+        NavigationEngineKind.Walking =>
+            _services.Walker.Destination is { } k
+                ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {Graph?.GetRoom(k)?.DisplayName ?? k.ToString()}"
+                : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
+        NavigationEngineKind.Looping  => "Cycling loop steps",
+        NavigationEngineKind.AutoLair => "Cycling marked lairs",
+        _ => "No active navigation. Start a Loop, Walk, or Lair cycle from the toolbar.",
+    };
+
+    /// <summary>Progress as a 0..1 fraction for the small inline bar; null when no progress meter applies (e.g. Auto-Lair).</summary>
+    public double? CurrentNavProgress
+    {
+        get
+        {
+            if (EngineActionKind != NavigationEngineKind.Walking) return null;
+            int total = _services.Walker.StepCount;
+            if (total <= 0) return null;
+            return Math.Clamp((double)_services.Walker.CurrentStepIndex / total, 0, 1);
+        }
+    }
+
+    public bool CurrentNavHasProgress => CurrentNavProgress is not null;
+
+    private void RebuildCurrentNavRows()
+    {
+        CurrentNavRows.Clear();
+        switch (EngineActionKind)
+        {
+            case NavigationEngineKind.Walking:
+            {
+                int idx = _services.Walker.CurrentStepIndex;
+                IReadOnlyList<WalkStep> steps = _services.Walker.Steps;
+                for (int i = 0; i < steps.Count; i++)
+                {
+                    CurrentNavRowStatus status = i < idx
+                        ? CurrentNavRowStatus.Completed
+                        : (i == idx ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Upcoming);
+                    CurrentNavRows.Add(new CurrentNavRowViewModel(
+                        index: i + 1, label: steps[i].Display, status: status));
+                }
+                break;
+            }
+            case NavigationEngineKind.AutoLair:
+            {
+                int i = 1;
+                foreach (RoomKey key in _services.AutoLair.Marked)
+                {
+                    string name = Graph?.GetRoom(key)?.DisplayName ?? key.ToString();
+                    // Status data isn't tracked yet — show "ready" for
+                    // all marked lairs until LairTimerStore lands.
+                    CurrentNavRows.Add(new CurrentNavRowViewModel(
+                        index: i++, label: name,
+                        status: CurrentNavRowStatus.Ready,
+                        subLabel: "ready",
+                        removeKey: key));
+                }
+                break;
+            }
+            // Looping: TODO when LoopRunner exposes step index / total
+            // in a per-step shape; show the loop's room list as
+            // upcoming for now.
+        }
+    }
+
+    [RelayCommand]
+    private void UnmarkAutoLairRoom(RoomKey? key)
+    {
+        if (key is { } k) _services.AutoLair.Toggle(k);
+    }
+}
+
+/// <summary>Which engine is currently moving the player — gates Run/Stop, status badge, CURRENT NAV rendering.</summary>
+public enum NavigationEngineKind
+{
+    Idle     = 0,
+    Walking  = 1,
+    Looping  = 2,
+    AutoLair = 3,
 }
 
 /// <summary>One of the four explicit modes the Navigation window can be in.</summary>
