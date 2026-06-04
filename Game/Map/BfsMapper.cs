@@ -374,6 +374,39 @@ public sealed class BfsMapper
             }
         }
 
+        // Deferred resolution pass — port of MMUD-Explorer's two-pass
+        // "delay contested rooms until the frontier settles" trick. By
+        // this point the BFS has committed a placement for every
+        // reachable room, but rooms reached early (when `positions`
+        // was sparse) didn't have full reciprocal context to score
+        // against. Walk the placement set again and, for each room,
+        // see if a candidate coord (implied by a now-known reciprocal
+        // neighbour) scores higher than the BFS-committed coord. Move
+        // the room if so. Bounded by a small iteration cap because the
+        // moves can cascade — the loop converges quickly in practice
+        // because every move strictly increases the global match
+        // count (which is finite).
+        //
+        // After moves settle, rebuild edgesFromCoord from scratch:
+        // a moved room's stub edges live at the OLD coord. Easier to
+        // recompute than to chase the deltas.
+        RefineWithDeferredResolution(positions, coordToRoom, origin);
+
+        edgesFromCoord.Clear();
+        trapEdgesFromCoord.Clear();
+        foreach ((RoomKey rk, (int X, int Y) rcoord) in positions)
+        {
+            Room? rroom = _graph.GetRoom(rk);
+            if (rroom is null) continue;
+            foreach ((Direction edir, RoomExit eexit) in rroom.Exits)
+            {
+                if (!IsPlanar(edir)) continue;
+                AddEdge(edgesFromCoord, rcoord, edir);
+                if (eexit.Hint == RoomExitHint.Trap)
+                    AddEdge(trapEdgesFromCoord, rcoord, edir);
+            }
+        }
+
         RoomLayout layout = new(
             Origin: origin,
             Positions: positions,
@@ -467,6 +500,73 @@ public sealed class BfsMapper
             here = p;
         }
         return stack.ToArray();
+    }
+
+    /// <summary>
+    /// MMUD-Explorer's two-pass deferred-resolution port. After the BFS
+    /// has committed an initial placement for every reachable room, walk
+    /// the placement set and try to move each room to a coord that
+    /// scores higher (satisfies more reciprocal exits) against the now-
+    /// fully-populated <paramref name="positions"/> map. The origin is
+    /// pinned because it anchors the layout — moving it would shift
+    /// everyone in lockstep with no net win.
+    /// </summary>
+    /// <remarks>
+    /// Convergence: every move strictly increases the global "matched
+    /// reciprocals" count (we only move when the new score is strictly
+    /// higher). The count is bounded by the total number of planar
+    /// exits in the graph, so the loop terminates. The iteration cap
+    /// is defensive — in practice the loop runs 1–3 passes.
+    /// </remarks>
+    private void RefineWithDeferredResolution(
+        Dictionary<RoomKey, (int X, int Y)> positions,
+        Dictionary<(int X, int Y), RoomKey> coordToRoom,
+        RoomKey origin)
+    {
+        const int MaxIterations = 6;
+        for (int iter = 0; iter < MaxIterations; iter++)
+        {
+            bool moved = false;
+            foreach (RoomKey roomKey in positions.Keys.ToArray())
+            {
+                if (roomKey.Equals(origin)) continue;       // anchor
+                Room? roomData = _graph.GetRoom(roomKey);
+                if (roomData is null) continue;
+
+                (int X, int Y) current = positions[roomKey];
+                int currentScore = ScoreCoord(roomData, current, positions);
+
+                // Walk each reciprocal exit's implied coord and try it
+                // as a candidate. Only consider moves to FREE coords
+                // (the alternative would cascade-bump another room,
+                // which complicates termination).
+                (int X, int Y)? best = null;
+                int bestScore = currentScore;
+                foreach ((Direction dir, RoomExit exit) in roomData.Exits)
+                {
+                    if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+                    if (!positions.TryGetValue(exit.Target, out (int X, int Y) nb)) continue;
+                    (int X, int Y) candidate = (nb.X - dx, nb.Y - dy);
+                    if (candidate.Equals(current)) continue;
+                    if (coordToRoom.ContainsKey(candidate)) continue;
+                    int score = ScoreCoord(roomData, candidate, positions);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = candidate;
+                    }
+                }
+
+                if (best is { } moveTo)
+                {
+                    coordToRoom.Remove(current);
+                    positions[roomKey] = moveTo;
+                    coordToRoom[moveTo] = roomKey;
+                    moved = true;
+                }
+            }
+            if (!moved) break;
+        }
     }
 
     /// <summary>
