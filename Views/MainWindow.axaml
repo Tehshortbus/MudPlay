@@ -300,10 +300,18 @@
             <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBlock Classes="StatusSlot StatusMuted"
-                               Text="Unknown location"
+                    <Grid Width="8" Height="8" VerticalAlignment="Center">
+                        <Ellipse Fill="{StaticResource ChromeFgMutedBrush}"
+                                 IsVisible="{Binding LocationIsMuted}"/>
+                        <Ellipse Fill="{StaticResource AccentGreenBrush}"
+                                 IsVisible="{Binding LocationIsGreen}"/>
+                        <Ellipse Fill="{StaticResource AccentYellowBrush}"
+                                 IsVisible="{Binding LocationIsYellow}"/>
+                        <Ellipse Fill="{StaticResource AccentRedBrush}"
+                                 IsVisible="{Binding LocationIsRed}"/>
+                    </Grid>
+                    <TextBlock Classes="StatusSlot"
+                               Text="{Binding LocationText}"
                                TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 

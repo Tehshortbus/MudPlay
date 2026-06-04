@@ -205,6 +205,32 @@ public partial class MainWindowViewModel : ObservableObject
          : IsConnecting ? "Connecting…"
          : "Disconnected";
 
+    // ----- Status-bar location slot (mirrors NavigationViewModel) ----
+
+    /// <summary>
+    /// Text shown in the bottom status bar's location slot. Mirrors
+    /// the Navigation window's current-room label so the two stay in
+    /// sync — the bottom bar should never show "Unknown location"
+    /// while the Navigation strip knows where the player is.
+    /// </summary>
+    [ObservableProperty] private string _locationText = "Unknown location";
+
+    /// <summary>
+    /// Multi-IsVisible booleans for the location-slot dot. The XAML
+    /// uses the same shape as the connection stoplight — three
+    /// ellipses, only one visible at a time. Suspect mirrors
+    /// Confirmed (the badge stays green) per the internal-only
+    /// Suspect rule from the tracker rework.
+    /// </summary>
+    public bool LocationIsGreen   => _locationConfidence is Game.Map.RoomConfidence.Confirmed
+                                   or Game.Map.RoomConfidence.Suspect;
+    public bool LocationIsYellow  => _locationConfidence is Game.Map.RoomConfidence.Pending;
+    public bool LocationIsRed     => _locationConfidence is Game.Map.RoomConfidence.Lost
+                                   or Game.Map.RoomConfidence.PendingRespawn;
+    public bool LocationIsMuted   => !LocationIsGreen && !LocationIsYellow && !LocationIsRed;
+
+    private Game.Map.RoomConfidence _locationConfidence;
+
     /// <summary>
     /// Cancels an in-flight connect attempt — covers both the socket-level
     /// <see cref="TelnetClient.ConnectAsync"/> and the inter-attempt
@@ -306,6 +332,11 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
+
+        // Mirror RoomTracker into the status-bar location slot so the
+        // bottom bar and the Navigation window's strip stay in sync.
+        AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+        RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
         // Notify both the display labels (Recent0..4 — "name - bbs")
@@ -677,6 +708,29 @@ public partial class MainWindowViewModel : ObservableObject
     /// when the player is resting or meditating — the two cycles have
     /// independent anchors and can be desynced.
     /// </summary>
+    private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
+
+    private void RefreshLocationSlot()
+    {
+        Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
+        Game.Map.Room? room = state.CurrentRoom;
+        LocationText = room is not null
+            ? $"{room.Name}  ·  {room.Key}"
+            : state.Confidence switch
+            {
+                Game.Map.RoomConfidence.Pending        => "Pending move…",
+                Game.Map.RoomConfidence.Lost           => "Lost — pick a room on the map",
+                Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
+                _                                      => "Unknown location",
+            };
+        _locationConfidence = state.Confidence;
+        OnPropertyChanged(nameof(LocationIsGreen));
+        OnPropertyChanged(nameof(LocationIsYellow));
+        OnPropertyChanged(nameof(LocationIsRed));
+        OnPropertyChanged(nameof(LocationIsMuted));
+    }
+
     private void RefreshStatusBarTicks()
     {
         Game.RegenTracker regen = AppServices.Current.Regen;
