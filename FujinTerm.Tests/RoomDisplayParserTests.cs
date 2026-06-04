@@ -344,6 +344,42 @@ public sealed class RoomDisplayParserTests : IDisposable
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
+    // ----- open-door modifier capture (commit 8 fix) -----------------
+
+    [Fact]
+    public void OpenDoorModifier_OnSouth_CapturesOpenDoorDirections()
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "Silvermere Residence",
+            "Obvious exits: open door south, up."
+        });
+
+        // The exit set still includes S (the direction is real); the
+        // OpenDoorDirections set carries it separately so the walker
+        // can skip the door FSM.
+        Assert.NotNull(tracker.State.OpenDoorDirections);
+        Assert.Contains(Direction.S, tracker.State.OpenDoorDirections!);
+        Assert.DoesNotContain(Direction.U, tracker.State.OpenDoorDirections!);
+    }
+
+    [Fact]
+    public void ClosedDoorModifier_OnNorth_ParsesDirectionButNotAsOpen()
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "Crown Street",
+            "Obvious exits: closed door north, east, west."
+        });
+
+        // Direction parsed; closed door doesn't make the open set.
+        Assert.Null(tracker.State.OpenDoorDirections);
+    }
+
     [Fact]
     public void ColorAnchor_BoldCyan_AlsoQualifiesAsBrightCyan()
     {

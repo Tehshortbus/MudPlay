@@ -355,10 +355,24 @@ public sealed class DoorOpenManager : IDisposable
 
     private void OnOpened(MatchResult _)
     {
-        if (_state != DoorState.WaitingOpen) return;
         if (_current is null) return;
-        _log?.Info("Door", $"open {_current.DirectionShort} succeeded.");
-        SucceedCurrent();
+        // "is now open" / "already open" — the door is in the
+        // desired state regardless of which verb just landed on the
+        // wire. Accept from any active waiting state so a bash on an
+        // already-open door (server replies "The door is already
+        // open.") doesn't strand the FSM waiting for a
+        // "bashed the door open" line that will never arrive.
+        // Without this, the walker stalls indefinitely on the very
+        // next door after a successful bash on the previous one.
+        if (_state is DoorState.WaitingBash
+                   or DoorState.WaitingPick
+                   or DoorState.WaitingOpen
+                   or DoorState.WaitingUseKey)
+        {
+            _log?.Info("Door",
+                $"door {_current.DirectionShort} confirmed open (was {_state}).");
+            SucceedCurrent();
+        }
     }
 
     private void OnKeyUnlockSuccess(MatchResult _)

@@ -93,13 +93,18 @@ public sealed partial class RoomDisplayParser : IDisposable
         Match exits = ObviousExitsPattern().Match(line.Text);
         if (exits.Success)
         {
-            HashSet<Direction> dirs = ParseExits(exits.Groups["list"].Value);
+            HashSet<Direction> dirs = ParseExits(exits.Groups["list"].Value,
+                out HashSet<Direction> openDoors);
             string? name = FindRoomNameInBuffer();
             if (name is not null)
             {
-                _tracker.NoteRoomObserved(new RoomObservation(name, dirs), line.Timestamp);
+                _tracker.NoteRoomObserved(
+                    new RoomObservation(name, dirs,
+                        openDoors.Count > 0 ? openDoors : null),
+                    line.Timestamp);
                 _log?.Info("RoomDisplay",
-                    $"observed: '{name}' exits={{{string.Join(",", dirs)}}}");
+                    $"observed: '{name}' exits={{{string.Join(",", dirs)}}}"
+                    + (openDoors.Count > 0 ? $" openDoors={{{string.Join(",", openDoors)}}}" : ""));
             }
             else
             {
@@ -182,30 +187,56 @@ public sealed partial class RoomDisplayParser : IDisposable
         return false;
     }
 
-    private static HashSet<Direction> ParseExits(string list)
+    private static HashSet<Direction> ParseExits(string list,
+        out HashSet<Direction> openDoors)
     {
         var result = new HashSet<Direction>();
+        openDoors = new HashSet<Direction>();
         if (string.IsNullOrWhiteSpace(list)) return result;
         if (list.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)) return result;
 
-        foreach (string raw in list.Split(
-            new[] { ',', ' ', '.', ';', '/' },
-            StringSplitOptions.RemoveEmptyEntries))
+        // Split by commas first so multi-word entries (e.g. "open door
+        // south", "closed door north") survive — single-word tokens
+        // like "east" still split out cleanly from the per-entry trim.
+        foreach (string rawEntry in list.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
-            string token = raw.Trim().ToLowerInvariant();
-            if (token == "and" || token.Length == 0) continue;
-            switch (token)
+            string entry = rawEntry.Trim().ToLowerInvariant();
+            // Strip a trailing "and" (e.g. "north and south" → two entries).
+            // The comma-split already handled commas; "and" between the last
+            // two items survives as a trailing word inside the entry.
+            if (entry.StartsWith("and ", StringComparison.Ordinal)) entry = entry[4..];
+
+            bool isOpenDoor = false;
+            if (entry.StartsWith("open door ",   StringComparison.Ordinal))
+            { entry = entry[10..]; isOpenDoor = true; }
+            else if (entry.StartsWith("closed door ", StringComparison.Ordinal))
+            { entry = entry[12..]; /* door is shut */ }
+
+            // Sub-split on spaces in case the entry has trailing
+            // "and <dir>" or similar (rare).
+            foreach (string raw in entry.Split(
+                new[] { ' ', '.', ';', '/' },
+                StringSplitOptions.RemoveEmptyEntries))
             {
-                case "north": case "n":  result.Add(Direction.N);  break;
-                case "south": case "s":  result.Add(Direction.S);  break;
-                case "east":  case "e":  result.Add(Direction.E);  break;
-                case "west":  case "w":  result.Add(Direction.W);  break;
-                case "northeast": case "ne": result.Add(Direction.NE); break;
-                case "northwest": case "nw": result.Add(Direction.NW); break;
-                case "southeast": case "se": result.Add(Direction.SE); break;
-                case "southwest": case "sw": result.Add(Direction.SW); break;
-                case "up": case "u":     result.Add(Direction.U);  break;
-                case "down": case "d":   result.Add(Direction.D);  break;
+                string token = raw.Trim();
+                if (token == "and" || token.Length == 0) continue;
+                Direction? dir = token switch
+                {
+                    "north" or "n"  => Direction.N,
+                    "south" or "s"  => Direction.S,
+                    "east"  or "e"  => Direction.E,
+                    "west"  or "w"  => Direction.W,
+                    "northeast" or "ne" => Direction.NE,
+                    "northwest" or "nw" => Direction.NW,
+                    "southeast" or "se" => Direction.SE,
+                    "southwest" or "sw" => Direction.SW,
+                    "up"   or "u"   => Direction.U,
+                    "down" or "d"   => Direction.D,
+                    _ => null,
+                };
+                if (dir is not { } d) continue;
+                result.Add(d);
+                if (isOpenDoor) openDoors.Add(d);
             }
         }
         return result;

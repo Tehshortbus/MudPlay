@@ -362,6 +362,20 @@ public sealed class AutoWalkManager
         if ((exit.Hint == RoomExitHint.Door || exit.Hint == RoomExitHint.KeyLocked)
             && _doorEnqueuer is not null)
         {
+            // Pre-check: the latest room observation may have shown
+            // "open door <dir>" — door is already open and the FSM
+            // would just stall on the "is already open" response.
+            // Skip straight to the cardinal move.
+            if (_tracker.State.OpenDoorDirections is { } openDoors
+                && openDoors.Contains(step.Direction))
+            {
+                _log?.Info("Walker",
+                    $"step {_index + 1}/{_path!.Count}: door {step.Direction} already open — skipping FSM.");
+                _tracker.NoteMoveSent(step.Direction);
+                byte[] preBytes = EncodeMove(step.Direction);
+                WriteBytes(preBytes, $"move {step.Direction} (door pre-open)");
+                return;
+            }
             _awaitingDoorOpen = true;
             _log?.Info("Walker",
                 $"step {_index + 1}/{_path!.Count}: opening door {step.Direction}"

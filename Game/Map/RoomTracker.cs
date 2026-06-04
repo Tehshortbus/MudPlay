@@ -241,6 +241,12 @@ public sealed class RoomTracker
             // window expired — fall through and process normally
         }
 
+        // Mirror open-door modifiers from the latest observation into
+        // state so the walker can pre-check before kicking off the
+        // door FSM ("open door south" → skip the bash/pick wait,
+        // send the cardinal move directly).
+        State.OpenDoorDirections = observation.OpenDoorDirections;
+
         switch (State.Confidence)
         {
             case RoomConfidence.Unknown:

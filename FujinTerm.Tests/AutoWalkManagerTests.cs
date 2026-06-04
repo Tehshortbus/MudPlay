@@ -402,6 +402,35 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Walker_DoorAlreadyOpen_SkipsFsm_SendsMoveDirectly()
+    {
+        // Live bug: room display shows "open door east" (already
+        // open), walker still routed through the door FSM and
+        // burned a bash attempt that came back "The door is already
+        // open." Fix: pre-check tracker.State.OpenDoorDirections.
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+
+        // Seed the tracker with an observation marking E as already
+        // open. This fires the SetLocated path which records the
+        // current room; then we feed an explicit observation so
+        // OpenDoorDirections gets populated.
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Tracker.NoteRoomObserved(new RoomObservation(
+            "Outside",
+            new HashSet<Direction> { Direction.E },
+            new HashSet<Direction> { Direction.E }));
+
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Door enqueuer NOT called — walker skipped the FSM.
+        Assert.Empty(door.Calls);
+        Assert.Single(h.Sent);
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
     public void Walker_DoorExit_PathHasOnlyMoveStep()
     {
         Harness h = NewHarness(DoorGraphJson);

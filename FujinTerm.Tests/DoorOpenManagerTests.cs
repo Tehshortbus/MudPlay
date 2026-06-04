@@ -338,6 +338,56 @@ public sealed class DoorOpenManagerTests
         Assert.Empty(h.Sent);
     }
 
+    // ----- already-open responses (commit 8 fix) --------------------
+
+    [Fact]
+    public void Bash_OnAlreadyOpenDoor_TreatsAsSuccess()
+    {
+        // Live bug: walker queued bash on a door whose room display
+        // showed `open door <dir>` (already open). Server replied
+        // "The door is already open." but the FSM only handled that
+        // message in WaitingOpen — bash got stuck waiting for a
+        // "bashed the door open" line that never arrived. Fix: any
+        // already-open response while we're bashing counts as success.
+        using Harness h = new();
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.S, 0, true, "walker", r => result = r);
+        Assert.Equal("bash s", h.LastSent);
+
+        h.Line("The door is already open.");
+
+        Assert.IsType<DoorOpenResult.Opened>(result);
+        Assert.Equal(DoorOpenManager.DoorState.Idle, h.Mgr.CurrentState);
+    }
+
+    [Fact]
+    public void Pick_OnAlreadyOpenDoor_TreatsAsSuccess()
+    {
+        using Harness h = new() { PicklocksOverBash = true };
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.W, 0, true, "walker", r => result = r);
+        Assert.Equal("pick w", h.LastSent);
+
+        h.Line("The door is already open.");
+
+        Assert.IsType<DoorOpenResult.Opened>(result);
+    }
+
+    [Fact]
+    public void UseKey_OnAlreadyOpenDoor_TreatsAsSuccess()
+    {
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+        Assert.Equal("use black star key e", h.LastSent);
+
+        h.Line("The door is already open.");
+
+        Assert.IsType<DoorOpenResult.Opened>(result);
+    }
+
     [Fact]
     public void OpenHitsLocked_WithKeyAvailable_SwingsToUseKey()
     {

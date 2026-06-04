@@ -32,4 +32,15 @@ public sealed partial class RoomState : ObservableObject
     /// until Lost.
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(RoomTracker))] private int _suspectStrikes;
+
+    /// <summary>
+    /// Directions from the latest observation whose modifier was
+    /// <c>"open door"</c>. The walker checks this before kicking off
+    /// the door FSM — if the door is already open, send the cardinal
+    /// move directly and skip the bash/pick wait. <c>null</c> when the
+    /// last observation had no door modifiers (or when the tracker is
+    /// in <see cref="RoomConfidence.Unknown"/> / between rooms).
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(RoomTracker))]
+    private System.Collections.Generic.IReadOnlySet<Direction>? _openDoorDirections;
 }
