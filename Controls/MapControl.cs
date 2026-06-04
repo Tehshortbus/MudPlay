@@ -341,12 +341,11 @@ public sealed class MapControl : Control
             if (c.IsAutoFollowSuppressed) return;
             if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
         });
-        // Selection moves always centre — the user just asked for the
-        // cursor to be there.
-        SelectedRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
-        {
-            if (a.NewValue is RoomKey k) c.CenterOnRoom(k);
-        });
+        // Selection moves do NOT re-centre on click — clicking a
+        // square the user can already see shouldn't yank the view.
+        // Keyboard crawler stepping centres explicitly from
+        // TryStepSelection / TryStepFloor since those can step off
+        // the visible window.
         // When the layout itself rebuilds (new floor / new origin),
         // re-centre on whichever room the host considers active —
         // selection takes precedence so floor-stepping lands on the
@@ -506,14 +505,19 @@ public sealed class MapControl : Control
         if (ChordMatches(e, UpStepChord))   { TryStepFloor(Direction.U); e.Handled = true; return; }
         if (ChordMatches(e, DownStepChord)) { TryStepFloor(Direction.D); e.Handled = true; return; }
 
-        // Home re-centres on the live current room (the selection
-        // change handler in the ctor performs the actual centre call)
-        // and clears any active auto-follow suppression so live
-        // movement starts following the player again.
+        // Home re-centres on the live current room and clears any
+        // active auto-follow suppression so live movement starts
+        // following the player again. Centres explicitly — the
+        // selection-change handler no longer pans on its own (clicks
+        // shouldn't yank the view).
         if (e.Key == Key.Home)
         {
             _autoFollowSuppressedUntil = DateTime.MinValue;
-            if (CurrentRoomKey is { } cur) SelectedRoomKey = cur;
+            if (CurrentRoomKey is { } cur)
+            {
+                SelectedRoomKey = cur;
+                CenterOnRoom(cur);
+            }
             e.Handled = true;
             return;
         }
@@ -557,8 +561,9 @@ public sealed class MapControl : Control
         if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return;
 
         // Destination IS the room across the exit. Three cases:
-        //   1. Placed in the current layout → just move the selection
-        //      and the centre-on-selection handler will pan to it.
+        //   1. Placed in the current layout → move the selection AND
+        //      centre on the new cell (the user just navigated there;
+        //      the click-doesn't-centre rule doesn't apply to keys).
         //   2. Not in the layout but still in the active graph →
         //      treat as an out-of-floor / non-Euclidean step and ask
         //      the host to rebuild the layout from the new origin
@@ -568,6 +573,7 @@ public sealed class MapControl : Control
         if (Layout.Positions.ContainsKey(exit.Target))
         {
             SelectedRoomKey = exit.Target;
+            CenterOnRoom(exit.Target);
             return;
         }
         if (Graph.GetRoom(exit.Target) is not null)
