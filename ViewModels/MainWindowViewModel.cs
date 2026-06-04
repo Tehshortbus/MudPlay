@@ -215,21 +215,54 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private string _locationText = "Unknown location";
 
-    /// <summary>
-    /// Multi-IsVisible booleans for the location-slot dot. The XAML
-    /// uses the same shape as the connection stoplight — three
-    /// ellipses, only one visible at a time. Suspect mirrors
-    /// Confirmed (the badge stays green) per the internal-only
-    /// Suspect rule from the tracker rework.
-    /// </summary>
-    public bool LocationIsGreen   => _locationConfidence is Game.Map.RoomConfidence.Confirmed
-                                   or Game.Map.RoomConfidence.Suspect;
-    public bool LocationIsYellow  => _locationConfidence is Game.Map.RoomConfidence.Pending;
-    public bool LocationIsRed     => _locationConfidence is Game.Map.RoomConfidence.Lost
-                                   or Game.Map.RoomConfidence.PendingRespawn;
-    public bool LocationIsMuted   => !LocationIsGreen && !LocationIsYellow && !LocationIsRed;
 
-    private Game.Map.RoomConfidence _locationConfidence;
+    // ----- Engine-state chip (mirrors the Navigation window's badge) -----
+
+    private Game.Map.WalkState _walkerState   = Game.Map.WalkState.Idle;
+    private bool               _loopRunning;
+    private bool               _autoLairOn;
+
+    /// <summary>Label inside the chip — short upper-case state tag.</summary>
+    public string EngineActionBadge =>
+        _autoLairOn                                     ? "AUTO-LAIR"
+        : _loopRunning                                  ? "LOOPING"
+        : (_walkerState != Game.Map.WalkState.Idle)     ? "WALKING"
+        :                                                 "IDLE";
+
+    public bool EngineActionIsIdle    => !_autoLairOn && !_loopRunning && _walkerState == Game.Map.WalkState.Idle;
+    public bool EngineActionIsWalking => !_autoLairOn && !_loopRunning && _walkerState != Game.Map.WalkState.Idle;
+    public bool EngineActionIsLooping => !_autoLairOn &&  _loopRunning;
+    public bool EngineActionIsLair    =>  _autoLairOn;
+
+    private void OnWalkerEngineEvent(Game.Map.WalkEvent _)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _walkerState = AppServices.Current.Walker.State;
+            RefreshEngineActionChip();
+        });
+
+    private void OnLoopRunnerEngineEvent(Game.Map.LoopEvent _)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _loopRunning = AppServices.Current.LoopRunner.State != Game.Map.LoopState.Idle;
+            RefreshEngineActionChip();
+        });
+
+    private void OnAutoLairActiveChanged(bool active)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _autoLairOn = active;
+            RefreshEngineActionChip();
+        });
+
+    private void RefreshEngineActionChip()
+    {
+        OnPropertyChanged(nameof(EngineActionBadge));
+        OnPropertyChanged(nameof(EngineActionIsIdle));
+        OnPropertyChanged(nameof(EngineActionIsWalking));
+        OnPropertyChanged(nameof(EngineActionIsLooping));
+        OnPropertyChanged(nameof(EngineActionIsLair));
+    }
 
     /// <summary>
     /// Cancels an in-flight connect attempt — covers both the socket-level
@@ -336,6 +369,14 @@ public partial class MainWindowViewModel : ObservableObject
         // Mirror RoomTracker into the status-bar location slot so the
         // bottom bar and the Navigation window's strip stay in sync.
         AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+
+        // Engine-state chip — same shape as the Navigation window's
+        // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
+        // on the status bar so the user always sees which engine is
+        // driving without having to peek at the Nav window.
+        AppServices.Current.Walker.Event           += OnWalkerEngineEvent;
+        AppServices.Current.LoopRunner.Event       += OnLoopRunnerEngineEvent;
+        AppServices.Current.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
         // Name-learned prompt: fires when the tracker adopts a name
         // for a previously-unnamed room (typical of map-15 ganghouse
         // rooms in 1.x exports). Modeless yes/no asks whether to write
@@ -752,7 +793,7 @@ public partial class MainWindowViewModel : ObservableObject
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
         LocationText = room is not null
-            ? $"{room.DisplayName}  ·  {room.Key}"
+            ? $"{Abbreviate(room.DisplayName, MaxLocationNameLength)}  ·  {room.Key}"
             : state.Confidence switch
             {
                 Game.Map.RoomConfidence.Pending        => "Pending move…",
@@ -760,12 +801,17 @@ public partial class MainWindowViewModel : ObservableObject
                 Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
                 _                                      => "Unknown location",
             };
-        _locationConfidence = state.Confidence;
-        OnPropertyChanged(nameof(LocationIsGreen));
-        OnPropertyChanged(nameof(LocationIsYellow));
-        OnPropertyChanged(nameof(LocationIsRed));
-        OnPropertyChanged(nameof(LocationIsMuted));
     }
+
+    /// <summary>Status-bar room-name cap. Long names truncate with a
+    /// single-character ellipsis so the bar stays balanced when sharing
+    /// space with the engine-state chip + tick cluster + connection
+    /// readout. XAML's TextTrimming also kicks in when the bar is
+    /// resized narrower than the cap allows.</summary>
+    private const int MaxLocationNameLength = 28;
+
+    private static string Abbreviate(string s, int max)
+        => s.Length <= max ? s : s[..(max - 1)].TrimEnd() + "…";
 
     private void RefreshStatusBarTicks()
     {

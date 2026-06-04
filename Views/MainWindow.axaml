@@ -16,6 +16,47 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
+    <Window.Styles>
+        <!-- Engine-state chip — same colour-code rules as the Navigation
+             window's badge (idle grey / walking + looping green / lair
+             amber). Living here keeps the two windows in visual sync
+             without dragging a shared theme file in. -->
+        <Style Selector="Border.EngineBadge">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.EngineBadge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.WalkingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.WalkingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LoopingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LoopingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LairState">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LairState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+    </Window.Styles>
+
     <!-- KeyBindings are wired in code-behind from KeybindingStore so the
          per-character rebind UI takes effect at runtime — see
          GlobalHotkeys.AttachMain in MainWindow.axaml.cs. -->
@@ -297,28 +338,33 @@
                      MA (natural / medi). Source-of-truth: TickEngine +
                      RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
-            <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
+            <!-- Layout (left → right):
+                 [chip] [room name, flex] [ticks] [connection] -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+                  VerticalAlignment="Center"
+                  ColumnSpacing="14">
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Grid Width="8" Height="8" VerticalAlignment="Center">
-                        <Ellipse Fill="{StaticResource ChromeFgMutedBrush}"
-                                 IsVisible="{Binding LocationIsMuted}"/>
-                        <Ellipse Fill="{StaticResource AccentGreenBrush}"
-                                 IsVisible="{Binding LocationIsGreen}"/>
-                        <Ellipse Fill="{StaticResource AccentYellowBrush}"
-                                 IsVisible="{Binding LocationIsYellow}"/>
-                        <Ellipse Fill="{StaticResource AccentRedBrush}"
-                                 IsVisible="{Binding LocationIsRed}"/>
-                    </Grid>
-                    <TextBlock Classes="StatusSlot"
-                               Text="{Binding LocationText}"
-                               TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
+                <!-- Engine-state chip — mirrors the Navigation badge. -->
+                <Border Grid.Column="0"
+                        Classes="EngineBadge"
+                        Classes.WalkingState="{Binding EngineActionIsWalking}"
+                        Classes.LoopingState="{Binding EngineActionIsLooping}"
+                        Classes.LairState="{Binding EngineActionIsLair}">
+                    <TextBlock Text="{Binding EngineActionBadge}"/>
+                </Border>
 
-                <!-- Cycle countdowns as plain text. Natural HP / MA are always
-                     visible once observed; rest / medi are appended only while
-                     Position=Resting / Position=Meditating. -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                <!-- Current room. VM already abbreviates long names;
+                     TextTrimming covers narrow-window resizes too. -->
+                <TextBlock Grid.Column="1"
+                           Classes="StatusSlot"
+                           Text="{Binding LocationText}"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <!-- Cycle countdowns. Natural HP / MA are always visible
+                     once observed; rest / medi append while resting / meditating. -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal" Spacing="14"
+                            VerticalAlignment="Center">
                     <TextBlock x:Name="CombatTickLabel"
                                Classes="StatusSlot StatusMono"
                                Text="{Binding CombatTickText}"/>
@@ -326,9 +372,11 @@
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
 
-                <!-- Connection stoplight: red disconnected · yellow connecting · green connected. -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
-                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                <!-- Connection stoplight: red idle · yellow connecting · green connected. -->
+                <StackPanel Grid.Column="3"
+                            Orientation="Horizontal" Spacing="6"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource AccentRedBrush}"
                              IsVisible="{Binding IsIdle}"/>
