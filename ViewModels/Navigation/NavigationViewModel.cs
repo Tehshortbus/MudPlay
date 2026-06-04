@@ -984,7 +984,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 default:
                 {
                     Room? here = _services.RoomTracker.State.CurrentRoom;
-                    return here is null ? "Located: —" : $"Located: {FormatRoomRef(here.Key)}";
+                    return here is null ? "—" : FormatRoomRef(here.Key);
                 }
             }
         }
@@ -1002,13 +1002,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         return $"({key.Map}/{key.Room}) - {name}";
     }
 
-    /// <summary>Short tag the badge displays: WALKING / LOOPING / AUTO-LAIR / LOCATED.</summary>
+    /// <summary>Engine-state tag the badge displays: WALKING / LOOPING / AUTO-LAIR / IDLE.</summary>
     public string TopBarStatusBadge => EngineActionKind switch
     {
         NavigationEngineKind.Walking  => "WALKING",
         NavigationEngineKind.Looping  => "LOOPING",
         NavigationEngineKind.AutoLair => "AUTO-LAIR",
-        _                             => "LOCATED",
+        _                             => "IDLE",
     };
 
     public string TopBarStatusBadgeBrush => EngineActionKind switch
@@ -1016,7 +1016,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         NavigationEngineKind.Walking  => "AccentGreenBrush",
         NavigationEngineKind.Looping  => "AccentCyanBrush",
         NavigationEngineKind.AutoLair => "AccentAmberBrush",
-        _                             => "AccentGreenBrush",
+        _                             => "ChromeFgMutedBrush",
     };
 
     /// <summary>Loop-mode button face: idle → "Loop mode"; mode-on → "Building"; running → "Stop".</summary>
