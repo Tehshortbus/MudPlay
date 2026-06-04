@@ -265,7 +265,14 @@ public sealed class RoomGraphManager
                 {
                     string? cell = TryReadString(row, s_exitPropertyNames[(int)dir]);
                     if (string.IsNullOrWhiteSpace(cell)) continue;
-                    if (cell.StartsWith("Action#", StringComparison.OrdinalIgnoreCase))
+                    // "Action#N [on the …]" (multi-step variant) and the
+                    // step-less "Action [on the …]" (single-action variant)
+                    // both start with "Action" + a non-word character. Hand
+                    // both forms to the parser; non-matching cells return
+                    // null and are silently skipped.
+                    if (cell.StartsWith("Action", StringComparison.OrdinalIgnoreCase)
+                        && cell.Length > 6
+                        && (cell[6] == '#' || cell[6] == ' ' || cell[6] == '['))
                     {
                         MultiActionExitData.ActionCell? action = MultiActionExitData.ParseActionCell(cell);
                         if (action is not null)

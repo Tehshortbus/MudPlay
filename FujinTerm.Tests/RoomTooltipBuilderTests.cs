@@ -228,6 +228,49 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_MultiActionHiddenExit_RendersRequiredCommands()
+    {
+        // Live repro: room 10/271 west "(Hidden/Needs 1 Actions, any order)"
+        // pairs with an action cell on the E field
+        //   "Action [on the W exit of this room]: say 'Temar Eldanti', say Temar Eldanti, speak Temar Eldanti"
+        // so the W exit unlocks once any one of those three phrases is
+        // spoken. The tooltip used to just say "(MultiActionHidden)"
+        // with no hint as to which phrase to type.
+        const string multiActionRooms = """
+            [
+              { "Map Number": 10, "Room Number": 271, "Name": "Ancient Keep, Throne Room",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "10/270",
+                "S": "0",
+                "E": "Action [on the W exit of this room]: say 'Temar Eldanti', say Temar Eldanti, speak Temar Eldanti",
+                "W": "10/272 (Hidden/Needs 1 Actions, any order)",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 10, "Room Number": 270, "Name": "Ancient Keep, Entrance",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "10/271", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 10, "Room Number": 272, "Name": "Huge Passage",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "10/271", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), multiActionRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(10, 271))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("Needs 1 action: say 'Temar Eldanti' / say Temar Eldanti / speak Temar Eldanti", text);
+        Assert.DoesNotContain("(MultiActionHidden)", text);
+    }
+
+    [Fact]
     public void Build_RoomCmdTeleport_SurfacesKeywordsGroupedByDestination()
     {
         // Live repro: room 1/1182 has CMD 4087 whose TBInfo Action chain

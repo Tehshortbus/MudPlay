@@ -217,6 +217,19 @@ public static class RoomTooltipBuilder
             case RoomExitHint.Text when exit.TextCommands is { Count: > 0 }:
                 return "Text: " + string.Join(", ", exit.TextCommands);
 
+            case RoomExitHint.MultiActionHidden when exit.MultiAction is { Actions.Count: > 0 } ma:
+            {
+                // "Needs N action(s) [specific order]: cmd1 / cmd1alt; cmd2 / cmd2alt"
+                // — alternatives within one step are " / " joined; steps
+                // are "; " joined. Concise enough for the tooltip while
+                // still showing every parsed alternative.
+                string countLabel = ma.RequiredActionCount == 1 ? "action" : "actions";
+                string order      = ma.RequiresSpecificOrder ? " specific order" : "";
+                string steps = string.Join("; ",
+                    ma.Actions.Select(a => string.Join(" / ", a.Commands)));
+                return $"Needs {ma.RequiredActionCount} {countLabel}{order}: {steps}";
+            }
+
             case RoomExitHint.None:
                 return string.IsNullOrEmpty(exit.RawHint) ? string.Empty : exit.RawHint!;
 

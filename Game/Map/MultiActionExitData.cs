@@ -66,7 +66,9 @@ public sealed partial record MultiActionExitData(
         if (string.IsNullOrWhiteSpace(cell)) return null;
         Match m = ActionCellRegex().Match(cell);
         if (!m.Success) return null;
-        if (!int.TryParse(m.Groups["step"].Value, out int step)) return null;
+        int step = 1;
+        if (m.Groups["step"].Success && !int.TryParse(m.Groups["step"].Value, out step))
+            return null;
 
         Direction? dir = ParseDir(m.Groups["dir"].Value);
         if (dir is null) return null;
@@ -122,8 +124,12 @@ public sealed partial record MultiActionExitData(
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NeedsActionsRegex();
 
+    // "#N" is optional — single-action exits (Needs 1 Actions) drop
+    // the step number and use a bare "Action [on the W exit of …]"
+    // prefix in the v1.11p data set. When absent, ParseActionCell
+    // defaults StepNumber to 1.
     [GeneratedRegex(
-        @"^Action#(?<step>\d+)\s*\[on the\s+(?<dir>\w+)\s+exit of\s+(?:this room|room\s+(?<room>\d+/\d+))\]\s*:\s*(?<cmds>.+)$",
+        @"^Action(?:#(?<step>\d+))?\s*\[on the\s+(?<dir>\w+)\s+exit of\s+(?:this room|room\s+(?<room>\d+/\d+))\]\s*:\s*(?<cmds>.+)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ActionCellRegex();
 }
