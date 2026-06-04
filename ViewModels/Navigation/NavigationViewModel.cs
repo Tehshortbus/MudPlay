@@ -409,8 +409,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public void OnFloorChangeRequested(RoomKey newOrigin)
     {
         if (_services.RoomGraph.GetRoom(newOrigin) is null) return;
-        Layout = _services.Bfs.BuildLayout(newOrigin);
+        // Set the selection BEFORE swapping the Layout. MapControl's
+        // LayoutProperty.Changed handler centres on
+        // `SelectedRoomKey ?? CurrentRoomKey`; if we updated the layout
+        // first the handler would see the old floor's selection (not in
+        // the new layout) and the centre call would no-op. Selection-
+        // change has no auto-centre on its own, so the order matters.
         SelectedRoomKey = newOrigin;
+        Layout = _services.Bfs.BuildLayout(newOrigin);
     }
 
     [RelayCommand]

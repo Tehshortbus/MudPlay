@@ -44,8 +44,10 @@ public sealed class AutoWalkManager
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
+    private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
     private Action<Direction, string, Action<HiddenSearchResult>>? _hiddenSearchEnqueuer;
+    private Action? _hiddenSearchStopAll;
     private bool _awaitingHiddenReveal;
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
@@ -193,6 +195,20 @@ public sealed class AutoWalkManager
     }
 
     /// <summary>
+    /// Door-FSM teardown — bound to <see cref="DoorOpenManager.StopAll"/>.
+    /// Called from <see cref="Reset"/> when a walk is superseded while
+    /// the walker is mid-door-FSM. Without this, the new walk's
+    /// follow-up <c>_doorEnqueuer</c> call sits in the door manager's
+    /// queue because <c>TryStartNext</c> bails on non-Idle state and
+    /// the walker stalls indefinitely.
+    /// </summary>
+    public void SetDoorStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _doorStopAll = stopAll;
+    }
+
+    /// <summary>
     /// Hidden-exit reveal enqueuer — walker calls this for
     /// <see cref="RoomExitHint.SearchableHidden"/> exits to fire the
     /// <c>sea &lt;dir&gt;</c> retry loop until the exit appears on
@@ -203,6 +219,16 @@ public sealed class AutoWalkManager
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _hiddenSearchEnqueuer = enqueuer;
+    }
+
+    /// <summary>
+    /// Hidden-search teardown — bound to <see cref="HiddenExitRevealManager.StopAll"/>.
+    /// Same stale-state cleanup rationale as <see cref="SetDoorStopper"/>.
+    /// </summary>
+    public void SetHiddenSearchStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _hiddenSearchStopAll = stopAll;
     }
 
     /// <summary>
@@ -810,6 +836,17 @@ public sealed class AutoWalkManager
 
     private void Reset()
     {
+        // Drain downstream FSMs that were running on our behalf — if a
+        // walk is superseded mid-door-open or mid-hidden-search, the
+        // manager keeps its internal state (WaitingBash / Searching /
+        // etc.) and the next walk's enqueue call sits in its queue
+        // forever (TryStartNext bails on non-Idle state). The stale-
+        // callback case is also covered by clearing _awaitingDoorOpen /
+        // _awaitingHiddenReveal so OnDoorReply / OnHiddenSearchReply
+        // skip the late reply that arrives after StopAll.
+        if (_awaitingDoorOpen)      _doorStopAll?.Invoke();
+        if (_awaitingHiddenReveal)  _hiddenSearchStopAll?.Invoke();
+
         _path = null;
         _index = 0;
         _expectedAfterCurrentMove = null;
@@ -817,6 +854,8 @@ public sealed class AutoWalkManager
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _awaitingTrapDisarm = false;
+        _awaitingDoorOpen = false;
+        _awaitingHiddenReveal = false;
         _retryCount = 0;
         _replanCount = 0;
         State = WalkState.Idle;

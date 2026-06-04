@@ -540,6 +540,71 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Walker_NewWalk_MidDoorFsm_StopsDownstreamDoorManager()
+    {
+        // Live bug: user queues a walk-to A, walker hits a door and
+        // calls _doorEnqueuer (DoorOpenManager goes WaitingBash). User
+        // queues walk-to B mid-FSM. Without the stopper, the next
+        // door enqueue from walk B sits in DoorOpenManager.Queue
+        // forever because TryStartNext bails on non-Idle state.
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        int stopCalls = 0;
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+        h.Walker.SetDoorStopper(() => stopCalls++);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+        Assert.Single(door.Calls);
+
+        // Re-issue the walk before the door reply lands.
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Equal(1, stopCalls);
+    }
+
+    [Fact]
+    public void Walker_NewWalk_NoDoorInFlight_DoesNotCallDoorStopper()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        int stopCalls = 0;
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+        h.Walker.SetDoorStopper(() => stopCalls++);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+        // Door open succeeds — _awaitingDoorOpen returns to false.
+        door.Calls[0].Reply(DoorOpenResult.Opened.Instance);
+        h.Tracker.NoteRoomObserved(new RoomObservation("Foyer",
+            new HashSet<Direction> { Direction.W }));
+
+        // New walk starts after the door FSM is back at rest — no
+        // teardown needed.
+        h.Walker.WalkTo(new RoomKey(1, 1));
+
+        Assert.Equal(0, stopCalls);
+    }
+
+    [Fact]
+    public void Walker_Stop_MidDoorFsm_StopsDoorManager()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        FakeDoorEnqueuer door = new();
+        int stopCalls = 0;
+        h.Walker.SetDoorEnqueuer(door.Enqueue);
+        h.Walker.SetDoorStopper(() => stopCalls++);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+        Assert.Single(door.Calls);
+
+        h.Walker.Stop();
+
+        Assert.Equal(1, stopCalls);
+    }
+
+    [Fact]
     public void Walker_DoorExit_PathHasOnlyMoveStep()
     {
         Harness h = NewHarness(DoorGraphJson);

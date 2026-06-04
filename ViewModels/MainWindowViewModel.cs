@@ -510,11 +510,13 @@ public partial class MainWindowViewModel : ObservableObject
         // routes door exits through Door.Enqueue at step-send time.
         AppServices.Current.Door.SetWireSender(engineSend);
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
+        AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
         // HiddenExitRevealManager — same gate-wrapped sender so the
         // sea loop can't land mid-password-prompt. Walker routes
         // SearchableHidden exits here.
         AppServices.Current.HiddenSearch.SetWireSender(engineSend);
         AppServices.Current.Walker.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
+        AppServices.Current.Walker.SetHiddenSearchStopper(AppServices.Current.HiddenSearch.StopAll);
         // Teleport-exit wiring — walker resolves (source, destination)
         // → keyword via TBInfoTeleportResolver against the active
         // TBInfoStore, and pre-broadcasts the keyword to followers via
