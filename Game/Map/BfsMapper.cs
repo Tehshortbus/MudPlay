@@ -312,7 +312,7 @@ public sealed class BfsMapper
     /// cap keeps worst-case build cost bounded. The improvement loop
     /// breaks early when a zero-stub layout is found.
     /// </summary>
-    private const int RetryCandidateCount = 4;
+    private const int RetryCandidateCount = 8;
 
     private RoomLayout BuildLayoutCore(RoomKey origin, int maxRadius)
     {
