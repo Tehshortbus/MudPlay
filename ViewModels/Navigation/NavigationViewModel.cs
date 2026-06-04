@@ -87,7 +87,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAutoLairMarkedChanged()
         => AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
 
-    private void OnAutoLairActiveChanged(bool active) => IsAutoLairing = active;
+    private void OnAutoLairActiveChanged(bool active)
+    {
+        IsAutoLairing = active;
+        RefreshEngineActionLabel();
+    }
 
     [RelayCommand]
     private void ToggleAutoLair()
@@ -111,6 +115,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsLoopRunning));
         RefreshLoopOverlays();
+        RefreshEngineActionLabel();
     }
 
     private void RefreshLoopOverlays()
@@ -159,6 +164,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private RoomLayout? _layout;
     [ObservableProperty] private RoomKey? _currentRoomKey;
+    [ObservableProperty] private RoomKey? _destinationRoomKey;
+
+    /// <summary>
+    /// Top-of-strip action label that replaces the redundant
+    /// status-badge + current-room label (current room lives in the
+    /// main UI's bottom status bar as the source-of-truth). Reads:
+    /// <c>"Idle"</c> when no engine is moving; <c>"Walking to {dest}"</c>
+    /// while the walker is active; <c>"Looping: {name}"</c> while
+    /// the loop runner is active; <c>"Auto-Lair"</c> while the
+    /// scheduler is driving.
+    /// </summary>
+    [ObservableProperty] private string _engineActionLabel = "Idle";
     [ObservableProperty] private RoomGraphManager? _graph;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _walkPath;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
@@ -478,6 +495,37 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         WalkPath = IsWalking
             ? _services.Walker.RemainingRoomKeys
             : null;
+        DestinationRoomKey = IsWalking ? _services.Walker.Destination : null;
+        RefreshEngineActionLabel();
+    }
+
+    private void RefreshEngineActionLabel()
+    {
+        // Priority: Auto-Lair (drives walker/loop internally) →
+        // Looping (named) → Walking (with destination room) → Idle.
+        if (_services.AutoLair.IsActive)
+        {
+            EngineActionLabel = "Auto-Lair";
+            return;
+        }
+        if (_services.LoopRunner.State != LoopState.Idle
+            && _services.LoopRunner.CurrentLoop is { } loop)
+        {
+            EngineActionLabel = $"Looping: {loop.Name}";
+            return;
+        }
+        if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+        {
+            string dest = _services.Walker.Destination is { } key
+                ? (_services.RoomGraph.GetRoom(key) is { } room
+                    ? $"{room.Name} ({key})"
+                    : key.ToString())
+                : "?";
+            string verb = _services.Walker.State == WalkState.Paused ? "Paused walking" : "Walking";
+            EngineActionLabel = $"{verb} to {dest}";
+            return;
+        }
+        EngineActionLabel = "Idle";
     }
 }
 

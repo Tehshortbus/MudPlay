@@ -46,18 +46,19 @@
 
         <!-- Top status + mode bar -->
         <Border Grid.Row="0" Background="#1A1A1A" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="12,8">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="12,8">
                 <TextBlock Grid.Column="0" Text="Navigation" FontSize="12"
                            FontWeight="SemiBold" VerticalAlignment="Center"
                            Margin="0,0,12,0"/>
-                <Border Grid.Column="1" Classes="StatusBadge"
-                        Background="{Binding StatusBadgeBrush}">
-                    <TextBlock Text="{Binding StatusLabel}"/>
-                </Border>
-                <TextBlock Grid.Column="2" Text="{Binding CurrentRoomLabel}"
-                           Margin="10,0" VerticalAlignment="Center"
-                           Foreground="#BBB" FontSize="12"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                <!-- Engine-action slot — replaces the redundant
+                     status-badge + current-room label. Current-room
+                     info is shown in the main UI's bottom status bar
+                     (the source-of-truth surface). -->
+                <TextBlock Grid.Column="1" Text="{Binding EngineActionLabel}"
+                           VerticalAlignment="Center"
+                           Foreground="#BBB" FontSize="12"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal"
                             HorizontalAlignment="Right" Spacing="4"
                             VerticalAlignment="Center">
                     <Button Classes="ModeChip" Content="Lairs"
@@ -73,16 +74,16 @@
                             Command="{Binding ToggleLegendCommand}"
                             Classes.Active="{Binding LegendVisible}"/>
                 </StackPanel>
-                <Button Grid.Column="3" Classes="ModeChip" Content="Loop mode"
+                <Button Grid.Column="2" Classes="ModeChip" Content="Loop mode"
                         Command="{Binding ToggleLoopModeCommand}"
                         Classes.Active="{Binding IsLoopMode}"/>
-                <Button Grid.Column="4" Classes="ModeChip" Content="Lair mode"
+                <Button Grid.Column="3" Classes="ModeChip" Content="Lair mode"
                         Command="{Binding ToggleLairModeCommand}"
                         Classes.Active="{Binding IsLairMode}"/>
-                <Button Grid.Column="5" Classes="ModeChip" Content="Pause"
+                <Button Grid.Column="4" Classes="ModeChip" Content="Pause"
                         Command="{Binding PauseOrResumeCommand}"
                         IsVisible="{Binding !IsPaused}"/>
-                <Button Grid.Column="5" Classes="ModeChip" Content="Resume"
+                <Button Grid.Column="4" Classes="ModeChip" Content="Resume"
                         Command="{Binding PauseOrResumeCommand}"
                         IsVisible="{Binding IsPaused}"/>
             </Grid>
@@ -95,6 +96,7 @@
                                  Name="MapHost"
                                  Layout="{Binding Layout}"
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
+                                 DestinationRoomKey="{Binding DestinationRoomKey}"
                                  Graph="{Binding Graph}"
                                  HighlightLairs="{Binding HighlightLairs}"
                                  HighlightShops="{Binding HighlightShops}"

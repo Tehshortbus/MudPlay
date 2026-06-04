@@ -71,6 +71,12 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<RoomKey?> SelectedRoomKeyProperty =
         AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(SelectedRoomKey));
 
+    /// <summary>Walk-to destination — blue-filled with a ring so it's
+    /// immediately recognisable as the goal, mirroring the
+    /// "you are here" treatment.</summary>
+    public static readonly StyledProperty<RoomKey?> DestinationRoomKeyProperty =
+        AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(DestinationRoomKey));
+
     public static readonly StyledProperty<FujinTerm.Models.Profile.KeyChord> UpStepChordProperty =
         AvaloniaProperty.Register<MapControl, FujinTerm.Models.Profile.KeyChord>(nameof(UpStepChord),
             new FujinTerm.Models.Profile.KeyChord(Key.PageUp));
@@ -161,6 +167,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(SelectedRoomKeyProperty);
         set => SetValue(SelectedRoomKeyProperty, value);
+    }
+
+    public RoomKey? DestinationRoomKey
+    {
+        get => GetValue(DestinationRoomKeyProperty);
+        set => SetValue(DestinationRoomKeyProperty, value);
     }
 
     /// <summary>
@@ -266,6 +278,12 @@ public sealed class MapControl : Control
     // "You are here" overlay for the player's current room — a
     // saturated amber dot drawn over whatever the room-node fill is.
     private static readonly IBrush PlayerDotFill  = new SolidColorBrush(Color.Parse("#FFE03A"));
+
+    // Walk-to destination — solid blue fill with a matching thick ring,
+    // visually mirroring the "you are here" amber treatment so the
+    // user can spot the goal at a glance.
+    private static readonly IBrush DestinationFill = new SolidColorBrush(Color.Parse("#3DA5FF"));
+    private static readonly IPen   DestinationRing = new Pen(new SolidColorBrush(Color.Parse("#5BBCFF")), 2.5);
     private static readonly IPen   PlayerDotPen   = new Pen(new SolidColorBrush(Color.Parse("#3A1F00")), 1.5);
     private static readonly IPen   PlayerOuterPen = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.5);
     private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
@@ -308,7 +326,7 @@ public sealed class MapControl : Control
                 if (_hoverRoom is { } k) RoomHovered?.Invoke(k, _hoverPos);
             });
         _hoverTimer.Stop();
-        AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, GraphProperty,
+        AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty);
@@ -389,6 +407,10 @@ public sealed class MapControl : Control
         if (point.Properties.IsRightButtonPressed
             && TryHitTestRoom(point.Position, out RoomKey hit))
         {
+            // Mirror the crawler outline onto the right-clicked room
+            // so the user can see which square the context menu is
+            // attached to (the menu can move off-screen on small maps).
+            SelectedRoomKey = hit;
             RoomRightClicked?.Invoke(hit, point.Position);
             e.Handled = true;
         }
@@ -860,6 +882,7 @@ public sealed class MapControl : Control
         Rect node = new(nx, ny, nodeSize, nodeSize);
 
         bool isCurrent = CurrentRoomKey is { } current && current.Equals(key);
+        bool isDestination = !isCurrent && DestinationRoomKey is { } dest && dest.Equals(key);
         bool isAutoLair = AutoLairRooms is not null && AutoLairRooms.Contains(key);
         Room? room = Graph?.GetRoom(key);
 
@@ -869,6 +892,11 @@ public sealed class MapControl : Control
         {
             fill = CurrentFill;
             pen = CurrentPen;
+        }
+        else if (isDestination)
+        {
+            fill = DestinationFill;
+            pen = DestinationRing;
         }
         else if (isAutoLair)
         {
@@ -909,7 +937,14 @@ public sealed class MapControl : Control
         ctx.FillRectangle(fill, node);
         ctx.DrawRectangle(null, pen, node);
 
-        if (isCurrent)
+        if (isDestination)
+        {
+            // Thick blue ring on the cell perimeter so the destination
+            // reads at a glance, parallel to the player marker.
+            Rect ring = cell.Deflate(2);
+            ctx.DrawRectangle(null, DestinationRing, ring);
+        }
+        else if (isCurrent)
         {
             // Thick amber ring on the cell perimeter.
             Rect ring = cell.Deflate(2);
