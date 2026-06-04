@@ -292,12 +292,8 @@ public sealed class BfsMapper
                 Room? nextRoom = _graph.GetRoom(next);
                 if (nextRoom is null) continue;
 
-                // Tentative target coord — skip ALL edge recording
-                // when the coord clashes with an already-placed room
-                // (matches MudProxy's silent-skip behaviour; avoids
-                // dangling stubs into empty cells).
                 if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
-                (int X, int Y) target = (hereXY.X + dx, hereXY.Y + dy);
+                (int X, int Y) tentative = (hereXY.X + dx, hereXY.Y + dy);
 
                 // Already-placed destination via a different exit —
                 // record the source-side stub regardless of whether
@@ -308,8 +304,6 @@ public sealed class BfsMapper
                 // offset disagrees with this exit's direction), the
                 // stub still shows the user "this room has an exit
                 // here" instead of dropping the connection silently.
-                // The crawler routes through the graph regardless, so
-                // the visual stub matches the actual walkable topology.
                 if (positions.TryGetValue(next, out (int X, int Y) _))
                 {
                     AddEdge(edgesFromCoord, hereXY, dir);
@@ -318,19 +312,40 @@ public sealed class BfsMapper
                     continue;
                 }
 
-                // First visit but target coord already taken by a
-                // different room — same source-side-stub treatment as
-                // the non-Euclidean case above. The destination either
-                // gets placed at a non-colliding coord via a later BFS
-                // path or stays unplaced; either way the source cell
-                // shows that the exit exists.
-                if (coordToRoom.ContainsKey(target))
+                // Smarter placement: instead of always taking the
+                // parent-edge offset (tentative), look at every exit
+                // on the candidate room. For each exit pointing to a
+                // room already in `positions`, compute the coord the
+                // candidate WOULD need to occupy for that reciprocal
+                // to lie flat — i.e. `nb - exitOffset`. Score every
+                // free option by how many of the candidate's reciprocal
+                // exits would line up there, then pick the highest-
+                // scoring free coord. The parent-edge offset stays in
+                // the candidate pool, so a simple no-reciprocals case
+                // collapses to the prior behaviour.
+                //
+                // Why this helps: maze areas like v1.11p Dragon's
+                // Teeth Hills have tight reciprocal cycles. BFS from a
+                // far origin reaches them via a path that bends the
+                // initial parent-edge placement away from the cycle's
+                // geometry; the next BFS visit to a neighbour would
+                // have used parent-edge offset too and inherited the
+                // bend. With this scan, the second visit picks the
+                // coord that closes the cycle planarly instead.
+                (int X, int Y)? chosen =
+                    ChooseBestPlacement(nextRoom, tentative, positions, coordToRoom);
+
+                if (chosen is null)
                 {
+                    // No free coord found (including tentative) —
+                    // collision. Source-side stub keeps the user's
+                    // view honest about the exit's existence.
                     AddEdge(edgesFromCoord, hereXY, dir);
                     if (exit.Hint == RoomExitHint.Trap)
                         AddEdge(trapEdgesFromCoord, hereXY, dir);
                     continue;
                 }
+                (int X, int Y) target = chosen.Value;
 
                 // Blacklist (BBS-tier): record the edge so the renderer
                 // draws a dangling stub pointing at the hidden room, but
@@ -452,6 +467,63 @@ public sealed class BfsMapper
             here = p;
         }
         return stack.ToArray();
+    }
+
+    /// <summary>
+    /// Pick the best free coord for <paramref name="candidate"/> among
+    /// the parent-edge offset (<paramref name="tentative"/>) and every
+    /// alternative implied by an already-placed reciprocal exit.
+    /// "Best" = highest count of reciprocal exits that would lie flat
+    /// at that coord; ties favour <paramref name="tentative"/> for the
+    /// least-surprising behaviour when nothing's better. Returns null
+    /// when every candidate coord is occupied by a different room.
+    /// </summary>
+    private static (int X, int Y)? ChooseBestPlacement(
+        Room candidate,
+        (int X, int Y) tentative,
+        Dictionary<RoomKey, (int X, int Y)> positions,
+        Dictionary<(int X, int Y), RoomKey> coordToRoom)
+    {
+        bool tentativeFree = !coordToRoom.ContainsKey(tentative);
+        int bestScore = tentativeFree ? ScoreCoord(candidate, tentative, positions) : -1;
+        (int X, int Y)? best = tentativeFree ? tentative : null;
+
+        foreach ((Direction dir, RoomExit exit) in candidate.Exits)
+        {
+            if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+            if (!positions.TryGetValue(exit.Target, out (int X, int Y) neighbour)) continue;
+            // candidate.dir → neighbour, so candidate sits at
+            // neighbour - (dx, dy). If that coord is free, score it.
+            (int X, int Y) coord = (neighbour.X - dx, neighbour.Y - dy);
+            if (coord.Equals(tentative)) continue;          // already scored
+            if (coordToRoom.ContainsKey(coord)) continue;   // taken
+            int score = ScoreCoord(candidate, coord, positions);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = coord;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Number of planar exits on <paramref name="room"/> whose
+    /// reciprocal would land flat if <paramref name="room"/> sat at
+    /// <paramref name="coord"/>. Used by <see cref="ChooseBestPlacement"/>
+    /// to rank candidates.
+    /// </summary>
+    private static int ScoreCoord(Room room, (int X, int Y) coord,
+        Dictionary<RoomKey, (int X, int Y)> positions)
+    {
+        int score = 0;
+        foreach ((Direction dir, RoomExit exit) in room.Exits)
+        {
+            if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+            if (!positions.TryGetValue(exit.Target, out (int X, int Y) nb)) continue;
+            if (nb.X == coord.X + dx && nb.Y == coord.Y + dy) score++;
+        }
+        return score;
     }
 
     private static bool TryPlanarOffset(Direction dir, out int dx, out int dy)
