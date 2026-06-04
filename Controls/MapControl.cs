@@ -312,16 +312,16 @@ public sealed class MapControl : Control
         LineJoin = PenLineJoin.Round,
     };
     /// <summary>
-    /// Red "where Run would walk" preview line — drawn beneath the
-    /// active walk so a live walk overlays it. Distinct hue from the
-    /// trap red (<see cref="TrapPen"/> #DC3C3C) so the user reads them
-    /// as different signals.
+    /// Solid red "where Run would walk" preview line for queued walk-to
+    /// destinations. Drawn beneath the active walk so a live walk
+    /// overlays it. Hue distinct from the trap red (<see cref="TrapPen"/>
+    /// #DC3C3C) so the user reads them as different signals. Dashed-
+    /// red is reserved for future loop previews (per UX direction).
     /// </summary>
     private static readonly IPen   PreviewPathPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
     {
         LineCap  = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
-        DashStyle = new DashStyle(new double[] { 4, 3 }, 0),
     };
     private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
     {

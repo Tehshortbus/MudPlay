@@ -89,18 +89,24 @@
         </Style>
 
         <!-- Compact right-rail Expander — slimmer header, no chrome
-             box, chevron on the right. -->
+             box, chevron on the right. HorizontalAlignment=Stretch +
+             HorizontalContentAlignment=Stretch so the section keeps a
+             stable rail-fitting width whether collapsed or expanded. -->
         <Style Selector="Expander.RailSection">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
         <Style Selector="Expander.RailSection /template/ ToggleButton#PART_toggle">
             <Setter Property="Padding" Value="0,2"/>
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
         <Style Selector="Expander.RailSection /template/ Border#ToggleButtonBackground">
             <Setter Property="Background" Value="Transparent"/>
