@@ -228,6 +228,59 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_RoomCmdTeleport_SurfacesKeywordsGroupedByDestination()
+    {
+        // Live repro: room 1/1182 has CMD 4087 whose TBInfo Action chain
+        // is "use chime:...:teleport 65 1:...\nring chime:...:teleport 65 1:...".
+        // Both keywords land at 1/65; the tooltip should list them on
+        // a single line grouped by destination so the user can see how
+        // to bypass the door north.
+        const string cmdRooms = """
+            [
+              { "Map Number": 1, "Room Number": 1182, "Name": "Slum Street",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 4087,
+                "N": "1/65 (Door)", "S": "0", "E": "1/1183", "W": "1/1181",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 65, "Name": "Strange Mansion, Entrance",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "1/1182 (Door)", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1181, "Name": "Slum Street",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "1/1182", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1183, "Name": "Slum Street, Intersection",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "1/1182",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string cmdTbinfo = """
+            [
+              { "Number": 4087, "LinkTo": 0,
+                "Action": "use chime:message 3177:teleport 65 1:message 837\nring chime:message 3177:teleport 65 1:message 837\n\n",
+                "Called From": "Room 1/1182" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  cmdRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), cmdTbinfo);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 1182))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo);
+
+        Assert.Contains("Room commands:", text);
+        Assert.Contains("use chime / ring chime → Strange Mansion, Entrance (1/65)", text);
+    }
+
+    [Fact]
     public void Build_TextHintExit_RendersCommandAlternatives()
     {
         // Live repro: 1/1824 south "(Text: go crack, enter crack, go path)"

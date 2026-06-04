@@ -41,7 +41,7 @@ namespace FujinTerm.Game.Map;
 /// </remarks>
 public static class RoomTooltipBuilder
 {
-    public static string Build(Room room, RoomGraphManager graph, GameDataCache? data)
+    public static string Build(Room room, RoomGraphManager graph, GameDataCache? data, TBInfoStore? tbinfo = null)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
@@ -74,6 +74,16 @@ public static class RoomTooltipBuilder
         if (exitsBlock.Length > 0)
         {
             sb.Append('\n').Append('\n').Append(exitsBlock);
+        }
+
+        // 9. Room commands — TBInfo CMD chains for the room (use chime,
+        // ring chime, etc. — keyword-triggered teleports that bypass
+        // normal exits). Grouped per-destination so identical-target
+        // synonyms collapse to one line.
+        string commandsBlock = BuildRoomCommandsBlock(room, graph, tbinfo);
+        if (commandsBlock.Length > 0)
+        {
+            sb.Append('\n').Append('\n').Append(commandsBlock);
         }
 
         // 10. Room Light line + the descriptive phrase immediately
@@ -229,6 +239,40 @@ public static class RoomTooltipBuilder
         Direction.D  => "down",
         _            => d.ToString(),
     };
+
+    // ----- Room commands (TBInfo CMD chains) ------------------------
+
+    private static string BuildRoomCommandsBlock(Room room, RoomGraphManager graph, TBInfoStore? tbinfo)
+    {
+        if (tbinfo is null || room.Cmd <= 0) return string.Empty;
+
+        // Group destination → list of keywords so multi-synonym CMDs
+        // ("use chime" / "ring chime" both teleporting to 1/65) render
+        // as one line instead of cluttering the tooltip.
+        Dictionary<RoomKey, List<string>> byDest = new();
+        foreach ((string keyword, RoomKey dest)
+                 in TBInfoTeleportResolver.EnumerateTeleports(tbinfo, room.Cmd))
+        {
+            if (!byDest.TryGetValue(dest, out List<string>? words))
+                byDest[dest] = words = new List<string>();
+            if (!words.Contains(keyword)) words.Add(keyword);
+        }
+        if (byDest.Count == 0) return string.Empty;
+
+        StringBuilder sb = new();
+        sb.Append("Room commands:");
+        foreach (KeyValuePair<RoomKey, List<string>> entry in byDest)
+        {
+            Room? dest = graph.GetRoom(entry.Key);
+            string destName = dest is not null
+                ? $"{dest.DisplayName} ({entry.Key})"
+                : entry.Key.ToString();
+            sb.Append('\n').Append("  ")
+              .Append(string.Join(" / ", entry.Value))
+              .Append(" → ").Append(destName);
+        }
+        return sb.ToString();
+    }
 
     // ----- Lair tag parsing -----------------------------------------
 

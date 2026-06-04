@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -40,8 +41,28 @@ public static class TBInfoTeleportResolver
         ArgumentNullException.ThrowIfNull(store);
         if (roomCmd <= 0) return null;
 
+        foreach ((string keyword, RoomKey dest) in EnumerateTeleports(store, roomCmd))
+        {
+            if (dest.Equals(destination)) return keyword;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Walk every <c>teleport &lt;room&gt; &lt;map&gt;</c> directive in
+    /// the CMD's Action chain and yield <c>(keyword, destination)</c>
+    /// for each one. Used by the room tooltip to surface "use chime →
+    /// 1/65" style commands so the user can see how to traverse a
+    /// teleport-bypassed door without opening the game data browser.
+    /// </summary>
+    public static IEnumerable<(string Keyword, RoomKey Destination)>
+        EnumerateTeleports(TBInfoStore store, int roomCmd)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (roomCmd <= 0) yield break;
+
         TBInfoEntry? entry = store.GetEntry(roomCmd);
-        if (entry is null || string.IsNullOrWhiteSpace(entry.Action)) return null;
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Action)) yield break;
 
         foreach (string raw in entry.Action.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -66,10 +87,9 @@ public static class TBInfoTeleportResolver
                 if (!int.TryParse(args[0], out int room)) continue;
                 if (!int.TryParse(args[1], out int map))  continue;
 
-                if (room == destination.Room && map == destination.Map)
-                    return keyword;
+                yield return (keyword, new RoomKey(map, room));
+                break;  // first teleport in the line is the destination — don't yield duplicates if a chained teleport appears later
             }
         }
-        return null;
     }
 }
