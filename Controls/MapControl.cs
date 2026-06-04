@@ -297,8 +297,16 @@ public sealed class MapControl : Control
     // Walk-to destination — solid blue fill with a matching thick ring,
     // visually mirroring the "you are here" amber treatment so the
     // user can spot the goal at a glance.
-    private static readonly IBrush DestinationFill = new SolidColorBrush(Color.Parse("#3DA5FF"));
-    private static readonly IPen   DestinationRing = new Pen(new SolidColorBrush(Color.Parse("#5BBCFF")), 2.5);
+    // Destination marker — same shape as the player marker (cell fill +
+    // node border + thick cell-perimeter ring + centre dot) but in
+    // deep royal blue. Chosen darker than the shop blue (#4A7791) so
+    // a shop sitting next to the queued destination still reads as a
+    // separate room class at a glance.
+    private static readonly IBrush DestinationFill    = new SolidColorBrush(Color.Parse("#1A4FB0"));
+    private static readonly IPen   DestinationRing    = new Pen(new SolidColorBrush(Color.Parse("#3D6FCA")), 2.0);
+    private static readonly IPen   DestinationOuterPen = new Pen(new SolidColorBrush(Color.Parse("#3D6FCA")), 2.5);
+    private static readonly IBrush DestinationDotFill = new SolidColorBrush(Color.Parse("#9FC4FF"));
+    private static readonly IPen   DestinationDotPen  = new Pen(new SolidColorBrush(Color.Parse("#0A1E40")), 1.5);
     private static readonly IPen   PlayerDotPen   = new Pen(new SolidColorBrush(Color.Parse("#3A1F00")), 1.5);
     private static readonly IPen   PlayerOuterPen = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.5);
     private static readonly IPen   WalkPathPen    = new Pen(new SolidColorBrush(Color.Parse("#1E64DC")), 3.0)
@@ -992,29 +1000,22 @@ public sealed class MapControl : Control
         ctx.FillRectangle(fill, node);
         ctx.DrawRectangle(null, pen, node);
 
-        if (isDestination)
+        if (isCurrent || isDestination)
         {
-            // Thick blue ring on the cell perimeter so the destination
-            // reads at a glance, parallel to the player marker.
+            // Thick perimeter ring + centre dot — same shape for both
+            // markers so the destination reads as "the other end of the
+            // pair" rather than a different room class.
             Rect ring = cell.Deflate(2);
-            ctx.DrawRectangle(null, DestinationRing, ring);
-        }
-        else if (isCurrent)
-        {
-            // Thick amber ring on the cell perimeter.
-            Rect ring = cell.Deflate(2);
-            ctx.DrawRectangle(null, PlayerOuterPen, ring);
+            IPen  outerPen = isCurrent ? PlayerOuterPen   : DestinationOuterPen;
+            IBrush dotFill  = isCurrent ? PlayerDotFill    : DestinationDotFill;
+            IPen   dotPen   = isCurrent ? PlayerDotPen     : DestinationDotPen;
+            ctx.DrawRectangle(null, outerPen, ring);
 
-            // "You are here" dot over the node centre — reads even
-            // when the room-node fill is amber (current/auto-lair),
-            // blue-grey (shop), magenta (lair), purple (spell), or
-            // U/D coloured. The dark border around the dot keeps it
-            // legible against bright fills.
             double dotSize = Math.Max(cell.Width * 0.22, 4.0);
             double dx = cell.X + (cell.Width  - dotSize) / 2;
             double dy = cell.Y + (cell.Height - dotSize) / 2;
             Rect dot = new(dx, dy, dotSize, dotSize);
-            ctx.DrawGeometry(PlayerDotFill, PlayerDotPen, new EllipseGeometry(dot));
+            ctx.DrawGeometry(dotFill, dotPen, new EllipseGeometry(dot));
         }
     }
 
