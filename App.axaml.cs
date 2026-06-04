@@ -106,14 +106,6 @@ public partial class App : Application
                 FujinTerm.ViewModels.ManualCenterDialogViewModel,
                 FujinTerm.Views.ManualCenterDialog>();
 
-            // RoomTracker → ambiguous candidate picker. Opens when an
-            // observation matches more than one room in the active
-            // graph; Pick → SetLocated, Defer → user resolves via
-            // right-click "I am here".
-            AppServices.Current.Dialogs.RegisterWindow<
-                FujinTerm.ViewModels.Navigation.AmbiguousLocationDialogViewModel,
-                FujinTerm.Views.Navigation.AmbiguousLocationDialog>();
-
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

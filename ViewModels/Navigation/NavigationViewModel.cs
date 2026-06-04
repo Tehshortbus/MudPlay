@@ -24,7 +24,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(services);
         _services = services;
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
-        _services.RoomTracker.State.PropertyChanged += OnTrackerStatePropertyChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
@@ -51,7 +50,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
-        _services.RoomTracker.State.PropertyChanged -= OnTrackerStatePropertyChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
@@ -839,17 +837,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshFromTracker();
         RefreshDerivedState();
     }
-
-    private void OnTrackerStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        // Only the tier-affecting properties matter here — bail early
-        // on the dozens of other property events RoomState fires.
-        if (e.PropertyName is nameof(RoomState.FootprintCandidateCount)
-                           or nameof(RoomState.Confidence))
-        {
-            RefreshFromTracker();
-        }
-    }
     private void OnWalkerEvent(WalkEvent _) => RefreshFromWalker();
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 
@@ -871,21 +858,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         CurrentRoomLabel = state.CurrentRoom is { } room
             ? $"{room.DisplayName}  ·  {room.Key}"
             : "—";
-
-        // Tier-state observable bools drive the engine-chip's tier-coloured
-        // border. Tier 2 (matcher narrowing) overrides Tier 3 (plain Lost).
-        bool tier2 = state.FootprintCandidateCount > 0;
-        bool tier3 = !tier2 && state.Confidence == RoomConfidence.Lost;
-        if (tier2 != _isTier2)
-        {
-            _isTier2 = tier2;
-            OnPropertyChanged(nameof(IsTier2));
-        }
-        if (tier3 != _isTier3)
-        {
-            _isTier3 = tier3;
-            OnPropertyChanged(nameof(IsTier3));
-        }
 
         // Re-centre the layout on the new room when we land on one
         // outside the cached layout (typical after a reconnect or a
@@ -1121,13 +1093,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public bool EngineActionIsWalking => EngineActionKind == NavigationEngineKind.Walking;
     public bool EngineActionIsLooping => EngineActionKind == NavigationEngineKind.Looping;
     public bool EngineActionIsLair    => EngineActionKind == NavigationEngineKind.AutoLair;
-
-    /// <summary>True when the tier-2 footprint matcher is narrowing — engine chip gets a yellow border.</summary>
-    public bool IsTier2 => _isTier2;
-    /// <summary>True when the tracker is Lost without a narrowing matcher — engine chip gets a red border.</summary>
-    public bool IsTier3 => _isTier3;
-    private bool _isTier2;
-    private bool _isTier3;
 
     /// <summary>Loop-mode button face: idle → "Loop mode"; mode-on → "Building"; running → "Stop".</summary>
     public string LoopModeButtonLabel => EngineActionKind == NavigationEngineKind.Looping

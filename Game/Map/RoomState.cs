@@ -43,15 +43,4 @@ public sealed partial class RoomState : ObservableObject
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(RoomTracker))]
     private System.Collections.Generic.IReadOnlySet<Direction>? _openDoorDirections;
-
-    /// <summary>
-    /// Number of candidates the tier-2 <c>FootprintMatcher</c> is
-    /// currently narrowing across. <c>0</c> when the matcher is idle
-    /// (the tracker is either Confirmed/Pending or in plain Lost
-    /// posture without an active narrowing). UI binds the engine-chip
-    /// border colour off the combination of this and
-    /// <see cref="Confidence"/>: matcher active ⇒ yellow ("tier 2"),
-    /// Lost+matcher inactive ⇒ red ("tier 3").
-    /// </summary>
-    [ObservableProperty] [field: Owner(typeof(RoomTracker))] private int _footprintCandidateCount;
 }

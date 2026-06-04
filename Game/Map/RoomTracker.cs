@@ -67,16 +67,6 @@ public sealed class RoomTracker
     private readonly List<DirectionDto> _recentSteps = new();
 
     /// <summary>
-    /// Tier-2 SLAM-style accumulator. Idle until an ambiguous
-    /// observation seeds it; subsequent (move, observation) pairs
-    /// narrow the candidate set. Converges to 1 → auto-Confirmed;
-    /// drops to 0 → <see cref="GraphMismatchDetected"/> fires.
-    /// Constructed with a trap-aware probe so the matcher never
-    /// "walks" candidates through trapped exits.
-    /// </summary>
-    private readonly FootprintMatcher _footprint;
-
-    /// <summary>
     /// Profile the tracker is currently writing into. Set by
     /// <see cref="Hydrate"/>; cleared by <see cref="OnProfileClosed"/>.
     /// When null, persistence operations are no-ops — the tracker still
@@ -115,29 +105,6 @@ public sealed class RoomTracker
     /// </summary>
     public event Action<NameLearnedEvent>? NameLearned;
 
-    /// <summary>
-    /// Fired when an observation matches more than one room in the
-    /// active graph and the FSM can't pick one on its own. The tracker
-    /// still transitions (to <see cref="RoomConfidence.Suspect"/> or
-    /// stays where it is); this event is informational so the UI can
-    /// surface the candidate list to the user. Subscribers — the main
-    /// window — open the modeless
-    /// <c>AmbiguousLocationDialog</c>; the user's Pick choice comes back
-    /// through <see cref="SetLocated(RoomKey, DateTimeOffset?)"/>.
-    /// </summary>
-    public event Action<AmbiguityDetectedEvent>? AmbiguityDetected;
-
-    /// <summary>
-    /// Fired when the tier-2 footprint matcher narrowed its candidate
-    /// set to zero — every previously plausible room either had no exit
-    /// in the recorded direction, had a trapped exit, or produced a
-    /// target that didn't match the observed name+exits. Strong
-    /// indication that the active game-data graph is stale relative
-    /// to the live world. UI surfaces a "map data appears stale"
-    /// banner; tracker drops back to its plain Lost / Suspect posture.
-    /// </summary>
-    public event Action<GraphMismatchEvent>? GraphMismatchDetected;
-
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
 
     public RoomTracker(RoomGraphManager graph, LogService? log)
@@ -146,41 +113,6 @@ public sealed class RoomTracker
         _graph = graph;
         _log = log;
         State.LastUpdatedAt = DateTimeOffset.UtcNow;
-        _footprint = new FootprintMatcher(
-            probeHop: ProbeHopForFootprint,
-            matchesObservation: KeyMatchesObservation,
-            log: log);
-    }
-
-    /// <summary>
-    /// Resolve <paramref name="key"/> in the graph and run the same
-    /// subset-match the rest of the FSM uses to compare an expected
-    /// room against an observation. Closes over <see cref="_graph"/>
-    /// so the matcher itself stays graph-agnostic.
-    /// </summary>
-    private bool KeyMatchesObservation(RoomKey key, RoomObservation observation)
-    {
-        Room? r = _graph.GetRoom(key);
-        return r is not null && MatchesPredicted(r, observation);
-    }
-
-    /// <summary>
-    /// Trap-aware hop probe used by <see cref="_footprint"/>. Looks up
-    /// the source room, finds the exit in <paramref name="dir"/>, and
-    /// returns one of <see cref="HopOutcome.Reached"/> /
-    /// <see cref="HopOutcome.NoExit"/> / <see cref="HopOutcome.TrappedExit"/>.
-    /// Trap-flagged exits are deliberately treated as no-go for the
-    /// matcher even though the user clearly traversed something — the
-    /// safer assumption is "the user wasn't at a candidate whose only
-    /// matching exit is trapped." Tier 3 manual locate is the override.
-    /// </summary>
-    private HopOutcome ProbeHopForFootprint(RoomKey from, Direction dir)
-    {
-        Room? source = _graph.GetRoom(from);
-        if (source is null) return HopOutcome.NoExit();
-        if (!source.Exits.TryGetValue(dir, out RoomExit exit)) return HopOutcome.NoExit();
-        if (exit.Hint == RoomExitHint.Trap) return HopOutcome.TrappedExit();
-        return HopOutcome.Reached(exit.Target);
     }
 
     // ----- profile hydrate / save -------------------------------------
@@ -351,14 +283,6 @@ public sealed class RoomTracker
         // send the cardinal move directly).
         State.OpenDoorDirections = observation.OpenDoorDirections;
 
-        // Tier-2: if the footprint matcher is actively narrowing and
-        // we have a head pending move with a cardinal direction, step
-        // it before the normal FSM runs. A converged matcher short-
-        // circuits the reconcile path (we already know where we are);
-        // an exhausted matcher fires GraphMismatchDetected and falls
-        // through to let the FSM apply its own reaction.
-        if (TryStepFootprintMatcher(observation, when)) return;
-
         switch (State.Confidence)
         {
             case RoomConfidence.Unknown:
@@ -461,8 +385,6 @@ public sealed class RoomTracker
             return;
         }
 
-        _log?.Log(LogSeverity.Info, "RoomTracker",
-            $"Tier3.manual → {room.Key} ({room.Name})");
         ClearPendingAndSteps();
         SetRoom(room, RoomConfidence.Confirmed, when, "manual locate");
     }
@@ -477,8 +399,6 @@ public sealed class RoomTracker
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
         ClearPendingAndSteps();
         _history.Clear();
-        _footprint.Clear();
-        SyncFootprintCount();
         SetRoom(room: null, RoomConfidence.Unknown, when, "graph reloaded");
     }
 
@@ -523,11 +443,6 @@ public sealed class RoomTracker
         }
 
         EnterSuspect(when, $"observation mismatched from Confirmed; candidates={candidates.Count}");
-        if (candidates.Count >= 2)
-        {
-            SeedFootprintIfInactive(candidates, "Confirmed→Suspect");
-            RaiseAmbiguity(observation, candidates);
-        }
     }
 
     private void ReconcileFromPending(RoomObservation observation, DateTimeOffset when)
@@ -616,11 +531,6 @@ public sealed class RoomTracker
         }
 
         EnterSuspect(when, $"Pending observation didn't match queue head; candidates={candidates.Count}");
-        if (candidates.Count >= 2)
-        {
-            SeedFootprintIfInactive(candidates, "Pending→Suspect");
-            RaiseAmbiguity(observation, candidates);
-        }
     }
 
     private void ReconcileFromSuspect(RoomObservation observation, DateTimeOffset when)
@@ -648,26 +558,13 @@ public sealed class RoomTracker
         // Still mismatched. Either escalate or replay.
         if (State.SuspectStrikes + 1 >= SuspectStrikeLimit)
         {
-            _log?.Log(LogSeverity.Info, "RoomTracker",
-                $"Tier1.replay attempt: strikes={State.SuspectStrikes + 1} steps={_recentSteps.Count}");
             if (TryReplayRecover(observation, when)) return;
-            _log?.Log(LogSeverity.Info, "RoomTracker", "Tier1.replay failed");
             SetRoom(room: null, RoomConfidence.Lost, when,
                 $"suspect strike limit ({SuspectStrikeLimit}) reached; replay failed");
-            if (candidates.Count >= 2)
-            {
-                SeedFootprintIfInactive(candidates, "Suspect→Lost");
-                RaiseAmbiguity(observation, candidates);
-            }
             return;
         }
 
         EnterSuspect(when, $"suspect mismatch continues; candidates={candidates.Count}");
-        if (candidates.Count >= 2)
-        {
-            SeedFootprintIfInactive(candidates, "Suspect→Suspect");
-            RaiseAmbiguity(observation, candidates);
-        }
     }
 
     private void LandFromCandidateSearch(RoomObservation observation, DateTimeOffset when)
@@ -688,24 +585,7 @@ public sealed class RoomTracker
                 break;
 
             case 0:
-                _log?.Log(LogSeverity.Info, "RoomTracker",
-                    $"Tier1.replay attempt: source=LandFromCandidateSearch steps={_recentSteps.Count}");
                 if (TryReplayRecover(observation, when)) return;
-                _log?.Log(LogSeverity.Info, "RoomTracker", "Tier1.replay failed");
-                // Tier 2 fallback: seed from name-only matches (wider
-                // than the exit-mask-filtered FindCandidates that just
-                // returned 0). If even name-only is empty → graph
-                // mismatch right away; nothing to localise against.
-                IReadOnlyList<Room> nameMatches = _graph.FindByName(observation.Name);
-                if (nameMatches.Count >= 2)
-                {
-                    SetRoom(room: null, RoomConfidence.Lost, when, "no exit-mask candidate; tier-2 seeding by name");
-                    var nameKeys = new List<RoomKey>(nameMatches.Count);
-                    foreach (Room r in nameMatches) nameKeys.Add(r.Key);
-                    SeedFootprintIfInactive(nameKeys, "tier2.name-only seed");
-                    RaiseAmbiguity(observation, nameKeys);
-                    break;
-                }
                 SetRoom(room: null, RoomConfidence.Lost, when, "no graph candidate; replay failed");
                 break;
 
@@ -716,8 +596,6 @@ public sealed class RoomTracker
                 // or trip Lost on its own merits.
                 SetRoom(room: null, RoomConfidence.Suspect, when,
                     $"{candidates.Count} candidates (ambiguous)");
-                SeedFootprintIfInactive(candidates, "LandFromCandidateSearch ambiguous");
-                RaiseAmbiguity(observation, candidates);
                 break;
         }
     }
@@ -752,7 +630,7 @@ public sealed class RoomTracker
         if (!MatchesPredicted(cursor, observation)) return false;
 
         _log?.Log(LogSeverity.Info, "RoomTracker",
-            $"Tier1.replay succeeded → {cursor.Key} ({cursor.Name}) from {start} + {_recentSteps.Count} steps");
+            $"Replay-recovery succeeded: {start} + {_recentSteps.Count} steps → {cursor.Key} ({cursor.Name}).");
 
         ClearPendingAndSteps();
         SetRoom(cursor, RoomConfidence.Confirmed, when, "replay-from-last-Confirmed succeeded");
@@ -770,112 +648,6 @@ public sealed class RoomTracker
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"Suspect strike {strikes}/{SuspectStrikeLimit}: {reason}.");
         RaiseStateChanged(prev, RoomConfidence.Suspect, prevRoom, prevRoom);
-    }
-
-    /// <summary>
-    /// Surface a ≥2-candidate observation to subscribers so the UI can
-    /// offer a manual picker. The tracker has already transitioned (the
-    /// caller chose Suspect / Lost / etc.); this is informational only.
-    /// </summary>
-    private void RaiseAmbiguity(RoomObservation observation, IReadOnlyList<RoomKey> candidates)
-    {
-        AmbiguityDetected?.Invoke(
-            new AmbiguityDetectedEvent(observation.Name, observation.Exits, candidates));
-    }
-
-    /// <summary>
-    /// Mirror the matcher's current candidate count onto
-    /// <see cref="RoomState.FootprintCandidateCount"/> so UI binds
-    /// pick up tier-2 activity without subscribing to the matcher
-    /// directly. Called from every site that mutates
-    /// <c>_footprint</c>.
-    /// </summary>
-    private void SyncFootprintCount()
-    {
-        State.FootprintCandidateCount = _footprint.Candidates.Count;
-    }
-
-    /// <summary>
-    /// Seed the tier-2 matcher when it isn't already narrowing. If a
-    /// matcher is already active we leave it alone — its in-progress
-    /// candidate set is the result of stepping through more
-    /// observations than a fresh seed would have, and replacing it
-    /// would lose that progress.
-    /// </summary>
-    private void SeedFootprintIfInactive(IReadOnlyList<RoomKey> candidates, string trigger)
-    {
-        if (_footprint.IsActive) return;
-        _footprint.Reset(candidates);
-        SyncFootprintCount();
-        _log?.Log(LogSeverity.Info, "RoomTracker",
-            $"Tier2.seed: {candidates.Count} candidates from {trigger}");
-    }
-
-    /// <summary>
-    /// One-step adapter from <see cref="NoteRoomObserved"/> into the
-    /// matcher. Returns <c>true</c> if the matcher handled the
-    /// observation end-to-end (converged → auto-Confirmed; still
-    /// narrowing → ambiguity refresh) and the FSM should skip its
-    /// normal reconcile path. Returns <c>false</c> on no-op (matcher
-    /// inactive / no cardinal head pending) and on exhaustion (matcher
-    /// fired GraphMismatchDetected and cleared) so the FSM can react.
-    /// </summary>
-    private bool TryStepFootprintMatcher(RoomObservation observation, DateTimeOffset when)
-    {
-        if (!_footprint.IsActive) return false;
-        if (!_pending.TryPeek(out PendingMove head)) return false;
-        if (head.Cardinal is not { } dir) return false;
-
-        _footprint.Step(dir, observation);
-        SyncFootprintCount();
-
-        if (_footprint.IsConverged)
-        {
-            RoomKey only = _footprint.Candidates.First();
-            Room? room = _graph.GetRoom(only);
-            if (room is null)
-            {
-                _log?.Log(LogSeverity.Warn, "RoomTracker",
-                    $"Tier2.converged → {only} but key not in graph; clearing");
-                _footprint.Clear();
-                SyncFootprintCount();
-                return false;
-            }
-            _log?.Log(LogSeverity.Info, "RoomTracker",
-                $"Tier2.converged → {room.Key} ({room.Name}) after {_footprint.Depth} steps");
-            ClearPendingAndSteps();
-            SetRoom(room, RoomConfidence.Confirmed, when, "tier-2 footprint converged");
-            return true;
-        }
-
-        if (_footprint.IsExhausted)
-        {
-            _log?.Log(LogSeverity.Warn, "RoomTracker",
-                $"Tier2.mismatch: candidates exhausted after {_footprint.Depth} steps near '{observation.Name}' — map data likely stale");
-            GraphMismatchDetected?.Invoke(
-                new GraphMismatchEvent(observation.Name, observation.Exits, _footprint.Depth));
-            _footprint.Clear();
-            SyncFootprintCount();
-            return false;                   // fall through to FSM for state update
-        }
-
-        if (!_footprint.IsActive)            // depth ceiling
-        {
-            _log?.Log(LogSeverity.Warn, "RoomTracker",
-                $"Tier2.depth_ceiling: stopping after {_footprint.Depth} steps with {_footprint.Candidates.Count} candidates");
-            _footprint.Clear();
-            SyncFootprintCount();
-            return false;
-        }
-
-        // Still narrowing. Consume the head move (the matcher accepted
-        // it), refresh state timestamp + UI candidate list, and skip the
-        // FSM — we're operating in tier-2 territory.
-        _pending.TryDequeue(out _);
-        State.LastUpdatedAt = when;
-        var narrowed = new List<RoomKey>(_footprint.Candidates);
-        RaiseAmbiguity(observation, narrowed);
-        return true;
     }
 
     /// <summary>
@@ -955,18 +727,7 @@ public sealed class RoomTracker
         State.CurrentRoom = room;
         State.Confidence = confidence;
         State.LastUpdatedAt = when;
-        if (confidence == RoomConfidence.Confirmed)
-        {
-            State.SuspectStrikes = 0;
-            // Confirmed-by-any-path supersedes any in-progress tier-2
-            // narrowing — drop the matcher so the next ambiguous moment
-            // gets a fresh seed.
-            if (_footprint.IsActive || _footprint.IsConverged)
-            {
-                _footprint.Clear();
-                SyncFootprintCount();
-            }
-        }
+        if (confidence == RoomConfidence.Confirmed) State.SuspectStrikes = 0;
 
         if (confidence == RoomConfidence.Confirmed && room is not null)
         {
@@ -1098,27 +859,3 @@ public readonly record struct RoomTransition(
 /// persist the new name back to the active set's <c>Rooms.json</c>.
 /// </summary>
 public readonly record struct NameLearnedEvent(RoomKey Key, string ObservedName);
-
-/// <summary>
-/// Payload of <see cref="RoomTracker.AmbiguityDetected"/>. Carries the
-/// observed name + exit set the tracker just couldn't disambiguate, plus
-/// the matching candidate rooms from the active graph. The list is
-/// always at least two entries — single-candidate matches don't fire
-/// this event because the tracker lands Confirmed on its own.
-/// </summary>
-public readonly record struct AmbiguityDetectedEvent(
-    string ObservedName,
-    IReadOnlySet<Direction> ObservedExits,
-    IReadOnlyList<RoomKey> Candidates);
-
-/// <summary>
-/// Payload of <see cref="RoomTracker.GraphMismatchDetected"/>. Fires
-/// when the tier-2 footprint matcher exhausted its candidate set —
-/// every plausible starting room produced a non-matching target after
-/// stepping through the user's recorded moves. Strong signal the
-/// active game-data graph is stale relative to the live world.
-/// </summary>
-public readonly record struct GraphMismatchEvent(
-    string ObservedName,
-    IReadOnlySet<Direction> ObservedExits,
-    int FootprintDepth);
