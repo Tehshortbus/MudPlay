@@ -77,6 +77,82 @@ public sealed class RoomGraphManager
         _rooms.TryGetValue(key, out Room? room) ? room : null;
 
     /// <summary>
+    /// Fires once per name learned via
+    /// <see cref="LearnRoomName"/>. Carries the room key + the name
+    /// the tracker just adopted. <see cref="Services.AppServices"/>
+    /// subscribes to surface the persist-to-Rooms.json prompt.
+    /// </summary>
+    public event Action<RoomKey, string>? RoomNameLearned;
+
+    /// <summary>
+    /// Replace the in-memory <see cref="Room"/> at <paramref name="key"/>
+    /// with a copy whose <see cref="Room.Name"/> is the new value, and
+    /// reshuffle the <c>_byName</c> / <c>_byNameAndExits</c> indexes so
+    /// later candidate searches find the updated tuple. No-op when the
+    /// key isn't in the graph, the existing room already has the same
+    /// name, or the new name is null/empty.
+    /// </summary>
+    /// <returns>
+    /// The new <see cref="Room"/> instance (with the updated name)
+    /// when the learn succeeded; <c>null</c> when it was a no-op.
+    /// </returns>
+    public Room? LearnRoomName(RoomKey key, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        if (!_rooms.TryGetValue(key, out Room? existing)) return null;
+        if (string.Equals(existing.Name, name, StringComparison.Ordinal)) return null;
+
+        // Drop the old (name, mask) index entries before re-inserting
+        // — the empty-name bucket still belongs in _byName when the
+        // pre-learn name was empty, but we just won't find it by an
+        // empty-string lookup anyway. Be defensive on both sides.
+        DropFromIndexes(existing);
+
+        Room replaced = existing with { Name = name };
+        _rooms[key] = replaced;
+        AddToIndexes(replaced);
+
+        _log?.Log(LogSeverity.Info, "RoomGraph",
+            $"Learned name '{name}' for {key} (was '{existing.Name}').");
+        RoomNameLearned?.Invoke(key, name);
+        return replaced;
+    }
+
+    private void DropFromIndexes(Room room)
+    {
+        if (!string.IsNullOrEmpty(room.Name)
+            && _byName.TryGetValue(room.Name, out List<Room>? nameBucket))
+        {
+            nameBucket.RemoveAll(r => r.Key.Equals(room.Key));
+            if (nameBucket.Count == 0) _byName.Remove(room.Name);
+        }
+        var tuple = (room.Name, room.ExitMask);
+        if (_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
+        {
+            exitBucket.RemoveAll(k => k.Equals(room.Key));
+            if (exitBucket.Count == 0) _byNameAndExits.Remove(tuple);
+        }
+    }
+
+    private void AddToIndexes(Room room)
+    {
+        if (!_byName.TryGetValue(room.Name, out List<Room>? nameBucket))
+        {
+            nameBucket = new List<Room>();
+            _byName[room.Name] = nameBucket;
+        }
+        nameBucket.Add(room);
+
+        var tuple = (room.Name, room.ExitMask);
+        if (!_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
+        {
+            exitBucket = new List<RoomKey>();
+            _byNameAndExits[tuple] = exitBucket;
+        }
+        exitBucket.Add(room.Key);
+    }
+
+    /// <summary>
     /// All rooms in the active set whose <see cref="Room.Name"/> matches
     /// <paramref name="name"/> case-insensitively. Empty when no match.
     /// </summary>
@@ -299,8 +375,13 @@ public sealed class RoomGraphManager
         if (!TryReadInt(row, "Room Number", out int roomNumber)) return false;
         if (map <= 0 || roomNumber <= 0) return false;
 
-        string? name = TryReadString(row, "Name");
-        if (string.IsNullOrWhiteSpace(name)) return false;
+        // The MDB export emits rows with a literal null Name for rooms
+        // the sysop fills on a separate table (typical of map-15
+        // ganghouse rooms in 1.x non-Paradigm exports). Don't drop
+        // those — keep them in the graph as null-name so the tracker
+        // can learn the real name on first observation. Render through
+        // <see cref="Room.DisplayName"/> for any user-facing label.
+        string name = TryReadString(row, "Name") ?? string.Empty;
 
         int cmd = TryReadIntOrZero(row, "CMD");
 

@@ -32,8 +32,31 @@ public sealed record Room
     /// <summary>(Map, Room) primary key.</summary>
     public required RoomKey Key { get; init; }
 
-    /// <summary>Human-readable room name as it appears in-game (the line above <c>Obvious exits:</c>).</summary>
+    /// <summary>
+    /// Human-readable room name as it appears in-game (the line above
+    /// <c>Obvious exits:</c>). May be empty when the MDB shipped a
+    /// <c>null</c> Name for the row — typically ganghouse rooms in
+    /// non-Paradigm 1.x exports where the sysop fills the name on a
+    /// separate table the importer doesn't read. Render through
+    /// <see cref="DisplayName"/> for the user-facing label so the
+    /// nameless cases show a stable placeholder.
+    /// </summary>
     public required string Name { get; init; }
+
+    /// <summary>
+    /// User-facing label: the room's <see cref="Name"/> when non-empty,
+    /// or <c>"???"</c> when null/empty. Use this everywhere a tooltip,
+    /// status bar, search result, or engine-action label needs to
+    /// surface the room — never raw <see cref="Name"/>.
+    /// </summary>
+    public string DisplayName => string.IsNullOrEmpty(Name) ? "???" : Name;
+
+    /// <summary>
+    /// <c>true</c> when the room shipped without a name in the
+    /// imported data — the trigger for the learn-on-observation
+    /// auto-update flow.
+    /// </summary>
+    public bool HasUnknownName => string.IsNullOrEmpty(Name);
 
     /// <summary>
     /// MajorMUD light level. Negative values mean dim/dark; 0 means

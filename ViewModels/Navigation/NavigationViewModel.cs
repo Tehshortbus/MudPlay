@@ -220,12 +220,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         List<RoomSearchResult> matches = new();
         foreach (Room room in EnumerateAllRooms(Graph))
         {
-            if (room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            // Match against Name (raw, may be empty) AND DisplayName so
+            // typing "???" surfaces unnamed rooms the player wants to
+            // visit and fix; named rooms still match their text.
+            if (room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+             || room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
             {
                 int? steps = sourceKey is { } src
                     ? _services.Bfs.DistanceBetween(src, room.Key, _services.Movement)
                     : null;
-                matches.Add(new RoomSearchResult(room.Key, room.Name, steps));
+                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, steps));
                 if (matches.Count >= 200) break;     // cap before sort
             }
         }
@@ -442,7 +446,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _                        => ("Unknown", "#888"),
         };
         CurrentRoomLabel = state.CurrentRoom is { } room
-            ? $"{room.Name}  ·  {room.Key}"
+            ? $"{room.DisplayName}  ·  {room.Key}"
             : "—";
 
         // Re-centre the layout on the new room when we land on one
@@ -518,7 +522,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         {
             string dest = _services.Walker.Destination is { } key
                 ? (_services.RoomGraph.GetRoom(key) is { } room
-                    ? $"{room.Name} ({key})"
+                    ? $"{room.DisplayName} ({key})"
                     : key.ToString())
                 : "?";
             string verb = _services.Walker.State == WalkState.Paused ? "Paused walking" : "Walking";

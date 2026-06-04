@@ -513,8 +513,16 @@ public sealed class RoomGraphManagerTests : IDisposable
 
         graph.OnActiveSetChanged("alpha");
 
-        Assert.Equal(1, graph.RoomCount);
+        // Rows without primary-key fields are still skipped, but rows
+        // with an empty/null Name are kept and surfaced via the
+        // null-name learning flow (Display "???"). The mid-row
+        // "Missing Keys" still drops.
+        Assert.Equal(2, graph.RoomCount);
         Assert.NotNull(graph.GetRoom(new RoomKey(1, 1)));
+        Room? nameless = graph.GetRoom(new RoomKey(1, 2));
+        Assert.NotNull(nameless);
+        Assert.True(nameless!.HasUnknownName);
+        Assert.Equal("???", nameless.DisplayName);
     }
 
     // ----- Room.Cmd + Item → Teleport promotion ----------------------

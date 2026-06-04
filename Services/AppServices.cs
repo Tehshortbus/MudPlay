@@ -563,6 +563,14 @@ public sealed class AppServices
     public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
 
     /// <summary>
+    /// Writer that persists tracker-learned room names back into the
+    /// active set's <c>Rooms.json</c>. Consumed by the
+    /// MainWindowViewModel name-learned prompt handler after the user
+    /// confirms the rename.
+    /// </summary>
+    public RoomNamePersistence RoomNamePersist { get; private set; } = null!;
+
+    /// <summary>
     /// Sniffs outbound user-typed commands and tells
     /// <see cref="RoomTracker"/> about <c>look &lt;dir&gt;</c> peeks
     /// (so the next room display is dropped instead of mistaken for a
@@ -993,6 +1001,11 @@ public sealed class AppServices
         // when the active set rebuilds.
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
+
+        // Writer that persists tracker-learned names back to
+        // Rooms.json. The MainWindowVM subscribes to NameLearned to
+        // prompt the user, then calls this on accept.
+        RoomNamePersist = new RoomNamePersistence(GameData, Log);
 
         // Hand the loaded profile to the tracker so it can hydrate
         // LastKnownRoom + RecentSteps (replay-from-last-Confirmed

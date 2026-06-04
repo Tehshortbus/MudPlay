@@ -87,6 +87,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel,
                 FujinTerm.Views.Profile.ProfileNameInputDialog>();
 
+            // Room-name learned prompt — fires when the tracker adopts
+            // a name for a previously-unnamed map-15 ganghouse room.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.RoomNameLearnedDialogViewModel,
+                FujinTerm.Views.RoomNameLearnedDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

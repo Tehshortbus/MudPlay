@@ -49,7 +49,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         // row would gap-fill to nothing.
         if (_clicks.Count > 0 && _clicks[^1].Equals(key)) return;
         _clicks.Add(key);
-        Clicks.Add(new LoopBuilderRow(Clicks.Count, key, room.Name));
+        Clicks.Add(new LoopBuilderRow(Clicks.Count, key, room.DisplayName));
         OnPropertyChanged(nameof(HasClicks));
         Reexpand();
     }

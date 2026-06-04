@@ -49,7 +49,7 @@ public static class RoomTooltipBuilder
         StringBuilder sb = new();
 
         // 1. Name (Map/Room)
-        sb.Append(room.Name).Append(" (").Append(room.Key).Append(')');
+        sb.Append(room.DisplayName).Append(" (").Append(room.Key).Append(')');
 
         // 2. Also Here
         string alsoHere = BuildAlsoHere(room, data);
@@ -162,7 +162,7 @@ public static class RoomTooltipBuilder
             if (!room.Exits.TryGetValue(dir, out RoomExit exit)) continue;
 
             Room? dest = graph.GetRoom(exit.Target);
-            string destName = dest?.Name ?? exit.Target.ToString();
+            string destName = dest is not null ? dest.DisplayName : exit.Target.ToString();
 
             sb.Append('\n').Append("  ").Append(DirectionLabel(dir)).Append(" → ");
             sb.Append(destName).Append(' ').Append('(').Append(exit.Target).Append(')');

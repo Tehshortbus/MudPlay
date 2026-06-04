@@ -96,6 +96,15 @@ public sealed class RoomTracker
     /// </summary>
     public event Action<RoomTransition>? StateChanged;
 
+    /// <summary>
+    /// Fired the first time we learn a real name for a room that
+    /// shipped without one (typical of map-15 ganghouse rooms in the
+    /// 1.x MDB exports). Subscribers — the main window in particular
+    /// — prompt the user to write the learned name back to the
+    /// active game-data set's <c>Rooms.json</c>.
+    /// </summary>
+    public event Action<NameLearnedEvent>? NameLearned;
+
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
 
     public RoomTracker(RoomGraphManager graph, LogService? log)
@@ -382,9 +391,12 @@ public sealed class RoomTracker
         }
 
         // We thought we knew where we were but the observation
-        // disagrees. Two possibilities: (a) a 1-of-1 candidate exists
+        // disagrees. Three possibilities: (a) a 1-of-1 candidate exists
         // in the graph and the user got teleported / dragged → land
-        // Confirmed at the new room; (b) ambiguous / zero → escalate
+        // Confirmed at the new room; (b) a current-room neighbour
+        // shipped without a Name (typical of ganghouse rooms on map 15)
+        // and its ExitMask covers the observation → adopt the neighbour
+        // and learn the observed name; (c) ambiguous / zero → escalate
         // to Suspect at the current room.
         IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
         if (candidates.Count == 1
@@ -392,6 +404,14 @@ public sealed class RoomTracker
         {
             ClearPendingAndSteps();
             SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 silent desync");
+            return;
+        }
+
+        if (current is not null
+            && TryMatchNullNameNeighbour(current, observation, out Room? learned))
+        {
+            ClearPendingAndSteps();
+            SetRoom(learned, RoomConfidence.Confirmed, when, "null-name neighbour matched + learned");
             return;
         }
 
@@ -594,6 +614,57 @@ public sealed class RoomTracker
         return (observedMask & target.ExitMask) == observedMask;
     }
 
+    /// <summary>
+    /// Subset-only match against a null-name <paramref name="target"/>.
+    /// Used by the null-name learning path — we have no name to match
+    /// against, so the ExitMask is the only signal that the
+    /// observation is "this neighbour".
+    /// </summary>
+    private static bool MatchesPredictedNameless(Room target, RoomObservation observation)
+    {
+        if (!target.HasUnknownName) return false;
+        uint observedMask = 0;
+        foreach (Direction d in observation.Exits) observedMask |= 1u << (int)d;
+        return (observedMask & target.ExitMask) == observedMask;
+    }
+
+    /// <summary>
+    /// Search the source room's cardinal neighbours for a null-name
+    /// room whose ExitMask covers the observation. If exactly one
+    /// neighbour qualifies, learn the observed name into the in-memory
+    /// graph (via <see cref="RoomGraphManager.LearnRoomName"/>) and
+    /// return the updated <see cref="Room"/> for the FSM to land on.
+    /// Multiple matches are treated as ambiguous (no learn) — defer
+    /// to the standard Suspect path.
+    /// </summary>
+    private bool TryMatchNullNameNeighbour(
+        Room source,
+        RoomObservation observation,
+        out Room? learned)
+    {
+        learned = null;
+        if (string.IsNullOrWhiteSpace(observation.Name)) return false;
+
+        Room? match = null;
+        foreach ((Direction _, RoomExit exit) in source.Exits)
+        {
+            Room? candidate = _graph.GetRoom(exit.Target);
+            if (candidate is null) continue;
+            if (!MatchesPredictedNameless(candidate, observation)) continue;
+            if (match is not null) return false;       // ambiguous — defer to Suspect
+            match = candidate;
+        }
+        if (match is null) return false;
+
+        learned = _graph.LearnRoomName(match.Key, observation.Name);
+        if (learned is null) return false;
+
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            $"Learned name '{observation.Name}' for {match.Key} (was unnamed).");
+        NameLearned?.Invoke(new NameLearnedEvent(match.Key, observation.Name));
+        return true;
+    }
+
     private void SetRoom(Room? room, RoomConfidence confidence, DateTimeOffset when, string reason)
     {
         Room? prevRoom = State.CurrentRoom;
@@ -726,3 +797,11 @@ public readonly record struct RoomTransition(
     Room? PreviousRoom,
     Room? NewRoom,
     DateTimeOffset At);
+
+/// <summary>
+/// Payload of <see cref="RoomTracker.NameLearned"/>. Carries the room
+/// the tracker just adopted by ExitMask + the verbatim observed name
+/// it learned. The main window's prompt-handler decides whether to
+/// persist the new name back to the active set's <c>Rooms.json</c>.
+/// </summary>
+public readonly record struct NameLearnedEvent(RoomKey Key, string ObservedName);

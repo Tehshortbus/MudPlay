@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="200"
+        x:Class="FujinTerm.Views.RoomNameLearnedDialog"
+        x:DataType="vm:RoomNameLearnedDialogViewModel"
+        Title="Save learned room name?"
+        Width="480" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.Value">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="TextBlock.NullValue">
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,Auto" Margin="20">
+        <TextBlock Grid.Row="0"
+                   Text="{Binding HeaderText}"
+                   FontSize="13" FontWeight="SemiBold"
+                   Margin="0,0,0,16"
+                   TextWrapping="Wrap"/>
+
+        <Grid Grid.Row="1"
+              ColumnDefinitions="160,*"
+              RowDefinitions="Auto,Auto"
+              RowSpacing="8" Margin="0,0,0,20">
+            <TextBlock Grid.Row="0" Grid.Column="0"
+                       Classes="Label" Text="{Binding SavedNameLabel}"/>
+            <TextBlock Grid.Row="0" Grid.Column="1"
+                       Classes="Value NullValue" Text="{Binding SavedNameValue}"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0"
+                       Classes="Label" Text="{Binding ObservedNameLabel}"/>
+            <TextBlock Grid.Row="1" Grid.Column="1"
+                       Classes="Value" Text="{Binding ObservedNameValue}"/>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Skip" Command="{Binding SkipCommand}"
+                    MinWidth="80"/>
+            <Button Content="Save" Command="{Binding SaveCommand}"
+                    MinWidth="80" IsDefault="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

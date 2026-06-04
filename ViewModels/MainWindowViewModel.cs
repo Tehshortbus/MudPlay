@@ -336,6 +336,12 @@ public partial class MainWindowViewModel : ObservableObject
         // Mirror RoomTracker into the status-bar location slot so the
         // bottom bar and the Navigation window's strip stay in sync.
         AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+        // Name-learned prompt: fires when the tracker adopts a name
+        // for a previously-unnamed room (typical of map-15 ganghouse
+        // rooms in 1.x exports). Modeless yes/no asks whether to write
+        // the new name back to Rooms.json; session-deduped so a single
+        // walk doesn't re-prompt the same room on every observation.
+        AppServices.Current.RoomTracker.NameLearned += OnRoomNameLearned;
         RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
@@ -711,12 +717,40 @@ public partial class MainWindowViewModel : ObservableObject
     private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
         => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
+    /// <summary>
+    /// Rooms we've already prompted about this session. Prevents
+    /// asking the same yes/no twice when the player re-enters or the
+    /// tracker re-observes the same null-name room.
+    /// </summary>
+    private readonly HashSet<Game.Map.RoomKey> _nameLearnedPrompted = new();
+
+    private void OnRoomNameLearned(Game.Map.NameLearnedEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => PromptForLearnedNameAsync(e));
+
+    private async void PromptForLearnedNameAsync(Game.Map.NameLearnedEvent e)
+    {
+        // Session-dedupe — one prompt per (RoomKey) per app run.
+        if (!_nameLearnedPrompted.Add(e.Key)) return;
+
+        var vm = new ViewModels.RoomNameLearnedDialogViewModel(e.Key, e.ObservedName);
+        bool save = await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.RoomNameLearnedDialogViewModel, bool>(vm);
+        if (!save) return;
+
+        bool ok = AppServices.Current.RoomNamePersist.Persist(e.Key, e.ObservedName);
+        if (!ok)
+        {
+            AppServices.Current.Log.Log(Services.LogSeverity.Warn, "Main",
+                $"Failed to persist learned name '{e.ObservedName}' for {e.Key}.");
+        }
+    }
+
     private void RefreshLocationSlot()
     {
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
         LocationText = room is not null
-            ? $"{room.Name}  ·  {room.Key}"
+            ? $"{room.DisplayName}  ·  {room.Key}"
             : state.Confidence switch
             {
                 Game.Map.RoomConfidence.Pending        => "Pending move…",
