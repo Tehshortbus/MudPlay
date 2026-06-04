@@ -93,6 +93,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.RoomNameLearnedDialogViewModel,
                 FujinTerm.Views.RoomNameLearnedDialog>();
 
+            // Modify Room Blacklist (Game Data menu) — staged editor
+            // over the per-BBS room blacklist.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.BlacklistEditorDialogViewModel,
+                FujinTerm.Views.BlacklistEditorDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

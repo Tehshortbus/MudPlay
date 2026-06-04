@@ -38,10 +38,49 @@ public sealed class BfsMapper
     private readonly Dictionary<(RoomKey Origin, int Radius), RoomLayout> _layoutCache = new();
     private readonly object _cacheLock = new();
 
+    /// <summary>
+    /// Set of room keys to hide from the planar layout (BBS-tier
+    /// room blacklist). Blacklisted neighbours still get an EDGE
+    /// recorded so the renderer draws a dangling stub, but they
+    /// are NOT placed in <see cref="RoomLayout.CoordToRoom"/> and
+    /// NOT enqueued — they don't take up planar coords and the BFS
+    /// doesn't traverse through them. The origin is exempt: when
+    /// the player is currently inside a blacklisted room, the
+    /// layout starts there and stays visible until they exit.
+    /// </summary>
+    /// <remarks>
+    /// Set by <see cref="ConfigureBlacklist"/> at startup from
+    /// <see cref="Services.RoomBlacklistStore"/>. The store fires
+    /// <c>Changed</c> on Add/Remove and on BBS pin — consumers
+    /// (NavigationViewModel) react by calling <see cref="InvalidateCache"/>
+    /// + rebuilding the layout.
+    /// </remarks>
+    private Func<RoomKey, bool>? _isBlacklisted;
+
     public BfsMapper(RoomGraphManager graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
         _graph = graph;
+    }
+
+    /// <summary>
+    /// Bind the blacklist predicate. Pass <c>null</c> to disable.
+    /// Cache is invalidated so the next layout build picks up the
+    /// new filter.
+    /// </summary>
+    public void ConfigureBlacklist(Func<RoomKey, bool>? isBlacklisted)
+    {
+        _isBlacklisted = isBlacklisted;
+        InvalidateCache();
+    }
+
+    /// <summary>
+    /// Drop all cached layouts — called when the blacklist
+    /// contents change so the next render sees the updated filter.
+    /// </summary>
+    public void InvalidateCache()
+    {
+        lock (_cacheLock) _layoutCache.Clear();
     }
 
     /// <summary>
@@ -238,6 +277,21 @@ public sealed class BfsMapper
                 // a different room, skip both the placement and the
                 // edge so the connector doesn't dangle.
                 if (coordToRoom.ContainsKey(target)) continue;
+
+                // Blacklist (BBS-tier): record the edge so the renderer
+                // draws a dangling stub pointing at the hidden room, but
+                // do NOT place the room in CoordToRoom and do NOT
+                // enqueue it. Blacklisted rooms don't claim planar
+                // coords (declutters dense areas) and BFS doesn't
+                // traverse through them. The origin is exempt — it
+                // was placed before this loop started.
+                if (_isBlacklisted?.Invoke(next) == true)
+                {
+                    AddEdge(edgesFromCoord, hereXY, dir);
+                    if (exit.Hint == RoomExitHint.Trap)
+                        AddEdge(trapEdgesFromCoord, hereXY, dir);
+                    continue;
+                }
 
                 AnnotateVertical(nextRoom, vertical);
                 AddEdge(edgesFromCoord, hereXY, dir);

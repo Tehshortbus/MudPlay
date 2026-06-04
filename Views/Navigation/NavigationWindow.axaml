@@ -126,6 +126,10 @@
                                   Command="{Binding ToggleContextRoomStashCommand}"/>
                         <MenuItem Header="Toggle: Auto-lair this room"
                                   Command="{Binding ToggleContextRoomAutoLairCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="Add this room to Blacklist"
+                                  Foreground="{StaticResource AccentRedBrush}"
+                                  Command="{Binding AddContextRoomToBlacklistCommand}"/>
                     </ContextMenu>
                 </controls:MapControl.ContextMenu>
             </controls:MapControl>

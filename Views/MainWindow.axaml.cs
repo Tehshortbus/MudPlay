@@ -179,5 +179,12 @@ public partial class MainWindow : Window
         };
         ToolTip.SetTip(loops, "Wired in Phase 7 (MpFileImporter)");
         GameDataMenu.Items.Add(loops);
+
+        GameDataMenu.Items.Add(new Separator());
+        GameDataMenu.Items.Add(new MenuItem
+        {
+            Header  = "Modify Blacklist…",
+            Command = vm.OpenBlacklistEditorCommand,
+        });
     }
 }

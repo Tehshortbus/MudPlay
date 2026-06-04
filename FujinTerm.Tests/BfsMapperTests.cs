@@ -411,4 +411,105 @@ public sealed class BfsMapperTests : IDisposable
         Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
         Assert.DoesNotContain(new RoomKey(1, 5), layout.Positions.Keys);
     }
+
+    // ----- blacklist hook --------------------------------------------
+
+    [Fact]
+    public void Blacklist_SkipsPlacement_KeepsDanglingStubEdge()
+    {
+        var (bfs, _) = NewMapper();
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 2) };  // Plaza
+        bfs.ConfigureBlacklist(k => banned.Contains(k));
+
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Blacklisted Plaza isn't placed and BFS doesn't traverse
+        // through it, so North Square (1/3, reachable only via 1/2)
+        // disappears too.
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
+
+        // Origin still records its N exit so the renderer can draw a
+        // dangling stub toward the hidden room.
+        Assert.True(layout.EdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? edges));
+        Assert.Contains(Direction.N, edges!);
+    }
+
+    [Fact]
+    public void Blacklist_OriginExempt_StillPlaced()
+    {
+        var (bfs, _) = NewMapper();
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 1) };  // origin itself
+        bfs.ConfigureBlacklist(k => banned.Contains(k));
+
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Origin always gets placed — otherwise the "you are here"
+        // marker has nowhere to render.
+        Assert.Contains(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.Equal((0, 0), layout.Positions[new RoomKey(1, 1)]);
+        // Its planar neighbours are still discovered.
+        Assert.Contains(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 4), layout.Positions.Keys);
+    }
+
+    [Fact]
+    public void Blacklist_TrapEdgePreserved_OnDanglingStub()
+    {
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "A",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2 (Trap)", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "B",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 2) };
+        bfs.ConfigureBlacklist(k => banned.Contains(k));
+
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Blacklisted target → not placed, but the trap classification
+        // on the source stub survives so the renderer keeps the red
+        // half-connector.
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.True(layout.TrapEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? trapDirs));
+        Assert.Contains(Direction.N, trapDirs!);
+    }
+
+    [Fact]
+    public void Blacklist_InvalidateCache_RebuildsLayoutOnNextCall()
+    {
+        var (bfs, _) = NewMapper();
+        RoomLayout before = bfs.BuildLayout(new RoomKey(1, 1));
+        Assert.Contains(new RoomKey(1, 2), before.Positions.Keys);
+
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 2) };
+        bfs.ConfigureBlacklist(k => banned.Contains(k));  // also invalidates cache
+
+        RoomLayout after = bfs.BuildLayout(new RoomKey(1, 1));
+        Assert.NotSame(before, after);
+        Assert.DoesNotContain(new RoomKey(1, 2), after.Positions.Keys);
+    }
+
+    [Fact]
+    public void Blacklist_FindPath_StillTraversesBlacklistedRoom()
+    {
+        // Important: blacklist only suppresses RENDER. Pathing must
+        // still find a route through a blacklisted room — the walker
+        // can still walk into it (it's just hidden from the map).
+        var (bfs, _) = NewMapper();
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 2) };
+        bfs.ConfigureBlacklist(k => banned.Contains(k));
+
+        var path = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3));
+
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.N, Direction.N }, path);
+    }
 }

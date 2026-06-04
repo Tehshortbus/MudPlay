@@ -33,6 +33,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnAvoidedChanged();
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        _services.RoomBlacklist.Changed   += OnBlacklistChanged;
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
         Graph = _services.RoomGraph;
@@ -55,6 +56,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
+        _services.RoomBlacklist.Changed   -= OnBlacklistChanged;
         _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
     }
 
@@ -104,6 +106,22 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void ToggleContextRoomAutoLair()
     {
         if (ContextRoomKey is { } k) _services.AutoLair.Toggle(k);
+    }
+
+    /// <summary>
+    /// Right-click → "Add this room to Blacklist". Captures the
+    /// selected room's <see cref="Room.DisplayName"/> from the
+    /// active set's Rooms.json (NOT the player's current-room name)
+    /// so the Modify-Blacklist dialog later shows a human label.
+    /// Immediate persist + map redraw (the store fires Changed
+    /// which invalidates the BFS layout cache).
+    /// </summary>
+    [RelayCommand]
+    private void AddContextRoomToBlacklist()
+    {
+        if (ContextRoomKey is not { } k) return;
+        string name = _services.RoomGraph.GetRoom(k)?.DisplayName ?? "???";
+        _services.RoomBlacklist.Add(k, name);
     }
 
     private void OnAvoidedChanged()
@@ -220,6 +238,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         List<RoomSearchResult> matches = new();
         foreach (Room room in EnumerateAllRooms(Graph))
         {
+            // BBS-tier blacklist excludes rooms from search exactly as
+            // it does from the map render — keeping search consistent
+            // with what's visible is the whole point of the feature.
+            if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
+
             // Match against Name (raw, may be empty) AND DisplayName so
             // typing "???" surfaces unnamed rooms the player wants to
             // visit and fix; named rooms still match their text.
@@ -454,14 +477,41 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // big walk). The map control re-fits visually via its own
         // FitToCurrent helper when the binding changes.
         CurrentRoomKey = state.CurrentRoom?.Key;
-        if (state.CurrentRoom is { } here && (Layout is null
-            || !Layout.Positions.ContainsKey(here.Key)))
+        if (state.CurrentRoom is { } here)
         {
-            Layout = _services.Bfs.BuildLayout(here.Key);
+            // Standard rebuild when the new room isn't in the cached
+            // layout. ALSO rebuild when the layout's origin is a
+            // blacklisted room and the new room isn't — the player
+            // just exited a blacklisted-origin layout, so the next
+            // build should re-root on the (non-blacklisted) new
+            // current room and the previously-shown blacklisted
+            // origin becomes a hidden target like any other.
+            bool exitedBlacklistedOrigin =
+                Layout is not null
+                && !here.Key.Equals(Layout.Origin)
+                && _services.RoomBlacklist.IsBlacklisted(Layout.Origin)
+                && !_services.RoomBlacklist.IsBlacklisted(here.Key);
+            if (Layout is null
+                || !Layout.Positions.ContainsKey(here.Key)
+                || exitedBlacklistedOrigin)
+            {
+                Layout = _services.Bfs.BuildLayout(here.Key);
+            }
         }
     }
 
     private void OnGraphReloaded() => RefreshLayout();
+
+    /// <summary>
+    /// Blacklist Changed → rebuild the cached layout (BFS already
+    /// flushed its cache via AppServices wiring) and the room
+    /// search results in case a search is currently typed.
+    /// </summary>
+    private void OnBlacklistChanged()
+    {
+        RefreshLayout();
+        RebuildSearchResults(SearchQuery);
+    }
 
     private void RefreshLayout()
     {

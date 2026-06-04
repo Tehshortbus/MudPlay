@@ -630,6 +630,15 @@ public sealed class AppServices
     public Game.Map.LoopManager Loops { get; private set; } = null!;
 
     /// <summary>
+    /// Per-BBS room blacklist — hides target rooms from the
+    /// Navigation map render and the search box. Consumed by
+    /// <see cref="Game.Map.BfsMapper"/> (skip placement, keep edge
+    /// for dangling stub) and the right-click "Add to blacklist"
+    /// + "Modify Blacklist…" flows.
+    /// </summary>
+    public RoomBlacklistStore RoomBlacklist { get; private set; } = null!;
+
+    /// <summary>
     /// Loop execution engine — Phase 7 PR 7.16. Shares
     /// <see cref="MovementCoordinator"/> + <see cref="RoomTracker"/>
     /// with the walker, plus <see cref="WirePromptScanner"/> for
@@ -1070,6 +1079,20 @@ public sealed class AppServices
         Profile.ProfileLoaded += p => Loops.LoadAll(p.BbsName);
         Profile.BbsPinApplied += p => Loops.LoadAll(p.BbsName);
         Profile.ProfileClosed += () => Loops.LoadAll(null);
+
+        // Per-BBS room blacklist — hides ganghouse / dead-end rooms
+        // from the map render + room search. Loaded on BBS pin so
+        // BFS picks it up via the Changed event before the first
+        // layout build for the new BBS.
+        RoomBlacklist = new RoomBlacklistStore(Log);
+        Profile.ProfileLoaded += p => RoomBlacklist.OnBbsPinApplied(p);
+        Profile.BbsPinApplied += p => RoomBlacklist.OnBbsPinApplied(p);
+        // BFS consults the blacklist to skip placement of hidden
+        // rooms (edge still recorded → dangling stub). Cache flushes
+        // on every blacklist change so the next layout build picks
+        // up the new filter.
+        Bfs.ConfigureBlacklist(RoomBlacklist.IsBlacklisted);
+        RoomBlacklist.Changed += () => Bfs.InvalidateCache();
 
         // Phase 7 PR 7.16 — loop execution engine. MainWindowViewModel
         // binds the wire-sender once telnet is up (same pattern as

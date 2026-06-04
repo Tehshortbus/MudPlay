@@ -2085,6 +2085,20 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand] private void OpenGameDataAliases()  => ShowGameDataBrowser("aliases");
 
     /// <summary>
+    /// Game Data menu → "Modify Blacklist…". Staged editor over the
+    /// per-BBS room blacklist. Save commits + redraws the map;
+    /// Cancel discards.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenBlacklistEditorAsync()
+    {
+        var svc = AppServices.Current;
+        ViewModels.BlacklistEditorDialogViewModel vm = new(svc.RoomBlacklist, svc.RoomGraph);
+        await svc.Dialogs.OpenWindowAsync<
+            ViewModels.BlacklistEditorDialogViewModel, bool>(vm);
+    }
+
+    /// <summary>
     /// Open the Game Data Browser, optionally pre-selected to a named
     /// section. Toggles per the standard window-command rule
     /// (CLAUDE.md): when the browser is already open re-press behavior

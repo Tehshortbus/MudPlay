@@ -315,6 +315,15 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "players.json");
 
     /// <summary>
+    /// Per-BBS map-room blacklist file. Entries hide their target
+    /// rooms from the navigation map render and the search box —
+    /// typical use is hiding ganghouse / sysop-only rooms behind
+    /// dead-end doors that clutter the layout.
+    /// </summary>
+    public static string BbsRoomBlacklistFile(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "room_blacklist.json");
+
+    /// <summary>
     /// Folder holding all files for one character — primary profile
     /// JSON plus per-set override side-files and any future
     /// per-character helper files (macros, triggers, equipment sets,
