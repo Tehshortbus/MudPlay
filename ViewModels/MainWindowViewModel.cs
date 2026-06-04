@@ -383,6 +383,13 @@ public partial class MainWindowViewModel : ObservableObject
         // the new name back to Rooms.json; session-deduped so a single
         // walk doesn't re-prompt the same room on every observation.
         AppServices.Current.RoomTracker.NameLearned += OnRoomNameLearned;
+
+        // Ambiguity picker: fires when an observation matches 2+ rooms
+        // in the graph and the FSM can't choose. The dedupe key is the
+        // (name, exit-mask) pair; cleared when the tracker lands a fresh
+        // Confirmed transition so the next ambiguous moment re-prompts.
+        AppServices.Current.RoomTracker.AmbiguityDetected += OnAmbiguityDetected;
+        AppServices.Current.RoomTracker.StateChanged     += OnTrackerStateForAmbiguityReset;
         RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
@@ -785,6 +792,83 @@ public partial class MainWindowViewModel : ObservableObject
         {
             AppServices.Current.Log.Log(Services.LogSeverity.Warn, "Main",
                 $"Failed to persist learned name '{e.ObservedName}' for {e.Key}.");
+        }
+    }
+
+    // ----- ambiguity picker ------------------------------------------
+
+    /// <summary>
+    /// (name, exit-mask) tuples the user has actively dismissed via
+    /// "I'll set it myself". Cleared on every fresh
+    /// <see cref="Game.Map.RoomConfidence.Confirmed"/> transition — once
+    /// we know where we are again, a future re-encounter of the same
+    /// ambiguous observation should re-prompt.
+    /// </summary>
+    private readonly HashSet<(string Name, uint Mask)> _dismissedAmbiguities = new();
+
+    /// <summary>
+    /// Currently-open dialog instance, tracked so a fresh ambiguity
+    /// event closes the stale picker before opening a new one. Null
+    /// when nothing is open.
+    /// </summary>
+    private ViewModels.Navigation.AmbiguousLocationDialogViewModel? _openAmbiguityVm;
+
+    private void OnAmbiguityDetected(Game.Map.AmbiguityDetectedEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => PromptForAmbiguityAsync(e));
+
+    private async void PromptForAmbiguityAsync(Game.Map.AmbiguityDetectedEvent e)
+    {
+        uint mask = 0;
+        foreach (Game.Map.Direction d in e.ObservedExits) mask |= 1u << (int)d;
+        var dedupeKey = (e.ObservedName, mask);
+
+        // User already chose "I'll set it myself" for this exact
+        // observation tuple — stay out of their way until they land
+        // somewhere known.
+        if (_dismissedAmbiguities.Contains(dedupeKey)) return;
+
+        // A fresh round of ambiguity supersedes any open picker —
+        // close the old one (its candidates may now be stale).
+        _openAmbiguityVm?.RequestCloseAsDeferred();
+
+        Game.Map.RoomGraphManager graph = AppServices.Current.RoomGraph;
+        var rows = new List<ViewModels.Navigation.AmbiguousCandidate>(e.Candidates.Count);
+        foreach (Game.Map.RoomKey candidateKey in e.Candidates)
+        {
+            Game.Map.Room? r = graph.GetRoom(candidateKey);
+            rows.Add(new ViewModels.Navigation.AmbiguousCandidate(
+                candidateKey, r?.Name ?? string.Empty, AreaHint: null));
+        }
+
+        var exits = new List<Game.Map.Direction>(e.ObservedExits);
+        var vm = new ViewModels.Navigation.AmbiguousLocationDialogViewModel(
+            e.ObservedName, exits, rows);
+        _openAmbiguityVm = vm;
+
+        Game.Map.RoomKey? picked = await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.Navigation.AmbiguousLocationDialogViewModel, Game.Map.RoomKey?>(vm);
+
+        if (ReferenceEquals(_openAmbiguityVm, vm)) _openAmbiguityVm = null;
+
+        if (picked is { } key)
+        {
+            AppServices.Current.RoomTracker.SetLocated(key);
+        }
+        else
+        {
+            // Deferred — remember this exact (name, mask) so we don't
+            // re-prompt until the next Confirmed transition clears the
+            // suppression set.
+            _dismissedAmbiguities.Add(dedupeKey);
+        }
+    }
+
+    private void OnTrackerStateForAmbiguityReset(Game.Map.RoomTransition t)
+    {
+        if (t.NewConfidence == Game.Map.RoomConfidence.Confirmed
+            && _dismissedAmbiguities.Count > 0)
+        {
+            _dismissedAmbiguities.Clear();
         }
     }
 

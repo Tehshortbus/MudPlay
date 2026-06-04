@@ -105,6 +105,18 @@ public sealed class RoomTracker
     /// </summary>
     public event Action<NameLearnedEvent>? NameLearned;
 
+    /// <summary>
+    /// Fired when an observation matches more than one room in the
+    /// active graph and the FSM can't pick one on its own. The tracker
+    /// still transitions (to <see cref="RoomConfidence.Suspect"/> or
+    /// stays where it is); this event is informational so the UI can
+    /// surface the candidate list to the user. Subscribers — the main
+    /// window — open the modeless
+    /// <c>AmbiguousLocationDialog</c>; the user's Pick choice comes back
+    /// through <see cref="SetLocated(RoomKey, DateTimeOffset?)"/>.
+    /// </summary>
+    public event Action<AmbiguityDetectedEvent>? AmbiguityDetected;
+
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
 
     public RoomTracker(RoomGraphManager graph, LogService? log)
@@ -443,6 +455,7 @@ public sealed class RoomTracker
         }
 
         EnterSuspect(when, $"observation mismatched from Confirmed; candidates={candidates.Count}");
+        if (candidates.Count >= 2) RaiseAmbiguity(observation, candidates);
     }
 
     private void ReconcileFromPending(RoomObservation observation, DateTimeOffset when)
@@ -531,6 +544,7 @@ public sealed class RoomTracker
         }
 
         EnterSuspect(when, $"Pending observation didn't match queue head; candidates={candidates.Count}");
+        if (candidates.Count >= 2) RaiseAmbiguity(observation, candidates);
     }
 
     private void ReconcileFromSuspect(RoomObservation observation, DateTimeOffset when)
@@ -561,10 +575,12 @@ public sealed class RoomTracker
             if (TryReplayRecover(observation, when)) return;
             SetRoom(room: null, RoomConfidence.Lost, when,
                 $"suspect strike limit ({SuspectStrikeLimit}) reached; replay failed");
+            if (candidates.Count >= 2) RaiseAmbiguity(observation, candidates);
             return;
         }
 
         EnterSuspect(when, $"suspect mismatch continues; candidates={candidates.Count}");
+        if (candidates.Count >= 2) RaiseAmbiguity(observation, candidates);
     }
 
     private void LandFromCandidateSearch(RoomObservation observation, DateTimeOffset when)
@@ -596,6 +612,7 @@ public sealed class RoomTracker
                 // or trip Lost on its own merits.
                 SetRoom(room: null, RoomConfidence.Suspect, when,
                     $"{candidates.Count} candidates (ambiguous)");
+                RaiseAmbiguity(observation, candidates);
                 break;
         }
     }
@@ -648,6 +665,17 @@ public sealed class RoomTracker
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"Suspect strike {strikes}/{SuspectStrikeLimit}: {reason}.");
         RaiseStateChanged(prev, RoomConfidence.Suspect, prevRoom, prevRoom);
+    }
+
+    /// <summary>
+    /// Surface a ≥2-candidate observation to subscribers so the UI can
+    /// offer a manual picker. The tracker has already transitioned (the
+    /// caller chose Suspect / Lost / etc.); this is informational only.
+    /// </summary>
+    private void RaiseAmbiguity(RoomObservation observation, IReadOnlyList<RoomKey> candidates)
+    {
+        AmbiguityDetected?.Invoke(
+            new AmbiguityDetectedEvent(observation.Name, observation.Exits, candidates));
     }
 
     /// <summary>
@@ -859,3 +887,15 @@ public readonly record struct RoomTransition(
 /// persist the new name back to the active set's <c>Rooms.json</c>.
 /// </summary>
 public readonly record struct NameLearnedEvent(RoomKey Key, string ObservedName);
+
+/// <summary>
+/// Payload of <see cref="RoomTracker.AmbiguityDetected"/>. Carries the
+/// observed name + exit set the tracker just couldn't disambiguate, plus
+/// the matching candidate rooms from the active graph. The list is
+/// always at least two entries — single-candidate matches don't fire
+/// this event because the tracker lands Confirmed on its own.
+/// </summary>
+public readonly record struct AmbiguityDetectedEvent(
+    string ObservedName,
+    IReadOnlySet<Direction> ObservedExits,
+    IReadOnlyList<RoomKey> Candidates);

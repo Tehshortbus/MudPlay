@@ -87,6 +87,15 @@ public sealed partial class AmbiguousLocationDialogViewModel : ObservableObject,
     [RelayCommand]
     private void Defer() => CloseRequested?.Invoke(null);
 
+    /// <summary>
+    /// Programmatic close-as-deferred. Used by the host (the main
+    /// window's ambiguity handler) to supersede a stale open picker
+    /// when a fresh ambiguity event arrives with a new candidate set.
+    /// Same wire semantics as the Defer button — the caller routes
+    /// the <c>null</c> result back through its own state.
+    /// </summary>
+    public void RequestCloseAsDeferred() => CloseRequested?.Invoke(null);
+
     private static string FormatExits(IReadOnlyList<Direction> exits)
     {
         if (exits.Count == 0) return "(none)";
