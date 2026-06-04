@@ -99,6 +99,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.BlacklistEditorDialogViewModel,
                 FujinTerm.Views.BlacklistEditorDialog>();
 
+            // Right-click → "Center on…" — two-int (map / room) input
+            // that returns a RoomKey for the Navigation window to
+            // rebuild its layout around.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.ManualCenterDialogViewModel,
+                FujinTerm.Views.ManualCenterDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

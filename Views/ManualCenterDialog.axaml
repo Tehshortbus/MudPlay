@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="190"
+        x:Class="FujinTerm.Views.ManualCenterDialog"
+        x:DataType="vm:ManualCenterDialogViewModel"
+        Title="Center map on…"
+        Width="360" Height="190"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+            <TextBlock Grid.Row="0"
+                       Text="Enter map and room number to center the navigation map on."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"/>
+
+            <Grid Grid.Row="1" ColumnDefinitions="60,80,60,*" ColumnSpacing="6">
+                <TextBlock Grid.Column="0" Text="Map"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <TextBox   Grid.Column="1"
+                           Name="MapBox"
+                           Text="{Binding MapInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           PlaceholderText="#"/>
+                <TextBlock Grid.Column="2" Text="Room"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" Margin="0,0,6,0"/>
+                <TextBox   Grid.Column="3"
+                           Text="{Binding RoomInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           PlaceholderText="#"/>
+            </Grid>
+
+            <TextBlock Grid.Row="2"
+                       Text="{Binding NamePreview}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextTrimming="CharacterEllipsis"/>
+
+            <TextBlock Grid.Row="3"
+                       Text="{Binding ErrorMessage}"
+                       Foreground="#FFE06D6D" FontSize="11"
+                       IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap"/>
+
+            <StackPanel Grid.Row="5" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Center" Command="{Binding CommitCommand}"
+                        IsEnabled="{Binding CanCommit}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

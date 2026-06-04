@@ -120,6 +120,11 @@
                         <MenuItem Header="I am here (set located)"
                                   Command="{Binding SetContextRoomLocatedCommand}"/>
                         <Separator/>
+                        <MenuItem Header="Center on Player"
+                                  Command="{Binding CenterOnPlayerCommand}"/>
+                        <MenuItem Header="Center on…"
+                                  Command="{Binding CenterOnSpecificCommand}"/>
+                        <Separator/>
                         <MenuItem Header="Toggle: Avoid this room"
                                   Command="{Binding ToggleContextRoomAvoidedCommand}"/>
                         <MenuItem Header="Toggle: Stash room"

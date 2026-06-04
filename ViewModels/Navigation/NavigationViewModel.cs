@@ -356,6 +356,37 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ContextIsStash));
     }
 
+    /// <summary>
+    /// Window listens and forwards to <c>MapControl.RecenterOnPlayer()</c>.
+    /// The VM can't call the control directly so we route through this
+    /// event — same pattern the right-click menu uses for other map-
+    /// only operations.
+    /// </summary>
+    public event Action? CenterOnPlayerRequested;
+
+    /// <summary>
+    /// Right-click → "Center on Player". Re-centres the map on the live
+    /// current room and clears the 10 s browse-suppression window so
+    /// subsequent live moves resume auto-centring. Same as the Home key.
+    /// </summary>
+    [RelayCommand]
+    private void CenterOnPlayer() => CenterOnPlayerRequested?.Invoke();
+
+    /// <summary>
+    /// Right-click → "Center on…". Opens the two-int (map / room) input
+    /// dialog; on commit, routes through <see cref="OnFloorChangeRequested"/>
+    /// so the BFS layout rebuilds from the chosen room and the map
+    /// centres on it. Cancel / X dismisses without changing the view.
+    /// </summary>
+    [RelayCommand]
+    private async Task CenterOnSpecificAsync()
+    {
+        ManualCenterDialogViewModel vm = new(_services.RoomGraph);
+        RoomKey? result = await _services.Dialogs
+            .OpenWindowAsync<ManualCenterDialogViewModel, RoomKey?>(vm);
+        if (result is { } k) OnFloorChangeRequested(k);
+    }
+
     // ----- Mode bar -------------------------------------------------
     //
     // PR 7.10 ships the visual toggles; the click handlers route

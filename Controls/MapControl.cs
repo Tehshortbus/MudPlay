@@ -648,6 +648,24 @@ public sealed class MapControl : Control
         CenterOnRoom(origin);
     }
 
+    /// <summary>
+    /// Explicit "show me where I am right now" — clears the browse-
+    /// suppression window (so live moves resume centring), moves the
+    /// crawler selection to the live current room, and centres on it.
+    /// Same body as the Home key handler; exposed publicly so the
+    /// right-click context menu "Center on Player" item can fire it
+    /// from the VM via the window code-behind.
+    /// </summary>
+    public void RecenterOnPlayer()
+    {
+        _autoFollowSuppressedUntil = DateTime.MinValue;
+        if (CurrentRoomKey is { } cur)
+        {
+            SelectedRoomKey = cur;
+            CenterOnRoom(cur);
+        }
+    }
+
     // ----- render ----------------------------------------------------
 
     public override void Render(DrawingContext context)

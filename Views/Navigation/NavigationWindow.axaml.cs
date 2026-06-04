@@ -42,6 +42,24 @@ public partial class NavigationWindow : Window
         // the map first before navigation works.
         Opened    += (_, _) => FocusMap();
         Activated += (_, _) => FocusMap();
+
+        // Right-click → "Center on Player" routes through a VM event so
+        // the command can sit on the VM (where the rest of the context-
+        // menu commands live) while the actual centring + suppression
+        // clear lives on the MapControl. DataContextChanged is the only
+        // safe time to subscribe — DataContext is set externally after
+        // the ctor by DialogService / App.OnFrameworkInitialization.
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is NavigationViewModel vm)
+                vm.CenterOnPlayerRequested += OnCenterOnPlayerRequested;
+        };
+    }
+
+    private void OnCenterOnPlayerRequested()
+    {
+        if (this.FindControl<MapControl>("MapHost") is { } map)
+            map.RecenterOnPlayer();
     }
 
     private void FocusMap()
