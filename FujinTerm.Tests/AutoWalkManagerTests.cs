@@ -357,6 +357,114 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Resume_AfterPipelinedAdvanceDuringPause_AdvancesIndex_SendsNextStep()
+    {
+        // Live bug: user pauses mid-walk, server's response to the in-
+        // flight step lands during the pause, OnTrackerStateChanged
+        // bails because State != Walking, so _index doesn't advance.
+        // On resume the walker re-sent _path[_index] — the SAME
+        // direction the player just executed — and the player drifted
+        // one or more rooms past the path's planned route.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));      // 2-step path: N, N
+        Assert.Single(h.Sent);                   // step 1 sent
+
+        h.Coordinator.AssertGate("user");        // pause mid-step
+
+        // Pipelined response to step 1 lands during pause — tracker
+        // confirms B (1/2) but walker's OnTrackerStateChanged bails.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        Assert.Single(h.Sent);                   // still just step 1
+
+        h.Coordinator.ClearGate("user");         // resume
+
+        // Reconciliation: tracker is at 1/2 which matches _path[0]'s
+        // ExpectedTarget → _index advances to 1, walker sends step 2.
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("n\r", System.Text.Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
+    [Fact]
+    public void Resume_PlayerStillAtSourceRoom_SendsCurrentStep_NoReplan()
+    {
+        // Pause + resume with no room arrival in between — walker
+        // should just re-send the in-flight step (the player hasn't
+        // moved). This is the trivial case the prior code already
+        // handled; pin it down so the reconciliation rewrite doesn't
+        // regress it.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        Assert.Single(h.Sent);
+
+        h.Coordinator.AssertGate("user");
+        h.Coordinator.ClearGate("user");
+
+        // Resume re-sends the step (walker doesn't know whether the
+        // already-sent bytes will land, so a clean re-send is correct).
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("n\r", System.Text.Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
+    public void Resume_PlayerAtOffPathRoom_TriggersReplan()
+    {
+        // User pauses, types a manual movement that takes them off
+        // the planned path, resumes. The reconciliation can't find
+        // the current room in _path[_index..] AND it doesn't match
+        // _path[_index-1]'s target either → re-plan.
+        //
+        // Fixture: 1/1 has an extra W exit to a sibling that's not
+        // on the path to 1/3. Walker plans 1/1→N→1/2→N→1/3, hits
+        // pause after step 1 sent, player jumps to a sibling 1/4
+        // during pause via manual W.
+        const string SideExitJson = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "A",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "0", "W": "1/4",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "B",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/3", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "C",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/2", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 4, "Name": "Sidetrack",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "1/1", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        Harness h = NewHarness(SideExitJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));      // path: 1/1 → N → 1/2 → N → 1/3
+        Assert.Single(h.Sent);
+
+        h.Coordinator.AssertGate("user");
+
+        // Manual W during pause → tracker at 1/4 (Sidetrack), which is
+        // not anywhere on the remaining path.
+        h.Tracker.NoteMoveSent(Direction.W);
+        h.Tracker.NoteRoomObserved(new RoomObservation("Sidetrack",
+            new HashSet<Direction> { Direction.E }));
+
+        h.Coordinator.ClearGate("user");
+
+        // Off-path → re-plan emitted as Retrying. WalkTo (re-plan)
+        // restarts from 1/4, finds a new path: E (back to 1/1), N, N.
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Retrying
+                 && e.Detail.Contains("re-planning"));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
+    [Fact]
     public void WalkTo_WhileCoordinatorPaused_StartsInPausedState()
     {
         Harness h = NewHarness();

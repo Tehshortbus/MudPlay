@@ -830,8 +830,78 @@ public sealed class AutoWalkManager
             Raise(new WalkEvent(WalkEventKind.Resumed, "coordinator resumed", _destination));
             _stepInFlight = false;
             _awaitingPromptForCommand = false;
-            SendNextStep();
+
+            // While paused, OnTrackerStateChanged bailed on every room
+            // arrival (it gates on State == Walking), so _index didn't
+            // advance even though pipelined server responses may have
+            // landed the player one or more rooms further along. Fast-
+            // forward _index past any MoveStep whose ExpectedTarget the
+            // player has already reached; if the player is somewhere
+            // unrelated to the remaining path, re-plan instead of re-
+            // sending a stale step that would overshoot. Live bug:
+            // pause mid-walk → 2 pipelined moves resolve → resume → old
+            // SendNextStep re-sent the just-completed step's direction
+            // and the walker drifted off the path it had drawn.
+            if (!TryReconcileIndexAfterResume())
+            {
+                TryReplanOrFail(RoomConfidence.Suspect);
+                return;
+            }
+
+            // Reconciliation may have completed the walk; only fire
+            // the next step if we're still walking.
+            if (State == WalkState.Walking) SendNextStep();
         }
+    }
+
+    /// <summary>
+    /// Reconcile <c>_index</c> with the tracker's current room after a
+    /// pause. Returns true when the walker can resume safely from its
+    /// new index (whether or not the index moved). Returns false when
+    /// the player ended up at a room that isn't on the remaining path
+    /// AND can't legally take the next planned step — the caller should
+    /// re-plan rather than blindly re-sending a stale step direction.
+    /// </summary>
+    private bool TryReconcileIndexAfterResume()
+    {
+        if (_path is null) return true;
+        if (_tracker.State.CurrentRoom is not { } here) return true;
+        RoomKey hereKey = here.Key;
+
+        // Did the player reach one or more upcoming MoveStep targets
+        // during the pause? Walk forward looking for the first match —
+        // that's where they landed. (If the path revisits the same room
+        // later, we conservatively assume the earliest matching step;
+        // a manual long-traverse would surface as off-path further down.)
+        for (int i = _index; i < _path.Count; i++)
+        {
+            if (_path[i] is MoveStep move && move.ExpectedTarget.Equals(hereKey))
+            {
+                _index = i + 1;
+                _expectedAfterCurrentMove = null;
+                Raise(new WalkEvent(WalkEventKind.StepCompleted,
+                    $"{_index}/{_path.Count} (resume reconciliation)", _destination));
+                if (_index >= _path.Count)
+                {
+                    RoomKey? dest = _destination;
+                    Reset();
+                    Raise(new WalkEvent(WalkEventKind.Finished,
+                        "destination reached during pause", dest));
+                }
+                return true;
+            }
+        }
+
+        // No forward match. If the next planned step's direction
+        // doesn't even exist as an exit from the player's current room,
+        // they're off the path — re-plan. The "exit exists" check is a
+        // cheap proxy for "the planned route still works from here";
+        // imperfect cases (exit exists but leads somewhere unrelated)
+        // fall through to the normal mid-step desync handling in
+        // OnTrackerStateChanged after the next send.
+        if (_index >= _path.Count) return true;
+        if (_path[_index] is not MoveStep nextMove) return true;
+        return here.Exits.ContainsKey(nextMove.Direction);
     }
 
     private void Reset()
