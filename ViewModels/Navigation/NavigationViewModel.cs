@@ -253,50 +253,201 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     partial void OnSearchQueryChanged(string value) => RebuildSearchResults(value);
 
+    /// <summary>
+    /// Substring search expands across three input dialects:
+    /// <list type="number">
+    /// <item>Coordinate input — <c>"1/123"</c>, <c>"1,123"</c>, or
+    /// <c>"1 123"</c> resolves to a specific (map, room); a bare
+    /// number lists every room with that room number across all maps.</item>
+    /// <item>Room name — substring against <see cref="Room.Name"/> /
+    /// <see cref="Room.DisplayName"/>.</item>
+    /// <item>Monster name — substring against any monster in
+    /// <c>Monsters.json</c> whose <c>RegenTime</c> > 0. For each match,
+    /// emit one row per lair-room that hosts the monster, with the
+    /// monster name (+ regen window) as the row's primary line.</item>
+    /// </list>
+    /// </summary>
     private void RebuildSearchResults(string query)
     {
         SearchResults.Clear();
         if (Graph is null) { OnPropertyChanged(nameof(HasSearchResults)); return; }
 
         string needle = query?.Trim() ?? string.Empty;
-        if (needle.Length < 2) { OnPropertyChanged(nameof(HasSearchResults)); return; }
+        if (needle.Length < 1) { OnPropertyChanged(nameof(HasSearchResults)); return; }
 
-        // FindByName is exact-match; we want substring. Scan the live
-        // graph instead. (The graph is one realm — typically <2000
-        // rooms — so the per-keystroke scan is cheap.)
         RoomKey? sourceKey = CurrentRoomKey;
         List<RoomSearchResult> matches = new();
-        foreach (Room room in EnumerateAllRooms(Graph))
-        {
-            // BBS-tier blacklist excludes rooms from search exactly as
-            // it does from the map render — keeping search consistent
-            // with what's visible is the whole point of the feature.
-            if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
 
-            // Match against Name (raw, may be empty) AND DisplayName so
-            // typing "???" surfaces unnamed rooms the player wants to
-            // visit and fix; named rooms still match their text.
-            if (room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
-             || room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
+        // ----- Coordinate input -----
+        // "1/123" / "1,123" / "1 123" → exact (map, room) lookup.
+        // Bare "123" → every room with Room == 123 across all maps.
+        (int? mapPart, int? roomPart) = TryParseCoordinate(needle);
+        if (mapPart is int m && roomPart is int r)
+        {
+            if (Graph.GetRoom(new RoomKey(m, r)) is { } exact
+                && !_services.RoomBlacklist.IsBlacklisted(exact.Key))
             {
-                int? steps = sourceKey is { } src
-                    ? _services.Bfs.DistanceBetween(src, room.Key, _services.Movement)
-                    : null;
-                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, steps));
-                if (matches.Count >= 200) break;     // cap before sort
+                matches.Add(BuildRoomMatch(exact, sourceKey));
             }
         }
-        foreach (RoomSearchResult m in matches
-                     .OrderBy(m => m.StepsFromCurrent ?? int.MaxValue)
-                     .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+        else if (mapPart is null && roomPart is int onlyRoom)
+        {
+            foreach (Room room in Graph.Rooms)
+            {
+                if (room.Key.Room != onlyRoom) continue;
+                if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
+                matches.Add(BuildRoomMatch(room, sourceKey));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        // ----- Room-name substring (skip if needle < 2 chars to avoid
+        //       O(rooms) noise on a single character). -----
+        if (needle.Length >= 2)
+        {
+            foreach (Room room in Graph.Rooms)
+            {
+                if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
+                if (!room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                 && !room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                // Don't double-list if the coordinate branch already
+                // surfaced this exact room.
+                if (matches.Any(x => x.MonsterTag is null && x.Key.Equals(room.Key))) continue;
+                matches.Add(BuildRoomMatch(room, sourceKey));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        // ----- Monster-name substring (regen > 0 only). -----
+        if (needle.Length >= 2)
+        {
+            foreach ((int monsterId, string name, int regenHours)
+                     in EnumerateRegenMonsters())
+            {
+                if (matches.Count >= 200) break;
+                if (!name.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!RoomsByMonsterId().TryGetValue(monsterId, out List<RoomKey>? lairs)) continue;
+                string monsterTag = $"{name} · regen {regenHours}h";
+                foreach (RoomKey lk in lairs)
+                {
+                    if (_services.RoomBlacklist.IsBlacklisted(lk)) continue;
+                    if (Graph.GetRoom(lk) is not { } lroom) continue;
+                    int? steps = sourceKey is { } src
+                        ? _services.Bfs.DistanceBetween(src, lroom.Key, _services.Movement)
+                        : null;
+                    matches.Add(new RoomSearchResult(lroom.Key, lroom.DisplayName, steps, monsterTag));
+                    if (matches.Count >= 200) break;
+                }
+            }
+        }
+
+        foreach (RoomSearchResult mm in matches
+                     // Monster matches sit alongside room matches; sort
+                     // both by step distance (closer-first) then by the
+                     // primary line for a stable read.
+                     .OrderBy(mm => mm.StepsFromCurrent ?? int.MaxValue)
+                     .ThenBy(mm => mm.PrimaryLine, StringComparer.OrdinalIgnoreCase)
                      .Take(50))
         {
-            SearchResults.Add(m);
+            SearchResults.Add(mm);
         }
         OnPropertyChanged(nameof(HasSearchResults));
     }
 
-    private static IEnumerable<Room> EnumerateAllRooms(RoomGraphManager graph) => graph.Rooms;
+    private RoomSearchResult BuildRoomMatch(Room room, RoomKey? sourceKey)
+    {
+        int? steps = sourceKey is { } src
+            ? _services.Bfs.DistanceBetween(src, room.Key, _services.Movement)
+            : null;
+        return new RoomSearchResult(room.Key, room.DisplayName, steps);
+    }
+
+    /// <summary>
+    /// Parse a coordinate token. Returns <c>(map, room)</c> when both
+    /// numbers were supplied, <c>(null, room)</c> for a bare single
+    /// number, or <c>(null, null)</c> for non-numeric input.
+    /// </summary>
+    private static (int? Map, int? Room) TryParseCoordinate(string needle)
+    {
+        // Strip surrounding parens / dash so "(1/123) - X" or "1/123" both
+        // parse cleanly when the user types the canonical room format.
+        string s = needle.Trim().TrimStart('(').TrimEnd(')').Trim();
+        int dashIdx = s.IndexOf('-');
+        if (dashIdx > 0) s = s[..dashIdx].Trim();
+
+        string[] parts = s.Split(new[] { ' ', ',', '/' },
+            2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out int m) && m > 0
+            && int.TryParse(parts[1], out int r) && r > 0)
+            return (m, r);
+
+        if (parts.Length == 1
+            && int.TryParse(parts[0], out int n) && n > 0)
+            return (null, n);
+
+        return (null, null);
+    }
+
+    // ----- Monster-regen index --------------------------------------
+
+    private List<(int Id, string Name, int RegenHours)>? _regenMonsterCache;
+    private Dictionary<int, List<RoomKey>>? _roomsByMonsterIdCache;
+
+    private IEnumerable<(int Id, string Name, int RegenHours)> EnumerateRegenMonsters()
+    {
+        if (_regenMonsterCache is not null) return _regenMonsterCache;
+
+        List<(int, string, int)> list = new();
+        System.Text.Json.JsonDocument? doc = _services.GameData.GetRawTable("Monsters");
+        if (doc is null) { _regenMonsterCache = list; return list; }
+
+        foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("RegenTime", out System.Text.Json.JsonElement regenEl)) continue;
+            if (regenEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (!regenEl.TryGetInt32(out int regen) || regen <= 0) continue;
+            if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)
+                || numEl.ValueKind != System.Text.Json.JsonValueKind.Number
+                || !numEl.TryGetInt32(out int id)) continue;
+            if (!row.TryGetProperty("Name", out System.Text.Json.JsonElement nameEl)
+                || nameEl.ValueKind != System.Text.Json.JsonValueKind.String) continue;
+            string? name = nameEl.GetString();
+            if (string.IsNullOrEmpty(name)) continue;
+            list.Add((id, name, regen));
+        }
+        _regenMonsterCache = list;
+        return list;
+    }
+
+    private Dictionary<int, List<RoomKey>> RoomsByMonsterId()
+    {
+        if (_roomsByMonsterIdCache is not null) return _roomsByMonsterIdCache;
+        Dictionary<int, List<RoomKey>> map = new();
+        if (Graph is null) { _roomsByMonsterIdCache = map; return map; }
+
+        foreach (Room room in Graph.Rooms)
+        {
+            if (string.IsNullOrEmpty(room.RawLairTag)) continue;
+            RoomTooltipBuilder.ParseLairTag(room.RawLairTag, out _, out IReadOnlyList<int> ids);
+            foreach (int id in ids)
+            {
+                if (!map.TryGetValue(id, out List<RoomKey>? rooms))
+                    map[id] = rooms = new List<RoomKey>();
+                rooms.Add(room.Key);
+            }
+        }
+        _roomsByMonsterIdCache = map;
+        return map;
+    }
+
+    private void InvalidateMonsterSearchCaches()
+    {
+        _regenMonsterCache = null;
+        _roomsByMonsterIdCache = null;
+    }
 
     [RelayCommand]
     private void SelectSearchResult(RoomSearchResult? result)
@@ -576,7 +727,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnGraphReloaded() => RefreshLayout();
+    private void OnGraphReloaded()
+    {
+        InvalidateMonsterSearchCaches();
+        RefreshLayout();
+    }
 
     /// <summary>
     /// Blacklist Changed → rebuild the cached layout (BFS already

@@ -315,17 +315,15 @@
                                     PointerPressed="OnSearchResultClicked"
                                     Background="Transparent">
                                 <StackPanel>
-                                    <TextBlock FontSize="11"
-                                               Foreground="{StaticResource ChromeFgBrush}">
-                                        <Run Text="{Binding Key.Map}"/>
-                                        <Run Text="/"/>
-                                        <Run Text="{Binding Key.Room}"/>
-                                        <Run Text=" — "/>
-                                        <Run Text="{Binding DisplayName}"/>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding DisplayLocation}"
+                                    <TextBlock Text="{Binding PrimaryLine}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SecondaryLine}"
                                                FontSize="10"
-                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
