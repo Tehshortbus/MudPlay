@@ -33,6 +33,21 @@ public partial class NavigationWindow : Window
             map.RoomHovered            += OnMapRoomHovered;
             map.FloorChangeRequested   += OnMapFloorChangeRequested;
         }
+
+        // Keyboard focus → the map by default so numpad / arrow keys
+        // drive the crawler immediately when the window comes to the
+        // foreground. Without this, keys silently route to whichever
+        // control happened to grab focus last (often the right-rail
+        // search box or nothing at all), and the user has to click
+        // the map first before navigation works.
+        Opened    += (_, _) => FocusMap();
+        Activated += (_, _) => FocusMap();
+    }
+
+    private void FocusMap()
+    {
+        if (this.FindControl<MapControl>("MapHost") is { } map)
+            map.Focus();
     }
 
     private void OnMapFloorChangeRequested(Game.Map.RoomKey newOrigin)
