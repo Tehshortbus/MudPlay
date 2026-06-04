@@ -88,6 +88,62 @@
             <Setter Property="Margin" Value="0,8,0,4"/>
         </Style>
 
+        <!-- Compact right-rail Expander — slimmer header, no chrome
+             box, chevron on the right. -->
+        <Style Selector="Expander.RailSection">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+        <Style Selector="Expander.RailSection /template/ ToggleButton#PART_toggle">
+            <Setter Property="Padding" Value="0,2"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Expander.RailSection /template/ Border#ToggleButtonBackground">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- Engine-state badge in the top bar — Idle grey, Walking +
+             Looping green, Auto-Lair orange. -->
+        <Style Selector="Border.StatusBadge">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.StatusBadge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.WalkingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.WalkingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LoopingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LoopingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LairState">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LairState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+
         <!-- CURRENT NAV step row dynamic styling -->
         <Style Selector="Border.NavRow">
             <Setter Property="Padding" Value="8,3"/>
@@ -127,17 +183,13 @@
                            FontSize="12" FontWeight="SemiBold"
                            VerticalAlignment="Center"
                            Margin="0,0,10,0"/>
-                <!-- Status badge (LOCATED / WALKING / LOOPING / AUTO-LAIR) -->
+                <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR -->
                 <Border Grid.Column="1"
-                        CornerRadius="3"
-                        Padding="6,1"
-                        Margin="0,0,8,0"
-                        VerticalAlignment="Center"
-                        BorderBrush="{StaticResource ChromeBorderBrush}"
-                        BorderThickness="1">
-                    <TextBlock Text="{Binding TopBarStatusBadge}"
-                               FontSize="10" FontWeight="SemiBold"
-                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                        Classes="StatusBadge"
+                        Classes.WalkingState="{Binding EngineActionIsWalking}"
+                        Classes.LoopingState="{Binding EngineActionIsLooping}"
+                        Classes.LairState="{Binding EngineActionIsLair}">
+                    <TextBlock Text="{Binding TopBarStatusBadge}"/>
                 </Border>
                 <TextBlock Grid.Column="2"
                            Text="{Binding TopBarStatusText}"
@@ -172,22 +224,31 @@
                             Classes.LegendFill="{Binding LegendVisible}"/>
                 </StackPanel>
 
-                <!-- Queued destination chip (centre) -->
-                <Border Grid.Column="2"
+                <!-- Queued destination chip (centre). Click clears the
+                     queue + preview line. -->
+                <Button Grid.Column="2"
                         IsVisible="{Binding HasQueuedDestination}"
+                        Command="{Binding ClearQueuedDestinationCommand}"
                         Background="{StaticResource ChromeBgElevBrush}"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="3"
                         Padding="8,3"
                         VerticalAlignment="Center"
-                        Margin="0,0,6,0">
-                    <TextBlock Text="{Binding QueuedDestinationLabel}"
-                               FontSize="11"
-                               Foreground="{StaticResource ChromeFgBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               MaxWidth="220"/>
-                </Border>
+                        Margin="0,0,6,0"
+                        ToolTip.Tip="Click to clear queued destination">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding QueuedDestinationLabel}"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="220"/>
+                        <TextBlock Text="✕"
+                                   FontSize="10"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- Search box -->
                 <TextBox Grid.Column="3"
@@ -238,6 +299,7 @@
                                  HighlightShops="{Binding HighlightShops}"
                                  HighlightSpells="{Binding HighlightSpells}"
                                  WalkPath="{Binding WalkPath}"
+                                 PreviewPath="{Binding PreviewPath}"
                                  LoopPath="{Binding LoopPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
@@ -378,7 +440,13 @@
                         <StackPanel Spacing="4">
 
                             <!-- CURRENT NAV -->
-                            <TextBlock Classes="RailSectionHeader" Text="CURRENT NAV"/>
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsCurrentNavExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader" Text="CURRENT NAV"
+                                               Margin="0"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="4">
                             <TextBlock Text="{Binding CurrentNavHeader}"
                                        Foreground="{StaticResource ChromeFgSecBrush}"
                                        FontSize="11"
@@ -443,42 +511,56 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                                </StackPanel>
+                            </Expander>
 
                             <!-- GOTO -->
-                            <TextBlock Classes="RailSectionHeader" Text="GOTO"/>
-                            <TextBlock Text="Quick-access saved rooms land in a future PR."
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11"/>
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsGotoExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader" Text="GOTO" Margin="0"/>
+                                </Expander.Header>
+                                <TextBlock Text="Quick-access saved rooms land in a future PR."
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           FontSize="11"/>
+                            </Expander>
 
                             <!-- LOOPS -->
-                            <TextBlock Classes="RailSectionHeader" Text="LOOPS"/>
-                            <TextBlock Text="No loops saved on this BBS."
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11"
-                                       IsVisible="{Binding !HasLoops}"/>
-                            <ItemsControl ItemsSource="{Binding Loops}"
-                                          IsVisible="{Binding HasLoops}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:LoopRowViewModel">
-                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                            <TextBlock Grid.Column="0"
-                                                       FontSize="11"
-                                                       Foreground="{StaticResource ChromeFgBrush}"
-                                                       VerticalAlignment="Center">
-                                                <Run Text="{Binding Name}"/>
-                                                <Run Text=" · "/>
-                                                <Run Text="{Binding SubLabel}"
-                                                     Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                                            </TextBlock>
-                                            <Button Grid.Column="1"
-                                                    Content="Run" FontSize="10"
-                                                    Padding="8,2"
-                                                    Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsLoopsExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader" Text="LOOPS" Margin="0"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="No loops saved on this BBS."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               IsVisible="{Binding !HasLoops}"/>
+                                    <ItemsControl ItemsSource="{Binding Loops}"
+                                                  IsVisible="{Binding HasLoops}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LoopRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                    <TextBlock Grid.Column="0"
+                                                               FontSize="11"
+                                                               Foreground="{StaticResource ChromeFgBrush}"
+                                                               VerticalAlignment="Center">
+                                                        <Run Text="{Binding Name}"/>
+                                                        <Run Text=" · "/>
+                                                        <Run Text="{Binding SubLabel}"
+                                                             Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                                    </TextBlock>
+                                                    <Button Grid.Column="1"
+                                                            Content="Run" FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
                     </ScrollViewer>
 

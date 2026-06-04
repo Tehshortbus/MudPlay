@@ -188,6 +188,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private RoomLayout? _layout;
     [ObservableProperty] private RoomKey? _currentRoomKey;
+    partial void OnCurrentRoomKeyChanged(RoomKey? value) => RefreshPreviewPath();
     [ObservableProperty] private RoomKey? _destinationRoomKey;
 
     /// <summary>
@@ -239,6 +240,55 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasQueuedDestination))]
     [NotifyPropertyChangedFor(nameof(CanRun))]
     private RoomKey? _queuedDestination;
+
+    partial void OnQueuedDestinationChanged(RoomKey? value) => RefreshPreviewPath();
+
+    /// <summary>
+    /// Red preview line drawn on the map while a destination is queued
+    /// but not yet running. Bound to <c>MapControl.PreviewPath</c>.
+    /// Cleared when no destination is queued OR no path exists.
+    /// Recomputed on <see cref="QueuedDestination"/> change and on
+    /// <see cref="CurrentRoomKey"/> change (so the preview tracks the
+    /// player if they move while a target is armed).
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _previewPath;
+
+    private void RefreshPreviewPath()
+    {
+        if (Graph is null
+            || CurrentRoomKey is not { } src
+            || QueuedDestination is not { } dest
+            || src.Equals(dest))
+        {
+            PreviewPath = null;
+            return;
+        }
+        IReadOnlyList<Direction>? path = _services.Bfs.FindPath(src, dest, _services.Movement);
+        if (path is null || path.Count == 0) { PreviewPath = null; return; }
+
+        var keys = new List<RoomKey>(path.Count + 1) { src };
+        RoomKey cur = src;
+        foreach (Direction d in path)
+        {
+            if (Graph.GetRoom(cur) is not { } room) break;
+            if (!room.Exits.TryGetValue(d, out RoomExit exit)) break;
+            cur = exit.Target;
+            keys.Add(cur);
+        }
+        PreviewPath = keys.Count >= 2 ? keys : null;
+    }
+
+    /// <summary>Click handler for the queued-destination chip — discards the queued target + clears the preview line.</summary>
+    [RelayCommand]
+    private void ClearQueuedDestination() => QueuedDestination = null;
+
+    // ----- Section expand/collapse state (right rail) ---------------
+    //
+    // Persisted only for this window session — open/closed state isn't
+    // worth a profile field. Defaults: everything expanded.
+    [ObservableProperty] private bool _isCurrentNavExpanded = true;
+    [ObservableProperty] private bool _isGotoExpanded       = true;
+    [ObservableProperty] private bool _isLoopsExpanded      = true;
 
     public bool HasQueuedDestination => QueuedDestination is not null;
 
@@ -1011,13 +1061,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _                             => "IDLE",
     };
 
-    public string TopBarStatusBadgeBrush => EngineActionKind switch
-    {
-        NavigationEngineKind.Walking  => "AccentGreenBrush",
-        NavigationEngineKind.Looping  => "AccentCyanBrush",
-        NavigationEngineKind.AutoLair => "AccentAmberBrush",
-        _                             => "ChromeFgMutedBrush",
-    };
+    // Boolean view-shaped helpers — drive the badge background class via
+    // Classes.{IdleState,WalkingState,LoopingState,LairState} so styles
+    // own the per-state colours (grey / green / green / orange per user).
+    public bool EngineActionIsIdle    => EngineActionKind == NavigationEngineKind.Idle;
+    public bool EngineActionIsWalking => EngineActionKind == NavigationEngineKind.Walking;
+    public bool EngineActionIsLooping => EngineActionKind == NavigationEngineKind.Looping;
+    public bool EngineActionIsLair    => EngineActionKind == NavigationEngineKind.AutoLair;
 
     /// <summary>Loop-mode button face: idle → "Loop mode"; mode-on → "Building"; running → "Stop".</summary>
     public string LoopModeButtonLabel => EngineActionKind == NavigationEngineKind.Looping
@@ -1040,7 +1090,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RunStopLabel));
         OnPropertyChanged(nameof(TopBarStatusText));
         OnPropertyChanged(nameof(TopBarStatusBadge));
-        OnPropertyChanged(nameof(TopBarStatusBadgeBrush));
+        OnPropertyChanged(nameof(EngineActionIsIdle));
+        OnPropertyChanged(nameof(EngineActionIsWalking));
+        OnPropertyChanged(nameof(EngineActionIsLooping));
+        OnPropertyChanged(nameof(EngineActionIsLair));
         OnPropertyChanged(nameof(LoopModeButtonLabel));
         OnPropertyChanged(nameof(LoopModeButtonIsStop));
         OnPropertyChanged(nameof(LairModeButtonLabel));

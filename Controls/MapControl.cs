@@ -53,6 +53,15 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> WalkPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(WalkPath));
 
+    /// <summary>
+    /// Preview polyline for a queued (but not yet running) walk. Drawn
+    /// in red beneath any live <see cref="WalkPath"/> so an active walk
+    /// overlays its target without flicker. NavigationViewModel sets
+    /// this when a search-result selection arms a destination.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> PreviewPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(PreviewPath));
+
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopPath));
 
@@ -125,6 +134,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(WalkPathProperty);
         set => SetValue(WalkPathProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? PreviewPath
+    {
+        get => GetValue(PreviewPathProperty);
+        set => SetValue(PreviewPathProperty, value);
     }
 
     public IReadOnlyList<RoomKey>? LoopPath
@@ -296,6 +311,18 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
     };
+    /// <summary>
+    /// Red "where Run would walk" preview line — drawn beneath the
+    /// active walk so a live walk overlays it. Distinct hue from the
+    /// trap red (<see cref="TrapPen"/> #DC3C3C) so the user reads them
+    /// as different signals.
+    /// </summary>
+    private static readonly IPen   PreviewPathPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
+    {
+        LineCap  = PenLineCap.Round,
+        LineJoin = PenLineJoin.Round,
+        DashStyle = new DashStyle(new double[] { 4, 3 }, 0),
+    };
     private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
     {
         LineCap = PenLineCap.Round,
@@ -329,7 +356,8 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
-            AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty);
+            AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
+            PreviewPathProperty);
 
         // Auto-centre on the player's current room every time it
         // changes (MudProxy's CenterOnRoom rule) — but only when the
@@ -726,7 +754,10 @@ public sealed class MapControl : Control
             }
         }
 
-        // Pass 4: top-of-stack polylines.
+        // Pass 4: top-of-stack polylines. Preview (queued) goes first
+        // so a live walk overlays the preview when both share a
+        // segment — the user's primary signal is the active walk.
+        DrawPathPolyline(context, PreviewPath, PreviewPathPen, tilePixels, cx, cy);
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
         IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
         DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
