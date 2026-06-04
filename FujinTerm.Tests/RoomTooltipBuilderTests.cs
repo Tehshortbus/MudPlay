@@ -228,6 +228,38 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_TextHintExit_RendersCommandAlternatives()
+    {
+        // Live repro: 1/1824 south "(Text: go crack, enter crack, go path)"
+        // should surface the actual alternatives rather than the bare
+        // "(Text)" hint name.
+        const string textRooms = """
+            [
+              { "Map Number": 1, "Room Number": 1824, "Name": "Grassy Cove",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "1/1823 (Text: go crack, enter crack, go path)", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1823, "Name": "Stony Crack",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "1/1824", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), textRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 1824))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("(Text: go crack, enter crack, go path)", text);
+    }
+
+    [Fact]
     public void Build_ItemHintExit_NoItemsTable_FallsBackToIdNumber()
     {
         string setRoot = Path.Combine(_root, _setName);
