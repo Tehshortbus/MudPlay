@@ -2,6 +2,8 @@ using System.IO;
 using System.Text;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
+using FujinTerm.Services.Patterns;
+using FujinTerm.Terminal;
 using Xunit;
 
 namespace FujinTerm.Tests;
@@ -56,11 +58,12 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
         public GameDataCache Cache { get; }
         public RoomGraphManager Graph { get; }
         public RoomTracker Tracker { get; }
+        public MessageRouter Router { get; }
         public HiddenExitRevealManager Mgr { get; }
         public List<byte[]> Sent { get; } = new();
         public int MaxAttempts { get; set; } = 5;
 
-        public Harness(string root)
+        public Harness(string root, bool withRouter = false)
         {
             Directory.CreateDirectory(Path.Combine(root, "alpha"));
             File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), GraphNoExit);
@@ -69,8 +72,21 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
             Graph = new RoomGraphManager(Cache);
             Graph.OnActiveSetChanged("alpha");
             Tracker = new RoomTracker(Graph);
-            Mgr = new HiddenExitRevealManager(Tracker, () => MaxAttempts);
+            Router = new MessageRouter();
+            if (withRouter) DefaultPatterns.Seed(Router);
+            Mgr = new HiddenExitRevealManager(
+                Tracker, () => MaxAttempts,
+                router: withRouter ? Router : null);
             Mgr.SetWireSender(Sent.Add);
+        }
+
+        public void FeedLine(string text)
+        {
+            Router.Dispatch(new LineExtractor.EmittedLine(
+                text,
+                new FujinTerm.Terminal.CellAttributes[text.Length],
+                DateTimeOffset.UtcNow,
+                IsPromptLine: false));
         }
     }
 
@@ -125,6 +141,72 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
 
         // Next observation past the cap → terminal failure.
         h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.IsType<HiddenSearchResult.Failed>(result);
+    }
+
+    [Fact]
+    public void Reveal_OnSearchSucceededPattern_FiresRevealed_WhenServerDoesNotRedisplayRoom()
+    {
+        // Live bug: server replies "You found an exit downwards!" but
+        // doesn't redisplay the room. Tracker fires no StateChanged →
+        // the manager's tracker-based check waited forever and the
+        // walker stalled. Now the explicit UserSearchSucceeded pattern
+        // resolves the request.
+        Harness h = new(_root, withRouter: true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        HiddenSearchResult? result = null;
+        h.Mgr.Enqueue(Direction.D, "walker", r => result = r);
+
+        h.FeedLine("You found an exit downwards!");
+
+        Assert.IsType<HiddenSearchResult.Revealed>(result);
+    }
+
+    [Fact]
+    public void Reveal_OnSearchSucceededPattern_CardinalForm_AlsoFiresRevealed()
+    {
+        Harness h = new(_root, withRouter: true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        HiddenSearchResult? result = null;
+        h.Mgr.Enqueue(Direction.N, "walker", r => result = r);
+
+        h.FeedLine("You found an exit to the north!");
+
+        Assert.IsType<HiddenSearchResult.Revealed>(result);
+    }
+
+    [Fact]
+    public void Reveal_OnSearchSucceededPattern_DifferentDirection_DoesNotResolve()
+    {
+        // User typed `sea n` for their own reasons while the walker had
+        // an "sea d" in flight. The cardinal success for N must not
+        // resolve the D request.
+        Harness h = new(_root, withRouter: true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        HiddenSearchResult? result = null;
+        h.Mgr.Enqueue(Direction.D, "walker", r => result = r);
+
+        h.FeedLine("You found an exit to the north!");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Reveal_OnSearchFailedPattern_TriggersRetry_UntilCap()
+    {
+        Harness h = new(_root, withRouter: true) { MaxAttempts = 3 };
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        HiddenSearchResult? result = null;
+        h.Mgr.Enqueue(Direction.D, "walker", r => result = r);
+        Assert.Single(h.Sent);
+
+        // Two failures → two retries → 3 total attempts.
+        h.FeedLine("You notice nothing different to the down");
+        h.FeedLine("You notice nothing different to the down");
+        Assert.Equal(3, h.Sent.Count);
+
+        // Third failure exhausts the cap.
+        h.FeedLine("You notice nothing different to the down");
         Assert.IsType<HiddenSearchResult.Failed>(result);
     }
 

@@ -78,8 +78,12 @@ public static class DefaultPatterns
         // ----- Searching ------------------------------------------------- (source: classifier.js searching)
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
             @"^You notice nothing different to the \w+");
+        // Cardinal forms use "to the <dir>" ("north" / "northeast" / etc.);
+        // U/D drop the preposition and use the "<dir>wards" suffix
+        // ("upwards" / "downwards"). One regex covers both — the
+        // direction word lands in the same capture group either way.
         yield return new RegexPattern(KnownPatterns.UserSearchSucceeded,
-            @"^You found an exit to the (?<direction>\w+)!");
+            @"^You found an exit (?:to the )?(?<direction>\w+)!");
 
         // ----- Combat ---------------------------------------------------- (source: classifier.js combat)
         yield return new RegexPattern(KnownPatterns.CombatStatus,

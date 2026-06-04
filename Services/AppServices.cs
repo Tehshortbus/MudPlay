@@ -1043,6 +1043,7 @@ public sealed class AppServices
         HiddenSearch = new Game.Map.HiddenExitRevealManager(
             RoomTracker,
             maxAttemptsProvider: () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxHiddenSearchAttempts,
+            router: Router,
             log: Log);
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout

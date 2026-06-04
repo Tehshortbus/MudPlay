@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Services;
+using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Map;
 
@@ -25,6 +26,9 @@ namespace FujinTerm.Game.Map;
 public sealed class HiddenExitRevealManager : IDisposable
 {
     private readonly RoomTracker _tracker;
+    private readonly MessageRouter? _router;
+    private readonly IDisposable? _searchOkSub;
+    private readonly IDisposable? _searchFailSub;
     private readonly Func<int> _maxAttemptsProvider;
     private readonly LogService? _log;
     private Action<byte[]>? _wireSender;
@@ -48,14 +52,31 @@ public sealed class HiddenExitRevealManager : IDisposable
     public HiddenExitRevealManager(
         RoomTracker tracker,
         Func<int> maxAttemptsProvider,
+        MessageRouter? router = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(maxAttemptsProvider);
         _tracker = tracker;
+        _router = router;
         _maxAttemptsProvider = maxAttemptsProvider;
         _log = log;
         _tracker.StateChanged += OnTrackerStateChanged;
+
+        // Primary success/failure signal — server emits either
+        // "You found an exit ..." (success) or "You notice nothing
+        // different to the <dir>" (failure) immediately after a `sea`.
+        // The tracker-based check is kept as a fallback (the server
+        // sometimes ALSO redisplays the room post-search), but for the
+        // typical case where there's no room redisplay these patterns
+        // are the only signal the search actually completed. Without
+        // them the manager would wait forever and the walker would
+        // stall in the room — the live bug we caught.
+        if (_router is not null)
+        {
+            _searchOkSub   = _router.Subscribe(KnownPatterns.UserSearchSucceeded, OnSearchSucceededPattern);
+            _searchFailSub = _router.Subscribe(KnownPatterns.UserSearchFailed,    OnSearchFailedPattern);
+        }
     }
 
     /// <summary>Bind the wire-sender — same shape as the rest of the engine-side handlers.</summary>
@@ -73,7 +94,56 @@ public sealed class HiddenExitRevealManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         _tracker.StateChanged -= OnTrackerStateChanged;
+        _searchOkSub?.Dispose();
+        _searchFailSub?.Dispose();
     }
+
+    private void OnSearchSucceededPattern(MatchResult m)
+    {
+        if (_current is not { } cur) return;
+        // The capture might be "down" / "downwards" / "northeast" /
+        // etc. We accept any form that resolves to the in-flight
+        // direction; mismatched directions (a separate search the user
+        // typed) are ignored.
+        if (m.Groups.Count > 0
+            && TryParseDirectionWord(m.Groups[0]) is { } parsed
+            && parsed != cur.Direction)
+        {
+            return;
+        }
+        _log?.Info("Hidden",
+            $"reveal {DirectionShort(cur.Direction)} succeeded via search-pattern on attempt {_attempts}.");
+        cur.Reply(HiddenSearchResult.Revealed.Instance);
+        Reset();
+    }
+
+    private void OnSearchFailedPattern(MatchResult _)
+    {
+        if (_current is not { } cur) return;
+        if (_attempts >= _maxAttemptsProvider())
+        {
+            cur.Reply(new HiddenSearchResult.Failed(
+                $"exit {DirectionShort(cur.Direction)} never revealed after {_attempts} sea attempts"));
+            Reset();
+            return;
+        }
+        SendSea();
+    }
+
+    private static Direction? TryParseDirectionWord(string? word) => word?.ToLowerInvariant() switch
+    {
+        "n" or "north"           => Direction.N,
+        "s" or "south"           => Direction.S,
+        "e" or "east"            => Direction.E,
+        "w" or "west"            => Direction.W,
+        "ne" or "northeast"      => Direction.NE,
+        "nw" or "northwest"      => Direction.NW,
+        "se" or "southeast"      => Direction.SE,
+        "sw" or "southwest"      => Direction.SW,
+        "u" or "up" or "upwards"     => Direction.U,
+        "d" or "down" or "downwards" => Direction.D,
+        _ => null,
+    };
 
     /// <summary>Queue a hidden-reveal request. Callback fires once on terminal state.</summary>
     public void Enqueue(
