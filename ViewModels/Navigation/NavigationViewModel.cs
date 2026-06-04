@@ -24,6 +24,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(services);
         _services = services;
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
+        _services.Recovery.TierChanged    += OnRecoveryTierChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
@@ -50,6 +51,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
+        _services.Recovery.TierChanged    -= OnRecoveryTierChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
@@ -837,6 +839,33 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshFromTracker();
         RefreshDerivedState();
     }
+
+    private void OnRecoveryTierChanged(RecoveryTierChangedEvent _) => RefreshRecoveryTierBools();
+
+    /// <summary>True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.</summary>
+    public bool IsTier2 => _isTier2;
+    /// <summary>True when the engine-recovery gate is in tier 3 — engine chip border goes red.</summary>
+    public bool IsTier3 => _isTier3;
+    private bool _isTier2;
+    private bool _isTier3;
+
+    private void RefreshRecoveryTierBools()
+    {
+        TierLevel tier = _services.Recovery.CurrentTier;
+        bool tier2 = tier == TierLevel.Tier2;
+        bool tier3 = tier == TierLevel.Tier3;
+        if (tier2 != _isTier2)
+        {
+            _isTier2 = tier2;
+            OnPropertyChanged(nameof(IsTier2));
+        }
+        if (tier3 != _isTier3)
+        {
+            _isTier3 = tier3;
+            OnPropertyChanged(nameof(IsTier3));
+        }
+    }
+
     private void OnWalkerEvent(WalkEvent _) => RefreshFromWalker();
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 

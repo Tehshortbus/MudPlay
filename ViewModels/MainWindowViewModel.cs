@@ -388,6 +388,7 @@ public partial class MainWindowViewModel : ObservableObject
         // dialog. The gate already aborted the engine; we just surface
         // the message so the user knows automation gave up.
         AppServices.Current.Recovery.RecoveryFailed += OnRecoveryFailed;
+        AppServices.Current.Recovery.TierChanged    += OnRecoveryTierChanged;
         RefreshLocationSlot();
 
         // Seed File → Recent profile slots + Save profile label.
@@ -773,6 +774,33 @@ public partial class MainWindowViewModel : ObservableObject
         var vm = new ViewModels.Navigation.LostRecoveryDialogViewModel(e.EngineName, e.Detail);
         await AppServices.Current.Dialogs
             .OpenWindowAsync<ViewModels.Navigation.LostRecoveryDialogViewModel, bool>(vm);
+    }
+
+    private void OnRecoveryTierChanged(Game.Map.RecoveryTierChangedEvent _)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshRecoveryTierBools);
+
+    /// <summary>True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.</summary>
+    public bool IsTier2 => _isTier2;
+    /// <summary>True when the engine-recovery gate is in tier 3 — engine chip border goes red.</summary>
+    public bool IsTier3 => _isTier3;
+    private bool _isTier2;
+    private bool _isTier3;
+
+    private void RefreshRecoveryTierBools()
+    {
+        Game.Map.TierLevel tier = AppServices.Current.Recovery.CurrentTier;
+        bool tier2 = tier == Game.Map.TierLevel.Tier2;
+        bool tier3 = tier == Game.Map.TierLevel.Tier3;
+        if (tier2 != _isTier2)
+        {
+            _isTier2 = tier2;
+            OnPropertyChanged(nameof(IsTier2));
+        }
+        if (tier3 != _isTier3)
+        {
+            _isTier3 = tier3;
+            OnPropertyChanged(nameof(IsTier3));
+        }
     }
 
     /// <summary>
