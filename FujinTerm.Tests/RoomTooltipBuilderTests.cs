@@ -183,6 +183,69 @@ public sealed class RoomTooltipBuilderTests : IDisposable
         Assert.Contains("east → Inn (1/3) (Door)", text);
     }
 
+    private const string ItemExitRooms = """
+        [
+          { "Map Number": 6, "Room Number": 79, "Name": "Rocky Path, Narrow Cliff",
+            "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+            "N": "6/78", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "6/80 (Item: 191)" },
+          { "Map Number": 6, "Room Number": 78, "Name": "Rocky Path",
+            "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+            "N": "0", "S": "6/79", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 6, "Room Number": 80, "Name": "Rocky Path, Overhang",
+            "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "6/79", "D": "0" }
+        ]
+        """;
+
+    private const string ItemExitItems = """
+        [
+          { "Number": 191, "Name": "rope and grapple" }
+        ]
+        """;
+
+    [Fact]
+    public void Build_ItemHintExit_ResolvesItemName()
+    {
+        // Live repro: 6/79 down "(Item: 191)" should render the item
+        // name from Items.json, not just the bare hint.
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), ItemExitRooms);
+        File.WriteAllText(Path.Combine(setRoot, "Items.json"), ItemExitItems);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(6, 79))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("(Item: rope and grapple)", text);
+        Assert.DoesNotContain("(Item)", text);
+    }
+
+    [Fact]
+    public void Build_ItemHintExit_NoItemsTable_FallsBackToIdNumber()
+    {
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), ItemExitRooms);
+        // Deliberately no Items.json — the lookup misses but the row
+        // shape stays informative via the id fallback.
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(6, 79))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("(Item: #191)", text);
+    }
+
     [Fact]
     public void Build_NoGameDataCache_FallsBackToIdNumbers()
     {

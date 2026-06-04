@@ -70,7 +70,7 @@ public static class RoomTooltipBuilder
         }
 
         // 8. Exits — blank line above, per-direction with destination.
-        string exitsBlock = BuildExitsBlock(room, graph);
+        string exitsBlock = BuildExitsBlock(room, graph, data);
         if (exitsBlock.Length > 0)
         {
             sb.Append('\n').Append('\n').Append(exitsBlock);
@@ -151,7 +151,7 @@ public static class RoomTooltipBuilder
         Direction.U, Direction.D,
     };
 
-    private static string BuildExitsBlock(Room room, RoomGraphManager graph)
+    private static string BuildExitsBlock(Room room, RoomGraphManager graph, GameDataCache? data)
     {
         if (room.Exits.Count == 0) return string.Empty;
 
@@ -167,12 +167,49 @@ public static class RoomTooltipBuilder
             sb.Append('\n').Append("  ").Append(DirectionLabel(dir)).Append(" → ");
             sb.Append(destName).Append(' ').Append('(').Append(exit.Target).Append(')');
 
-            if (exit.Hint != RoomExitHint.None)
-                sb.Append(" (").Append(exit.Hint).Append(')');
-            else if (!string.IsNullOrEmpty(exit.RawHint))
-                sb.Append(" (").Append(exit.RawHint).Append(')');
+            string hintRender = FormatExitHint(exit, data);
+            if (hintRender.Length > 0) sb.Append(" (").Append(hintRender).Append(')');
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Render the parenthetical exit qualifier, looking up the
+    /// underlying record name when a hint carries a structured id.
+    /// Item/Ticket → Items table. KeyLocked → Items table (the key is
+    /// itself an Item record per MDB convention). Falls back to the
+    /// raw hint string for unclassified modifiers so diagnostic info
+    /// still shows.
+    /// </summary>
+    private static string FormatExitHint(RoomExit exit, GameDataCache? data)
+    {
+        switch (exit.Hint)
+        {
+            case RoomExitHint.Item when exit.KeyItemId > 0:
+            case RoomExitHint.Ticket when exit.KeyItemId > 0:
+            case RoomExitHint.KeyLocked when exit.KeyItemId > 0:
+            {
+                string label = exit.Hint switch
+                {
+                    RoomExitHint.Item   => "Item",
+                    RoomExitHint.Ticket => "Ticket",
+                    _                   => "Key",
+                };
+                string? itemName = LookupName(data, "Items", exit.KeyItemId);
+                return itemName is { Length: > 0 }
+                    ? $"{label}: {itemName}"
+                    : $"{label}: #{exit.KeyItemId}";
+            }
+
+            case RoomExitHint.Toll when exit.TollGold > 0:
+                return $"Toll: {exit.TollGold} gold";
+
+            case RoomExitHint.None:
+                return string.IsNullOrEmpty(exit.RawHint) ? string.Empty : exit.RawHint!;
+
+            default:
+                return exit.Hint.ToString();
+        }
     }
 
     private static string DirectionLabel(Direction d) => d switch
