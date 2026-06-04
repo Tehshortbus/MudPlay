@@ -351,8 +351,26 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             {
                 if (matches.Count >= 200) break;
                 if (!name.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                if (!RoomsByMonsterId().TryGetValue(monsterId, out List<RoomKey>? lairs)) continue;
                 string monsterTag = $"{name} · regen {regenHours}h";
+
+                // Unique bosses (GameLimit=1, etc.) often carry a
+                // regen timer without any lair-tag reference — they
+                // spawn via game-side script not captured in our
+                // data. Still surface them so the user sees that the
+                // monster exists; the row is informational (no key,
+                // click is a no-op). When lair rooms ARE known, emit
+                // one walkable row per (monster, lair) pair.
+                if (!RoomsByMonsterId().TryGetValue(monsterId, out List<RoomKey>? lairs)
+                    || lairs.Count == 0)
+                {
+                    matches.Add(new RoomSearchResult(
+                        Key:               new RoomKey(0, 0),
+                        Name:              string.Empty,
+                        StepsFromCurrent:  null,
+                        MonsterTag:        monsterTag));
+                    continue;
+                }
+
                 foreach (RoomKey lk in lairs)
                 {
                     if (_services.RoomBlacklist.IsBlacklisted(lk)) continue;
@@ -496,6 +514,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void SelectSearchResult(RoomSearchResult? result)
     {
         if (result is null) return;
+        // Informational rows (monster with no recorded lair) carry no
+        // walkable target — click is a no-op so the dropdown row
+        // behaves as a label.
+        if (result.IsInformational) return;
         // Re-layout from the selected room so the map pans to it AND
         // arm the Run button by queuing the destination — clicking Run
         // walks there, mirroring the right-click → "Walk here" path.

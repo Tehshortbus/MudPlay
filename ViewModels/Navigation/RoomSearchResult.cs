@@ -47,14 +47,24 @@ public sealed record RoomSearchResult(
     /// <summary>Top line in the dropdown row. Monster tag when present, otherwise the room reference.</summary>
     public string PrimaryLine => MonsterTag ?? $"{Key.Map}/{Key.Room} - {Name}";
 
+    /// <summary>
+    /// True when this row carries no walkable destination — used for
+    /// monster matches whose lair isn't recorded in game data (unique
+    /// bosses, wandering spawns). The click handler skips these so they
+    /// behave as informational labels in the dropdown.
+    /// </summary>
+    public bool IsInformational => Key.Map <= 0 || Key.Room <= 0;
+
     /// <summary>Bottom line: when this is a monster match, the underlying room; otherwise the step distance.</summary>
     public string SecondaryLine => MonsterTag is null
         ? DisplayLocation
-        : (StepsFromCurrent switch
-        {
-            null => $"{Key.Map}/{Key.Room} - {Name}",
-            0    => $"{Key.Map}/{Key.Room} - {Name} · here",
-            1    => $"{Key.Map}/{Key.Room} - {Name} · 1 step",
-            _    => $"{Key.Map}/{Key.Room} - {Name} · {StepsFromCurrent} steps",
-        });
+        : (IsInformational
+            ? "(no known lair location)"
+            : StepsFromCurrent switch
+            {
+                null => $"{Key.Map}/{Key.Room} - {Name}",
+                0    => $"{Key.Map}/{Key.Room} - {Name} · here",
+                1    => $"{Key.Map}/{Key.Room} - {Name} · 1 step",
+                _    => $"{Key.Map}/{Key.Room} - {Name} · {StepsFromCurrent} steps",
+            });
 }
