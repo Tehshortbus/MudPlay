@@ -1000,6 +1000,17 @@ public sealed class MapControl : Control
         ctx.FillRectangle(fill, node);
         ctx.DrawRectangle(null, pen, node);
 
+        // Vertical-exit corner badges — always drawn when the room has
+        // a U/D hint, regardless of the cell's primary fill class. Lets
+        // the user see "this room goes up/down" even when the fill is
+        // claimed by Lair / Shop / Spell / Auto-Lair.
+        if (Layout?.VerticalHints is { } vh
+            && vh.TryGetValue(key, out VerticalHint vhint)
+            && vhint != VerticalHint.None)
+        {
+            DrawVerticalCornerBadge(ctx, node, vhint);
+        }
+
         if (isCurrent || isDestination)
         {
             // Thick perimeter ring + centre dot — same shape for both
@@ -1016,6 +1027,51 @@ public sealed class MapControl : Control
             double dy = cell.Y + (cell.Height - dotSize) / 2;
             Rect dot = new(dx, dy, dotSize, dotSize);
             ctx.DrawGeometry(dotFill, dotPen, new EllipseGeometry(dot));
+        }
+    }
+
+    /// <summary>
+    /// Draws small filled triangles in the right corners of the node
+    /// to indicate U/D exits:
+    /// <list type="bullet">
+    /// <item>top-right green triangle when the room has an Up exit;</item>
+    /// <item>bottom-right yellow triangle when it has a Down exit;</item>
+    /// <item>both triangles when both exits are present (Up+Down rooms
+    /// get the green corner on top of the existing UpDownFill or the
+    /// classification fill — orange/green/yellow stay distinct).</item>
+    /// </list>
+    /// Triangle size scales with the node so it stays glanceable on
+    /// small cells without crowding the centre dot of the player /
+    /// destination marker.
+    /// </summary>
+    private static void DrawVerticalCornerBadge(DrawingContext ctx, Rect node, VerticalHint hint)
+    {
+        double size = Math.Max(node.Width * 0.32, 5.0);
+
+        if (hint is VerticalHint.Up or VerticalHint.Both)
+        {
+            StreamGeometry geo = new();
+            using (StreamGeometryContext g = geo.Open())
+            {
+                g.BeginFigure(new Point(node.Right - size, node.Top), isFilled: true);
+                g.LineTo(new Point(node.Right, node.Top));
+                g.LineTo(new Point(node.Right, node.Top + size));
+                g.EndFigure(true);
+            }
+            ctx.DrawGeometry(UpFill, null, geo);
+        }
+
+        if (hint is VerticalHint.Down or VerticalHint.Both)
+        {
+            StreamGeometry geo = new();
+            using (StreamGeometryContext g = geo.Open())
+            {
+                g.BeginFigure(new Point(node.Right - size, node.Bottom), isFilled: true);
+                g.LineTo(new Point(node.Right, node.Bottom));
+                g.LineTo(new Point(node.Right, node.Bottom - size));
+                g.EndFigure(true);
+            }
+            ctx.DrawGeometry(DownFill, null, geo);
         }
     }
 
