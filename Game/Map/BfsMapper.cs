@@ -235,6 +235,57 @@ public sealed class BfsMapper
             return empty;
         }
 
+        // First attempt — BFS + refinement from the requested origin.
+        RoomLayout primary = BuildLayoutCore(origin, maxRadius);
+
+        // Score-and-retry pass. If the primary layout carries a
+        // meaningful pile of non-Euclidean stubs (cluster, typically
+        // caused by reaching a maze region via a bent path), do one
+        // hidden retry: pick the worst-stub room as a new origin, BFS
+        // from there, translate so the original origin lands back at
+        // (0,0), and pick whichever layout has fewer stubs. The user
+        // never sees the worse one. We only retry on the full-radius
+        // case — bounded layouts are typically minimap-sized and
+        // already region-scoped.
+        if (maxRadius == int.MaxValue)
+        {
+            int primaryStubs = CountStubs(primary);
+            if (primaryStubs > StubThresholdForRetry)
+            {
+                RoomKey? retryOrigin = PickWorstStubRoom(primary);
+                if (retryOrigin is { } alt && !alt.Equals(origin))
+                {
+                    RoomLayout secondary = BuildLayoutCore(alt, maxRadius);
+                    if (secondary.Positions.ContainsKey(origin))
+                    {
+                        int secondaryStubs = CountStubs(secondary);
+                        if (secondaryStubs < primaryStubs)
+                            primary = TranslateLayoutToNewOrigin(secondary, origin);
+                    }
+                }
+            }
+        }
+
+        lock (_cacheLock)
+        {
+            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? existing))
+                return existing;
+            _layoutCache[cacheKey] = primary;
+        }
+        return primary;
+    }
+
+    /// <summary>
+    /// Below this stub count the layout's "clean enough" — skip the
+    /// retry pass. Threshold tuned for real-realm graphs (~2k rooms);
+    /// most layouts come in well under 5 stubs after the smart-
+    /// placement + refinement pipeline. Trip is a sign of a tight
+    /// non-planar cluster the retry might be able to bias away from.
+    /// </summary>
+    private const int StubThresholdForRetry = 5;
+
+    private RoomLayout BuildLayoutCore(RoomKey origin, int maxRadius)
+    {
         var positions = new Dictionary<RoomKey, (int X, int Y)>
         {
             [origin] = (0, 0),
@@ -407,7 +458,7 @@ public sealed class BfsMapper
             }
         }
 
-        RoomLayout layout = new(
+        return new RoomLayout(
             Origin: origin,
             Positions: positions,
             VerticalHints: vertical,
@@ -419,16 +470,110 @@ public sealed class BfsMapper
             TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value));
-        lock (_cacheLock)
+    }
+
+    /// <summary>
+    /// Count exit-direction edges that don't actually reach their
+    /// declared target room at the expected planar offset. A stub-heavy
+    /// layout indicates BFS reached a cluster via a path whose
+    /// tentative placement disagrees with the cluster's internal
+    /// geometry; the score-and-retry pass uses this signal to decide
+    /// whether to retry from a different origin.
+    /// </summary>
+    private int CountStubs(RoomLayout layout)
+    {
+        int stubs = 0;
+        foreach ((RoomKey key, (int X, int Y) coord) in layout.Positions)
         {
-            // Cache the layout; if a concurrent prewarm landed it
-            // first, prefer the existing entry so consumers continue
-            // to share the same instance.
-            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? existing))
-                return existing;
-            _layoutCache[cacheKey] = layout;
+            Room? room = _graph.GetRoom(key);
+            if (room is null) continue;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+                (int X, int Y) expected = (coord.X + dx, coord.Y + dy);
+                if (!layout.CoordToRoom.TryGetValue(expected, out RoomKey actual)
+                    || !actual.Equals(exit.Target))
+                {
+                    stubs++;
+                }
+            }
         }
-        return layout;
+        return stubs;
+    }
+
+    /// <summary>
+    /// Identify the room with the most non-Euclidean reciprocal exits
+    /// in the layout — the "worst tangle" point. Used as a retry origin
+    /// because starting BFS from inside the tangle gives the local
+    /// geometry early access to the most-constraining room before
+    /// frontier expansion gets a chance to bend things.
+    /// </summary>
+    private RoomKey? PickWorstStubRoom(RoomLayout layout)
+    {
+        int worst = 0;
+        RoomKey? pick = null;
+        foreach ((RoomKey key, (int X, int Y) coord) in layout.Positions)
+        {
+            Room? room = _graph.GetRoom(key);
+            if (room is null) continue;
+            int stubs = 0;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+                (int X, int Y) expected = (coord.X + dx, coord.Y + dy);
+                if (!layout.CoordToRoom.TryGetValue(expected, out RoomKey actual)
+                    || !actual.Equals(exit.Target))
+                {
+                    stubs++;
+                }
+            }
+            if (stubs > worst)
+            {
+                worst = stubs;
+                pick = key;
+            }
+        }
+        return pick;
+    }
+
+    /// <summary>
+    /// Translate every coord in <paramref name="source"/> so that
+    /// <paramref name="newOrigin"/> lands at (0,0). Preserves the
+    /// retry layout's structural decisions (placements, edges,
+    /// vertical hints) while honouring the outer-method contract that
+    /// <c>BuildLayout(A).Origin == A</c>.
+    /// </summary>
+    private static RoomLayout TranslateLayoutToNewOrigin(RoomLayout source, RoomKey newOrigin)
+    {
+        if (!source.Positions.TryGetValue(newOrigin, out (int X, int Y) anchor))
+            return source;
+        int dx = -anchor.X;
+        int dy = -anchor.Y;
+
+        Dictionary<RoomKey, (int X, int Y)> positions = new();
+        foreach ((RoomKey k, (int X, int Y) v) in source.Positions)
+            positions[k] = (v.X + dx, v.Y + dy);
+
+        Dictionary<(int X, int Y), RoomKey> coordToRoom = new();
+        foreach (((int X, int Y) c, RoomKey k) in source.CoordToRoom)
+            coordToRoom[(c.X + dx, c.Y + dy)] = k;
+
+        Dictionary<(int X, int Y), IReadOnlySet<Direction>> edges = new();
+        foreach (((int X, int Y) c, IReadOnlySet<Direction> dirs) in source.EdgesFromCoord)
+            edges[(c.X + dx, c.Y + dy)] = dirs;
+
+        Dictionary<(int X, int Y), IReadOnlySet<Direction>> trapEdges = new();
+        foreach (((int X, int Y) c, IReadOnlySet<Direction> dirs) in source.TrapEdgesFromCoord)
+            trapEdges[(c.X + dx, c.Y + dy)] = dirs;
+
+        return new RoomLayout(
+            Origin: newOrigin,
+            Positions: positions,
+            VerticalHints: source.VerticalHints,
+            OffGrid: source.OffGrid,
+            CoordToRoom: coordToRoom,
+            EdgesFromCoord: edges,
+            TrapEdgesFromCoord: trapEdges);
     }
 
     private static void AddEdge(Dictionary<(int X, int Y), HashSet<Direction>> map,
