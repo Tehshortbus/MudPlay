@@ -182,6 +182,7 @@ public sealed class RoomTracker
     public void NoteMoveSent(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        _lastCardinalAnnouncement = (direction, when);
         EnqueuePending(PendingMove.FromDirection(direction, when));
         AppendStep(new DirectionDto(direction));
 
@@ -194,6 +195,32 @@ public sealed class RoomTracker
         // flip to Pending because we don't have a confirmed anchor to
         // hang the prediction on.
     }
+
+    /// <summary>
+    /// Echo-aware overload for <see cref="OutboundMovementObserver"/>.
+    /// The observer fires from <c>SendUserInput</c> right after the
+    /// walker / loop-runner already called
+    /// <see cref="NoteMoveSent(Direction, DateTimeOffset?)"/> directly
+    /// — drop the second announcement when the most-recent direction
+    /// matches within <see cref="CardinalDebounceWindow"/>. Manual
+    /// cardinal typing (no walker call) lands as a real announcement.
+    /// </summary>
+    public void NoteMoveSentByObserver(Direction direction, DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        if (_lastCardinalAnnouncement is { Dir: var lastDir, At: var lastAt }
+            && lastDir == direction
+            && (when - lastAt) < CardinalDebounceWindow)
+        {
+            _log?.Log(LogSeverity.Debug, "RoomTracker",
+                $"Debounced observer echo of NoteMoveSent({direction}); engine already announced within {CardinalDebounceWindow.TotalMilliseconds:0} ms.");
+            return;
+        }
+        NoteMoveSent(direction, whenUtc);
+    }
+
+    private (Direction Dir, DateTimeOffset At)? _lastCardinalAnnouncement;
+    private static readonly TimeSpan CardinalDebounceWindow = TimeSpan.FromMilliseconds(100);
 
     /// <summary>
     /// Text-exit move (e.g. <c>"go path"</c>) — used by the
@@ -446,6 +473,33 @@ public sealed class RoomTracker
                     SetRoom(expected, RoomConfidence.Pending, when, $"move {direction} confirmed, queue not empty");
                 }
                 return;
+            }
+
+            // Strategy 1a — predicted neighbour is null-name and the
+            // observation's exits cover its ExitMask. Adopt the
+            // neighbour, learn the observed name, fire NameLearned.
+            // Without this branch a walk INTO a null-name ganghouse
+            // room never resolves: MatchesPredicted fails on the null
+            // name, candidate search returns 0, tracker bumps Suspect.
+            if (expected is not null
+                && expected.HasUnknownName
+                && MatchesPredictedNameless(expected, observation)
+                && !string.IsNullOrWhiteSpace(observation.Name))
+            {
+                Room? learned = _graph.LearnRoomName(expected.Key, observation.Name);
+                if (learned is not null)
+                {
+                    _log?.Log(LogSeverity.Info, "RoomTracker",
+                        $"Learned name '{observation.Name}' for {expected.Key} (pending-target null-name match).");
+                    NameLearned?.Invoke(new NameLearnedEvent(expected.Key, observation.Name));
+                    _pending.TryDequeue(out _);
+                    State.SuspectStrikes = 0;
+                    RoomConfidence target = _pending.IsEmpty
+                        ? RoomConfidence.Confirmed
+                        : RoomConfidence.Pending;
+                    SetRoom(learned, target, when, $"move {direction} confirmed (null-name learned)");
+                    return;
+                }
             }
 
             // Strategy 1b — refused-move redisplay (same room as source).

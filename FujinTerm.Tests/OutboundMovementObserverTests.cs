@@ -137,28 +137,65 @@ public sealed class OutboundMovementObserverTests : IDisposable
         Assert.Null(profile.RecentSteps![0].Cardinal);
     }
 
-    // ----- ignored commands (no double-announce on cardinals) --------
+    // ----- cardinal announcement (added so manual movement updates) -
 
     [Theory]
-    [InlineData("n")]
-    [InlineData("north")]
-    [InlineData("ne")]
+    [InlineData("n",  Direction.N)]
+    [InlineData("north", Direction.N)]
+    [InlineData("ne", Direction.NE)]
+    [InlineData("southwest", Direction.SW)]
+    [InlineData("u",  Direction.U)]
+    [InlineData("d",  Direction.D)]
+    public void CardinalCommand_AnnouncesMoveToTracker(string command, Direction expected)
+    {
+        // Manual cardinal typing must reach the tracker — without it,
+        // the tracker can't predict the landing when the player walks
+        // through a chain of same-named rooms (e.g. Stone Street
+        // corridors). Walker/loop-runner duplicate calls are debounced
+        // by the tracker on the matching-direction-within-100ms rule.
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        observer.ObserveOutbound(Cmd(command));
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        _ = expected;
+    }
+
+    [Theory]
     [InlineData("rest")]
     [InlineData("inv")]
     [InlineData("who")]
-    public void NonMovementCommand_DoesNotChangeTrackerState(string command)
+    [InlineData("stat")]
+    public void NonMovementCommand_LeavesTrackerConfirmed(string command)
     {
         (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
         tracker.SetLocated(new RoomKey(1, 1));
 
         observer.ObserveOutbound(Cmd(command));
 
-        // Cardinals: the walker / loop-runner already announce when
-        // they're driving; manual cardinal typing falls through to the
-        // observation parser which lands by 1-of-1 candidate match.
-        // Non-movement verbs (rest / inv / who) are not movement at all.
-        // Either way, the observer must NOT fire NoteMoveSent.
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+    }
+
+    [Fact]
+    public void Cardinal_RapidDuplicate_DebouncedByTracker()
+    {
+        // Walker calls NoteMoveSent directly before the bytes flush
+        // through SendUserInput, then OutboundMovementObserver fires
+        // the same direction back. The tracker drops the duplicate
+        // so the pending queue doesn't double-up.
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        tracker.NoteMoveSent(Direction.N);
+        observer.ObserveOutbound(Cmd("n"));
+
+        // Land on the predicted neighbour — proves the queue has one
+        // entry (not two).
+        tracker.NoteRoomObserved(new RoomObservation("North Square",
+            new HashSet<Direction> { Direction.S }));
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
     }
 
     // ----- safety guards ---------------------------------------------
