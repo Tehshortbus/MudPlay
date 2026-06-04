@@ -348,7 +348,10 @@
                  cursor is near the rail edge — the user wants the
                  tooltip to draw over neighbouring chrome rather than
                  break lines mid-room-reference. Embedded "\n" from
-                 RoomTooltipBuilder still produces multi-row layouts. -->
+                 RoomTooltipBuilder still produces multi-row layouts.
+                 ZIndex lifts the tooltip above the right rail and the
+                 loop-builder strip so it never disappears under
+                 sibling panels. -->
             <Border Grid.Column="0"
                     Name="HoverTooltip"
                     IsVisible="False"
@@ -356,7 +359,8 @@
                     Background="#FFFFC0"
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="6" Padding="8,6"
-                    IsHitTestVisible="False">
+                    IsHitTestVisible="False"
+                    ZIndex="100">
                 <TextBlock Name="HoverTooltipText"
                            Text=""
                            FontFamily="{StaticResource FontTerminal}"

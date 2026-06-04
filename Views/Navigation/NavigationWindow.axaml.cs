@@ -103,7 +103,8 @@ public partial class NavigationWindow : Window
     {
         Border? popup = this.FindControl<Border>("HoverTooltip");
         TextBlock? label = this.FindControl<TextBlock>("HoverTooltipText");
-        if (popup is null || label is null) return;
+        MapControl? map = this.FindControl<MapControl>("MapHost");
+        if (popup is null || label is null || map is null) return;
 
         if (key is not { } k)
         {
@@ -120,14 +121,32 @@ public partial class NavigationWindow : Window
 
         label.Text = Game.Map.RoomTooltipBuilder.Build(room, svc.RoomGraph, svc.GameData);
 
-        // Anchor the popup near the cursor — offset a few pixels so
-        // it doesn't sit directly under the pointer. The MapControl
-        // shares the Grid column with this Border (Grid.Column="0"),
-        // so the popup's Margin acts as a (Left, Top) offset within
-        // the column.
+        // Anchor near the cursor — offset a few pixels so the popup
+        // doesn't sit directly under the pointer. The MapControl shares
+        // the Grid column with this Border (Grid.Column="0"), so the
+        // popup's Margin acts as a (Left, Top) offset in the same
+        // coordinate space the cursor is reported in.
         const double offsetX = 14;
         const double offsetY = 18;
-        popup.Margin = new Thickness(cursor.X + offsetX, cursor.Y + offsetY, 0, 0);
+
+        // Edge-flip: when the default below-and-right anchor would put
+        // the tooltip past the bottom / right edge of the visible map
+        // area, swap to above / left of the cursor instead. Without
+        // this the tooltip renders off-screen and the user has to pan
+        // before they can read it.
+        popup.Measure(Size.Infinity);
+        Size desired = popup.DesiredSize;
+        Size viewport = map.Bounds.Size;
+
+        double anchorX = cursor.X + offsetX;
+        if (anchorX + desired.Width > viewport.Width - 4)
+            anchorX = Math.Max(0, cursor.X - offsetX - desired.Width);
+
+        double anchorY = cursor.Y + offsetY;
+        if (anchorY + desired.Height > viewport.Height - 4)
+            anchorY = Math.Max(0, cursor.Y - offsetY - desired.Height);
+
+        popup.Margin = new Thickness(anchorX, anchorY, 0, 0);
         popup.IsVisible = true;
     }
 
