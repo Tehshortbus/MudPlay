@@ -293,6 +293,57 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Empty(layout.OffGrid);
     }
 
+    [Fact]
+    public void BuildLayout_NonEuclideanReciprocal_RecordsSourceStubsOnBothSides()
+    {
+        // Repro of the v1.11p Dragon's Teeth Hills disjoint-rooms bug.
+        // Topology:
+        //   1/1 (O) — N → 1/2 (A); E → 1/3 (B)
+        //   1/2 (A) — S → 1/1; NE → 1/3
+        //   1/3 (B) — W → 1/1; SW → 1/2
+        // BFS from O: places O(0,0), A(0,-1), B(1,0). Now A.NE → B
+        // expects (1,-2) but B is at (1,0); B.SW → A expects (0,1)
+        // but A is at (0,-1). Old code dropped both non-Euclidean
+        // edges silently — the cell showed no exit even though the
+        // graph carried the connection. New code records the source-
+        // side stub on each so the user sees that the exit exists.
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "O",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "1/3", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "A",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "1/3", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "B",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "1/1",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "1/2", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Sanity: BFS reached B via O.E first, so B is at (1, 0).
+        Assert.Equal((0, 0),  layout.Positions[new RoomKey(1, 1)]);
+        Assert.Equal((0, -1), layout.Positions[new RoomKey(1, 2)]);
+        Assert.Equal((1, 0),  layout.Positions[new RoomKey(1, 3)]);
+
+        // A's NE edge (non-Euclidean — B isn't actually NE of A in
+        // the placement) is now recorded so the cell renders the stub.
+        Assert.True(layout.EdgesFromCoord.TryGetValue((0, -1), out IReadOnlySet<Direction>? aEdges));
+        Assert.Contains(Direction.NE, aEdges!);
+        Assert.Contains(Direction.S,  aEdges!);     // Euclidean S still there
+
+        // B's SW edge (non-Euclidean — A isn't actually SW of B) is
+        // likewise recorded.
+        Assert.True(layout.EdgesFromCoord.TryGetValue((1, 0), out IReadOnlySet<Direction>? bEdges));
+        Assert.Contains(Direction.SW, bEdges!);
+        Assert.Contains(Direction.W,  bEdges!);     // Euclidean W still there
+    }
+
     // ----- Layout cache ---------------------------------------------
 
     [Fact]

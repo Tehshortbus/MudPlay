@@ -300,29 +300,37 @@ public sealed class BfsMapper
                 (int X, int Y) target = (hereXY.X + dx, hereXY.Y + dy);
 
                 // Already-placed destination via a different exit —
-                // still record the edge so the connector renders, but
-                // don't re-place / re-enqueue.
-                if (positions.TryGetValue(next, out (int X, int Y) existing))
+                // record the source-side stub regardless of whether
+                // the placement lines up planarly. When it lines up
+                // the renderer connects both ends in DrawAllExitLines;
+                // when it doesn't (non-Euclidean reciprocal — BFS
+                // reached the destination via a path whose planar
+                // offset disagrees with this exit's direction), the
+                // stub still shows the user "this room has an exit
+                // here" instead of dropping the connection silently.
+                // The crawler routes through the graph regardless, so
+                // the visual stub matches the actual walkable topology.
+                if (positions.TryGetValue(next, out (int X, int Y) _))
                 {
-                    if (existing.Equals(target))
-                    {
-                        // Reciprocal exit lines up with the existing
-                        // placement — record the stub from THIS cell.
-                        AddEdge(edgesFromCoord, hereXY, dir);
-                        if (exit.Hint == RoomExitHint.Trap)
-                            AddEdge(trapEdgesFromCoord, hereXY, dir);
-                    }
-                    // Non-Euclidean reciprocal (the planar offset
-                    // doesn't agree with the already-placed coord) —
-                    // skip silently. Drawing the stub would point at
-                    // an empty cell.
+                    AddEdge(edgesFromCoord, hereXY, dir);
+                    if (exit.Hint == RoomExitHint.Trap)
+                        AddEdge(trapEdgesFromCoord, hereXY, dir);
                     continue;
                 }
 
-                // First visit. Need a free target coord — if taken by
-                // a different room, skip both the placement and the
-                // edge so the connector doesn't dangle.
-                if (coordToRoom.ContainsKey(target)) continue;
+                // First visit but target coord already taken by a
+                // different room — same source-side-stub treatment as
+                // the non-Euclidean case above. The destination either
+                // gets placed at a non-colliding coord via a later BFS
+                // path or stays unplaced; either way the source cell
+                // shows that the exit exists.
+                if (coordToRoom.ContainsKey(target))
+                {
+                    AddEdge(edgesFromCoord, hereXY, dir);
+                    if (exit.Hint == RoomExitHint.Trap)
+                        AddEdge(trapEdgesFromCoord, hereXY, dir);
+                    continue;
+                }
 
                 // Blacklist (BBS-tier): record the edge so the renderer
                 // draws a dangling stub pointing at the hidden room, but
