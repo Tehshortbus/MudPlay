@@ -478,6 +478,7 @@ public sealed class RoomTracker
         ClearPendingAndSteps();
         _history.Clear();
         _footprint.Clear();
+        SyncFootprintCount();
         SetRoom(room: null, RoomConfidence.Unknown, when, "graph reloaded");
     }
 
@@ -783,6 +784,18 @@ public sealed class RoomTracker
     }
 
     /// <summary>
+    /// Mirror the matcher's current candidate count onto
+    /// <see cref="RoomState.FootprintCandidateCount"/> so UI binds
+    /// pick up tier-2 activity without subscribing to the matcher
+    /// directly. Called from every site that mutates
+    /// <c>_footprint</c>.
+    /// </summary>
+    private void SyncFootprintCount()
+    {
+        State.FootprintCandidateCount = _footprint.Candidates.Count;
+    }
+
+    /// <summary>
     /// Seed the tier-2 matcher when it isn't already narrowing. If a
     /// matcher is already active we leave it alone — its in-progress
     /// candidate set is the result of stepping through more
@@ -793,6 +806,7 @@ public sealed class RoomTracker
     {
         if (_footprint.IsActive) return;
         _footprint.Reset(candidates);
+        SyncFootprintCount();
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"Tier2.seed: {candidates.Count} candidates from {trigger}");
     }
@@ -813,6 +827,7 @@ public sealed class RoomTracker
         if (head.Cardinal is not { } dir) return false;
 
         _footprint.Step(dir, observation);
+        SyncFootprintCount();
 
         if (_footprint.IsConverged)
         {
@@ -823,6 +838,7 @@ public sealed class RoomTracker
                 _log?.Log(LogSeverity.Warn, "RoomTracker",
                     $"Tier2.converged → {only} but key not in graph; clearing");
                 _footprint.Clear();
+                SyncFootprintCount();
                 return false;
             }
             _log?.Log(LogSeverity.Info, "RoomTracker",
@@ -839,6 +855,7 @@ public sealed class RoomTracker
             GraphMismatchDetected?.Invoke(
                 new GraphMismatchEvent(observation.Name, observation.Exits, _footprint.Depth));
             _footprint.Clear();
+            SyncFootprintCount();
             return false;                   // fall through to FSM for state update
         }
 
@@ -847,6 +864,7 @@ public sealed class RoomTracker
             _log?.Log(LogSeverity.Warn, "RoomTracker",
                 $"Tier2.depth_ceiling: stopping after {_footprint.Depth} steps with {_footprint.Candidates.Count} candidates");
             _footprint.Clear();
+            SyncFootprintCount();
             return false;
         }
 
@@ -943,7 +961,11 @@ public sealed class RoomTracker
             // Confirmed-by-any-path supersedes any in-progress tier-2
             // narrowing — drop the matcher so the next ambiguous moment
             // gets a fresh seed.
-            if (_footprint.IsActive || _footprint.IsConverged) _footprint.Clear();
+            if (_footprint.IsActive || _footprint.IsConverged)
+            {
+                _footprint.Clear();
+                SyncFootprintCount();
+            }
         }
 
         if (confidence == RoomConfidence.Confirmed && room is not null)
