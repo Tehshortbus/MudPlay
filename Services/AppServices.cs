@@ -1058,7 +1058,7 @@ public sealed class AppServices
 
         // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
         // cache invalidates on every graph reload.
-        Bfs = new Game.Map.BfsMapper(RoomGraph);
+        Bfs = new Game.Map.BfsMapper(RoomGraph, Log);
         RoomGraph.GraphReloaded += Bfs.OnGraphReloaded;
         // Pre-warm the layout on a thread-pool task so the user
         // doesn't pay the BFS cost on the UI thread when they first

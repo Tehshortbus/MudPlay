@@ -56,11 +56,15 @@ public sealed class BfsMapper
     /// + rebuilding the layout.
     /// </remarks>
     private Func<RoomKey, bool>? _isBlacklisted;
+    private readonly Services.LogService? _log;
 
-    public BfsMapper(RoomGraphManager graph)
+    public BfsMapper(RoomGraphManager graph) : this(graph, log: null) { }
+
+    public BfsMapper(RoomGraphManager graph, Services.LogService? log)
     {
         ArgumentNullException.ThrowIfNull(graph);
         _graph = graph;
+        _log = log;
     }
 
     /// <summary>
@@ -238,31 +242,58 @@ public sealed class BfsMapper
         // First attempt — BFS + refinement from the requested origin.
         RoomLayout primary = BuildLayoutCore(origin, maxRadius);
 
-        // Score-and-retry pass. If the primary layout carries a
-        // meaningful pile of non-Euclidean stubs (cluster, typically
-        // caused by reaching a maze region via a bent path), do one
-        // hidden retry: pick the worst-stub room as a new origin, BFS
-        // from there, translate so the original origin lands back at
-        // (0,0), and pick whichever layout has fewer stubs. The user
-        // never sees the worse one. We only retry on the full-radius
-        // case — bounded layouts are typically minimap-sized and
-        // already region-scoped.
+        // Score-and-retry pass. If the primary layout carries any
+        // non-Euclidean stubs (cluster, typically caused by reaching a
+        // maze region via a bent path), try a small handful of retry
+        // origins picked from the rooms with the most stubs and pick
+        // whichever layout has the lowest total stub count after
+        // translating back so the original origin sits at (0,0). The
+        // user never sees the worse one.
+        //
+        // Why N candidates instead of just the single worst-stub room:
+        // in a tight maze where every cluster room has similar stub
+        // counts, the single "winner" of PickWorstStubRoom can be a
+        // tie-break loser — its BFS frontier doesn't expand cleanly
+        // even though *some* other cluster room would. Trying the top
+        // N gives us a chance at finding the best seed inside the
+        // tangle.
+        //
+        // Bounded layouts (maxRadius < int.MaxValue) are typically
+        // minimap-scoped and already region-isolated; skip the retry
+        // there.
         if (maxRadius == int.MaxValue)
         {
             int primaryStubs = CountStubs(primary);
-            if (primaryStubs > StubThresholdForRetry)
+            _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
+                $"BuildLayout origin={origin} primaryStubs={primaryStubs} positions={primary.Positions.Count}.");
+            if (primaryStubs > 0)
             {
-                RoomKey? retryOrigin = PickWorstStubRoom(primary);
-                if (retryOrigin is { } alt && !alt.Equals(origin))
+                int triedCount = 0;
+                foreach (RoomKey retryOrigin in PickRetryOrigins(primary, RetryCandidateCount))
                 {
-                    RoomLayout secondary = BuildLayoutCore(alt, maxRadius);
-                    if (secondary.Positions.ContainsKey(origin))
+                    if (retryOrigin.Equals(origin)) continue;
+                    triedCount++;
+                    RoomLayout secondary = BuildLayoutCore(retryOrigin, maxRadius);
+                    if (!secondary.Positions.ContainsKey(origin))
                     {
-                        int secondaryStubs = CountStubs(secondary);
-                        if (secondaryStubs < primaryStubs)
-                            primary = TranslateLayoutToNewOrigin(secondary, origin);
+                        _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
+                            $"  retry#{triedCount} from {retryOrigin}: origin {origin} unreachable; skip.");
+                        continue;
+                    }
+                    int secondaryStubs = CountStubs(secondary);
+                    bool replaces = secondaryStubs < primaryStubs;
+                    _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
+                        $"  retry#{triedCount} from {retryOrigin}: stubs={secondaryStubs}"
+                        + (replaces ? " — replaces primary." : " — keep primary."));
+                    if (replaces)
+                    {
+                        primary = TranslateLayoutToNewOrigin(secondary, origin);
+                        primaryStubs = secondaryStubs;
+                        if (primaryStubs == 0) break;
                     }
                 }
+                _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
+                    $"BuildLayout origin={origin} final stubs={primaryStubs} after {triedCount} retry attempt(s).");
             }
         }
 
@@ -276,13 +307,12 @@ public sealed class BfsMapper
     }
 
     /// <summary>
-    /// Below this stub count the layout's "clean enough" — skip the
-    /// retry pass. Threshold tuned for real-realm graphs (~2k rooms);
-    /// most layouts come in well under 5 stubs after the smart-
-    /// placement + refinement pipeline. Trip is a sign of a tight
-    /// non-planar cluster the retry might be able to bias away from.
+    /// How many retry origins to try, ordered by stub count descending.
+    /// Each one costs another full BFS + refinement pass, so a small
+    /// cap keeps worst-case build cost bounded. The improvement loop
+    /// breaks early when a zero-stub layout is found.
     /// </summary>
-    private const int StubThresholdForRetry = 5;
+    private const int RetryCandidateCount = 4;
 
     private RoomLayout BuildLayoutCore(RoomKey origin, int maxRadius)
     {
@@ -502,16 +532,16 @@ public sealed class BfsMapper
     }
 
     /// <summary>
-    /// Identify the room with the most non-Euclidean reciprocal exits
-    /// in the layout — the "worst tangle" point. Used as a retry origin
-    /// because starting BFS from inside the tangle gives the local
-    /// geometry early access to the most-constraining room before
-    /// frontier expansion gets a chance to bend things.
+    /// Identify the top-<paramref name="count"/> rooms with the most
+    /// non-Euclidean reciprocal exits in the layout — the densest
+    /// cluster centres. Used as retry origins because starting BFS
+    /// from inside a tangle gives the local geometry early access to
+    /// the most-constraining rooms before frontier expansion gets a
+    /// chance to bend things. Skips rooms with zero stubs.
     /// </summary>
-    private RoomKey? PickWorstStubRoom(RoomLayout layout)
+    private IEnumerable<RoomKey> PickRetryOrigins(RoomLayout layout, int count)
     {
-        int worst = 0;
-        RoomKey? pick = null;
+        List<(int Stubs, RoomKey Key)> ranked = new();
         foreach ((RoomKey key, (int X, int Y) coord) in layout.Positions)
         {
             Room? room = _graph.GetRoom(key);
@@ -527,13 +557,10 @@ public sealed class BfsMapper
                     stubs++;
                 }
             }
-            if (stubs > worst)
-            {
-                worst = stubs;
-                pick = key;
-            }
+            if (stubs > 0) ranked.Add((stubs, key));
         }
-        return pick;
+        ranked.Sort(static (a, b) => b.Stubs.CompareTo(a.Stubs));
+        return ranked.Take(count).Select(r => r.Key);
     }
 
     /// <summary>
