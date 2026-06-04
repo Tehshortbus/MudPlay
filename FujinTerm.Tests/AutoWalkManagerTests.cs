@@ -529,6 +529,76 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal("go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
     }
 
+    // ----- multi-action hidden exits (commit 6) ---------------------
+
+    // Room 1/1 → N exit is multi-action with two prereq commands in
+    // the same row (E and W exit fields carry the Action#1 and #2
+    // entries respectively, both targeting "the N exit of this room").
+    private const string MultiActionGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Chamber",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Hidden/Needs 2 Actions, specific order)",
+            "S": "0",
+            "E": "Action#1 [on the N exit of this room]: pull lever, move lever",
+            "W": "Action#2 [on the N exit of this room]: push button",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_MultiActionExit_SendsActionsThenCardinalMove()
+    {
+        Harness h = NewHarness(MultiActionGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // 3 payloads: pull lever, push button, then "n".
+        Assert.Equal(3, h.Sent.Count);
+        Assert.Equal("pull lever\r",  Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Equal("push button\r", Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Equal("n\r",           Encoding.Latin1.GetString(h.Sent[2]));
+    }
+
+    // Cross-room multi-action — same shape but the Action#N cell
+    // references room 1/2 instead of "this room". Walker should
+    // fail fast with the cross-room reason.
+    private const string MultiActionCrossRoomJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Chamber",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Hidden/Needs 1 Actions, any order)",
+            "S": "0",
+            "E": "Action#1 [on the N exit of room 1/3]: pull lever",
+            "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Switch",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Hidden/Needs 1 Actions, any order)", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_MultiActionExit_CrossRoom_FailsWithReason()
+    {
+        Harness h = NewHarness(MultiActionCrossRoomJson);
+        h.Tracker.SetLocated(new RoomKey(1, 3));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == WalkEventKind.Failed && e.Detail.Contains("cross-room"));
+    }
+
     // ----- trapped exits (PR 7.22) -----------------------------------
 
     private const string TrapGraphJson = """

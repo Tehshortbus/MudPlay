@@ -373,6 +373,49 @@ public sealed class AutoWalkManager
             return;
         }
 
+        // MultiActionHidden — `(Hidden, Needs N Actions, ...)`. Execute
+        // the prerequisite commands in StepNumber order, then send the
+        // cardinal move. Same-room actions only for v1; cross-row
+        // remote-action data fails the walk with a clear reason
+        // (cross-room expander is a follow-up — the data parser
+        // already preserves RemoteSourceRoom so the future expander
+        // can route through it).
+        if (exit.Hint == RoomExitHint.MultiActionHidden && exit.MultiAction is { } maData)
+        {
+            if (maData.HasRemoteActions)
+            {
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    "multi-action exit requires actions in a different room — cross-room expander not yet wired",
+                    _destination));
+                Reset();
+                return;
+            }
+            if (maData.Actions.Count < maData.RequiredActionCount)
+            {
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    $"multi-action exit needs {maData.RequiredActionCount} action(s) but data has {maData.Actions.Count}",
+                    _destination));
+                Reset();
+                return;
+            }
+
+            // Fire each action's first alternative in order, then
+            // send the cardinal move. Each command goes out
+            // immediately; no per-command response wait. The
+            // server's verb-by-verb echo provides the round-robin.
+            foreach (ExitAction action in maData.Actions)
+            {
+                if (action.Commands.Count == 0) continue;
+                string cmd = action.Commands[0];
+                byte[] cmdBytes = Encoding.Latin1.GetBytes(cmd + "\r");
+                WriteBytes(cmdBytes, $"multi-action #{action.StepNumber}: '{cmd}'");
+            }
+            _tracker.NoteMoveSent(step.Direction);
+            byte[] moveBytes = EncodeMove(step.Direction);
+            WriteBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
+            return;
+        }
+
         // Text exits — `(Text: cmd1, cmd2, ...)` modifier. Any one of
         // the alternatives moves the player (no follow-up cardinal).
         // We send the first; future PRs may choose smarter (e.g.

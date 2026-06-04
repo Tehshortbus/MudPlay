@@ -163,6 +163,13 @@ public sealed class RoomGraphManager
 
         int parsed = 0;
         int skipped = 0;
+        // First pass: build the typed Room graph from the JSON rows.
+        // Action#N cells in exit fields don't parse as exits (no RoomKey
+        // prefix) so they're naturally skipped — the second pass below
+        // re-iterates to recover them.
+        var actionCells = new List<(RoomKey Source, MultiActionExitData.ActionCell Cell)>();
+        var perRoomModifiers = new Dictionary<RoomKey, Dictionary<Direction, string>>();
+
         foreach (JsonElement row in doc.RootElement.EnumerateArray())
         {
             if (!TryReadRoom(row, out Room? room))
@@ -170,10 +177,77 @@ public sealed class RoomGraphManager
                 skipped++;
                 continue;
             }
-            // Last write wins on duplicate keys — the MDB shouldn't
-            // emit duplicates but we don't trust hand-edited data.
             _rooms[room.Key] = room;
             parsed++;
+
+            // Pre-cache MultiAction modifier strings + scan for
+            // Action#N cells living in non-exit slots of the same row.
+            if (row.ValueKind == JsonValueKind.Object)
+            {
+                Dictionary<Direction, string>? modBucket = null;
+                foreach (Direction dir in s_directions)
+                {
+                    string? cell = TryReadString(row, s_exitPropertyNames[(int)dir]);
+                    if (string.IsNullOrWhiteSpace(cell)) continue;
+                    if (cell.StartsWith("Action#", StringComparison.OrdinalIgnoreCase))
+                    {
+                        MultiActionExitData.ActionCell? action = MultiActionExitData.ParseActionCell(cell);
+                        if (action is not null)
+                            actionCells.Add((room.Key, action));
+                    }
+                    else if (cell.Contains("Hidden/Needs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        modBucket ??= new();
+                        modBucket[dir] = cell;
+                    }
+                }
+                if (modBucket is not null) perRoomModifiers[room.Key] = modBucket;
+            }
+        }
+
+        // Second pass: attach gathered action cells to the right
+        // MultiActionHidden exit. "On the X exit of this room" → action
+        // belongs to the source room's X exit. "On the X exit of room
+        // M/R" → action lives in the SOURCE row but applies to the
+        // REMOTE room's X exit; carry RemoteSourceRoom forward so v1
+        // can fail gracefully on those (cross-room expander is a
+        // follow-up).
+        var byExit = new Dictionary<(RoomKey Room, Direction Dir), List<ExitAction>>();
+        foreach ((RoomKey sourceRoom, MultiActionExitData.ActionCell cell) in actionCells)
+        {
+            RoomKey target = cell.RemoteSourceRoom ?? sourceRoom;
+            var key = (target, cell.ExitDirection);
+            if (!byExit.TryGetValue(key, out List<ExitAction>? list))
+            {
+                list = new List<ExitAction>();
+                byExit[key] = list;
+            }
+            // RemoteSourceRoom is the row the action DATA lived in,
+            // not the room the action targets — flagged so the walker
+            // knows to fail on cross-row data v1.
+            RoomKey? remote = cell.RemoteSourceRoom is not null ? sourceRoom : null;
+            list.Add(new ExitAction(cell.StepNumber, cell.Commands, remote));
+        }
+
+        // Patch each MultiActionHidden exit with the gathered data.
+        foreach (((RoomKey roomKey, Direction dir), List<ExitAction> actions) in byExit)
+        {
+            if (!_rooms.TryGetValue(roomKey, out Room? room)) continue;
+            if (!room.Exits.TryGetValue(dir, out RoomExit exit)) continue;
+            if (exit.Hint != RoomExitHint.MultiActionHidden) continue;
+
+            (int count, bool specific) = perRoomModifiers.TryGetValue(roomKey, out var mods)
+                && mods.TryGetValue(dir, out string? modCell)
+                ? MultiActionExitData.ParseModifier(modCell)
+                : (actions.Count, false);
+
+            actions.Sort(static (a, b) => a.StepNumber.CompareTo(b.StepNumber));
+            var data = new MultiActionExitData(count, specific, actions);
+            var rebuilt = new Dictionary<Direction, RoomExit>(room.Exits)
+            {
+                [dir] = exit with { MultiAction = data }
+            };
+            _rooms[roomKey] = room with { Exits = rebuilt };
         }
 
         BuildSecondaryIndexes();

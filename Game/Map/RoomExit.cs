@@ -38,7 +38,8 @@ public readonly partial record struct RoomExit(
     bool CanBash = true,
     int KeyItemId = 0,
     int TollGold = 0,
-    IReadOnlyList<string>? TextCommands = null)
+    IReadOnlyList<string>? TextCommands = null,
+    MultiActionExitData? MultiAction = null)
 {
     /// <summary>
     /// Parse a single MDB exit cell. Returns <c>false</c> for the
