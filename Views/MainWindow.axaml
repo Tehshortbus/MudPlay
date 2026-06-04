@@ -55,6 +55,19 @@
         <Style Selector="Border.EngineBadge.LairState TextBlock">
             <Setter Property="Foreground" Value="#0E0E0E"/>
         </Style>
+        <!-- Tier overlays — paint the engine chip's border yellow when
+             the tier-2 footprint matcher is narrowing, red when the
+             tracker is Lost without active narrowing. Fill stays the
+             engine colour. Declared after the engine classes so
+             BorderBrush setter precedence lands here. -->
+        <Style Selector="Border.EngineBadge.Tier2State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.Tier3State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
     </Window.Styles>
 
     <!-- KeyBindings are wired in code-behind from KeybindingStore so the
@@ -344,12 +357,17 @@
                   VerticalAlignment="Center"
                   ColumnSpacing="14">
 
-                <!-- Engine-state chip — mirrors the Navigation badge. -->
+                <!-- Engine-state chip — mirrors the Navigation badge.
+                     Tier overlays paint the border yellow when the
+                     room tracker's tier-2 footprint matcher is
+                     narrowing, red when it's Lost without progress. -->
                 <Border Grid.Column="0"
                         Classes="EngineBadge"
                         Classes.WalkingState="{Binding EngineActionIsWalking}"
                         Classes.LoopingState="{Binding EngineActionIsLooping}"
-                        Classes.LairState="{Binding EngineActionIsLair}">
+                        Classes.LairState="{Binding EngineActionIsLair}"
+                        Classes.Tier2State="{Binding IsTier2}"
+                        Classes.Tier3State="{Binding IsTier3}">
                     <TextBlock Text="{Binding EngineActionBadge}"/>
                 </Border>
 

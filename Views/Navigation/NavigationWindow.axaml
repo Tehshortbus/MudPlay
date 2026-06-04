@@ -149,6 +149,19 @@
         <Style Selector="Border.StatusBadge.LairState TextBlock">
             <Setter Property="Foreground" Value="#0E0E0E"/>
         </Style>
+        <!-- Tier overlays — only the BORDER changes, fill stays the
+             engine colour. Tier 2 = footprint matcher narrowing
+             (yellow); Tier 3 = Lost without active matcher (red). Last
+             selector wins because both are declared after the engine
+             classes. -->
+        <Style Selector="Border.StatusBadge.Tier2State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.Tier3State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
 
         <!-- CURRENT NAV step row dynamic styling -->
         <Style Selector="Border.NavRow">
@@ -189,12 +202,16 @@
                            FontSize="12" FontWeight="SemiBold"
                            VerticalAlignment="Center"
                            Margin="0,0,10,0"/>
-                <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR -->
+                <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR.
+                     Tier overlays paint the border yellow / red on top of
+                     whichever engine fill is active. -->
                 <Border Grid.Column="1"
                         Classes="StatusBadge"
                         Classes.WalkingState="{Binding EngineActionIsWalking}"
                         Classes.LoopingState="{Binding EngineActionIsLooping}"
-                        Classes.LairState="{Binding EngineActionIsLair}">
+                        Classes.LairState="{Binding EngineActionIsLair}"
+                        Classes.Tier2State="{Binding IsTier2}"
+                        Classes.Tier3State="{Binding IsTier3}">
                     <TextBlock Text="{Binding TopBarStatusBadge}"/>
                 </Border>
                 <TextBlock Grid.Column="2"
