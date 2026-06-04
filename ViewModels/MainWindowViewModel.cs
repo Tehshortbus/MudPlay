@@ -792,8 +792,11 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
+        // Full room display name + key — TextTrimming on the status-bar
+        // TextBlock clips long names down to the column's actual width
+        // at render time. The VM stays a faithful mirror of game state.
         LocationText = room is not null
-            ? $"{Abbreviate(room.DisplayName, MaxLocationNameLength)}  ·  {room.Key}"
+            ? $"{room.DisplayName}  ·  {room.Key}"
             : state.Confidence switch
             {
                 Game.Map.RoomConfidence.Pending        => "Pending move…",
@@ -802,16 +805,6 @@ public partial class MainWindowViewModel : ObservableObject
                 _                                      => "Unknown location",
             };
     }
-
-    /// <summary>Status-bar room-name cap. Long names truncate with a
-    /// single-character ellipsis so the bar stays balanced when sharing
-    /// space with the engine-state chip + tick cluster + connection
-    /// readout. XAML's TextTrimming also kicks in when the bar is
-    /// resized narrower than the cap allows.</summary>
-    private const int MaxLocationNameLength = 28;
-
-    private static string Abbreviate(string s, int max)
-        => s.Length <= max ? s : s[..(max - 1)].TrimEnd() + "…";
 
     private void RefreshStatusBarTicks()
     {
