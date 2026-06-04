@@ -1090,7 +1090,7 @@ public sealed class AppServices
         MovementCoordinator = new Game.Map.MovementCoordinator();
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
-            promptScanner: PromptScanner);
+            promptScanner: PromptScanner, recovery: Recovery);
         // Phase 7 PR 7.22 — route walker over trapped exits through
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);

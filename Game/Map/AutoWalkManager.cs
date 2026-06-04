@@ -33,7 +33,7 @@ namespace FujinTerm.Game.Map;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class AutoWalkManager
+public sealed class AutoWalkManager : IRecoverableEngine
 {
     private readonly RoomGraphManager _graph;
     private readonly BfsMapper _bfs;
@@ -41,6 +41,7 @@ public sealed class AutoWalkManager
     private readonly MovementCoordinator _coordinator;
     private readonly IRoomFilter? _filter;
     private readonly WirePromptScanner? _promptScanner;
+    private readonly EngineRecoveryGate? _recovery;
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
@@ -122,6 +123,57 @@ public sealed class AutoWalkManager
 
     public event Action<WalkEvent>? Event;
 
+    // ----- IRecoverableEngine ----------------------------------------
+
+    public string Name => "Walker";
+
+    public Direction? PeekNextPlannedDirection()
+    {
+        if (_path is null || _index >= _path.Count) return null;
+        return _path[_index] is MoveStep move ? move.Direction : (Direction?)null;
+    }
+
+    public void SendBacktrackMove(Direction direction)
+    {
+        // Tier-3 reverse-walk send. Don't advance _index; the gate
+        // tracks its own progress against ExecutedSinceAnchor.
+        _tracker.NoteMoveSent(direction);
+        byte[] bytes = EncodeMove(direction);
+        WriteBytes(bytes, $"tier3 backtrack {direction}");
+    }
+
+    public void PauseForRecovery(string reason)
+    {
+        if (State != WalkState.Walking) return;
+        State = WalkState.Paused;
+        Raise(new WalkEvent(WalkEventKind.Paused, $"recovery: {reason}", _destination));
+    }
+
+    public void ResumeAfterRecovery(RoomKey recoveredAnchor)
+    {
+        if (State != WalkState.Paused) return;
+        if (_destination is not { } dest) return;
+
+        // Engine policy for walks: re-plan from the recovered anchor.
+        // This consumes one of our replan budget slots — if the
+        // recovered room isn't where we need to be, BFS will produce
+        // a fresh path or surface "no path".
+        State = WalkState.Walking;
+        _stepInFlight = false;
+        Raise(new WalkEvent(WalkEventKind.Resumed,
+            $"recovered at {recoveredAnchor}; re-planning toward {dest}", dest));
+        WalkToImmediate(dest);
+    }
+
+    public void AbortFromRecoveryFailure(string detail)
+    {
+        Raise(new WalkEvent(WalkEventKind.Failed,
+            $"tier3 recovery failed: {detail}", _destination));
+        Reset();
+    }
+
+    // ----- ctor ------------------------------------------------------
+
     public AutoWalkManager(
         RoomGraphManager graph,
         BfsMapper bfs,
@@ -129,7 +181,8 @@ public sealed class AutoWalkManager
         MovementCoordinator coordinator,
         IRoomFilter? filter = null,
         LogService? log = null,
-        WirePromptScanner? promptScanner = null)
+        WirePromptScanner? promptScanner = null,
+        EngineRecoveryGate? recovery = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(bfs);
@@ -143,6 +196,7 @@ public sealed class AutoWalkManager
         _filter = filter;
         _log = log;
         _promptScanner = promptScanner;
+        _recovery = recovery;
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnCoordinatorPauseChanged;
@@ -355,6 +409,7 @@ public sealed class AutoWalkManager
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         State = WalkState.Walking;
+        _recovery?.Attach(this);
 
         int moveCount = expanded.Count(s => s is MoveStep);
         int actionCount = expanded.Count - moveCount;
@@ -391,6 +446,9 @@ public sealed class AutoWalkManager
     {
         if (_path is null || _index >= _path.Count) return;
         if (_stepInFlight) return;
+
+        // Tier-3 gate may have escalated; if so don't queue a new step.
+        if (_recovery is not null && !_recovery.MayProceedWithPlannedStep()) return;
 
         WalkStep step = _path[_index];
         switch (step)
@@ -452,6 +510,7 @@ public sealed class AutoWalkManager
                 _log?.Info("Walker",
                     $"step {_index + 1}/{_path!.Count}: door {step.Direction} already open — skipping FSM.");
                 _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] preBytes = EncodeMove(step.Direction);
                 WriteBytes(preBytes, $"move {step.Direction} (door pre-open)");
                 return;
@@ -505,6 +564,7 @@ public sealed class AutoWalkManager
                 WriteBytes(cmdBytes, $"multi-action #{action.StepNumber}: '{cmd}'");
             }
             _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
             byte[] moveBytes = EncodeMove(step.Direction);
             WriteBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
             return;
@@ -518,6 +578,7 @@ public sealed class AutoWalkManager
         {
             string textCmd = cmds[0];
             _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
+            _recovery?.NoteEngineStepSent(step.Direction);
             byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
             WriteBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
             return;
@@ -551,6 +612,7 @@ public sealed class AutoWalkManager
             }
 
             _tracker.NoteMoveSent(keyword, cardinal: step.Direction);
+            _recovery?.NoteEngineStepSent(step.Direction);
             byte[] tpBytes = Encoding.Latin1.GetBytes(keyword + "\r");
             WriteBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
             return;
@@ -573,6 +635,7 @@ public sealed class AutoWalkManager
         // wire path or test harness sees Pending before any landing
         // observation arrives.
         _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
 
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
@@ -602,6 +665,7 @@ public sealed class AutoWalkManager
                     return;
                 }
                 _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
                 WriteBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
                 return;
@@ -638,6 +702,7 @@ public sealed class AutoWalkManager
                     return;
                 }
                 _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
                 WriteBytes(bytes, $"move {step.Direction} (post-door)");
                 return;
@@ -696,6 +761,7 @@ public sealed class AutoWalkManager
         }
 
         _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
         byte[] bytes = EncodeMove(step.Direction);
         WriteBytes(bytes, $"move {step.Direction} (post-disarm)");
     }
@@ -756,22 +822,21 @@ public sealed class AutoWalkManager
         if (_path is null || _index >= _path.Count) return;
         if (_path[_index] is not MoveStep) return;
 
-        // Tracker lost confidence mid-step — the most common cause is
-        // the user typing a manual movement at the terminal while the
-        // walker was awaiting a confirmation. The tracker's observation
-        // matched neither the expected predecessor nor the expected
-        // target, so it bumped into Suspect (room preserved as best
-        // guess) or Lost (room cleared). Either way the walker can't
-        // safely continue; try to re-plan from the tracker's best-guess
-        // current room exactly once, then fail.
+        // Tracker lost confidence mid-step — defer to the
+        // EngineRecoveryGate. The gate will either keep watching
+        // (tier 2: 15-step budget + planned-direction-available
+        // check) or escalate to tier-3 backtrack, calling back
+        // through PauseForRecovery + SendBacktrackMove. Unknown
+        // reaches us via OnGraphReloaded (active-set switched
+        // mid-walk); treat the same way and let the gate decide.
         if (transition.NewConfidence is RoomConfidence.Suspect
                                      or RoomConfidence.Lost
                                      or RoomConfidence.Unknown)
         {
-            // Unknown only reaches us mid-step via OnGraphReloaded
-            // (active-set switched while walking) — also a "can't
-            // continue" scenario, treated the same way.
-            TryReplanOrFail(transition.NewConfidence);
+            if (_recovery is not null)
+                _recovery.NoteSuspectedMismatch($"tracker {transition.NewConfidence} mid-step {_index + 1}");
+            else
+                TryReplanOrFail(transition.NewConfidence);   // legacy path when no gate is bound (tests)
             return;
         }
 
@@ -805,6 +870,17 @@ public sealed class AutoWalkManager
             Raise(new WalkEvent(WalkEventKind.Failed,
                 $"step {_index + 1} blocked after retries", _destination));
             Reset();
+            return;
+        }
+
+        // Unexpected landing while Confirmed — let the gate decide
+        // whether tier 2 / tier 3 should take over. The gate's 1-of-1
+        // watch may resolve this without a replan; if it can't, it
+        // pauses us and runs backtrack.
+        if (_recovery is not null)
+        {
+            _recovery.NoteSuspectedMismatch(
+                $"step {_index + 1} landed at {newKey} (expected {_expectedAfterCurrentMove})");
             return;
         }
 
@@ -965,6 +1041,7 @@ public sealed class AutoWalkManager
 
     private void Reset()
     {
+        _recovery?.Detach();
         // Drain downstream FSMs that were running on our behalf — if a
         // walk is superseded mid-door-open or mid-hidden-search, the
         // manager keeps its internal state (WaitingBash / Searching /
