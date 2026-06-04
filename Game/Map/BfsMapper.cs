@@ -523,7 +523,7 @@ public sealed class BfsMapper
         Dictionary<(int X, int Y), RoomKey> coordToRoom,
         RoomKey origin)
     {
-        const int MaxIterations = 6;
+        const int MaxIterations = 8;
         for (int iter = 0; iter < MaxIterations; iter++)
         {
             bool moved = false;
@@ -536,32 +536,72 @@ public sealed class BfsMapper
                 (int X, int Y) current = positions[roomKey];
                 int currentScore = ScoreCoord(roomData, current, positions);
 
-                // Walk each reciprocal exit's implied coord and try it
-                // as a candidate. Only consider moves to FREE coords
-                // (the alternative would cascade-bump another room,
-                // which complicates termination).
-                (int X, int Y)? best = null;
-                int bestScore = currentScore;
+                // Two move shapes:
+                //   1) Move to a free coord that scores higher.
+                //   2) Swap with another room when the sum of both
+                //      rooms' scores strictly improves. The free-coord
+                //      pass usually handles loose graphs; the swap pass
+                //      is what unlocks tight maze clusters where every
+                //      candidate is claimed by another cluster member.
+                (int X, int Y)? bestFree = null;
+                int bestFreeScore = currentScore;
+                (RoomKey Partner, (int X, int Y) PartnerCoord, int NewSum)? bestSwap = null;
+
                 foreach ((Direction dir, RoomExit exit) in roomData.Exits)
                 {
                     if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
                     if (!positions.TryGetValue(exit.Target, out (int X, int Y) nb)) continue;
                     (int X, int Y) candidate = (nb.X - dx, nb.Y - dy);
                     if (candidate.Equals(current)) continue;
-                    if (coordToRoom.ContainsKey(candidate)) continue;
-                    int score = ScoreCoord(roomData, candidate, positions);
-                    if (score > bestScore)
+
+                    if (coordToRoom.TryGetValue(candidate, out RoomKey occupant))
                     {
-                        bestScore = score;
-                        best = candidate;
+                        if (occupant.Equals(roomKey)) continue;
+                        if (occupant.Equals(origin)) continue;
+                        Room? partnerData = _graph.GetRoom(occupant);
+                        if (partnerData is null) continue;
+                        int partnerCurrent = ScoreCoord(partnerData, candidate, positions);
+                        // Hypothetical: candidate occupies "current"
+                        // after swap. Score it there. We don't need to
+                        // mutate positions for the score because Score
+                        // reads neighbour coords from positions and
+                        // neither this room nor the partner appears as
+                        // their own neighbour.
+                        int partnerSwapped = ScoreCoord(partnerData, current, positions);
+                        int candidateMine  = ScoreCoord(roomData, candidate, positions);
+                        int sumNow = currentScore + partnerCurrent;
+                        int sumNew = candidateMine + partnerSwapped;
+                        if (sumNew > sumNow
+                            && (bestSwap is null || sumNew > bestSwap.Value.NewSum))
+                        {
+                            bestSwap = (occupant, candidate, sumNew);
+                        }
+                        continue;
+                    }
+
+                    int score = ScoreCoord(roomData, candidate, positions);
+                    if (score > bestFreeScore)
+                    {
+                        bestFreeScore = score;
+                        bestFree = candidate;
                     }
                 }
 
-                if (best is { } moveTo)
+                // Prefer the free move (lower disruption) when both are
+                // viable; only swap when free isn't an option.
+                if (bestFree is { } moveTo)
                 {
                     coordToRoom.Remove(current);
                     positions[roomKey] = moveTo;
                     coordToRoom[moveTo] = roomKey;
+                    moved = true;
+                }
+                else if (bestSwap is { } swap)
+                {
+                    positions[roomKey]      = swap.PartnerCoord;
+                    positions[swap.Partner] = current;
+                    coordToRoom[swap.PartnerCoord] = roomKey;
+                    coordToRoom[current]           = swap.Partner;
                     moved = true;
                 }
             }
