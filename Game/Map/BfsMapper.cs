@@ -144,6 +144,52 @@ public sealed class BfsMapper
     }
 
     /// <summary>
+    /// Single-source shortest-path distances from <paramref name="source"/>
+    /// to every reachable room (one BFS, all destinations). Returns a
+    /// hop-count keyed by <see cref="RoomKey"/>; rooms not in the map
+    /// are unreachable under the supplied filter. The blacklist hook
+    /// is NOT consulted — render and pathing have always disagreed on
+    /// blacklisted rooms (the walker can still traverse), and the search
+    /// box wants distance to anywhere the player COULD walk.
+    /// </summary>
+    /// <remarks>
+    /// Cheaper than calling <see cref="DistanceBetween"/> in a loop:
+    /// O(rooms + edges) once vs O((rooms + edges) × matches). The
+    /// Navigation search box uses this to score 50+ matches per
+    /// keystroke without re-scanning the graph for each.
+    /// </remarks>
+    public IReadOnlyDictionary<RoomKey, int> ComputeDistancesFrom(
+        RoomKey source, IRoomFilter? filter = null)
+    {
+        Dictionary<RoomKey, int> dist = new();
+        if (_graph.GetRoom(source) is null) return dist;
+        if (filter is not null && filter.IsAvoided(source)) return dist;
+
+        Queue<RoomKey> queue = new();
+        queue.Enqueue(source);
+        dist[source] = 0;
+
+        while (queue.Count > 0)
+        {
+            RoomKey here = queue.Dequeue();
+            Room? room = _graph.GetRoom(here);
+            if (room is null) continue;
+            int here_d = dist[here];
+
+            foreach ((Direction _, RoomExit exit) in room.Exits)
+            {
+                RoomKey next = exit.Target;
+                if (dist.ContainsKey(next)) continue;
+                if (filter is not null && filter.IsAvoided(next)) continue;
+                if (_graph.GetRoom(next) is null) continue;
+                dist[next] = here_d + 1;
+                queue.Enqueue(next);
+            }
+        }
+        return dist;
+    }
+
+    /// <summary>
     /// Hop count from source to destination, or <c>null</c> when no
     /// path exists. Equivalent to <c>FindPath(...)?.Count</c> but
     /// cheaper for the right-rail GOTO list's "X steps" badges since

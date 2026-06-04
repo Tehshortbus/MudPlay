@@ -130,6 +130,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAvoidedChanged()
     {
         AvoidedRooms = new HashSet<RoomKey>(_services.Movement.Avoided);
+        // Distances are computed against the avoid filter — flush so
+        // the next keystroke recomputes against the new avoided set.
+        InvalidateDistanceCache();
     }
 
     private void OnLoopRunnerEvent(LoopEvent _)
@@ -251,7 +254,28 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnSearchQueryChanged(string value) => RebuildSearchResults(value);
+    // Debounce keystrokes: rebuild runs after the user pauses for the
+    // configured delay rather than on every character. Without this a
+    // long graph + monster scan piles up on the UI thread per keystroke
+    // and the dropdown feels sticky. Restarting the timer on every
+    // change collapses bursts into a single rebuild.
+    private Avalonia.Threading.DispatcherTimer? _searchDebounce;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        _searchDebounce ??= new Avalonia.Threading.DispatcherTimer { Interval = SearchDebounceDelay };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounceTick;
+        _searchDebounce.Tick += OnSearchDebounceTick;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounceTick(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        RebuildSearchResults(SearchQuery);
+    }
 
     /// <summary>
     /// Substring search expands across three input dialects:
@@ -333,9 +357,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 {
                     if (_services.RoomBlacklist.IsBlacklisted(lk)) continue;
                     if (Graph.GetRoom(lk) is not { } lroom) continue;
-                    int? steps = sourceKey is { } src
-                        ? _services.Bfs.DistanceBetween(src, lroom.Key, _services.Movement)
-                        : null;
+                    int? steps = sourceKey is { } src ? DistanceFromCached(src, lroom.Key) : null;
                     matches.Add(new RoomSearchResult(lroom.Key, lroom.DisplayName, steps, monsterTag));
                     if (matches.Count >= 200) break;
                 }
@@ -357,10 +379,31 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private RoomSearchResult BuildRoomMatch(Room room, RoomKey? sourceKey)
     {
-        int? steps = sourceKey is { } src
-            ? _services.Bfs.DistanceBetween(src, room.Key, _services.Movement)
-            : null;
+        int? steps = sourceKey is { } src ? DistanceFromCached(src, room.Key) : null;
         return new RoomSearchResult(room.Key, room.DisplayName, steps);
+    }
+
+    // Single-source distances from the current room, cached. Replaces
+    // the per-match DistanceBetween calls (each = one full BFS) with
+    // one BFS per current-room change + O(1) lookups per match. Big
+    // win when the search box returns 50+ matches per keystroke.
+    private RoomKey? _distanceCacheSource;
+    private IReadOnlyDictionary<RoomKey, int>? _distanceCache;
+
+    private int? DistanceFromCached(RoomKey source, RoomKey destination)
+    {
+        if (_distanceCache is null || _distanceCacheSource is not { } cs || !cs.Equals(source))
+        {
+            _distanceCache = _services.Bfs.ComputeDistancesFrom(source, _services.Movement);
+            _distanceCacheSource = source;
+        }
+        return _distanceCache.TryGetValue(destination, out int d) ? d : (int?)null;
+    }
+
+    private void InvalidateDistanceCache()
+    {
+        _distanceCache = null;
+        _distanceCacheSource = null;
     }
 
     /// <summary>
@@ -730,6 +773,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnGraphReloaded()
     {
         InvalidateMonsterSearchCaches();
+        InvalidateDistanceCache();
         RefreshLayout();
     }
 
