@@ -490,23 +490,34 @@
                         <Border Width="14" Height="14" Background="#DC821E"/>
                         <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
-                    <!-- Corner-badge swatches mock the in-cell triangles: a
-                         small green triangle in the top-right indicates Up,
-                         yellow in the bottom-right indicates Down; both
-                         appear together for rooms with U+D exits. -->
+                    <!-- Up / Down exits show up two ways on the map: a
+                         full-cell fill on rooms whose ONLY vertical
+                         exit is U (or D), and a small corner
+                         triangle on rooms that ALSO have horizontal
+                         exits. Legend carries one swatch per shape
+                         so the user can map either back to the
+                         legend without guessing. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#00C800"/>
+                        <TextBlock Text="(full block) Up exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Grid Width="14" Height="14">
                             <Border Background="#3A3A3A"/>
                             <Polygon Points="14,0 7,0 14,7" Fill="#00C800"/>
                         </Grid>
-                        <TextBlock Text="Up exit (corner)" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                        <TextBlock Text="(corner mark) Up exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#DCDC00"/>
+                        <TextBlock Text="(full block) Down exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Grid Width="14" Height="14">
                             <Border Background="#3A3A3A"/>
                             <Polygon Points="14,14 7,14 14,7" Fill="#DCDC00"/>
                         </Grid>
-                        <TextBlock Text="Down exit (corner)" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                        <TextBlock Text="(corner mark) Down exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Grid Width="14" Height="14">
