@@ -159,31 +159,47 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Approaching: walker is driving the player toward the loop's
-        // start waypoint. The user wants to see BOTH the active walk-to
-        // (blue, drawn by the walker overlay) AND the loop preview
-        // (red, drawn via the LoopApproachPreviewPath property) so the
-        // bigger-picture cycle is visible alongside the immediate path.
-        if (runner.State == Game.Map.LoopState.Approaching
-            && runner.ApproachTarget is { } entry)
+        // Both phases anchor the rendered cycle to runner.CircleStartRoom
+        // (the rotation entry). Walking the cycle from a fixed anchor
+        // means the polyline stays still as the player steps through
+        // each leg — the user sees the complete loop the whole time
+        // instead of "what's left from here" shifting with every step.
+        // Legacy v1 loops (no rotation anchor) fall back to the live
+        // current room so they still render something.
+        RoomKey? source = runner.CircleStartRoom
+                           ?? _services.RoomTracker.State.CurrentRoom?.Key;
+
+        if (runner.State == Game.Map.LoopState.Approaching)
         {
-            IReadOnlyList<RoomKey> previewKeys = runner.ResolveLoopRoomKeys(entry);
-            LoopApproachPreviewPath = previewKeys.Count >= 2 ? previewKeys : null;
+            // Approach phase — show the red loop preview alongside the
+            // blue walker overlay. The walker owns WalkPath; we own
+            // the preview ring drawn under it.
+            if (source is { } entry)
+            {
+                IReadOnlyList<RoomKey> previewKeys = runner.ResolveLoopRoomKeys(entry);
+                LoopApproachPreviewPath = previewKeys.Count >= 2 ? previewKeys : null;
+            }
+            else
+            {
+                LoopApproachPreviewPath = null;
+            }
             LoopPath = null;
             return;
         }
 
-        // Running circle: draw the entire loop in blue from the current
-        // room. ResolveLoopRoomKeys returns the full cycle so the
-        // visual reads as a closed loop the whole time.
+        // Running / paused circle — blue cycle line, full ring,
+        // anchored at CircleStartRoom so it stays static across step
+        // advances.
         LoopApproachPreviewPath = null;
-        if (_services.RoomTracker.State.CurrentRoom is not { } current)
+        if (source is { } start)
+        {
+            IReadOnlyList<RoomKey> keys = runner.ResolveLoopRoomKeys(start);
+            LoopPath = keys.Count >= 2 ? keys : null;
+        }
+        else
         {
             LoopPath = null;
-            return;
         }
-        IReadOnlyList<RoomKey> keys = runner.ResolveLoopRoomKeys(current.Key);
-        LoopPath = keys.Count >= 2 ? keys : null;
     }
 
     // ----- Status strip ---------------------------------------------
@@ -1213,12 +1229,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Secondary action chip — visible alongside Run/Pause while any
-    /// engine is active. Fully stops the engine, closes any pause-
-    /// opened builder, and returns the map to the idle view.
-    /// </summary>
-    public bool IsStopButtonVisible => IsAnyExecuting;
 
     /// <summary>
     /// Status text used by the top-bar status indicator. Idle →
@@ -1298,6 +1308,24 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool LoopModeButtonIsStop => EngineActionKind == NavigationEngineKind.Looping;
 
+    /// <summary>
+    /// Dispatcher for the Loop-mode button: when looping (any state)
+    /// the button is a full Stop; otherwise it's the build-mode
+    /// toggle. Keeping one physical button keeps the action chip row
+    /// compact and matches the user's expectation that the Run chip
+    /// transforms to Pause while the Loop-mode chip carries the Stop.
+    /// </summary>
+    [RelayCommand]
+    private void LoopModeButton()
+    {
+        if (LoopModeButtonIsStop)
+        {
+            StopAll();
+            return;
+        }
+        ToggleLoopMode();
+    }
+
     /// <summary>Lair-mode button face: idle → "Lair mode"; mode-on → "Marking"; running → "Stop".</summary>
     public string LairModeButtonLabel => EngineActionKind == NavigationEngineKind.AutoLair
         ? "Stop"
@@ -1310,7 +1338,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsAnyExecuting));
         OnPropertyChanged(nameof(CanRun));
         OnPropertyChanged(nameof(RunStopLabel));
-        OnPropertyChanged(nameof(IsStopButtonVisible));
         OnPropertyChanged(nameof(TopBarStatusText));
         OnPropertyChanged(nameof(TopBarStatusBadge));
         OnPropertyChanged(nameof(EngineActionIsIdle));

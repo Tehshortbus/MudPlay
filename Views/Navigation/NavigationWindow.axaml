@@ -227,7 +227,7 @@
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
                 <!-- Display-toggle chips -->
@@ -293,27 +293,21 @@
                         Command="{Binding RunStopCommand}"
                         IsEnabled="{Binding CanRun}"/>
 
-                <!-- Full Stop — visible during any active engine.
-                     Backs out to the idle map view: stops engines,
-                     closes any pause-opened builder, clears the user
-                     pause gate so the next Run isn't held paused. -->
+                <!-- Loop mode chip — doubles as the full Stop when a
+                     loop is running. The dispatcher
+                     LoopModeButtonCommand routes to StopAll when in
+                     Stop mode, ToggleLoopMode otherwise, so the user
+                     sees a single chip that always means "exit the
+                     current loop context." -->
                 <Button Grid.Column="5"
-                        Classes="ActionChip"
-                        Classes.Stop="True"
-                        Content="Stop"
-                        Command="{Binding StopAllCommand}"
-                        IsVisible="{Binding IsStopButtonVisible}"/>
-
-                <!-- Loop mode -->
-                <Button Grid.Column="6"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLoopMode}"
                         Classes.Stop="{Binding LoopModeButtonIsStop}"
                         Content="{Binding LoopModeButtonLabel}"
-                        Command="{Binding ToggleLoopModeCommand}"/>
+                        Command="{Binding LoopModeButtonCommand}"/>
 
                 <!-- Lair mode -->
-                <Button Grid.Column="7"
+                <Button Grid.Column="6"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLairMode}"
                         Classes.Stop="{Binding LairModeButtonIsStop}"

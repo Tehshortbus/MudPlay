@@ -48,6 +48,17 @@ public sealed class LoopRunner : IRecoverableEngine
     private RoomKey? _approachTarget;
 
     /// <summary>
+    /// Room the rotated circle begins (and ends) at. Set when the
+    /// runner picks the entry waypoint — either immediately in
+    /// <see cref="Start"/> for player-already-at-waypoint / approach
+    /// cases, or after the legacy / no-waypoints branch leaves it null.
+    /// Used by the Navigation overlay as the source for rendering the
+    /// full cycle so the visible polyline stays anchored to the cycle
+    /// itself instead of shifting under the player as they walk.
+    /// </summary>
+    private RoomKey? _circleStartRoom;
+
+    /// <summary>
     /// Set true the first time we begin the circle in a given Start
     /// session so <see cref="LoopEventKind.ReachedFirstWaypoint"/>
     /// only fires once per session (not on every wrap).
@@ -82,6 +93,15 @@ public sealed class LoopRunner : IRecoverableEngine
 
     /// <summary>Waypoint the walker is approaching, or null when not in <see cref="LoopState.Approaching"/>.</summary>
     public RoomKey? ApproachTarget => _approachTarget;
+
+    /// <summary>
+    /// Room the running cycle begins + ends at (the rotation entry).
+    /// Stable from the moment the rotation is computed (during
+    /// <see cref="Start"/> for v2 loops with UserWaypoints) until the
+    /// runner resets. Null for legacy v1 loops where the cycle has no
+    /// canonical start anchor.
+    /// </summary>
+    public RoomKey? CircleStartRoom => _circleStartRoom;
 
     /// <summary>Total steps in the rotated circle. 0 when no loop is active.</summary>
     public int StepCount => _loop?.Steps.Count ?? 0;
@@ -260,6 +280,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _firstWaypointReached = false;
         _lapDurations.Clear();
         _approachTarget = null;
+        _circleStartRoom = null;
 
         Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
 
@@ -272,7 +293,9 @@ public sealed class LoopRunner : IRecoverableEngine
         //   - Player already at a waypoint → rotate the loop so that
         //     waypoint is first, no approach.
         //   - Player elsewhere AND walker bound AND graph available →
-        //     pick the closest waypoint, walker drives the approach.
+        //     pick the closest waypoint, walker drives the approach,
+        //     loop steps are rotated UP FRONT so the approach-preview
+        //     overlay can render the upcoming cycle.
         //   - Walker missing (unit tests) → begin circle from wherever
         //     they are and let the runner fail-or-recover.
 
@@ -285,6 +308,7 @@ public sealed class LoopRunner : IRecoverableEngine
         if (currentKey is { } here && loop.UserWaypoints.Any(w => w.Equals(here)))
         {
             RotateLoopTo(here);
+            _circleStartRoom = here;
             BeginCircle();
             return true;
         }
@@ -305,7 +329,15 @@ public sealed class LoopRunner : IRecoverableEngine
             return false;
         }
 
-        _approachTarget = closest;
+        // Rotate UP FRONT — the cycle's entry is committed at the
+        // moment we pick the closest waypoint. Doing it here (vs after
+        // the walker finishes) means ResolveLoopRoomKeys(closest)
+        // produces the correct cycle for the approach-preview overlay,
+        // and the eventual hand-off into Running needs no further
+        // mutation of Loop.Steps.
+        RotateLoopTo(closest.Value);
+        _circleStartRoom = closest;
+        _approachTarget  = closest;
         State = LoopState.Approaching;
         _log?.Info("LoopRunner",
             $"approach: walking from {currentKey} → {closest} (closest of {loop.UserWaypoints.Count} waypoints)");
@@ -419,10 +451,10 @@ public sealed class LoopRunner : IRecoverableEngine
         switch (e.Kind)
         {
             case WalkEventKind.Finished:
-                // Walker arrived at the chosen waypoint.
-                RoomKey target = _approachTarget.Value;
+                // Walker arrived at the chosen waypoint. Rotation
+                // already happened in Start — just hand off into the
+                // circle.
                 _approachTarget = null;
-                RotateLoopTo(target);
                 BeginCircle();
                 break;
             case WalkEventKind.Failed:
@@ -735,6 +767,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
         _approachTarget = null;
+        _circleStartRoom = null;
         _firstWaypointReached = false;
         _lapDurations.Clear();
         _lapStartedAt = default;
