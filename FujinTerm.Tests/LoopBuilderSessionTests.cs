@@ -133,6 +133,42 @@ public sealed class LoopBuilderSessionTests : IDisposable
     }
 
     [Fact]
+    public void PreviewedRoomKeys_PopulatesAfterTwoClicks()
+    {
+        // After two clicks the cycle is well-defined: clicks[0] →
+        // (gap-fill) → clicks[1] → (closing gap-fill) → clicks[0].
+        // PreviewedRoomKeys is the flattened RoomKey sequence the
+        // map's LoopBuilderPath polyline binds to.
+        (LoopBuilderSessionViewModel s, _) = NewSession();
+        s.AddClick(new RoomKey(1, 1));
+
+        // Only one click — no cycle yet, no preview.
+        Assert.Null(s.PreviewedRoomKeys);
+
+        s.AddClick(new RoomKey(1, 3));
+
+        Assert.NotNull(s.PreviewedRoomKeys);
+        // 1 (start) + 2 (forward N, N) + 2 (closing S, S) = 5 entries
+        // including the closing return to the start room.
+        Assert.Equal(5, s.PreviewedRoomKeys!.Count);
+        Assert.Equal(new RoomKey(1, 1), s.PreviewedRoomKeys[0]);
+        Assert.Equal(new RoomKey(1, 3), s.PreviewedRoomKeys[2]);
+        Assert.Equal(new RoomKey(1, 1), s.PreviewedRoomKeys[^1]);
+    }
+
+    [Fact]
+    public void Clear_ResetsPreview()
+    {
+        (LoopBuilderSessionViewModel s, _) = NewSession();
+        s.AddClick(new RoomKey(1, 1));
+        s.AddClick(new RoomKey(1, 3));
+        Assert.NotNull(s.PreviewedRoomKeys);
+
+        s.Clear();
+        Assert.Null(s.PreviewedRoomKeys);
+    }
+
+    [Fact]
     public void AllExpansionsClose_SinceLoopsAreCircular()
     {
         // No CloseLoop toggle anymore — every saved loop closes by

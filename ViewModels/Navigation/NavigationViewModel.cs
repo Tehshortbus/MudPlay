@@ -209,6 +209,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private RoomGraphManager? _graph;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _walkPath;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
+
+    /// <summary>
+    /// Dashed cyan preview polyline drawn under the active loop / walk
+    /// while the user is in the LoopBuilder strip. Pulled from
+    /// <see cref="LoopBuilderSessionViewModel.PreviewedRoomKeys"/>
+    /// whenever the builder changes.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
@@ -761,17 +769,32 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         if (CurrentMode == NavigationMode.LoopBuild)
         {
+            if (LoopBuilder is not null)
+                LoopBuilder.PropertyChanged -= OnLoopBuilderPropertyChanged;
             LoopBuilder = null;
+            LoopBuilderPath = null;
             CurrentMode = NavigationMode.Idle;
         }
         else
         {
             LoopBuilder = new LoopBuilderSessionViewModel(
                 _services.Loops, _services.RoomGraph, _services.Movement);
+            // Mirror the builder's PreviewedRoomKeys onto our own
+            // observable so the map's LoopBuilderPath binding picks
+            // up every click without a Navigation-VM-side timer.
+            LoopBuilder.PropertyChanged += OnLoopBuilderPropertyChanged;
             CurrentMode = NavigationMode.LoopBuild;
         }
         OnPropertyChanged(nameof(LoopBuilder));
         OnPropertyChanged(nameof(IsLoopBuilding));
+    }
+
+    private void OnLoopBuilderPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(LoopBuilderSessionViewModel.PreviewedRoomKeys))
+        {
+            LoopBuilderPath = LoopBuilder?.PreviewedRoomKeys;
+        }
     }
 
     /// <summary>Called by the window when the map is left-clicked. Forwards to the loop builder when active.</summary>

@@ -65,6 +65,17 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopPath));
 
+    /// <summary>
+    /// Live BFS-expanded preview of the loop the user is currently
+    /// building in the Navigation window's loop-builder strip. Drawn
+    /// underneath any active <see cref="LoopPath"/> / <see cref="WalkPath"/>
+    /// so an active automation always overlays the build preview when
+    /// both share a segment. Pen is dashed cyan to distinguish from the
+    /// solid red preview and the blue active-loop pens.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderPath));
+
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
@@ -156,6 +167,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(LoopPathProperty);
         set => SetValue(LoopPathProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? LoopBuilderPath
+    {
+        get => GetValue(LoopBuilderPathProperty);
+        set => SetValue(LoopBuilderPathProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? AvoidedRooms
@@ -348,6 +365,18 @@ public sealed class MapControl : Control
         LineJoin = PenLineJoin.Round,
     };
 
+    /// <summary>
+    /// Dashed cyan polyline showing the user's in-progress loop-builder
+    /// gap-filled path. Distinct from solid red PreviewPath (queued
+    /// walk-to) and solid blue Loop/Walk paths (running automations).
+    /// </summary>
+    private static readonly IPen   LoopBuilderPen = new Pen(new SolidColorBrush(Color.Parse("#FF50E6FF")), 2.5)
+    {
+        LineCap     = PenLineCap.Round,
+        LineJoin    = PenLineJoin.Round,
+        DashStyle   = new DashStyle(new double[] { 3.0, 2.5 }, 0),
+    };
+
     // Cross-hatch overlay for teleport-CMD rooms. Fully-opaque bright
     // cyan with a 1.5 px stroke so the pattern reads at default zoom
     // without disappearing into the cell fill — the prior #B0FFFFFF
@@ -386,9 +415,9 @@ public sealed class MapControl : Control
         _hoverTimer.Stop();
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
-            WalkPathProperty, LoopPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
-            AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
-            PreviewPathProperty, TeleportRoomsProperty);
+            WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, AvoidedRoomsProperty,
+            LoopSequenceNumbersProperty, AutoLairRoomsProperty, WalkPathIsAutoLairProperty,
+            SelectedRoomKeyProperty, PreviewPathProperty, TeleportRoomsProperty);
 
         // Auto-centre on the player's current room every time it
         // changes (MudProxy's CenterOnRoom rule) — but only when the
@@ -785,9 +814,11 @@ public sealed class MapControl : Control
             }
         }
 
-        // Pass 4: top-of-stack polylines. Preview (queued) goes first
-        // so a live walk overlays the preview when both share a
-        // segment — the user's primary signal is the active walk.
+        // Pass 4: top-of-stack polylines. Builder preview goes first
+        // (lowest layer) so any active automation overlays it; preview
+        // (queued walk) goes next; running loop / walk on top so the
+        // user's primary signal is the active automation.
+        DrawPathPolyline(context, LoopBuilderPath, LoopBuilderPen, tilePixels, cx, cy);
         DrawPathPolyline(context, PreviewPath, PreviewPathPen, tilePixels, cx, cy);
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
         IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;

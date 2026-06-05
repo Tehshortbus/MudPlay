@@ -37,6 +37,14 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     [ObservableProperty] private int _expandedStepCount;
     [ObservableProperty] private string _unreachableSummary = string.Empty;
 
+    /// <summary>
+    /// Flattened RoomKey sequence for the map's loop-builder polyline:
+    /// every click + every BFS-filled intermediate room + the closing
+    /// leg back to click 0. Null when fewer than two clicks. Refreshed
+    /// alongside <see cref="ExpandedStepCount"/> on every click change.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _previewedRoomKeys;
+
     public bool HasClicks => Clicks.Count > 0;
     public bool CanSave   => Clicks.Count >= 2 && string.IsNullOrEmpty(UnreachableSummary);
 
@@ -67,6 +75,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         Clicks.Clear();
         ExpandedStepCount = 0;
         UnreachableSummary = string.Empty;
+        PreviewedRoomKeys = null;
         OnPropertyChanged(nameof(HasClicks));
         OnPropertyChanged(nameof(CanSave));
     }
@@ -98,6 +107,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         {
             ExpandedStepCount = 0;
             UnreachableSummary = string.Empty;
+            PreviewedRoomKeys = null;
             OnPropertyChanged(nameof(CanSave));
             return;
         }
@@ -106,7 +116,32 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         UnreachableSummary = unreachable.Count == 0
             ? string.Empty
             : $"{unreachable.Count} unreachable segment(s)";
+        PreviewedRoomKeys = unreachable.Count == 0
+            ? BuildRoomKeySequence(_clicks[0], steps)
+            : null;     // hide preview when the cycle has gaps
         OnPropertyChanged(nameof(CanSave));
+    }
+
+    /// <summary>
+    /// Walk the expanded direction list from <paramref name="start"/>
+    /// and accumulate every room the cycle visits. Returns null if
+    /// any intermediate exit doesn't resolve (graph mutation between
+    /// expansion and walking — shouldn't happen in normal use but the
+    /// null guard keeps the renderer from drawing a partial polyline).
+    /// </summary>
+    private IReadOnlyList<RoomKey>? BuildRoomKeySequence(RoomKey start, IReadOnlyList<LoopStep> steps)
+    {
+        var sequence = new List<RoomKey>(steps.Count + 1) { start };
+        RoomKey cursor = start;
+        foreach (LoopStep step in steps)
+        {
+            if (step is not MoveLoopStep move) continue;
+            if (_graph.GetRoom(cursor) is not { } room) return null;
+            if (!room.Exits.TryGetValue(move.Direction, out RoomExit exit)) return null;
+            cursor = exit.Target;
+            sequence.Add(cursor);
+        }
+        return sequence;
     }
 }
 
