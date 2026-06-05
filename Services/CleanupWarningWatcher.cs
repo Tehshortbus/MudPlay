@@ -36,15 +36,34 @@ public sealed partial class CleanupWarningWatcher
     /// <summary>Most-recently observed warning, or <c>null</c> if none in this session.</summary>
     public CleanupWarning? Latest { get; private set; }
 
-    /// <summary>Fires every time a warning line is matched. Payload = the new <see cref="Latest"/>.</summary>
+    /// <summary>
+    /// True after we've observed the in-cleanup "this system is not
+    /// available at the moment, please try again later" rejection
+    /// message. Distinct from <see cref="Latest"/> (the pre-shutdown
+    /// warning) — that one tells the user "the BBS is GOING down";
+    /// this flag tells us "the BBS IS down right now and we just
+    /// connected mid-cleanup". Reset on next successful
+    /// <see cref="Reset"/> (i.e. on next outgoing connect attempt).
+    /// </summary>
+    public bool InCleanupMode { get; private set; }
+
+    /// <summary>Fires every time a pre-shutdown warning line is matched. Payload = the new <see cref="Latest"/>.</summary>
     public event Action<CleanupWarning>? WarningObserved;
 
-    /// <summary>Wipe in-flight buffer + cached warning. Called on new connect.</summary>
+    /// <summary>
+    /// Fires once per <see cref="InCleanupMode"/> activation — i.e.
+    /// when the watcher sees the "system not available" rejection
+    /// message for the first time since the last <see cref="Reset"/>.
+    /// </summary>
+    public event Action? CleanupModeDetected;
+
+    /// <summary>Wipe in-flight buffer + cached warning + cleanup-mode flag. Called on new connect.</summary>
     public void Reset()
     {
         _buffer.Clear();
         _state = StripState.Normal;
         Latest = null;
+        InCleanupMode = false;
     }
 
     /// <summary>
@@ -87,6 +106,20 @@ public sealed partial class CleanupWarningWatcher
             WarningObserved?.Invoke(warning);
         }
 
+        // "Sorry, this system is not available at the moment, please
+        // try again later." — the BBS dumps this when you connect
+        // during the cleanup window. There's no minutes-remaining
+        // payload (cleanup has already started), so we just flip the
+        // flag + fire CleanupModeDetected once. Caller (MainWindowVM)
+        // uses this to switch the redial scheduler from the 5s
+        // reactive cycle to a single long-delay attempt using the
+        // BBS's CleanupPeriodMinutes setting.
+        if (!InCleanupMode && CleanupModeRegex().IsMatch(text))
+        {
+            InCleanupMode = true;
+            CleanupModeDetected?.Invoke();
+        }
+
         if (lastEnd > 0) _buffer.Remove(0, lastEnd);
         if (_buffer.Length > BufferCap)
             _buffer.Remove(0, _buffer.Length - BufferCap);
@@ -95,6 +128,10 @@ public sealed partial class CleanupWarningWatcher
     [GeneratedRegex(@"shutting down in (\d+)\s+minute",
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex WarningRegex();
+
+    [GeneratedRegex(@"this system is not available",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex CleanupModeRegex();
 
     private enum StripState : byte { Normal, EscSeen, Csi }
 }

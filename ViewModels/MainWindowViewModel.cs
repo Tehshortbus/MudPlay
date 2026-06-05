@@ -38,10 +38,18 @@ public partial class MainWindowViewModel : ObservableObject
     private Action<PromptObservation>? _loginKillSwitch;
     private CancellationTokenSource? _cleanupReconnectCts;
     // Counts reactive reconnect arms in a row (carrier-lost / no-response).
-    // Resets to 0 on a successful Connect or any user-initiated disconnect /
-    // connect — so the (REDIAL m/N) hint in the armed status only reflects
-    // the current uninterrupted disconnect cycle.
+    // Resets to 0 on a user-initiated connect/disconnect OR after the
+    // connection has stayed alive long enough to count as "real" (see
+    // _stableConnectionResetCts). Resetting on plain TCP-Connected
+    // would let a BBS-in-cleanup loop (connect → unavailable message →
+    // drop → reconnect) run forever because each fresh connect would
+    // zero the counter and never hit MaxRedials.
     private int _reactiveReconnectCount;
+    // Fires after StableConnectionWindowSeconds of continuous connect
+    // to reset _reactiveReconnectCount. Cancelled on every Disconnect
+    // so a flap inside the window is held against the redial budget.
+    private CancellationTokenSource? _stableConnectionResetCts;
+    private const int StableConnectionWindowSeconds = 30;
     // GC root for the who-list parser — it subscribes to LineExtractor
     // in its ctor and stays alive as long as MainWindowViewModel does.
     private readonly Game.WhoListParser _whoListParser;
@@ -429,6 +437,12 @@ public partial class MainWindowViewModel : ObservableObject
         // the user knows to type `quit` at a safe room. The auto-reconnect
         // schedule is armed later, on the Disconnected event.
         AppServices.Current.Cleanup.WarningObserved += OnCleanupWarningObserved;
+        // CleanupModeDetected fires when the BBS rejects us mid-connect
+        // with "this system is not available" (we connected during the
+        // cleanup window). Used by TryScheduleReactiveReconnect to
+        // switch from the 5s reactive cycle to a single long-delay
+        // attempt at now + CleanupPeriodMinutes.
+        AppServices.Current.Cleanup.CleanupModeDetected += OnCleanupModeDetected;
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
@@ -1157,6 +1171,59 @@ public partial class MainWindowViewModel : ObservableObject
         });
     }
 
+    private void OnCleanupModeDetected()
+    {
+        // Fires on the wire feed thread; marshal to UI before logging
+        // anything that touches WriteTerminalStatus.
+        Dispatcher.UIThread.Post(() =>
+        {
+            WriteTerminalStatus(
+                "[BBS IS IN CLEANUP MODE — REACTIVE RECONNECT WILL BACK OFF TO THE BBS'S CLEANUP-PERIOD SETTING.]",
+                TerminalStatusKind.Notice);
+            AppServices.Current.Log.Warn("Cleanup",
+                "Server returned 'this system is not available' — BBS is in cleanup mode right now.");
+        });
+    }
+
+    // ----- Stable-connection counter reset -----------------------------
+
+    /// <summary>
+    /// Arm a one-shot 30s timer that resets
+    /// <see cref="_reactiveReconnectCount"/> only if the connection
+    /// stays alive for the full window. A flap inside the window
+    /// (BBS-in-cleanup connect → unavailable banner → drop)
+    /// cancels the timer and the counter keeps climbing toward
+    /// <see cref="BbsProfile.MaxRedials"/>.
+    /// </summary>
+    private void ArmStableConnectionReset()
+    {
+        CancelStableConnectionReset();
+        _stableConnectionResetCts = new CancellationTokenSource();
+        CancellationToken token = _stableConnectionResetCts.Token;
+        _ = Task.Delay(TimeSpan.FromSeconds(StableConnectionWindowSeconds), token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!IsConnected) return;
+                if (_reactiveReconnectCount > 0)
+                    AppServices.Current.Log.Info("Reconnect",
+                        $"Connection stable for {StableConnectionWindowSeconds}s; resetting redial counter (was {_reactiveReconnectCount}).");
+                _reactiveReconnectCount = 0;
+                _stableConnectionResetCts?.Dispose();
+                _stableConnectionResetCts = null;
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void CancelStableConnectionReset()
+    {
+        if (_stableConnectionResetCts is null) return;
+        try { _stableConnectionResetCts.Cancel(); } catch { }
+        _stableConnectionResetCts.Dispose();
+        _stableConnectionResetCts = null;
+    }
+
     /// <summary>
     /// On disconnect, if a cleanup warning was observed during this
     /// session AND the active BBS has <see cref="BbsProfile.ReconnectAfterCleanup"/>
@@ -1334,21 +1401,40 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
+        // Cleanup-mode override: BBS just rejected us with "this
+        // system is not available". A 5s redial loop would hammer
+        // it pointlessly — switch to a single long-delay attempt at
+        // the BBS's CleanupPeriodMinutes setting (default 0 → fall
+        // back to RedialPauseSeconds so the behaviour is unchanged
+        // when the user hasn't configured the field).
+        bool cleanupMode = AppServices.Current.Cleanup.InCleanupMode;
+        TimeSpan delay = cleanupMode && bbs.CleanupPeriodMinutes > 0
+            ? TimeSpan.FromMinutes(bbs.CleanupPeriodMinutes)
+            : TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
+
         _cleanupReconnectCts?.Cancel();
         _cleanupReconnectCts?.Dispose();
         _cleanupReconnectCts = new CancellationTokenSource();
         NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
-        string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
-            ? "no response"
-            : "carrier lost";
-        WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {(int)delay.TotalSeconds}s. PRESS CONNECT TO CANCEL.]",
-            TerminalStatusKind.Notice);
+        string reasonLabel = cleanupMode
+            ? "BBS in cleanup"
+            : _lastDisconnectCause == DisconnectCause.NoResponse
+                ? "no response"
+                : "carrier lost";
+
+        // Banner phrasing: first arm of a disconnect cycle carries the
+        // full "PRESS CONNECT TO CANCEL" instructional line; follow-up
+        // arms inside the same cycle compress to the short progress
+        // form so the terminal doesn't get spammed with the full text
+        // ten times in a row.
+        string bannerText = _reactiveReconnectCount == 1
+            ? $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {FormatDelay(delay)}. PRESS CONNECT TO CANCEL.]"
+            : $"[ATTEMPTING REDIAL {_reactiveReconnectCount}/{maxRedials} IN {FormatDelay(delay)}.]";
+        WriteTerminalStatus(bannerText, TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Reconnect",
-            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {(int)delay.TotalSeconds}s.");
+            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {FormatDelay(delay)}.");
 
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
@@ -1362,6 +1448,18 @@ public partial class MainWindowViewModel : ObservableObject
                 _ = ConnectWithRetriesAsync();
             });
         }, TaskScheduler.Default);
+    }
+
+    /// <summary>Human-friendly delay rendering for the auto-reconnect banner / log.</summary>
+    private static string FormatDelay(TimeSpan delay)
+    {
+        if (delay.TotalMinutes >= 1)
+        {
+            int min = (int)delay.TotalMinutes;
+            int sec = delay.Seconds;
+            return sec == 0 ? $"{min}m" : $"{min}m{sec:D2}s";
+        }
+        return $"{(int)delay.TotalSeconds}s";
     }
 
     /// <summary>
@@ -1494,13 +1592,18 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 IsConnected = true;
-                // Fresh session — drop any cleanup warning carried over,
-                // clear any pending auto-reconnect schedule, and reset the
-                // reactive-redial counter so the next disconnect cycle
-                // starts from 1/N again.
+                // Fresh session — drop any cleanup-watcher state carried
+                // over and clear any pending auto-reconnect schedule.
+                // Do NOT zero _reactiveReconnectCount here: a BBS in
+                // cleanup mode answers every dial with a banner + drop,
+                // and resetting on the TCP-connect would burn through
+                // unbounded redials instead of hitting MaxRedials.
+                // Instead arm a 30s "this connection survived" timer
+                // (StableConnectionWindowSeconds) that resets the
+                // counter only if the connection lasts that long.
                 AppServices.Current.Cleanup.Reset();
-                _reactiveReconnectCount = 0;
                 CancelCleanupReconnect("connected");
+                ArmStableConnectionReset();
             });
         };
         client.Disconnected += () =>
@@ -1511,6 +1614,10 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 bool wasConnected = IsConnected;
                 IsConnected = false;
+                // Cancel any pending stable-window reset — this drop
+                // happened before the 30s threshold, so the connect
+                // didn't earn a counter reset.
+                CancelStableConnectionReset();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a
