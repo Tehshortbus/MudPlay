@@ -799,7 +799,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void WalkToContextRoom()
     {
-        if (ContextRoomKey is { } k) _services.Walker.WalkTo(k);
+        if (ContextRoomKey is not { } k) return;
+        // If a loop or Auto-Lair is currently driving movement, stop
+        // it before handing control to the walker — the user's explicit
+        // walk-to takes precedence over the automation in the
+        // background. Auto-Lair owns the walker for its routing, so
+        // stopping it cleanly releases the walker for our WalkTo call.
+        if (_services.LoopRunner.State is Game.Map.LoopState.Running
+                                       or Game.Map.LoopState.Paused
+                                       or Game.Map.LoopState.Approaching)
+            _services.LoopRunner.Stop("user walk-to from Navigation");
+        if (_services.AutoLair.IsActive)
+            _services.AutoLair.Stop();
+        _services.Walker.WalkTo(k);
     }
 
     [RelayCommand]
@@ -957,17 +969,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Layout = _services.Bfs.BuildLayout(newOrigin);
     }
 
+    /// <summary>
+    /// Open the Manage dialog — modeless surface for renaming /
+    /// deleting saved loops and unmarking Auto-Lair rooms. Per UX
+    /// direction this is where naming + lifecycle CRUD live; the
+    /// bottom build strip is a pure status display.
+    /// </summary>
     [RelayCommand]
-    private void SaveLoopBuilder()
+    private async Task OpenManagerAsync()
     {
-        LoopBuilder?.Save();
-        // Stay in loop mode so the user can immediately start another loop.
-    }
-
-    [RelayCommand]
-    private void DiscardLoopBuilder()
-    {
-        LoopBuilder?.Clear();
+        NavigationManagerDialogViewModel vm = new(
+            _services.Loops,
+            _services.AutoLair,
+            _services.RoomGraph,
+            _services.Confirm,
+            _services.Dialogs);
+        await _services.Dialogs
+            .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
 
     [RelayCommand]
@@ -1406,6 +1424,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             LoopBuilder.Save();
             if (_services.Loops.Loops.LastOrDefault() is { } saved)
                 _services.LoopRunner.Start(saved);
+            // Saving + starting hands the loop over to the runner — the
+            // build session is consumed, so close LoopBuild mode (and
+            // the bottom builder strip with it).
+            if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
             return;
         }
         if (CurrentMode == NavigationMode.AutoLair

@@ -299,8 +299,6 @@ public sealed class LoopRunner : IRecoverableEngine
         _circleStartRoom = null;
         _expandedSteps = new List<LoopStep>();
 
-        Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
-
         RoomKey? currentKey = _tracker.State.CurrentRoom?.Key;
 
         // Decision: do we need an approach walk, or can we begin the
@@ -314,11 +312,20 @@ public sealed class LoopRunner : IRecoverableEngine
         //   - Walker missing (unit tests) or no graph → expand from
         //     waypoint 0 and let the runner fail-or-recover.
 
+        // Started is raised AFTER each branch commits its state +
+        // rotation + expansion + (where applicable) State transition.
+        // Subscribers like NavigationViewModel.RefreshLoopOverlays read
+        // runner.State / CircleStartRoom / ExpandedSteps in their
+        // handler; if we raised before the commit they'd see the prior
+        // (Idle) shape and the approach-phase preview overlay would
+        // render empty.
+
         if (currentKey is { } here && loop.Waypoints.Any(w => w.Key.Equals(here)))
         {
             RotateLoopTo(here);
             _circleStartRoom = here;
             ExpandSteps();
+            Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
             BeginCircle();
             return true;
         }
@@ -326,6 +333,7 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_walker is null || _bfs is null || currentKey is null)
         {
             ExpandSteps();
+            Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
             BeginCircle();
             return true;
         }
@@ -351,6 +359,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _approachTarget  = closest;
         ExpandSteps();
         State = LoopState.Approaching;
+        Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
         _log?.Info("LoopRunner",
             $"approach: walking from {currentKey} → {closest} (closest of {loop.Waypoints.Count} waypoints)");
         _walker.WalkTo(closest.Value);

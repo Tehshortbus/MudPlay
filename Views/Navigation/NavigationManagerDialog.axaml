@@ -1,0 +1,203 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.Navigation.NavigationManagerDialog"
+        x:DataType="vm:NavigationManagerDialogViewModel"
+        Title="Manage"
+        Width="640" Height="560"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="Border.ManagerRow">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding"      Value="6,3"/>
+            <Setter Property="Margin"       Value="0,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush"  Value="Transparent"/>
+            <Setter Property="Background"   Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.ManagerRow TextBlock">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <!-- Header -->
+            <TextBlock Grid.Row="0"
+                       Text="Loops and Auto-Lair markers for this BBS / character."
+                       FontSize="11"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <!-- Two-pane body: Loops on top, Auto-Lair on bottom. Both
+                 scroll independently so a long loop list doesn't crowd
+                 the lair list out of view. -->
+            <Grid Grid.Row="1" RowDefinitions="*,Auto,*">
+
+                <!-- Loops section -->
+                <Border Grid.Row="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Background="{StaticResource ChromeBgElevBrush}"
+                                Padding="6,3">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="Loops"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           VerticalAlignment="Center">
+                                    <Run Text="{Binding Loops.Count, FallbackValue=0}"/>
+                                    <Run Text=" saved"/>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="No loops saved on this BBS yet — build one from the Navigation map."
+                                           Padding="8"
+                                           FontSize="11"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding !HasLoops}"/>
+                                <ItemsControl ItemsSource="{Binding Loops}"
+                                              IsVisible="{Binding HasLoops}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ManagerLoopRow">
+                                            <Border Classes="ManagerRow">
+                                                <Grid ColumnDefinitions="*,60,*,Auto,Auto" ColumnSpacing="6">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Name}"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}">
+                                                        <Run Text="{Binding WaypointCount}"/>
+                                                        <Run Text=" wpt"/>
+                                                    </TextBlock>
+                                                    <TextBlock Grid.Column="2"
+                                                               Text="{Binding Notes}"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="3"
+                                                            Content="Edit"
+                                                            FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="4"
+                                                            Content="✕"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            ToolTip.Tip="Delete loop"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Visual gap -->
+                <Border Grid.Row="1" Height="6"/>
+
+                <!-- Auto-Lair section -->
+                <Border Grid.Row="2"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Background="{StaticResource ChromeBgElevBrush}"
+                                Padding="6,3">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0"
+                                           Text="Auto-Lair markers"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0">
+                                    <Run Text="{Binding Lairs.Count, FallbackValue=0}"/>
+                                    <Run Text=" marked"/>
+                                </TextBlock>
+                                <Button Grid.Column="2"
+                                        Content="Clear all"
+                                        FontSize="10"
+                                        Padding="6,2"
+                                        Command="{Binding ClearAllLairsCommand}"
+                                        IsEnabled="{Binding HasLairs}"/>
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="No Auto-Lair rooms marked — right-click a room on the map to mark it."
+                                           Padding="8"
+                                           FontSize="11"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding !HasLairs}"/>
+                                <ItemsControl ItemsSource="{Binding Lairs}"
+                                              IsVisible="{Binding HasLairs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ManagerLairRow">
+                                            <Border Classes="ManagerRow">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding DisplayLabel}"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="1"
+                                                            Content="Unmark"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).UnmarkLairCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Footer -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button Content="Close"
+                        Command="{Binding CloseCommand}"
+                        IsCancel="True" MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

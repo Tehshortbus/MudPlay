@@ -118,6 +118,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.LoopEditorDialogViewModel,
                 FujinTerm.Views.Navigation.LoopEditorDialog>();
 
+            // Navigation → "Manage" chip → loops + auto-lair markers
+            // CRUD surface. Modeless; replaces the bottom-strip
+            // save/discard/name textbox UX with a dedicated window.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.NavigationManagerDialogViewModel,
+                FujinTerm.Views.Navigation.NavigationManagerDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

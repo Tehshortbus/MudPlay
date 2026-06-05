@@ -230,7 +230,9 @@
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
-                <!-- Display-toggle chips -->
+                <!-- Display-toggle chips + the Manage chip (saved loops
+                     + Auto-Lair markers CRUD; replaces the bottom-strip
+                     save/discard/name textboxes per UX direction). -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                     <Button Classes="ToggleChip" Content="Lairs"
                             Command="{Binding ToggleLairsCommand}"
@@ -244,6 +246,9 @@
                     <Button Classes="ToggleChip" Content="Legend"
                             Command="{Binding ToggleLegendCommand}"
                             Classes.LegendFill="{Binding LegendVisible}"/>
+                    <Button Classes="ToggleChip" Content="Manage"
+                            Command="{Binding OpenManagerCommand}"
+                            ToolTip.Tip="Rename / delete saved loops, unmark Auto-Lair rooms"/>
                 </StackPanel>
 
                 <!-- Queued destination chip (centre). Click clears the
@@ -749,13 +754,17 @@
             </Border>
         </Grid>
 
-        <!-- Row 3: bottom strip — loop builder session (existing) -->
+        <!-- Row 3: bottom strip — loop builder session status only.
+             Per UX direction the bar carries no actions: Save+Start
+             is the top-right Run button, naming/deleting/renaming
+             live in the Manage dialog, and exiting build mode
+             discards the in-progress clicks. -->
         <Border Grid.Row="3"
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,1,0,0"
                 IsVisible="{Binding IsLoopBuilding}">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="12,6" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,6" ColumnSpacing="8">
                 <Border Grid.Column="0"
                         CornerRadius="3" Padding="6,1"
                         VerticalAlignment="Center"
@@ -770,21 +779,11 @@
                         <Run Text="{Binding LoopBuilder.Clicks.Count, FallbackValue=0}"/>
                         <Run Text=" room(s) clicked · "/>
                         <Run Text="{Binding LoopBuilder.ExpandedStepCount, FallbackValue=0}"/>
-                        <Run Text=" step(s) total"/>
+                        <Run Text=" step(s) total · Run to save+start, toggle Loop to discard"/>
                     </TextBlock>
                     <TextBlock FontSize="11" Foreground="{StaticResource AccentRedBrush}"
                                Text="{Binding LoopBuilder.UnreachableSummary}"
                                IsVisible="{Binding LoopBuilder.UnreachableSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
-                <TextBox Grid.Column="2"
-                         Text="{Binding LoopBuilder.ProposedName, Mode=TwoWay}"
-                         Width="180" FontSize="11"/>
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
-                    <Button Content="Save"
-                            Command="{Binding SaveLoopBuilderCommand}"
-                            IsEnabled="{Binding LoopBuilder.CanSave, FallbackValue=False}"/>
-                    <Button Content="Discard"
-                            Command="{Binding DiscardLoopBuilderCommand}"/>
                 </StackPanel>
             </Grid>
         </Border>
