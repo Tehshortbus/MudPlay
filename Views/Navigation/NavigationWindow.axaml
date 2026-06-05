@@ -759,11 +759,24 @@
                                 </StackPanel>
                             </Expander>
 
-                            <!-- LOOPS -->
+                            <!-- LOOPS + AUTO-LAIRS — single combined
+                                 section. Header tokens are
+                                 individually coloured: "Loops"
+                                 green to match loop-name rows, "+"
+                                 neutral white, "Auto-Lairs" orange
+                                 to match (future) auto-lair setup
+                                 rows. -->
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsLoopsExpanded, Mode=TwoWay}">
                                 <Expander.Header>
-                                    <TextBlock Classes="RailSectionHeader" Text="LOOPS" Margin="0"/>
+                                    <TextBlock Classes="RailSectionHeader" Margin="0">
+                                        <Run Text="LOOPS"
+                                             Foreground="{StaticResource AccentGreenBrush}"/>
+                                        <Run Text=" + "
+                                             Foreground="{StaticResource ChromeFgBrush}"/>
+                                        <Run Text="AUTO-LAIRS"
+                                             Foreground="{StaticResource AccentAmberBrush}"/>
+                                    </TextBlock>
                                 </Expander.Header>
                                 <StackPanel Spacing="2" HorizontalAlignment="Stretch">
                                     <TextBlock Text="No loops saved on this BBS."
@@ -785,9 +798,12 @@
                                                      right at any name length. -->
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <!-- Loop names are green to match the section
+                                                             header's "LOOPS" run; auto-lair setup
+                                                             rows (future) will be amber. -->
                                                         <TextBlock Text="{Binding Name}"
                                                                    FontSize="11"
-                                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                                   Foreground="{StaticResource AccentGreenBrush}"
                                                                    TextTrimming="CharacterEllipsis"
                                                                    ToolTip.Tip="{Binding Name}"/>
                                                         <TextBlock FontSize="10"
