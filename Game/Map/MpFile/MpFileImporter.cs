@@ -240,32 +240,73 @@ public sealed partial class MpFileImporter
                 // reads room metadata at run time, so the verb is
                 // informational — the next-step hash is the
                 // authoritative target.
-                RoomKey? matched = null;
+                //
+                // Two-pass match (strict → tolerant):
+                //   1. Exact 8-char hashExits compare. When this
+                //      hits the candidate is definitively the right
+                //      room — no fuzz.
+                //   2. When no neighbour matches exactly, fall back
+                //      to the 3-char name-hash alone. The exits
+                //      portion of the recorded hash drifts whenever
+                //      a room's exit set differs from what MegaMUD
+                //      had at .mp-build time (a single exit added or
+                //      removed flips the 5-char code) — but the
+                //      name hash is far more stable. A unique
+                //      name-hash hit among the neighbours is almost
+                //      always the right room; the per-step
+                //      mismatch counter ticks so the candidate is
+                //      ranked lower than an exact-walk peer.
+                (string? destNameHash, _) = MegaMudHash.Split(destHash);
+                RoomKey? matchedExact = null;
+                RoomKey? matchedByName = null;
+                int nameMatchCount = 0;
                 foreach (RoomExit candidateExit in cursorRoom.Exits.Values)
                 {
                     if (_graph.GetRoom(candidateExit.Target) is not { } cand) continue;
                     string candHash = MegaMudHash.ComputeHashExits(cand);
-                    if (!string.Equals(candHash, destHash, StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    matched = candidateExit.Target;
-                    break;
+                    if (string.Equals(candHash, destHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchedExact = candidateExit.Target;
+                        break;
+                    }
+                    if (destNameHash is not null)
+                    {
+                        string candNameHash = MegaMudHash.ComputeNameHash(cand.Name);
+                        if (string.Equals(candNameHash, destNameHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchedByName = candidateExit.Target;
+                            nameMatchCount++;
+                        }
+                    }
                 }
-                if (matched is null)
+
+                if (matchedExact is { } exactPick)
                 {
-                    // Diagnostic: dump every neighbour's key, name,
-                    // computed hashExits, and hint so the user can
-                    // compare against the .mp file and figure out
-                    // whether they're missing the action exit
-                    // entirely OR have it but with a different
-                    // target room name / exit set than MegaMUD
-                    // recorded.
+                    dest = exactPick;
+                }
+                else if (nameMatchCount == 1 && matchedByName is { } namePick)
+                {
+                    _log?.Log(LogSeverity.Info, "MpImporter",
+                        $"step {i + 1}: exact hashExits {destHash} not on any neighbour of {cursor}; "
+                      + $"falling back to unique name-hash match → {namePick} "
+                      + $"('{_graph.GetRoom(namePick)?.Name}'). Exit-set drift is the likely cause.");
+                    dest = namePick;
+                    mismatches++;
+                }
+                else
+                {
                     LogNeighbourSnapshot(cursor, cursorRoom, destHash, step);
+                    string nameHashHint = destNameHash is null
+                        ? string.Empty
+                        : nameMatchCount > 1
+                            ? $" ({nameMatchCount} neighbours matched on name-hash {destNameHash} alone — too ambiguous to fall back)"
+                            : string.Empty;
                     return (null,
                         $"step {i + 1}: room {cursor} ('{cursorRoom.Name}') has no neighbour matching "
-                      + $"hashExits {destHash} for non-compass action '{step.ActionText}' "
-                      + "(graph data likely missing this action exit — see Debug log for the room's actual neighbours)");
+                      + $"hashExits {destHash} for non-compass action '{step.ActionText}'"
+                      + nameHashHint
+                      + " (see Info log for the room's actual neighbours)");
                 }
-                dest = matched.Value;
             }
 
             cursor = dest;
