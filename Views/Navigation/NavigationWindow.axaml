@@ -531,14 +531,20 @@
                                   Padding="10,6,10,6">
                         <StackPanel Spacing="4">
 
-                            <!-- CURRENT NAV -->
+                            <!-- CURRENT NAV. HorizontalAlignment=Stretch on
+                                 the body StackPanel is the same width
+                                 normalisation GOTO/LOOPS get implicitly
+                                 from their button/border rows; without it
+                                 the body inherits content-driven sizing
+                                 and the expanded section appears narrower
+                                 than the other two sidebar pills. -->
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsCurrentNavExpanded, Mode=TwoWay}">
                                 <Expander.Header>
                                     <TextBlock Classes="RailSectionHeader" Text="CURRENT NAV"
                                                Margin="0"/>
                                 </Expander.Header>
-                                <StackPanel Spacing="4">
+                                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
                             <TextBlock Text="{Binding CurrentNavHeader}"
                                        Foreground="{StaticResource ChromeFgSecBrush}"
                                        FontSize="11"
@@ -690,7 +696,7 @@
                                 <Expander.Header>
                                     <TextBlock Classes="RailSectionHeader" Text="GOTO" Margin="0"/>
                                 </Expander.Header>
-                                <StackPanel Spacing="2">
+                                <StackPanel Spacing="2" HorizontalAlignment="Stretch">
                                     <TextBlock Text="No favourites yet — right-click a room on the map and pick &quot;Add to favorites&quot;."
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"
@@ -732,7 +738,7 @@
                                 <Expander.Header>
                                     <TextBlock Classes="RailSectionHeader" Text="LOOPS" Margin="0"/>
                                 </Expander.Header>
-                                <StackPanel Spacing="2">
+                                <StackPanel Spacing="2" HorizontalAlignment="Stretch">
                                     <TextBlock Text="No loops saved on this BBS."
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"

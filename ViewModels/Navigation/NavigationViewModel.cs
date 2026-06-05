@@ -1022,13 +1022,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private void OnLoopBuilderPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // Read off the sender, not the LoopBuilder field — during
+        // OpenBuilderForRunningLoop the seeding AddClick() calls fire
+        // before the field is assigned (we attach the handler before
+        // looping over the waypoints so we don't miss the click-list
+        // change notifications). Falling back to `LoopBuilder` here
+        // produced null reads → the map's red preview never rendered
+        // on Pause.
+        LoopBuilderSessionViewModel? b = sender as LoopBuilderSessionViewModel ?? LoopBuilder;
         switch (e.PropertyName)
         {
             case nameof(LoopBuilderSessionViewModel.PreviewedRoomKeys):
-                LoopBuilderPath = LoopBuilder?.PreviewedRoomKeys;
+                LoopBuilderPath = b?.PreviewedRoomKeys;
                 break;
             case nameof(LoopBuilderSessionViewModel.WaypointKeys):
-                LoopBuilderWaypoints = LoopBuilder?.WaypointKeys;
+                LoopBuilderWaypoints = b?.WaypointKeys;
                 break;
             case nameof(LoopBuilderSessionViewModel.CanSave):
                 // CanRun + RunStopLabel depend on CanSave while in
@@ -1647,6 +1655,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _loopBuilderOpenedByPause = true;
         OnPropertyChanged(nameof(LoopBuilder));
         OnPropertyChanged(nameof(IsLoopBuilding));
+
+        // Belt-and-braces: even with the sender-fallback in
+        // OnLoopBuilderPropertyChanged the path/waypoint observables
+        // may already be null because PreviewedRoomKeys/WaypointKeys
+        // were set during AddClick before this method's final assignment
+        // could fire. Pull the current values across so the map's
+        // builder overlay paints immediately.
+        LoopBuilderPath       = builder.PreviewedRoomKeys;
+        LoopBuilderWaypoints  = builder.WaypointKeys;
+        RefreshLoopOverlays();
     }
 
     /// <summary>
@@ -1729,7 +1747,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                         : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
                 NavigationEngineKind.Looping  => BuildLoopHeader(),
                 NavigationEngineKind.AutoLair => "Cycling marked lairs",
-                _ => "No active navigation. Start a Loop, Walk, or Lair cycle from the toolbar.",
+                _ => "No Active Navigation",
             };
         }
     }
