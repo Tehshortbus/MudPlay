@@ -33,14 +33,12 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     public ObservableCollection<LoopBuilderRow> Clicks { get; } = new();
 
     [ObservableProperty] private string _proposedName = "";
-    [ObservableProperty] private bool _closeLoop;
+    [ObservableProperty] private string _notes = string.Empty;
     [ObservableProperty] private int _expandedStepCount;
     [ObservableProperty] private string _unreachableSummary = string.Empty;
 
     public bool HasClicks => Clicks.Count > 0;
     public bool CanSave   => Clicks.Count >= 2 && string.IsNullOrEmpty(UnreachableSummary);
-
-    partial void OnCloseLoopChanged(bool value) => Reexpand();
 
     public void AddClick(RoomKey key)
     {
@@ -81,12 +79,13 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     public Loop? Save()
     {
         if (!CanSave) return null;
-        (var steps, _) = _loops.ExpandClickedRooms(_clicks, CloseLoop, _filter);
+        (var steps, _) = _loops.ExpandClickedRooms(_clicks, _filter);
         if (steps.Count == 0) return null;
 
         Loop loop = new(ProposedName, steps)
         {
-            IsCircular = CloseLoop,
+            UserWaypoints = new List<RoomKey>(_clicks),
+            Notes = Notes ?? string.Empty,
         };
         _loops.Save(loop);
         Clear();
@@ -102,7 +101,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
             OnPropertyChanged(nameof(CanSave));
             return;
         }
-        (var steps, var unreachable) = _loops.ExpandClickedRooms(_clicks, CloseLoop, _filter);
+        (var steps, var unreachable) = _loops.ExpandClickedRooms(_clicks, _filter);
         ExpandedStepCount = steps.Count;
         UnreachableSummary = unreachable.Count == 0
             ? string.Empty

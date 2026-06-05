@@ -87,12 +87,14 @@ public sealed class LoopManager
 
         int loaded = 0;
         int failed = 0;
+        int upgraded = 0;
         foreach (string path in Directory.EnumerateFiles(folder, "*.json"))
         {
             try
             {
                 Loop? loop = JsonStore.Load<Loop>(path);
                 if (loop is null || string.IsNullOrWhiteSpace(loop.Name)) { failed++; continue; }
+                if (UpgradeIfNeeded(loop)) upgraded++;
                 _loops[loop.Name] = loop;
                 loaded++;
             }
@@ -102,9 +104,11 @@ public sealed class LoopManager
             }
         }
 
-        _log?.Info("Loops", failed == 0
-            ? $"Loaded {loaded} loop(s) for '{bbsName}'."
-            : $"Loaded {loaded} loop(s) for '{bbsName}' ({failed} malformed file(s) skipped).");
+        string detail = failed == 0
+            ? $"Loaded {loaded} loop(s) for '{bbsName}'"
+            : $"Loaded {loaded} loop(s) for '{bbsName}' ({failed} malformed file(s) skipped)";
+        if (upgraded > 0) detail += $"; {upgraded} v1 loop(s) running without UserWaypoints — re-save to enable avoid-list re-expand";
+        _log?.Info("Loops", detail + ".");
         LoopsChanged?.Invoke();
     }
 
@@ -173,17 +177,18 @@ public sealed class LoopManager
     // ----- builder helpers -------------------------------------------
 
     /// <summary>
-    /// Expand a sequence of clicked room keys into a flat
-    /// <see cref="LoopStep"/> sequence — BFS the gap between each
-    /// consecutive pair and inline the directional steps. Returns the
-    /// step list (possibly empty) and a list of unreachable segments
-    /// the user must fix before saving.
+    /// Expand a sequence of clicked rooms into the flat closed-cycle
+    /// <see cref="LoopStep"/> sequence the runner executes: BFS each
+    /// consecutive pair plus the implicit closing leg from the last
+    /// click back to the first. Returns the expanded step list
+    /// (possibly empty when too few clicks) and a list of unreachable
+    /// segments the builder surfaces so the user can fix the click
+    /// list before saving.
     /// </summary>
     /// <param name="clicks">Rooms in the order the user clicked them.</param>
-    /// <param name="closeLoop">When true, append a path from the last click back to the first (makes the loop circular).</param>
     /// <param name="filter">Optional avoided-rooms filter — same one the walker uses.</param>
     public (IReadOnlyList<LoopStep> Steps, IReadOnlyList<(RoomKey From, RoomKey To)> UnreachableSegments)
-        ExpandClickedRooms(IReadOnlyList<RoomKey> clicks, bool closeLoop = false, IRoomFilter? filter = null)
+        ExpandClickedRooms(IReadOnlyList<RoomKey> clicks, IRoomFilter? filter = null)
     {
         ArgumentNullException.ThrowIfNull(clicks);
         if (clicks.Count < 2)
@@ -194,30 +199,56 @@ public sealed class LoopManager
 
         for (int i = 0; i < clicks.Count - 1; i++)
         {
-            RoomKey from = clicks[i];
-            RoomKey to = clicks[i + 1];
-            IReadOnlyList<Direction>? path = _bfs.FindPath(from, to, filter);
-            if (path is null || path.Count == 0)
-            {
-                unreachable.Add((from, to));
-                continue;
-            }
-            foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
+            AppendSegment(clicks[i], clicks[i + 1], filter, steps, unreachable);
         }
 
-        if (closeLoop && clicks.Count >= 2)
-        {
-            RoomKey from = clicks[^1];
-            RoomKey to = clicks[0];
-            IReadOnlyList<Direction>? path = _bfs.FindPath(from, to, filter);
-            if (path is null || path.Count == 0) unreachable.Add((from, to));
-            else foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
-        }
+        // Closing leg — every loop is a cycle by definition.
+        AppendSegment(clicks[^1], clicks[0], filter, steps, unreachable);
 
         return (steps, unreachable);
     }
 
+    private void AppendSegment(
+        RoomKey from,
+        RoomKey to,
+        IRoomFilter? filter,
+        List<LoopStep> steps,
+        List<(RoomKey From, RoomKey To)> unreachable)
+    {
+        IReadOnlyList<Direction>? path = _bfs.FindPath(from, to, filter);
+        if (path is null || path.Count == 0)
+        {
+            unreachable.Add((from, to));
+            return;
+        }
+        foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
+    }
+
     // ----- internals -------------------------------------------------
+
+    /// <summary>
+    /// Upgrade an in-memory <see cref="Loop"/> in place if its
+    /// <see cref="Loop.SchemaVersion"/> is below the current version.
+    /// Returns <c>true</c> when an upgrade was applied so the caller
+    /// can surface a count in the load log.
+    /// </summary>
+    /// <remarks>
+    /// v1 → v2: <c>IsCircular</c> is dropped (loops are always
+    /// circular now); <c>UserWaypoints</c> defaults to empty (these
+    /// loops can run but can't be re-expanded on avoid-list change
+    /// until the user re-saves them from the editor);
+    /// <c>Notes</c> defaults to empty. The file on disk isn't
+    /// rewritten — the upgrade is in-memory only so a user who
+    /// downgrades doesn't lose their old files.
+    /// </remarks>
+    private static bool UpgradeIfNeeded(Loop loop)
+    {
+        if (loop.SchemaVersion >= 2) return false;
+        loop.SchemaVersion = 2;
+        loop.UserWaypoints ??= new List<RoomKey>();
+        loop.Notes ??= string.Empty;
+        return true;
+    }
 
     /// <summary>
     /// Make <paramref name="name"/> filesystem-safe. The user can call

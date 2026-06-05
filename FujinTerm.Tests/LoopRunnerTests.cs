@@ -68,12 +68,12 @@ public sealed class LoopRunnerTests : IDisposable
         return h;
     }
 
-    private static Loop TwoStepLoop(bool circular = false) =>
+    private static Loop TwoStepLoop() =>
         new("test", new LoopStep[]
         {
             new MoveLoopStep(Direction.N),
             new MoveLoopStep(Direction.N),
-        }) { IsCircular = circular };
+        });
 
     [Fact]
     public void Start_EmptyLoop_ReturnsFalse()
@@ -98,30 +98,15 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
-    public void TwoConfirmedSteps_NonCircular_Finishes()
+    public void WrapsAtEnd_AndFiresRepeatStarted()
     {
+        // Loops are circular by definition (schema v2 — IsCircular
+        // dropped). On reaching the last step we wrap back to step 0
+        // and fire RepeatStarted; the runner never produces a
+        // Finished event.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Runner.Start(TwoStepLoop());
-
-        h.Tracker.NoteRoomObserved(new RoomObservation("B",
-            new HashSet<Direction> { Direction.N, Direction.S }));
-
-        Assert.Equal(2, h.Sent.Count);
-
-        h.Tracker.NoteRoomObserved(new RoomObservation("C",
-            new HashSet<Direction> { Direction.S }));
-
-        Assert.Equal(LoopState.Idle, h.Runner.State);
-        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Finished);
-    }
-
-    [Fact]
-    public void Circular_WrapsAtEnd_AndFiresRepeatStarted()
-    {
-        Harness h = NewHarness();
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(TwoStepLoop(circular: true));
 
         // step 1: N → land at B
         h.Tracker.NoteRoomObserved(new RoomObservation("B",

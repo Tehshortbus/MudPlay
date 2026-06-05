@@ -657,7 +657,7 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,1,0,0"
                 IsVisible="{Binding IsLoopBuilding}">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="12,6" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="12,6" ColumnSpacing="8">
                 <Border Grid.Column="0"
                         CornerRadius="3" Padding="6,1"
                         VerticalAlignment="Center"
@@ -681,11 +681,7 @@
                 <TextBox Grid.Column="2"
                          Text="{Binding LoopBuilder.ProposedName, Mode=TwoWay}"
                          Width="180" FontSize="11"/>
-                <CheckBox Grid.Column="3"
-                          Content="Closed loop"
-                          IsChecked="{Binding LoopBuilder.CloseLoop, Mode=TwoWay}"
-                          VerticalAlignment="Center"/>
-                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
                     <Button Content="Save"
                             Command="{Binding SaveLoopBuilderCommand}"
                             IsEnabled="{Binding LoopBuilder.CanSave, FallbackValue=False}"/>

@@ -205,21 +205,13 @@ public sealed class LoopRunner : IRecoverableEngine
         // Tier-3 gate may have escalated; if so don't queue a new step.
         if (_recovery is not null && !_recovery.MayProceedWithPlannedStep()) return;
 
-        // Wrap-around for circular loops.
+        // All loops are circular by definition — every lap wraps back
+        // to step 0. The runner has no "Finished" end-condition; it
+        // runs until the user Stops or the recovery gate aborts it.
         if (_index >= _loop.Steps.Count)
         {
-            if (_loop.IsCircular)
-            {
-                _index = 0;
-                Raise(new LoopEvent(LoopEventKind.RepeatStarted, _loop.Name));
-            }
-            else
-            {
-                string? name = _loop.Name;
-                Reset();
-                Raise(new LoopEvent(LoopEventKind.Finished, $"{name}: end of loop"));
-                return;
-            }
+            _index = 0;
+            Raise(new LoopEvent(LoopEventKind.RepeatStarted, _loop.Name));
         }
 
         LoopStep step = _loop.Steps[_index];
@@ -395,8 +387,10 @@ public enum LoopEventKind
     Resumed = 3,
     RepeatStarted = 4,
     Stopped = 5,
-    Finished = 6,
     Failed = 7,
+    // 6 (Finished) retired in schema v2 — loops are circular by
+    // definition and never end on their own; only Stop / Failed
+    // remove them from running state.
 }
 
 public readonly record struct LoopEvent(LoopEventKind Kind, string Detail);
