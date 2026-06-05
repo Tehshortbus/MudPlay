@@ -220,17 +220,30 @@
             </Border>
 
             <!-- Dialog buttons -->
-            <StackPanel Grid.Row="6"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Spacing="8" Margin="0,6,0,0">
-                <Button Content="Cancel"
-                        Command="{Binding CancelCommand}"
-                        IsCancel="True" MinWidth="80"/>
-                <Button Content="Save"
-                        Command="{Binding SaveCommand}"
-                        IsDefault="True" MinWidth="80"/>
-            </StackPanel>
+            <Grid Grid.Row="6"
+                  ColumnDefinitions="*,Auto"
+                  Margin="0,6,0,0">
+                <!-- Inline save error so the user sees why a Save
+                     click didn't persist (empty name, too few
+                     waypoints, no BBS bound). -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding SaveError}"
+                           IsVisible="{Binding HasSaveError}"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button Content="Cancel"
+                            Command="{Binding CancelCommand}"
+                            IsCancel="True" MinWidth="80"/>
+                    <Button Content="Save"
+                            Command="{Binding SaveCommand}"
+                            IsDefault="True" MinWidth="80"/>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

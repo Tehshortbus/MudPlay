@@ -1106,9 +1106,16 @@ public sealed class AppServices
         // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
         // BBS-change signals so the catalogue reloads on profile load
         // and on explicit BBS pin from Settings → BBS Apply.
+        //
+        // Resolve through ResolveActiveBbs (NOT raw Profile.BbsName)
+        // so a blank-draft profile + global default-BBS still binds
+        // the catalogue to that default. Otherwise Save on a
+        // brand-new loop silently no-ops in LoopManager (the
+        // _bbsName==null bail) and the user-visible Save button
+        // appears to do nothing.
         Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
-        Profile.ProfileLoaded += p => Loops.LoadAll(p.BbsName);
-        Profile.BbsPinApplied += p => Loops.LoadAll(p.BbsName);
+        Profile.ProfileLoaded += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
         Profile.ProfileClosed += () => Loops.LoadAll(null);
 
         // Per-BBS room blacklist — hides ganghouse / dead-end rooms

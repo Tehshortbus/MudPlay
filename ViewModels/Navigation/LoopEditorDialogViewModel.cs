@@ -362,12 +362,41 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
 
     // ----- dialog commit ---------------------------------------------
 
+    /// <summary>
+    /// Inline validation message for the Save row. Empty when the
+    /// dialog is in a savable state; populated on the next Save
+    /// click with whatever's blocking it (empty name, too few
+    /// waypoints, no BBS bound, etc.) so the user sees feedback
+    /// instead of a button that visibly does nothing.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSaveError))]
+    private string _saveError = string.Empty;
+
+    public bool HasSaveError => !string.IsNullOrEmpty(SaveError);
+
     [RelayCommand]
     private async Task SaveAsync()
     {
         string newName = (Name ?? string.Empty).Trim();
-        if (newName.Length == 0) return;
-        if (Waypoints.Count < 2) return;        // cycles need 2+ entries
+        if (newName.Length == 0)
+        {
+            SaveError = "Loop needs a name.";
+            return;
+        }
+        if (Waypoints.Count < 2)
+        {
+            SaveError = "Cycles need at least 2 waypoints.";
+            return;
+        }
+        if (_loops.BbsName is null)
+        {
+            // LoopManager silently no-ops the Save call when no BBS is
+            // bound — surface the cause instead of disappearing the
+            // dialog with no feedback.
+            SaveError = "No active BBS — pin a BBS in Settings before saving loops.";
+            return;
+        }
 
         var waypoints = new List<LoopWaypoint>(Waypoints.Count);
         foreach (LoopWaypointRowViewModel row in Waypoints)
@@ -381,9 +410,11 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         _original.Waypoints = waypoints;
 
         // Rename → delete the old file (LoopManager keys by Loop.Name
-        // on disk) before saving under the new name.
-        if (renamed) _loops.Delete(oldName);
+        // on disk) before saving under the new name. (Skip for a
+        // brand-new loop — there's nothing on disk yet to delete.)
+        if (renamed && !_isNew) _loops.Delete(oldName);
         _loops.Save(_original);
+        SaveError = string.Empty;
 
         // If we just edited the live running loop, ask whether to
         // restart it with the new definition. The user might be
