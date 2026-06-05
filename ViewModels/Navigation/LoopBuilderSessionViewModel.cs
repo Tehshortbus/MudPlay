@@ -45,6 +45,14 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _previewedRoomKeys;
 
+    /// <summary>
+    /// Just the clicks the user laid down, in order — used by the map's
+    /// numbered waypoint markers. Distinct from
+    /// <see cref="PreviewedRoomKeys"/> which carries every BFS-filled
+    /// intermediate.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _waypointKeys;
+
     public bool HasClicks => Clicks.Count > 0;
     public bool CanSave   => Clicks.Count >= 2 && string.IsNullOrEmpty(UnreachableSummary);
 
@@ -69,6 +77,47 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         Reexpand();
     }
 
+    /// <summary>
+    /// Remove the click at <paramref name="index"/> (CURRENT NAV row
+    /// click → remove). No-op when index is out of range.
+    /// </summary>
+    public void RemoveClickAt(int index)
+    {
+        if (index < 0 || index >= _clicks.Count) return;
+        _clicks.RemoveAt(index);
+        Clicks.RemoveAt(index);
+        RenumberRows();
+        OnPropertyChanged(nameof(HasClicks));
+        Reexpand();
+    }
+
+    /// <summary>
+    /// Move the click at <paramref name="fromIndex"/> to
+    /// <paramref name="toIndex"/> (CURRENT NAV drag-reorder). No-op
+    /// when indices match or either is out of range.
+    /// </summary>
+    public void MoveClick(int fromIndex, int toIndex)
+    {
+        if (fromIndex == toIndex) return;
+        if (fromIndex < 0 || fromIndex >= _clicks.Count) return;
+        if (toIndex   < 0 || toIndex   >= _clicks.Count) return;
+
+        RoomKey key = _clicks[fromIndex];
+        _clicks.RemoveAt(fromIndex);
+        _clicks.Insert(toIndex, key);
+        Clicks.Move(fromIndex, toIndex);
+        RenumberRows();
+        Reexpand();
+    }
+
+    private void RenumberRows()
+    {
+        for (int i = 0; i < Clicks.Count; i++)
+        {
+            Clicks[i] = Clicks[i] with { Index = i + 1 };
+        }
+    }
+
     public void Clear()
     {
         _clicks.Clear();
@@ -76,6 +125,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         ExpandedStepCount = 0;
         UnreachableSummary = string.Empty;
         PreviewedRoomKeys = null;
+        WaypointKeys = null;
         OnPropertyChanged(nameof(HasClicks));
         OnPropertyChanged(nameof(CanSave));
     }
@@ -103,6 +153,11 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
 
     private void Reexpand()
     {
+        // Always refresh the waypoint marker list so the map's numbered
+        // pins update on every click, even for the < 2 click case (one
+        // marker still draws when the user has placed one room).
+        WaypointKeys = _clicks.Count == 0 ? null : new List<RoomKey>(_clicks);
+
         if (_clicks.Count < 2)
         {
             ExpandedStepCount = 0;

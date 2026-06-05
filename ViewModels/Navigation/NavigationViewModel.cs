@@ -217,6 +217,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// whenever the builder changes.
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderPath;
+
+    /// <summary>
+    /// Ordered RoomKey list for the map's numbered builder-waypoint
+    /// markers. Mirrors <see cref="LoopBuilderSessionViewModel.WaypointKeys"/>.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderWaypoints;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
@@ -846,6 +852,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 LoopBuilder.PropertyChanged -= OnLoopBuilderPropertyChanged;
             LoopBuilder = null;
             LoopBuilderPath = null;
+            LoopBuilderWaypoints = null;
             CurrentMode = NavigationMode.Idle;
         }
         else
@@ -864,9 +871,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private void OnLoopBuilderPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(LoopBuilderSessionViewModel.PreviewedRoomKeys))
+        switch (e.PropertyName)
         {
-            LoopBuilderPath = LoopBuilder?.PreviewedRoomKeys;
+            case nameof(LoopBuilderSessionViewModel.PreviewedRoomKeys):
+                LoopBuilderPath = LoopBuilder?.PreviewedRoomKeys;
+                break;
+            case nameof(LoopBuilderSessionViewModel.WaypointKeys):
+                LoopBuilderWaypoints = LoopBuilder?.WaypointKeys;
+                break;
+            case nameof(LoopBuilderSessionViewModel.CanSave):
+                // CanRun + RunStopLabel depend on CanSave while in
+                // LoopBuild mode — re-notify so the Run button enables
+                // the moment the user has two reachable clicks.
+                OnPropertyChanged(nameof(CanRun));
+                OnPropertyChanged(nameof(RunStopLabel));
+                RebuildCurrentNavRows();
+                OnPropertyChanged(nameof(CurrentNavHeader));
+                break;
+            case nameof(LoopBuilderSessionViewModel.Clicks):
+            case nameof(LoopBuilderSessionViewModel.HasClicks):
+            case nameof(LoopBuilderSessionViewModel.ProposedName):
+                RebuildCurrentNavRows();
+                OnPropertyChanged(nameof(CurrentNavHeader));
+                break;
         }
     }
 
@@ -1330,16 +1357,37 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Header sentence under the section title: <c>"3 of 6 steps to (M/R) - Name"</c> / <c>"Cycling marked lairs"</c>.</summary>
-    public string CurrentNavHeader => EngineActionKind switch
+    public string CurrentNavHeader
     {
-        NavigationEngineKind.Walking =>
-            _services.Walker.Destination is { } k
-                ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {FormatRoomRef(k)}"
-                : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
-        NavigationEngineKind.Looping  => BuildLoopHeader(),
-        NavigationEngineKind.AutoLair => "Cycling marked lairs",
-        _ => "No active navigation. Start a Loop, Walk, or Lair cycle from the toolbar.",
-    };
+        get
+        {
+            // Building mode overrides engine state — surface the in-
+            // progress click list so the user sees what they're laying
+            // down before they hit Run.
+            if (IsLoopBuilding && LoopBuilder is { } b)
+            {
+                string namePart = string.IsNullOrWhiteSpace(b.ProposedName) ? "Loop" : b.ProposedName;
+                int clicks = b.Clicks.Count;
+                string suffix = clicks switch
+                {
+                    0 => "click rooms on the map to add waypoints",
+                    1 => "1 room clicked — add at least one more",
+                    _ => $"{clicks} rooms clicked",
+                };
+                return $"Building loop: {namePart} · {suffix}";
+            }
+            return EngineActionKind switch
+            {
+                NavigationEngineKind.Walking =>
+                    _services.Walker.Destination is { } k
+                        ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {FormatRoomRef(k)}"
+                        : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
+                NavigationEngineKind.Looping  => BuildLoopHeader(),
+                NavigationEngineKind.AutoLair => "Cycling marked lairs",
+                _ => "No active navigation. Start a Loop, Walk, or Lair cycle from the toolbar.",
+            };
+        }
+    }
 
     private string BuildLoopHeader()
     {
@@ -1486,6 +1534,43 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void UnmarkAutoLairRoom(RoomKey? key)
     {
         if (key is { } k) _services.AutoLair.Toggle(k);
+    }
+
+    /// <summary>
+    /// Building Loop row click — remove the click at the given
+    /// 1-based index (Clicks renderer's Index field). Called from the
+    /// builder ListBox's row PointerPressed handler.
+    /// </summary>
+    public void RemoveBuilderClickAt(int oneBasedIndex)
+    {
+        if (LoopBuilder is null) return;
+        LoopBuilder.RemoveClickAt(oneBasedIndex - 1);
+    }
+
+    /// <summary>
+    /// Building Loop drag-reorder — move the row at
+    /// <paramref name="fromOneBased"/> to <paramref name="toOneBased"/>.
+    /// </summary>
+    public void MoveBuilderClick(int fromOneBased, int toOneBased)
+    {
+        if (LoopBuilder is null) return;
+        LoopBuilder.MoveClick(fromOneBased - 1, toOneBased - 1);
+    }
+
+    /// <summary>Up-arrow click on a builder row — moves it one place earlier in the click order.</summary>
+    [RelayCommand]
+    private void MoveBuilderClickUp(LoopBuilderRow? row)
+    {
+        if (row is null) return;
+        MoveBuilderClick(row.Index, row.Index - 1);
+    }
+
+    /// <summary>Down-arrow click on a builder row — moves it one place later in the click order.</summary>
+    [RelayCommand]
+    private void MoveBuilderClickDown(LoopBuilderRow? row)
+    {
+        if (row is null) return;
+        MoveBuilderClick(row.Index, row.Index + 1);
     }
 }
 

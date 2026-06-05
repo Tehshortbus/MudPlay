@@ -76,6 +76,16 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderPath));
 
+    /// <summary>
+    /// Per-click ordered waypoints surfaced as numbered red circles
+    /// on the map while the user is in loop-build mode. Separate from
+    /// <see cref="LoopBuilderPath"/> because the path is the BFS-filled
+    /// flat room sequence (every intermediate hop), whereas this list
+    /// is only the rooms the user actually clicked.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderWaypointsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderWaypoints));
+
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
@@ -173,6 +183,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(LoopBuilderPathProperty);
         set => SetValue(LoopBuilderPathProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? LoopBuilderWaypoints
+    {
+        get => GetValue(LoopBuilderWaypointsProperty);
+        set => SetValue(LoopBuilderWaypointsProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? AvoidedRooms
@@ -366,16 +382,27 @@ public sealed class MapControl : Control
     };
 
     /// <summary>
-    /// Dashed cyan polyline showing the user's in-progress loop-builder
-    /// gap-filled path. Distinct from solid red PreviewPath (queued
-    /// walk-to) and solid blue Loop/Walk paths (running automations).
+    /// Solid red polyline for the user's in-progress loop-builder
+    /// gap-filled path. Shares hue with <see cref="PreviewPathPen"/>
+    /// (queued walk-to) because both are "preview" overlays per the
+    /// user UX rule: previews are red, executing automations are blue.
+    /// Numbered waypoint markers (drawn separately) disambiguate
+    /// build-preview from a single-leg walk-to preview when both
+    /// could theoretically be visible.
     /// </summary>
-    private static readonly IPen   LoopBuilderPen = new Pen(new SolidColorBrush(Color.Parse("#FF50E6FF")), 2.5)
+    private static readonly IPen   LoopBuilderPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
     {
         LineCap     = PenLineCap.Round,
         LineJoin    = PenLineJoin.Round,
-        DashStyle   = new DashStyle(new double[] { 3.0, 2.5 }, 0),
     };
+
+    /// <summary>Fill brush for the per-waypoint numbered circle markers.</summary>
+    private static readonly IBrush LoopBuilderWaypointFill =
+        new SolidColorBrush(Color.Parse("#E66C5A"));
+    private static readonly IPen   LoopBuilderWaypointRing =
+        new Pen(new SolidColorBrush(Color.Parse("#FFFFFFFF")), 1.5);
+    private static readonly IBrush LoopBuilderWaypointTextBrush =
+        new SolidColorBrush(Color.Parse("#FFFFFFFF"));
 
     // Cross-hatch overlay for teleport-CMD rooms. Fully-opaque bright
     // cyan with a 1.5 px stroke so the pattern reads at default zoom
@@ -415,9 +442,10 @@ public sealed class MapControl : Control
         _hoverTimer.Stop();
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
-            WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, AvoidedRoomsProperty,
-            LoopSequenceNumbersProperty, AutoLairRoomsProperty, WalkPathIsAutoLairProperty,
-            SelectedRoomKeyProperty, PreviewPathProperty, TeleportRoomsProperty);
+            WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
+            AvoidedRoomsProperty, LoopSequenceNumbersProperty, AutoLairRoomsProperty,
+            WalkPathIsAutoLairProperty, SelectedRoomKeyProperty, PreviewPathProperty,
+            TeleportRoomsProperty);
 
         // Auto-centre on the player's current room every time it
         // changes (MudProxy's CenterOnRoom rule) — but only when the
@@ -823,6 +851,10 @@ public sealed class MapControl : Control
         DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
         IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
         DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
+
+        // Pass 5: numbered builder waypoint markers — drawn last so
+        // they sit on top of every polyline and every room node fill.
+        DrawLoopBuilderWaypoints(context, tilePixels, cx, cy);
     }
 
     private static Rect ComputeCellRect((int X, int Y) coord, double tilePixels, double cx, double cy)
@@ -966,6 +998,44 @@ public sealed class MapControl : Control
             cell.X + (cell.Width  - ft.Width)  / 2,
             cell.Y + (cell.Height - ft.Height) / 2);
         ctx.DrawText(ft, p);
+    }
+
+    /// <summary>
+    /// Draw a small numbered red circle on every loop-builder waypoint
+    /// in click order (1, 2, 3, ...). The marker overlays the cell so
+    /// the user sees the order at a glance even with the red polyline
+    /// looping through the area. Skipped when the waypoint isn't on
+    /// the current layout (different floor / disconnected island).
+    /// </summary>
+    private void DrawLoopBuilderWaypoints(DrawingContext ctx, double tilePixels, double cx, double cy)
+    {
+        if (LoopBuilderWaypoints is not { Count: > 0 } waypoints) return;
+        if (Layout is null) return;
+
+        double radius = Math.Clamp(tilePixels * 0.32, 6.0, 14.0);
+        Typeface tf = new("Inter", FontStyle.Normal, FontWeight.Bold);
+        double textSize = Math.Clamp(tilePixels * 0.28, 8.0, 12.0);
+
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            RoomKey key = waypoints[i];
+            if (!Layout.Positions.TryGetValue(key, out var coord)) continue;
+            Rect cell = ComputeCellRect(coord, tilePixels, cx, cy);
+            // Top-right corner of the cell so we don't sit on the room's
+            // central labels / glyphs.
+            Point centre = new(
+                cell.Right - radius * 0.5,
+                cell.Top   + radius * 0.5);
+            ctx.DrawEllipse(LoopBuilderWaypointFill, LoopBuilderWaypointRing,
+                centre, radius, radius);
+
+            string label = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            FormattedText ft = new(label, System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, tf, textSize, LoopBuilderWaypointTextBrush);
+            ctx.DrawText(ft, new Point(
+                centre.X - ft.Width  / 2,
+                centre.Y - ft.Height / 2));
+        }
     }
 
     /// <summary>

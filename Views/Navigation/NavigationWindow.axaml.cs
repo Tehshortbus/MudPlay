@@ -45,6 +45,10 @@ public partial class NavigationWindow : Window
         Opened    += (_, _) => FocusMap();
         Activated += (_, _) => FocusMap();
 
+        // Building-loop ListBox — click row to remove, drag to reorder.
+        if (this.FindControl<ListBox>("BuilderClicksList") is { } builderList)
+            WireBuilderClicksList(builderList);
+
         // Right-click → "Center on Player" routes through a VM event so
         // the command can sit on the VM (where the rest of the context-
         // menu commands live) while the actual centring + suppression
@@ -180,6 +184,53 @@ public partial class NavigationWindow : Window
         if (sender is not Control { DataContext: RoomSearchResult result }) return;
         if (DataContext is not NavigationViewModel vm) return;
         vm.SelectSearchResultCommand.Execute(result);
+        e.Handled = true;
+    }
+
+    // ----- Building-loop click list ---------------------------------
+
+    private void WireBuilderClicksList(ListBox list)
+    {
+        // Single-click any row (outside the per-row buttons) removes
+        // that waypoint. The Up / Down buttons in the template route
+        // through MoveBuilderClickCommand for reorder. Drag-and-drop
+        // reorder is a known follow-up — the current Avalonia drag-
+        // drop API replaced DataObject with a DataTransfer surface
+        // that's worth wiring centrally rather than per-feature.
+        list.AddHandler(PointerReleasedEvent, BuilderRowPointerReleased);
+    }
+
+    private void BuilderRowPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        // Bubble up to find a ListBoxItem wrapping a LoopBuilderRow.
+        // Skip the click when the pointer is over one of the reorder
+        // buttons — those have their own command bindings.
+        if (e.Source is Button) return;
+        if (e.Source is not StyledElement el) return;
+        LoopBuilderRow? row = null;
+        for (StyledElement? cur = el; cur is not null; cur = (cur as Control)?.Parent as StyledElement)
+        {
+            if (cur is ListBoxItem { DataContext: LoopBuilderRow r })
+            {
+                row = r;
+                break;
+            }
+        }
+        if (row is null) return;
+        if (DataContext is NavigationViewModel vm)
+            vm.RemoveBuilderClickAt(row.Index);
+    }
+
+    /// <summary>
+    /// Per-row "✕" button — removes the waypoint at the row's index.
+    /// Bound via Click rather than Command so it can pull the DataContext
+    /// off the button without the ListBox-ancestor binding ceremony.
+    /// </summary>
+    private void OnBuilderRowRemoveClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: LoopBuilderRow row }) return;
+        if (DataContext is not NavigationViewModel vm) return;
+        vm.RemoveBuilderClickAt(row.Index);
         e.Handled = true;
     }
 }
