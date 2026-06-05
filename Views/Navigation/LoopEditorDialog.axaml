@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="540"
         x:Class="FujinTerm.Views.Navigation.LoopEditorDialog"
         x:DataType="vm:LoopEditorDialogViewModel"
-        Title="Edit loop"
+        Title="{Binding DialogTitle}"
         Width="540" Height="560"
         WindowStartupLocation="CenterOwner">
 

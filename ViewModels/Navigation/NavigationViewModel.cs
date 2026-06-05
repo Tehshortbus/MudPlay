@@ -1154,10 +1154,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // dialog's Draft section is the user's authoritative Save
         // surface. The consumed callback exits LoopBuild mode here
         // after Save / Discard so the bottom builder strip collapses.
-        // New-loop callback enters LoopBuild mode here so the dialog
-        // can hand off cleanly. Runner reference lets the dialog
-        // show "Save running loop" + drive the editor's apply-to-
-        // running-loop prompt.
+        // Runner reference lets the dialog show "Save running loop"
+        // + drive the editor's apply-to-running-loop prompt.
+        // New is now an away-from-the-map editor flow (opens the
+        // LoopEditor dialog) so no map-side hand-off callback is
+        // needed any more.
         NavigationManagerDialogViewModel vm = new(
             _services.Loops,
             _services.AutoLair,
@@ -1169,11 +1170,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             {
                 if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
             },
-            runner: _services.LoopRunner,
-            onNewLoopRequested: () =>
-            {
-                if (CurrentMode != NavigationMode.LoopBuild) ToggleLoopMode();
-            });
+            runner: _services.LoopRunner);
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }

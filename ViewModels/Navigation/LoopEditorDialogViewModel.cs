@@ -30,6 +30,15 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private readonly RoomGraphManager _graph;
     private readonly LoopRunner? _runner;
     private readonly ConfirmService? _confirm;
+    private readonly bool _isNew;
+
+    /// <summary>
+    /// Window title — flips between "Create Loop" (when the dialog
+    /// was opened on a fresh empty loop) and "Edit Loop" (mutating
+    /// an existing saved loop). Bound from the AXAML
+    /// <c>Window.Title</c>.
+    /// </summary>
+    public string DialogTitle => _isNew ? "Create Loop" : "Edit Loop";
 
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string _notes = string.Empty;
@@ -99,7 +108,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         LoopManager loops,
         RoomGraphManager graph,
         LoopRunner? runner = null,
-        ConfirmService? confirm = null)
+        ConfirmService? confirm = null,
+        bool isNew = false)
     {
         ArgumentNullException.ThrowIfNull(loop);
         ArgumentNullException.ThrowIfNull(loops);
@@ -109,6 +119,7 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         _graph = graph;
         _runner = runner;
         _confirm = confirm;
+        _isNew = isNew;
         _name = loop.Name;
         _notes = loop.Notes ?? string.Empty;
         foreach (LoopWaypoint w in loop.Waypoints)

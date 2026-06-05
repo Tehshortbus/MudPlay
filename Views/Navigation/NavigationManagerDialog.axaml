@@ -26,19 +26,13 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
-
-            <!-- Header -->
-            <TextBlock Grid.Row="0"
-                       Text="Loops and Auto-Lair markers for this BBS / character."
-                       FontSize="11"
-                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
 
             <!-- Draft section — visible only while the NavigationWindow
                  is in LoopBuild mode. This is the explicit Save surface
                  (Run on the main window is transient and never writes
                  to disk per UX direction). -->
-            <Border Grid.Row="1"
+            <Border Grid.Row="0"
                     BorderBrush="{StaticResource AccentAmberBrush}"
                     BorderThickness="1"
                     CornerRadius="3"
@@ -91,7 +85,7 @@
             <!-- Two-pane body: Loops on top, Auto-Lair on bottom. Both
                  scroll independently so a long loop list doesn't crowd
                  the lair list out of view. -->
-            <Grid Grid.Row="2" RowDefinitions="*,Auto,*">
+            <Grid Grid.Row="1" RowDefinitions="*,Auto,*">
 
                 <!-- Loops section -->
                 <Border Grid.Row="0"
@@ -115,12 +109,18 @@
                                     <Run Text="{Binding Loops.Count, FallbackValue=0}"/>
                                     <Run Text=" saved"/>
                                 </TextBlock>
+                                <!-- New: opens the LoopEditor dialog in
+                                     create mode (title flips to "Create
+                                     Loop"). Away-from-the-map flow —
+                                     the user types the name + adds
+                                     rooms via the editor's search box
+                                     without leaving this surface. -->
                                 <Button Grid.Column="2"
-                                        Content="+ New loop"
+                                        Content="New"
                                         FontSize="10"
                                         Padding="8,2"
                                         Command="{Binding NewLoopCommand}"
-                                        ToolTip.Tip="Close this window and start clicking rooms on the map."/>
+                                        ToolTip.Tip="Open the loop editor on an empty loop."/>
                             </Grid>
                         </Border>
                         <ScrollViewer Grid.Row="1"
@@ -232,12 +232,21 @@
                                     <Run Text="{Binding Lairs.Count, FallbackValue=0}"/>
                                     <Run Text=" marked"/>
                                 </TextBlock>
+                                <!-- New: symmetric with the Loops "New"
+                                     button — opens the (forthcoming)
+                                     Auto-Lair editor dialog so the
+                                     user can pick rooms without
+                                     leaving the manager. Disabled
+                                     until that editor lands; right-
+                                     click on the map remains the
+                                     working path until then. -->
                                 <Button Grid.Column="2"
-                                        Content="Clear all"
+                                        Content="New"
                                         FontSize="10"
-                                        Padding="6,2"
-                                        Command="{Binding ClearAllLairsCommand}"
-                                        IsEnabled="{Binding HasLairs}"/>
+                                        Padding="8,2"
+                                        IsEnabled="False"
+                                        Command="{Binding NewLairCommand}"
+                                        ToolTip.Tip="Lair editor lands in a later PR. Right-click a room on the map for now."/>
                             </Grid>
                         </Border>
                         <ScrollViewer Grid.Row="1"
@@ -278,7 +287,7 @@
             </Grid>
 
             <!-- Footer -->
-            <StackPanel Grid.Row="3"
+            <StackPanel Grid.Row="2"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Spacing="8">

@@ -41,7 +41,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly DialogService _dialogs;
     private readonly LoopRunner? _runner;
     private readonly Action? _onDraftConsumed;
-    private readonly Action? _onNewLoopRequested;
 
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
     public ObservableCollection<ManagerLairRow> Lairs { get; } = new();
@@ -82,8 +81,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         DialogService dialogs,
         LoopBuilderSessionViewModel? draft = null,
         Action? onDraftConsumed = null,
-        LoopRunner? runner = null,
-        Action? onNewLoopRequested = null)
+        LoopRunner? runner = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(autoLair);
@@ -98,7 +96,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _runner = runner;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
-        _onNewLoopRequested = onNewLoopRequested;
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
 
         _loops.LoopsChanged += RebuildLoops;
@@ -146,21 +143,40 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     }
 
     /// <summary>
-    /// Start a new build session in the Navigation window. The
-    /// dialog is closed so the user can click rooms on the map; the
-    /// draft Save UI re-appears the next time they open Manage
-    /// while in LoopBuild mode.
+    /// Open the LoopEditor dialog on a fresh empty loop. The editor
+    /// flips its title to "Create Loop" via the
+    /// <see cref="LoopEditorDialogViewModel.DialogTitle"/> binding;
+    /// Save persists the new loop via <see cref="LoopManager.Save"/>
+    /// and Cancel discards it entirely. The Manage dialog stays open
+    /// in the background and refreshes the Loops list when the new
+    /// loop saves (LoopManager fires LoopsChanged).
     /// </summary>
     [RelayCommand]
-    private void NewLoop()
+    private async Task NewLoopAsync()
     {
-        _onNewLoopRequested?.Invoke();
-        // Same close-on-action semantics as Draft save / discard —
-        // the user's next interaction is on the map, not in this
-        // window.
-        _loops.LoopsChanged -= RebuildLoops;
-        _autoLair.MarkedChanged -= RebuildLairs;
-        CloseRequested?.Invoke(true);
+        Loop draft = new(
+            name: $"Loop {DateTime.Now:HH-mm-ss}",
+            waypoints: Array.Empty<LoopWaypoint>());
+        LoopEditorDialogViewModel vm = new(
+            draft, _loops, _graph, _runner, _confirm, isNew: true);
+        await _dialogs.OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+    }
+
+    /// <summary>
+    /// Stub for the Auto-Lair editor — symmetric with
+    /// <see cref="NewLoopAsync"/> per UX direction (both "New"
+    /// buttons should spawn the same kind of away-from-the-map
+    /// editor). The lair-side editor lands in a later PR; for now
+    /// the button is wired so the layout is final but the click
+    /// shows a placeholder log line. Right-click on the map remains
+    /// the working path for marking a lair until then.
+    /// </summary>
+    [RelayCommand]
+    private void NewLair()
+    {
+        // Intentionally a no-op; lair editor dialog ships later.
+        // Button kept visible so the layout matches the Loops
+        // section side by side.
     }
 
     /// <summary>
@@ -235,16 +251,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     {
         if (row is null) return;
         _autoLair.Unmark(row.Key);
-    }
-
-    [RelayCommand]
-    private async Task ClearAllLairsAsync()
-    {
-        if (Lairs.Count == 0) return;
-        bool ok = await _confirm.ConfirmDeleteAsync(
-            $"all {Lairs.Count} marked Auto-Lair room(s)");
-        if (!ok) return;
-        _autoLair.Clear();
     }
 
     // ----- close -----------------------------------------------------
