@@ -551,17 +551,23 @@
                                                Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                            <!-- TextTrimming + single-line keeps a long
-                                 loop name ("Looping {name} on step X of Y")
-                                 from forcing a wrap that pushes the
-                                 measured StackPanel width past the rail.
-                                 If the user wants the full text they can
-                                 hover the badge in the top bar (or the
-                                 status-bar slot on the main UI). -->
+                            <!-- TextTrimming + single-line + MaxWidth keeps
+                                 a long loop name ("Looping {name} on step
+                                 X of Y") from forcing a wrap or pushing
+                                 the StackPanel's MEASURED width past the
+                                 rail (trimming only affects rendering;
+                                 measure still reports the natural text
+                                 width unless we cap it).
+                                 250 ≈ 290 px rail – 10/10 padding – 20 px
+                                 safety so the text never reaches the
+                                 chevron column. Tooltip carries the
+                                 untrimmed value for users who hover. -->
                             <TextBlock Text="{Binding CurrentNavHeader}"
                                        Foreground="{StaticResource ChromeFgSecBrush}"
                                        FontSize="11"
                                        TextTrimming="CharacterEllipsis"
+                                       MaxWidth="250"
+                                       HorizontalAlignment="Left"
                                        ToolTip.Tip="{Binding CurrentNavHeader}"
                                        Margin="0,0,0,4"/>
                             <!-- Building-loop click list — visible only while in LoopBuild mode.
