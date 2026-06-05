@@ -717,10 +717,17 @@
                                     <TextBlock Classes="RailSectionHeader" Text="GOTO" Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="2" HorizontalAlignment="Stretch">
-                                    <TextBlock Text="No favourites yet — right-click a room on the map and pick &quot;Add to favorites&quot;."
+                                    <!-- Empty-state hint — cap MaxWidth +
+                                         keep wrapping so a long string
+                                         can't push the rail wider than
+                                         the 290 px column (same gotcha
+                                         CurrentNavHeader hit). -->
+                                    <TextBlock Text="No favourites — right-click a room → Add to favorites."
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"
                                                TextWrapping="Wrap"
+                                               MaxWidth="250"
+                                               HorizontalAlignment="Left"
                                                IsVisible="{Binding !HasFavorites}"/>
                                     <ItemsControl ItemsSource="{Binding Favorites}"
                                                   IsVisible="{Binding HasFavorites}">
