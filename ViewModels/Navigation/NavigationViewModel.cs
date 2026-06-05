@@ -163,6 +163,22 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Pause-with-builder-open: the user opened the build session
+        // by pausing a running loop (OpenBuilderForRunningLoop), so the
+        // edit-style red polyline + numbered waypoint markers (driven
+        // by LoopBuilderPath / LoopBuilderWaypoints) are the right
+        // overlay. Suppress the runner's blue cycle so it doesn't sit
+        // on top of the red preview — once the user resumes, the
+        // runner re-fires LoopRunner events and this branch falls
+        // through to the running-cycle path below.
+        if (CurrentMode == NavigationMode.LoopBuild
+            && LoopBuilder is { HasClicks: true })
+        {
+            LoopPath = null;
+            LoopApproachPreviewPath = null;
+            return;
+        }
+
         // Both phases anchor the rendered cycle to runner.CircleStartRoom
         // (the rotation entry). Walking the cycle from a fixed anchor
         // means the polyline stays still as the player steps through
@@ -965,6 +981,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsLoopMode));
         OnPropertyChanged(nameof(IsLairMode));
+        // Entering / leaving LoopBuild flips the overlay-suppression
+        // branch in RefreshLoopOverlays — re-render so the blue cycle
+        // (running) or red preview (build) switches over without
+        // waiting for the next LoopEvent or tracker tick.
+        RefreshLoopOverlays();
         RefreshDerivedState();
     }
 
@@ -1369,8 +1390,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 case NavigationEngineKind.Looping:
                 {
-                    string name = _services.LoopRunner.CurrentLoop?.Name ?? "?";
-                    return $"{name}";
+                    Game.Map.LoopRunner lr = _services.LoopRunner;
+                    string name = lr.CurrentLoop?.Name ?? "?";
+                    int total = lr.StepCount;
+                    if (total <= 0) return name;
+                    // CurrentIndex is the next step to send, clamped to
+                    // [0, total). Display as 1-based so the user reads
+                    // it the same way the LoopRunner logs its steps
+                    // ("step 14: move S").
+                    int human = Math.Min(total, lr.CurrentIndex + 1);
+                    return $"{name} on step {human} of {total}";
                 }
                 case NavigationEngineKind.AutoLair:
                 {
@@ -1484,10 +1513,30 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Game.Map.LoopRunner runner = _services.LoopRunner;
 
         // Loop paused → resume (clear the user-pause gate). If the
-        // builder was auto-opened by Pause, close it on resume so the
-        // CURRENT NAV shows the active loop's progress again.
-        if (runner.State == Game.Map.LoopState.Paused && runner.CurrentLoop is not null)
+        // builder was auto-opened by Pause AND the user edited the
+        // click list while paused, treat Run as "stop + restart with
+        // the new clicks" so the edits actually apply. Otherwise
+        // just clear the gate and let the runner continue from where
+        // it left off.
+        if (runner.State == Game.Map.LoopState.Paused && runner.CurrentLoop is { } pausedLoop)
         {
+            bool edited = _loopBuilderOpenedByPause
+                       && LoopBuilder is { } b
+                       && BuilderClicksDifferFrom(b, pausedLoop);
+            if (edited && LoopBuilder is { CanSave: true } edBuilder)
+            {
+                Game.Map.Loop? rebuilt = edBuilder.BuildTransient();
+                if (rebuilt is not null)
+                {
+                    runner.Stop("edits applied during pause; restarting");
+                    _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+                    runner.Start(rebuilt);
+                    _loopBuilderOpenedByPause = false;
+                    if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+                    return;
+                }
+            }
+
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
             if (_loopBuilderOpenedByPause)
             {
@@ -1554,6 +1603,24 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// can decide whether to close it again.
     /// </summary>
     private bool _loopBuilderOpenedByPause;
+
+    /// <summary>
+    /// True when the builder's click list no longer matches the loop
+    /// it was seeded from — used by the Pause → Edit → Run flow to
+    /// decide whether to resume the in-flight loop or stop and restart
+    /// with the new clicks. Compares 1:1 in order; renames + waypoint
+    /// reorders all count as edits.
+    /// </summary>
+    private static bool BuilderClicksDifferFrom(LoopBuilderSessionViewModel builder, Game.Map.Loop loop)
+    {
+        if (builder.Clicks.Count != loop.Waypoints.Count) return true;
+        for (int i = 0; i < builder.Clicks.Count; i++)
+        {
+            if (!builder.Clicks[i].Key.Equals(loop.Waypoints[i].Key))
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Pause flow: stop the runner via the user gate, then re-open the

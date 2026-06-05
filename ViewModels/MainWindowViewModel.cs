@@ -276,6 +276,10 @@ public partial class MainWindowViewModel : ObservableObject
         {
             _loopRunning = AppServices.Current.LoopRunner.State != Game.Map.LoopState.Idle;
             RefreshEngineActionChip();
+            // Loop status owns the location slot while active — refresh
+            // on every event so the "step N of M" tail keeps pace with
+            // StepCompleted / RepeatStarted / Stopped transitions.
+            RefreshLocationSlot();
         });
 
     private void OnAutoLairActiveChanged(bool active)
@@ -869,6 +873,24 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void RefreshLocationSlot()
     {
+        // Loop status takes over the location slot while a loop is
+        // active so the user sees step progress alongside the chip,
+        // not just the in-flight room (which the loop is responsible
+        // for already). Tracker fallback handles every other state.
+        Game.Map.LoopRunner runner = AppServices.Current.LoopRunner;
+        if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is { } loop)
+        {
+            int total = runner.StepCount;
+            if (total > 0)
+            {
+                int human = Math.Min(total, runner.CurrentIndex + 1);
+                LocationText = $"Looping {loop.Name} on step {human} of {total}";
+                return;
+            }
+            LocationText = $"Looping {loop.Name}";
+            return;
+        }
+
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
         // Full room display name + key — TextTrimming on the status-bar
