@@ -71,43 +71,100 @@ public static class MegaMudHash
     }
 
     /// <summary>
-    /// Encode an exit set into the 5-char MegaMUD exits code. Mirrors
-    /// <c>calcMegaMUDExitsCode</c>. Doors are folded into "normal"
-    /// (we don't track door-vs-normal at the exit-level abstraction).
+    /// Encode an exit set into the 5-char MegaMUD exits code without
+    /// door / hidden awareness. Use the <see cref="EncodeExits(Room)"/>
+    /// overload when computing against an actual graph room — that
+    /// one weights doors ×2 (matching MegaMUD's <c>calcMegaMUDExitsCode</c>)
+    /// and excludes hidden exits.
     /// </summary>
     public static string EncodeExits(IReadOnlySet<Direction> exits)
     {
         ArgumentNullException.ThrowIfNull(exits);
+        return EncodeExitsInternal(exits, doors: null);
+    }
 
-        // Buckets 1..5 (index 0 unused, mirrors JS's 1-indexed code).
-        Span<int> buckets = stackalloc int[6];
-
-        for (int i = 0; i < OrderedDirs.Length; i++)
+    /// <summary>
+    /// Encode <paramref name="room"/>'s exits into the 5-char MegaMUD
+    /// exits code, replicating the V4 generator + V7.1 Room Definer
+    /// rules: door / key-locked / toll-gate exits weight ×2; hidden
+    /// (incl. <see cref="RoomExitHint.SearchableHidden"/> and
+    /// <see cref="RoomExitHint.MultiActionHidden"/>) exits are
+    /// excluded entirely; everything else weights ×1. Required for
+    /// the importer's per-step hash compare to match rooms.md
+    /// exactly when the source room has any door / hidden exit.
+    /// </summary>
+    public static string EncodeExits(Room room)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        HashSet<Direction> visible = new();
+        HashSet<Direction> doors = new();
+        foreach (KeyValuePair<Direction, RoomExit> kv in room.Exits)
         {
-            if (!exits.Contains(OrderedDirs[i])) continue;
-            int pos = ExitPosition[i];
-            buckets[pos] += ExitVal[i];
+            if (IsHidden(kv.Value.Hint)) continue;
+            visible.Add(kv.Key);
+            if (IsDoorLike(kv.Value.Hint)) doors.Add(kv.Key);
         }
-
-        Span<char> code = stackalloc char[5];
-        for (int x = 1; x <= 5; x++)
-        {
-            int v = buckets[x];
-            // Bucket value can exceed 9 because two same-position
-            // exits (e.g. NE+NW both → digit 3) add their weights
-            // together. Hex single-digit handles up to F (15) which
-            // covers every combination given the table above.
-            code[x - 1] = HexDigit(v);
-        }
-        return new string(code);
+        return EncodeExitsInternal(visible, doors);
     }
 
     /// <summary>
     /// Compute the full 8-char <c>hashExits</c> token from a room name
-    /// and its exit set — what step rows in a <c>.mp</c> file carry.
+    /// and its exit set. Door-naive — use the
+    /// <see cref="ComputeHashExits(Room)"/> overload against a graph
+    /// room so doors / hidden exits get their MegaMUD-correct
+    /// weighting.
     /// </summary>
     public static string ComputeHashExits(string? roomName, IReadOnlySet<Direction> exits)
         => ComputeNameHash(roomName) + EncodeExits(exits);
+
+    /// <summary>
+    /// Compute the 8-char <c>hashExits</c> token for <paramref name="room"/>
+    /// using its name and door-/hidden-aware exit encoding.
+    /// </summary>
+    public static string ComputeHashExits(Room room)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        return ComputeNameHash(room.Name) + EncodeExits(room);
+    }
+
+    private static string EncodeExitsInternal(IReadOnlySet<Direction> exits, IReadOnlySet<Direction>? doors)
+    {
+        Span<int> buckets = stackalloc int[6];
+        for (int i = 0; i < OrderedDirs.Length; i++)
+        {
+            Direction dir = OrderedDirs[i];
+            if (!exits.Contains(dir)) continue;
+            int pos = ExitPosition[i];
+            int weight = ExitVal[i];
+            // MegaMUD doubles the weight for door/gate/key-locked
+            // exits per calcMegaMUDExitsCode's `isDoor ? 2 : 1`.
+            if (doors is not null && doors.Contains(dir)) weight *= 2;
+            buckets[pos] += weight;
+        }
+        Span<char> code = stackalloc char[5];
+        for (int x = 1; x <= 5; x++) code[x - 1] = HexDigit(buckets[x]);
+        return new string(code);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="hint"/> classifies as a
+    /// "door" per the V7.1 Room Definer's <c>mapCsvExitToMode</c>
+    /// ("door", "gate", or "key" in the cell text). Toll counts
+    /// because toll-gate text typically reads "(Gate, N gold)".
+    /// </summary>
+    public static bool IsDoorLike(RoomExitHint hint)
+        => hint is RoomExitHint.Door
+                or RoomExitHint.KeyLocked
+                or RoomExitHint.Toll;
+
+    /// <summary>
+    /// Returns true when <paramref name="hint"/> classifies as a
+    /// "hidden" exit per V7.1 ("hidden" or "secret"). These don't
+    /// contribute to the MegaMUD exits code at all.
+    /// </summary>
+    public static bool IsHidden(RoomExitHint hint)
+        => hint is RoomExitHint.SearchableHidden
+                or RoomExitHint.MultiActionHidden;
 
     /// <summary>
     /// Split an 8-char hashExits into its <c>(nameHash, exitsCode)</c>

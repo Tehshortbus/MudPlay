@@ -56,6 +56,85 @@ public sealed class MegaMudHashTests
         Assert.Equal((IReadOnlySet<Direction>)exits, decoded);
     }
 
+    // ----- door-aware encoding --------------------------------------
+
+    [Fact]
+    public void EncodeExits_NormalExit_WeightsOne()
+    {
+        // N alone, no door — encoding should match the naive form.
+        Room room = MakeRoom("Test", new[]
+        {
+            (Direction.N, RoomExitHint.None),
+        });
+        string encoded = MegaMudHash.EncodeExits(room);
+        Assert.Equal(MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.N }), encoded);
+    }
+
+    [Fact]
+    public void EncodeExits_DoorExit_DoublesWeightVsNormal()
+    {
+        // Same exit topology but the N is a Door — encoding MUST differ
+        // from the naive "all normal" form.
+        Room doorRoom = MakeRoom("Test", new[]
+        {
+            (Direction.N, RoomExitHint.Door),
+        });
+        string doorEncoded = MegaMudHash.EncodeExits(doorRoom);
+        string naive = MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.N });
+        Assert.NotEqual(naive, doorEncoded);
+    }
+
+    [Fact]
+    public void EncodeExits_HiddenExit_IsExcludedEntirely()
+    {
+        // A hidden N + a normal S should encode the same as just S.
+        Room hiddenN = MakeRoom("Test", new[]
+        {
+            (Direction.N, RoomExitHint.SearchableHidden),
+            (Direction.S, RoomExitHint.None),
+        });
+        string withHidden = MegaMudHash.EncodeExits(hiddenN);
+        string sOnly = MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.S });
+        Assert.Equal(sOnly, withHidden);
+    }
+
+    [Theory]
+    [InlineData(RoomExitHint.Door)]
+    [InlineData(RoomExitHint.KeyLocked)]
+    [InlineData(RoomExitHint.Toll)]
+    public void IsDoorLike_RecognisesDoorishHints(RoomExitHint hint)
+        => Assert.True(MegaMudHash.IsDoorLike(hint));
+
+    [Theory]
+    [InlineData(RoomExitHint.None)]
+    [InlineData(RoomExitHint.Trap)]
+    [InlineData(RoomExitHint.Item)]
+    [InlineData(RoomExitHint.Text)]
+    public void IsDoorLike_NotDoorishHints(RoomExitHint hint)
+        => Assert.False(MegaMudHash.IsDoorLike(hint));
+
+    // ----- helper ----------------------------------------------------
+
+    private static Room MakeRoom(string name, IEnumerable<(Direction Dir, RoomExitHint Hint)> exits)
+    {
+        var dict = new Dictionary<Direction, RoomExit>();
+        uint mask = 0;
+        foreach ((Direction d, RoomExitHint h) in exits)
+        {
+            dict[d] = new RoomExit(new RoomKey(99, 1), h, RawHint: null);
+            mask |= 1u << (int)d;
+        }
+        return new Room
+        {
+            Key = new RoomKey(0, 0),
+            Name = name,
+            Light = 0, Shop = 0, Spell = 0, Delay = 0, Cmd = 0,
+            RawLairTag = null,
+            Exits = dict,
+            ExitMask = mask,
+        };
+    }
+
     // ----- split helper ---------------------------------------------
 
     [Theory]
