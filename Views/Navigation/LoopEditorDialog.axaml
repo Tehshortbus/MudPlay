@@ -30,7 +30,7 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="8">
 
             <!-- Header row: Name -->
             <Grid Grid.Row="0" ColumnDefinitions="60,*" ColumnSpacing="8">
@@ -116,10 +116,37 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
+            <!-- Add waypoint row — accepts a raw room key (1/297) or
+                 a room name (case-insensitive; single substring match
+                 commits, ambiguous matches force the user to be more
+                 specific). Inline error label is shown after a failed
+                 Add attempt. -->
+            <Grid Grid.Row="4" RowDefinitions="Auto,Auto" RowSpacing="2">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                    <TextBlock Grid.Column="0"
+                               Text="Add room:"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding NewWaypointQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PlaceholderText="Room key (1/297) or name"
+                             FontSize="11"/>
+                    <Button Grid.Column="2"
+                            Content="Add"
+                            Command="{Binding AddWaypointCommand}"/>
+                </Grid>
+                <TextBlock Grid.Row="1"
+                           Text="{Binding AddWaypointError}"
+                           IsVisible="{Binding HasAddWaypointError}"
+                           FontSize="10"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+            </Grid>
+
             <!-- Selected-waypoint command editor — only meaningful with a
                  selection. Apply writes the textbox values back to the
                  selected row; Clear blanks them. -->
-            <Border Grid.Row="4"
+            <Border Grid.Row="5"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="3"
@@ -150,7 +177,7 @@
             </Border>
 
             <!-- Dialog buttons -->
-            <StackPanel Grid.Row="5"
+            <StackPanel Grid.Row="6"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Spacing="8" Margin="0,6,0,0">

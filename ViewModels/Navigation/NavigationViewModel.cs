@@ -715,7 +715,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private async Task EditLoopAsync(LoopRowViewModel? row)
     {
         if (row is null) return;
-        var vm = new LoopEditorDialogViewModel(row.Source, _services.Loops, _services.RoomGraph);
+        // Pass the runner + confirm service so the editor can offer
+        // "apply changes to running loop now?" when the user edits
+        // the loop that's currently in flight.
+        var vm = new LoopEditorDialogViewModel(
+            row.Source,
+            _services.Loops,
+            _services.RoomGraph,
+            _services.LoopRunner,
+            _services.Confirm);
         await _services.Dialogs
             .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
     }
@@ -982,6 +990,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // dialog's Draft section is the user's authoritative Save
         // surface. The consumed callback exits LoopBuild mode here
         // after Save / Discard so the bottom builder strip collapses.
+        // New-loop callback enters LoopBuild mode here so the dialog
+        // can hand off cleanly. Runner reference lets the dialog
+        // show "Save running loop" + drive the editor's apply-to-
+        // running-loop prompt.
         NavigationManagerDialogViewModel vm = new(
             _services.Loops,
             _services.AutoLair,
@@ -992,6 +1004,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             onDraftConsumed: () =>
             {
                 if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+            },
+            runner: _services.LoopRunner,
+            onNewLoopRequested: () =>
+            {
+                if (CurrentMode != NavigationMode.LoopBuild) ToggleLoopMode();
             });
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);

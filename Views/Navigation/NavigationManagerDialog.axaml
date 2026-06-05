@@ -102,7 +102,7 @@
                         <Border Grid.Row="0"
                                 Background="{StaticResource ChromeBgElevBrush}"
                                 Padding="6,3">
-                            <Grid ColumnDefinitions="*,Auto">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                 <TextBlock Grid.Column="0"
                                            Text="Loops"
                                            FontSize="11" FontWeight="SemiBold"
@@ -115,12 +115,46 @@
                                     <Run Text="{Binding Loops.Count, FallbackValue=0}"/>
                                     <Run Text=" saved"/>
                                 </TextBlock>
+                                <Button Grid.Column="2"
+                                        Content="+ New loop"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding NewLoopCommand}"
+                                        ToolTip.Tip="Close this window and start clicking rooms on the map."/>
                             </Grid>
                         </Border>
                         <ScrollViewer Grid.Row="1"
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Auto">
                             <StackPanel>
+                                <!-- Running-loop save row — visible only when
+                                     the runner is actually driving a loop.
+                                     Editable name + Save persists the in-
+                                     flight loop without stopping it. -->
+                                <Border Padding="6,4"
+                                        Margin="0,0,0,2"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        IsVisible="{Binding HasRunningLoop}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                        <Border Grid.Column="0"
+                                                CornerRadius="3" Padding="6,1"
+                                                VerticalAlignment="Center"
+                                                Background="{StaticResource AccentGreenBrush}">
+                                            <TextBlock Text="RUNNING"
+                                                       FontSize="9" FontWeight="SemiBold"
+                                                       Foreground="#0E0E0E"/>
+                                        </Border>
+                                        <TextBox Grid.Column="1"
+                                                 Text="{Binding RunningLoopName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontSize="11"/>
+                                        <Button Grid.Column="2"
+                                                Content="Save"
+                                                FontSize="10"
+                                                Padding="8,2"
+                                                Command="{Binding SaveRunningLoopCommand}"
+                                                ToolTip.Tip="Persist the currently-running loop to disk under the typed name."/>
+                                    </Grid>
+                                </Border>
                                 <TextBlock Text="No loops saved on this BBS yet — build one from the Navigation map."
                                            Padding="8"
                                            FontSize="11"

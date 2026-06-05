@@ -83,6 +83,16 @@ public sealed class ConfirmService
             ? PromptAsync("Delete", $"Are you sure you want to delete {what}?", "Delete")
             : Task.FromResult(true);
 
+    /// <summary>
+    /// Generic Yes/No prompt for one-off cases that don't have a
+    /// dedicated <c>Settings.Confirm*</c> toggle (e.g. "apply changes
+    /// to the running loop now?"). Always prompts — there's no
+    /// per-call skip flag — so callers that need a user-controllable
+    /// skip should add their own bool setting and gate on it.
+    /// </summary>
+    public Task<bool> ConfirmAsync(string title, string body, string yesLabel = "Yes")
+        => PromptAsync(title, body, yesLabel);
+
     private async Task<bool> PromptAsync(string title, string body, string yesLabel)
     {
         ConfirmDialogViewModel vm = new(title, body, yesLabel: yesLabel);

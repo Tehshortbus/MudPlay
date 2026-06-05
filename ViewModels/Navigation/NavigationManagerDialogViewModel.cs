@@ -39,7 +39,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly RoomGraphManager _graph;
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
+    private readonly LoopRunner? _runner;
     private readonly Action? _onDraftConsumed;
+    private readonly Action? _onNewLoopRequested;
 
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
     public ObservableCollection<ManagerLairRow> Lairs { get; } = new();
@@ -53,9 +55,24 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     /// </summary>
     public LoopBuilderSessionViewModel? Draft { get; }
 
+    /// <summary>
+    /// Editable name for the currently-running loop's "Save running"
+    /// row. Seeded from <see cref="LoopRunner.CurrentLoop"/>'s name
+    /// at construction; the user can rename before persisting.
+    /// </summary>
+    [ObservableProperty] private string _runningLoopName = string.Empty;
+
     public bool HasLoops => Loops.Count > 0;
     public bool HasLairs => Lairs.Count > 0;
     public bool HasDraft => Draft is not null;
+
+    /// <summary>
+    /// True when the runner is currently driving a loop. The "Save
+    /// running loop" section in the dialog only shows when this is
+    /// true; the user can name + save the in-flight loop without
+    /// stopping it.
+    /// </summary>
+    public bool HasRunningLoop => _runner?.CurrentLoop is not null;
 
     public NavigationManagerDialogViewModel(
         LoopManager loops,
@@ -64,7 +81,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         ConfirmService confirm,
         DialogService dialogs,
         LoopBuilderSessionViewModel? draft = null,
-        Action? onDraftConsumed = null)
+        Action? onDraftConsumed = null,
+        LoopRunner? runner = null,
+        Action? onNewLoopRequested = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(autoLair);
@@ -76,8 +95,11 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _graph = graph;
         _confirm = confirm;
         _dialogs = dialogs;
+        _runner = runner;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
+        _onNewLoopRequested = onNewLoopRequested;
+        _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
 
         _loops.LoopsChanged += RebuildLoops;
         _autoLair.MarkedChanged += RebuildLairs;
@@ -118,8 +140,52 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private async Task EditLoopAsync(ManagerLoopRow? row)
     {
         if (row is null) return;
-        LoopEditorDialogViewModel vm = new(row.Source, _loops, _graph);
+        LoopEditorDialogViewModel vm = new(
+            row.Source, _loops, _graph, _runner, _confirm);
         await _dialogs.OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+    }
+
+    /// <summary>
+    /// Start a new build session in the Navigation window. The
+    /// dialog is closed so the user can click rooms on the map; the
+    /// draft Save UI re-appears the next time they open Manage
+    /// while in LoopBuild mode.
+    /// </summary>
+    [RelayCommand]
+    private void NewLoop()
+    {
+        _onNewLoopRequested?.Invoke();
+        // Same close-on-action semantics as Draft save / discard —
+        // the user's next interaction is on the map, not in this
+        // window.
+        _loops.LoopsChanged -= RebuildLoops;
+        _autoLair.MarkedChanged -= RebuildLairs;
+        CloseRequested?.Invoke(true);
+    }
+
+    /// <summary>
+    /// Persist the currently-running loop (Run was used as a
+    /// transient try-out, the user decided to keep it). Uses the
+    /// user-edited <see cref="RunningLoopName"/> so the auto-
+    /// generated "Loop HH-mm" placeholder can be replaced before
+    /// committing.
+    /// </summary>
+    [RelayCommand]
+    private void SaveRunningLoop()
+    {
+        if (_runner?.CurrentLoop is not { } running) return;
+        string saveName = (RunningLoopName ?? string.Empty).Trim();
+        if (saveName.Length == 0) saveName = running.Name;
+
+        Loop snapshot = new(saveName, running.Waypoints)
+        {
+            Notes = running.Notes ?? string.Empty,
+        };
+        _loops.Save(snapshot);
+        // Re-stamp the live runner's loop name so subsequent edits
+        // / saves identify the same record on disk.
+        running.Name = saveName;
+        OnPropertyChanged(nameof(HasRunningLoop));
     }
 
     [RelayCommand]

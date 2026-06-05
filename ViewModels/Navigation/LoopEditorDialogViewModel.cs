@@ -26,6 +26,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private readonly Loop _original;
     private readonly LoopManager _loops;
     private readonly RoomGraphManager _graph;
+    private readonly LoopRunner? _runner;
+    private readonly ConfirmService? _confirm;
 
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string _notes = string.Empty;
@@ -39,12 +41,38 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     [ObservableProperty] private string _selectedCommand = string.Empty;
     [ObservableProperty] private int _selectedDelayMs = DefaultCommandDelayMs;
 
+    /// <summary>
+    /// Text input for the "add waypoint" row. Accepts either a raw
+    /// room key (<c>1/297</c>) or a room name (case-insensitive
+    /// substring match against the active graph). Empty until the
+    /// user types.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddWaypointError))]
+    private string _newWaypointQuery = string.Empty;
+
+    /// <summary>
+    /// Inline validation message for the add-waypoint row. Empty when
+    /// the input is valid OR not yet evaluated; set after a failed
+    /// Add attempt.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddWaypointError))]
+    private string _addWaypointError = string.Empty;
+
+    public bool HasAddWaypointError => !string.IsNullOrEmpty(AddWaypointError);
+
     private const int DefaultCommandDelayMs = 1200;
 
     /// <summary>True when a waypoint row is selected for command edit.</summary>
     public bool HasSelection => SelectedRow is not null;
 
-    public LoopEditorDialogViewModel(Loop loop, LoopManager loops, RoomGraphManager graph)
+    public LoopEditorDialogViewModel(
+        Loop loop,
+        LoopManager loops,
+        RoomGraphManager graph,
+        LoopRunner? runner = null,
+        ConfirmService? confirm = null)
     {
         ArgumentNullException.ThrowIfNull(loop);
         ArgumentNullException.ThrowIfNull(loops);
@@ -52,6 +80,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         _original = loop;
         _loops = loops;
         _graph = graph;
+        _runner = runner;
+        _confirm = confirm;
         _name = loop.Name;
         _notes = loop.Notes ?? string.Empty;
         foreach (LoopWaypoint w in loop.Waypoints)
@@ -117,10 +147,82 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         SelectedRow.RefreshDisplay();
     }
 
+    /// <summary>
+    /// Add a waypoint at the end of the list from the query box.
+    /// Accepts either a raw room key (<c>"1/297"</c>) or a room name
+    /// — exact match first, single substring match as fallback.
+    /// </summary>
+    [RelayCommand]
+    private void AddWaypoint()
+    {
+        string query = (NewWaypointQuery ?? string.Empty).Trim();
+        if (query.Length == 0)
+        {
+            AddWaypointError = "Enter a room key (1/297) or room name.";
+            return;
+        }
+
+        RoomKey? resolved = ResolveQuery(query);
+        if (resolved is null)
+        {
+            AddWaypointError = $"No graph match for '{query}'.";
+            return;
+        }
+
+        // Duplicate-of-prior guard — same protection the builder
+        // applies; clicking the same room twice in a row produces
+        // a zero-length leg the expander would silently drop.
+        if (Waypoints.Count > 0 && Waypoints[^1].Key.Equals(resolved.Value))
+        {
+            AddWaypointError = "Same as the last waypoint; pick a different room.";
+            return;
+        }
+
+        Waypoints.Add(new LoopWaypointRowViewModel(
+            new LoopWaypoint(resolved.Value), _graph));
+        RenumberRows();
+        NewWaypointQuery = string.Empty;
+        AddWaypointError = string.Empty;
+    }
+
+    /// <summary>
+    /// Best-effort lookup from a free-form query: raw <c>map/room</c>
+    /// first, exact name match next, single substring match last.
+    /// Returns null when nothing matches OR multiple rooms share the
+    /// same substring (forcing the user to disambiguate).
+    /// </summary>
+    private RoomKey? ResolveQuery(string query)
+    {
+        if (RoomKey.TryParseWire(query, out RoomKey key)
+            && _graph.GetRoom(key) is not null)
+            return key;
+
+        // Name-based search through the active graph. Exact match
+        // wins outright; otherwise we need exactly one substring hit
+        // (case-insensitive) to commit without ambiguity.
+        RoomKey? exact = null;
+        List<RoomKey> substrings = new();
+        foreach (Room r in _graph.Rooms)
+        {
+            if (string.Equals(r.Name, query, StringComparison.OrdinalIgnoreCase))
+            {
+                if (exact is not null) return null;   // multiple exact matches
+                exact = r.Key;
+            }
+            else if (r.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                substrings.Add(r.Key);
+            }
+        }
+        if (exact is { } e) return e;
+        if (substrings.Count == 1) return substrings[0];
+        return null;
+    }
+
     // ----- dialog commit ---------------------------------------------
 
     [RelayCommand]
-    private void Save()
+    private async Task SaveAsync()
     {
         string newName = (Name ?? string.Empty).Trim();
         if (newName.Length == 0) return;
@@ -142,8 +244,38 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         if (renamed) _loops.Delete(oldName);
         _loops.Save(_original);
 
+        // If we just edited the live running loop, ask whether to
+        // restart it with the new definition. The user might be
+        // tweaking for next time and not want their current lap
+        // disrupted, OR they might be fixing a bug and want it
+        // applied immediately. Yes → stop+restart; No → leave the
+        // runner on the in-memory pre-edit version (it'll pick up
+        // the new disk version next time the user clicks Run).
+        if (_runner is { } runner && _confirm is { } confirm
+            && IsEditingRunningLoop(runner, oldName))
+        {
+            bool restart = await confirm.ConfirmAsync(
+                "Apply to running loop?",
+                "You edited the loop that's currently running. Restart the runner with the new version now?",
+                yesLabel: "Restart now");
+            if (restart)
+            {
+                runner.Stop("edited; restarting with new definition");
+                runner.Start(_original);
+            }
+        }
+
         CloseRequested?.Invoke(_original);
     }
+
+    /// <summary>
+    /// True when <paramref name="runner"/>'s current loop is the one
+    /// we just edited. Matched by the pre-rename name so a rename
+    /// during the edit still detects the running-loop case.
+    /// </summary>
+    private static bool IsEditingRunningLoop(LoopRunner runner, string oldName)
+        => runner.CurrentLoop is { } cur
+        && string.Equals(cur.Name, oldName, StringComparison.OrdinalIgnoreCase);
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
