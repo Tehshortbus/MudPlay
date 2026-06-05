@@ -699,8 +699,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RunLoop(LoopRowViewModel? row)
     {
         if (row is null) return;
-        if (_services.LoopRunner.Start(row.Source))
-            _services.Loops.NoteRun(row.Source.Name);
+        _services.LoopRunner.Start(row.Source);
     }
 
     [RelayCommand]
@@ -716,7 +715,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private async Task EditLoopAsync(LoopRowViewModel? row)
     {
         if (row is null) return;
-        var vm = new LoopEditorDialogViewModel(row.Source, _services.Loops);
+        var vm = new LoopEditorDialogViewModel(row.Source, _services.Loops, _services.RoomGraph);
         await _services.Dialogs
             .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
     }
@@ -748,19 +747,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void PreviewLoop(LoopRowViewModel? row)
     {
         if (row is null) { LoopPath = null; return; }
-        if (_services.RoomTracker.State.CurrentRoom is not { } current)
+        if (row.Source.Waypoints.Count < 2)
         {
             LoopPath = null;
             return;
         }
-        // Re-use the same room-key walker the active-loop overlay uses,
-        // but seeded from the loop's first UserWaypoint instead of the
-        // live current room. Falls back to the live current room when
-        // the loop is legacy (no UserWaypoints).
-        RoomKey from = row.Source.UserWaypoints.Count > 0
-            ? row.Source.UserWaypoints[0]
-            : current.Key;
-        IReadOnlyList<RoomKey> keys = WalkLoopSteps(from, row.Source.Steps);
+        // Render the full cycle anchored at waypoint 0, sourced via
+        // LoopExpander so the polyline matches what the runner would
+        // actually drive at start time.
+        IReadOnlyList<RoomKey> keys = LoopExpander.ResolveCycleRoomKeys(
+            row.Source.Waypoints, _services.Bfs, _services.RoomGraph, _services.Movement);
         LoopPath = keys.Count >= 2 ? keys : null;
     }
 
@@ -1408,9 +1404,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             && LoopBuilder?.CanSave == true)
         {
             LoopBuilder.Save();
-            if (_services.Loops.Loops.LastOrDefault() is { } saved
-                && _services.LoopRunner.Start(saved))
-                _services.Loops.NoteRun(saved.Name);
+            if (_services.Loops.Loops.LastOrDefault() is { } saved)
+                _services.LoopRunner.Start(saved);
             return;
         }
         if (CurrentMode == NavigationMode.AutoLair
@@ -1451,7 +1446,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         builder.PropertyChanged += OnLoopBuilderPropertyChanged;
         builder.ProposedName = loop.Name;
         builder.Notes        = loop.Notes;
-        foreach (RoomKey w in loop.UserWaypoints) builder.AddClick(w);
+        foreach (LoopWaypoint w in loop.Waypoints) builder.AddClick(w.Key);
 
         LoopBuilder = builder;
         CurrentMode = NavigationMode.LoopBuild;
@@ -1668,18 +1663,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                     break;
                 }
 
-                // Running circle: render the loop's MoveLoopStep
-                // sequence with the same Completed/Current/Upcoming
-                // shape the walker uses. CommandLoopSteps render with
-                // their Display text alongside moves.
+                // Running circle: render the runner's expanded step
+                // sequence (BFS-filled moves + per-waypoint commands)
+                // with the same Completed/Current/Upcoming shape the
+                // walker uses.
                 int loopIdx = runner.CurrentIndex;
-                for (int i = 0; i < loop.Steps.Count; i++)
+                IReadOnlyList<LoopStep> expanded = runner.ExpandedSteps;
+                for (int i = 0; i < expanded.Count; i++)
                 {
                     CurrentNavRowStatus status = i < loopIdx
                         ? CurrentNavRowStatus.Completed
                         : (i == loopIdx ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Upcoming);
                     CurrentNavRows.Add(new CurrentNavRowViewModel(
-                        index: i + 1, label: loop.Steps[i].Display, status: status));
+                        index: i + 1, label: expanded[i].Display, status: status));
                 }
                 break;
             }

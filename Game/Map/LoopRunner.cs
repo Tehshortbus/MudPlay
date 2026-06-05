@@ -37,6 +37,15 @@ public sealed class LoopRunner : IRecoverableEngine
 
     private Loop? _loop;
     private int _index;
+
+    /// <summary>
+    /// Runtime expansion of <see cref="_loop"/>'s waypoints into the
+    /// flat <see cref="LoopStep"/> sequence the runner executes.
+    /// Recomputed in <see cref="Start"/> after the rotation is
+    /// committed; rebuilt by <see cref="NotifyAvoidedChanged"/> when
+    /// the filter changes. Always non-null while a loop is active.
+    /// </summary>
+    private List<LoopStep> _expandedSteps = new();
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private RoomKey? _expectedMoveTarget;
@@ -104,7 +113,14 @@ public sealed class LoopRunner : IRecoverableEngine
     public RoomKey? CircleStartRoom => _circleStartRoom;
 
     /// <summary>Total steps in the rotated circle. 0 when no loop is active.</summary>
-    public int StepCount => _loop?.Steps.Count ?? 0;
+    public int StepCount => _expandedSteps.Count;
+
+    /// <summary>
+    /// Read-only view of the runtime-expanded step sequence. Used by
+    /// the CURRENT NAV pane to render per-step rows. Empty between
+    /// runs.
+    /// </summary>
+    public IReadOnlyList<LoopStep> ExpandedSteps => _expandedSteps;
 
     /// <summary>
     /// Time elapsed in the current lap. Zero when not running. Computed
@@ -146,8 +162,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public Direction? PeekNextPlannedDirection()
     {
-        if (_loop is null || _index >= _loop.Steps.Count) return null;
-        return _loop.Steps[_index] is MoveLoopStep move ? move.Direction : (Direction?)null;
+        if (_loop is null || _index >= _expandedSteps.Count) return null;
+        return _expandedSteps[_index] is MoveLoopStep move ? move.Direction : (Direction?)null;
     }
 
     public void SendBacktrackMove(Direction direction)
@@ -209,7 +225,7 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_loop is null || _graph is null) return Array.Empty<RoomKey>();
         var keys = new List<RoomKey> { source };
         RoomKey here = source;
-        foreach (LoopStep step in _loop.Steps)
+        foreach (LoopStep step in _expandedSteps)
         {
             if (step is not MoveLoopStep move) continue;
             Room? room = _graph.GetRoom(here);
@@ -267,7 +283,7 @@ public sealed class LoopRunner : IRecoverableEngine
     public bool Start(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
-        if (loop.Steps.Count == 0) return false;
+        if (loop.Waypoints.Count < 2) return false;
 
         if (State is LoopState.Running or LoopState.Paused or LoopState.Approaching)
             Stop("superseded by new loop");
@@ -281,6 +297,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _lapDurations.Clear();
         _approachTarget = null;
         _circleStartRoom = null;
+        _expandedSteps = new List<LoopStep>();
 
         Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
 
@@ -288,38 +305,32 @@ public sealed class LoopRunner : IRecoverableEngine
 
         // Decision: do we need an approach walk, or can we begin the
         // circle immediately?
-        //   - Legacy v1 loop (no UserWaypoints) → no approach available;
-        //     trust that the user is at the right starting position.
         //   - Player already at a waypoint → rotate the loop so that
         //     waypoint is first, no approach.
         //   - Player elsewhere AND walker bound AND graph available →
         //     pick the closest waypoint, walker drives the approach,
-        //     loop steps are rotated UP FRONT so the approach-preview
-        //     overlay can render the upcoming cycle.
-        //   - Walker missing (unit tests) → begin circle from wherever
-        //     they are and let the runner fail-or-recover.
+        //     loop steps are rotated + expanded UP FRONT so the
+        //     approach-preview overlay can render the upcoming cycle.
+        //   - Walker missing (unit tests) or no graph → expand from
+        //     waypoint 0 and let the runner fail-or-recover.
 
-        if (loop.UserWaypoints.Count == 0)
-        {
-            BeginCircle();
-            return true;
-        }
-
-        if (currentKey is { } here && loop.UserWaypoints.Any(w => w.Equals(here)))
+        if (currentKey is { } here && loop.Waypoints.Any(w => w.Key.Equals(here)))
         {
             RotateLoopTo(here);
             _circleStartRoom = here;
+            ExpandSteps();
             BeginCircle();
             return true;
         }
 
         if (_walker is null || _bfs is null || currentKey is null)
         {
+            ExpandSteps();
             BeginCircle();
             return true;
         }
 
-        RoomKey? closest = PickClosestWaypoint(currentKey.Value, loop.UserWaypoints);
+        RoomKey? closest = PickClosestWaypoint(currentKey.Value, loop.Waypoints);
         if (closest is null)
         {
             // No reachable waypoint — bail; gate would fail us anyway.
@@ -329,18 +340,19 @@ public sealed class LoopRunner : IRecoverableEngine
             return false;
         }
 
-        // Rotate UP FRONT — the cycle's entry is committed at the
-        // moment we pick the closest waypoint. Doing it here (vs after
-        // the walker finishes) means ResolveLoopRoomKeys(closest)
+        // Rotate + expand UP FRONT — the cycle's entry is committed at
+        // the moment we pick the closest waypoint. Doing it here (vs
+        // after the walker finishes) means ResolveLoopRoomKeys(closest)
         // produces the correct cycle for the approach-preview overlay,
         // and the eventual hand-off into Running needs no further
-        // mutation of Loop.Steps.
+        // mutation.
         RotateLoopTo(closest.Value);
         _circleStartRoom = closest;
         _approachTarget  = closest;
+        ExpandSteps();
         State = LoopState.Approaching;
         _log?.Info("LoopRunner",
-            $"approach: walking from {currentKey} → {closest} (closest of {loop.UserWaypoints.Count} waypoints)");
+            $"approach: walking from {currentKey} → {closest} (closest of {loop.Waypoints.Count} waypoints)");
         _walker.WalkTo(closest.Value);
         return true;
     }
@@ -351,64 +363,68 @@ public sealed class LoopRunner : IRecoverableEngine
     /// reachable (disconnected graph, all waypoints behind avoided
     /// rooms, etc.).
     /// </summary>
-    private RoomKey? PickClosestWaypoint(RoomKey from, IReadOnlyList<RoomKey> waypoints)
+    private RoomKey? PickClosestWaypoint(RoomKey from, IReadOnlyList<LoopWaypoint> waypoints)
     {
-        if (_bfs is null) return waypoints.Count > 0 ? waypoints[0] : null;
+        if (_bfs is null) return waypoints.Count > 0 ? waypoints[0].Key : null;
         RoomKey? best = null;
         int bestLen = int.MaxValue;
-        foreach (RoomKey w in waypoints)
+        foreach (LoopWaypoint w in waypoints)
         {
-            if (w.Equals(from)) return w;
-            IReadOnlyList<Direction>? path = _bfs.FindPath(from, w, _filter);
+            RoomKey key = w.Key;
+            if (key.Equals(from)) return key;
+            IReadOnlyList<Direction>? path = _bfs.FindPath(from, key, _filter);
             if (path is null) continue;
-            if (path.Count < bestLen) { best = w; bestLen = path.Count; }
+            if (path.Count < bestLen) { best = key; bestLen = path.Count; }
         }
         return best;
     }
 
     /// <summary>
-    /// Rotate the loop's <see cref="Loop.Steps"/> so the circle begins
-    /// at <paramref name="waypoint"/> instead of
-    /// <c>UserWaypoints[0]</c>. Re-runs the BFS expansion against the
-    /// rotated waypoint order so the closing leg ends back at
-    /// <paramref name="waypoint"/>. No-op when UserWaypoints is empty
-    /// (legacy v1 loop) or the waypoint isn't in the list.
+    /// Rotate the loop's <see cref="Loop.Waypoints"/> so the circle
+    /// begins at <paramref name="waypoint"/> instead of
+    /// <c>Waypoints[0]</c>. No-op when Waypoints is empty or the
+    /// target isn't in the list. The runtime step list is rebuilt
+    /// separately by <see cref="ExpandSteps"/>.
     /// </summary>
     private void RotateLoopTo(RoomKey waypoint)
     {
-        if (_loop is null || _bfs is null) return;
-        if (_loop.UserWaypoints.Count == 0) return;
+        if (_loop is null) return;
+        if (_loop.Waypoints.Count == 0) return;
 
         int k = -1;
-        for (int i = 0; i < _loop.UserWaypoints.Count; i++)
+        for (int i = 0; i < _loop.Waypoints.Count; i++)
         {
-            if (_loop.UserWaypoints[i].Equals(waypoint)) { k = i; break; }
+            if (_loop.Waypoints[i].Key.Equals(waypoint)) { k = i; break; }
         }
         if (k <= 0) return;     // not found, or already at index 0 — no rotation needed
 
-        // Build the rotated waypoint list and re-expand into Steps.
-        // Note we mutate the in-memory loop only — the on-disk file
-        // stays in its canonical (waypoint-0-first) form.
-        var rotated = new List<RoomKey>(_loop.UserWaypoints.Count);
-        for (int i = 0; i < _loop.UserWaypoints.Count; i++)
+        // Build the rotated waypoint list. We mutate the in-memory
+        // loop only — the on-disk file stays in its canonical
+        // (waypoint-0-first) form.
+        var rotated = new List<LoopWaypoint>(_loop.Waypoints.Count);
+        for (int i = 0; i < _loop.Waypoints.Count; i++)
         {
-            rotated.Add(_loop.UserWaypoints[(k + i) % _loop.UserWaypoints.Count]);
+            rotated.Add(_loop.Waypoints[(k + i) % _loop.Waypoints.Count]);
         }
-
-        var steps = new List<LoopStep>();
-        for (int i = 0; i < rotated.Count - 1; i++)
-        {
-            IReadOnlyList<Direction>? path = _bfs.FindPath(rotated[i], rotated[i + 1], _filter);
-            if (path is null) continue;
-            foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
-        }
-        // Closing leg.
-        IReadOnlyList<Direction>? closing = _bfs.FindPath(rotated[^1], rotated[0], _filter);
-        if (closing is not null) foreach (Direction d in closing) steps.Add(new MoveLoopStep(d));
-
-        _loop.Steps = steps;
+        _loop.Waypoints = rotated;
         _log?.Info("LoopRunner",
             $"rotated loop '{_loop.Name}' to start at waypoint {waypoint} (index {k})");
+    }
+
+    /// <summary>
+    /// (Re)compute <see cref="_expandedSteps"/> from the loop's
+    /// current waypoint order + the active filter. Called after every
+    /// rotation and on every avoid-list change.
+    /// </summary>
+    private void ExpandSteps()
+    {
+        if (_loop is null || _bfs is null)
+        {
+            _expandedSteps = new List<LoopStep>();
+            return;
+        }
+        (IReadOnlyList<LoopStep> steps, _) = LoopExpander.Expand(_loop.Waypoints, _bfs, _filter);
+        _expandedSteps = new List<LoopStep>(steps);
     }
 
     /// <summary>
@@ -505,7 +521,7 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         if (State == LoopState.Idle) return;
         if (_loop is null) return;
-        if (_loop.UserWaypoints.Count == 0) return;
+        if (_loop.Waypoints.Count == 0) return;
 
         Loop snapshot = _loop;
         _log?.Info("LoopRunner",
@@ -533,7 +549,7 @@ public sealed class LoopRunner : IRecoverableEngine
         // All loops are circular by definition — every lap wraps back
         // to step 0. The runner has no "Finished" end-condition; it
         // runs until the user Stops or the recovery gate aborts it.
-        if (_index >= _loop.Steps.Count)
+        if (_index >= _expandedSteps.Count)
         {
             // Record the just-completed lap's duration into the rolling
             // history (capped at MaxLapHistory) so AverageLapTime stays
@@ -547,7 +563,7 @@ public sealed class LoopRunner : IRecoverableEngine
             Raise(new LoopEvent(LoopEventKind.RepeatStarted, _loop.Name));
         }
 
-        LoopStep step = _loop.Steps[_index];
+        LoopStep step = _expandedSteps[_index];
         switch (step)
         {
             case MoveLoopStep move:    SendMove(move);    break;
@@ -665,8 +681,8 @@ public sealed class LoopRunner : IRecoverableEngine
     private void OnTrackerStateChanged(RoomTransition t)
     {
         if (State != LoopState.Running || !_stepInFlight) return;
-        if (_loop is null || _index >= _loop.Steps.Count) return;
-        if (_loop.Steps[_index] is not MoveLoopStep) return;
+        if (_loop is null || _index >= _expandedSteps.Count) return;
+        if (_expandedSteps[_index] is not MoveLoopStep) return;
 
         if (t.NewConfidence != RoomConfidence.Confirmed)
         {
@@ -721,7 +737,7 @@ public sealed class LoopRunner : IRecoverableEngine
     private void AdvanceStep()
     {
         _index++;
-        Raise(new LoopEvent(LoopEventKind.StepCompleted, $"{_index}/{_loop!.Steps.Count}"));
+        Raise(new LoopEvent(LoopEventKind.StepCompleted, $"{_index}/{_expandedSteps.Count}"));
         SendNextStep();
     }
 
@@ -763,6 +779,7 @@ public sealed class LoopRunner : IRecoverableEngine
         StopDelayTimer();
         _loop = null;
         _index = 0;
+        _expandedSteps = new List<LoopStep>();
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;

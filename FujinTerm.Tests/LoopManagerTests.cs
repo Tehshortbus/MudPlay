@@ -111,10 +111,10 @@ public sealed class LoopManagerTests : IDisposable
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
 
-        var loop = new Loop("Sewer farm", new LoopStep[]
+        var loop = new Loop("Sewer farm", new[]
         {
-            new MoveLoopStep(Direction.N),
-            new MoveLoopStep(Direction.N),
+            new RoomKey(1, 1),
+            new RoomKey(1, 2),
         });
         m.Save(loop);
 
@@ -129,13 +129,15 @@ public sealed class LoopManagerTests : IDisposable
     [Fact]
     public void Save_RoundTripsLoopsAcrossLoadAll()
     {
+        // Schema v3: commands attach to waypoints, not arbitrary
+        // positions in a flat step list. Round-tripping preserves the
+        // per-waypoint command + delay alongside the room.
         LoopManager m1 = NewManager();
         m1.LoadAll(_bbs);
-        m1.Save(new Loop("Albion run", new LoopStep[]
+        m1.Save(new Loop("Albion run", new[]
         {
-            new MoveLoopStep(Direction.N),
-            new CommandLoopStep("dep 100", 500),
-            new MoveLoopStep(Direction.N),
+            new LoopWaypoint(new RoomKey(1, 1)),
+            new LoopWaypoint(new RoomKey(1, 2), "dep 100", 500),
         }));
 
         LoopManager m2 = NewManager();
@@ -143,18 +145,19 @@ public sealed class LoopManagerTests : IDisposable
 
         Loop? round = m2.Get("Albion run");
         Assert.NotNull(round);
-        Assert.Equal(3, round!.Steps.Count);
-        Assert.IsType<MoveLoopStep>(round.Steps[0]);
-        Assert.IsType<CommandLoopStep>(round.Steps[1]);
-        Assert.Equal("dep 100", ((CommandLoopStep)round.Steps[1]).Command);
-        Assert.Equal(500, ((CommandLoopStep)round.Steps[1]).DelayMs);
+        Assert.Equal(2, round!.Waypoints.Count);
+        Assert.Equal(new RoomKey(1, 1), round.Waypoints[0].Key);
+        Assert.Null(round.Waypoints[0].Command);
+        Assert.Equal(new RoomKey(1, 2), round.Waypoints[1].Key);
+        Assert.Equal("dep 100", round.Waypoints[1].Command);
+        Assert.Equal(500, round.Waypoints[1].DelayMs);
     }
 
     [Fact]
     public void Save_NoBbsBound_IsNoOp()
     {
         LoopManager m = NewManager();
-        m.Save(new Loop("orphan", new LoopStep[] { new MoveLoopStep(Direction.N) }));
+        m.Save(new Loop("orphan", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
         Assert.Empty(m.Loops);
     }
 
@@ -163,25 +166,13 @@ public sealed class LoopManagerTests : IDisposable
     {
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
-        m.Save(new Loop("test", new LoopStep[] { new MoveLoopStep(Direction.N) }));
+        m.Save(new Loop("test", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
 
         bool removed = m.Delete("test");
 
         Assert.True(removed);
         Assert.Empty(m.Loops);
         Assert.False(File.Exists(Path.Combine(AppPaths.BbsLoopsFolder(_bbs), "test.json")));
-    }
-
-    [Fact]
-    public void NoteRun_StampsLastRunAt()
-    {
-        LoopManager m = NewManager();
-        m.LoadAll(_bbs);
-        m.Save(new Loop("test", new LoopStep[] { new MoveLoopStep(Direction.N) }));
-
-        Assert.Null(m.Get("test")!.LastRunAt);
-        m.NoteRun("test");
-        Assert.NotNull(m.Get("test")!.LastRunAt);
     }
 
     [Fact]
@@ -194,7 +185,7 @@ public sealed class LoopManagerTests : IDisposable
         m.LoadAll(_bbs);
         Assert.Equal(1, fires);
 
-        m.Save(new Loop("a", new LoopStep[] { new MoveLoopStep(Direction.N) }));
+        m.Save(new Loop("a", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
         Assert.Equal(2, fires);
 
         m.Delete("a");
@@ -206,9 +197,10 @@ public sealed class LoopManagerTests : IDisposable
     {
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
-        m.Save(new Loop("zeta", new LoopStep[] { new MoveLoopStep(Direction.N) }));
-        m.Save(new Loop("alpha", new LoopStep[] { new MoveLoopStep(Direction.N) }));
-        m.Save(new Loop("MIDDLE", new LoopStep[] { new MoveLoopStep(Direction.N) }));
+        var pair = new[] { new RoomKey(1, 1), new RoomKey(1, 2) };
+        m.Save(new Loop("zeta",   pair));
+        m.Save(new Loop("alpha",  pair));
+        m.Save(new Loop("MIDDLE", pair));
 
         Assert.Equal(new[] { "alpha", "MIDDLE", "zeta" }, m.Loops.Select(l => l.Name));
     }
@@ -218,7 +210,7 @@ public sealed class LoopManagerTests : IDisposable
     {
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
-        m.Save(new Loop("loop/with:bad*chars", new LoopStep[] { new MoveLoopStep(Direction.N) }));
+        m.Save(new Loop("loop/with:bad*chars", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
 
         LoopManager m2 = NewManager();
         m2.LoadAll(_bbs);
@@ -226,21 +218,21 @@ public sealed class LoopManagerTests : IDisposable
         Assert.Equal("loop/with:bad*chars", m2.Loops[0].Name);
     }
 
-    // ----- ExpandClickedRooms ---------------------------------------
+    // ----- ExpandWaypoints --------------------------------------------
 
     [Fact]
-    public void ExpandClickedRooms_DirectlyAdjacent_OneMovePerClick_AndCloses()
+    public void ExpandWaypoints_DirectlyAdjacent_OneMovePerHop_AndCloses()
     {
-        // Schema v2: all expansions close the cycle. 1→2→3 produces
-        // N + N forward (2 steps) + S + S closing back to 1 (2 steps).
+        // 1 → 2 → 3 + closing leg 3 → 2 → 1 = 4 move steps.
         LoopManager m = NewManager();
-
-        (var steps, var unreach) = m.ExpandClickedRooms(new[]
+        var waypoints = new[]
         {
-            new RoomKey(1, 1),
-            new RoomKey(1, 2),
-            new RoomKey(1, 3),
-        });
+            new LoopWaypoint(new RoomKey(1, 1)),
+            new LoopWaypoint(new RoomKey(1, 2)),
+            new LoopWaypoint(new RoomKey(1, 3)),
+        };
+
+        (var steps, var unreach) = m.ExpandWaypoints(waypoints);
 
         Assert.Empty(unreach);
         Assert.Equal(4, steps.Count);
@@ -248,32 +240,36 @@ public sealed class LoopManagerTests : IDisposable
     }
 
     [Fact]
-    public void ExpandClickedRooms_GapFillsViaBfs_AndCloses()
+    public void ExpandWaypoints_WithCommands_IntersperseCommandsAtWaypoints()
     {
+        // Each waypoint's command fires BEFORE walking to the next.
+        // With commands on both waypoints, the cycle reads
+        // [cmd@1] N N [cmd@3] S S — 6 steps total (2 commands + 4 moves).
         LoopManager m = NewManager();
-
-        // Skip the middle room — gap-fill should insert the two N
-        // steps, then close the cycle with two S steps back to start.
-        // Schema v2: all loops close by definition.
-        (var steps, var unreach) = m.ExpandClickedRooms(new[]
+        (var steps, var unreach) = m.ExpandWaypoints(new[]
         {
-            new RoomKey(1, 1),
-            new RoomKey(1, 3),
+            new LoopWaypoint(new RoomKey(1, 1), "rest", 0),
+            new LoopWaypoint(new RoomKey(1, 3), "dep 100", 500),
         });
 
         Assert.Empty(unreach);
-        Assert.Equal(4, steps.Count);
-        Assert.Equal(Direction.N, ((MoveLoopStep)steps[0]).Direction);
-        Assert.Equal(Direction.N, ((MoveLoopStep)steps[1]).Direction);
-        Assert.Equal(Direction.S, ((MoveLoopStep)steps[2]).Direction);
-        Assert.Equal(Direction.S, ((MoveLoopStep)steps[3]).Direction);
+        Assert.Equal(6, steps.Count);
+        Assert.IsType<CommandLoopStep>(steps[0]);
+        Assert.Equal("rest", ((CommandLoopStep)steps[0]).Command);
+        Assert.IsType<MoveLoopStep>(steps[1]);
+        Assert.IsType<MoveLoopStep>(steps[2]);
+        Assert.IsType<CommandLoopStep>(steps[3]);
+        Assert.Equal("dep 100", ((CommandLoopStep)steps[3]).Command);
     }
 
     [Fact]
-    public void ExpandClickedRooms_FewerThan2Clicks_Empty()
+    public void ExpandWaypoints_FewerThan2_Empty()
     {
         LoopManager m = NewManager();
-        (var steps, var unreach) = m.ExpandClickedRooms(new[] { new RoomKey(1, 1) });
+        (var steps, var unreach) = m.ExpandWaypoints(new[]
+        {
+            new LoopWaypoint(new RoomKey(1, 1)),
+        });
         Assert.Empty(steps);
         Assert.Empty(unreach);
     }
@@ -281,83 +277,90 @@ public sealed class LoopManagerTests : IDisposable
     // ----- schema migration -----------------------------------------
 
     [Fact]
-    public void LoadAll_V1LoopWithoutWaypointsOrNotes_UpgradesInMemory()
+    public void LoadAll_V2LoopUserWaypoints_MigratedToV3Waypoints()
     {
-        // Hand-write a v1 loop file (no SchemaVersion field, no
-        // UserWaypoints, no Notes, has the old IsCircular field). On
-        // load, LoopManager upgrades it in memory to v2 defaults:
-        // UserWaypoints empty, Notes empty, SchemaVersion = 2.
-        // IsCircular is silently ignored (loops are always circular now).
+        // v2 file: UserWaypoints + flat Steps. v3 migration pulls the
+        // waypoints out of LegacyFields via JsonExtensionData, builds
+        // Waypoints with null commands. Mid-leg CommandLoopSteps in
+        // the flat list are dropped (logged warning) since v3 attaches
+        // commands to waypoints, not arbitrary positions.
         string folder = AppPaths.BbsLoopsFolder(_bbs);
         Directory.CreateDirectory(folder);
-        const string V1Json = """
+        const string V2Json = """
             {
-              "$type": "v1",
+              "SchemaVersion": 2,
               "Name": "Legacy",
-              "IsCircular": false,
+              "Notes": "",
+              "UserWaypoints": [
+                { "Map": 1, "Room": 1 },
+                { "Map": 1, "Room": 3 }
+              ],
               "Steps": [
+                { "kind": "move", "Direction": 0 },
+                { "kind": "command", "Command": "dep 100", "DelayMs": 500 },
                 { "kind": "move", "Direction": 0 }
               ],
               "LastModifiedAt": "2024-01-01T00:00:00+00:00"
             }
             """;
-        File.WriteAllText(Path.Combine(folder, "Legacy.json"), V1Json);
+        File.WriteAllText(Path.Combine(folder, "Legacy.json"), V2Json);
 
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
 
         Loop? loaded = m.Get("Legacy");
         Assert.NotNull(loaded);
-        Assert.Equal(2, loaded!.SchemaVersion);
-        Assert.NotNull(loaded.UserWaypoints);
-        Assert.Empty(loaded.UserWaypoints);
-        Assert.NotNull(loaded.Notes);
-        Assert.Equal(string.Empty, loaded.Notes);
-        Assert.Single(loaded.Steps);
+        Assert.Equal(3, loaded!.SchemaVersion);
+        Assert.Equal(2, loaded.Waypoints.Count);
+        Assert.Equal(new RoomKey(1, 1), loaded.Waypoints[0].Key);
+        Assert.Equal(new RoomKey(1, 3), loaded.Waypoints[1].Key);
+        // Mid-leg command from the v2 Steps list is dropped on migration.
+        Assert.Null(loaded.Waypoints[0].Command);
+        Assert.Null(loaded.Waypoints[1].Command);
+        Assert.Null(loaded.LegacyFields);
     }
 
     [Fact]
-    public void Save_RoundTrip_PreservesUserWaypointsAndNotes()
+    public void Save_RoundTrip_PreservesWaypointsAndNotes()
     {
         LoopManager m = NewManager();
         m.LoadAll(_bbs);
 
-        var keys = new[] { new RoomKey(1, 1), new RoomKey(1, 3) };
-        (var steps, _) = m.ExpandClickedRooms(keys);
-
-        Loop loop = new("RoundTrip", steps)
+        var waypoints = new[]
         {
-            UserWaypoints = new List<RoomKey>(keys),
+            new LoopWaypoint(new RoomKey(1, 1)),
+            new LoopWaypoint(new RoomKey(1, 3), "rest", 0),
+        };
+        Loop loop = new("RoundTrip", waypoints)
+        {
             Notes = "test notes",
         };
         m.Save(loop);
 
         // Reload from disk via a fresh manager — confirms the JSON
-        // serialiser is round-tripping the v2 fields cleanly.
+        // serialiser is round-tripping the v3 fields cleanly.
         LoopManager m2 = NewManager();
         m2.LoadAll(_bbs);
         Loop? r = m2.Get("RoundTrip");
         Assert.NotNull(r);
-        Assert.Equal(2, r!.SchemaVersion);
-        Assert.Equal(2, r.UserWaypoints.Count);
-        Assert.Equal(new RoomKey(1, 1), r.UserWaypoints[0]);
-        Assert.Equal(new RoomKey(1, 3), r.UserWaypoints[1]);
+        Assert.Equal(3, r!.SchemaVersion);
+        Assert.Equal(2, r.Waypoints.Count);
+        Assert.Equal(new RoomKey(1, 1), r.Waypoints[0].Key);
+        Assert.Equal(new RoomKey(1, 3), r.Waypoints[1].Key);
+        Assert.Equal("rest", r.Waypoints[1].Command);
         Assert.Equal("test notes", r.Notes);
     }
 
     [Fact]
-    public void ExpandClickedRooms_UnreachableSegment_Surfaced()
+    public void ExpandWaypoints_UnreachableSegment_Surfaced()
     {
-        // Schema v2 closes the cycle — when the user clicks an
-        // unreachable destination, BOTH the forward leg AND the
-        // closing leg fail, so two unreachable segments are surfaced
-        // (the user sees one logical "can't path here" but the
-        // record-keeping is per-leg).
+        // The cycle closes: when the user picks an unreachable
+        // destination, BOTH the forward leg AND the closing leg fail.
         LoopManager m = NewManager();
-        (var steps, var unreach) = m.ExpandClickedRooms(new[]
+        (var steps, var unreach) = m.ExpandWaypoints(new[]
         {
-            new RoomKey(1, 1),
-            new RoomKey(999, 999),
+            new LoopWaypoint(new RoomKey(1, 1)),
+            new LoopWaypoint(new RoomKey(999, 999)),
         });
 
         Assert.Empty(steps);

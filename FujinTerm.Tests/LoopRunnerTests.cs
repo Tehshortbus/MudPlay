@@ -61,26 +61,39 @@ public sealed class LoopRunnerTests : IDisposable
         graph.OnActiveSetChanged("alpha");
         RoomTracker tracker = new(graph);
         MovementCoordinator coord = new();
-        LoopRunner runner = new(tracker, coord);
+        // v3: runner expands waypoints → steps via BfsMapper at Start.
+        // Without a BFS the expansion yields an empty step list and the
+        // runner can't push the first step.
+        BfsMapper bfs = new(graph);
+        LoopRunner runner = new(tracker, coord, graph: graph, bfs: bfs);
         Harness h = new() { Tracker = tracker, Coordinator = coord, Runner = runner };
         runner.SetWireSender(b => h.Sent.Add(b));
         runner.Event += e => h.Events.Add(e);
         return h;
     }
 
-    private static Loop TwoStepLoop() =>
-        new("test", new LoopStep[]
-        {
-            new MoveLoopStep(Direction.N),
-            new MoveLoopStep(Direction.N),
-        });
+    // Smallest viable v3 cycle on the test graph: waypoints 1/1 and
+    // 1/2 expand to [N (1→2), S (2→1)] — a 2-step cycle the runner
+    // can complete a full lap of with just one round-trip observation
+    // pair.
+    private static Loop AbCycle() =>
+        new("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) });
 
     [Fact]
     public void Start_EmptyLoop_ReturnsFalse()
     {
         Harness h = NewHarness();
-        Loop empty = new("empty", Array.Empty<LoopStep>());
+        Loop empty = new("empty", Array.Empty<LoopWaypoint>());
         Assert.False(h.Runner.Start(empty));
+    }
+
+    [Fact]
+    public void Start_SingleWaypoint_ReturnsFalse()
+    {
+        // v3: cycles need 2+ waypoints to form a closed loop.
+        Harness h = NewHarness();
+        Loop one = new("one", new[] { new RoomKey(1, 1) });
+        Assert.False(h.Runner.Start(one));
     }
 
     [Fact]
@@ -89,7 +102,7 @@ public sealed class LoopRunnerTests : IDisposable
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
 
-        h.Runner.Start(TwoStepLoop());
+        h.Runner.Start(AbCycle());
 
         Assert.Equal(LoopState.Running, h.Runner.State);
         Assert.Single(h.Sent);
@@ -100,23 +113,17 @@ public sealed class LoopRunnerTests : IDisposable
     [Fact]
     public void WrapsAtEnd_AndFiresRepeatStarted()
     {
-        // Loops are circular by definition (schema v2 — IsCircular
-        // dropped). On reaching the last step we wrap back to step 0
-        // and fire RepeatStarted; the runner never produces a
-        // Finished event.
+        // Complete one full lap (N + S back to 1/1) — wrap fires
+        // RepeatStarted.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(TwoStepLoop());
+        h.Runner.Start(AbCycle());
 
-        // step 1: N → land at B
         h.Tracker.NoteRoomObserved(new RoomObservation("B",
             new HashSet<Direction> { Direction.N, Direction.S }));
-        // step 2: N → land at C
-        h.Tracker.NoteRoomObserved(new RoomObservation("C",
-            new HashSet<Direction> { Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
 
-        // C → ??? — but the loop is circular so it tries to send step 1
-        // again, predicting from C. C has only S, not N. Should fail.
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.RepeatStarted);
     }
 
@@ -125,7 +132,7 @@ public sealed class LoopRunnerTests : IDisposable
     {
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(TwoStepLoop());
+        h.Runner.Start(AbCycle());
         h.Runner.Stop();
         Assert.Equal(LoopState.Idle, h.Runner.State);
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Stopped);
@@ -136,7 +143,7 @@ public sealed class LoopRunnerTests : IDisposable
     {
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(TwoStepLoop());
+        h.Runner.Start(AbCycle());
         int sentBefore = h.Sent.Count;
 
         h.Coordinator.AssertGate("user");
@@ -149,25 +156,24 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
-    public void CommandStep_DelayMsGreaterZero_WaitsForTimer()
+    public void Waypoint_WithCommand_FiresCommandFirst_ThenMove()
     {
-        // Schema v2: DelayMs > 0 starts a real timer; the next step
-        // doesn't go out until the timer elapses. The test seam
-        // FireDelayForTests simulates the tick.
+        // v3: commands attach to waypoints, sending before moves. With
+        // a command on waypoint 0 (1/1), Start sends the command and
+        // arms the delay timer; FireDelayForTests pushes the
+        // subsequent move.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        Loop loop = new("with-cmd", new LoopStep[]
+        Loop loop = new("with-cmd", new[]
         {
-            new CommandLoopStep("dep 100", 500),
-            new MoveLoopStep(Direction.N),
+            new LoopWaypoint(new RoomKey(1, 1), "dep 100", 500),
+            new LoopWaypoint(new RoomKey(1, 2)),
         });
         h.Runner.Start(loop);
 
-        // Command sent; move NOT yet sent — delay timer pending.
         Assert.Single(h.Sent);
         Assert.Equal("dep 100\r", Encoding.Latin1.GetString(h.Sent[0]));
 
-        // Simulate the delay elapsing.
         h.Runner.FireDelayForTests();
 
         Assert.Equal(2, h.Sent.Count);
@@ -175,14 +181,14 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
-    public void CommandStep_DelayMsZero_WaitsForPrompt()
+    public void Waypoint_WithCommandDelay0_WaitsForPrompt()
     {
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        Loop loop = new("with-cmd", new LoopStep[]
+        Loop loop = new("with-cmd", new[]
         {
-            new CommandLoopStep("ask barmaid pie"),
-            new MoveLoopStep(Direction.N),
+            new LoopWaypoint(new RoomKey(1, 1), "ask barmaid pie", 0),
+            new LoopWaypoint(new RoomKey(1, 2)),
         });
         h.Runner.Start(loop);
 
@@ -197,13 +203,13 @@ public sealed class LoopRunnerTests : IDisposable
     [Fact]
     public void MissingExit_FailsRun()
     {
+        // Player at C (1/3 — only S exit). Loop is [A, B] which
+        // expands to [N (1→2), S (2→1)]. The runner expands from
+        // waypoint 0 (1/1) but tries to send the first step's N from
+        // the LIVE current room (1/3) — fails immediately.
         Harness h = NewHarness();
-        h.Tracker.SetLocated(new RoomKey(1, 3));  // C has no N exit
-        Loop loop = new("bad", new LoopStep[]
-        {
-            new MoveLoopStep(Direction.N),
-        });
-        h.Runner.Start(loop);
+        h.Tracker.SetLocated(new RoomKey(1, 3));
+        h.Runner.Start(AbCycle());
 
         Assert.Equal(LoopState.Idle, h.Runner.State);
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Failed);
@@ -219,21 +225,11 @@ public sealed class LoopRunnerTests : IDisposable
         // that path, alongside Started.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(TwoStepLoop());
+        h.Runner.Start(AbCycle());
 
         Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.Started));
         Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.ReachedFirstWaypoint));
     }
-
-    // A → B → A loop (one room at a time, returns to start). This is
-    // the smallest possible circle that can complete a lap on the
-    // 1/1 ↔ 1/2 segment of the fixture graph.
-    private static Loop NSLoopFromOne() =>
-        new("ns", new LoopStep[]
-        {
-            new MoveLoopStep(Direction.N),    // 1/1 → 1/2
-            new MoveLoopStep(Direction.S),    // 1/2 → 1/1 (closing)
-        });
 
     [Fact]
     public void LapTime_RecordsOnWrap()
@@ -242,14 +238,12 @@ public sealed class LoopRunnerTests : IDisposable
         // RepeatStarted and pushes a duration into LapHistory.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(NSLoopFromOne());
+        h.Runner.Start(AbCycle());
 
         Assert.Empty(h.Runner.LapHistory);
 
-        // step 1: N → land at B (1/2; exits N, S in graph).
         h.Tracker.NoteRoomObserved(new RoomObservation("B",
             new HashSet<Direction> { Direction.N, Direction.S }));
-        // step 2: S → land back at A (1/1; only N in graph).
         h.Tracker.NoteRoomObserved(new RoomObservation("A",
             new HashSet<Direction> { Direction.N }));
 
@@ -265,16 +259,7 @@ public sealed class LoopRunnerTests : IDisposable
     {
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-
-        Loop loop = new("ws", new LoopStep[]
-        {
-            new MoveLoopStep(Direction.N),
-            new MoveLoopStep(Direction.S),
-        })
-        {
-            UserWaypoints = new List<RoomKey> { new RoomKey(1, 1), new RoomKey(1, 2) },
-        };
-        h.Runner.Start(loop);
+        h.Runner.Start(AbCycle());
         h.Events.Clear();
 
         h.Runner.NotifyAvoidedChanged();
@@ -293,36 +278,11 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
-    public void NotifyAvoidedChanged_OnLegacyLoopWithoutWaypoints_NoOp()
-    {
-        // v1 loops loaded from disk have no UserWaypoints — they can't
-        // be re-rotated because the rotation needs the canonical
-        // click list. Re-route is silently skipped; the legacy loop
-        // keeps its original cached steps.
-        Harness h = NewHarness();
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-
-        Loop legacy = new("legacy", new LoopStep[]
-        {
-            new MoveLoopStep(Direction.N),
-            new MoveLoopStep(Direction.S),
-        });
-        // No UserWaypoints — left as the constructor's empty default.
-        h.Runner.Start(legacy);
-        h.Events.Clear();
-
-        h.Runner.NotifyAvoidedChanged();
-
-        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Stopped);
-        Assert.NotEqual(LoopState.Idle, h.Runner.State);
-    }
-
-    [Fact]
     public void Reset_ClearsLapHistory()
     {
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.Start(NSLoopFromOne());
+        h.Runner.Start(AbCycle());
         h.Tracker.NoteRoomObserved(new RoomObservation("B",
             new HashSet<Direction> { Direction.N, Direction.S }));
         h.Tracker.NoteRoomObserved(new RoomObservation("A",

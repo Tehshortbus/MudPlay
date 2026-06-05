@@ -107,7 +107,7 @@ public sealed class LoopManager
         string detail = failed == 0
             ? $"Loaded {loaded} loop(s) for '{bbsName}'"
             : $"Loaded {loaded} loop(s) for '{bbsName}' ({failed} malformed file(s) skipped)";
-        if (upgraded > 0) detail += $"; {upgraded} v1 loop(s) running without UserWaypoints — re-save to enable avoid-list re-expand";
+        if (upgraded > 0) detail += $"; {upgraded} legacy loop(s) upgraded to v{Loop3Schema} in memory";
         _log?.Info("Loops", detail + ".");
         LoopsChanged?.Invoke();
     }
@@ -121,9 +121,8 @@ public sealed class LoopManager
 
     /// <summary>
     /// Persist <paramref name="loop"/> under
-    /// <see cref="AppPaths.BbsLoopsFolder"/>. Stamp
-    /// <see cref="Loop.LastModifiedAt"/> automatically. No-op when no
-    /// BBS is bound.
+    /// <see cref="AppPaths.BbsLoopsFolder"/>. No-op when no BBS is
+    /// bound.
     /// </summary>
     public void Save(Loop loop)
     {
@@ -132,7 +131,9 @@ public sealed class LoopManager
             throw new ArgumentException("Loop name is required.", nameof(loop));
         if (_bbsName is null) return;
 
-        loop.LastModifiedAt = DateTimeOffset.UtcNow;
+        // Saving normalises to the current schema version so a v2
+        // loop edited in the new editor lands on disk as v3 cleanly.
+        loop.SchemaVersion = Loop3Schema;
         string folder = AppPaths.BbsLoopsFolder(_bbsName);
         Directory.CreateDirectory(folder);
         string path = Path.Combine(folder, SafeFileName(loop.Name));
@@ -160,71 +161,23 @@ public sealed class LoopManager
         return true;
     }
 
-    /// <summary>
-    /// Record that the loop was just run — stamps
-    /// <see cref="Loop.LastRunAt"/>, persists, and fires
-    /// <see cref="LoopsChanged"/>. Called by the loop runner (PR 7.16).
-    /// </summary>
-    public void NoteRun(string name)
-    {
-        if (_bbsName is null) return;
-        if (!_loops.TryGetValue(name, out Loop? loop)) return;
-
-        loop.LastRunAt = DateTimeOffset.UtcNow;
-        Save(loop);   // re-stamp LastModifiedAt is OK — run records the touch
-    }
-
     // ----- builder helpers -------------------------------------------
 
     /// <summary>
-    /// Expand a sequence of clicked rooms into the flat closed-cycle
-    /// <see cref="LoopStep"/> sequence the runner executes: BFS each
-    /// consecutive pair plus the implicit closing leg from the last
-    /// click back to the first. Returns the expanded step list
-    /// (possibly empty when too few clicks) and a list of unreachable
-    /// segments the builder surfaces so the user can fix the click
-    /// list before saving.
+    /// Convenience wrapper around <see cref="LoopExpander.Expand"/>
+    /// pre-bound to this manager's <see cref="BfsMapper"/>. Used by
+    /// the builder for the live-preview step count + unreachable
+    /// summary; the runner expands directly via
+    /// <see cref="LoopExpander"/> at start time.
     /// </summary>
-    /// <param name="clicks">Rooms in the order the user clicked them.</param>
-    /// <param name="filter">Optional avoided-rooms filter — same one the walker uses.</param>
     public (IReadOnlyList<LoopStep> Steps, IReadOnlyList<(RoomKey From, RoomKey To)> UnreachableSegments)
-        ExpandClickedRooms(IReadOnlyList<RoomKey> clicks, IRoomFilter? filter = null)
-    {
-        ArgumentNullException.ThrowIfNull(clicks);
-        if (clicks.Count < 2)
-            return (Array.Empty<LoopStep>(), Array.Empty<(RoomKey, RoomKey)>());
-
-        var steps = new List<LoopStep>();
-        var unreachable = new List<(RoomKey From, RoomKey To)>();
-
-        for (int i = 0; i < clicks.Count - 1; i++)
-        {
-            AppendSegment(clicks[i], clicks[i + 1], filter, steps, unreachable);
-        }
-
-        // Closing leg — every loop is a cycle by definition.
-        AppendSegment(clicks[^1], clicks[0], filter, steps, unreachable);
-
-        return (steps, unreachable);
-    }
-
-    private void AppendSegment(
-        RoomKey from,
-        RoomKey to,
-        IRoomFilter? filter,
-        List<LoopStep> steps,
-        List<(RoomKey From, RoomKey To)> unreachable)
-    {
-        IReadOnlyList<Direction>? path = _bfs.FindPath(from, to, filter);
-        if (path is null || path.Count == 0)
-        {
-            unreachable.Add((from, to));
-            return;
-        }
-        foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
-    }
+        ExpandWaypoints(IReadOnlyList<LoopWaypoint> waypoints, IRoomFilter? filter = null)
+        => LoopExpander.Expand(waypoints, _bfs, filter);
 
     // ----- internals -------------------------------------------------
+
+    /// <summary>Current schema version persisted on save.</summary>
+    public const int Loop3Schema = 3;
 
     /// <summary>
     /// Upgrade an in-memory <see cref="Loop"/> in place if its
@@ -233,21 +186,76 @@ public sealed class LoopManager
     /// can surface a count in the load log.
     /// </summary>
     /// <remarks>
-    /// v1 → v2: <c>IsCircular</c> is dropped (loops are always
-    /// circular now); <c>UserWaypoints</c> defaults to empty (these
-    /// loops can run but can't be re-expanded on avoid-list change
-    /// until the user re-saves them from the editor);
-    /// <c>Notes</c> defaults to empty. The file on disk isn't
-    /// rewritten — the upgrade is in-memory only so a user who
-    /// downgrades doesn't lose their old files.
+    /// <para>
+    /// v1 → v3: file had IsCircular + flat Steps. <c>Waypoints</c>
+    /// stays empty — the v1 schema had no waypoint anchors to
+    /// recover, so legacy loops can't be re-expanded by avoid-list
+    /// change until the user re-saves them in the builder.
+    /// </para>
+    /// <para>
+    /// v2 → v3: file had UserWaypoints + Steps. Copy UserWaypoints
+    /// into <see cref="Loop.Waypoints"/> with null commands; any
+    /// mid-leg <c>CommandLoopStep</c>s in the flat list are dropped
+    /// (logged once) because v3 attaches commands to waypoints, not
+    /// arbitrary positions.
+    /// </para>
+    /// <para>
+    /// The on-disk file isn't rewritten — upgrades are in-memory
+    /// only so a user who downgrades doesn't lose their old files.
+    /// The next user-driven Save persists the v3 form.
+    /// </para>
     /// </remarks>
-    private static bool UpgradeIfNeeded(Loop loop)
+    private bool UpgradeIfNeeded(Loop loop)
     {
-        if (loop.SchemaVersion >= 2) return false;
-        loop.SchemaVersion = 2;
-        loop.UserWaypoints ??= new List<RoomKey>();
+        if (loop.SchemaVersion >= Loop3Schema) return false;
+
+        loop.Waypoints ??= new List<LoopWaypoint>();
         loop.Notes ??= string.Empty;
+
+        // Pull legacy UserWaypoints out of the JsonExtensionData
+        // bucket and rehydrate them as waypoints with no commands.
+        // v2 also carried inline CommandLoopSteps in the flat Steps
+        // list at arbitrary positions; v3 attaches commands to
+        // waypoints, so mid-leg commands are silently dropped (with
+        // a warning log) — the user can re-add via the editor.
+        if (loop.LegacyFields is { } legacy
+            && legacy.TryGetValue("UserWaypoints", out System.Text.Json.JsonElement uw)
+            && uw.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (System.Text.Json.JsonElement entry in uw.EnumerateArray())
+            {
+                if (entry.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                if (!entry.TryGetProperty("Map", out System.Text.Json.JsonElement mapEl)) continue;
+                if (!entry.TryGetProperty("Room", out System.Text.Json.JsonElement roomEl)) continue;
+                if (!mapEl.TryGetInt32(out int map) || !roomEl.TryGetInt32(out int room)) continue;
+                loop.Waypoints.Add(new LoopWaypoint(new RoomKey(map, room)));
+            }
+            int droppedCommands = CountLegacyCommandSteps(legacy);
+            if (droppedCommands > 0)
+                _log?.Warn("Loops",
+                    $"v2 → v3 migration of '{loop.Name}': dropped {droppedCommands} mid-leg command step(s). " +
+                    "Re-add via the loop editor to attach them to waypoints.");
+        }
+        loop.LegacyFields = null;
+        loop.SchemaVersion = Loop3Schema;
         return true;
+    }
+
+    private static int CountLegacyCommandSteps(
+        Dictionary<string, System.Text.Json.JsonElement> legacy)
+    {
+        if (!legacy.TryGetValue("Steps", out System.Text.Json.JsonElement steps)) return 0;
+        if (steps.ValueKind != System.Text.Json.JsonValueKind.Array) return 0;
+        int count = 0;
+        foreach (System.Text.Json.JsonElement step in steps.EnumerateArray())
+        {
+            if (step.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+            if (step.TryGetProperty("kind", out System.Text.Json.JsonElement kind)
+                && kind.ValueKind == System.Text.Json.JsonValueKind.String
+                && string.Equals(kind.GetString(), "command", StringComparison.Ordinal))
+                count++;
+        }
+        return count;
     }
 
     /// <summary>

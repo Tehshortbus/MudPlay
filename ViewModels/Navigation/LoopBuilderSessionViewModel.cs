@@ -9,8 +9,11 @@ namespace FujinTerm.ViewModels.Navigation;
 /// <summary>
 /// Ephemeral session for the Navigation window's Loop mode. Tracks
 /// the user's clicked rooms and uses
-/// <see cref="LoopManager.ExpandClickedRooms"/> to BFS-gap-fill the
-/// path between them so the saved loop is ready to run.
+/// <see cref="LoopManager.ExpandWaypoints"/> to BFS-gap-fill the
+/// path between them so the saved loop is ready to run. On Save the
+/// click list becomes the loop's <see cref="Loop.Waypoints"/> (each
+/// click → one <see cref="LoopWaypoint"/> with no command attached);
+/// commands and delays are added later via the loop editor.
 /// </summary>
 public sealed partial class LoopBuilderSessionViewModel : ObservableObject
 {
@@ -138,12 +141,16 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     public Loop? Save()
     {
         if (!CanSave) return null;
-        (var steps, _) = _loops.ExpandClickedRooms(_clicks, _filter);
-        if (steps.Count == 0) return null;
+        if (_clicks.Count < 2) return null;
 
-        Loop loop = new(ProposedName, steps)
+        // Build the waypoint list straight from the clicks. Commands
+        // / delays start null — users attach them later via the loop
+        // editor's per-waypoint inline editor.
+        var waypoints = new List<LoopWaypoint>(_clicks.Count);
+        foreach (RoomKey k in _clicks) waypoints.Add(new LoopWaypoint(k));
+
+        Loop loop = new(ProposedName, waypoints)
         {
-            UserWaypoints = new List<RoomKey>(_clicks),
             Notes = Notes ?? string.Empty,
         };
         _loops.Save(loop);
@@ -166,7 +173,9 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
             OnPropertyChanged(nameof(CanSave));
             return;
         }
-        (var steps, var unreachable) = _loops.ExpandClickedRooms(_clicks, _filter);
+        var waypoints = new List<LoopWaypoint>(_clicks.Count);
+        foreach (RoomKey k in _clicks) waypoints.Add(new LoopWaypoint(k));
+        (var steps, var unreachable) = _loops.ExpandWaypoints(waypoints, _filter);
         ExpandedStepCount = steps.Count;
         UnreachableSummary = unreachable.Count == 0
             ? string.Empty

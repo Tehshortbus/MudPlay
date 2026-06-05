@@ -7,12 +7,12 @@
         x:Class="FujinTerm.Views.Navigation.LoopEditorDialog"
         x:DataType="vm:LoopEditorDialogViewModel"
         Title="Edit loop"
-        Width="520" Height="540"
+        Width="540" Height="560"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
-        <!-- Per-row container; coloured by IsCommand vs IsMove. -->
-        <Style Selector="Border.StepRow">
+        <!-- Per-row container; cyan border when the row has a command. -->
+        <Style Selector="Border.WaypointRow">
             <Setter Property="CornerRadius" Value="3"/>
             <Setter Property="Padding"      Value="6,3"/>
             <Setter Property="Margin"       Value="0,1"/>
@@ -20,22 +20,19 @@
             <Setter Property="BorderBrush"  Value="Transparent"/>
             <Setter Property="Background"   Value="Transparent"/>
         </Style>
-        <Style Selector="Border.StepRow.Command">
+        <Style Selector="Border.WaypointRow.HasCommand">
             <Setter Property="BorderBrush" Value="{StaticResource AccentCyanBrush}"/>
         </Style>
-        <Style Selector="Border.StepRow TextBlock">
+        <Style Selector="Border.WaypointRow TextBlock">
             <Setter Property="FontSize"   Value="11"/>
             <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
-        </Style>
-        <Style Selector="Border.StepRow.Command TextBlock.StepLabel">
-            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
         </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
 
-            <!-- Header row: Name + Notes -->
+            <!-- Header row: Name -->
             <Grid Grid.Row="0" ColumnDefinitions="60,*" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Text="Name" FontSize="11"
                            Foreground="{StaticResource ChromeFgMutedBrush}"
@@ -56,13 +53,13 @@
                            TextWrapping="Wrap"/>
             </Grid>
 
-            <TextBlock Grid.Row="2" Text="Steps" FontSize="11"
+            <TextBlock Grid.Row="2" Text="Waypoints" FontSize="11"
                        Margin="0,4,0,0"
                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
 
-            <!-- Steps list -->
+            <!-- Waypoint list -->
             <ListBox Grid.Row="3"
-                     ItemsSource="{Binding Steps}"
+                     ItemsSource="{Binding Waypoints}"
                      SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                      Background="Transparent"
                      BorderThickness="1"
@@ -75,36 +72,42 @@
                     </Style>
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LoopStepRowViewModel">
-                        <Border Classes="StepRow"
-                                Classes.Command="{Binding IsCommand}">
-                            <Grid ColumnDefinitions="32,*,Auto,Auto,Auto" ColumnSpacing="4">
+                    <DataTemplate x:DataType="vm:LoopWaypointRowViewModel">
+                        <Border Classes="WaypointRow"
+                                Classes.HasCommand="{Binding HasCommand}">
+                            <Grid ColumnDefinitions="32,*,Auto,Auto,Auto,Auto" ColumnSpacing="4">
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding Index}"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Center"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
                                 <TextBlock Grid.Column="1"
-                                           Classes="StepLabel"
                                            Text="{Binding DisplayLabel}"
                                            VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"/>
-                                <Button Grid.Column="2"
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding Command}"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{StaticResource AccentCyanBrush}"
+                                           Margin="6,0"
+                                           IsVisible="{Binding HasCommand}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="120"/>
+                                <Button Grid.Column="3"
                                         Content="↑" FontSize="10" Padding="6,1"
-                                        ToolTip.Tip="Move up (commands only)"
-                                        IsEnabled="{Binding IsCommand}"
+                                        ToolTip.Tip="Move earlier in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveUpCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="3"
+                                <Button Grid.Column="4"
                                         Content="↓" FontSize="10" Padding="6,1"
-                                        ToolTip.Tip="Move down (commands only)"
-                                        IsEnabled="{Binding IsCommand}"
+                                        ToolTip.Tip="Move later in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveDownCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="4"
+                                <Button Grid.Column="5"
                                         Content="✕" FontSize="10" Padding="6,1"
-                                        ToolTip.Tip="Remove (commands only)"
-                                        IsEnabled="{Binding IsCommand}"
+                                        ToolTip.Tip="Remove waypoint"
+                                        Foreground="{StaticResource AccentRedBrush}"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).RemoveCommand}"
                                         CommandParameter="{Binding}"/>
                             </Grid>
@@ -113,22 +116,15 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- Insert buttons -->
-            <StackPanel Grid.Row="4"
-                        Orientation="Horizontal" Spacing="6">
-                <Button Content="+ Insert command above"
-                        Command="{Binding InsertCommandAboveCommand}"/>
-                <Button Content="+ Insert command below"
-                        Command="{Binding InsertCommandBelowCommand}"/>
-            </StackPanel>
-
-            <!-- Selected command editor -->
-            <Border Grid.Row="5"
+            <!-- Selected-waypoint command editor — only meaningful with a
+                 selection. Apply writes the textbox values back to the
+                 selected row; Clear blanks them. -->
+            <Border Grid.Row="4"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="3"
                     Padding="6"
-                    IsVisible="{Binding SelectedRowIsCommand}">
+                    IsVisible="{Binding HasSelection}">
                 <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto" ColumnSpacing="6">
                     <TextBlock Grid.Column="0" Text="Command:"
                                VerticalAlignment="Center"
@@ -147,11 +143,14 @@
                     <Button    Grid.Column="4"
                                Content="Apply"
                                Command="{Binding ApplyCommandEditCommand}"/>
+                    <Button    Grid.Column="5"
+                               Content="Clear"
+                               Command="{Binding ClearCommandCommand}"/>
                 </Grid>
             </Border>
 
             <!-- Dialog buttons -->
-            <StackPanel Grid.Row="6"
+            <StackPanel Grid.Row="5"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Spacing="8" Margin="0,6,0,0">
