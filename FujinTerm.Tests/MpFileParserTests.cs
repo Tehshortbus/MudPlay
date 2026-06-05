@@ -42,7 +42,9 @@ public sealed class MpFileParserTests
         Assert.Equal("Ancient Crypt-1 1943", file.RoomName);
         Assert.Equal("3C900060",             file.StartHashExits);
         Assert.Equal(32,                     file.Steps.Count);
-        Assert.Equal(Direction.W,            file.Steps[0].Direction);
+        Assert.Equal(Direction.W,            file.Steps[0].Compass);
+        Assert.True(file.Steps[0].IsCompass);
+        Assert.Equal("w",                    file.Steps[0].ActionText);
         Assert.Equal("3C900060",             file.Steps[0].HashExits);
     }
 
@@ -111,17 +113,23 @@ public sealed class MpFileParserTests
     }
 
     [Fact]
-    public void Parse_UnknownDirection_Throws()
+    public void Parse_NonCompassAction_IsKeptAsActionTextNotThrown()
     {
+        // MegaMUD's path engine records the literal verb when its
+        // engine couldn't infer a compass move ("go path", "climb
+        // wall", "open door"). The parser shouldn't reject these —
+        // the resolver picks the right exit via next-step hashExits.
         string text =
             "[][]\n" +
             "[CODE:Group:Name]\n" +
             "AAAAAAAA:AAAAAAAA:2:-1:0:::\n" +
-            "AAAAAAAA:0000:bogus\n" +
-            "AAAAAAAA:0000:s\n";
-        MpFileFormatException ex =
-            Assert.Throws<MpFileFormatException>(() => MpFileParser.Parse(text));
-        Assert.Contains("direction 'bogus'", ex.Message);
+            "AAAAAAAA:0000:go path\n" +
+            "BBBBBBBB:0000:s\n";
+        MpLoopFile file = MpFileParser.Parse(text);
+        Assert.False(file.Steps[0].IsCompass);
+        Assert.Null(file.Steps[0].Compass);
+        Assert.Equal("go path", file.Steps[0].ActionText);
+        Assert.True(file.Steps[1].IsCompass);
     }
 
     [Fact]

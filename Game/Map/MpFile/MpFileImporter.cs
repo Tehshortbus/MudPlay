@@ -190,18 +190,57 @@ public sealed partial class MpFileImporter
         RoomKey cursor = start;
         Room cursorRoom = startRoom;
 
-        foreach (MpStep step in file.Steps)
+        for (int i = 0; i < file.Steps.Count; i++)
         {
+            MpStep step = file.Steps[i];
+
             // Per-step hash compare (soft signal).
             string expected = MegaMudHash.ComputeHashExits(cursorRoom.Name,
                 ExitMaskToSet(cursorRoom.ExitMask));
             if (!string.Equals(expected, step.HashExits, StringComparison.OrdinalIgnoreCase))
                 mismatches++;
 
-            if (!cursorRoom.Exits.TryGetValue(step.Direction, out RoomExit exit))
-                return null;       // dead end mid-walk; reject candidate
+            // Destination of this step =
+            //   - next step's source hashExits when there is one
+            //   - the loop's startHashExits when this is the final step
+            // We use it to disambiguate non-compass "go X" actions
+            // (which our graph doesn't key by Direction).
+            string destHash = i + 1 < file.Steps.Count
+                ? file.Steps[i + 1].HashExits
+                : file.StartHashExits;
 
-            cursor = exit.Target;
+            RoomKey dest;
+            if (step.Compass is { } compass)
+            {
+                if (!cursorRoom.Exits.TryGetValue(compass, out RoomExit exit))
+                    return null;
+                dest = exit.Target;
+            }
+            else
+            {
+                // Non-compass action ("go path", "climb wall", etc.).
+                // Pick the neighbour whose computed hashExits matches
+                // the next step's source. MegaMUD records the verb
+                // text because its engine needs to type it; our
+                // walker reads room metadata and figures out the
+                // command at run time, so we just need to walk through
+                // the right exit.
+                RoomKey? matched = null;
+                foreach (RoomExit candidateExit in cursorRoom.Exits.Values)
+                {
+                    if (_graph.GetRoom(candidateExit.Target) is not { } cand) continue;
+                    string candHash = MegaMudHash.ComputeHashExits(cand.Name,
+                        ExitMaskToSet(cand.ExitMask));
+                    if (!string.Equals(candHash, destHash, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    matched = candidateExit.Target;
+                    break;
+                }
+                if (matched is null) return null;
+                dest = matched.Value;
+            }
+
+            cursor = dest;
             if (_graph.GetRoom(cursor) is not { } nextRoom) return null;
             cursorRoom = nextRoom;
             visited.Add(cursor);

@@ -127,11 +127,19 @@ public static partial class MpFileParser
                 throw new MpFileFormatException(
                     $"step row {steps.Count + 1} hashExits '{hashExits}' isn't 8 hex chars");
 
-            if (!TryParseDirection(dirRaw, out Direction dir))
-                throw new MpFileFormatException(
-                    $"step row {steps.Count + 1} direction '{dirRaw}' isn't a known compass / U / D");
+            // Compass token → MpStep with Compass set. Anything else
+            // (e.g. "go path", "climb wall", "open door") is preserved
+            // verbatim as ActionText; the resolver picks the right
+            // exit by matching the next step's hashExits against the
+            // current room's neighbours, since our graph keys exits
+            // by Direction and stores the verb text as RoomExit
+            // metadata.
+            Direction? compass = TryParseDirection(dirRaw, out Direction parsed)
+                ? parsed
+                : (Direction?)null;
+            string actionText = compass.HasValue ? dirRaw.ToLowerInvariant() : dirRaw;
 
-            steps.Add(new MpStep(hashExits.ToUpperInvariant(), dir));
+            steps.Add(new MpStep(hashExits.ToUpperInvariant(), compass, actionText));
         }
 
         if (steps.Count != declaredStepCount)
