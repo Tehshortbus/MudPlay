@@ -873,21 +873,19 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return;
         }
 
-        // Unexpected landing while Confirmed — let the gate decide
-        // whether tier 2 / tier 3 should take over. The gate's 1-of-1
-        // watch may resolve this without a replan; if it can't, it
-        // pauses us and runs backtrack.
-        if (_recovery is not null)
-        {
-            _recovery.NoteSuspectedMismatch(
-                $"step {_index + 1} landed at {newKey} (expected {_expectedAfterCurrentMove})");
-            return;
-        }
-
-        Raise(new WalkEvent(WalkEventKind.Failed,
-            $"unexpected landing {newKey} (wanted {_expectedAfterCurrentMove})",
-            _destination));
-        Reset();
+        // Unexpected landing while tracker is Confirmed — graph data
+        // for the leg we just walked is stale / wrong (exit pointed
+        // to a different room than reality). The tracker is sure
+        // where we are; the gate has already refreshed its anchor to
+        // the new location via its own subscription. We just need to
+        // replan from the new room. We DON'T call
+        // _recovery.NoteSuspectedMismatch here — that's for tracker-
+        // uncertainty escalation (Suspect/Lost) and would spuriously
+        // bump the gate back to tier 2 right after it had returned to
+        // tier 1. The replan is a pure walker concern.
+        _log?.Info("Walker",
+            $"step {_index + 1} landed at {newKey} (expected {_expectedAfterCurrentMove}); replanning");
+        TryReplanOrFail(RoomConfidence.Confirmed);
     }
 
     private void TryReplanOrFail(RoomConfidence newConfidence)

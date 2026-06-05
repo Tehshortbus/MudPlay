@@ -230,9 +230,10 @@
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
-                <!-- Display-toggle chips + the Manage chip (saved loops
-                     + Auto-Lair markers CRUD; replaces the bottom-strip
-                     save/discard/name textboxes per UX direction). -->
+                <!-- Display-toggle chips. The Manage button lives down
+                     in the loops-rail footer (already wired to
+                     OpenManagerCommand) — putting it here too would be
+                     redundant. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                     <Button Classes="ToggleChip" Content="Lairs"
                             Command="{Binding ToggleLairsCommand}"
@@ -246,9 +247,6 @@
                     <Button Classes="ToggleChip" Content="Legend"
                             Command="{Binding ToggleLegendCommand}"
                             Classes.LegendFill="{Binding LegendVisible}"/>
-                    <Button Classes="ToggleChip" Content="Manage"
-                            Command="{Binding OpenManagerCommand}"
-                            ToolTip.Tip="Rename / delete saved loops, unmark Auto-Lair rooms"/>
                 </StackPanel>
 
                 <!-- Queued destination chip (centre). Click clears the
@@ -746,8 +744,8 @@
                                     FontSize="10"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
-                                    IsEnabled="False"
-                                    ToolTip.Tip="Loop / favourite manager UI lands in a later PR"/>
+                                    Command="{Binding OpenManagerCommand}"
+                                    ToolTip.Tip="Rename / delete saved loops, unmark Auto-Lair rooms"/>
                         </Grid>
                     </Border>
                 </Grid>

@@ -194,20 +194,27 @@ public sealed class AutoWalkManagerTests : IDisposable
     // ----- desync ---------------------------------------------------
 
     [Fact]
-    public void DesyncedLanding_FailsAndStops()
+    public void DesyncedLanding_ReplansFromNewRoom()
     {
+        // Walker plans 1/1 → 1/2 → 1/3 (N then N). Server skips ahead
+        // and reports 1/3 ("C") after the first N. Old behaviour was
+        // to Fail; new behaviour is to replan from the new location.
+        // Since we're already at the destination after the
+        // unexpected-landing observation, the replan immediately
+        // Finishes — the walker never gets stuck waiting for a tracker
+        // event that will never come.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 3));
 
-        // Server reports a room that's neither expected nor source.
-        // 1/3 itself (we expected 1/2) is the cleanest "wrong place".
         h.Tracker.NoteMoveSent(Direction.N);
         h.Tracker.NoteRoomObserved(new RoomObservation("C",
             new HashSet<Direction> { Direction.S }));
 
         Assert.Equal(WalkState.Idle, h.Walker.State);
-        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Retrying);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
     }
 
     // Graph with duplicate names to force the ambiguous-Suspect
