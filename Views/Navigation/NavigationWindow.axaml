@@ -611,6 +611,9 @@
                                                             <MenuItem Header="Preview on map"
                                                                       Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).PreviewLoopCommand}"
                                                                       CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="Edit…"
+                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).EditLoopCommand}"
+                                                                      CommandParameter="{Binding}"/>
                                                             <Separator/>
                                                             <MenuItem Header="Delete…"
                                                                       Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).DeleteLoopCommand}"

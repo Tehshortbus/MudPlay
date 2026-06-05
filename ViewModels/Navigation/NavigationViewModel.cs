@@ -661,6 +661,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void StopLoop() => _services.LoopRunner.Stop();
 
     /// <summary>
+    /// Right-click → Edit… on a Loops-pane row. Opens the modeless
+    /// loop editor dialog; the editor mutates the loop in place +
+    /// persists via LoopManager.Save which fires LoopsChanged so the
+    /// pane refreshes.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditLoopAsync(LoopRowViewModel? row)
+    {
+        if (row is null) return;
+        var vm = new LoopEditorDialogViewModel(row.Source, _services.Loops);
+        await _services.Dialogs
+            .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+    }
+
+    /// <summary>
     /// Right-click → Delete on a Loops-pane row. Confirms via the
     /// shared ConfirmService (which honours the user's "skip
     /// delete confirms" setting), then removes the loop from disk

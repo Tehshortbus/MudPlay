@@ -112,6 +112,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.LostRecoveryDialogViewModel,
                 FujinTerm.Views.Navigation.LostRecoveryDialog>();
 
+            // Loops pane → right-click → "Edit…" opens this dialog.
+            // Name / Notes / Steps (command-step CRUD; moves locked).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.LoopEditorDialogViewModel,
+                FujinTerm.Views.Navigation.LoopEditorDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,
