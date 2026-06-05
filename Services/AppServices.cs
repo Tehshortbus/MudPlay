@@ -1123,7 +1123,7 @@ public sealed class AppServices
         // MoveLoopStep sequences into room-key polylines for the map
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
-            PromptScanner, Log, RoomGraph, Recovery);
+            PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker);
 
         // Random-walk roam scheduler — foundation for Auto-Lair.
         AutoLair = new Game.Map.AutoLairManager(Walker, RoomTracker, Log);

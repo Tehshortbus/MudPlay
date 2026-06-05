@@ -208,4 +208,69 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Equal(LoopState.Idle, h.Runner.State);
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Failed);
     }
+
+    // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
+
+    [Fact]
+    public void Start_FiresReachedFirstWaypoint_OnceWhenNoApproachNeeded()
+    {
+        // Harness doesn't bind a walker, so Start always BeginCircles
+        // immediately. ReachedFirstWaypoint should fire exactly once on
+        // that path, alongside Started.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(TwoStepLoop());
+
+        Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.Started));
+        Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.ReachedFirstWaypoint));
+    }
+
+    // A → B → A loop (one room at a time, returns to start). This is
+    // the smallest possible circle that can complete a lap on the
+    // 1/1 ↔ 1/2 segment of the fixture graph.
+    private static Loop NSLoopFromOne() =>
+        new("ns", new LoopStep[]
+        {
+            new MoveLoopStep(Direction.N),    // 1/1 → 1/2
+            new MoveLoopStep(Direction.S),    // 1/2 → 1/1 (closing)
+        });
+
+    [Fact]
+    public void LapTime_RecordsOnWrap()
+    {
+        // Complete one full lap N + S returning to 1/1 — wrap fires
+        // RepeatStarted and pushes a duration into LapHistory.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(NSLoopFromOne());
+
+        Assert.Empty(h.Runner.LapHistory);
+
+        // step 1: N → land at B (1/2; exits N, S in graph).
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        // step 2: S → land back at A (1/1; only N in graph).
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+
+        Assert.Single(h.Runner.LapHistory);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.RepeatStarted);
+        Assert.True(h.Runner.LapHistory[0] >= TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void Reset_ClearsLapHistory()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(NSLoopFromOne());
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+
+        Assert.NotEmpty(h.Runner.LapHistory);
+        h.Runner.Stop();
+        Assert.Empty(h.Runner.LapHistory);
+    }
 }

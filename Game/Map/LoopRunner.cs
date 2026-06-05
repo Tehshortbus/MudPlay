@@ -24,6 +24,8 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly WirePromptScanner? _promptScanner;
     private readonly LogService? _log;
     private readonly EngineRecoveryGate? _recovery;
+    private readonly BfsMapper? _bfs;
+    private readonly AutoWalkManager? _walker;
     private Action<byte[]>? _wireSender;
 
     private Loop? _loop;
@@ -31,6 +33,29 @@ public sealed class LoopRunner : IRecoverableEngine
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private RoomKey? _expectedMoveTarget;
+
+    /// <summary>
+    /// Waypoint the walker is currently approaching during
+    /// <see cref="LoopState.Approaching"/>. Null when not approaching.
+    /// </summary>
+    private RoomKey? _approachTarget;
+
+    /// <summary>
+    /// Set true the first time we begin the circle in a given Start
+    /// session so <see cref="LoopEventKind.ReachedFirstWaypoint"/>
+    /// only fires once per session (not on every wrap).
+    /// </summary>
+    private bool _firstWaypointReached;
+
+    /// <summary>
+    /// Wall-clock anchor for the current lap. Set on
+    /// <see cref="LoopReachedFirstWaypoint"/> and refreshed on every
+    /// wrap so <see cref="CurrentLapTime"/> reads correctly.
+    /// </summary>
+    private DateTimeOffset _lapStartedAt;
+
+    private readonly List<TimeSpan> _lapDurations = new();
+    private const int MaxLapHistory = 10;
 
     /// <summary>
     /// Custom-command delay timer state. <see cref="_delayTimer"/> is
@@ -47,6 +72,44 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public Loop? CurrentLoop => _loop;
     public int CurrentIndex => _index;
+
+    /// <summary>Waypoint the walker is approaching, or null when not in <see cref="LoopState.Approaching"/>.</summary>
+    public RoomKey? ApproachTarget => _approachTarget;
+
+    /// <summary>Total steps in the rotated circle. 0 when no loop is active.</summary>
+    public int StepCount => _loop?.Steps.Count ?? 0;
+
+    /// <summary>
+    /// Time elapsed in the current lap. Zero when not running. Computed
+    /// on each read so VM bindings can poll via a periodic tick.
+    /// </summary>
+    public TimeSpan CurrentLapTime
+    {
+        get
+        {
+            if (State != LoopState.Running) return TimeSpan.Zero;
+            if (_lapStartedAt == default) return TimeSpan.Zero;
+            return DateTimeOffset.UtcNow - _lapStartedAt;
+        }
+    }
+
+    /// <summary>
+    /// Mean of the last <see cref="MaxLapHistory"/> completed laps.
+    /// <see cref="TimeSpan.Zero"/> when no lap has completed yet.
+    /// </summary>
+    public TimeSpan AverageLapTime
+    {
+        get
+        {
+            if (_lapDurations.Count == 0) return TimeSpan.Zero;
+            long totalTicks = 0;
+            foreach (TimeSpan t in _lapDurations) totalTicks += t.Ticks;
+            return TimeSpan.FromTicks(totalTicks / _lapDurations.Count);
+        }
+    }
+
+    /// <summary>Read-only window onto the rolling lap-time history (oldest first).</summary>
+    public IReadOnlyList<TimeSpan> LapHistory => _lapDurations;
 
     private readonly RoomGraphManager? _graph;
 
@@ -139,7 +202,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public LoopRunner(RoomTracker tracker, MovementCoordinator coordinator,
         WirePromptScanner? promptScanner = null, LogService? log = null,
-        RoomGraphManager? graph = null, EngineRecoveryGate? recovery = null)
+        RoomGraphManager? graph = null, EngineRecoveryGate? recovery = null,
+        BfsMapper? bfs = null, AutoWalkManager? walker = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -149,11 +213,15 @@ public sealed class LoopRunner : IRecoverableEngine
         _log = log;
         _graph = graph;
         _recovery = recovery;
+        _bfs = bfs;
+        _walker = walker;
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnPauseChanged;
         if (_promptScanner is not null)
             _promptScanner.PromptObserved += OnPromptObserved;
+        if (_walker is not null)
+            _walker.Event += OnWalkerEvent;
     }
 
     public void SetWireSender(Action<byte[]> sender)
@@ -172,32 +240,199 @@ public sealed class LoopRunner : IRecoverableEngine
         ArgumentNullException.ThrowIfNull(loop);
         if (loop.Steps.Count == 0) return false;
 
-        if (State is LoopState.Running or LoopState.Paused) Stop("superseded by new loop");
+        if (State is LoopState.Running or LoopState.Paused or LoopState.Approaching)
+            Stop("superseded by new loop");
 
         _loop = loop;
         _index = 0;
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
+        _firstWaypointReached = false;
+        _lapDurations.Clear();
+        _approachTarget = null;
+
+        Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
+
+        RoomKey? currentKey = _tracker.State.CurrentRoom?.Key;
+
+        // Decision: do we need an approach walk, or can we begin the
+        // circle immediately?
+        //   - Legacy v1 loop (no UserWaypoints) → no approach available;
+        //     trust that the user is at the right starting position.
+        //   - Player already at a waypoint → rotate the loop so that
+        //     waypoint is first, no approach.
+        //   - Player elsewhere AND walker bound AND graph available →
+        //     pick the closest waypoint, walker drives the approach.
+        //   - Walker missing (unit tests) → begin circle from wherever
+        //     they are and let the runner fail-or-recover.
+
+        if (loop.UserWaypoints.Count == 0)
+        {
+            BeginCircle();
+            return true;
+        }
+
+        if (currentKey is { } here && loop.UserWaypoints.Any(w => w.Equals(here)))
+        {
+            RotateLoopTo(here);
+            BeginCircle();
+            return true;
+        }
+
+        if (_walker is null || _bfs is null || currentKey is null)
+        {
+            BeginCircle();
+            return true;
+        }
+
+        RoomKey? closest = PickClosestWaypoint(currentKey.Value, loop.UserWaypoints);
+        if (closest is null)
+        {
+            // No reachable waypoint — bail; gate would fail us anyway.
+            Raise(new LoopEvent(LoopEventKind.Failed,
+                $"no reachable waypoint from {currentKey}"));
+            Reset();
+            return false;
+        }
+
+        _approachTarget = closest;
+        State = LoopState.Approaching;
+        _log?.Info("LoopRunner",
+            $"approach: walking from {currentKey} → {closest} (closest of {loop.UserWaypoints.Count} waypoints)");
+        _walker.WalkTo(closest.Value);
+        return true;
+    }
+
+    /// <summary>
+    /// Pick the user-waypoint with the shortest BFS path from
+    /// <paramref name="from"/>. Returns null when no waypoint is
+    /// reachable (disconnected graph, all waypoints behind avoided
+    /// rooms, etc.).
+    /// </summary>
+    private RoomKey? PickClosestWaypoint(RoomKey from, IReadOnlyList<RoomKey> waypoints)
+    {
+        if (_bfs is null) return waypoints.Count > 0 ? waypoints[0] : null;
+        RoomKey? best = null;
+        int bestLen = int.MaxValue;
+        foreach (RoomKey w in waypoints)
+        {
+            if (w.Equals(from)) return w;
+            IReadOnlyList<Direction>? path = _bfs.FindPath(from, w, null);
+            if (path is null) continue;
+            if (path.Count < bestLen) { best = w; bestLen = path.Count; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Rotate the loop's <see cref="Loop.Steps"/> so the circle begins
+    /// at <paramref name="waypoint"/> instead of
+    /// <c>UserWaypoints[0]</c>. Re-runs the BFS expansion against the
+    /// rotated waypoint order so the closing leg ends back at
+    /// <paramref name="waypoint"/>. No-op when UserWaypoints is empty
+    /// (legacy v1 loop) or the waypoint isn't in the list.
+    /// </summary>
+    private void RotateLoopTo(RoomKey waypoint)
+    {
+        if (_loop is null || _bfs is null) return;
+        if (_loop.UserWaypoints.Count == 0) return;
+
+        int k = -1;
+        for (int i = 0; i < _loop.UserWaypoints.Count; i++)
+        {
+            if (_loop.UserWaypoints[i].Equals(waypoint)) { k = i; break; }
+        }
+        if (k <= 0) return;     // not found, or already at index 0 — no rotation needed
+
+        // Build the rotated waypoint list and re-expand into Steps.
+        // Note we mutate the in-memory loop only — the on-disk file
+        // stays in its canonical (waypoint-0-first) form.
+        var rotated = new List<RoomKey>(_loop.UserWaypoints.Count);
+        for (int i = 0; i < _loop.UserWaypoints.Count; i++)
+        {
+            rotated.Add(_loop.UserWaypoints[(k + i) % _loop.UserWaypoints.Count]);
+        }
+
+        var steps = new List<LoopStep>();
+        for (int i = 0; i < rotated.Count - 1; i++)
+        {
+            IReadOnlyList<Direction>? path = _bfs.FindPath(rotated[i], rotated[i + 1], null);
+            if (path is null) continue;
+            foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
+        }
+        // Closing leg.
+        IReadOnlyList<Direction>? closing = _bfs.FindPath(rotated[^1], rotated[0], null);
+        if (closing is not null) foreach (Direction d in closing) steps.Add(new MoveLoopStep(d));
+
+        _loop.Steps = steps;
+        _log?.Info("LoopRunner",
+            $"rotated loop '{_loop.Name}' to start at waypoint {waypoint} (index {k})");
+    }
+
+    /// <summary>
+    /// Common entry into the circle phase — called either immediately
+    /// from <see cref="Start"/> (player already at waypoint / legacy
+    /// loop) or after walker-driven approach completes. Attaches the
+    /// recovery gate, fires
+    /// <see cref="LoopEventKind.ReachedFirstWaypoint"/> once per
+    /// session, anchors lap timing, and pushes the first step.
+    /// </summary>
+    private void BeginCircle()
+    {
+        if (_loop is null) return;
+
         State = LoopState.Running;
         _recovery?.Attach(this);
-        Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
+
+        if (!_firstWaypointReached)
+        {
+            _firstWaypointReached = true;
+            _lapStartedAt = DateTimeOffset.UtcNow;
+            Raise(new LoopEvent(LoopEventKind.ReachedFirstWaypoint, _loop.Name));
+        }
 
         if (_coordinator.IsPaused)
         {
             State = LoopState.Paused;
             Raise(new LoopEvent(LoopEventKind.Paused, "coordinator paused"));
-            return true;
+            return;
         }
 
         SendNextStep();
-        return true;
+    }
+
+    private void OnWalkerEvent(WalkEvent e)
+    {
+        if (State != LoopState.Approaching) return;
+        if (_approachTarget is null) return;
+
+        switch (e.Kind)
+        {
+            case WalkEventKind.Finished:
+                // Walker arrived at the chosen waypoint.
+                RoomKey target = _approachTarget.Value;
+                _approachTarget = null;
+                RotateLoopTo(target);
+                BeginCircle();
+                break;
+            case WalkEventKind.Failed:
+                // Walker gave up (tier-3 abort, blocked, no path, etc.).
+                Raise(new LoopEvent(LoopEventKind.Failed,
+                    $"approach failed: {e.Detail}"));
+                Reset();
+                break;
+        }
     }
 
     public void Stop(string reason = "user stop")
     {
         if (State == LoopState.Idle) return;
         string? name = _loop?.Name;
+        // If we're approaching, stop the walker too. The walker's own
+        // Reset on stop detaches the recovery gate, so no gate cleanup
+        // is needed on our side for the approach phase.
+        if (State == LoopState.Approaching) _walker?.Stop("loop stopped");
         Reset();
         Raise(new LoopEvent(LoopEventKind.Stopped, $"{name}: {reason}"));
     }
@@ -223,6 +458,14 @@ public sealed class LoopRunner : IRecoverableEngine
         // runs until the user Stops or the recovery gate aborts it.
         if (_index >= _loop.Steps.Count)
         {
+            // Record the just-completed lap's duration into the rolling
+            // history (capped at MaxLapHistory) so AverageLapTime stays
+            // bounded in memory across long-running sessions.
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            TimeSpan lapTime = now - _lapStartedAt;
+            _lapDurations.Add(lapTime);
+            if (_lapDurations.Count > MaxLapHistory) _lapDurations.RemoveAt(0);
+            _lapStartedAt = now;
             _index = 0;
             Raise(new LoopEvent(LoopEventKind.RepeatStarted, _loop.Name));
         }
@@ -446,6 +689,10 @@ public sealed class LoopRunner : IRecoverableEngine
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
+        _approachTarget = null;
+        _firstWaypointReached = false;
+        _lapDurations.Clear();
+        _lapStartedAt = default;
         State = LoopState.Idle;
     }
 
@@ -457,6 +704,13 @@ public enum LoopState
     Idle = 0,
     Running = 1,
     Paused = 2,
+    /// <summary>
+    /// Walker is driving the player from their current room to the
+    /// loop's chosen starting waypoint. Loop runner has nothing on
+    /// the wire yet; transitions to <see cref="Running"/> when the
+    /// walker fires <c>Finished</c>.
+    /// </summary>
+    Approaching = 3,
 }
 
 public enum LoopEventKind
@@ -471,6 +725,16 @@ public enum LoopEventKind
     // 6 (Finished) retired in schema v2 — loops are circular by
     // definition and never end on their own; only Stop / Failed
     // remove them from running state.
+    /// <summary>
+    /// Fired once per loop session at the moment the runner begins
+    /// the circle (either immediately on Start if the player is
+    /// already at a waypoint, or after the walker-driven approach
+    /// completes). Consumers anchor lap stats, fire <c>@reset</c>
+    /// to the party, etc. on this event rather than on
+    /// <see cref="Started"/> so the timing reflects the actual loop
+    /// start, not the approach walk.
+    /// </summary>
+    ReachedFirstWaypoint = 8,
 }
 
 public readonly record struct LoopEvent(LoopEventKind Kind, string Detail);
