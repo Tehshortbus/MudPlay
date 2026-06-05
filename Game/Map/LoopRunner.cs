@@ -26,6 +26,13 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly EngineRecoveryGate? _recovery;
     private readonly BfsMapper? _bfs;
     private readonly AutoWalkManager? _walker;
+    /// <summary>
+    /// Path filter used by the runner's BFS calls (rotation +
+    /// closest-waypoint pick). When set this is typically
+    /// <c>AppServices.Movement</c>; changes to its avoided-rooms list
+    /// arrive via <see cref="NotifyAvoidedChanged"/>.
+    /// </summary>
+    private readonly IRoomFilter? _filter;
     private Action<byte[]>? _wireSender;
 
     private Loop? _loop;
@@ -203,7 +210,8 @@ public sealed class LoopRunner : IRecoverableEngine
     public LoopRunner(RoomTracker tracker, MovementCoordinator coordinator,
         WirePromptScanner? promptScanner = null, LogService? log = null,
         RoomGraphManager? graph = null, EngineRecoveryGate? recovery = null,
-        BfsMapper? bfs = null, AutoWalkManager? walker = null)
+        BfsMapper? bfs = null, AutoWalkManager? walker = null,
+        IRoomFilter? filter = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -215,6 +223,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _recovery = recovery;
         _bfs = bfs;
         _walker = walker;
+        _filter = filter;
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnPauseChanged;
@@ -318,7 +327,7 @@ public sealed class LoopRunner : IRecoverableEngine
         foreach (RoomKey w in waypoints)
         {
             if (w.Equals(from)) return w;
-            IReadOnlyList<Direction>? path = _bfs.FindPath(from, w, null);
+            IReadOnlyList<Direction>? path = _bfs.FindPath(from, w, _filter);
             if (path is null) continue;
             if (path.Count < bestLen) { best = w; bestLen = path.Count; }
         }
@@ -357,12 +366,12 @@ public sealed class LoopRunner : IRecoverableEngine
         var steps = new List<LoopStep>();
         for (int i = 0; i < rotated.Count - 1; i++)
         {
-            IReadOnlyList<Direction>? path = _bfs.FindPath(rotated[i], rotated[i + 1], null);
+            IReadOnlyList<Direction>? path = _bfs.FindPath(rotated[i], rotated[i + 1], _filter);
             if (path is null) continue;
             foreach (Direction d in path) steps.Add(new MoveLoopStep(d));
         }
         // Closing leg.
-        IReadOnlyList<Direction>? closing = _bfs.FindPath(rotated[^1], rotated[0], null);
+        IReadOnlyList<Direction>? closing = _bfs.FindPath(rotated[^1], rotated[0], _filter);
         if (closing is not null) foreach (Direction d in closing) steps.Add(new MoveLoopStep(d));
 
         _loop.Steps = steps;
@@ -435,6 +444,42 @@ public sealed class LoopRunner : IRecoverableEngine
         if (State == LoopState.Approaching) _walker?.Stop("loop stopped");
         Reset();
         Raise(new LoopEvent(LoopEventKind.Stopped, $"{name}: {reason}"));
+    }
+
+    /// <summary>
+    /// Avoided-rooms list mutated mid-loop. Stop the current run and
+    /// re-Start with the same loop so the new filter applies to every
+    /// BFS call (closest-waypoint pick + rotation + walker approach).
+    /// The user effectively re-routes the loop without losing the
+    /// definition.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No-op when the runner is idle. Loops without UserWaypoints
+    /// (legacy v1 loaded from disk) can't be re-expanded — those
+    /// retain their original cached steps, so this method only
+    /// triggers a re-Start when the loop has UserWaypoints to
+    /// rotate from.
+    /// </para>
+    /// <para>
+    /// Side effects of the Stop+Start cycle: the lap-history clears,
+    /// <see cref="LoopEventKind.ReachedFirstWaypoint"/> fires again
+    /// once the new approach (if any) settles. Same Stopped /
+    /// Started event sequence the UI already handles for a user
+    /// click on Stop + Run.
+    /// </para>
+    /// </remarks>
+    public void NotifyAvoidedChanged()
+    {
+        if (State == LoopState.Idle) return;
+        if (_loop is null) return;
+        if (_loop.UserWaypoints.Count == 0) return;
+
+        Loop snapshot = _loop;
+        _log?.Info("LoopRunner",
+            $"avoid-list changed; re-routing loop '{snapshot.Name}'");
+        Stop("avoided-rooms changed; re-routing");
+        Start(snapshot);
     }
 
     /// <summary>Test seam — pretend the prompt scanner fired so command steps can advance.</summary>

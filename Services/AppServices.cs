@@ -1123,7 +1123,10 @@ public sealed class AppServices
         // MoveLoopStep sequences into room-key polylines for the map
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
-            PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker);
+            PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
+        // Avoid-list mutation mid-loop → LoopRunner re-routes via a
+        // Stop+Start cycle so the new filter applies on the next BFS.
+        Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
 
         // Random-walk roam scheduler — foundation for Auto-Lair.
         AutoLair = new Game.Map.AutoLairManager(Walker, RoomTracker, Log);

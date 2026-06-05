@@ -258,6 +258,65 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.True(h.Runner.LapHistory[0] >= TimeSpan.Zero);
     }
 
+    // ----- PR D: avoid-list re-expand ---------------------------------
+
+    [Fact]
+    public void NotifyAvoidedChanged_TriggersStopAndRestart()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Loop loop = new("ws", new LoopStep[]
+        {
+            new MoveLoopStep(Direction.N),
+            new MoveLoopStep(Direction.S),
+        })
+        {
+            UserWaypoints = new List<RoomKey> { new RoomKey(1, 1), new RoomKey(1, 2) },
+        };
+        h.Runner.Start(loop);
+        h.Events.Clear();
+
+        h.Runner.NotifyAvoidedChanged();
+
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Stopped);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Started);
+    }
+
+    [Fact]
+    public void NotifyAvoidedChanged_WhenIdle_NoOp()
+    {
+        Harness h = NewHarness();
+        h.Runner.NotifyAvoidedChanged();
+        Assert.Equal(LoopState.Idle, h.Runner.State);
+        Assert.Empty(h.Events);
+    }
+
+    [Fact]
+    public void NotifyAvoidedChanged_OnLegacyLoopWithoutWaypoints_NoOp()
+    {
+        // v1 loops loaded from disk have no UserWaypoints — they can't
+        // be re-rotated because the rotation needs the canonical
+        // click list. Re-route is silently skipped; the legacy loop
+        // keeps its original cached steps.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Loop legacy = new("legacy", new LoopStep[]
+        {
+            new MoveLoopStep(Direction.N),
+            new MoveLoopStep(Direction.S),
+        });
+        // No UserWaypoints — left as the constructor's empty default.
+        h.Runner.Start(legacy);
+        h.Events.Clear();
+
+        h.Runner.NotifyAvoidedChanged();
+
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Stopped);
+        Assert.NotEqual(LoopState.Idle, h.Runner.State);
+    }
+
     [Fact]
     public void Reset_ClearsLapHistory()
     {
