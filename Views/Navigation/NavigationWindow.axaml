@@ -767,27 +767,11 @@
                                                   IsVisible="{Binding HasLoops}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:LoopRowViewModel">
+                                                <!-- Inline Load + Run buttons cover the per-row actions;
+                                                     Preview / Edit / Delete live in the Manage dialog,
+                                                     so the right-click context menu is intentionally
+                                                     omitted (per UX direction). -->
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
-                                                    <Grid.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="Run"
-                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <MenuItem Header="Load into builder"
-                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadLoopCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <MenuItem Header="Preview on map"
-                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).PreviewLoopCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <MenuItem Header="Edit…"
-                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).EditLoopCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <Separator/>
-                                                            <MenuItem Header="Delete…"
-                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).DeleteLoopCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                        </ContextMenu>
-                                                    </Grid.ContextMenu>
                                                     <TextBlock Grid.Column="0"
                                                                FontSize="11"
                                                                Foreground="{StaticResource ChromeFgBrush}"
