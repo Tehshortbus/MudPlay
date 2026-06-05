@@ -778,16 +778,26 @@
                                                      Preview / Edit / Delete live in the Manage dialog,
                                                      so the right-click context menu is intentionally
                                                      omitted (per UX direction). -->
+                                                <!-- Name on top (ellipsised when long so the rail
+                                                     can't be stretched by overlong loop labels);
+                                                     start-room key + room count on a smaller
+                                                     second line. Load + Run stay aligned on the
+                                                     right at any name length. -->
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
-                                                    <TextBlock Grid.Column="0"
-                                                               FontSize="11"
-                                                               Foreground="{StaticResource ChromeFgBrush}"
-                                                               VerticalAlignment="Center">
-                                                        <Run Text="{Binding Name}"/>
-                                                        <Run Text=" · "/>
-                                                        <Run Text="{Binding SubLabel}"
-                                                             Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                                                    </TextBlock>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding Name}"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding StartRoomKey}"/>
+                                                            <Run Text=" · "/>
+                                                            <Run Text="{Binding SubLabel}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
                                                     <!-- Load: enters LoopBuild mode pre-seeded with this
                                                          loop's waypoints so the user can preview the
                                                          red overlay / edit before running. -->
