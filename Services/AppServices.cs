@@ -662,6 +662,35 @@ public sealed class AppServices
     public Game.Map.MpFile.MpFileImporter MpImporter { get; private set; } = null!;
 
     /// <summary>
+    /// Per-BBS Auto-Lair setup catalogue. Loads on profile load + BBS
+    /// pin via the same ResolveActiveBbs path Loops uses. The Manage
+    /// dialog reads / writes through this surface; the
+    /// <see cref="LairTimers"/> store derives default respawn timers
+    /// from game data and tracks in-session arrivals.
+    /// </summary>
+    public Game.Map.LairManager Lairs { get; private set; } = null!;
+
+    /// <summary>
+    /// Game-data-derived respawn timer resolver + in-session arrival
+    /// tracker for marked lair rooms. The Phase 7 PR 7.19 Auto-Lair
+    /// scheduler reads <c>NextReadyAt</c> to choose the next leg.
+    /// </summary>
+    public Game.Map.LairTimerStore LairTimers { get; private set; } = null!;
+
+    /// <summary>
+    /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
+    /// Subscribes the <c>enc</c> line via MessageRouter.
+    /// </summary>
+    public Game.EncumbranceParser Encumbrance { get; private set; } = null!;
+
+    /// <summary>
+    /// Debug instrumentation logging measured per-hop times tagged
+    /// with the current <see cref="Game.EncumbranceLevel"/>. Off by
+    /// default; flipped on via Settings → Other.
+    /// </summary>
+    public Game.HopTimingCalibrator HopCalibrator { get; private set; } = null!;
+
+    /// <summary>
     /// Per-BBS room blacklist — hides target rooms from the
     /// Navigation map render and the search box. Consumed by
     /// <see cref="Game.Map.BfsMapper"/> (skip placement, keep edge
@@ -1131,6 +1160,22 @@ public sealed class AppServices
         // own. The Manage dialog calls it on user "Import .mp".
         MpImporter = new Game.Map.MpFile.MpFileImporter(RoomGraph, Log);
 
+        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-BBS, mirrors
+        // LoopManager) + game-data-driven respawn timer resolver +
+        // in-session arrival tracker.
+        Lairs = new Game.Map.LairManager(Log);
+        Profile.ProfileLoaded += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.ProfileClosed += () => Lairs.LoadAll(null);
+        LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
+
+        // Phase 7 PR 7.18 — Encumbrance parser writes
+        // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
+        // logs measured per-hop times tagged with that level. Enabled via
+        // Settings → Other → "Log movement-hop timing".
+        Encumbrance = new Game.EncumbranceParser(Router, PlayerState, Log);
+        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Log);
+
         // Per-BBS room blacklist — hides ganghouse / dead-end rooms
         // from the map render + room search. Loaded on BBS pin so
         // BFS picks it up via the Changed event before the first
@@ -1322,6 +1367,9 @@ public sealed class AppServices
         // @trap auto-disarm attempt caps.
         TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+        // Hop-timing calibration logger — off by default; user flips
+        // on for a data-collection session.
+        HopCalibrator.Enabled = dto.LogMovementHopTiming;
     }
 
     private void ResetOtherToDefaults()

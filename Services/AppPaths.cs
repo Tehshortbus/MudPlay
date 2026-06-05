@@ -306,6 +306,18 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "Loops");
 
     /// <summary>
+    /// Per-BBS folder holding Auto-Lair setups (Phase 7 PR 7.18). One
+    /// <c>{setup-name}.json</c> file per setup, round-tripped by
+    /// <see cref="Game.Map.LairManager"/>. Auto-Lair markers are
+    /// BBS-scoped (not character-scoped) because lair location data
+    /// belongs to the game data which is BBS-scoped — a user's
+    /// "sewer rats" setup is reusable across every character on the
+    /// same BBS.
+    /// </summary>
+    public static string BbsLairsFolder(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "Lairs");
+
+    /// <summary>
     /// Per-BBS observed-players side-file. One PlayerObservation per
     /// player ever seen on this BBS; the Phase 5 PR 5.20 design keeps
     /// observations at the BBS tier so the same display name on a

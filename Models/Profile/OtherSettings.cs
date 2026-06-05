@@ -136,4 +136,14 @@ public sealed class OtherSettings
     /// kept separate so the user can tune them independently.
     /// </summary>
     public int MaxHiddenSearchAttempts { get; set; } = 20;
+
+    /// <summary>
+    /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
+    /// one Info line per observed hop with the wall-clock time + the
+    /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate
+    /// the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
+    /// defaults against in-game truth. Off by default — it's a
+    /// developer / data-collection knob, not a normal-play affordance.
+    /// </summary>
+    public bool LogMovementHopTiming { get; set; }
 }

@@ -156,6 +156,15 @@
                 <TextBlock Classes="FieldLabel" Text="days."/>
             </StackPanel>
 
+            <!-- Calibration / debug toggle. Off by default; flip on for a
+                 data-collection session, run around the realm, then flip
+                 off. Log lines land in the Log pane at Info severity with
+                 the measured hop time + current encumbrance. -->
+            <CheckBox Content="Log movement hop timing (debug)"
+                      IsChecked="{Binding LogMovementHopTiming, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: each observed hop emits one Info log line with the measured wall-clock time + the current encumbrance level. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play."/>
+
             <!-- ============ Inline stub catalog ============
                  Section headers stripped per user direction — the
                  catalog renders as a flat list of rows. The numeric-

@@ -137,6 +137,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _picklocksOverBash;
 
     /// <summary>
+    /// Off by default. When on, every observed Confirmed→Pending→Confirmed
+    /// transition logs one Info line with the measured wall-clock time +
+    /// the current encumbrance level. Use it for a data-collection session
+    /// when tuning the Auto-Lair travel-cost table; turn it off again for
+    /// normal play.
+    /// </summary>
+    [ObservableProperty] private bool _logMovementHopTiming;
+
+    /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
     /// threshold for the whole install) so Apply writes through to
@@ -236,6 +245,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
+            LogMovementHopTiming  = LogMovementHopTiming,
         };
 
         profile.Settings ??= new();
@@ -291,6 +301,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxBashAttempts       = dto.MaxBashAttempts;
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
+        LogMovementHopTiming  = dto.LogMovementHopTiming;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -328,6 +339,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // queued @trap honours the edit without a profile reload.
         svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         svcs.TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+        // Calibrator toggle — live-mirror so the user can flip it from
+        // the Settings dialog without an Apply + profile reload cycle.
+        svcs.HopCalibrator.Enabled = dto.LogMovementHopTiming;
     }
 
     // ----- IsDirty plumbing -----
@@ -351,6 +365,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
+    partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {
