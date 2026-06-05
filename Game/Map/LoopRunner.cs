@@ -51,6 +51,16 @@ public sealed class LoopRunner : IRecoverableEngine
     private RoomKey? _expectedMoveTarget;
 
     /// <summary>
+    /// True when the runner flipped to <see cref="LoopState.Paused"/>
+    /// while still in the approach phase (the walker was driving us
+    /// toward the loop's entry waypoint). Tells the resume handler to
+    /// transition back to <see cref="LoopState.Approaching"/> instead
+    /// of trying to send the loop's first step before the walker has
+    /// actually finished.
+    /// </summary>
+    private bool _pausedFromApproach;
+
+    /// <summary>
     /// Waypoint the walker is currently approaching during
     /// <see cref="LoopState.Approaching"/>. Null when not approaching.
     /// </summary>
@@ -824,6 +834,34 @@ public sealed class LoopRunner : IRecoverableEngine
                 PauseDelayTimer();
                 Raise(new LoopEvent(LoopEventKind.Paused, "coordinator paused"));
             }
+            else if (State == LoopState.Approaching)
+            {
+                // Approach phase: the walker handles its own pause via
+                // the coordinator gate, but the runner state has to
+                // flip too — otherwise RunStopLabel keeps reporting
+                // "Pause" instead of "Run" (since Approaching means
+                // "in flight"), and the resume branch in RunStop
+                // (which only fires for State==Paused) is unreachable.
+                _log?.Info("LoopRunner",
+                    $"coordinator paused during approach to {_approachTarget?.ToString() ?? "(?)"}");
+                _pausedFromApproach = true;
+                State = LoopState.Paused;
+                Raise(new LoopEvent(LoopEventKind.Paused, "coordinator paused (approach)"));
+            }
+            return;
+        }
+        if (State == LoopState.Paused && _pausedFromApproach)
+        {
+            // Walker is still mid-approach (or finished it during the
+            // pause window) — clear our local pause flag and put the
+            // runner back into Approaching so OnWalkerEvent.Finished
+            // still hands off into BeginCircle correctly. Don't send
+            // any loop steps; the walker owns the wire until it's
+            // done with the approach.
+            _log?.Info("LoopRunner", "coordinator resumed during approach");
+            _pausedFromApproach = false;
+            State = LoopState.Approaching;
+            Raise(new LoopEvent(LoopEventKind.Resumed, "coordinator resumed (approach)"));
             return;
         }
         if (State == LoopState.Paused)
@@ -877,6 +915,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _approachTarget = null;
         _circleStartRoom = null;
         _firstWaypointReached = false;
+        _pausedFromApproach = false;
         _lapDurations.Clear();
         _lapStartedAt = default;
         State = LoopState.Idle;

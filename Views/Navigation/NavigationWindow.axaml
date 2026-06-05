@@ -519,8 +519,14 @@
                 </StackPanel>
             </Border>
 
-            <!-- RIGHT RAIL -->
+            <!-- RIGHT RAIL — ClipToBounds keeps long text from overflowing
+                 the 290px column. Without it, a long CurrentNavHeader
+                 (e.g. "Looping {long name} on step 10 of 16") was
+                 measuring wider than the rail and rendering past the
+                 right edge, making the section look stretched relative
+                 to GOTO/LOOPS. -->
             <Border Grid.Column="1"
+                    ClipToBounds="True"
                     Background="{StaticResource ChromeBgSunkenBrush}"
                     BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                     BorderThickness="1,0,0,0">
@@ -545,10 +551,18 @@
                                                Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+                            <!-- TextTrimming + single-line keeps a long
+                                 loop name ("Looping {name} on step X of Y")
+                                 from forcing a wrap that pushes the
+                                 measured StackPanel width past the rail.
+                                 If the user wants the full text they can
+                                 hover the badge in the top bar (or the
+                                 status-bar slot on the main UI). -->
                             <TextBlock Text="{Binding CurrentNavHeader}"
                                        Foreground="{StaticResource ChromeFgSecBrush}"
                                        FontSize="11"
-                                       TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding CurrentNavHeader}"
                                        Margin="0,0,0,4"/>
                             <!-- Building-loop click list — visible only while in LoopBuild mode.
                                  Click a row to remove that waypoint; drag a row to reorder. -->
