@@ -626,6 +626,13 @@ public sealed class AppServices
     public MovementFilter Movement { get; private set; } = null!;
 
     /// <summary>
+    /// Per-character favourite-room bookmarks. Wires Navigation's
+    /// GOTO pane + the map's "Add to favorites" context menu;
+    /// persisted via <see cref="ProfileService"/>.
+    /// </summary>
+    public FavoritesStore Favorites { get; private set; } = null!;
+
+    /// <summary>
     /// Shared pause-gate aggregator for every Phase 7 movement engine
     /// (walker, loop runner, auto-lair scheduler). A pause from any
     /// source halts whichever engine is active. PR 7.7.
@@ -1081,6 +1088,7 @@ public sealed class AppServices
         // Constructor subscribes ProfileLoaded / ProfileClosed and
         // hydrates from the currently-loaded profile if there is one.
         Movement = new MovementFilter(Profile, Log);
+        Favorites = new FavoritesStore(Profile, Log);
 
         // Phase 7 PR 7.7 — coordinator + walker. Coordinator is the
         // single pause-gate hub for every movement engine (walker now,

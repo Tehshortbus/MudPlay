@@ -4,6 +4,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
@@ -30,6 +31,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.TBInfo.StoreReloaded    += RefreshTeleportRooms;
         _services.Loops.LoopsChanged += OnLoopsChanged;
+        _services.Favorites.Changed += OnFavoritesChanged;
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
         OnAvoidedChanged();
@@ -44,6 +46,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshFromWalker();
         RefreshLayout();
         RefreshLoops();
+        RefreshFavorites();
         RefreshCrawlerChords();
         RefreshTeleportRooms();
     }
@@ -57,6 +60,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.TBInfo.StoreReloaded    -= RefreshTeleportRooms;
         _services.Loops.LoopsChanged -= OnLoopsChanged;
+        _services.Favorites.Changed -= OnFavoritesChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
@@ -695,6 +699,57 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasLoops));
     }
 
+    // ----- GOTO / Favorites pane ------------------------------------
+
+    /// <summary>Per-character favourite-room bookmarks. Click to walk.</summary>
+    public ObservableCollection<FavoriteRowViewModel> Favorites { get; } = new();
+
+    public bool HasFavorites => Favorites.Count > 0;
+
+    private void OnFavoritesChanged() => RefreshFavorites();
+
+    private void RefreshFavorites()
+    {
+        Favorites.Clear();
+        // Sort by display label so the user sees a stable alphabetical
+        // ordering — the store's underlying dictionary doesn't preserve
+        // insertion order anyway.
+        var entries = new List<FavoriteRowViewModel>();
+        foreach (FavoriteRoom f in _services.Favorites.All)
+        {
+            RoomKey key = new(f.Map, f.Room);
+            string label = !string.IsNullOrWhiteSpace(f.Label)
+                ? f.Label!
+                : _services.RoomGraph.GetRoom(key) is { } r
+                    ? r.Name
+                    : key.ToString();
+            entries.Add(new FavoriteRowViewModel(key, label));
+        }
+        entries.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
+        foreach (FavoriteRowViewModel e in entries) Favorites.Add(e);
+        OnPropertyChanged(nameof(HasFavorites));
+    }
+
+    /// <summary>Click a favourite → walk there (stops loop/lair first).</summary>
+    [RelayCommand]
+    private void GoToFavorite(FavoriteRowViewModel? row)
+    {
+        if (row is null) return;
+        if (_services.LoopRunner.State is Game.Map.LoopState.Running
+                                       or Game.Map.LoopState.Paused
+                                       or Game.Map.LoopState.Approaching)
+            _services.LoopRunner.Stop("user walk-to from Favorites");
+        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
+        _services.Walker.WalkTo(row.Key);
+    }
+
+    [RelayCommand]
+    private void RemoveFavorite(FavoriteRowViewModel? row)
+    {
+        if (row is null) return;
+        _services.Favorites.Remove(row.Key);
+    }
+
     [RelayCommand]
     private void RunLoop(LoopRowViewModel? row)
     {
@@ -799,10 +854,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ContextRoomName));
         OnPropertyChanged(nameof(ContextIsAvoided));
         OnPropertyChanged(nameof(ContextIsStash));
+        OnPropertyChanged(nameof(ContextIsFavorite));
     }
 
     public bool ContextIsAvoided => ContextRoomKey is { } k && _services.Movement.IsAvoided(k);
     public bool ContextIsStash   => ContextRoomKey is { } k && _services.Movement.IsStash(k);
+    public bool ContextIsFavorite => ContextRoomKey is { } k && _services.Favorites.IsFavorite(k);
 
     [RelayCommand]
     private void WalkToContextRoom()
@@ -826,6 +883,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void SetContextRoomLocated()
     {
         if (ContextRoomKey is { } k) _services.RoomTracker.SetLocated(k);
+    }
+
+    /// <summary>
+    /// Right-click → "Add to favorites" (or "Remove from favorites"
+    /// when already bookmarked). Persists via
+    /// <see cref="FavoritesStore"/>; the GOTO pane refreshes from
+    /// the store's Changed event.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleContextRoomFavorite()
+    {
+        if (ContextRoomKey is not { } k) return;
+        if (_services.Favorites.IsFavorite(k))
+            _services.Favorites.Remove(k);
+        else
+            _services.Favorites.Add(k);
+        OnPropertyChanged(nameof(ContextIsFavorite));
     }
 
     [RelayCommand]

@@ -79,6 +79,21 @@
             <Setter Property="Foreground" Value="#0E0E0E"/>
             <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
         </Style>
+        <!-- Run: green when the action chip is in "start something"
+             mode. Pause: yellow when it's in "halt the in-flight
+             engine" mode. Distinct from Stop (red, full teardown)
+             so the user can tell at a glance whether a click will
+             pause-resumable or hard-stop. -->
+        <Style Selector="Button.ActionChip.Run">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Pause">
+            <Setter Property="Background" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+        </Style>
 
         <!-- Right-rail section header -->
         <Style Selector="TextBlock.RailSectionHeader">
@@ -290,8 +305,8 @@
                      keep the legacy Run/Stop one-shot semantics. -->
                 <Button Grid.Column="4"
                         Classes="ActionChip"
-                        Classes.Primary="{Binding !IsAnyExecuting}"
-                        Classes.Stop="{Binding IsAnyExecuting}"
+                        Classes.Run="{Binding !IsAnyExecuting}"
+                        Classes.Pause="{Binding IsAnyExecuting}"
                         Content="{Binding RunStopLabel}"
                         Command="{Binding RunStopCommand}"
                         IsEnabled="{Binding CanRun}"/>
@@ -354,6 +369,12 @@
                                   Command="{Binding WalkToContextRoomCommand}"/>
                         <MenuItem Header="I am here (set located)"
                                   Command="{Binding SetContextRoomLocatedCommand}"/>
+                        <MenuItem Header="Add to favorites"
+                                  Command="{Binding ToggleContextRoomFavoriteCommand}"
+                                  IsVisible="{Binding !ContextIsFavorite}"/>
+                        <MenuItem Header="Remove from favorites"
+                                  Command="{Binding ToggleContextRoomFavoriteCommand}"
+                                  IsVisible="{Binding ContextIsFavorite}"/>
                         <Separator/>
                         <MenuItem Header="Center on Player"
                                   Command="{Binding CenterOnPlayerCommand}"/>
@@ -659,15 +680,50 @@
                                 </StackPanel>
                             </Expander>
 
-                            <!-- GOTO -->
+                            <!-- GOTO — favourite rooms saved via the map's
+                                 right-click "Add to favorites" item. Each
+                                 row click walks there; the X button removes
+                                 the bookmark. Persisted on the active
+                                 character profile. -->
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsGotoExpanded, Mode=TwoWay}">
                                 <Expander.Header>
                                     <TextBlock Classes="RailSectionHeader" Text="GOTO" Margin="0"/>
                                 </Expander.Header>
-                                <TextBlock Text="Quick-access saved rooms land in a future PR."
-                                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           FontSize="11"/>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="No favourites yet — right-click a room on the map and pick &quot;Add to favorites&quot;."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding !HasFavorites}"/>
+                                    <ItemsControl ItemsSource="{Binding Favorites}"
+                                                  IsVisible="{Binding HasFavorites}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:FavoriteRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                                    <Button Grid.Column="0"
+                                                            Content="{Binding Label}"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Left"
+                                                            FontSize="11"
+                                                            Padding="6,2"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).GoToFavoriteCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="1"
+                                                            Content="✕"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            ToolTip.Tip="Remove from favourites"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RemoveFavoriteCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </Expander>
 
                             <!-- LOOPS -->

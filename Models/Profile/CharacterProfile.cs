@@ -172,6 +172,16 @@ public sealed class CharacterProfile
     public List<RoomRef>? StashRooms { get; set; }
 
     /// <summary>
+    /// User-bookmarked rooms shown in the Navigation window's GOTO
+    /// pane. Per-character; each entry carries the
+    /// <see cref="Game.Map.RoomKey"/> wire pair plus an optional
+    /// custom label. Persisted as a flat list; consumed at runtime by
+    /// <see cref="Services.FavoritesStore"/>. <c>null</c> or empty =
+    /// no favorites flagged.
+    /// </summary>
+    public List<FavoriteRoom>? Favorites { get; set; }
+
+    /// <summary>
     /// Last room the character was known to be standing in. Hydrated
     /// from <see cref="Game.Map.RoomTracker"/> on a successful manual
     /// or auto locate; saved with the rest of the profile and used as

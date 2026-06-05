@@ -741,19 +741,24 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_loop is null || _index >= _expandedSteps.Count) return;
         if (_expandedSteps[_index] is not MoveLoopStep) return;
 
-        if (t.NewConfidence != RoomConfidence.Confirmed)
+        // Suspect / Lost / Unknown are real confidence drops we forward
+        // to the recovery gate. Pending is the normal Confirmed →
+        // Pending transition that fires synchronously from our own
+        // _tracker.NoteMoveSent inside SendMove — escalating on it
+        // would spuriously bump every step into Tier2 because the
+        // handler runs before the confirmation observation arrives.
+        if (t.NewConfidence is RoomConfidence.Suspect
+                            or RoomConfidence.Lost
+                            or RoomConfidence.Unknown)
         {
-            // Engine-level tier-2 mismatch — let the gate decide whether
-            // to keep watching or escalate to tier 3. While the gate is
-            // in tier 2 the engine keeps executing (next SendNextStep
-            // proceeds); on tier-3 escalation the gate will call back
-            // through PauseForRecovery + SendBacktrackMove.
             _log?.Info("LoopRunner",
                 $"step {_index + 1}: tracker confidence={t.NewConfidence} mid-step; forwarding to recovery gate");
             _recovery?.NoteSuspectedMismatch(
                 $"tracker {t.NewConfidence} mid-step {_index + 1}");
             return;
         }
+
+        if (t.NewConfidence != RoomConfidence.Confirmed) return;
         if (t.NewRoom?.Key is not { } key) return;
 
         if (key.Equals(_expectedMoveTarget))
@@ -832,6 +837,25 @@ public sealed class LoopRunner : IRecoverableEngine
             if (_delayRemaining > TimeSpan.Zero)
             {
                 StartOrResumeDelayTimer();
+                return;
+            }
+            // Overshoot guard: while paused we ignore tracker events,
+            // so an in-flight move whose confirmation arrived during
+            // the pause window leaves _index stale. Detect that here:
+            // if the tracker is now Confirmed at the expected target,
+            // the step actually completed — advance the index before
+            // SendNextStep so we don't re-send the same direction and
+            // walk one extra room (the user-reported "overshoot").
+            if (_stepInFlight
+                && _expectedMoveTarget is { } expected
+                && _tracker.State.Confidence == RoomConfidence.Confirmed
+                && _tracker.State.CurrentRoom?.Key.Equals(expected) == true)
+            {
+                _log?.Info("LoopRunner",
+                    $"resume: step {_index + 1} completed during pause (tracker at {expected}); advancing");
+                _stepInFlight = false;
+                _expectedMoveTarget = null;
+                AdvanceStep();
                 return;
             }
             _stepInFlight = false;
