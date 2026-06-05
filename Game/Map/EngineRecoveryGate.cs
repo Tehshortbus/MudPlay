@@ -114,7 +114,12 @@ public sealed class EngineRecoveryGate
     public void Attach(IRecoverableEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
-        if (_engine is not null) Detach();
+        if (_engine is not null)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"Attach: replacing engine={_engine.Name} with {engine.Name}");
+            Detach();
+        }
 
         _engine = engine;
         _executedSinceAnchor.Clear();
@@ -126,7 +131,7 @@ public sealed class EngineRecoveryGate
         _anchor = here?.Key;
 
         _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier1.attach engine={engine.Name} anchor={(_anchor?.ToString() ?? "(none)")}");
+            $"Tier1.attach engine={engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} confidence={_tracker.State.Confidence}");
     }
 
     /// <summary>Detach the current engine; clears all gate state.</summary>
@@ -162,13 +167,16 @@ public sealed class EngineRecoveryGate
         if (t.NewRoom is not { } room) return;
 
         // True 1-of-1 anchor refresh — independent of tier.
-        bool isStrict = _graph.FindCandidates(room.Name, ExitMaskToSet(room.ExitMask)).Count == 1;
+        IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(room.Name, ExitMaskToSet(room.ExitMask));
+        bool isStrict = candidates.Count == 1;
         if (isStrict)
         {
+            RoomKey? prevAnchor = _anchor;
             _anchor = room.Key;
             _executedSinceAnchor.Clear();
             _log?.Log(LogSeverity.Info, LogSource,
-                $"Tier1.anchor-refresh → {room.Key} ({room.Name})");
+                $"Tier1.anchor-refresh → {room.Key} ({room.Name})"
+                + (prevAnchor is { } pa && !pa.Equals(room.Key) ? $" (was {pa})" : string.Empty));
 
             if (_tier3Backtracking)
             {
@@ -180,6 +188,14 @@ public sealed class EngineRecoveryGate
             if (CurrentTier != TierLevel.Tier1) SetTier(TierLevel.Tier1, "1-of-1 anchor recovered");
             return;
         }
+
+        // Non-strict observation — multiple graph rooms match by
+        // name+exits. Useful for diagnosing recovery-tier escalations
+        // ("why didn't this refresh the anchor?"). Debug level so
+        // session logs aren't drowned during normal walks through
+        // ambiguous areas.
+        _log?.Log(LogSeverity.Debug, LogSource,
+            $"non-strict observation '{room.Name}' → {candidates.Count} graph candidate(s); anchor unchanged ({(_anchor?.ToString() ?? "(none)")})");
 
         if (_tier3Backtracking)
         {
@@ -208,6 +224,12 @@ public sealed class EngineRecoveryGate
     public void NoteSuspectedMismatch(string reason)
     {
         if (_engine is null) return;
+        // Always log the mismatch signal so a "why did the gate fire?"
+        // question is answerable from the log alone — SetTier only logs
+        // when the tier actually changes, so without this line a
+        // mismatch arriving while already in Tier2 would be invisible.
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"NoteSuspectedMismatch (tier={CurrentTier}): {reason}");
         if (CurrentTier == TierLevel.Tier1)
             SetTier(TierLevel.Tier2, $"mismatch: {reason}");
 
@@ -230,7 +252,12 @@ public sealed class EngineRecoveryGate
     public bool MayProceedWithPlannedStep()
     {
         if (_engine is null) return true;
-        if (CurrentTier == TierLevel.Tier3) return false;
+        if (CurrentTier == TierLevel.Tier3)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"MayProceed=false: tier3 active; engine={_engine.Name} must wait for Recovered/RecoveryFailed");
+            return false;
+        }
 
         if (CurrentTier == TierLevel.Tier2
             && _engine.PeekNextPlannedDirection() is { } nextDir
@@ -249,7 +276,8 @@ public sealed class EngineRecoveryGate
         if (CurrentTier == TierLevel.Tier3) return;
         if (_engine is null) return;
 
-        _log?.Log(LogSeverity.Warn, LogSource, $"Tier3.start: {reason}");
+        _log?.Log(LogSeverity.Warn, LogSource,
+            $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
         SetTier(TierLevel.Tier3, reason);
         _engine.PauseForRecovery(reason);
 
@@ -396,6 +424,13 @@ public sealed class EngineRecoveryGate
         if (target == CurrentTier) return;
         TierLevel prev = CurrentTier;
         CurrentTier = target;
+        // Tier transitions are first-class diagnostic signal — log
+        // every flip so a session-log replay shows the recovery
+        // ladder climbing / descending. Tier3 is Warn (we're in
+        // recovery mode); everything else is Info.
+        LogSeverity severity = target == TierLevel.Tier3 ? LogSeverity.Warn : LogSeverity.Info;
+        _log?.Log(severity, LogSource,
+            $"tier {prev} → {target} ({reason}); engine={_engine?.Name ?? "?"} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count}");
         TierChanged?.Invoke(new RecoveryTierChangedEvent(prev, target, reason));
     }
 

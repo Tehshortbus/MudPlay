@@ -179,6 +179,8 @@ public sealed class LoopRunner : IRecoverableEngine
     public void PauseForRecovery(string reason)
     {
         if (State != LoopState.Running) return;
+        _log?.Warn("LoopRunner",
+            $"PauseForRecovery: gate took over at step {_index + 1}; reason={reason}");
         State = LoopState.Paused;
         Raise(new LoopEvent(LoopEventKind.Paused, $"recovery: {reason}"));
     }
@@ -193,6 +195,8 @@ public sealed class LoopRunner : IRecoverableEngine
         // desynced — fail rather than blindly continuing.
         if (_expectedMoveTarget is { } expected && recoveredAnchor.Equals(expected))
         {
+            _log?.Info("LoopRunner",
+                $"ResumeAfterRecovery: recovered at expected target {recoveredAnchor}; resuming step {_index + 1}");
             State = LoopState.Running;
             _stepInFlight = false;
             Raise(new LoopEvent(LoopEventKind.Resumed,
@@ -201,6 +205,8 @@ public sealed class LoopRunner : IRecoverableEngine
             return;
         }
 
+        _log?.Warn("LoopRunner",
+            $"ResumeAfterRecovery: desync at step {_index + 1} — recovered at {recoveredAnchor} but expected {_expectedMoveTarget}; failing loop");
         Raise(new LoopEvent(LoopEventKind.Failed,
             $"step {_index + 1} desynced (recovered at {recoveredAnchor}, expected {_expectedMoveTarget})"));
         Reset();
@@ -208,6 +214,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public void AbortFromRecoveryFailure(string detail)
     {
+        _log?.Warn("LoopRunner",
+            $"AbortFromRecoveryFailure: loop='{_loop?.Name ?? "?"}' at step {_index + 1}; {detail}");
         Raise(new LoopEvent(LoopEventKind.Failed, $"tier3 recovery failed: {detail}"));
         Reset();
     }
@@ -283,10 +291,24 @@ public sealed class LoopRunner : IRecoverableEngine
     public bool Start(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
-        if (loop.Waypoints.Count < 2) return false;
+        if (loop.Waypoints.Count < 2)
+        {
+            _log?.Warn("LoopRunner",
+                $"Start refused: loop '{loop.Name}' has {loop.Waypoints.Count} waypoint(s); need ≥2 for a cycle");
+            return false;
+        }
 
         if (State is LoopState.Running or LoopState.Paused or LoopState.Approaching)
+        {
+            _log?.Info("LoopRunner",
+                $"Start: superseding active loop '{_loop?.Name ?? "?"}' (state={State}) with '{loop.Name}'");
             Stop("superseded by new loop");
+        }
+        else
+        {
+            _log?.Info("LoopRunner",
+                $"Start: loop='{loop.Name}' waypoints={loop.Waypoints.Count} from={_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
+        }
 
         _loop = loop;
         _index = 0;
@@ -322,6 +344,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
         if (currentKey is { } here && loop.Waypoints.Any(w => w.Key.Equals(here)))
         {
+            _log?.Info("LoopRunner",
+                $"Start branch=at-waypoint: player already at {here}; no approach needed");
             RotateLoopTo(here);
             _circleStartRoom = here;
             ExpandSteps();
@@ -332,6 +356,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
         if (_walker is null || _bfs is null || currentKey is null)
         {
+            _log?.Info("LoopRunner",
+                $"Start branch=no-walker: walker={_walker is not null} bfs={_bfs is not null} currentKey={currentKey?.ToString() ?? "(null)"}; expanding from waypoint 0");
             ExpandSteps();
             Raise(new LoopEvent(LoopEventKind.Started, loop.Name));
             BeginCircle();
@@ -342,6 +368,8 @@ public sealed class LoopRunner : IRecoverableEngine
         if (closest is null)
         {
             // No reachable waypoint — bail; gate would fail us anyway.
+            _log?.Warn("LoopRunner",
+                $"Start failed: no reachable waypoint from {currentKey} (graph disconnected, all behind avoided rooms, or filter excludes them)");
             Raise(new LoopEvent(LoopEventKind.Failed,
                 $"no reachable waypoint from {currentKey}"));
             Reset();
@@ -432,8 +460,17 @@ public sealed class LoopRunner : IRecoverableEngine
             _expandedSteps = new List<LoopStep>();
             return;
         }
-        (IReadOnlyList<LoopStep> steps, _) = LoopExpander.Expand(_loop.Waypoints, _bfs, _filter);
+        (IReadOnlyList<LoopStep> steps,
+         IReadOnlyList<(RoomKey From, RoomKey To)> unreachable)
+                = LoopExpander.Expand(_loop.Waypoints, _bfs, _filter);
         _expandedSteps = new List<LoopStep>(steps);
+        _log?.Info("LoopRunner",
+            $"expand: loop='{_loop.Name}' waypoints={_loop.Waypoints.Count} → {steps.Count} step(s), {unreachable.Count} unreachable segment(s)");
+        if (unreachable.Count > 0)
+        {
+            foreach ((RoomKey from, RoomKey to) in unreachable)
+                _log?.Warn("LoopRunner", $"expand unreachable: {from} → {to} (BFS found no path)");
+        }
     }
 
     /// <summary>
@@ -450,6 +487,8 @@ public sealed class LoopRunner : IRecoverableEngine
 
         State = LoopState.Running;
         _recovery?.Attach(this);
+        _log?.Info("LoopRunner",
+            $"BeginCircle: loop='{_loop.Name}' start={_circleStartRoom?.ToString() ?? "(none)"} steps={_expandedSteps.Count}");
 
         if (!_firstWaypointReached)
         {
@@ -461,6 +500,7 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_coordinator.IsPaused)
         {
             State = LoopState.Paused;
+            _log?.Info("LoopRunner", "BeginCircle: coordinator paused on entry; holding before first step");
             Raise(new LoopEvent(LoopEventKind.Paused, "coordinator paused"));
             return;
         }
@@ -479,11 +519,15 @@ public sealed class LoopRunner : IRecoverableEngine
                 // Walker arrived at the chosen waypoint. Rotation
                 // already happened in Start — just hand off into the
                 // circle.
+                _log?.Info("LoopRunner",
+                    $"approach finished at {_approachTarget}; entering circle");
                 _approachTarget = null;
                 BeginCircle();
                 break;
             case WalkEventKind.Failed:
                 // Walker gave up (tier-3 abort, blocked, no path, etc.).
+                _log?.Warn("LoopRunner",
+                    $"approach to {_approachTarget} failed: {e.Detail}");
                 Raise(new LoopEvent(LoopEventKind.Failed,
                     $"approach failed: {e.Detail}"));
                 Reset();
@@ -495,6 +539,8 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         if (State == LoopState.Idle) return;
         string? name = _loop?.Name;
+        _log?.Info("LoopRunner",
+            $"Stop: loop='{name ?? "?"}' state={State} reason={reason}");
         // If we're approaching, stop the walker too. The walker's own
         // Reset on stop detaches the recovery gate, so no gate cleanup
         // is needed on our side for the approach phase.
@@ -586,6 +632,8 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_tracker.State.CurrentRoom is not { } current
             || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
         {
+            _log?.Warn("LoopRunner",
+                $"SendMove fail: no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"} on step {_index + 1}/{_expandedSteps.Count}");
             Raise(new LoopEvent(LoopEventKind.Failed,
                 $"no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}"));
             Reset();
@@ -700,6 +748,8 @@ public sealed class LoopRunner : IRecoverableEngine
             // in tier 2 the engine keeps executing (next SendNextStep
             // proceeds); on tier-3 escalation the gate will call back
             // through PauseForRecovery + SendBacktrackMove.
+            _log?.Info("LoopRunner",
+                $"step {_index + 1}: tracker confidence={t.NewConfidence} mid-step; forwarding to recovery gate");
             _recovery?.NoteSuspectedMismatch(
                 $"tracker {t.NewConfidence} mid-step {_index + 1}");
             return;
@@ -717,6 +767,8 @@ public sealed class LoopRunner : IRecoverableEngine
             // Blocked at source — fail the loop. The walker has a
             // single-retry policy; for loop runs we prefer to bail
             // and surface than to silently retry forever.
+            _log?.Warn("LoopRunner",
+                $"step {_index + 1} blocked at source {key}; expected {_expectedMoveTarget}; failing loop");
             Raise(new LoopEvent(LoopEventKind.Failed,
                 $"step {_index + 1} blocked"));
             Reset();
@@ -726,6 +778,8 @@ public sealed class LoopRunner : IRecoverableEngine
             // Confirmed elsewhere — flag the mismatch to the gate. If
             // tier 2 is happy (1-of-1 anchor, etc.) keep going; if it
             // escalates to tier 3 the gate will pause us.
+            _log?.Warn("LoopRunner",
+                $"step {_index + 1} landed at {key} (expected {_expectedMoveTarget}); graph data may be stale on this exit");
             _recovery?.NoteSuspectedMismatch(
                 $"step {_index + 1} landed at {key} (expected {_expectedMoveTarget})");
         }
@@ -756,6 +810,8 @@ public sealed class LoopRunner : IRecoverableEngine
         {
             if (State == LoopState.Running)
             {
+                _log?.Info("LoopRunner",
+                    $"coordinator paused at step {_index + 1}/{_expandedSteps.Count}");
                 State = LoopState.Paused;
                 // A custom-command delay timer in flight pauses with
                 // the coordinator — resume picks up from the remaining
@@ -767,6 +823,8 @@ public sealed class LoopRunner : IRecoverableEngine
         }
         if (State == LoopState.Paused)
         {
+            _log?.Info("LoopRunner",
+                $"coordinator resumed at step {_index + 1}/{_expandedSteps.Count}");
             State = LoopState.Running;
             Raise(new LoopEvent(LoopEventKind.Resumed, "coordinator resumed"));
             // If a delay was in flight, continue it from the remaining
