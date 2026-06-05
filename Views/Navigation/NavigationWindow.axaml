@@ -603,6 +603,20 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:LoopRowViewModel">
                                                 <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                    <Grid.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Run"
+                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                                      CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="Preview on map"
+                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).PreviewLoopCommand}"
+                                                                      CommandParameter="{Binding}"/>
+                                                            <Separator/>
+                                                            <MenuItem Header="Delete…"
+                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).DeleteLoopCommand}"
+                                                                      CommandParameter="{Binding}"/>
+                                                        </ContextMenu>
+                                                    </Grid.ContextMenu>
                                                     <TextBlock Grid.Column="0"
                                                                FontSize="11"
                                                                Foreground="{StaticResource ChromeFgBrush}"

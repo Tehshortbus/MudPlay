@@ -660,6 +660,64 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void StopLoop() => _services.LoopRunner.Stop();
 
+    /// <summary>
+    /// Right-click → Delete on a Loops-pane row. Confirms via the
+    /// shared ConfirmService (which honours the user's "skip
+    /// delete confirms" setting), then removes the loop from disk
+    /// and refreshes the pane.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteLoopAsync(LoopRowViewModel? row)
+    {
+        if (row is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync($"loop \"{row.Source.Name}\"");
+        if (!ok) return;
+        _services.Loops.Delete(row.Source.Name);
+    }
+
+    /// <summary>
+    /// Right-click → Preview on a Loops-pane row. Lays the loop's
+    /// expanded room sequence onto the map's LoopPath polyline
+    /// without starting it. Clicking the same row again clears the
+    /// preview. While a loop is actually running the live LoopPath
+    /// wins (PR-7.16 RefreshLoopOverlays); previewing an idle loop
+    /// is the only path this overlay surfaces.
+    /// </summary>
+    [RelayCommand]
+    private void PreviewLoop(LoopRowViewModel? row)
+    {
+        if (row is null) { LoopPath = null; return; }
+        if (_services.RoomTracker.State.CurrentRoom is not { } current)
+        {
+            LoopPath = null;
+            return;
+        }
+        // Re-use the same room-key walker the active-loop overlay uses,
+        // but seeded from the loop's first UserWaypoint instead of the
+        // live current room. Falls back to the live current room when
+        // the loop is legacy (no UserWaypoints).
+        RoomKey from = row.Source.UserWaypoints.Count > 0
+            ? row.Source.UserWaypoints[0]
+            : current.Key;
+        IReadOnlyList<RoomKey> keys = WalkLoopSteps(from, row.Source.Steps);
+        LoopPath = keys.Count >= 2 ? keys : null;
+    }
+
+    private IReadOnlyList<RoomKey> WalkLoopSteps(RoomKey from, IReadOnlyList<LoopStep> steps)
+    {
+        var seq = new List<RoomKey>(steps.Count + 1) { from };
+        RoomKey cursor = from;
+        foreach (LoopStep step in steps)
+        {
+            if (step is not MoveLoopStep move) continue;
+            if (_services.RoomGraph.GetRoom(cursor) is not { } room) break;
+            if (!room.Exits.TryGetValue(move.Direction, out RoomExit exit)) break;
+            cursor = exit.Target;
+            seq.Add(cursor);
+        }
+        return seq;
+    }
+
     public bool IsLoopRunning => _services.LoopRunner.State != LoopState.Idle;
 
     // ----- Room context menu (PR 7.14) -------------------------------
