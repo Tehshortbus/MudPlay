@@ -66,7 +66,10 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         // row would gap-fill to nothing.
         if (_clicks.Count > 0 && _clicks[^1].Equals(key)) return;
         _clicks.Add(key);
-        Clicks.Add(new LoopBuilderRow(Clicks.Count, key, room.DisplayName));
+        // 1-based index matches the map's red numbered waypoint
+        // markers + the post-edit RenumberRows pass. Clicks.Count is
+        // pre-Add, so the first row gets 1, not 0.
+        Clicks.Add(new LoopBuilderRow(Clicks.Count + 1, key, room.DisplayName));
         OnPropertyChanged(nameof(HasClicks));
         Reexpand();
     }
