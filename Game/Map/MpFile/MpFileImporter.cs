@@ -223,9 +223,12 @@ public sealed partial class MpFileImporter
             if (step.Compass is { } compass)
             {
                 if (!cursorRoom.Exits.TryGetValue(compass, out RoomExit exit))
+                {
+                    LogNeighbourSnapshot(cursor, cursorRoom, destHash, step);
                     return (null,
                         $"step {i + 1}: room {cursor} ('{cursorRoom.Name}') has no {compass} exit "
-                      + "(graph data is missing this transition)");
+                      + "(graph data is missing this transition — see Info log for the room's actual neighbours)");
+                }
                 dest = exit.Target;
             }
             else
@@ -248,10 +251,20 @@ public sealed partial class MpFileImporter
                     break;
                 }
                 if (matched is null)
+                {
+                    // Diagnostic: dump every neighbour's key, name,
+                    // computed hashExits, and hint so the user can
+                    // compare against the .mp file and figure out
+                    // whether they're missing the action exit
+                    // entirely OR have it but with a different
+                    // target room name / exit set than MegaMUD
+                    // recorded.
+                    LogNeighbourSnapshot(cursor, cursorRoom, destHash, step);
                     return (null,
                         $"step {i + 1}: room {cursor} ('{cursorRoom.Name}') has no neighbour matching "
                       + $"hashExits {destHash} for non-compass action '{step.ActionText}' "
-                      + "(graph data likely missing this action exit)");
+                      + "(graph data likely missing this action exit — see Debug log for the room's actual neighbours)");
+                }
                 dest = matched.Value;
             }
 
@@ -277,6 +290,39 @@ public sealed partial class MpFileImporter
     /// labels and room names. Leaves the head alone when no suffix is
     /// present.
     /// </summary>
+    /// <summary>
+    /// Log every outgoing exit on <paramref name="room"/> with its
+    /// target's computed hashExits so a user staring at a failed
+    /// non-compass step can compare their graph against what
+    /// MegaMUD's .mp expects. Logged at Info (not Debug) because
+    /// it's the one diagnostic that actually fingers the data
+    /// gap — without it the user can't tell whether the room is
+    /// missing the action exit entirely OR has it pointed at a
+    /// different room than MegaMUD's record.
+    /// </summary>
+    private void LogNeighbourSnapshot(RoomKey from, Room room, string expectedHash, MpStep step)
+    {
+        if (_log is null) return;
+        _log.Log(LogSeverity.Info, "MpImporter",
+            $"non-compass walk failed at {from} ('{room.Name}'): expected neighbour hashExits {expectedHash} "
+          + $"for action '{step.ActionText}'. Actual neighbours:");
+        foreach (KeyValuePair<Direction, RoomExit> kv in room.Exits)
+        {
+            string targetSummary;
+            if (_graph.GetRoom(kv.Value.Target) is { } target)
+            {
+                string targetHash = MegaMudHash.ComputeHashExits(target);
+                targetSummary = $"{kv.Value.Target} ('{target.Name}') hash={targetHash}";
+            }
+            else
+            {
+                targetSummary = $"{kv.Value.Target} (not in graph)";
+            }
+            _log.Log(LogSeverity.Info, "MpImporter",
+                $"  {kv.Key,-2} → {targetSummary} hint={kv.Value.Hint}");
+        }
+    }
+
     internal static string StripMapRoomSuffix(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
