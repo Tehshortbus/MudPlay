@@ -978,12 +978,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenManagerAsync()
     {
+        // Pass the live LoopBuilder (when in build mode) so the
+        // dialog's Draft section is the user's authoritative Save
+        // surface. The consumed callback exits LoopBuild mode here
+        // after Save / Discard so the bottom builder strip collapses.
         NavigationManagerDialogViewModel vm = new(
             _services.Loops,
             _services.AutoLair,
             _services.RoomGraph,
             _services.Confirm,
-            _services.Dialogs);
+            _services.Dialogs,
+            draft: LoopBuilder,
+            onDraftConsumed: () =>
+            {
+                if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+            });
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
@@ -1421,13 +1430,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (CurrentMode == NavigationMode.LoopBuild
             && LoopBuilder?.CanSave == true)
         {
-            LoopBuilder.Save();
-            if (_services.Loops.Loops.LastOrDefault() is { } saved)
-                _services.LoopRunner.Start(saved);
-            // Saving + starting hands the loop over to the runner — the
-            // build session is consumed, so close LoopBuild mode (and
-            // the bottom builder strip with it).
-            if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+            // Transient run: build the Loop in memory + start the
+            // runner without writing to disk. Per UX direction the
+            // saved-loops list is owned by explicit user action (Save
+            // in the Manage dialog), never by Run. We exit LoopBuild
+            // mode so the bottom builder strip collapses and the
+            // running loop's CURRENT NAV pane takes over.
+            Game.Map.Loop? transient = LoopBuilder.BuildTransient();
+            if (transient is not null)
+            {
+                _services.LoopRunner.Start(transient);
+                if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+            }
             return;
         }
         if (CurrentMode == NavigationMode.AutoLair

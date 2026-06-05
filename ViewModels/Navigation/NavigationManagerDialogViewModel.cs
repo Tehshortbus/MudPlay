@@ -39,19 +39,32 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly RoomGraphManager _graph;
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
+    private readonly Action? _onDraftConsumed;
 
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
     public ObservableCollection<ManagerLairRow> Lairs { get; } = new();
 
+    /// <summary>
+    /// In-progress build session from the Navigation window, or null
+    /// when the user isn't in LoopBuild mode. When non-null the
+    /// dialog's Draft section is visible — the user gives the draft
+    /// a name + clicks Save to persist (Run alone is transient and
+    /// never writes to disk per UX direction).
+    /// </summary>
+    public LoopBuilderSessionViewModel? Draft { get; }
+
     public bool HasLoops => Loops.Count > 0;
     public bool HasLairs => Lairs.Count > 0;
+    public bool HasDraft => Draft is not null;
 
     public NavigationManagerDialogViewModel(
         LoopManager loops,
         AutoLairManager autoLair,
         RoomGraphManager graph,
         ConfirmService confirm,
-        DialogService dialogs)
+        DialogService dialogs,
+        LoopBuilderSessionViewModel? draft = null,
+        Action? onDraftConsumed = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(autoLair);
@@ -63,6 +76,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _graph = graph;
         _confirm = confirm;
         _dialogs = dialogs;
+        Draft = draft;
+        _onDraftConsumed = onDraftConsumed;
 
         _loops.LoopsChanged += RebuildLoops;
         _autoLair.MarkedChanged += RebuildLairs;
@@ -114,6 +129,37 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         bool ok = await _confirm.ConfirmDeleteAsync($"loop \"{row.Source.Name}\"");
         if (!ok) return;
         _loops.Delete(row.Source.Name);
+    }
+
+    // ----- Draft (in-progress build) commands ------------------------
+
+    /// <summary>
+    /// Persist the active build session under its current
+    /// <see cref="LoopBuilderSessionViewModel.ProposedName"/>. Clears
+    /// the build session afterwards (matching
+    /// <see cref="LoopBuilderSessionViewModel.Save"/>'s contract) and
+    /// invokes the consumed callback so the NavigationWindow exits
+    /// LoopBuild mode.
+    /// </summary>
+    [RelayCommand]
+    private void SaveDraft()
+    {
+        if (Draft is null) return;
+        if (Draft.Save() is null) return;
+        _onDraftConsumed?.Invoke();
+    }
+
+    /// <summary>
+    /// Discard the active build session without persisting. Clears
+    /// the click list + asks the NavigationWindow to exit LoopBuild
+    /// mode via the consumed callback.
+    /// </summary>
+    [RelayCommand]
+    private void DiscardDraft()
+    {
+        if (Draft is null) return;
+        Draft.Clear();
+        _onDraftConsumed?.Invoke();
     }
 
     // ----- Auto-Lair row commands ------------------------------------

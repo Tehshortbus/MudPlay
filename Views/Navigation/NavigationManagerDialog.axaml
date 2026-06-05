@@ -26,7 +26,7 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
 
             <!-- Header -->
             <TextBlock Grid.Row="0"
@@ -34,10 +34,64 @@
                        FontSize="11"
                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
 
+            <!-- Draft section — visible only while the NavigationWindow
+                 is in LoopBuild mode. This is the explicit Save surface
+                 (Run on the main window is transient and never writes
+                 to disk per UX direction). -->
+            <Border Grid.Row="1"
+                    BorderBrush="{StaticResource AccentAmberBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Padding="8"
+                    IsVisible="{Binding HasDraft}">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+                        <Border Grid.Column="0"
+                                CornerRadius="3" Padding="6,1"
+                                VerticalAlignment="Center"
+                                Background="{StaticResource AccentAmberBrush}">
+                            <TextBlock Text="DRAFT"
+                                       FontSize="10" FontWeight="SemiBold"
+                                       Foreground="#0E0E0E"/>
+                        </Border>
+                        <TextBlock Grid.Column="1"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgSecBrush}">
+                            <Run Text="{Binding Draft.Clicks.Count, FallbackValue=0}"/>
+                            <Run Text=" room(s) clicked · "/>
+                            <Run Text="{Binding Draft.ExpandedStepCount, FallbackValue=0}"/>
+                            <Run Text=" step(s)"/>
+                        </TextBlock>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0"
+                                   Text="Name:"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding Draft.ProposedName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="11"/>
+                        <Button Grid.Column="2"
+                                Content="Save"
+                                Command="{Binding SaveDraftCommand}"
+                                IsEnabled="{Binding Draft.CanSave, FallbackValue=False}"
+                                MinWidth="70"/>
+                        <Button Grid.Column="3"
+                                Content="Discard"
+                                Command="{Binding DiscardDraftCommand}"
+                                Foreground="{StaticResource AccentRedBrush}"
+                                MinWidth="70"/>
+                    </Grid>
+                </Grid>
+            </Border>
+
             <!-- Two-pane body: Loops on top, Auto-Lair on bottom. Both
                  scroll independently so a long loop list doesn't crowd
                  the lair list out of view. -->
-            <Grid Grid.Row="1" RowDefinitions="*,Auto,*">
+            <Grid Grid.Row="2" RowDefinitions="*,Auto,*">
 
                 <!-- Loops section -->
                 <Border Grid.Row="0"
@@ -190,7 +244,7 @@
             </Grid>
 
             <!-- Footer -->
-            <StackPanel Grid.Row="2"
+            <StackPanel Grid.Row="3"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Spacing="8">

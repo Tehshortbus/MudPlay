@@ -141,21 +141,37 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     public Loop? Save()
     {
         if (!CanSave) return null;
-        if (_clicks.Count < 2) return null;
-
-        // Build the waypoint list straight from the clicks. Commands
-        // / delays start null — users attach them later via the loop
-        // editor's per-waypoint inline editor.
-        var waypoints = new List<LoopWaypoint>(_clicks.Count);
-        foreach (RoomKey k in _clicks) waypoints.Add(new LoopWaypoint(k));
-
-        Loop loop = new(ProposedName, waypoints)
-        {
-            Notes = Notes ?? string.Empty,
-        };
+        Loop? loop = BuildTransient();
+        if (loop is null) return null;
         _loops.Save(loop);
         Clear();
         return loop;
+    }
+
+    /// <summary>
+    /// Build a <see cref="Loop"/> from the current clicks WITHOUT
+    /// writing it to disk. Used by the Run button so transient
+    /// "try this loop" runs don't pollute the saved-loops list — the
+    /// user persists explicitly via the Manage dialog. Returns null
+    /// when the session isn't ready (fewer than 2 clicks, gap-fill
+    /// unreachable). The build session is left intact so the user can
+    /// still Save it from Manage later.
+    /// </summary>
+    public Loop? BuildTransient()
+    {
+        if (!CanSave) return null;
+        if (_clicks.Count < 2) return null;
+
+        // Commands / delays start null — users attach them later via
+        // the loop editor's per-waypoint inline editor (only meaningful
+        // on a persisted loop).
+        var waypoints = new List<LoopWaypoint>(_clicks.Count);
+        foreach (RoomKey k in _clicks) waypoints.Add(new LoopWaypoint(k));
+
+        return new Loop(ProposedName, waypoints)
+        {
+            Notes = Notes ?? string.Empty,
+        };
     }
 
     private void Reexpand()
