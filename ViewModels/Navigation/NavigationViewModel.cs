@@ -892,6 +892,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.LoopRunner.Stop("user walk-to from Navigation");
         if (_services.AutoLair.IsActive)
             _services.AutoLair.Stop();
+        // Exit LoopBuild mode too — same UX contract as the loop /
+        // lair stops above. The user picked a fresh walk-to, so any
+        // in-progress build session should drop out of the way (the
+        // CURRENT NAV pane swaps to the walker's step list, the
+        // bottom builder strip collapses).
+        if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+        _loopBuilderOpenedByPause = false;
         _services.Walker.WalkTo(k);
     }
 
