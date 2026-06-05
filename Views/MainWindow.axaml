@@ -389,7 +389,11 @@
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
 
-                <!-- Connection stoplight: red idle · yellow connecting · green connected. -->
+                <!-- Connection stoplight: red idle · yellow connecting · green connected.
+                     Live reconnect countdown shown beside the status text
+                     when a long-delay reconnect is armed (eg cleanup-mode
+                     backoff). Hides itself when the timer fires or the
+                     user cancels. -->
                 <StackPanel Grid.Column="3"
                             Orientation="Horizontal" Spacing="6"
                             HorizontalAlignment="Right"
@@ -403,6 +407,10 @@
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource AccentGreenBrush}"
                              IsVisible="{Binding IsConnected}"/>
+                    <TextBlock Classes="StatusSlot"
+                               Foreground="{StaticResource AccentAmberBrush}"
+                               Text="{Binding ReconnectCountdownText}"
+                               IsVisible="{Binding IsReconnectCountdownVisible}"/>
                     <TextBlock Classes="StatusSlot" Text="{Binding ConnectionStatusText}"/>
                 </StackPanel>
             </Grid>

@@ -50,6 +50,15 @@ public partial class MainWindowViewModel : ObservableObject
     // so a flap inside the window is held against the redial budget.
     private CancellationTokenSource? _stableConnectionResetCts;
     private const int StableConnectionWindowSeconds = 30;
+
+    // Live "dialing in 4m 23s" countdown shown in the status bar when
+    // a long-delay reconnect is armed. Only shown when the delay is
+    // ≥ ReconnectCountdownThresholdSeconds — the 5s reactive cycle
+    // doesn't need a status-bar countdown that flashes for one second
+    // before vanishing.
+    private DispatcherTimer? _reconnectCountdownTimer;
+    private DateTimeOffset _reconnectFireAt;
+    private const int ReconnectCountdownThresholdSeconds = 30;
     // GC root for the who-list parser — it subscribes to LineExtractor
     // in its ctor and stays alive as long as MainWindowViewModel does.
     private readonly Game.WhoListParser _whoListParser;
@@ -212,6 +221,19 @@ public partial class MainWindowViewModel : ObservableObject
         => IsConnected ? "Connected"
          : IsConnecting ? "Connecting…"
          : "Disconnected";
+
+    /// <summary>
+    /// Live "dialing in 4m 23s" countdown text. Empty when no
+    /// reconnect is armed OR when the armed delay is too short to
+    /// warrant a status-bar countdown. Updated once per second by
+    /// <see cref="_reconnectCountdownTimer"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReconnectCountdownVisible))]
+    private string _reconnectCountdownText = string.Empty;
+
+    /// <summary>True when <see cref="ReconnectCountdownText"/> should render. Bound by the status bar.</summary>
+    public bool IsReconnectCountdownVisible => !string.IsNullOrEmpty(ReconnectCountdownText);
 
     // ----- Status-bar location slot (mirrors NavigationViewModel) ----
 
@@ -1173,13 +1195,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void OnCleanupModeDetected()
     {
-        // Fires on the wire feed thread; marshal to UI before logging
-        // anything that touches WriteTerminalStatus.
+        // Fires on the wire feed thread; marshal to UI before logging.
+        // We deliberately don't drop a second terminal banner here —
+        // the auto-reconnect armed banner already says "BBS IN
+        // CLEANUP" in its reason label, so the user gets one message,
+        // not two redundant ones stacking on top of each other.
         Dispatcher.UIThread.Post(() =>
         {
-            WriteTerminalStatus(
-                "[BBS IS IN CLEANUP MODE — REACTIVE RECONNECT WILL BACK OFF TO THE BBS'S CLEANUP-PERIOD SETTING.]",
-                TerminalStatusKind.Notice);
             AppServices.Current.Log.Warn("Cleanup",
                 "Server returned 'this system is not available' — BBS is in cleanup mode right now.");
         });
@@ -1222,6 +1244,55 @@ public partial class MainWindowViewModel : ObservableObject
         try { _stableConnectionResetCts.Cancel(); } catch { }
         _stableConnectionResetCts.Dispose();
         _stableConnectionResetCts = null;
+    }
+
+    // ----- Live reconnect countdown ------------------------------------
+
+    /// <summary>
+    /// Start (or restart) the status-bar countdown for an armed
+    /// reconnect that fires after <paramref name="delay"/>. Short
+    /// delays (&lt; <see cref="ReconnectCountdownThresholdSeconds"/>)
+    /// don't get a countdown — the status bar would just flash a
+    /// "5s, 4s, 3s…" indicator for a moment before the dial fires.
+    /// </summary>
+    private void StartReconnectCountdown(TimeSpan delay)
+    {
+        if (delay.TotalSeconds < ReconnectCountdownThresholdSeconds)
+        {
+            StopReconnectCountdown();
+            return;
+        }
+        _reconnectFireAt = DateTimeOffset.UtcNow + delay;
+        RefreshReconnectCountdownText();
+        _reconnectCountdownTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _reconnectCountdownTimer.Tick -= OnReconnectCountdownTick;
+        _reconnectCountdownTimer.Tick += OnReconnectCountdownTick;
+        _reconnectCountdownTimer.Start();
+    }
+
+    private void StopReconnectCountdown()
+    {
+        _reconnectCountdownTimer?.Stop();
+        if (_reconnectCountdownTimer is not null)
+            _reconnectCountdownTimer.Tick -= OnReconnectCountdownTick;
+        ReconnectCountdownText = string.Empty;
+    }
+
+    private void OnReconnectCountdownTick(object? sender, EventArgs e)
+        => RefreshReconnectCountdownText();
+
+    private void RefreshReconnectCountdownText()
+    {
+        TimeSpan remaining = _reconnectFireAt - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero || !IsReconnectPending)
+        {
+            StopReconnectCountdown();
+            return;
+        }
+        ReconnectCountdownText = $"Reconnect in {FormatDelay(remaining)}";
     }
 
     /// <summary>
@@ -1289,6 +1360,8 @@ public partial class MainWindowViewModel : ObservableObject
             $"{warning.ObservedAt.LocalDateTime:HH:mm:ss} with {warning.MinutesRemaining}m remaining " +
             $"+ {bbs.CleanupPeriodMinutes}m cleanup period.");
 
+        StartReconnectCountdown(delay);
+
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
             if (t.IsCanceled) return;
@@ -1298,6 +1371,7 @@ public partial class MainWindowViewModel : ObservableObject
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
                 NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
                 AppServices.Current.Cleanup.Reset();
                 _ = ConnectWithRetriesAsync();
             });
@@ -1311,6 +1385,7 @@ public partial class MainWindowViewModel : ObservableObject
         _cleanupReconnectCts.Dispose();
         _cleanupReconnectCts = null;
         NotifyReconnectPendingChanged();
+        StopReconnectCountdown();
         if (reason is not null)
         {
             AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
@@ -1436,6 +1511,8 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Reconnect",
             $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {FormatDelay(delay)}.");
 
+        StartReconnectCountdown(delay);
+
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
             if (t.IsCanceled) return;
@@ -1445,6 +1522,7 @@ public partial class MainWindowViewModel : ObservableObject
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
                 NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
                 _ = ConnectWithRetriesAsync();
             });
         }, TaskScheduler.Default);
