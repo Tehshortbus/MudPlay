@@ -149,8 +149,11 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
-    public void CommandStep_DelayMsGreaterZero_AdvancesImmediately()
+    public void CommandStep_DelayMsGreaterZero_WaitsForTimer()
     {
+        // Schema v2: DelayMs > 0 starts a real timer; the next step
+        // doesn't go out until the timer elapses. The test seam
+        // FireDelayForTests simulates the tick.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Loop loop = new("with-cmd", new LoopStep[]
@@ -160,10 +163,14 @@ public sealed class LoopRunnerTests : IDisposable
         });
         h.Runner.Start(loop);
 
-        // Command + move both sent because delay-based command-step
-        // advances synchronously per CommandLoopStep contract.
-        Assert.Equal(2, h.Sent.Count);
+        // Command sent; move NOT yet sent — delay timer pending.
+        Assert.Single(h.Sent);
         Assert.Equal("dep 100\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Simulate the delay elapsing.
+        h.Runner.FireDelayForTests();
+
+        Assert.Equal(2, h.Sent.Count);
         Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
     }
 

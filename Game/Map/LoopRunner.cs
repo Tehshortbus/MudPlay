@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
+using Avalonia.Threading;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -29,6 +31,17 @@ public sealed class LoopRunner : IRecoverableEngine
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private RoomKey? _expectedMoveTarget;
+
+    /// <summary>
+    /// Custom-command delay timer state. <see cref="_delayTimer"/> is
+    /// lazily constructed on first delay use; <see cref="_delayRemaining"/>
+    /// tracks the time left when the timer is stopped by a pause so
+    /// resume continues from where it left off rather than restarting
+    /// the full duration.
+    /// </summary>
+    private DispatcherTimer? _delayTimer;
+    private TimeSpan _delayRemaining;
+    private long _delayStartTimestamp;
 
     public LoopState State { get; private set; } = LoopState.Idle;
 
@@ -246,23 +259,78 @@ public sealed class LoopRunner : IRecoverableEngine
     private void SendCommand(CommandLoopStep step)
     {
         _stepInFlight = true;
-        _awaitingPromptForCommand = step.DelayMs == 0;
-
         byte[] bytes = Encoding.Latin1.GetBytes(step.Command + "\r");
         Write(bytes, $"command '{step.Command}'");
 
         if (step.DelayMs > 0)
         {
-            // PR 7.16 doesn't ship a real delay timer — the runner
-            // advances immediately, matching the "command step with
-            // explicit delay" contract documented on CommandLoopStep.
-            // Phase 13 wiring will introduce a coroutine-style timer.
-            // For now we advance the step on the next dispatcher tick
-            // to keep the FSM honest.
-            _stepInFlight = false;
-            AdvanceStep();
+            // Wait the user-specified duration before advancing. The
+            // timer pauses + resumes with the coordinator's pause
+            // state so a rest-block doesn't burn the delay window.
+            _awaitingPromptForCommand = false;
+            StartDelay(TimeSpan.FromMilliseconds(step.DelayMs));
+        }
+        else
+        {
+            // 0 means "advance on the next prompt" — same contract
+            // CommandStep on AutoWalkManager uses.
+            _awaitingPromptForCommand = true;
         }
     }
+
+    // ----- custom-command delay timer --------------------------------
+
+    private void StartDelay(TimeSpan duration)
+    {
+        _delayRemaining = duration;
+        StartOrResumeDelayTimer();
+    }
+
+    private void StartOrResumeDelayTimer()
+    {
+        if (_delayRemaining <= TimeSpan.Zero)
+        {
+            OnDelayElapsed();
+            return;
+        }
+        _delayTimer ??= new DispatcherTimer();
+        _delayTimer.Tick -= OnDelayTick;
+        _delayTimer.Tick += OnDelayTick;
+        _delayTimer.Interval = _delayRemaining;
+        _delayStartTimestamp = Stopwatch.GetTimestamp();
+        _delayTimer.Start();
+    }
+
+    private void PauseDelayTimer()
+    {
+        if (_delayTimer is null || !_delayTimer.IsEnabled) return;
+        _delayTimer.Stop();
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(_delayStartTimestamp);
+        _delayRemaining -= elapsed;
+        if (_delayRemaining < TimeSpan.Zero) _delayRemaining = TimeSpan.Zero;
+    }
+
+    private void StopDelayTimer()
+    {
+        if (_delayTimer is null) return;
+        _delayTimer.Stop();
+        _delayTimer.Tick -= OnDelayTick;
+        _delayRemaining = TimeSpan.Zero;
+    }
+
+    private void OnDelayTick(object? sender, EventArgs e) => OnDelayElapsed();
+
+    private void OnDelayElapsed()
+    {
+        _delayTimer?.Stop();
+        _delayRemaining = TimeSpan.Zero;
+        if (State != LoopState.Running) return;
+        _stepInFlight = false;
+        AdvanceStep();
+    }
+
+    /// <summary>Test seam — pretend the custom-command delay just elapsed.</summary>
+    internal void FireDelayForTests() => OnDelayElapsed();
 
     private void Write(byte[] bytes, string reason)
     {
@@ -344,6 +412,10 @@ public sealed class LoopRunner : IRecoverableEngine
             if (State == LoopState.Running)
             {
                 State = LoopState.Paused;
+                // A custom-command delay timer in flight pauses with
+                // the coordinator — resume picks up from the remaining
+                // time, not the full duration.
+                PauseDelayTimer();
                 Raise(new LoopEvent(LoopEventKind.Paused, "coordinator paused"));
             }
             return;
@@ -352,6 +424,13 @@ public sealed class LoopRunner : IRecoverableEngine
         {
             State = LoopState.Running;
             Raise(new LoopEvent(LoopEventKind.Resumed, "coordinator resumed"));
+            // If a delay was in flight, continue it from the remaining
+            // time. Otherwise fall through to SendNextStep.
+            if (_delayRemaining > TimeSpan.Zero)
+            {
+                StartOrResumeDelayTimer();
+                return;
+            }
             _stepInFlight = false;
             _awaitingPromptForCommand = false;
             SendNextStep();
@@ -361,6 +440,7 @@ public sealed class LoopRunner : IRecoverableEngine
     private void Reset()
     {
         _recovery?.Detach();
+        StopDelayTimer();
         _loop = null;
         _index = 0;
         _stepInFlight = false;
