@@ -116,12 +116,15 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- Add waypoint row — accepts a raw room key (1/297) or
-                 a room name (case-insensitive; single substring match
-                 commits, ambiguous matches force the user to be more
-                 specific). Inline error label is shown after a failed
-                 Add attempt. -->
-            <Grid Grid.Row="4" RowDefinitions="Auto,Auto" RowSpacing="2">
+            <!-- Add waypoint row — mirrors the Navigation window's
+                 search box. Accepts a raw room key (1/297, 1,297,
+                 bare 297) or substring against room names; live
+                 results dropdown shows up to 50 matches. Enter on
+                 the TextBox adds the highlighted (or top) result;
+                 click a row to commit immediately. Save IsDefault
+                 is disabled while typing here so Enter doesn't
+                 accidentally dismiss the dialog. -->
+            <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
                     <TextBlock Grid.Column="0"
                                Text="Add room:"
@@ -129,14 +132,54 @@
                                FontSize="11"
                                Foreground="{StaticResource ChromeFgMutedBrush}"/>
                     <TextBox Grid.Column="1"
+                             Name="AddRoomTextBox"
                              Text="{Binding NewWaypointQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              PlaceholderText="Room key (1/297) or name"
-                             FontSize="11"/>
+                             FontSize="11"
+                             KeyDown="OnAddRoomKeyDown"/>
                     <Button Grid.Column="2"
                             Content="Add"
                             Command="{Binding AddWaypointCommand}"/>
                 </Grid>
-                <TextBlock Grid.Row="1"
+                <!-- Live results dropdown — visible only while there
+                     are matches. Capped height so the dialog stays
+                     usable on a small window; clicking a row adds
+                     that room straight away. -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasSearchResults}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        MaxHeight="180"
+                        Margin="60,2,40,0">
+                    <ListBox Name="AddRoomResults"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RoomSearchResult">
+                                <Border Padding="6,3"
+                                        PointerPressed="OnAddRoomResultClicked"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PrimaryLine}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SecondaryLine}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                <TextBlock Grid.Row="2"
                            Text="{Binding AddWaypointError}"
                            IsVisible="{Binding HasAddWaypointError}"
                            FontSize="10"

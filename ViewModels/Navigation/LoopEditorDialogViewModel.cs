@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
@@ -42,10 +44,12 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     [ObservableProperty] private int _selectedDelayMs = DefaultCommandDelayMs;
 
     /// <summary>
-    /// Text input for the "add waypoint" row. Accepts either a raw
-    /// room key (<c>1/297</c>) or a room name (case-insensitive
-    /// substring match against the active graph). Empty until the
-    /// user types.
+    /// Text input for the "add waypoint" row. Accepts the same input
+    /// dialects as the Navigation window's room search box —
+    /// coordinate (<c>"1/297"</c>, <c>"1,297"</c>, bare <c>"297"</c>
+    /// across all maps) or substring against room names. Monster
+    /// matches are deliberately omitted; this row's only job is to
+    /// pick a waypoint room.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddWaypointError))]
@@ -61,6 +65,29 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private string _addWaypointError = string.Empty;
 
     public bool HasAddWaypointError => !string.IsNullOrEmpty(AddWaypointError);
+
+    /// <summary>
+    /// Live-search dropdown rows. Mirrors the Navigation search box
+    /// behaviour minus the monster category — rooms only, since the
+    /// editor only ever needs to pick a waypoint room.
+    /// </summary>
+    public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
+
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    /// <summary>
+    /// User-highlighted row in the dropdown ListBox. Enter on the
+    /// TextBox commits this row when set; falls back to the top
+    /// result otherwise, then to the literal query (key parse / single
+    /// name match) so an experienced user can type "1/297&lt;Enter&gt;"
+    /// without ever moving focus to the dropdown.
+    /// </summary>
+    [ObservableProperty] private RoomSearchResult? _selectedSearchResult;
+
+    // Debounce keystrokes — same 120 ms window the Navigation search
+    // box uses so the editor feels identical to the user.
+    private DispatcherTimer? _searchDebounce;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
 
     private const int DefaultCommandDelayMs = 1200;
 
@@ -147,25 +174,124 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         SelectedRow.RefreshDisplay();
     }
 
+    partial void OnNewWaypointQueryChanged(string value)
+    {
+        // Debounce the rebuild — matches the Navigation search box's
+        // 120 ms window so a 200-room substring scan doesn't run per
+        // keystroke. Clear errors immediately so the user isn't
+        // staring at a stale "no match" line while they type.
+        AddWaypointError = string.Empty;
+        _searchDebounce ??= new DispatcherTimer { Interval = SearchDebounceDelay };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounceTick;
+        _searchDebounce.Tick += OnSearchDebounceTick;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounceTick(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        RebuildSearchResults(NewWaypointQuery);
+    }
+
     /// <summary>
-    /// Add a waypoint at the end of the list from the query box.
-    /// Accepts either a raw room key (<c>"1/297"</c>) or a room name
-    /// — exact match first, single substring match as fallback.
+    /// Rebuild <see cref="SearchResults"/> from <paramref name="query"/>.
+    /// Two input dialects, both mirroring the Navigation search box:
+    /// coordinate (<c>"1/297"</c>, <c>"1,297"</c>, <c>"1 297"</c>, or
+    /// bare <c>"297"</c> across all maps) and room-name substring.
+    /// Monster matches are intentionally omitted.
+    /// </summary>
+    private void RebuildSearchResults(string query)
+    {
+        SearchResults.Clear();
+        string needle = (query ?? string.Empty).Trim();
+        if (needle.Length == 0)
+        {
+            OnPropertyChanged(nameof(HasSearchResults));
+            return;
+        }
+
+        List<RoomSearchResult> matches = new();
+
+        // Coordinate input — same parse rules as NavigationViewModel's
+        // search box.
+        (int? mapPart, int? roomPart) = TryParseCoordinate(needle);
+        if (mapPart is int m && roomPart is int r
+            && _graph.GetRoom(new RoomKey(m, r)) is { } exactRoom)
+        {
+            matches.Add(new RoomSearchResult(exactRoom.Key, exactRoom.DisplayName, null));
+        }
+        else if (mapPart is null && roomPart is int onlyRoom)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (room.Key.Room != onlyRoom) continue;
+                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, null));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        // Name substring — gated by needle length to keep
+        // single-character queries from flooding the dropdown.
+        if (needle.Length >= 2)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (!room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                 && !room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (matches.Any(x => x.Key.Equals(room.Key))) continue;
+                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, null));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        foreach (RoomSearchResult rr in matches
+                     .OrderBy(rr => rr.PrimaryLine, StringComparer.OrdinalIgnoreCase)
+                     .Take(50))
+            SearchResults.Add(rr);
+        OnPropertyChanged(nameof(HasSearchResults));
+    }
+
+    /// <summary>
+    /// Parse a coordinate token. Returns <c>(map, room)</c> when both
+    /// numbers were supplied (separator: <c>/</c>, <c>,</c>, or
+    /// whitespace), <c>(null, room)</c> for a bare single number, or
+    /// <c>(null, null)</c> for non-numeric input.
+    /// </summary>
+    private static (int? Map, int? Room) TryParseCoordinate(string text)
+    {
+        string[] parts = text.Split(new[] { '/', ',', ' ', '\t' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1 && int.TryParse(parts[0], out int onlyRoom))
+            return (null, onlyRoom);
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out int map)
+            && int.TryParse(parts[1], out int room))
+            return (map, room);
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Add a waypoint at the end of the list. Priority: the dropdown's
+    /// highlighted row → the top dropdown row → the literal query
+    /// parsed as a key or matched as a unique name. Empty input is a
+    /// no-op (the dropdown is empty + the textbox has nothing to add).
     /// </summary>
     [RelayCommand]
     private void AddWaypoint()
     {
-        string query = (NewWaypointQuery ?? string.Empty).Trim();
-        if (query.Length == 0)
-        {
-            AddWaypointError = "Enter a room key (1/297) or room name.";
-            return;
-        }
+        RoomKey? resolved =
+              SelectedSearchResult?.Key
+           ?? (SearchResults.Count > 0 ? SearchResults[0].Key : (RoomKey?)null)
+           ?? ResolveLiteralQuery(NewWaypointQuery);
 
-        RoomKey? resolved = ResolveQuery(query);
         if (resolved is null)
         {
-            AddWaypointError = $"No graph match for '{query}'.";
+            string query = (NewWaypointQuery ?? string.Empty).Trim();
+            AddWaypointError = query.Length == 0
+                ? "Enter a room key (1/297) or room name."
+                : $"No graph match for '{query}'.";
             return;
         }
 
@@ -182,34 +308,38 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
             new LoopWaypoint(resolved.Value), _graph));
         RenumberRows();
         NewWaypointQuery = string.Empty;
+        SearchResults.Clear();
+        SelectedSearchResult = null;
+        OnPropertyChanged(nameof(HasSearchResults));
         AddWaypointError = string.Empty;
     }
 
     /// <summary>
-    /// Best-effort lookup from a free-form query: raw <c>map/room</c>
-    /// first, exact name match next, single substring match last.
-    /// Returns null when nothing matches OR multiple rooms share the
-    /// same substring (forcing the user to disambiguate).
+    /// Last-resort literal resolution — covers the case where the
+    /// user typed something that didn't show up in
+    /// <see cref="SearchResults"/> (e.g. an exact key whose debounce
+    /// hadn't fired yet). Returns null when ambiguous so we don't
+    /// guess.
     /// </summary>
-    private RoomKey? ResolveQuery(string query)
+    private RoomKey? ResolveLiteralQuery(string? query)
     {
-        if (RoomKey.TryParseWire(query, out RoomKey key)
+        string q = (query ?? string.Empty).Trim();
+        if (q.Length == 0) return null;
+
+        if (RoomKey.TryParseWire(q, out RoomKey key)
             && _graph.GetRoom(key) is not null)
             return key;
 
-        // Name-based search through the active graph. Exact match
-        // wins outright; otherwise we need exactly one substring hit
-        // (case-insensitive) to commit without ambiguity.
         RoomKey? exact = null;
         List<RoomKey> substrings = new();
         foreach (Room r in _graph.Rooms)
         {
-            if (string.Equals(r.Name, query, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(r.Name, q, StringComparison.OrdinalIgnoreCase))
             {
-                if (exact is not null) return null;   // multiple exact matches
+                if (exact is not null) return null;
                 exact = r.Key;
             }
-            else if (r.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            else if (r.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
             {
                 substrings.Add(r.Key);
             }
