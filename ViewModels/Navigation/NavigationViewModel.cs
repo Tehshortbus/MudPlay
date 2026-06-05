@@ -1321,20 +1321,72 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.Walker.Destination is { } k
                 ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {FormatRoomRef(k)}"
                 : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
-        NavigationEngineKind.Looping  => "Cycling loop steps",
+        NavigationEngineKind.Looping  => BuildLoopHeader(),
         NavigationEngineKind.AutoLair => "Cycling marked lairs",
         _ => "No active navigation. Start a Loop, Walk, or Lair cycle from the toolbar.",
     };
+
+    private string BuildLoopHeader()
+    {
+        Game.Map.LoopRunner runner = _services.LoopRunner;
+        if (runner.CurrentLoop is not { } loop) return "Cycling loop steps";
+
+        // Approach phase: walker is driving toward the loop's chosen
+        // entry waypoint. The walker owns the step counter during this
+        // window; surface ITS progress, not the loop's.
+        if (runner.State == Game.Map.LoopState.Approaching)
+        {
+            string target = runner.ApproachTarget is { } t
+                ? FormatRoomRef(t)
+                : "first waypoint";
+            return $"Approaching {target} ({_services.Walker.CurrentStepIndex + 1}" +
+                   $"/{_services.Walker.StepCount})";
+        }
+
+        // Circle phase: show step N/K + lap counter + average lap.
+        int laps = runner.LapHistory.Count;
+        int total = runner.StepCount;
+        int stepNum = total == 0 ? 0 : runner.CurrentIndex + 1;
+        string lapPart = laps switch
+        {
+            0 => "lap 1",
+            1 => $"lap 2 · avg {FormatDuration(runner.AverageLapTime)}",
+            _ => $"lap {laps + 1} · avg {FormatDuration(runner.AverageLapTime)}",
+        };
+        return $"{loop.Name} · step {stepNum}/{total} · {lapPart}";
+    }
+
+    private static string FormatDuration(TimeSpan t)
+    {
+        if (t.TotalMinutes >= 1) return $"{(int)t.TotalMinutes}m {t.Seconds}s";
+        return $"{t.Seconds}s";
+    }
 
     /// <summary>Progress as a 0..1 fraction for the small inline bar; null when no progress meter applies (e.g. Auto-Lair).</summary>
     public double? CurrentNavProgress
     {
         get
         {
-            if (EngineActionKind != NavigationEngineKind.Walking) return null;
-            int total = _services.Walker.StepCount;
-            if (total <= 0) return null;
-            return Math.Clamp((double)_services.Walker.CurrentStepIndex / total, 0, 1);
+            if (EngineActionKind == NavigationEngineKind.Walking)
+            {
+                int total = _services.Walker.StepCount;
+                if (total <= 0) return null;
+                return Math.Clamp((double)_services.Walker.CurrentStepIndex / total, 0, 1);
+            }
+            if (EngineActionKind == NavigationEngineKind.Looping)
+            {
+                Game.Map.LoopRunner runner = _services.LoopRunner;
+                if (runner.State == Game.Map.LoopState.Approaching)
+                {
+                    int wt = _services.Walker.StepCount;
+                    if (wt <= 0) return null;
+                    return Math.Clamp((double)_services.Walker.CurrentStepIndex / wt, 0, 1);
+                }
+                int total = runner.StepCount;
+                if (total <= 0) return null;
+                return Math.Clamp((double)runner.CurrentIndex / total, 0, 1);
+            }
+            return null;
         }
     }
 
@@ -1374,9 +1426,44 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 break;
             }
-            // Looping: TODO when LoopRunner exposes step index / total
-            // in a per-step shape; show the loop's room list as
-            // upcoming for now.
+            case NavigationEngineKind.Looping:
+            {
+                Game.Map.LoopRunner runner = _services.LoopRunner;
+                if (runner.CurrentLoop is not { } loop) break;
+
+                // Approach phase: borrow the walker's step list so the
+                // user sees the actual moves driving them to the entry
+                // waypoint, not the dormant loop's circle.
+                if (runner.State == Game.Map.LoopState.Approaching)
+                {
+                    int idx = _services.Walker.CurrentStepIndex;
+                    IReadOnlyList<WalkStep> steps = _services.Walker.Steps;
+                    for (int i = 0; i < steps.Count; i++)
+                    {
+                        CurrentNavRowStatus status = i < idx
+                            ? CurrentNavRowStatus.Completed
+                            : (i == idx ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Upcoming);
+                        CurrentNavRows.Add(new CurrentNavRowViewModel(
+                            index: i + 1, label: steps[i].Display, status: status));
+                    }
+                    break;
+                }
+
+                // Running circle: render the loop's MoveLoopStep
+                // sequence with the same Completed/Current/Upcoming
+                // shape the walker uses. CommandLoopSteps render with
+                // their Display text alongside moves.
+                int loopIdx = runner.CurrentIndex;
+                for (int i = 0; i < loop.Steps.Count; i++)
+                {
+                    CurrentNavRowStatus status = i < loopIdx
+                        ? CurrentNavRowStatus.Completed
+                        : (i == loopIdx ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Upcoming);
+                    CurrentNavRows.Add(new CurrentNavRowViewModel(
+                        index: i + 1, label: loop.Steps[i].Display, status: status));
+                }
+                break;
+            }
         }
     }
 
