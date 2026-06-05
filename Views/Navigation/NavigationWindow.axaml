@@ -767,11 +767,14 @@
                                                   IsVisible="{Binding HasLoops}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:LoopRowViewModel">
-                                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
                                                     <Grid.ContextMenu>
                                                         <ContextMenu>
                                                             <MenuItem Header="Run"
                                                                       Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                                      CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="Load into builder"
+                                                                      Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadLoopCommand}"
                                                                       CommandParameter="{Binding}"/>
                                                             <MenuItem Header="Preview on map"
                                                                       Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).PreviewLoopCommand}"
@@ -794,7 +797,16 @@
                                                         <Run Text="{Binding SubLabel}"
                                                              Foreground="{StaticResource ChromeFgMutedBrush}"/>
                                                     </TextBlock>
+                                                    <!-- Load: enters LoopBuild mode pre-seeded with this
+                                                         loop's waypoints so the user can preview the
+                                                         red overlay / edit before running. -->
                                                     <Button Grid.Column="1"
+                                                            Content="Load" FontSize="10"
+                                                            Padding="8,2"
+                                                            ToolTip.Tip="Load this loop into the builder so you can preview / edit before running."
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
                                                             Content="Run" FontSize="10"
                                                             Padding="8,2"
                                                             Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"

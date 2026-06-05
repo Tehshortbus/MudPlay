@@ -773,6 +773,60 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Start(row.Source);
     }
 
+    /// <summary>
+    /// Load a saved loop's waypoints into LoopBuild mode so the user
+    /// can preview it on the map (red polyline + numbered markers)
+    /// and optionally edit before hitting Run. Distinct from
+    /// <see cref="RunLoop"/> (which starts the runner immediately)
+    /// and from <see cref="PreviewLoop"/> (which just paints an
+    /// overlay without entering build mode).
+    /// </summary>
+    [RelayCommand]
+    private void LoadLoop(LoopRowViewModel? row)
+    {
+        if (row is null) return;
+
+        // If a loop is currently running / approaching / paused, stop
+        // it first — loading is a "start from scratch in builder"
+        // intent and shouldn't leave a stale engine in the
+        // background.
+        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
+            _services.LoopRunner.Stop("loop loaded into builder");
+
+        // Tear down any prior build session, then seed a fresh one
+        // from the saved loop's waypoints. ProposedName + Notes
+        // carry over so Save in the Manage dialog round-trips back
+        // to the same file (the LoopManager keys by name on disk).
+        if (LoopBuilder is not null)
+            LoopBuilder.PropertyChanged -= OnLoopBuilderPropertyChanged;
+
+        var builder = new LoopBuilderSessionViewModel(
+            _services.Loops, _services.RoomGraph, _services.Movement);
+        builder.PropertyChanged += OnLoopBuilderPropertyChanged;
+        builder.ProposedName = row.Source.Name;
+        builder.Notes        = row.Source.Notes;
+        foreach (LoopWaypoint w in row.Source.Waypoints)
+            builder.AddClick(w.Key);
+
+        LoopBuilder = builder;
+        CurrentMode = NavigationMode.LoopBuild;
+        // Distinct from the pause-opens-builder path — Load is
+        // user-initiated, not a side effect of Pause, so the
+        // resume-restart logic in RunStop shouldn't see this as
+        // "paused with edits".
+        _loopBuilderOpenedByPause = false;
+        OnPropertyChanged(nameof(LoopBuilder));
+        OnPropertyChanged(nameof(IsLoopBuilding));
+
+        // Paint the red preview + numbered markers immediately,
+        // same belt-and-braces as OpenBuilderForRunningLoop —
+        // PropertyChanged during the AddClick loop fired before the
+        // field assignment.
+        LoopBuilderPath      = builder.PreviewedRoomKeys;
+        LoopBuilderWaypoints = builder.WaypointKeys;
+        RefreshLoopOverlays();
+    }
+
     [RelayCommand]
     private void StopLoop() => _services.LoopRunner.Stop();
 
