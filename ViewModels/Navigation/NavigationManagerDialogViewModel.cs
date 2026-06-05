@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
+using FujinTerm.Game.Map.MpFile;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
@@ -40,6 +44,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
     private readonly LoopRunner? _runner;
+    private readonly MpFileImporter? _mpImporter;
+    private readonly LogService? _log;
     private readonly Action? _onDraftConsumed;
 
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
@@ -81,7 +87,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         DialogService dialogs,
         LoopBuilderSessionViewModel? draft = null,
         Action? onDraftConsumed = null,
-        LoopRunner? runner = null)
+        LoopRunner? runner = null,
+        MpFileImporter? mpImporter = null,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(autoLair);
@@ -94,6 +102,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _confirm = confirm;
         _dialogs = dialogs;
         _runner = runner;
+        _mpImporter = mpImporter;
+        _log = log;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
@@ -202,6 +212,109 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         // / saves identify the same record on disk.
         running.Name = saveName;
         OnPropertyChanged(nameof(HasRunningLoop));
+    }
+
+    // ----- .mp importer ----------------------------------------------
+
+    /// <summary>
+    /// One-line status / error surfaced in the Manage dialog after an
+    /// import attempt. Empty until the user clicks "Import .mp" the
+    /// first time; populated with success ("Imported loop 'X' — review
+    /// + Save in the editor.") or failure (the importer's error
+    /// reason).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasImportStatus))]
+    private string _importStatus = string.Empty;
+
+    public bool HasImportStatus => !string.IsNullOrEmpty(ImportStatus);
+
+    /// <summary>
+    /// Open a file picker, parse the chosen <c>.mp</c>, resolve
+    /// against the active graph, and either open the LoopEditor with
+    /// the loop pre-filled (single best candidate) OR pop the picker
+    /// dialog for the user to disambiguate (multi-candidate tie).
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportMpAsync()
+    {
+        if (_mpImporter is null)
+        {
+            ImportStatus = "Importer not available — file a bug.";
+            return;
+        }
+        if (Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime
+                { MainWindow: { } main })
+        {
+            ImportStatus = "Couldn't access the main window for the file picker.";
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> picked = await main.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title         = "Pick a MegaMUD .mp loop file",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("MegaMUD path / loop") { Patterns = new[] { "*.mp", "*.MP" } },
+                FilePickerFileTypes.All,
+            },
+        });
+        if (picked.Count == 0) return;
+        string path = picked[0].Path.LocalPath;
+
+        MpLoopFile file;
+        try
+        {
+            file = MpFileParser.ParseFile(path);
+        }
+        catch (MpFileFormatException ex)
+        {
+            ImportStatus = $"Import failed: {ex.Message}";
+            _log?.Warn("MpImporter", $"parse failed for {path}: {ex.Message}");
+            return;
+        }
+
+        MpImportResolution resolution = _mpImporter.Resolve(file);
+        if (resolution.Failed)
+        {
+            ImportStatus = $"Import failed: {resolution.Error}";
+            return;
+        }
+
+        RoomKey anchor;
+        if (resolution.HasUniqueBest)
+        {
+            anchor = resolution.BestCandidates[0].AnchorKey;
+        }
+        else
+        {
+            MpAnchorPickerDialogViewModel pickerVm = new(file, resolution.BestCandidates, _graph);
+            RoomKey? userChoice = await _dialogs
+                .OpenWindowAsync<MpAnchorPickerDialogViewModel, RoomKey?>(pickerVm);
+            if (userChoice is not { } chosen)
+            {
+                ImportStatus = "Import cancelled.";
+                return;
+            }
+            anchor = chosen;
+        }
+
+        Loop? built = _mpImporter.BuildLoop(file, anchor);
+        if (built is null)
+        {
+            ImportStatus = "Import failed: the chosen anchor didn't actually close the loop.";
+            return;
+        }
+
+        // Open the editor pre-filled in create mode so the user can
+        // rename / tweak / add commands before saving.
+        LoopEditorDialogViewModel editor = new(
+            built, _loops, _graph, _runner, _confirm, isNew: true);
+        await _dialogs.OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(editor);
+
+        ImportStatus = $"Parsed '{file.Label}' ({file.Steps.Count} steps) — review and Save in the editor.";
     }
 
     [RelayCommand]

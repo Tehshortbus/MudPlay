@@ -654,6 +654,14 @@ public sealed class AppServices
     public Game.Map.LoopManager Loops { get; private set; } = null!;
 
     /// <summary>
+    /// MegaMUD <c>.mp</c> loop-file importer. Stateless w.r.t. the
+    /// profile; takes the active <see cref="RoomGraph"/> at construct
+    /// time and resolves anchors against whatever it currently
+    /// contains. See <c>docs/08-phase-7-…</c> PR 7.9.
+    /// </summary>
+    public Game.Map.MpFile.MpFileImporter MpImporter { get; private set; } = null!;
+
+    /// <summary>
     /// Per-BBS room blacklist — hides target rooms from the
     /// Navigation map render and the search box. Consumed by
     /// <see cref="Game.Map.BfsMapper"/> (skip placement, keep edge
@@ -1117,6 +1125,11 @@ public sealed class AppServices
         Profile.ProfileLoaded += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
         Profile.BbsPinApplied += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
         Profile.ProfileClosed += () => Loops.LoadAll(null);
+
+        // Phase 7 PR 7.9 — MegaMUD .mp loop importer. Pure resolution
+        // service over the active graph; no per-profile state of its
+        // own. The Manage dialog calls it on user "Import .mp".
+        MpImporter = new Game.Map.MpFile.MpFileImporter(RoomGraph, Log);
 
         // Per-BBS room blacklist — hides ganghouse / dead-end rooms
         // from the map render + room search. Loaded on BBS pin so

@@ -811,26 +811,23 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- Bottom action strip -->
+                    <!-- Bottom action strip — Manage is the single
+                         entry into the loops/lairs CRUD surface; the
+                         .mp importer used to live here as a separate
+                         button but moved INTO the Manage dialog per
+                         UX direction (it's a CRUD action on saved
+                         loops, not a top-level rail action). -->
                     <Border Grid.Row="1"
                             BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,1,0,0"
                             Background="{StaticResource ChromeBgBrush}">
-                        <Grid ColumnDefinitions="*,*" Margin="6,4" ColumnSpacing="6">
-                            <Button Grid.Column="0"
-                                    Content="Import .mp"
-                                    FontSize="10"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    IsEnabled="False"
-                                    ToolTip.Tip="Wired with the MegaMUD .mp importer in a later PR"/>
-                            <Button Grid.Column="1"
-                                    Content="Manage"
+                        <Grid Margin="6,4">
+                            <Button Content="Manage"
                                     FontSize="10"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
                                     Command="{Binding OpenManagerCommand}"
-                                    ToolTip.Tip="Rename / delete saved loops, unmark Auto-Lair rooms"/>
+                                    ToolTip.Tip="Rename / delete / import saved loops, unmark Auto-Lair rooms"/>
                         </Grid>
                     </Border>
                 </Grid>

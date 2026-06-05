@@ -125,6 +125,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.NavigationManagerDialogViewModel,
                 FujinTerm.Views.Navigation.NavigationManagerDialog>();
 
+            // .mp importer disambiguation prompt — only fires when
+            // multiple candidate rooms tie on the closure score.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.MpAnchorPickerDialogViewModel,
+                FujinTerm.Views.Navigation.MpAnchorPickerDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

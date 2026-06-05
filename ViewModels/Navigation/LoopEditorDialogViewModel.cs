@@ -398,6 +398,19 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
             return;
         }
 
+        // Name-conflict guard: refuse if the new name would overwrite
+        // a DIFFERENT loop. Renaming an existing loop to its own
+        // current name (i.e. no rename, just a Save) is the intentional
+        // overwrite case and is allowed.
+        bool wouldOverwriteAnother = _loops.Loops.Any(l =>
+            string.Equals(l.Name, newName, StringComparison.OrdinalIgnoreCase)
+            && (_isNew || !string.Equals(l.Name, _original.Name, StringComparison.OrdinalIgnoreCase)));
+        if (wouldOverwriteAnother)
+        {
+            SaveError = $"A loop named '{newName}' already exists on this BBS — pick a different name.";
+            return;
+        }
+
         var waypoints = new List<LoopWaypoint>(Waypoints.Count);
         foreach (LoopWaypointRowViewModel row in Waypoints)
             waypoints.Add(new LoopWaypoint(row.Key, row.Command, row.DelayMs));

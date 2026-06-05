@@ -96,7 +96,7 @@
                         <Border Grid.Row="0"
                                 Background="{StaticResource ChromeBgElevBrush}"
                                 Padding="6,3">
-                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
                                 <TextBlock Grid.Column="0"
                                            Text="Loops"
                                            FontSize="11" FontWeight="SemiBold"
@@ -121,12 +121,36 @@
                                         Padding="8,2"
                                         Command="{Binding NewLoopCommand}"
                                         ToolTip.Tip="Open the loop editor on an empty loop."/>
+                                <!-- Import .mp: file picker → MegaMUD
+                                     .mp loop file → anchor resolver →
+                                     LoopEditor with the imported loop
+                                     pre-filled. -->
+                                <Button Grid.Column="3"
+                                        Content="Import .mp"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding ImportMpCommand}"
+                                        ToolTip.Tip="Import a MegaMUD .mp loop file. Path-style .mp files (one-way A→B) are rejected."/>
                             </Grid>
                         </Border>
                         <ScrollViewer Grid.Row="1"
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Auto">
                             <StackPanel>
+                                <!-- .mp import status line — empty until the
+                                     user clicks "Import .mp" the first time.
+                                     Persists for the lifetime of the dialog
+                                     so the user can re-read the last
+                                     attempt's reason. -->
+                                <Border IsVisible="{Binding HasImportStatus}"
+                                        Padding="6,4"
+                                        Margin="0,0,0,2"
+                                        Background="{StaticResource ChromeBgElevBrush}">
+                                    <TextBlock Text="{Binding ImportStatus}"
+                                               FontSize="10"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                                </Border>
                                 <!-- Running-loop save row — visible only when
                                      the runner is actually driving a loop.
                                      Editable name + Save persists the in-

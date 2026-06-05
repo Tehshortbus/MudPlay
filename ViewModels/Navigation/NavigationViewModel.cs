@@ -1170,7 +1170,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             {
                 if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
             },
-            runner: _services.LoopRunner);
+            runner: _services.LoopRunner,
+            mpImporter: _services.MpImporter,
+            log: _services.Log);
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }

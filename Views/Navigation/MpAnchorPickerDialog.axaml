@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        x:Class="FujinTerm.Views.Navigation.MpAnchorPickerDialog"
+        x:DataType="vm:MpAnchorPickerDialogViewModel"
+        Title="Pick start room"
+        Width="520" Height="380"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Heading}"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"/>
+            <TextBlock Grid.Row="1"
+                       Text="{Binding SubHeading}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <ListBox Grid.Row="2"
+                     ItemsSource="{Binding Candidates}"
+                     SelectedItem="{Binding Selected, Mode=TwoWay}"
+                     Background="Transparent"
+                     BorderBrush="{StaticResource ChromeBorderBrush}"
+                     BorderThickness="1">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:MpAnchorRow">
+                        <Grid ColumnDefinitions="*,Auto" Margin="6,3" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Label}"
+                                       FontSize="11"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Tag}"
+                                       FontSize="10"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+                <Button Content="Use this room"
+                        Command="{Binding PickCommand}"
+                        IsEnabled="{Binding HasSelection}"
+                        IsDefault="True" MinWidth="120"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
