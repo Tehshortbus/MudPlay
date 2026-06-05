@@ -227,7 +227,7 @@
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
                 <!-- Display-toggle chips -->
@@ -281,7 +281,10 @@
                          FontSize="11"
                          VerticalAlignment="Center"/>
 
-                <!-- Run / Stop -->
+                <!-- Run / Pause — loop running shows "Pause" (assert
+                     user gate + open builder seeded from running loop);
+                     loop paused shows "Run" (resume); walker/auto-lair
+                     keep the legacy Run/Stop one-shot semantics. -->
                 <Button Grid.Column="4"
                         Classes="ActionChip"
                         Classes.Primary="{Binding !IsAnyExecuting}"
@@ -290,8 +293,19 @@
                         Command="{Binding RunStopCommand}"
                         IsEnabled="{Binding CanRun}"/>
 
-                <!-- Loop mode -->
+                <!-- Full Stop — visible during any active engine.
+                     Backs out to the idle map view: stops engines,
+                     closes any pause-opened builder, clears the user
+                     pause gate so the next Run isn't held paused. -->
                 <Button Grid.Column="5"
+                        Classes="ActionChip"
+                        Classes.Stop="True"
+                        Content="Stop"
+                        Command="{Binding StopAllCommand}"
+                        IsVisible="{Binding IsStopButtonVisible}"/>
+
+                <!-- Loop mode -->
+                <Button Grid.Column="6"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLoopMode}"
                         Classes.Stop="{Binding LoopModeButtonIsStop}"
@@ -299,7 +313,7 @@
                         Command="{Binding ToggleLoopModeCommand}"/>
 
                 <!-- Lair mode -->
-                <Button Grid.Column="6"
+                <Button Grid.Column="7"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLairMode}"
                         Classes.Stop="{Binding LairModeButtonIsStop}"
@@ -325,6 +339,7 @@
                                  LoopPath="{Binding LoopPath}"
                                  LoopBuilderPath="{Binding LoopBuilderPath}"
                                  LoopBuilderWaypoints="{Binding LoopBuilderWaypoints}"
+                                 LoopApproachPreviewPath="{Binding LoopApproachPreviewPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
                                  AutoLairRooms="{Binding AutoLairRooms}"

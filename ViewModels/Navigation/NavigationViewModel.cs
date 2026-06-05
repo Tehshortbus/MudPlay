@@ -150,24 +150,40 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshLoopOverlays()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
-        if (runner.CurrentLoop is not { } loop
-            || _services.RoomTracker.State.CurrentRoom is not { } current)
+        LoopSequenceNumbers = null;     // per UX rule: no number overlay during execution
+
+        if (runner.CurrentLoop is not { } loop)
         {
             LoopPath = null;
-            LoopSequenceNumbers = null;
+            LoopApproachPreviewPath = null;
             return;
         }
 
-        // Resolve the loop's MoveLoopSteps into a room-key sequence.
+        // Approaching: walker is driving the player toward the loop's
+        // start waypoint. The user wants to see BOTH the active walk-to
+        // (blue, drawn by the walker overlay) AND the loop preview
+        // (red, drawn via the LoopApproachPreviewPath property) so the
+        // bigger-picture cycle is visible alongside the immediate path.
+        if (runner.State == Game.Map.LoopState.Approaching
+            && runner.ApproachTarget is { } entry)
+        {
+            IReadOnlyList<RoomKey> previewKeys = runner.ResolveLoopRoomKeys(entry);
+            LoopApproachPreviewPath = previewKeys.Count >= 2 ? previewKeys : null;
+            LoopPath = null;
+            return;
+        }
+
+        // Running circle: draw the entire loop in blue from the current
+        // room. ResolveLoopRoomKeys returns the full cycle so the
+        // visual reads as a closed loop the whole time.
+        LoopApproachPreviewPath = null;
+        if (_services.RoomTracker.State.CurrentRoom is not { } current)
+        {
+            LoopPath = null;
+            return;
+        }
         IReadOnlyList<RoomKey> keys = runner.ResolveLoopRoomKeys(current.Key);
         LoopPath = keys.Count >= 2 ? keys : null;
-
-        // Sequence numbers: 1..N at each successive room. Duplicate
-        // keys (loops with revisits) keep the LAST sighting's number
-        // — matches MudProxy's convention.
-        var seq = new Dictionary<RoomKey, int>();
-        for (int i = 0; i < keys.Count; i++) seq[keys[i]] = i + 1;
-        LoopSequenceNumbers = seq;
     }
 
     // ----- Status strip ---------------------------------------------
@@ -223,6 +239,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// markers. Mirrors <see cref="LoopBuilderSessionViewModel.WaypointKeys"/>.
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderWaypoints;
+
+    /// <summary>
+    /// Red preview polyline drawn during the walker-approach phase of
+    /// a loop run. Lets the user see the upcoming cycle alongside the
+    /// blue walk-to line that's actively driving them to the start
+    /// waypoint.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _loopApproachPreviewPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
@@ -1172,8 +1196,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         || (CurrentMode == NavigationMode.LoopBuild && LoopBuilder?.CanSave == true)
         || (CurrentMode == NavigationMode.AutoLair && _services.AutoLair.Marked.Count > 0);
 
-    /// <summary>Button face: <c>"Run"</c> when idle, <c>"Stop"</c> while any engine runs.</summary>
-    public string RunStopLabel => IsAnyExecuting ? "Stop" : "Run";
+    /// <summary>
+    /// Primary action-chip face. Loops transform into Pause / Run for
+    /// pause-resume cycling (the user can edit the loop while paused);
+    /// walker + auto-lair stay as Run / Stop (one-shot engines).
+    /// </summary>
+    public string RunStopLabel
+    {
+        get
+        {
+            Game.Map.LoopRunner runner = _services.LoopRunner;
+            if (runner.State is Game.Map.LoopState.Running
+                              or Game.Map.LoopState.Approaching) return "Pause";
+            if (runner.State == Game.Map.LoopState.Paused) return "Run";
+            return IsAnyExecuting ? "Stop" : "Run";
+        }
+    }
+
+    /// <summary>
+    /// Secondary action chip — visible alongside Run/Pause while any
+    /// engine is active. Fully stops the engine, closes any pause-
+    /// opened builder, and returns the map to the idle view.
+    /// </summary>
+    public bool IsStopButtonVisible => IsAnyExecuting;
 
     /// <summary>
     /// Status text used by the top-bar status indicator. Idle →
@@ -1265,6 +1310,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsAnyExecuting));
         OnPropertyChanged(nameof(CanRun));
         OnPropertyChanged(nameof(RunStopLabel));
+        OnPropertyChanged(nameof(IsStopButtonVisible));
         OnPropertyChanged(nameof(TopBarStatusText));
         OnPropertyChanged(nameof(TopBarStatusBadge));
         OnPropertyChanged(nameof(EngineActionIsIdle));
@@ -1294,17 +1340,36 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RunStop()
     {
-        // Stop path first — if anything is moving, the button stops it.
-        if (_services.AutoLair.IsActive)
+        Game.Map.LoopRunner runner = _services.LoopRunner;
+
+        // Loop paused → resume (clear the user-pause gate). If the
+        // builder was auto-opened by Pause, close it on resume so the
+        // CURRENT NAV shows the active loop's progress again.
+        if (runner.State == Game.Map.LoopState.Paused && runner.CurrentLoop is not null)
         {
-            _services.AutoLair.Stop();
+            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+            if (_loopBuilderOpenedByPause)
+            {
+                _loopBuilderOpenedByPause = false;
+                if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
+            }
             return;
         }
-        if (_services.LoopRunner.State != LoopState.Idle)
+
+        // Loop running or approaching → pause (assert user gate) and
+        // auto-open the builder seeded from the running loop so the
+        // user can edit clicks before resuming.
+        if (runner.State is Game.Map.LoopState.Running
+                         or Game.Map.LoopState.Approaching)
         {
-            _services.LoopRunner.Stop();
+            _services.MovementCoordinator.AssertGate(Game.Map.MovementCoordinator.UserGate);
+            OpenBuilderForRunningLoop();
             return;
         }
+
+        // Walker / auto-lair stay as one-shot Stop semantics — no
+        // pause-resume cycle wanted by the UX rules.
+        if (_services.AutoLair.IsActive) { _services.AutoLair.Stop(); return; }
         if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
         {
             _services.Walker.Stop("user stop from Navigation");
@@ -1332,6 +1397,70 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.Walker.WalkTo(dest);
             QueuedDestination = null;
         }
+    }
+
+    /// <summary>
+    /// Set true when <see cref="OpenBuilderForRunningLoop"/> opened
+    /// build mode in response to user-pause so a subsequent Run / Stop
+    /// can decide whether to close it again.
+    /// </summary>
+    private bool _loopBuilderOpenedByPause;
+
+    /// <summary>
+    /// Pause flow: stop the runner via the user gate, then re-open the
+    /// builder pre-seeded with the running loop's name + notes + click
+    /// list so the user can edit before hitting Run again.
+    /// </summary>
+    private void OpenBuilderForRunningLoop()
+    {
+        Game.Map.LoopRunner runner = _services.LoopRunner;
+        if (runner.CurrentLoop is not { } loop) return;
+
+        if (LoopBuilder is not null)
+            LoopBuilder.PropertyChanged -= OnLoopBuilderPropertyChanged;
+
+        var builder = new LoopBuilderSessionViewModel(
+            _services.Loops, _services.RoomGraph, _services.Movement);
+        builder.PropertyChanged += OnLoopBuilderPropertyChanged;
+        builder.ProposedName = loop.Name;
+        builder.Notes        = loop.Notes;
+        foreach (RoomKey w in loop.UserWaypoints) builder.AddClick(w);
+
+        LoopBuilder = builder;
+        CurrentMode = NavigationMode.LoopBuild;
+        _loopBuilderOpenedByPause = true;
+        OnPropertyChanged(nameof(LoopBuilder));
+        OnPropertyChanged(nameof(IsLoopBuilding));
+    }
+
+    /// <summary>
+    /// Full-stop action. Always returns the user to the idle map
+    /// view — engines stopped, builder closed, user gate cleared so
+    /// the next Run isn't accidentally held paused.
+    /// </summary>
+    [RelayCommand]
+    private void StopAll()
+    {
+        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
+        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
+            _services.LoopRunner.Stop();
+        if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+            _services.Walker.Stop("user stop from Navigation");
+
+        _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+
+        if (CurrentMode == NavigationMode.LoopBuild)
+        {
+            if (LoopBuilder is not null)
+                LoopBuilder.PropertyChanged -= OnLoopBuilderPropertyChanged;
+            LoopBuilder = null;
+            LoopBuilderPath = null;
+            LoopBuilderWaypoints = null;
+            CurrentMode = NavigationMode.Idle;
+            OnPropertyChanged(nameof(LoopBuilder));
+            OnPropertyChanged(nameof(IsLoopBuilding));
+        }
+        _loopBuilderOpenedByPause = false;
     }
 
     // ----- CURRENT NAV row list -------------------------------------

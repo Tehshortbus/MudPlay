@@ -86,6 +86,17 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderWaypointsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderWaypoints));
 
+    /// <summary>
+    /// Loop preview drawn during the walker-driven approach phase of a
+    /// loop run. Distinct from <see cref="LoopBuilderPath"/> only by
+    /// semantic (drawn with the same red pen). Visible alongside the
+    /// active <see cref="WalkPath"/> so the user sees both the
+    /// immediate walk to the start waypoint and the bigger-picture
+    /// cycle that's about to begin.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopApproachPreviewPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopApproachPreviewPath));
+
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
@@ -189,6 +200,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(LoopBuilderWaypointsProperty);
         set => SetValue(LoopBuilderWaypointsProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? LoopApproachPreviewPath
+    {
+        get => GetValue(LoopApproachPreviewPathProperty);
+        set => SetValue(LoopApproachPreviewPathProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? AvoidedRooms
@@ -443,9 +460,9 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
-            AvoidedRoomsProperty, LoopSequenceNumbersProperty, AutoLairRoomsProperty,
-            WalkPathIsAutoLairProperty, SelectedRoomKeyProperty, PreviewPathProperty,
-            TeleportRoomsProperty);
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
+            AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
+            PreviewPathProperty, TeleportRoomsProperty);
 
         // Auto-centre on the player's current room every time it
         // changes (MudProxy's CenterOnRoom rule) — but only when the
@@ -842,13 +859,16 @@ public sealed class MapControl : Control
             }
         }
 
-        // Pass 4: top-of-stack polylines. Builder preview goes first
-        // (lowest layer) so any active automation overlays it; preview
-        // (queued walk) goes next; running loop / walk on top so the
+        // Pass 4: top-of-stack polylines. Loop-builder preview and the
+        // loop-approach preview both draw in red with the same pen
+        // (they're semantically distinct but visually identical:
+        // "this is a planned cycle"). Walk preview red on top of those.
+        // Running loop / walk in blue on top of everything so the
         // user's primary signal is the active automation.
-        DrawPathPolyline(context, LoopBuilderPath, LoopBuilderPen, tilePixels, cx, cy);
-        DrawPathPolyline(context, PreviewPath, PreviewPathPen, tilePixels, cx, cy);
-        DrawPathPolyline(context, LoopPath, LoopPathPen, tilePixels, cx, cy);
+        DrawPathPolyline(context, LoopBuilderPath,        LoopBuilderPen, tilePixels, cx, cy);
+        DrawPathPolyline(context, LoopApproachPreviewPath, LoopBuilderPen, tilePixels, cx, cy);
+        DrawPathPolyline(context, PreviewPath,            PreviewPathPen, tilePixels, cx, cy);
+        DrawPathPolyline(context, LoopPath,               LoopPathPen,    tilePixels, cx, cy);
         IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
         DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
 
@@ -1021,11 +1041,12 @@ public sealed class MapControl : Control
             RoomKey key = waypoints[i];
             if (!Layout.Positions.TryGetValue(key, out var coord)) continue;
             Rect cell = ComputeCellRect(coord, tilePixels, cx, cy);
-            // Top-right corner of the cell so we don't sit on the room's
-            // central labels / glyphs.
+            // Centre of the cell — the marker doubles as a clear
+            // "this is your waypoint" indicator that's easy to spot
+            // at any zoom level.
             Point centre = new(
-                cell.Right - radius * 0.5,
-                cell.Top   + radius * 0.5);
+                cell.X + cell.Width  / 2.0,
+                cell.Y + cell.Height / 2.0);
             ctx.DrawEllipse(LoopBuilderWaypointFill, LoopBuilderWaypointRing,
                 centre, radius, radius);
 
