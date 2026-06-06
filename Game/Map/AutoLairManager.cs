@@ -654,21 +654,16 @@ public sealed class AutoLairManager : IDisposable
                 if (Phase == AutoLairPhase.Approaching && CurrentTarget is { } target)
                 {
                     SetPhase(AutoLairPhase.Waiting);
-                    // Latch entry-arrival to either "now + entry hop"
-                    // (lair already ready, just step in) or the lair's
-                    // ReadyAt (mob hasn't respawned yet — wait it out).
-                    // Recomputing from "now" beats reusing
-                    // LastDecision.EntryArrival, which was estimated at
-                    // PickNext time and would be skewed if our travel
-                    // estimate didn't match reality. Subsequent same-
-                    // target scheduler ticks won't touch the latch (see
-                    // EvaluateAndDispatch early-return).
-                    DateTimeOffset entryFloor =
-                        DateTimeOffset.UtcNow + TravelCostModel.EntryHopDuration;
-                    DateTimeOffset entryAt = entryFloor;
+                    // If the lair's respawn timer has elapsed (or it's
+                    // never been entered this run), step in immediately
+                    // — no artificial wait. Only when the timer is
+                    // genuinely in the future do we park at the
+                    // wait-room and let it tick down before entering.
+                    DateTimeOffset now = DateTimeOffset.UtcNow;
+                    DateTimeOffset entryAt = now;
                     int? overrideSec = _markers.TryGetValue(target, out int? o) ? o : null;
                     if (_timers.NextReadyAt(target, overrideSec) is { } readyAt
-                        && readyAt > entryAt)
+                        && readyAt > now)
                         entryAt = readyAt;
                     LatchAndScheduleEntry(entryAt);
                 }
