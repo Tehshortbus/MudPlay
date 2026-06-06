@@ -569,16 +569,31 @@ public sealed class AutoLairManager : IDisposable
                 break;
 
             case WalkEventKind.Stopped:
-                // We sent the stop ourselves — don't recurse. External
-                // stops bail the session so the user sees consistent
-                // behaviour ("if I stop the walker, Auto-Lair stops too").
-                if (Phase != AutoLairPhase.Idle && Phase != AutoLairPhase.Engaging)
+                // External walker stops (user-typed move displaced us,
+                // another engine grabbed the walker, etc) used to kill
+                // the whole session. That was too aggressive — typing
+                // a single move while the scheduler was running
+                // permanently stranded the run after the first lair.
+                // Now we just reschedule: drop the in-flight target,
+                // kick the retry timer, let the next tick re-evaluate
+                // from wherever the player ended up. Explicit user
+                // stops still go through AutoLair.Stop directly (chip /
+                // mode toggle), so the session can only end by the
+                // user actually saying so.
+                if (Phase is AutoLairPhase.Approaching
+                          or AutoLairPhase.Waiting
+                          or AutoLairPhase.Entering)
                 {
-                    // Suppress when we're mid-redirect (we'll have queued
-                    // a fresh WalkTo right after Stop). Walker-state-Idle
-                    // is the distinguishing signal.
-                    if (_walker.State == WalkState.Idle)
-                        Stop("walker stopped externally");
+                    _log?.Info("AutoLair",
+                        $"walker stopped ({evt.Detail}); rescheduling.");
+                    _entryTimer.Stop();
+                    CurrentEntryArrivalAt = null;
+                    LastDecision = null;
+                    CurrentTarget = null;
+                    CurrentWaitRoom = null;
+                    SetPhase(AutoLairPhase.Approaching);
+                    _retryTimer.Stop();
+                    _retryTimer.Start();
                 }
                 break;
         }
