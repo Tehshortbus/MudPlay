@@ -118,6 +118,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.LoopEditorDialogViewModel,
                 FujinTerm.Views.Navigation.LoopEditorDialog>();
 
+            // Auto-Lair Setups pane → right-click → "Edit…" + "Save lairs"
+            // bottom-strip button both route through this dialog. Name /
+            // Notes / Marker list with per-marker respawn override.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.LairEditorDialogViewModel,
+                FujinTerm.Views.Navigation.LairEditorDialog>();
+
             // Navigation → "Manage" chip → loops + auto-lair markers
             // CRUD surface. Modeless; replaces the bottom-strip
             // save/discard/name textbox UX with a dedicated window.

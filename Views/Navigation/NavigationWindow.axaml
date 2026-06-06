@@ -794,6 +794,68 @@
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"
                                                IsVisible="{Binding !HasLoops}"/>
+                                    <!-- Saved Auto-Lair setups — same row shape as Loops
+                                         but with the amber accent matching the section
+                                         header's "AUTO-LAIRS" run. Renders ABOVE loops
+                                         per UX direction: lairs come first in scan
+                                         order since they're the primary surface this
+                                         section is named after when the user is mid
+                                         farming run. -->
+                                    <TextBlock Text="No auto-lair setups saved on this BBS."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               IsVisible="{Binding !HasSetups}"/>
+                                    <ItemsControl ItemsSource="{Binding Setups}"
+                                                  IsVisible="{Binding HasSetups}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LairSetupRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2" ColumnSpacing="4">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource AccentAmberBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding Name}"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding AnchorKey}"/>
+                                                            <Run Text=" · "/>
+                                                            <Run Text="{Binding SubLabel}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Content="Load" FontSize="10"
+                                                            Padding="8,2"
+                                                            ToolTip.Tip="Load these markers into Auto-Lair without starting."
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
+                                                            Content="Run" FontSize="10"
+                                                            Padding="8,2"
+                                                            Classes="Accent"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="3"
+                                                            Content="…" FontSize="10"
+                                                            Padding="6,2"
+                                                            ToolTip.Tip="Edit / Delete">
+                                                        <Button.Flyout>
+                                                            <MenuFlyout>
+                                                                <MenuItem Header="Edit…"
+                                                                          Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).EditSetupCommand}"
+                                                                          CommandParameter="{Binding}"/>
+                                                                <MenuItem Header="Delete"
+                                                                          Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).DeleteSetupCommand}"
+                                                                          CommandParameter="{Binding}"/>
+                                                            </MenuFlyout>
+                                                        </Button.Flyout>
+                                                    </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
                                     <ItemsControl ItemsSource="{Binding Loops}"
                                                   IsVisible="{Binding HasLoops}">
                                         <ItemsControl.ItemTemplate>
@@ -858,13 +920,26 @@
                             BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,1,0,0"
                             Background="{StaticResource ChromeBgBrush}">
-                        <Grid Margin="6,4">
-                            <Button Content="Manage"
+                        <Grid Margin="6,4" ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                            <Button Grid.Column="0"
+                                    Content="Manage"
                                     FontSize="10"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
                                     Command="{Binding OpenManagerCommand}"
                                     ToolTip.Tip="Rename / delete / import saved loops, unmark Auto-Lair rooms"/>
+                            <!-- Save the in-memory marker set as a named
+                                 setup. Visible only when at least one
+                                 marker is placed — keeps the strip
+                                 minimal when there's nothing to save. -->
+                            <Button Grid.Column="1"
+                                    Content="Save lairs"
+                                    FontSize="10"
+                                    Padding="8,2"
+                                    Classes="Accent"
+                                    IsVisible="{Binding HasLairMarkers}"
+                                    Command="{Binding SaveCurrentMarkersAsSetupCommand}"
+                                    ToolTip.Tip="Save the currently-marked Auto-Lair rooms as a named setup."/>
                         </Grid>
                     </Border>
                 </Grid>
@@ -902,6 +977,34 @@
                                Text="{Binding LoopBuilder.UnreachableSummary}"
                                IsVisible="{Binding LoopBuilder.UnreachableSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Row 3 (alternate): Auto-Lair session phase strip. Mutually
+             exclusive with the Loop-builder strip above — only one
+             shows at a time. Surfaces the scheduler's phase + current
+             target (Approaching X via wait-room Y / Waiting at Y → X /
+             Entering X / Engaging at X) so the user can see what the
+             walker is doing without checking the log. -->
+        <Border Grid.Row="3"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsAutoLairing}">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,6" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentAmberBrush}">
+                    <TextBlock Text="{Binding AutoLairPhaseLabel}"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="#0E0E0E"/>
+                </Border>
+                <TextBlock Grid.Column="1"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           Text="{Binding AutoLairStatusText}"/>
             </Grid>
         </Border>
     </Grid>

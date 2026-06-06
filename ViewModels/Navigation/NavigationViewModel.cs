@@ -37,9 +37,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnAvoidedChanged();
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        _services.AutoLair.PhaseChanged  += OnAutoLairPhaseChanged;
         _services.RoomBlacklist.Changed   += OnBlacklistChanged;
+        _services.Lairs.SetupsChanged    += OnSetupsChanged;
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
+        RefreshSetups();
         Graph = _services.RoomGraph;
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
@@ -65,7 +68,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
+        _services.AutoLair.PhaseChanged  -= OnAutoLairPhaseChanged;
         _services.RoomBlacklist.Changed   -= OnBlacklistChanged;
+        _services.Lairs.SetupsChanged    -= OnSetupsChanged;
         _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
     }
 
@@ -98,7 +103,54 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAutoLairMarkedChanged()
     {
         AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
+        OnPropertyChanged(nameof(HasLairMarkers));
         RefreshDerivedState();
+    }
+
+    private void OnAutoLairPhaseChanged(AutoLairPhase _)
+    {
+        OnPropertyChanged(nameof(AutoLairPhaseLabel));
+        OnPropertyChanged(nameof(AutoLairStatusText));
+    }
+
+    /// <summary>
+    /// One-word label for the bottom-strip badge —
+    /// <c>"Approaching"</c> / <c>"Waiting"</c> / <c>"Entering"</c> /
+    /// <c>"Engaging"</c> / <c>"Idle"</c>. Surfaced as a separate
+    /// property so the badge can colour-code without recomputing the
+    /// full status line.
+    /// </summary>
+    public string AutoLairPhaseLabel => _services.AutoLair.Phase switch
+    {
+        AutoLairPhase.Approaching => "Approaching",
+        AutoLairPhase.Waiting     => "Waiting",
+        AutoLairPhase.Entering    => "Entering",
+        AutoLairPhase.Engaging    => "Engaging",
+        _                         => "Idle",
+    };
+
+    /// <summary>
+    /// Bottom-strip status line for a running Auto-Lair session — e.g.
+    /// <c>"Sewer Lair via 5/99 — 0:42 to entry"</c>. Empty when the
+    /// scheduler isn't actively driving the walker (Idle / Engaging
+    /// without a target).
+    /// </summary>
+    public string AutoLairStatusText
+    {
+        get
+        {
+            if (_services.AutoLair.LastDecision is not { } pick) return string.Empty;
+            string lairLabel = FormatRoomRef(pick.Lair);
+            string waitLabel = FormatRoomRef(pick.WaitRoom);
+            return _services.AutoLair.Phase switch
+            {
+                AutoLairPhase.Approaching => $"{lairLabel} via wait-room {waitLabel}",
+                AutoLairPhase.Waiting     => $"Waiting at {waitLabel} → {lairLabel}",
+                AutoLairPhase.Entering    => $"Entering {lairLabel}",
+                AutoLairPhase.Engaging    => $"Engaging at {lairLabel}",
+                _                         => string.Empty,
+            };
+        }
     }
 
     private void OnAutoLairActiveChanged(bool active)
@@ -714,6 +766,140 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             Loops.Add(new LoopRowViewModel(loop));
         OnPropertyChanged(nameof(HasLoops));
     }
+
+    // ----- Auto-Lair Setups list (PR 7.20) --------------------------
+
+    /// <summary>
+    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active
+    /// BBS — rendered alongside <see cref="Loops"/> in the rail's
+    /// "LOOPS + AUTO-LAIRS" section. Ordered alphabetically by
+    /// <see cref="LairManager.Setups"/>.
+    /// </summary>
+    public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
+
+    public bool HasSetups => Setups.Count > 0;
+
+    private void OnSetupsChanged() => RefreshSetups();
+
+    private void RefreshSetups()
+    {
+        Setups.Clear();
+        foreach (Models.Profile.LairSetup s in _services.Lairs.Setups)
+            Setups.Add(new LairSetupRowViewModel(s));
+        OnPropertyChanged(nameof(HasSetups));
+    }
+
+    /// <summary>
+    /// Run a saved setup — wipes <see cref="AutoLairManager"/>'s current
+    /// markers, loads the setup's markers (with their per-marker
+    /// override timers + Skip flags), then calls <c>Start</c>. Stops
+    /// any in-flight loop / walk first so the scheduler has clean
+    /// ground.
+    /// </summary>
+    [RelayCommand]
+    private void RunSetup(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        LoadSetupInternal(row.Source);
+        _services.AutoLair.Start();
+    }
+
+    /// <summary>
+    /// Right-click → Load on a Setups row. Wipes current markers and
+    /// loads the setup's markers without starting the scheduler — lets
+    /// the user inspect / tweak before hitting Run.
+    /// </summary>
+    [RelayCommand]
+    private void LoadSetup(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        LoadSetupInternal(row.Source);
+    }
+
+    private void LoadSetupInternal(Models.Profile.LairSetup setup)
+    {
+        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
+            _services.LoopRunner.Stop("auto-lair setup loaded");
+        if (_services.AutoLair.IsActive)
+            _services.AutoLair.Stop("auto-lair setup loaded");
+
+        _services.AutoLair.Clear();
+        foreach (Models.Profile.LairMarker m in setup.Markers)
+        {
+            RoomKey key = new(m.Map, m.Room);
+            _services.AutoLair.Mark(key, m.OverrideRespawnSeconds);
+            // Skip flag — currently informational only at the marker
+            // level; the scheduler treats every marker as active.
+            // Phase 7 PR 7.24 wires Skip through the candidate filter.
+        }
+    }
+
+    /// <summary>
+    /// Right-click → Edit on a Setups row → opens
+    /// <see cref="LairEditorDialog"/>. Save persists via
+    /// <see cref="LairManager.Save"/> which fires SetupsChanged so the
+    /// rail refreshes.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditSetupAsync(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        LairEditorDialogViewModel vm = new(
+            row.Source, _services.Lairs, _services.RoomGraph,
+            _services.LairTimers, _services.Confirm);
+        await _services.Dialogs
+            .OpenWindowAsync<LairEditorDialogViewModel, Models.Profile.LairSetup?>(vm);
+    }
+
+    /// <summary>
+    /// Right-click → Delete on a Setups row. Confirms via the shared
+    /// ConfirmService (which honours the user's "skip delete confirms"
+    /// setting), then removes the setup from disk + refreshes the rail.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteSetupAsync(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync($"auto-lair setup \"{row.Source.Name}\"");
+        if (!ok) return;
+        _services.Lairs.Delete(row.Source.Name);
+    }
+
+    /// <summary>
+    /// Save the live <see cref="AutoLairManager.Marked"/> set (plus the
+    /// per-marker overrides the user has set) as a new named setup.
+    /// Opens <see cref="LairEditorDialog"/> on a draft so the user can
+    /// pick a name + adjust overrides before committing. No-op when
+    /// no markers are placed.
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveCurrentMarkersAsSetupAsync()
+    {
+        if (_services.AutoLair.Marked.Count == 0) return;
+
+        List<Models.Profile.LairMarker> markers = new();
+        foreach (RoomKey key in _services.AutoLair.Marked)
+        {
+            int? overrideSec = _services.AutoLair.GetOverride(key);
+            markers.Add(new Models.Profile.LairMarker(
+                map: key.Map, room: key.Room,
+                overrideRespawnSeconds: overrideSec));
+        }
+        // Default name uses HH-mm-ss so the editor's commit can leave
+        // the auto-generated value if the user just wants a quick save.
+        Models.Profile.LairSetup draft = new(
+            name: $"Lairs {DateTime.Now:HH-mm-ss}",
+            markers: markers);
+
+        LairEditorDialogViewModel vm = new(
+            draft, _services.Lairs, _services.RoomGraph,
+            _services.LairTimers, _services.Confirm, isNew: true);
+        await _services.Dialogs
+            .OpenWindowAsync<LairEditorDialogViewModel, Models.Profile.LairSetup?>(vm);
+    }
+
+    /// <summary>True when the user has at least one marker placed — gates the Save-as button.</summary>
+    public bool HasLairMarkers => _services.AutoLair.Marked.Count > 0;
 
     // ----- GOTO / Favorites pane ------------------------------------
 
