@@ -1,40 +1,204 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Linq;
+using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game.Events;
+using FujinTerm.Models.GameData;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Events" tab stub — scheduled / lifecycle events (Logon / Logoff /
-/// Re-log / AtTime / Every) per Phase 8. The list itself is
-/// per-character and lives on the profile. Promoted to a bespoke
-/// wired section in PR 8.3.
+/// "Events" tab — bespoke section that surfaces the per-character
+/// scheduled / lifecycle events for editing. Promoted from a stub in
+/// Phase 8 PR 8.3.
 /// </summary>
-public sealed class EventsSectionViewModel : StubSectionViewModel
+/// <remarks>
+/// <para>
+/// Renders a table of every <see cref="ScheduledEvent"/> on the
+/// loaded profile (the events themselves are owned by
+/// <see cref="EventManager"/>), plus the master "Disable all events"
+/// switch that gates <see cref="EventManager.Fire"/> regardless of
+/// per-row state.
+/// </para>
+/// <para>
+/// New / Modify wire the
+/// <see cref="ScheduledEvent"/> editor dialog in PR 8.4 — here they
+/// either create a minimal placeholder event so the user can see the
+/// table populate (New) or surface a "wiring lands in PR 8.4" notice
+/// (Modify). Remove + master switch + the auto-disabled badge are
+/// fully wired so the engine + reconciler can be smoke-tested through
+/// the UI.
+/// </para>
+/// <para>
+/// Persistence model: the events list itself persists through
+/// <see cref="EventManager.Add"/> / <c>Replace</c> / <c>Remove</c>
+/// immediately on user action — no Apply / Discard cycle. The master
+/// "Disable all events" switch is per-character and persists on
+/// every toggle. Matches the user expectation "flip the switch and
+/// walk away".
+/// </para>
+/// </remarks>
+public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
 {
+    private readonly EventManager _events;
+    private readonly ProfileService _profile;
+    private readonly LogService? _log;
+    private Control? _view;
+
     public override string Id => "events";
     public override string Title => "Events";
-    public override string PhaseTag => "Phase 8 (EventManager + Events tab promotion)";
-    public override string Description =>
-        "User-defined scheduled or lifecycle events — fire at a specific clock time, on a recurring cadence, or " +
-        "on connection-state changes. Actions include walking to a room, starting a saved loop or auto-lair setup, " +
-        "or sending a free-form command (with ^M / ; multi-fire).";
 
-    public override IReadOnlyList<StubGroup> Groups { get; } = new[]
+    /// <summary>Phase tag shown under the tab header.</summary>
+    public string PhaseTag => "Phase 8 PR 8.3 (list view + master switch + reconciliation badge) + PR 8.4 (editor dialog)";
+
+    /// <summary>Description shown under the phase tag.</summary>
+    public string Description =>
+        "User-defined scheduled or lifecycle events — fire on Logon / Logoff / Re-log, at a wall-clock time, " +
+        "or on a recurring cadence. Actions walk to a room, start a saved loop or auto-lair setup, or send a " +
+        "free-form command (with ^M / ; multi-fire).";
+
+    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>The table rows. Mirrors <see cref="EventManager.Events"/> with display formatting per row.</summary>
+    public ObservableCollection<EventRowViewModel> Rows { get; } = new();
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ModifyCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
+    private EventRowViewModel? _selectedRow;
+
+    /// <summary>
+    /// Two-way bound to <see cref="CharacterProfile.EventsGloballyDisabled"/>.
+    /// Persists on every toggle so the user doesn't have to remember to
+    /// click an Apply button on the master switch.
+    /// </summary>
+    public bool IsGloballyDisabled
     {
-        new StubGroup("Event list", new[]
+        get => _profile.Current?.EventsGloballyDisabled ?? false;
+        set
         {
-            new StubField("New event…",  StubFieldKind.Button, "Phase 8 PR 8.3 — opens the per-event editor dialog."),
-            new StubField("Edit selected…", StubFieldKind.Button, "Phase 8 PR 8.3."),
-            new StubField("Remove selected", StubFieldKind.Button, "Phase 8 PR 8.3."),
-            new StubField("Empty list — events are per-character and persist on the profile.",
-                          StubFieldKind.Note, "List preview here in PR 8.3."),
-        }),
-        // Header omitted (empty Header → StubSectionView's
-        // IsNotNullOrEmpty gate hides the SectionHeader TextBlock).
-        new StubGroup("", new[]
-        {
-            new StubField("Only fire while AFK by default", StubFieldKind.Check, "Sets the AFK-only flag on newly-created events."),
-            new StubField("Disable all events while disconnected", StubFieldKind.Check,
-                          "Pauses recurring `Every` timers on disconnect; AtTime never catches up after a missed window."),
-        }),
+            if (_profile.Current is not { } current) return;
+            if (current.EventsGloballyDisabled == value) return;
+            current.EventsGloballyDisabled = value;
+            _profile.Save();
+            OnPropertyChanged();
+        }
+    }
+
+    public override Control View => _view ??= new EventsSectionView { DataContext = this };
+
+    public override IEnumerable<string> SearchableLabels => new[]
+    {
+        "Events", "Scheduled event", "Lifecycle event",
+        "Logon", "Logoff", "Re-log", "At time", "Every",
+        "Walk to", "Loop", "Auto-lair", "Command",
+        "AFK only", "Disable all events", "Target missing",
     };
+
+    public EventsSectionViewModel()
+        : this(AppServices.Current.Events, AppServices.Current.Profile, AppServices.Current.Log) { }
+
+    public EventsSectionViewModel(EventManager events, ProfileService profile, LogService? log = null)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(profile);
+        _events = events;
+        _profile = profile;
+        _log = log;
+
+        _events.Events.CollectionChanged += OnEventsCollectionChanged;
+        _events.AutoDisabledChanged += OnAutoDisabledChanged;
+        _profile.ProfileLoaded += OnProfileLoaded;
+        _profile.ProfileClosed += OnProfileClosed;
+
+        RebuildRows();
+    }
+
+    /// <summary>
+    /// Add a placeholder event. PR 8.4 swaps this for the full
+    /// editor dialog. The placeholder is disabled by default so a
+    /// stray click can't accidentally start firing commands; the user
+    /// either Removes it or enables + hand-edits the profile JSON
+    /// until 8.4 lands.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasProfileForCommand))]
+    private void New()
+    {
+        ScheduledEvent placeholder = new()
+        {
+            Name = "(new event)",
+            TriggerType = EventTriggerType.Logon,
+            ActionType = EventActionType.Command,
+            CommandText = "look",
+            Disabled = true,
+        };
+        _events.Add(placeholder);
+        SelectedRow = Rows.LastOrDefault();
+        _log?.Info("Events", "Added placeholder event — open profile JSON to customise until PR 8.4 ships the editor.");
+    }
+
+    /// <summary>PR 8.4 wires this to the full <c>EventEditDialog</c>.</summary>
+    [RelayCommand(CanExecute = nameof(CanModifyOrRemove))]
+    private void Modify()
+    {
+        _log?.Info("Events", "Modify clicked — editor dialog ships in PR 8.4.");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanModifyOrRemove))]
+    private void Remove()
+    {
+        if (SelectedRow?.Source is not { } target) return;
+        _events.Remove(target);
+        SelectedRow = null;
+    }
+
+    private bool HasProfileForCommand() => HasProfile;
+    private bool CanModifyOrRemove() => SelectedRow is not null;
+
+    // ----- Refresh paths ---------------------------------------------
+
+    private void OnEventsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        RebuildRows();
+
+    private void OnAutoDisabledChanged()
+    {
+        // Re-flag each row's IsAutoDisabled without rebuilding the
+        // collection — keeps the user's selection stable.
+        foreach (EventRowViewModel row in Rows)
+            row.IsAutoDisabled = _events.IsAutoDisabled(row.Source);
+    }
+
+    private void OnProfileLoaded(CharacterProfile _)
+    {
+        RebuildRows();
+        OnPropertyChanged(nameof(HasProfile));
+        OnPropertyChanged(nameof(IsGloballyDisabled));
+        NewCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnProfileClosed()
+    {
+        RebuildRows();
+        OnPropertyChanged(nameof(HasProfile));
+        OnPropertyChanged(nameof(IsGloballyDisabled));
+        NewCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RebuildRows()
+    {
+        ScheduledEvent? keepSelected = SelectedRow?.Source;
+        Rows.Clear();
+        foreach (ScheduledEvent ev in _events.Events)
+            Rows.Add(new EventRowViewModel(ev, _events.IsAutoDisabled(ev)));
+        if (keepSelected is not null)
+            SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Source, keepSelected));
+    }
 }

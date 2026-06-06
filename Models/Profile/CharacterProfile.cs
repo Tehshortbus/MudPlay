@@ -78,6 +78,16 @@ public sealed class CharacterProfile
     public List<GameData.ScheduledEvent>? Events { get; set; }
 
     /// <summary>
+    /// Master "stop firing every event" switch (Phase 8 PR 8.3). When
+    /// true, <see cref="Game.Events.EventManager.Fire"/> short-circuits
+    /// for every event regardless of its own Disabled flag. Useful for
+    /// "switch off all automation for the next 10 minutes" without
+    /// un-checking every row. Persists per-character. Defaults to
+    /// false on a fresh profile.
+    /// </summary>
+    public bool EventsGloballyDisabled { get; set; }
+
+    /// <summary>
     /// Per-character keybindings for built-in app actions (toolbar +
     /// menu shortcuts). Sparse — only entries the user has overridden
     /// from the seed defaults get persisted. <see cref="Services.KeybindingStore"/>

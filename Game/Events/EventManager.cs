@@ -179,6 +179,11 @@ public sealed class EventManager
     {
         ArgumentNullException.ThrowIfNull(e);
         if (e.Disabled) return;
+        // Master switch — Settings → Events "Disable all events" gate.
+        // Per-character; checked here so the scheduler doesn't have to
+        // worry about it and tests using the parameterless ctor (no
+        // profile) keep firing.
+        if (_profile?.Current?.EventsGloballyDisabled == true) return;
 
         switch (e.ActionType)
         {
