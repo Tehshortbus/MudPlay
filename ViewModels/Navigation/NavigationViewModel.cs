@@ -243,10 +243,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
 
         // BFS the current→wait-room leg, then append the lair entry
-        // hop. RoomsAlongPath equivalent: walk the direction list
-        // through the graph and collect rooms touched.
+        // hop. Pass returnEmptyWhenAtDestination so an arrived-at-the-
+        // wait-room state still yields a renderable path (just the
+        // wait-room + the lair entry hop). Without it the line
+        // vanished the moment the walker reached the wait-room and
+        // didn't come back until phase advanced to Engaging — the
+        // user-visible "appearing and disappearing" flicker.
         IReadOnlyList<Game.Map.Direction>? dirs = _services.Bfs.FindPath(
-            current.Key, waitRoom, _services.Movement);
+            current.Key, waitRoom, _services.Movement,
+            returnEmptyWhenAtDestination: true);
         if (dirs is null)
         {
             AutoLairApproachPath = null;
