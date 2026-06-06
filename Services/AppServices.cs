@@ -1104,6 +1104,14 @@ public sealed class AppServices
         // LineExtractor by MainWindowViewModel.AttachLineExtractor.
         Death = new Game.DeathDetector(RoomTracker, Log);
 
+        // "There is no exit in that direction!" → demote tracker to
+        // Suspect so the next observation re-resolves via candidate
+        // search. Without this hook, a bonk while the tracker's
+        // model is wrong silently sticks; the user's only recourse
+        // is to walk back through a unique room to re-anchor.
+        Router.Subscribe(Services.Patterns.KnownPatterns.DirectionFailed,
+            _ => RoomTracker.NoteDirectionFailed());
+
         // HiddenExitRevealManager — walker's sea-retry loop for
         // SearchableHidden exits. Subscribes to RoomTracker.StateChanged
         // for the "exit now visible" signal. Constructed here (after

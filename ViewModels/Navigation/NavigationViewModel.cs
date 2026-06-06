@@ -2474,6 +2474,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(LoopBuilder));
             OnPropertyChanged(nameof(IsLoopBuilding));
         }
+        // Exit AutoLair build mode too — previously StopAll stopped
+        // the scheduler but left CurrentMode == AutoLair, forcing the
+        // user to click Stop a second time to actually return to
+        // Idle.  Now one click does it.  Markers stay around so a
+        // quick Run is still cheap; the user explicitly toggles the
+        // Lair chip to discard them.
+        if (CurrentMode == NavigationMode.AutoLair)
+            CurrentMode = NavigationMode.Idle;
         _loopBuilderOpenedByPause = false;
     }
 

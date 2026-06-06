@@ -122,6 +122,34 @@ public sealed class RoomTracker
         State.LastUpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// Server reported "There is no exit in that direction!" for the
+    /// last attempted move. Strong signal that the tracker's model of
+    /// the current room may be wrong — if we were Confirmed, demote
+    /// to Suspect so the next room observation runs through
+    /// candidate search and re-anchors us if a unique match exists.
+    /// </summary>
+    /// <remarks>
+    /// The server doesn't tell us WHICH direction failed in the
+    /// message itself, only that the most recent attempt did. We
+    /// don't have a reliable "what direction did the user just type"
+    /// hook (the OutboundMovementObserver announces cardinal sends
+    /// but the failed direction may be one of several pending in
+    /// the queue). So we conservatively demote on any
+    /// direction-failed reply while Confirmed — the next observation
+    /// resolves cheaply via candidate search.
+    /// </remarks>
+    public void NoteDirectionFailed(DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        if (State.Confidence != RoomConfidence.Confirmed) return;
+        if (State.CurrentRoom is null) return;
+        // Drop the oldest in-flight cardinal — server rejected it. If
+        // there are no pending moves, leave the queue alone.
+        _pending.TryDequeue(out _);
+        EnterSuspect(when, "direction failed reply observed");
+    }
+
     // ----- profile hydrate / save -------------------------------------
 
     /// <summary>
