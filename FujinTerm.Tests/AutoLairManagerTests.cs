@@ -7,6 +7,15 @@ using Xunit;
 
 namespace FujinTerm.Tests;
 
+/// <summary>
+/// PR 7.19 — AutoLairManager session control (Mark / Unmark / Override /
+/// Start / Stop) + integration with the scheduler. Headless: drives the
+/// graph + tracker directly, no Telnet socket. State-machine progression
+/// past Approaching needs DispatcherTimer ticks, which xUnit doesn't
+/// pump — those transitions are exercised in the scheduler unit tests
+/// (PR 7.19 first-half) instead. Here we pin the marker store, the
+/// Start refusal gates, and the initial Approaching dispatch.
+/// </summary>
 public sealed class AutoLairManagerTests : IDisposable
 {
     private readonly string _root;
@@ -23,7 +32,9 @@ public sealed class AutoLairManagerTests : IDisposable
         catch { /* best-effort */ }
     }
 
-    // 1/1 ↔ 1/2 ↔ 1/3 linear strip.
+    // 1/1 ↔ 1/2 ↔ 1/3 linear strip. 1/3 carries a lair tag so the
+    // timer store has something to resolve against; 1/1 stays a plain
+    // room used as the start-position + alternate marker.
     private const string GraphJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "A",
@@ -35,10 +46,14 @@ public sealed class AutoLairManagerTests : IDisposable
             "N": "1/3", "S": "1/1", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 3, "Name": "C",
-            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "Light": 0, "Shop": 0, "Lair": "[1-1-1][1]Group(lair): 1/3", "Delay": 0,
             "N": "0", "S": "1/2", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
+        """;
+
+    private const string LairsJson = """
+        [ { "GroupIndex": "1-1-1", "AvgDelay": 5 } ]
         """;
 
     private sealed class Harness : IDisposable
@@ -46,13 +61,19 @@ public sealed class AutoLairManagerTests : IDisposable
         public required RoomTracker Tracker { get; init; }
         public required AutoWalkManager Walker { get; init; }
         public required AutoLairManager Roam { get; init; }
-        public void Dispose() => Roam.Dispose();
+        public required LairTimerStore Timers { get; init; }
+        public void Dispose()
+        {
+            Roam.Dispose();
+            Timers.Dispose();
+        }
     }
 
     private Harness NewHarness()
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Lairs.json"), LairsJson);
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
         RoomGraphManager graph = new(cache);
@@ -62,14 +83,24 @@ public sealed class AutoLairManagerTests : IDisposable
         MovementCoordinator coord = new();
         AutoWalkManager walker = new(graph, bfs, tracker, coord);
         walker.SetWireSender(_ => { });
-        AutoLairManager roam = new(walker, tracker);
-        return new Harness { Tracker = tracker, Walker = walker, Roam = roam };
+        LairTimerStore timers = new(cache, graph, tracker);
+        AutoLairManager roam = new(walker, tracker, graph, bfs, timers);
+        return new Harness
+        {
+            Tracker = tracker,
+            Walker = walker,
+            Roam = roam,
+            Timers = timers,
+        };
     }
+
+    // ----- marker CRUD ----------------------------------------------
 
     [Fact]
     public void Fresh_NotActive_NoMarks()
     {
         using Harness h = NewHarness();
+        Assert.Equal(AutoLairPhase.Idle, h.Roam.Phase);
         Assert.False(h.Roam.IsActive);
         Assert.Empty(h.Roam.Marked);
     }
@@ -110,7 +141,54 @@ public sealed class AutoLairManagerTests : IDisposable
     }
 
     [Fact]
-    public void Start_FewerThanTwoMarks_RefusesToStart()
+    public void Mark_WithOverride_PersistsAndRetrievable()
+    {
+        using Harness h = NewHarness();
+        h.Roam.Mark(new RoomKey(1, 3), overrideRespawnSeconds: 120);
+
+        Assert.True(h.Roam.IsMarked(new RoomKey(1, 3)));
+        Assert.Equal(120, h.Roam.GetOverride(new RoomKey(1, 3)));
+    }
+
+    [Fact]
+    public void SetOverride_OnExistingMarker_Updates()
+    {
+        using Harness h = NewHarness();
+        h.Roam.Mark(new RoomKey(1, 3));
+        h.Roam.SetOverride(new RoomKey(1, 3), 999);
+
+        Assert.Equal(999, h.Roam.GetOverride(new RoomKey(1, 3)));
+    }
+
+    [Fact]
+    public void SetOverride_OnUnknownKey_NoOp()
+    {
+        using Harness h = NewHarness();
+        h.Roam.SetOverride(new RoomKey(9, 9), 100);
+
+        Assert.False(h.Roam.IsMarked(new RoomKey(9, 9)));
+        Assert.Null(h.Roam.GetOverride(new RoomKey(9, 9)));
+    }
+
+    [Fact]
+    public void Clear_RemovesAllMarkers()
+    {
+        using Harness h = NewHarness();
+        h.Roam.Mark(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 3));
+        int fires = 0;
+        h.Roam.MarkedChanged += () => fires++;
+
+        h.Roam.Clear();
+
+        Assert.Empty(h.Roam.Marked);
+        Assert.Equal(1, fires);
+    }
+
+    // ----- Start gates ----------------------------------------------
+
+    [Fact]
+    public void Start_FewerThanTwoMarks_Refuses()
     {
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
@@ -121,7 +199,7 @@ public sealed class AutoLairManagerTests : IDisposable
     }
 
     [Fact]
-    public void Start_NoCurrentRoom_RefusesToStart()
+    public void Start_NoCurrentRoom_Refuses()
     {
         using Harness h = NewHarness();
         h.Roam.Mark(new RoomKey(1, 1));
@@ -131,9 +209,14 @@ public sealed class AutoLairManagerTests : IDisposable
         Assert.False(h.Roam.IsActive);
     }
 
+    // ----- Start dispatch ------------------------------------------
+
     [Fact]
-    public void Start_DispatchesAWalkLeg()
+    public void Start_DispatchesToWaitRoomNotLair()
     {
+        // 1/3 is the lair (per RawLairTag); 1/1 + 1/3 are markers.
+        // From 1/1 the scheduler picks 1/3 → wait-room is 1/2 (the
+        // hop before 1/3). Walker should be heading to 1/2, NOT 1/3.
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Roam.Mark(new RoomKey(1, 1));
@@ -141,31 +224,29 @@ public sealed class AutoLairManagerTests : IDisposable
 
         Assert.True(h.Roam.Start());
         Assert.True(h.Roam.IsActive);
-
-        // Walker should be heading to a marked room other than current.
+        Assert.Equal(AutoLairPhase.Approaching, h.Roam.Phase);
+        Assert.Equal(new RoomKey(1, 3), h.Roam.CurrentTarget);
+        Assert.Equal(new RoomKey(1, 2), h.Roam.CurrentWaitRoom);
         Assert.Equal(WalkState.Walking, h.Walker.State);
-        Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
+        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
     }
 
     [Fact]
-    public void OnLegFinished_DispatchesNextLeg()
+    public void Start_DecisionRecordedForBottomStrip()
     {
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Roam.Mark(new RoomKey(1, 1));
         h.Roam.Mark(new RoomKey(1, 3));
+
         h.Roam.Start();
 
-        // Confirm leg arrival: tracker says we're at 1/3 now.
-        h.Tracker.NoteRoomObserved(new RoomObservation("B",
-            new HashSet<Direction> { Direction.N, Direction.S }));
-        h.Tracker.NoteRoomObserved(new RoomObservation("C",
-            new HashSet<Direction> { Direction.S }));
-
-        // Walker should pick the only other marked room (1/1).
-        Assert.True(h.Roam.IsActive);
-        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+        Assert.NotNull(h.Roam.LastDecision);
+        Assert.Equal(new RoomKey(1, 3), h.Roam.LastDecision!.Lair);
+        Assert.Equal(new RoomKey(1, 2), h.Roam.LastDecision.WaitRoom);
     }
+
+    // ----- Stop -----------------------------------------------------
 
     [Fact]
     public void Stop_DeactivatesAndCancelsWalker()
@@ -180,6 +261,10 @@ public sealed class AutoLairManagerTests : IDisposable
         h.Roam.Stop();
 
         Assert.False(h.Roam.IsActive);
+        Assert.Equal(AutoLairPhase.Idle, h.Roam.Phase);
+        Assert.Null(h.Roam.CurrentTarget);
+        Assert.Null(h.Roam.CurrentWaitRoom);
+        Assert.Null(h.Roam.LastDecision);
         Assert.Equal(WalkState.Idle, h.Walker.State);
     }
 
@@ -198,5 +283,21 @@ public sealed class AutoLairManagerTests : IDisposable
         h.Roam.Stop();
 
         Assert.Equal(new[] { true, false }, events);
+    }
+
+    [Fact]
+    public void PhaseChanged_FiresOnStart()
+    {
+        using Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 3));
+
+        var phases = new List<AutoLairPhase>();
+        h.Roam.PhaseChanged += p => phases.Add(p);
+
+        h.Roam.Start();
+
+        Assert.Contains(AutoLairPhase.Approaching, phases);
     }
 }

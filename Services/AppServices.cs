@@ -1201,8 +1201,11 @@ public sealed class AppServices
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
 
-        // Random-walk roam scheduler — foundation for Auto-Lair.
-        AutoLair = new Game.Map.AutoLairManager(Walker, RoomTracker, Log);
+        // Deterministic Auto-Lair scheduler — picks the next marked
+        // lair to enter based on respawn timers + travel cost, parks
+        // at a wait-room one hop short, then steps in on the tick.
+        AutoLair = new Game.Map.AutoLairManager(
+            Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
