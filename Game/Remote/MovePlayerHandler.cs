@@ -27,6 +27,7 @@ public sealed class MovePlayerHandler : IDisposable
     private readonly RemoteCommandManager _engine;
     private readonly RoomSearchService _search;
     private readonly RoomGraphManager _graph;
+    private readonly RoomTracker _tracker;
     private readonly AutoWalkManager _walker;
     private readonly LoopManager _loops;
     private readonly LoopRunner _loopRunner;
@@ -39,6 +40,7 @@ public sealed class MovePlayerHandler : IDisposable
         RemoteCommandManager engine,
         RoomSearchService search,
         RoomGraphManager graph,
+        RoomTracker tracker,
         AutoWalkManager walker,
         LoopManager loops,
         LoopRunner loopRunner,
@@ -49,6 +51,7 @@ public sealed class MovePlayerHandler : IDisposable
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(loopRunner);
@@ -58,6 +61,7 @@ public sealed class MovePlayerHandler : IDisposable
         _engine = engine;
         _search = search;
         _graph = graph;
+        _tracker = tracker;
         _walker = walker;
         _loops = loops;
         _loopRunner = loopRunner;
@@ -321,7 +325,11 @@ public sealed class MovePlayerHandler : IDisposable
         }
         if (_autoLair.IsActive) _autoLair.Pause();
         else _coordinator.AssertGate(MovementCoordinator.UserGate);
-        ctx.Reply("movement paused");
+
+        string here = DescribeCurrentRoom();
+        ctx.Reply(here.Length > 0
+            ? $"movement paused, I'm in {here}"
+            : "movement paused");
     }
 
     /// <summary>
@@ -336,19 +344,68 @@ public sealed class MovePlayerHandler : IDisposable
     /// </summary>
     private void OnRego(RemoteCommandContext ctx)
     {
+        // Capture the "what's running" description BEFORE the resume
+        // call — the coordinator's gate clear may transition the
+        // walker / LoopRunner from Paused back to Walking / Running
+        // immediately, after which the activity description (which
+        // gates on Walking / Running states) becomes a no-op.
         if (_autoLair.IsActive && _autoLair.IsPaused)
         {
+            string what = DescribePausedAutoLair();
             _autoLair.Resume();
-            ctx.Reply("movement resumed");
+            ctx.Reply($"resuming {what}");
             return;
         }
         if (_coordinator.IsPaused)
         {
+            string what = DescribePausedLoopOrWalker();
             _coordinator.ClearGate(MovementCoordinator.UserGate);
-            ctx.Reply("movement resumed");
+            ctx.Reply($"resuming {what}");
             return;
         }
         ctx.Reply(DescribeActivity() ?? "nothing to resume");
+    }
+
+    /// <summary>
+    /// Render the tracker's current room as <c>"Room Name (m/r)"</c>
+    /// for inclusion in chat replies. Returns empty string when the
+    /// tracker has no settled room (Lost / Pending pre-arrival) so the
+    /// caller can fall back to a bare reply.
+    /// </summary>
+    private string DescribeCurrentRoom()
+    {
+        if (_tracker.State.CurrentRoom is not { } here) return string.Empty;
+        return $"{here.DisplayName} ({here.Key.Map}/{here.Key.Room})";
+    }
+
+    /// <summary>
+    /// Reply phrase for an @rego that resumes a paused Auto-Lair.
+    /// Auto-Lair doesn't carry the originating setup name forward, so
+    /// fall back to the marker count.
+    /// </summary>
+    private string DescribePausedAutoLair() =>
+        $"auto-lair ({_autoLair.Marked.Count} lairs)";
+
+    /// <summary>
+    /// Reply phrase for an @rego that clears the coordinator gate. The
+    /// gate covers two engines — pick LoopRunner over Walker because a
+    /// loop owns the wire while the walker only handles its approach
+    /// leg, so "loop X" is the user-visible activity.
+    /// </summary>
+    private string DescribePausedLoopOrWalker()
+    {
+        if (_loopRunner.State is LoopState.Paused
+            && _loopRunner.CurrentLoop is { } loop)
+        {
+            return $"loop '{loop.Name}'";
+        }
+        if (_walker.State is WalkState.Paused
+            && _walker.Destination is { } dest)
+        {
+            string name = _graph.GetRoom(dest)?.DisplayName ?? "?";
+            return $"walking to {name} ({dest.Map}/{dest.Room})";
+        }
+        return "movement";
     }
 
     /// <summary>

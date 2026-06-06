@@ -1251,7 +1251,7 @@ public sealed class AppServices
         // gate ensures only players the user has granted MovePlayer
         // can issue these.
         MoveRemote = new Game.Remote.MovePlayerHandler(
-            RemoteCommands, RoomSearch, RoomGraph, Walker, Loops, LoopRunner,
+            RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
             Lairs, AutoLair, MovementCoordinator);
 
         // Always start with a blank draft. Auto-loading the most recently used
