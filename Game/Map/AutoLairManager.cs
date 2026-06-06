@@ -396,6 +396,23 @@ public sealed class AutoLairManager : IDisposable
             && prev.WaitRoom.Equals(pick.WaitRoom);
         if (Phase == AutoLairPhase.Waiting && targetUnchanged) return;
 
+        // Same-target tick during Approaching with the walker already
+        // headed for our wait-room — let it keep walking. Re-issuing
+        // WalkTo would call walker.Stop("superseded") + restart, which
+        // fires Stopped → our handler clears CurrentTarget mid-walk →
+        // RefreshAutoLairApproachPath nulls the orange line for a
+        // frame, producing the user-visible blink between every
+        // scheduler tick. This guard makes the same-target case a
+        // no-op so the walk runs uninterrupted.
+        if (Phase == AutoLairPhase.Approaching
+            && targetUnchanged
+            && _walker.State == WalkState.Walking
+            && _walker.Destination is { } currentDest
+            && currentDest.Equals(pick.WaitRoom))
+        {
+            return;
+        }
+
         LastDecision = pick;
 
         // Phase-specific dispatch.

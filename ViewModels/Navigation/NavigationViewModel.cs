@@ -216,6 +216,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(AutoLairPhaseLabel));
         OnPropertyChanged(nameof(AutoLairStatusText));
+        OnPropertyChanged(nameof(TopBarStatusText));
         // Target switch reorders the map overlay (active target = #1).
         RefreshAutoLairMarkedKeys();
         RefreshAutoLairApproachPath();
@@ -283,6 +284,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RunStopLabel));
         OnPropertyChanged(nameof(AutoLairPhaseLabel));
         OnPropertyChanged(nameof(AutoLairStatusText));
+        OnPropertyChanged(nameof(TopBarStatusText));
     }
 
     /// <summary>
@@ -2062,8 +2064,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 case NavigationEngineKind.AutoLair:
                 {
+                    // Surface the same phase + target detail that used
+                    // to live in the bottom strip — the strip's gone
+                    // during active runs, so all the running-state info
+                    // now rides next to the top-left AUTO-LAIR badge.
                     int n = _services.AutoLair.Marked.Count;
-                    return $"cycling {n} marked lair{(n == 1 ? "" : "s")}";
+                    string countLabel = $"cycling {n} marked lair{(n == 1 ? "" : "s")}";
+                    if (_services.AutoLair.IsPaused) return $"{countLabel} · paused";
+                    if (AutoLairStatusText is { Length: > 0 } status)
+                        return $"{AutoLairPhaseLabel} · {status}";
+                    return countLabel;
                 }
                 default:
                 {
