@@ -226,10 +226,22 @@ public sealed class MovePlayerHandler : IDisposable
     /// <see cref="AutoLairManager.Pause"/> so its internal timers stop
     /// and the IsPaused flag flips for the UI.</item>
     /// </list>
+    /// Idempotent: a second @stop while already paused replies
+    /// "already @stopped" so the sender knows the prior pause held.
     /// </summary>
     private void OnStop(RemoteCommandContext ctx)
     {
-        if (_autoLair.IsActive && !_autoLair.IsPaused) _autoLair.Pause();
+        if (_autoLair.IsActive && _autoLair.IsPaused)
+        {
+            ctx.Reply("already @stopped");
+            return;
+        }
+        if (_coordinator.IsPaused)
+        {
+            ctx.Reply("already @stopped");
+            return;
+        }
+        if (_autoLair.IsActive) _autoLair.Pause();
         else _coordinator.AssertGate(MovementCoordinator.UserGate);
         ctx.Reply("movement paused");
     }
@@ -240,12 +252,53 @@ public sealed class MovePlayerHandler : IDisposable
     /// pause, so its respawn-aware re-evaluation runs (in-game timers
     /// kept ticking through the stop window — the original target may
     /// no longer be the best pick). Otherwise just clear the gate.
+    /// If nothing is paused, reply with what we're already doing
+    /// (or "nothing to resume") so the sender doesn't assume the
+    /// command worked when it was a no-op.
     /// </summary>
     private void OnRego(RemoteCommandContext ctx)
     {
-        if (_autoLair.IsActive && _autoLair.IsPaused) _autoLair.Resume();
-        else _coordinator.ClearGate(MovementCoordinator.UserGate);
-        ctx.Reply("movement resumed");
+        if (_autoLair.IsActive && _autoLair.IsPaused)
+        {
+            _autoLair.Resume();
+            ctx.Reply("movement resumed");
+            return;
+        }
+        if (_coordinator.IsPaused)
+        {
+            _coordinator.ClearGate(MovementCoordinator.UserGate);
+            ctx.Reply("movement resumed");
+            return;
+        }
+        ctx.Reply(DescribeActivity() ?? "nothing to resume");
+    }
+
+    /// <summary>
+    /// One-line description of the currently-running engine, in
+    /// precedence order AutoLair → LoopRunner → Walker (because the
+    /// upper engines drive the lower ones — describing "walking to X"
+    /// while a loop owns the wire is misleading). Returns null when
+    /// nothing is running.
+    /// </summary>
+    private string? DescribeActivity()
+    {
+        if (_autoLair.IsActive)
+            return $"auto-lair already running ({_autoLair.Marked.Count} lairs)";
+
+        if (_loopRunner.State is not LoopState.Idle
+            && _loopRunner.CurrentLoop is { } loop)
+        {
+            return $"loop '{loop.Name}' already running";
+        }
+
+        if (_walker.State is WalkState.Walking
+            && _walker.Destination is { } dest)
+        {
+            string name = _graph.GetRoom(dest)?.DisplayName ?? "?";
+            return $"already walking to {name} ({dest.Map}/{dest.Room})";
+        }
+
+        return null;
     }
 
     /// <summary>
