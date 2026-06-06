@@ -361,9 +361,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAvoidedChanged()
     {
         AvoidedRooms = new HashSet<RoomKey>(_services.Movement.Avoided);
-        // Distances are computed against the avoid filter — flush so
-        // the next keystroke recomputes against the new avoided set.
-        InvalidateDistanceCache();
+        // RoomSearchService subscribes to MovementFilter.AvoidedChanged
+        // directly and flushes its own distance cache.
     }
 
     private void OnLoopRunnerEvent(LoopEvent _)
@@ -650,18 +649,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Substring search expands across three input dialects:
-    /// <list type="number">
-    /// <item>Coordinate input — <c>"1/123"</c>, <c>"1,123"</c>, or
-    /// <c>"1 123"</c> resolves to a specific (map, room); a bare
-    /// number lists every room with that room number across all maps.</item>
-    /// <item>Room name — substring against <see cref="Room.Name"/> /
-    /// <see cref="Room.DisplayName"/>.</item>
-    /// <item>Monster name — substring against any monster in
-    /// <c>Monsters.json</c> whose <c>RegenTime</c> > 0. For each match,
-    /// emit one row per lair-room that hosts the monster, with the
-    /// monster name (+ regen window) as the row's primary line.</item>
-    /// </list>
+    /// Repopulate <see cref="SearchResults"/> from <paramref name="query"/>.
+    /// Resolution + monster lookup + step distance come from the shared
+    /// <see cref="RoomSearchService"/>; this method's only job is to
+    /// hand the cap-50 ordered list into the observable collection the
+    /// dropdown binds to.
     /// </summary>
     private void RebuildSearchResults(string query)
     {
@@ -671,257 +663,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         string needle = query?.Trim() ?? string.Empty;
         if (needle.Length < 1) { OnPropertyChanged(nameof(HasSearchResults)); return; }
 
-        RoomKey? sourceKey = CurrentRoomKey;
-        List<RoomSearchResult> matches = new();
+        // Cap 200 internally; we only display 50 to keep the dropdown
+        // scannable. Larger cap gives the sort more candidates to pull
+        // the best 50 closest-first from.
+        IReadOnlyList<RoomSearchResult> matches =
+            _services.RoomSearch.Search(needle, CurrentRoomKey, cap: 200);
 
-        // ----- Coordinate input -----
-        // "1/123" / "1,123" / "1 123" → exact (map, room) lookup.
-        // Bare "123" → every room with Room == 123 across all maps.
-        (int? mapPart, int? roomPart) = TryParseCoordinate(needle);
-        if (mapPart is int m && roomPart is int r)
-        {
-            if (Graph.GetRoom(new RoomKey(m, r)) is { } exact
-                && !_services.RoomBlacklist.IsBlacklisted(exact.Key))
-            {
-                matches.Add(BuildRoomMatch(exact, sourceKey));
-            }
-        }
-        else if (mapPart is null && roomPart is int onlyRoom)
-        {
-            foreach (Room room in Graph.Rooms)
-            {
-                if (room.Key.Room != onlyRoom) continue;
-                if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
-                matches.Add(BuildRoomMatch(room, sourceKey));
-                if (matches.Count >= 200) break;
-            }
-        }
-
-        // ----- Room-name substring (skip if needle < 2 chars to avoid
-        //       O(rooms) noise on a single character). -----
-        if (needle.Length >= 2)
-        {
-            foreach (Room room in Graph.Rooms)
-            {
-                if (_services.RoomBlacklist.IsBlacklisted(room.Key)) continue;
-                if (!room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                 && !room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                // Don't double-list if the coordinate branch already
-                // surfaced this exact room.
-                if (matches.Any(x => x.MonsterTag is null && x.Key.Equals(room.Key))) continue;
-                matches.Add(BuildRoomMatch(room, sourceKey));
-                if (matches.Count >= 200) break;
-            }
-        }
-
-        // ----- Monster-name substring (regen > 0 only). -----
-        if (needle.Length >= 2)
-        {
-            foreach ((int monsterId, string name, int regenHours)
-                     in EnumerateRegenMonsters())
-            {
-                if (matches.Count >= 200) break;
-                if (!name.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
-                string monsterTag = $"{name} · regen {regenHours}h";
-
-                // Unique bosses (GameLimit=1, etc.) often carry a
-                // regen timer without any lair-tag reference — they
-                // spawn via game-side script not captured in our
-                // data. Still surface them so the user sees that the
-                // monster exists; the row is informational (no key,
-                // click is a no-op). When lair rooms ARE known, emit
-                // one walkable row per (monster, lair) pair.
-                if (!RoomsByMonsterId().TryGetValue(monsterId, out List<RoomKey>? lairs)
-                    || lairs.Count == 0)
-                {
-                    matches.Add(new RoomSearchResult(
-                        Key:               new RoomKey(0, 0),
-                        Name:              string.Empty,
-                        StepsFromCurrent:  null,
-                        MonsterTag:        monsterTag));
-                    continue;
-                }
-
-                foreach (RoomKey lk in lairs)
-                {
-                    if (_services.RoomBlacklist.IsBlacklisted(lk)) continue;
-                    if (Graph.GetRoom(lk) is not { } lroom) continue;
-                    int? steps = sourceKey is { } src ? DistanceFromCached(src, lroom.Key) : null;
-                    matches.Add(new RoomSearchResult(lroom.Key, lroom.DisplayName, steps, monsterTag));
-                    if (matches.Count >= 200) break;
-                }
-            }
-        }
-
-        foreach (RoomSearchResult mm in matches
-                     // Monster matches sit alongside room matches; sort
-                     // both by step distance (closer-first) then by the
-                     // primary line for a stable read.
-                     .OrderBy(mm => mm.StepsFromCurrent ?? int.MaxValue)
-                     .ThenBy(mm => mm.PrimaryLine, StringComparer.OrdinalIgnoreCase)
-                     .Take(50))
-        {
+        foreach (RoomSearchResult mm in matches.Take(50))
             SearchResults.Add(mm);
-        }
         OnPropertyChanged(nameof(HasSearchResults));
     }
 
-    private RoomSearchResult BuildRoomMatch(Room room, RoomKey? sourceKey)
-    {
-        int? steps = sourceKey is { } src ? DistanceFromCached(src, room.Key) : null;
-        return new RoomSearchResult(room.Key, room.DisplayName, steps);
-    }
-
-    // Single-source distances from the current room, cached. Replaces
-    // the per-match DistanceBetween calls (each = one full BFS) with
-    // one BFS per current-room change + O(1) lookups per match. Big
-    // win when the search box returns 50+ matches per keystroke.
-    private RoomKey? _distanceCacheSource;
-    private IReadOnlyDictionary<RoomKey, int>? _distanceCache;
-
-    private int? DistanceFromCached(RoomKey source, RoomKey destination)
-    {
-        if (_distanceCache is null || _distanceCacheSource is not { } cs || !cs.Equals(source))
-        {
-            _distanceCache = _services.Bfs.ComputeDistancesFrom(source, _services.Movement);
-            _distanceCacheSource = source;
-        }
-        return _distanceCache.TryGetValue(destination, out int d) ? d : (int?)null;
-    }
-
-    private void InvalidateDistanceCache()
-    {
-        _distanceCache = null;
-        _distanceCacheSource = null;
-    }
-
-    /// <summary>
-    /// Parse a coordinate token. Returns <c>(map, room)</c> when both
-    /// numbers were supplied, <c>(null, room)</c> for a bare single
-    /// number, or <c>(null, null)</c> for non-numeric input.
-    /// </summary>
-    private static (int? Map, int? Room) TryParseCoordinate(string needle)
-    {
-        // Strip surrounding parens / dash so "(1/123) - X" or "1/123" both
-        // parse cleanly when the user types the canonical room format.
-        string s = needle.Trim().TrimStart('(').TrimEnd(')').Trim();
-        int dashIdx = s.IndexOf('-');
-        if (dashIdx > 0) s = s[..dashIdx].Trim();
-
-        string[] parts = s.Split(new[] { ' ', ',', '/' },
-            2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (parts.Length == 2
-            && int.TryParse(parts[0], out int m) && m > 0
-            && int.TryParse(parts[1], out int r) && r > 0)
-            return (m, r);
-
-        if (parts.Length == 1
-            && int.TryParse(parts[0], out int n) && n > 0)
-            return (null, n);
-
-        return (null, null);
-    }
-
-    // ----- Monster-regen index --------------------------------------
-
-    private List<(int Id, string Name, int RegenHours)>? _regenMonsterCache;
-    private Dictionary<int, List<RoomKey>>? _roomsByMonsterIdCache;
-
-    private IEnumerable<(int Id, string Name, int RegenHours)> EnumerateRegenMonsters()
-    {
-        if (_regenMonsterCache is not null) return _regenMonsterCache;
-
-        List<(int, string, int)> list = new();
-        System.Text.Json.JsonDocument? doc = _services.GameData.GetRawTable("Monsters");
-        if (doc is null) { _regenMonsterCache = list; return list; }
-
-        foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
-        {
-            if (!row.TryGetProperty("RegenTime", out System.Text.Json.JsonElement regenEl)) continue;
-            if (regenEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
-            if (!regenEl.TryGetInt32(out int regen) || regen <= 0) continue;
-            if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)
-                || numEl.ValueKind != System.Text.Json.JsonValueKind.Number
-                || !numEl.TryGetInt32(out int id)) continue;
-            if (!row.TryGetProperty("Name", out System.Text.Json.JsonElement nameEl)
-                || nameEl.ValueKind != System.Text.Json.JsonValueKind.String) continue;
-            string? name = nameEl.GetString();
-            if (string.IsNullOrEmpty(name)) continue;
-            list.Add((id, name, regen));
-        }
-        _regenMonsterCache = list;
-        return list;
-    }
-
-    private Dictionary<int, List<RoomKey>> RoomsByMonsterId()
-    {
-        if (_roomsByMonsterIdCache is not null) return _roomsByMonsterIdCache;
-        Dictionary<int, List<RoomKey>> map = new();
-        if (Graph is null) { _roomsByMonsterIdCache = map; return map; }
-
-        // Source 1: room.RawLairTag — monster ids listed in each
-        // room's lair string.
-        foreach (Room room in Graph.Rooms)
-        {
-            if (string.IsNullOrEmpty(room.RawLairTag)) continue;
-            RoomTooltipBuilder.ParseLairTag(room.RawLairTag, out _, out IReadOnlyList<int> ids);
-            foreach (int id in ids) AddMonsterRoom(map, id, room.Key);
-        }
-
-        // Source 2: Monsters.json "Summoned By" — fixed boss / script
-        // spawns whose room placement lives on the monster record
-        // rather than the room's lair tag. Field examples:
-        //   "Room 10/271, Group: 10/271"
-        //   "Room 1/101, Room 1/224, Room 1/297"
-        //   "[16-8-8][5]Group(lair): 10/159"
-        //   "Group: 2/2551,Group: 2/2564,Group: 2/2569"
-        // Bracketed Lairs.json GroupIndex tokens use '-' between
-        // numbers; only the room references use '/'. Matching every
-        // "<digits>/<digits>" sweeps in every spawn site regardless
-        // of the surrounding label.
-        System.Text.Json.JsonDocument? doc = _services.GameData.GetRawTable("Monsters");
-        if (doc is not null)
-        {
-            foreach (System.Text.Json.JsonElement row in doc.RootElement.EnumerateArray())
-            {
-                if (!row.TryGetProperty("Number", out System.Text.Json.JsonElement numEl)
-                    || numEl.ValueKind != System.Text.Json.JsonValueKind.Number
-                    || !numEl.TryGetInt32(out int id)) continue;
-                if (!row.TryGetProperty("Summoned By", out System.Text.Json.JsonElement summonEl)
-                    || summonEl.ValueKind != System.Text.Json.JsonValueKind.String) continue;
-                string? text = summonEl.GetString();
-                if (string.IsNullOrEmpty(text)) continue;
-                foreach (System.Text.RegularExpressions.Match m
-                         in s_summonedRoomRegex.Matches(text))
-                {
-                    if (!int.TryParse(m.Groups[1].Value, out int mn) || mn <= 0) continue;
-                    if (!int.TryParse(m.Groups[2].Value, out int rn) || rn <= 0) continue;
-                    AddMonsterRoom(map, id, new RoomKey(mn, rn));
-                }
-            }
-        }
-
-        _roomsByMonsterIdCache = map;
-        return map;
-    }
-
-    private static void AddMonsterRoom(Dictionary<int, List<RoomKey>> map, int monsterId, RoomKey key)
-    {
-        if (!map.TryGetValue(monsterId, out List<RoomKey>? rooms))
-            map[monsterId] = rooms = new List<RoomKey>();
-        if (!rooms.Contains(key)) rooms.Add(key);
-    }
-
-    private static readonly System.Text.RegularExpressions.Regex s_summonedRoomRegex
-        = new(@"(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    private void InvalidateMonsterSearchCaches()
-    {
-        _regenMonsterCache = null;
-        _roomsByMonsterIdCache = null;
-    }
+    // Coordinate parsing, monster index, regen-monster cache, and
+    // per-source distance cache all live in the shared
+    // RoomSearchService now (Services.RoomSearchService). Cache
+    // invalidation on graph/game-data swap is handled there too.
 
     [RelayCommand]
     private void SelectSearchResult(RoomSearchResult? result)
@@ -1872,8 +1628,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private void OnGraphReloaded()
     {
-        InvalidateMonsterSearchCaches();
-        InvalidateDistanceCache();
+        // RoomSearchService listens to GraphReloaded itself and flushes
+        // its monster + distance caches.
         RefreshLayout();
         RefreshTeleportRooms();
     }

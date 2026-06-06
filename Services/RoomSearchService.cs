@@ -1,0 +1,375 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using FujinTerm.Game.Map;
+using FujinTerm.ViewModels.Navigation;
+
+namespace FujinTerm.Services;
+
+/// <summary>
+/// Centralised room-search resolver. Consumed by the Navigation rail
+/// search box, the Loop / Lair editor "Add room" rows, the manual
+/// Center-on dialog, the @goto remote-command handler — anywhere the
+/// user types a free-form room reference and we have to find the
+/// matching <see cref="RoomKey"/>(s).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Resolution tiers (results from each tier accumulate; first tier
+/// with a hit doesn't block later tiers from also surfacing matches):
+/// <list type="number">
+///   <item><b>Coordinate</b> — <c>1/297</c>, <c>1,297</c>,
+///     <c>1 297</c>; bare <c>297</c> across all maps.</item>
+///   <item><b>Acronym</b> (opt-in via <see cref="Search"/>'s
+///     <c>includeAcronyms</c> flag) — "Frozen Cavern, Cave Opening" →
+///     <c>FCCO</c>. First letter of each whitespace/punctuation-
+///     delimited word, uppercased.</item>
+///   <item><b>Room-name substring</b> — case-insensitive match
+///     against <see cref="Room.Name"/> + <see cref="Room.DisplayName"/>.
+///     Requires ≥ 2 chars to avoid flooding on a single keystroke.</item>
+///   <item><b>Monster-name substring</b> — limited to monsters with
+///     <c>RegenTime &gt; 0</c> (i.e. lair-respawning mobs). One
+///     <see cref="RoomSearchResult"/> per (monster, lair-room) pair;
+///     mobs whose spawn rooms aren't recorded surface as
+///     informational rows.</item>
+/// </list>
+/// </para>
+/// <para>
+/// Caches: the regen-monster list + monster→rooms index live on the
+/// service and invalidate on
+/// <see cref="GameDataCache.ActiveSetChanged"/> +
+/// <see cref="RoomGraphManager.GraphReloaded"/>. Each call to
+/// <see cref="Search"/> consults <see cref="BfsMapper"/> for per-
+/// result step distances; those are BfsMapper's own concern to cache.
+/// </para>
+/// </remarks>
+public sealed class RoomSearchService
+{
+    private static readonly Regex SummonedRoomRegex
+        = new(@"(\d+)/(\d+)", RegexOptions.Compiled);
+
+    private readonly RoomGraphManager _graph;
+    private readonly GameDataCache _gameData;
+    private readonly BfsMapper _bfs;
+    private readonly RoomBlacklistStore _blacklist;
+    private readonly MovementFilter? _movement;
+    private readonly LogService? _log;
+
+    private List<(int Id, string Name, int RegenHours)>? _regenMonsterCache;
+    private Dictionary<int, List<RoomKey>>? _roomsByMonsterIdCache;
+    // Single-source distance cache. Each Search call reuses it when
+    // source is unchanged → one BFS per current-room change, O(1)
+    // lookups per match. Matters for the rail search box's 50+
+    // matches per keystroke.
+    private RoomKey? _distanceCacheSource;
+    private IReadOnlyDictionary<RoomKey, int>? _distanceCache;
+
+    public RoomSearchService(
+        RoomGraphManager graph,
+        GameDataCache gameData,
+        BfsMapper bfs,
+        RoomBlacklistStore blacklist,
+        MovementFilter? movement = null,
+        LogService? log = null)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(bfs);
+        ArgumentNullException.ThrowIfNull(blacklist);
+        _graph = graph;
+        _gameData = gameData;
+        _bfs = bfs;
+        _blacklist = blacklist;
+        _movement = movement;
+        _log = log;
+
+        _gameData.ActiveSetChanged += _ => InvalidateCaches();
+        _graph.GraphReloaded        += InvalidateCaches;
+        // Avoided-rooms changes flush the distance cache: BFS hop
+        // counts are filter-sensitive, so a freshly-avoided room could
+        // re-route a previously short path.
+        if (_movement is not null) _movement.AvoidedChanged += InvalidateDistanceCache;
+    }
+
+    /// <summary>
+    /// Resolve <paramref name="query"/> against the active graph.
+    /// Each tier accumulates into the returned list, deduped on
+    /// <c>(Key, MonsterTag)</c>. Results are sorted by step distance
+    /// (closer first) then by primary line.
+    /// </summary>
+    /// <param name="query">The user-typed text.</param>
+    /// <param name="source">Player's current room for step distance; pass null to skip distance.</param>
+    /// <param name="cap">Soft cap on total matches. Tiers stop accumulating once reached.</param>
+    /// <param name="includeAcronyms">Run the acronym tier (only @goto uses this).</param>
+    public IReadOnlyList<RoomSearchResult> Search(
+        string query,
+        RoomKey? source = null,
+        int cap = 200,
+        bool includeAcronyms = false)
+    {
+        List<RoomSearchResult> matches = new();
+        string needle = (query ?? string.Empty).Trim();
+        if (needle.Length == 0) return matches;
+
+        // ----- Tier 1: coordinate -----
+        (int? mapPart, int? roomPart) = TryParseCoordinate(needle);
+        if (mapPart is int m && roomPart is int r
+            && _graph.GetRoom(new RoomKey(m, r)) is { } exact
+            && !_blacklist.IsBlacklisted(exact.Key))
+        {
+            matches.Add(BuildRoomMatch(exact, source));
+        }
+        else if (mapPart is null && roomPart is int onlyRoom)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (matches.Count >= cap) break;
+                if (room.Key.Room != onlyRoom) continue;
+                if (_blacklist.IsBlacklisted(room.Key)) continue;
+                matches.Add(BuildRoomMatch(room, source));
+            }
+        }
+
+        // ----- Tier 2: acronym -----
+        if (includeAcronyms && matches.Count < cap)
+        {
+            string normalized = needle.ToUpperInvariant();
+            foreach (Room room in _graph.Rooms)
+            {
+                if (matches.Count >= cap) break;
+                if (_blacklist.IsBlacklisted(room.Key)) continue;
+                string acro = ExtractAcronym(room.DisplayName);
+                if (acro.Length == 0) continue;
+                if (!string.Equals(acro, normalized, StringComparison.Ordinal)) continue;
+                if (matches.Any(x => x.MonsterTag is null && x.Key.Equals(room.Key))) continue;
+                matches.Add(BuildRoomMatch(room, source));
+            }
+        }
+
+        // ----- Tier 3: room-name substring (≥ 2 chars) -----
+        if (needle.Length >= 2 && matches.Count < cap)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (matches.Count >= cap) break;
+                if (_blacklist.IsBlacklisted(room.Key)) continue;
+                if (!room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                 && !room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (matches.Any(x => x.MonsterTag is null && x.Key.Equals(room.Key))) continue;
+                matches.Add(BuildRoomMatch(room, source));
+            }
+        }
+
+        // ----- Tier 4: monster-name substring (regen-bearing mobs only) -----
+        if (needle.Length >= 2 && matches.Count < cap)
+        {
+            foreach ((int monsterId, string name, int regenHours)
+                     in EnumerateRegenMonsters())
+            {
+                if (matches.Count >= cap) break;
+                if (!name.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+                string monsterTag = $"{name} · regen {regenHours}h";
+
+                if (!RoomsByMonsterId().TryGetValue(monsterId, out List<RoomKey>? lairs)
+                    || lairs.Count == 0)
+                {
+                    matches.Add(new RoomSearchResult(
+                        Key:               new RoomKey(0, 0),
+                        Name:              string.Empty,
+                        StepsFromCurrent:  null,
+                        MonsterTag:        monsterTag));
+                    continue;
+                }
+
+                foreach (RoomKey lk in lairs)
+                {
+                    if (matches.Count >= cap) break;
+                    if (_blacklist.IsBlacklisted(lk)) continue;
+                    if (_graph.GetRoom(lk) is not { } lroom) continue;
+                    int? steps = source is { } src ? DistanceFrom(src, lroom.Key) : null;
+                    matches.Add(new RoomSearchResult(lroom.Key, lroom.DisplayName, steps, monsterTag));
+                }
+            }
+        }
+
+        return matches
+            .OrderBy(mm => mm.StepsFromCurrent ?? int.MaxValue)
+            .ThenBy(mm => mm.PrimaryLine, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // ----- Pure parsers (also re-exported as statics so handlers can
+    //       reuse without instantiating a service) ---------------------
+
+    /// <summary>
+    /// Parse a coordinate token. <c>1/297</c> / <c>1,297</c> /
+    /// <c>1 297</c> → (1, 297); bare <c>297</c> → (null, 297);
+    /// non-numeric → (null, null).
+    /// </summary>
+    public static (int? Map, int? Room) TryParseCoordinate(string text)
+    {
+        string[] parts = (text ?? string.Empty).Split(new[] { '/', ',', ' ', '\t' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1 && int.TryParse(parts[0], out int onlyRoom))
+            return (null, onlyRoom);
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out int map)
+            && int.TryParse(parts[1], out int room))
+            return (map, room);
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Parse a comma/semicolon-separated coordinate list — used by
+    /// @loop / @lair to consume <c>"1/224, 1/218, 1/245"</c>. Returns
+    /// null if any token fails so the caller falls back to name match.
+    /// </summary>
+    public static List<RoomKey>? TryParseCoordList(string text)
+    {
+        string[] tokens = (text ?? string.Empty).Split(new[] { ',', ';' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length < 1) return null;
+
+        List<RoomKey> keys = new(tokens.Length);
+        foreach (string tok in tokens)
+        {
+            (int? mapPart, int? roomPart) = TryParseCoordinate(tok);
+            if (mapPart is not int m || roomPart is not int r) return null;
+            keys.Add(new RoomKey(m, r));
+        }
+        return keys;
+    }
+
+    /// <summary>
+    /// First letter of each whitespace-or-punctuation-delimited word,
+    /// uppercased. "Frozen Cavern, Cave Opening" → "FCCO".
+    /// </summary>
+    public static string ExtractAcronym(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        StringBuilder sb = new();
+        bool startOfWord = true;
+        foreach (char c in text)
+        {
+            if (char.IsLetter(c))
+            {
+                if (startOfWord) sb.Append(char.ToUpperInvariant(c));
+                startOfWord = false;
+            }
+            else
+            {
+                startOfWord = true;
+            }
+        }
+        return sb.ToString();
+    }
+
+    // ----- internals --------------------------------------------------
+
+    private RoomSearchResult BuildRoomMatch(Room room, RoomKey? sourceKey)
+    {
+        int? steps = sourceKey is { } src ? DistanceFrom(src, room.Key) : null;
+        return new RoomSearchResult(room.Key, room.DisplayName, steps);
+    }
+
+    private int? DistanceFrom(RoomKey source, RoomKey destination)
+    {
+        if (_distanceCacheSource is not { } cached || !cached.Equals(source))
+        {
+            _distanceCache = _bfs.ComputeDistancesFrom(source, _movement);
+            _distanceCacheSource = source;
+        }
+        return _distanceCache!.TryGetValue(destination, out int hops) ? hops : null;
+    }
+
+    private void InvalidateCaches()
+    {
+        _regenMonsterCache = null;
+        _roomsByMonsterIdCache = null;
+        InvalidateDistanceCache();
+        _log?.Debug("RoomSearch", "caches invalidated (graph or game-data swap).");
+    }
+
+    private void InvalidateDistanceCache()
+    {
+        _distanceCache = null;
+        _distanceCacheSource = null;
+    }
+
+    private IEnumerable<(int Id, string Name, int RegenHours)> EnumerateRegenMonsters()
+    {
+        if (_regenMonsterCache is not null) return _regenMonsterCache;
+
+        List<(int, string, int)> list = new();
+        JsonDocument? doc = _gameData.GetRawTable("Monsters");
+        if (doc is null) { _regenMonsterCache = list; return list; }
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("RegenTime", out JsonElement regenEl)) continue;
+            if (regenEl.ValueKind != JsonValueKind.Number) continue;
+            if (!regenEl.TryGetInt32(out int regen) || regen <= 0) continue;
+            if (!row.TryGetProperty("Number", out JsonElement numEl)
+                || numEl.ValueKind != JsonValueKind.Number
+                || !numEl.TryGetInt32(out int id)) continue;
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)
+                || nameEl.ValueKind != JsonValueKind.String) continue;
+            string? name = nameEl.GetString();
+            if (string.IsNullOrEmpty(name)) continue;
+            list.Add((id, name, regen));
+        }
+        _regenMonsterCache = list;
+        return list;
+    }
+
+    private Dictionary<int, List<RoomKey>> RoomsByMonsterId()
+    {
+        if (_roomsByMonsterIdCache is not null) return _roomsByMonsterIdCache;
+        Dictionary<int, List<RoomKey>> map = new();
+
+        // Source 1: lair tag on each room (pre-1.83 monster-list or
+        // NMR 1.83+ group reference parsed via RoomTooltipBuilder).
+        foreach (Room room in _graph.Rooms)
+        {
+            if (string.IsNullOrEmpty(room.RawLairTag)) continue;
+            RoomTooltipBuilder.ParseLairTag(room.RawLairTag, out _, out IReadOnlyList<int> ids);
+            foreach (int id in ids) AddMonsterRoom(map, id, room.Key);
+        }
+
+        // Source 2: Monsters.json "Summoned By" — boss / script spawns
+        // whose room placement lives on the monster record.
+        JsonDocument? doc = _gameData.GetRawTable("Monsters");
+        if (doc is not null)
+        {
+            foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            {
+                if (!row.TryGetProperty("Number", out JsonElement numEl)
+                    || numEl.ValueKind != JsonValueKind.Number
+                    || !numEl.TryGetInt32(out int id)) continue;
+                if (!row.TryGetProperty("Summoned By", out JsonElement summonEl)
+                    || summonEl.ValueKind != JsonValueKind.String) continue;
+                string? text = summonEl.GetString();
+                if (string.IsNullOrEmpty(text)) continue;
+                foreach (Match m in SummonedRoomRegex.Matches(text))
+                {
+                    if (!int.TryParse(m.Groups[1].Value, out int mn) || mn <= 0) continue;
+                    if (!int.TryParse(m.Groups[2].Value, out int rn) || rn <= 0) continue;
+                    AddMonsterRoom(map, id, new RoomKey(mn, rn));
+                }
+            }
+        }
+
+        _roomsByMonsterIdCache = map;
+        return map;
+    }
+
+    private static void AddMonsterRoom(Dictionary<int, List<RoomKey>> map, int monsterId, RoomKey key)
+    {
+        if (!map.TryGetValue(monsterId, out List<RoomKey>? rooms))
+            map[monsterId] = rooms = new List<RoomKey>();
+        if (!rooms.Contains(key)) rooms.Add(key);
+    }
+}

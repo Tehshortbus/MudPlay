@@ -1,47 +1,22 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Game.Remote;
 
 /// <summary>
-/// Phase 7 PR 7.23 — wires the five MovePlayer remote commands into
-/// the Navigation stack. Permission gating routes through
-/// <see cref="RemoteCommandCatalog"/> + the per-player
-/// <see cref="Models.GameData.PlayerRemoteControls.MovePlayer"/> flag.
+/// Phase 7 PR 7.23 — thin glue between the remote-command engine and
+/// the existing Navigation stack. Registers the five MovePlayer
+/// commands and routes each to the in-place services
+/// (<see cref="AutoWalkManager"/>, <see cref="LoopRunner"/>,
+/// <see cref="AutoLairManager"/>, <see cref="MovementCoordinator"/>).
+/// Resolution of free-form room references runs through the shared
+/// <see cref="RoomSearchService"/> so this handler matches the
+/// Navigation search box's behaviour 1:1 (coords / acronym / room name
+/// substring / monster name with regen timer).
 /// </summary>
-/// <remarks>
-/// Commands registered (per user direction; replaces the upstream
-/// MegaMUD @looponce / @roam, neither of which we ship):
-/// <list type="bullet">
-///   <item><b>@goto &lt;args&gt;</b> — resolve args to a room and walk
-///     there. Args can be a coordinate (<c>1/297</c>, <c>1,297</c>,
-///     bare <c>297</c>), an exact (case-insensitive) room name, or
-///     a first-letter acronym ("Frozen Cavern, Cave Opening" →
-///     <c>FCCO</c>). 1-of-1 dispatches the walker; 2-3 surfaces a
-///     "did you mean" reply listing the candidates; 4+ falls back to
-///     "too many matches". Zero matches replies with the bare
-///     "no match" line.</item>
-///   <item><b>@loop &lt;args&gt;</b> — start a loop. Args can be a
-///     saved-loop name OR a comma-separated list of map/room
-///     coordinates which the handler builds into a transient
-///     loop via <see cref="LoopManager.ExpandWaypoints"/>.</item>
-///   <item><b>@lair &lt;args&gt;</b> — same shape as @loop, but
-///     routes through the Auto-Lair stack (saved
-///     <see cref="LairManager"/> setup OR a list of marker
-///     coordinates).</item>
-///   <item><b>@stop</b> — asserts the user pause-gate on
-///     <see cref="MovementCoordinator"/>. The user gate is the same
-///     one the Run-chip Pause uses, so every existing engine
-///     (walker / LoopRunner / AutoLairManager) freezes uniformly.
-///     Stronger than <c>@wait</c>: there's no auto-expire — the
-///     user clears it explicitly via @rego or the Run chip.</item>
-///   <item><b>@rego</b> — releases the user pause-gate so whatever
-///     movement engine was running continues.</item>
-/// </list>
-/// </remarks>
 public sealed class MovePlayerHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands =
@@ -50,6 +25,7 @@ public sealed class MovePlayerHandler : IDisposable
     };
 
     private readonly RemoteCommandManager _engine;
+    private readonly RoomSearchService _search;
     private readonly RoomGraphManager _graph;
     private readonly AutoWalkManager _walker;
     private readonly LoopManager _loops;
@@ -61,6 +37,7 @@ public sealed class MovePlayerHandler : IDisposable
 
     public MovePlayerHandler(
         RemoteCommandManager engine,
+        RoomSearchService search,
         RoomGraphManager graph,
         AutoWalkManager walker,
         LoopManager loops,
@@ -70,6 +47,7 @@ public sealed class MovePlayerHandler : IDisposable
         MovementCoordinator coordinator)
     {
         ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(loops);
@@ -78,6 +56,7 @@ public sealed class MovePlayerHandler : IDisposable
         ArgumentNullException.ThrowIfNull(autoLair);
         ArgumentNullException.ThrowIfNull(coordinator);
         _engine = engine;
+        _search = search;
         _graph = graph;
         _walker = walker;
         _loops = loops;
@@ -108,105 +87,124 @@ public sealed class MovePlayerHandler : IDisposable
         _engine.RegisterHandler(command, category, handler);
     }
 
-    // ----- @goto -------------------------------------------------------
-
     private void OnGoto(RemoteCommandContext ctx)
     {
         string query = string.Join(' ', ctx.Args).Trim();
         if (query.Length == 0) { ctx.Reply("@goto requires a destination"); return; }
 
-        List<RoomMatch> matches = ResolveQuery(query);
-        switch (matches.Count)
+        // Acronyms (FCCO-style) are the only @goto-specific tier; the
+        // rest mirrors the Navigation search box behaviour.
+        IReadOnlyList<RoomSearchResult> matches = _search.Search(
+            query, source: null, cap: 50, includeAcronyms: true);
+
+        // Drop informational rows (monsters with no known lair room)
+        // — they can't be walked to.
+        List<RoomSearchResult> walkable = matches.Where(m => !m.IsInformational).ToList();
+        switch (walkable.Count)
         {
             case 0:
                 ctx.Reply($"no match for '{query}'");
                 return;
             case 1:
-                {
-                    RoomMatch m = matches[0];
-                    if (_walker.WalkTo(m.Key))
-                        ctx.Reply($"walking to {m.Label} ({m.Key.Map}/{m.Key.Room})");
-                    else
-                        ctx.Reply($"no path to {m.Label}");
-                    return;
-                }
+                DispatchGoto(ctx, walkable[0]);
+                return;
             case <= 3:
                 ctx.Reply("did you mean: " + string.Join(", ",
-                    matches.Select(m => $"{m.Label} ({m.Key.Map}/{m.Key.Room})")) + "?");
+                    walkable.Select(m => $"{m.Name} ({m.Key.Map}/{m.Key.Room})")) + "?");
                 return;
             default:
-                ctx.Reply($"too many matches ({matches.Count}) for '{query}'");
+                ctx.Reply($"too many matches ({walkable.Count}) for '{query}'");
                 return;
         }
     }
 
-    // ----- @loop -------------------------------------------------------
+    private void DispatchGoto(RemoteCommandContext ctx, RoomSearchResult match)
+    {
+        // Monster-tagged matches → walk to a neighbour, stop OUTSIDE
+        // the lair so the user doesn't trigger the spawn on arrival.
+        // Plain room matches → walk straight there.
+        if (match.MonsterTag is not null)
+        {
+            RoomKey? wait = PickNeighbour(match.Key);
+            if (wait is null)
+            {
+                ctx.Reply($"no neighbour to wait at for {match.Name}");
+                return;
+            }
+            if (_walker.WalkTo(wait.Value))
+                ctx.Reply($"walking to wait outside {match.Name} ({match.Key.Map}/{match.Key.Room})");
+            else
+                ctx.Reply($"no path to {match.Name}");
+            return;
+        }
+
+        if (_walker.WalkTo(match.Key))
+            ctx.Reply($"walking to {match.Name} ({match.Key.Map}/{match.Key.Room})");
+        else
+            ctx.Reply($"no path to {match.Name}");
+    }
+
+    /// <summary>
+    /// Pick any walkable neighbour of <paramref name="lair"/> so the
+    /// monster-search @goto can stop one room outside. First-found
+    /// wins; the walker handles BFS from current to that neighbour.
+    /// </summary>
+    private RoomKey? PickNeighbour(RoomKey lair)
+    {
+        if (_graph.GetRoom(lair) is not { } room) return null;
+        foreach (RoomExit exit in room.Exits.Values)
+        {
+            if (exit.Target.Equals(lair)) continue;
+            if (_graph.GetRoom(exit.Target) is not null) return exit.Target;
+        }
+        return null;
+    }
 
     private void OnLoop(RemoteCommandContext ctx)
     {
         string raw = string.Join(' ', ctx.Args).Trim();
         if (raw.Length == 0) { ctx.Reply("@loop requires a name or coordinate list"); return; }
 
-        // Coordinate-list path: "1/224, 1/218, 1/245" → transient loop.
-        // Mixed args (some coords, some not) fall back to name match.
-        List<RoomKey>? coords = TryParseCoordList(raw);
-        if (coords is not null && coords.Count >= 2)
+        if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
             List<LoopWaypoint> waypoints = coords.Select(k => new LoopWaypoint(k)).ToList();
-            Loop transient = new($"@loop from {ctx.Sender}", waypoints);
-            _loopRunner.Start(transient);
+            _loopRunner.Start(new Loop($"@loop from {ctx.Sender}", waypoints));
             ctx.Reply($"starting loop with {coords.Count} waypoints");
             return;
         }
 
-        // Otherwise: saved-loop name.
         Loop? saved = _loops.Loops.FirstOrDefault(l =>
             string.Equals(l.Name, raw, StringComparison.OrdinalIgnoreCase));
-        if (saved is null)
-        {
-            ctx.Reply($"no saved loop named '{raw}'");
-            return;
-        }
+        if (saved is null) { ctx.Reply($"no saved loop named '{raw}'"); return; }
         _loopRunner.Start(saved);
         ctx.Reply($"starting loop '{saved.Name}'");
     }
-
-    // ----- @lair -------------------------------------------------------
 
     private void OnLair(RemoteCommandContext ctx)
     {
         string raw = string.Join(' ', ctx.Args).Trim();
         if (raw.Length == 0) { ctx.Reply("@lair requires a name or coordinate list"); return; }
 
-        List<RoomKey>? coords = TryParseCoordList(raw);
-        if (coords is not null && coords.Count >= 2)
+        if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
             _autoLair.Clear();
             foreach (RoomKey k in coords) _autoLair.Mark(k);
-            if (_autoLair.Start())
-                ctx.Reply($"cycling {coords.Count} lairs");
-            else
-                ctx.Reply("auto-lair failed to start");
+            ctx.Reply(_autoLair.Start()
+                ? $"cycling {coords.Count} lairs"
+                : "auto-lair failed to start");
             return;
         }
 
         Models.Profile.LairSetup? setup = _lairs.Setups.FirstOrDefault(s =>
             string.Equals(s.Name, raw, StringComparison.OrdinalIgnoreCase));
-        if (setup is null)
-        {
-            ctx.Reply($"no saved lair setup named '{raw}'");
-            return;
-        }
+        if (setup is null) { ctx.Reply($"no saved lair setup named '{raw}'"); return; }
         _autoLair.Clear();
         foreach (Models.Profile.LairMarker m in setup.Markers)
             _autoLair.Mark(new RoomKey(m.Map, m.Room), m.OverrideRespawnSeconds);
-        if (_autoLair.Start())
-            ctx.Reply($"cycling setup '{setup.Name}' ({setup.MarkerCount} lairs)");
-        else
-            ctx.Reply("auto-lair failed to start");
+        ctx.Reply(_autoLair.Start()
+            ? $"cycling setup '{setup.Name}' ({setup.MarkerCount} lairs)"
+            : "auto-lair failed to start");
     }
-
-    // ----- @stop / @rego ----------------------------------------------
 
     private void OnStop(RemoteCommandContext ctx)
     {
@@ -219,137 +217,4 @@ public sealed class MovePlayerHandler : IDisposable
         _coordinator.ClearGate(MovementCoordinator.UserGate);
         ctx.Reply("movement resumed");
     }
-
-    // ----- Resolution helpers ------------------------------------------
-
-    /// <summary>
-    /// Single-query resolver shared by @goto. Tries each dialect in
-    /// order; returns the FIRST tier that yields at least one match
-    /// so a unique coordinate beats a name collision. Capped at 50
-    /// matches so a stray "1" (matching every room with Room == 1)
-    /// doesn't return thousands.
-    /// </summary>
-    private List<RoomMatch> ResolveQuery(string query)
-    {
-        const int Cap = 50;
-        string trimmed = query.Trim();
-        if (trimmed.Length == 0) return new();
-
-        // Tier 1: explicit coordinate.
-        (int? mapPart, int? roomPart) = TryParseCoordinate(trimmed);
-        if (mapPart is int m && roomPart is int r
-            && _graph.GetRoom(new RoomKey(m, r)) is { } exact)
-            return new() { new RoomMatch(exact.Key, exact.DisplayName) };
-
-        // Tier 1b: bare room number — list rooms with that Room across all maps.
-        if (mapPart is null && roomPart is int onlyRoom)
-        {
-            List<RoomMatch> hits = new();
-            foreach (Room room in _graph.Rooms)
-            {
-                if (room.Key.Room != onlyRoom) continue;
-                hits.Add(new RoomMatch(room.Key, room.DisplayName));
-                if (hits.Count >= Cap) break;
-            }
-            if (hits.Count > 0) return hits;
-        }
-
-        // Tier 2: exact (case-insensitive) name. DisplayName covers
-        // graph rooms with learned names; Name is the raw MDB string.
-        List<RoomMatch> exactMatches = new();
-        foreach (Room room in _graph.Rooms)
-        {
-            if (string.Equals(room.DisplayName, trimmed, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(room.Name, trimmed, StringComparison.OrdinalIgnoreCase))
-            {
-                exactMatches.Add(new RoomMatch(room.Key, room.DisplayName));
-                if (exactMatches.Count >= Cap) break;
-            }
-        }
-        if (exactMatches.Count > 0) return exactMatches;
-
-        // Tier 3: acronym (first letter of each word). "Frozen
-        // Cavern, Cave Opening" → "FCCO". Punctuation + non-letter
-        // separators are tokeniser delimiters.
-        string normalized = trimmed.ToUpperInvariant();
-        List<RoomMatch> acronymMatches = new();
-        foreach (Room room in _graph.Rooms)
-        {
-            string acro = ExtractAcronym(room.DisplayName);
-            if (acro.Length == 0) continue;
-            if (string.Equals(acro, normalized, StringComparison.Ordinal))
-            {
-                acronymMatches.Add(new RoomMatch(room.Key, room.DisplayName));
-                if (acronymMatches.Count >= Cap) break;
-            }
-        }
-        return acronymMatches;
-    }
-
-    /// <summary>
-    /// First letter of each whitespace-or-punctuation-delimited word,
-    /// uppercased. Empty input → empty result. Used by the @goto
-    /// acronym tier ("Frozen Cavern, Cave Opening" → "FCCO").
-    /// </summary>
-    internal static string ExtractAcronym(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
-        StringBuilder sb = new();
-        bool startOfWord = true;
-        foreach (char c in text)
-        {
-            if (char.IsLetter(c))
-            {
-                if (startOfWord) sb.Append(char.ToUpperInvariant(c));
-                startOfWord = false;
-            }
-            else
-            {
-                startOfWord = true;
-            }
-        }
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Coordinate parser mirroring the Navigation rail's search box:
-    /// "1/297", "1,297", "1 297" → (1, 297); bare "297" → (null, 297);
-    /// non-numeric → (null, null).
-    /// </summary>
-    internal static (int? Map, int? Room) TryParseCoordinate(string text)
-    {
-        string[] parts = text.Split(new[] { '/', ',', ' ', '\t' },
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 1 && int.TryParse(parts[0], out int onlyRoom))
-            return (null, onlyRoom);
-        if (parts.Length == 2
-            && int.TryParse(parts[0], out int map)
-            && int.TryParse(parts[1], out int room))
-            return (map, room);
-        return (null, null);
-    }
-
-    /// <summary>
-    /// Parse a comma-separated coordinate list like
-    /// <c>"1/224, 1/218, 1/245"</c> into <see cref="RoomKey"/>s.
-    /// Returns null when any token fails to parse OR resolve in the
-    /// graph — the caller falls back to name matching.
-    /// </summary>
-    internal static List<RoomKey>? TryParseCoordList(string text)
-    {
-        string[] tokens = text.Split(new[] { ',', ';' },
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokens.Length < 1) return null;
-
-        List<RoomKey> keys = new(tokens.Length);
-        foreach (string tok in tokens)
-        {
-            (int? mapPart, int? roomPart) = TryParseCoordinate(tok);
-            if (mapPart is not int m || roomPart is not int r) return null;
-            keys.Add(new RoomKey(m, r));
-        }
-        return keys;
-    }
-
-    private readonly record struct RoomMatch(RoomKey Key, string Label);
 }

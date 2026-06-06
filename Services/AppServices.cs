@@ -221,6 +221,13 @@ public sealed class AppServices
     public Game.Remote.MovePlayerHandler MoveRemote { get; private set; } = null!;
 
     /// <summary>
+    /// Centralised room-search resolver. Backs the Navigation rail
+    /// search box, the Loop / Lair editor "Add room" rows, the
+    /// Center-on dialog, and the @goto remote handler.
+    /// </summary>
+    public RoomSearchService RoomSearch { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the
     /// <see cref="Models.GameData.PlayerRemoteControls.ExecuteCommands"/>
     /// permission category's <c>@do &lt;command&gt;</c> passthrough.
@@ -1230,6 +1237,13 @@ public sealed class AppServices
         AutoLair = new Game.Map.AutoLairManager(
             Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
 
+        // Shared room-search resolver — backs the Nav rail search
+        // box AND the @goto handler. Subscribes to ActiveSetChanged
+        // + GraphReloaded internally so callers don't need to wire
+        // cache invalidation.
+        RoomSearch = new RoomSearchService(
+            RoomGraph, GameData, Bfs, RoomBlacklist, Movement, Log);
+
         // Phase 7 PR 7.23 — MovePlayer remote-command handler.
         // Registers @goto, @loop, @lair, @stop, @rego against the
         // RemoteCommandManager. Dispatch routes to the now-existing
@@ -1237,7 +1251,7 @@ public sealed class AppServices
         // gate ensures only players the user has granted MovePlayer
         // can issue these.
         MoveRemote = new Game.Remote.MovePlayerHandler(
-            RemoteCommands, RoomGraph, Walker, Loops, LoopRunner,
+            RemoteCommands, RoomSearch, RoomGraph, Walker, Loops, LoopRunner,
             Lairs, AutoLair, MovementCoordinator);
 
         // Always start with a blank draft. Auto-loading the most recently used
