@@ -51,6 +51,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  += OnAutoLairPhaseChanged;
+        _services.AutoLair.PausedChanged += OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   += OnBlacklistChanged;
         _services.Lairs.SetupsChanged    += OnSetupsChanged;
         OnAutoLairMarkedChanged();
@@ -91,6 +92,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  -= OnAutoLairPhaseChanged;
+        _services.AutoLair.PausedChanged -= OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   -= OnBlacklistChanged;
         _services.Lairs.SetupsChanged    -= OnSetupsChanged;
         _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
@@ -216,6 +218,66 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AutoLairStatusText));
         // Target switch reorders the map overlay (active target = #1).
         RefreshAutoLairMarkedKeys();
+        RefreshAutoLairApproachPath();
+    }
+
+    /// <summary>
+    /// Rebuild <see cref="AutoLairApproachPath"/> from the current
+    /// tracker position + scheduler target. Only populated during the
+    /// active-leg phases (Approaching, Waiting, Entering); Engaging
+    /// and Idle clear it so the line disappears when the walker
+    /// reaches the lair.
+    /// </summary>
+    private void RefreshAutoLairApproachPath()
+    {
+        Game.Map.AutoLairManager mgr = _services.AutoLair;
+        if (mgr.Phase is not (Game.Map.AutoLairPhase.Approaching
+                              or Game.Map.AutoLairPhase.Waiting
+                              or Game.Map.AutoLairPhase.Entering)
+            || mgr.CurrentTarget is not { } target
+            || mgr.CurrentWaitRoom is not { } waitRoom
+            || _services.RoomTracker.State.CurrentRoom is not { } current)
+        {
+            AutoLairApproachPath = null;
+            return;
+        }
+
+        // BFS the current→wait-room leg, then append the lair entry
+        // hop. RoomsAlongPath equivalent: walk the direction list
+        // through the graph and collect rooms touched.
+        IReadOnlyList<Game.Map.Direction>? dirs = _services.Bfs.FindPath(
+            current.Key, waitRoom, _services.Movement);
+        if (dirs is null)
+        {
+            AutoLairApproachPath = null;
+            return;
+        }
+
+        List<RoomKey> rooms = new(dirs.Count + 2) { current.Key };
+        RoomKey cursor = current.Key;
+        foreach (Game.Map.Direction d in dirs)
+        {
+            if (_services.RoomGraph.GetRoom(cursor) is not { } room
+                || !room.Exits.TryGetValue(d, out Game.Map.RoomExit exit))
+            {
+                AutoLairApproachPath = null;
+                return;
+            }
+            cursor = exit.Target;
+            rooms.Add(cursor);
+        }
+        // Append the entry hop into the lair so the rendered line
+        // shows the FULL journey, not just the approach.
+        if (!cursor.Equals(target)) rooms.Add(target);
+
+        AutoLairApproachPath = rooms;
+    }
+
+    private void OnAutoLairPausedChanged(bool _)
+    {
+        OnPropertyChanged(nameof(RunStopLabel));
+        OnPropertyChanged(nameof(AutoLairPhaseLabel));
+        OnPropertyChanged(nameof(AutoLairStatusText));
     }
 
     /// <summary>
@@ -263,6 +325,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         IsAutoLairing = active;
         EnsureLairTickRunning();
         RefreshEngineActionLabel();
+        RefreshAutoLairApproachPath();
     }
 
     [RelayCommand]
@@ -448,6 +511,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// markers are placed.
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairMarkedKeys;
+
+    /// <summary>
+    /// Full projected route the walker will follow during the current
+    /// Auto-Lair leg: <c>current → wait-room → lair</c>. Held stable
+    /// across the Approaching → Waiting → Entering transitions so the
+    /// map line doesn't flicker every time the walker briefly goes
+    /// Idle between sub-legs. Null when no leg is active (Idle /
+    /// Engaging) or when the BFS can't resolve the route.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairApproachPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _teleportRooms;
     [ObservableProperty] private bool _isAutoLairing;
     [ObservableProperty] private RoomKey? _selectedRoomKey;
@@ -1701,6 +1774,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnTrackerStateChanged(RoomTransition _)
     {
         RefreshFromTracker();
+        RefreshAutoLairApproachPath();
         RefreshDerivedState();
     }
 
@@ -1926,6 +2000,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             if (runner.State is Game.Map.LoopState.Running
                               or Game.Map.LoopState.Approaching) return "Pause";
             if (runner.State == Game.Map.LoopState.Paused) return "Run";
+            // Auto-Lair gets Pause / Run too — the chip stays distinct
+            // from the Lair-mode "Stop" so the user has both Pause (this
+            // chip) and Stop (the mode chip) without duplication.
+            if (_services.AutoLair.IsActive)
+                return _services.AutoLair.IsPaused ? "Run" : "Pause";
             return IsAnyExecuting ? "Stop" : "Run";
         }
     }
@@ -2232,7 +2311,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
         // Walker / auto-lair stay as one-shot Stop semantics — no
         // pause-resume cycle wanted by the UX rules.
-        if (_services.AutoLair.IsActive) { _services.AutoLair.Stop(); return; }
+        // Auto-Lair: Run chip is now Pause / Resume. The Lair-mode
+        // chip carries the actual Stop. This keeps the two chips
+        // distinct rather than both reading "Stop" while the run is
+        // in flight.
+        if (_services.AutoLair.IsActive)
+        {
+            if (_services.AutoLair.IsPaused) _services.AutoLair.Resume();
+            else _services.AutoLair.Pause();
+            return;
+        }
         if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
         {
             _services.Walker.Stop("user stop from Navigation");

@@ -1208,7 +1208,7 @@ public sealed class AppServices
         // lair to enter based on respawn timers + travel cost, parks
         // at a wait-room one hop short, then steps in on the tick.
         AutoLair = new Game.Map.AutoLairManager(
-            Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log);
+            Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

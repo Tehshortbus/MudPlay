@@ -54,6 +54,7 @@ public sealed class AutoLairManager : IDisposable
     private readonly BfsMapper _bfs;
     private readonly LairTimerStore _timers;
     private readonly LogService? _log;
+    private readonly MovementCoordinator? _coordinator;
 
     // Marker set + per-marker user override (seconds; null = use game-data default).
     private readonly Dictionary<RoomKey, int?> _markers = new();
@@ -107,6 +108,18 @@ public sealed class AutoLairManager : IDisposable
 
     public bool IsActive => Phase != AutoLairPhase.Idle;
 
+    /// <summary>
+    /// True when <see cref="Pause"/> has been called and
+    /// <see cref="Resume"/> hasn't yet — the scheduler suspends new
+    /// dispatches, all timers are halted, and the walker is gated via
+    /// <see cref="Game.Map.MovementCoordinator.UserGate"/>. Cleared
+    /// implicitly when <see cref="Stop"/> tears the session down.
+    /// </summary>
+    public bool IsPaused { get; private set; }
+
+    /// <summary>Fires when <see cref="IsPaused"/> flips. Carries the new value.</summary>
+    public event Action<bool>? PausedChanged;
+
     public IReadOnlyCollection<RoomKey> Marked => _markers.Keys.ToArray();
 
     /// <summary>Per-marker override snapshot — null value means "use game-data default".</summary>
@@ -128,7 +141,8 @@ public sealed class AutoLairManager : IDisposable
         RoomGraphManager graph,
         BfsMapper bfs,
         LairTimerStore timers,
-        LogService? log = null)
+        LogService? log = null,
+        MovementCoordinator? coordinator = null)
     {
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -141,6 +155,7 @@ public sealed class AutoLairManager : IDisposable
         _bfs = bfs;
         _timers = timers;
         _log = log;
+        _coordinator = coordinator;
 
         _schedulerTick = new DispatcherTimer(TimeSpan.FromSeconds(1),
             DispatcherPriority.Normal, (_, _) => OnSchedulerTick());
@@ -256,6 +271,14 @@ public sealed class AutoLairManager : IDisposable
         _entryTimer.Stop();
         _engageTimer.Stop();
         _retryTimer.Stop();
+        // Clear the pause gate before tearing the session down so the
+        // walker isn't stuck behind a stale UserGate after Stop fires.
+        if (IsPaused)
+        {
+            IsPaused = false;
+            _coordinator?.ClearGate(MovementCoordinator.UserGate);
+            PausedChanged?.Invoke(false);
+        }
         CurrentTarget = null;
         CurrentWaitRoom = null;
         CurrentEntryArrivalAt = null;
@@ -267,11 +290,47 @@ public sealed class AutoLairManager : IDisposable
         if (_walker.State != WalkState.Idle) _walker.Stop("auto-lair stop");
     }
 
+    /// <summary>
+    /// Suspend scheduling without tearing down state. All timers stop;
+    /// the user gate on <see cref="MovementCoordinator"/> is asserted
+    /// so any in-flight walk halts at its next step. Markers, current
+    /// target, and the entry latch are preserved — <see cref="Resume"/>
+    /// picks back up from where it left off.
+    /// </summary>
+    public void Pause()
+    {
+        if (!IsActive || IsPaused) return;
+        IsPaused = true;
+        _schedulerTick.Stop();
+        _entryTimer.Stop();
+        _engageTimer.Stop();
+        _retryTimer.Stop();
+        _coordinator?.AssertGate(MovementCoordinator.UserGate);
+        PausedChanged?.Invoke(true);
+        _log?.Info("AutoLair", "paused.");
+    }
+
+    /// <summary>
+    /// Inverse of <see cref="Pause"/> — clears the user gate, restarts
+    /// the scheduler tick, and forces an immediate re-evaluation so the
+    /// run picks up from the player's current position.
+    /// </summary>
+    public void Resume()
+    {
+        if (!IsActive || !IsPaused) return;
+        IsPaused = false;
+        _coordinator?.ClearGate(MovementCoordinator.UserGate);
+        _schedulerTick.Start();
+        PausedChanged?.Invoke(false);
+        _log?.Info("AutoLair", "resumed.");
+        EvaluateAndDispatch();
+    }
+
     // ----- scheduler tick + dispatch -------------------------------
 
     private void OnSchedulerTick()
     {
-        if (!IsActive) return;
+        if (!IsActive || IsPaused) return;
         // Engaging is its own phase — don't churn picks during combat.
         if (Phase == AutoLairPhase.Engaging) return;
         EvaluateAndDispatch();
@@ -354,11 +413,11 @@ public sealed class AutoLairManager : IDisposable
 
         foreach ((RoomKey lair, int? overrideSec) in _markers)
         {
-            // The room we're already in can't trigger its own respawn —
-            // MajorMUD only checks on entry. Skip it so the scheduler
-            // routes us out and back; the timer keeps ticking.
-            if (lair.Equals(current)) continue;
-
+            // The room we're already in is INCLUDED as a candidate:
+            // PickWaitRoom resolves to a one-hop non-marker neighbour
+            // when current == lair, so a self-cycle is "step out, wait,
+            // step back in" — much cheaper than routing to a different
+            // lair when the current room is the soonest-ready one.
             DateTimeOffset? readyAt = _timers.NextReadyAt(lair, overrideSec);
             // readyAt = null means either:
             //   (a) we've never entered this lair (no anchor); or
@@ -383,10 +442,18 @@ public sealed class AutoLairManager : IDisposable
     /// </summary>
     private (RoomKey? waitRoom, int? hops) PickWaitRoom(RoomKey current, RoomKey lair)
     {
-        // Already at the lair → we just arrived; treat current as
-        // the wait-room (0 approach hops). The Approaching dispatch
-        // will short-circuit to Waiting → Entering.
-        if (current.Equals(lair)) return (lair, 0);
+        // Self-lair cycle: we're already standing in a marked lair
+        // and want to re-trigger its respawn. MajorMUD only checks
+        // the respawn on entry, so we have to leave + come back. Pick
+        // a one-hop non-marker neighbour as the wait-room; the walker
+        // will step out, wait for ReadyAt, then step in. Cheaper than
+        // routing to a different lair and back when this one is the
+        // soonest-ready candidate.
+        if (current.Equals(lair))
+        {
+            (RoomKey? alt, _) = NearestNonMarkedNeighbour(current, lair);
+            return alt is null ? (null, null) : (alt, 1);
+        }
 
         IReadOnlyList<Direction>? path = _bfs.FindPath(current, lair);
         if (path is null || path.Count == 0) return (null, null);
@@ -488,6 +555,7 @@ public sealed class AutoLairManager : IDisposable
     private void OnEntryTimerFired()
     {
         _entryTimer.Stop();
+        if (!IsActive || IsPaused) return;
         EnterLairNow();
     }
 
@@ -515,12 +583,28 @@ public sealed class AutoLairManager : IDisposable
         _engageTimer.Start();
         _log?.Info("AutoLair",
             $"engaging — re-evaluating in {EngageTimeoutSeconds}s.");
+        // PHASE 13 INTEGRATION NOTE — Combat-driven engagement flag:
+        // Right now the engage window is a fixed wall-clock timeout
+        // (EngageTimeoutSeconds, default 30 s) because we don't yet
+        // know whether combat is actually in progress. When the
+        // CombatManager lands (Phase 13 PR 13.A), wire it to drive
+        // the Engaging phase directly:
+        //   - on first damage line / attack send in this room →
+        //     SetPhase(Engaging) + stop the engage timer (we know
+        //     we're actually fighting, no timeout needed)
+        //   - on "room cleared" (no live targets remaining in the
+        //     current room's Also-Here list, OR the auto-combat
+        //     engine reports done) → SetPhase(Approaching) +
+        //     EvaluateAndDispatch() to pick the next lair.
+        // Keep the timeout as the FALLBACK upper bound so the
+        // scheduler never permanently parks on a dead lair if the
+        // combat detection misses a clear-signal.
     }
 
     private void OnEngageTimerFired()
     {
         _engageTimer.Stop();
-        if (!IsActive) return;
+        if (!IsActive || IsPaused) return;
         SetPhase(AutoLairPhase.Approaching);
         EvaluateAndDispatch();
     }
@@ -530,6 +614,10 @@ public sealed class AutoLairManager : IDisposable
     private void OnWalkerEvent(WalkEvent evt)
     {
         if (!IsActive) return;
+        // When paused, ignore walker events so the scheduler doesn't
+        // auto-transition or auto-redispatch. The user gate keeps the
+        // walker stalled until Resume.
+        if (IsPaused) return;
 
         switch (evt.Kind)
         {

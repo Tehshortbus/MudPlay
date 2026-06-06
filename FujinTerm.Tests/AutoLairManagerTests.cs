@@ -214,9 +214,11 @@ public sealed class AutoLairManagerTests : IDisposable
     [Fact]
     public void Start_DispatchesToWaitRoomNotLair()
     {
-        // 1/3 is the lair (per RawLairTag); 1/1 + 1/3 are markers.
-        // From 1/1 the scheduler picks 1/3 → wait-room is 1/2 (the
-        // hop before 1/3). Walker should be heading to 1/2, NOT 1/3.
+        // Self-cycle behaviour: player is standing in 1/1, which is
+        // itself a marker. The scheduler picks 1/1 as the next target
+        // and steps out to 1/2 (a non-marker neighbour) as the wait-
+        // room so the respawn check can re-fire on re-entry. From
+        // there the walker takes one hop south back into 1/1.
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Roam.Mark(new RoomKey(1, 1));
@@ -225,7 +227,9 @@ public sealed class AutoLairManagerTests : IDisposable
         Assert.True(h.Roam.Start());
         Assert.True(h.Roam.IsActive);
         Assert.Equal(AutoLairPhase.Approaching, h.Roam.Phase);
-        Assert.Equal(new RoomKey(1, 3), h.Roam.CurrentTarget);
+        // Target is the self-lair (1/1); wait-room is the one-hop
+        // non-marker neighbour (1/2). Walker heads for 1/2.
+        Assert.Equal(new RoomKey(1, 1), h.Roam.CurrentTarget);
         Assert.Equal(new RoomKey(1, 2), h.Roam.CurrentWaitRoom);
         Assert.Equal(WalkState.Walking, h.Walker.State);
         Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
@@ -242,7 +246,9 @@ public sealed class AutoLairManagerTests : IDisposable
         h.Roam.Start();
 
         Assert.NotNull(h.Roam.LastDecision);
-        Assert.Equal(new RoomKey(1, 3), h.Roam.LastDecision!.Lair);
+        // See Start_DispatchesToWaitRoomNotLair — self-cycle wins
+        // when current room is itself a marker.
+        Assert.Equal(new RoomKey(1, 1), h.Roam.LastDecision!.Lair);
         Assert.Equal(new RoomKey(1, 2), h.Roam.LastDecision.WaitRoom);
     }
 

@@ -118,6 +118,17 @@ public sealed class MapControl : Control
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(AutoLairWaypoints));
 
     /// <summary>
+    /// Stable full-leg path drawn in orange during an Auto-Lair run —
+    /// <c>current → wait-room → lair</c>. Holds steady across the
+    /// Approaching → Waiting → Entering transitions so the line
+    /// doesn't redraw / disappear as the walker steps through it,
+    /// fixing the per-step flicker the user-driven WalkPath had.
+    /// When set, the regular <see cref="WalkPath"/> is suppressed.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> AutoLairApproachPathProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(AutoLairApproachPath));
+
+    /// <summary>
     /// Set of rooms with a CMD-driven teleport command (TBInfo Action
     /// chain contains a <c>teleport &lt;r&gt; &lt;m&gt;</c> directive).
     /// Rendered with diagonal cross-hatch lines over the cell fill so
@@ -241,6 +252,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AutoLairWaypointsProperty);
         set => SetValue(AutoLairWaypointsProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? AutoLairApproachPath
+    {
+        get => GetValue(AutoLairApproachPathProperty);
+        set => SetValue(AutoLairApproachPathProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? TeleportRooms
@@ -485,7 +502,7 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
-            AutoLairWaypointsProperty,
+            AutoLairWaypointsProperty, AutoLairApproachPathProperty,
             LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty);
@@ -895,8 +912,21 @@ public sealed class MapControl : Control
         DrawPathPolyline(context, LoopApproachPreviewPath, LoopBuilderPen, tilePixels, cx, cy);
         DrawPathPolyline(context, PreviewPath,            PreviewPathPen, tilePixels, cx, cy);
         DrawPathPolyline(context, LoopPath,               LoopPathPen,    tilePixels, cx, cy);
-        IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
-        DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
+        // When AutoLair is driving the walker, the dedicated approach
+        // path renders the FULL leg in orange and stays stable across
+        // walker sub-step shrinkage — suppress the per-step WalkPath
+        // so the two layers don't fight. WalkPathIsAutoLair stays as
+        // a fallback for environments that haven't wired the new
+        // property.
+        if (AutoLairApproachPath is { Count: > 1 })
+        {
+            DrawPathPolyline(context, AutoLairApproachPath, AutoLairWalkPen, tilePixels, cx, cy);
+        }
+        else
+        {
+            IPen walkPen = WalkPathIsAutoLair ? AutoLairWalkPen : WalkPathPen;
+            DrawPathPolyline(context, WalkPath, walkPen, tilePixels, cx, cy);
+        }
 
         // Pass 5: numbered builder waypoint markers — drawn last so
         // they sit on top of every polyline and every room node fill.
