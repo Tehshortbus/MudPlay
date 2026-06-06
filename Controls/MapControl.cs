@@ -414,7 +414,12 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
     };
-    private static readonly IPen   LoopPathPen    = new Pen(new SolidColorBrush(Color.Parse("#4C82E6")), 3.0)
+    // Active loop line — green to match the engine colour schema:
+    // walk-to blue, loop green, auto-lair orange (AccentGreenColor in
+    // the palette). The colour is reused by the Navigation rail's
+    // section headers + the Loops + Auto-Lairs list rows so the user
+    // gets one consistent "this is a loop" signal everywhere.
+    private static readonly IPen   LoopPathPen    = new Pen(new SolidColorBrush(Color.Parse("#7AB870")), 3.0)
     {
         LineCap = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
@@ -435,11 +440,15 @@ public sealed class MapControl : Control
     /// <summary>
     /// Solid red polyline for the user's in-progress loop-builder
     /// gap-filled path. Shares hue with <see cref="PreviewPathPen"/>
-    /// (queued walk-to) because both are "preview" overlays per the
-    /// user UX rule: previews are red, executing automations are blue.
-    /// Numbered waypoint markers (drawn separately) disambiguate
-    /// build-preview from a single-leg walk-to preview when both
-    /// could theoretically be visible.
+    /// (queued walk-to) because both are "preview" overlays. Executing
+    /// engines have their own per-engine colours
+    /// (walk-to <see cref="WalkPathPen"/> blue, loop
+    /// <see cref="LoopPathPen"/> green, auto-lair
+    /// <see cref="AutoLairWalkPen"/> orange), so red unambiguously
+    /// means "planned, not yet driving." Numbered waypoint markers
+    /// (drawn separately) disambiguate build-preview from a
+    /// single-leg walk-to preview when both could theoretically be
+    /// visible.
     /// </summary>
     private static readonly IPen   LoopBuilderPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
     {
