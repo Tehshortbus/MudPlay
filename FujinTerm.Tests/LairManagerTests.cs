@@ -59,7 +59,7 @@ public sealed class LairManagerTests : IDisposable
     // ----- Save / round-trip ----------------------------------------
 
     [Fact]
-    public void Save_AddsSetupToCatalogueAndPersistsToBbsLairsFolder()
+    public void Save_AddsSetupToCatalogueAndPersistsToBbsLoopsFolderWithLairSuffix()
     {
         LairManager m = new();
         m.LoadAll(_bbs);
@@ -69,8 +69,11 @@ public sealed class LairManagerTests : IDisposable
         Assert.Equal("Sewer rats", m.Setups[0].Name);
         Assert.Equal(2, m.Setups[0].MarkerCount);
 
+        // Lair setups live in the shared Loops/ folder with the
+        // .lair.json suffix as the schema discriminator. Plain .json
+        // files in the same folder belong to LoopManager.
         string expectedPath = Path.Combine(
-            AppPaths.BbsLairsFolder(_bbs), "Sewer rats.json");
+            AppPaths.BbsLoopsFolder(_bbs), "Sewer rats" + LairManager.LairFileSuffix);
         Assert.True(File.Exists(expectedPath));
     }
 
@@ -133,7 +136,8 @@ public sealed class LairManagerTests : IDisposable
 
         Assert.True(removed);
         Assert.Empty(m.Setups);
-        Assert.False(File.Exists(Path.Combine(AppPaths.BbsLairsFolder(_bbs), "doomed.json")));
+        Assert.False(File.Exists(Path.Combine(
+            AppPaths.BbsLoopsFolder(_bbs), "doomed" + LairManager.LairFileSuffix)));
     }
 
     [Fact]
@@ -174,6 +178,40 @@ public sealed class LairManagerTests : IDisposable
 
         m.Delete("a");
         Assert.Equal(3, fires);
+    }
+
+    [Fact]
+    public void LoadAll_MigratesLegacyLairsFolder_IntoSharedLoopsFolder()
+    {
+        // Pre-existing legacy file under Data/BBS/{bbs}/Lairs/<name>.json
+        // — the format we shipped before the storage unification.
+        string legacy = AppPaths.LegacyBbsLairsFolder(_bbs);
+        Directory.CreateDirectory(legacy);
+        const string legacyJson = """
+            {
+              "SchemaVersion": 1,
+              "Name": "Old Setup",
+              "Notes": "from before the move",
+              "Markers": [
+                { "Map": 1, "Room": 1, "OverrideRespawnSeconds": null, "Skip": false }
+              ]
+            }
+            """;
+        File.WriteAllText(Path.Combine(legacy, "Old Setup.json"), legacyJson);
+
+        LairManager m = new();
+        m.LoadAll(_bbs);
+
+        // File migrated into the shared folder under the new suffix.
+        Assert.True(File.Exists(Path.Combine(
+            AppPaths.BbsLoopsFolder(_bbs), "Old Setup" + LairManager.LairFileSuffix)));
+        // Legacy folder cleaned up.
+        Assert.False(Directory.Exists(legacy));
+        // Setup loaded and accessible.
+        LairSetup? round = m.Get("Old Setup");
+        Assert.NotNull(round);
+        Assert.Equal("from before the move", round!.Notes);
+        Assert.Single(round.Markers);
     }
 
     [Fact]

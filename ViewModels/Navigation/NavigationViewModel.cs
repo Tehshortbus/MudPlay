@@ -1530,6 +1530,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         NavigationManagerDialogViewModel vm = new(
             _services.Loops,
             _services.AutoLair,
+            _services.Lairs,
+            _services.LairTimers,
             _services.RoomGraph,
             _services.Confirm,
             _services.Dialogs,

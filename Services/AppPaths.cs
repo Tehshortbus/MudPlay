@@ -297,24 +297,24 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
     /// <summary>
-    /// Per-BBS folder holding navigation loops, walk-to favourites,
-    /// and auto-lair path definitions (Phase 7 PR 7.8). Each entry is
-    /// a <c>{loop-name}.json</c> file the <see cref="LoopStore"/>
-    /// round-trips.
+    /// Per-BBS folder holding BOTH navigation loops AND Auto-Lair
+    /// setups. Loops save as <c>{name}.json</c>; lair setups save as
+    /// <c>{name}.lair.json</c> — the filename extension is the schema
+    /// discriminator so the two managers can scan the same folder and
+    /// pick up only their own files. Earlier exports under a separate
+    /// <c>Lairs/</c> folder are migrated on first load by
+    /// <see cref="Game.Map.LairManager.LoadAll"/>.
     /// </summary>
     public static string BbsLoopsFolder(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "Loops");
 
     /// <summary>
-    /// Per-BBS folder holding Auto-Lair setups (Phase 7 PR 7.18). One
-    /// <c>{setup-name}.json</c> file per setup, round-tripped by
-    /// <see cref="Game.Map.LairManager"/>. Auto-Lair markers are
-    /// BBS-scoped (not character-scoped) because lair location data
-    /// belongs to the game data which is BBS-scoped — a user's
-    /// "sewer rats" setup is reusable across every character on the
-    /// same BBS.
+    /// Legacy per-BBS folder that held Auto-Lair setups before the
+    /// Loops + Lairs storage unification. Kept around as a source for
+    /// the one-shot migration in <see cref="Game.Map.LairManager.LoadAll"/>;
+    /// once empty, the folder is removed and never recreated.
     /// </summary>
-    public static string BbsLairsFolder(string bbsName) =>
+    public static string LegacyBbsLairsFolder(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "Lairs");
 
     /// <summary>

@@ -90,6 +90,11 @@ public sealed class LoopManager
         int upgraded = 0;
         foreach (string path in Directory.EnumerateFiles(folder, "*.json"))
         {
+            // Lair setups share this folder under the .lair.json
+            // suffix; skip them here so LoopManager only sees real
+            // loop files. (LairManager owns the inverse filter.)
+            if (path.EndsWith(LairManager.LairFileSuffix, StringComparison.OrdinalIgnoreCase))
+                continue;
             try
             {
                 Loop? loop = JsonStore.Load<Loop>(path);

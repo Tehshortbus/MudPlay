@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
 using FujinTerm.Game.Map.MpFile;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
@@ -28,10 +29,13 @@ namespace FujinTerm.ViewModels.Navigation;
 /// explicit action.
 /// </para>
 /// <para>
-/// Auto-Lair section: lists every room currently marked for the
-/// Auto-Lair scheduler. Each row exposes Unmark. New marks happen
-/// from the map right-click context menu (Phase 7's existing
-/// workflow); the dialog is read-modify, not author-from-scratch.
+/// Auto-Lair Mode section: lists saved <see cref="LairSetup"/>s
+/// stored alongside loops in the shared
+/// <see cref="AppPaths.BbsLoopsFolder"/> (lair files use the
+/// <c>.lair.json</c> suffix). Each row exposes Run / Load / Edit /
+/// Delete — same row shape as the Loops section. New setups happen
+/// via "Save lairs" in the rail's build-mode strip; this dialog is
+/// the CRUD surface for already-named setups.
 /// </para>
 /// </remarks>
 public sealed partial class NavigationManagerDialogViewModel : ObservableObject, IDialogViewModel<bool>
@@ -40,6 +44,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     private readonly LoopManager _loops;
     private readonly AutoLairManager _autoLair;
+    private readonly LairManager _lairSetups;
+    private readonly LairTimerStore _lairTimers;
     private readonly RoomGraphManager _graph;
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
@@ -49,7 +55,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly Action? _onDraftConsumed;
 
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
-    public ObservableCollection<ManagerLairRow> Lairs { get; } = new();
+    public ObservableCollection<ManagerLairSetupRow> LairSetups { get; } = new();
 
     /// <summary>
     /// In-progress build session from the Navigation window, or null
@@ -68,7 +74,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     [ObservableProperty] private string _runningLoopName = string.Empty;
 
     public bool HasLoops => Loops.Count > 0;
-    public bool HasLairs => Lairs.Count > 0;
+    public bool HasLairSetups => LairSetups.Count > 0;
     public bool HasDraft => Draft is not null;
 
     /// <summary>
@@ -82,6 +88,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     public NavigationManagerDialogViewModel(
         LoopManager loops,
         AutoLairManager autoLair,
+        LairManager lairSetups,
+        LairTimerStore lairTimers,
         RoomGraphManager graph,
         ConfirmService confirm,
         DialogService dialogs,
@@ -93,11 +101,15 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(autoLair);
+        ArgumentNullException.ThrowIfNull(lairSetups);
+        ArgumentNullException.ThrowIfNull(lairTimers);
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(confirm);
         ArgumentNullException.ThrowIfNull(dialogs);
         _loops = loops;
         _autoLair = autoLair;
+        _lairSetups = lairSetups;
+        _lairTimers = lairTimers;
         _graph = graph;
         _confirm = confirm;
         _dialogs = dialogs;
@@ -109,9 +121,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
 
         _loops.LoopsChanged += RebuildLoops;
-        _autoLair.MarkedChanged += RebuildLairs;
+        _lairSetups.SetupsChanged += RebuildLairSetups;
         RebuildLoops();
-        RebuildLairs();
+        RebuildLairSetups();
     }
 
     private void RebuildLoops()
@@ -122,17 +134,12 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         OnPropertyChanged(nameof(HasLoops));
     }
 
-    private void RebuildLairs()
+    private void RebuildLairSetups()
     {
-        Lairs.Clear();
-        foreach (RoomKey key in _autoLair.Marked.OrderBy(k => k.Map).ThenBy(k => k.Room))
-        {
-            string label = _graph.GetRoom(key) is { } room
-                ? $"{room.DisplayName}  ·  {key}"
-                : key.ToString();
-            Lairs.Add(new ManagerLairRow(key, label));
-        }
-        OnPropertyChanged(nameof(HasLairs));
+        LairSetups.Clear();
+        foreach (LairSetup setup in _lairSetups.Setups)
+            LairSetups.Add(new ManagerLairSetupRow(setup));
+        OnPropertyChanged(nameof(HasLairSetups));
     }
 
     // ----- Loop row commands -----------------------------------------
@@ -173,20 +180,22 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     }
 
     /// <summary>
-    /// Stub for the Auto-Lair editor — symmetric with
-    /// <see cref="NewLoopAsync"/> per UX direction (both "New"
-    /// buttons should spawn the same kind of away-from-the-map
-    /// editor). The lair-side editor lands in a later PR; for now
-    /// the button is wired so the layout is final but the click
-    /// shows a placeholder log line. Right-click on the map remains
-    /// the working path for marking a lair until then.
+    /// Symmetric with <see cref="NewLoopAsync"/> — open the
+    /// <see cref="LairEditorDialogViewModel"/> on a fresh empty setup
+    /// pre-named with the current timestamp so the user can author a
+    /// new Auto-Lair setup without first marking rooms on the map.
+    /// Markers can be added later via the editor or by re-loading +
+    /// clicking on the map.
     /// </summary>
     [RelayCommand]
-    private void NewLair()
+    private async Task NewLairAsync()
     {
-        // Intentionally a no-op; lair editor dialog ships later.
-        // Button kept visible so the layout matches the Loops
-        // section side by side.
+        LairSetup draft = new(
+            name: $"Lairs {DateTime.Now:HH-mm-ss}",
+            markers: Array.Empty<LairMarker>());
+        LairEditorDialogViewModel vm = new(
+            draft, _lairSetups, _graph, _lairTimers, _confirm, isNew: true);
+        await _dialogs.OpenWindowAsync<LairEditorDialogViewModel, LairSetup?>(vm);
     }
 
     /// <summary>
@@ -359,11 +368,57 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     // ----- Auto-Lair row commands ------------------------------------
 
+    /// <summary>Edit a saved Auto-Lair setup via the editor dialog.</summary>
     [RelayCommand]
-    private void UnmarkLair(ManagerLairRow? row)
+    private async Task EditLairSetupAsync(ManagerLairSetupRow? row)
     {
         if (row is null) return;
-        _autoLair.Unmark(row.Key);
+        LairEditorDialogViewModel vm = new(
+            row.Source, _lairSetups, _graph, _lairTimers, _confirm);
+        await _dialogs.OpenWindowAsync<LairEditorDialogViewModel, LairSetup?>(vm);
+    }
+
+    /// <summary>Delete a saved setup with confirmation.</summary>
+    [RelayCommand]
+    private async Task DeleteLairSetupAsync(ManagerLairSetupRow? row)
+    {
+        if (row is null) return;
+        bool ok = await _confirm.ConfirmDeleteAsync($"auto-lair setup \"{row.Source.Name}\"");
+        if (!ok) return;
+        _lairSetups.Delete(row.Source.Name);
+    }
+
+    /// <summary>
+    /// Load a saved setup's markers into <see cref="AutoLairManager"/>
+    /// + start the scheduler. Stops any in-flight loop / lair first
+    /// so the engine has clean ground.
+    /// </summary>
+    [RelayCommand]
+    private void RunLairSetup(ManagerLairSetupRow? row)
+    {
+        if (row is null) return;
+        LoadLairSetupInternal(row.Source);
+        _autoLair.Start();
+    }
+
+    /// <summary>Load a saved setup's markers into AutoLair without starting.</summary>
+    [RelayCommand]
+    private void LoadLairSetup(ManagerLairSetupRow? row)
+    {
+        if (row is null) return;
+        LoadLairSetupInternal(row.Source);
+    }
+
+    private void LoadLairSetupInternal(LairSetup setup)
+    {
+        if (_runner is not null && _runner.State != LoopState.Idle)
+            _runner.Stop("auto-lair setup loaded");
+        if (_autoLair.IsActive)
+            _autoLair.Stop("auto-lair setup loaded");
+
+        _autoLair.Clear();
+        foreach (LairMarker m in setup.Markers)
+            _autoLair.Mark(new RoomKey(m.Map, m.Room), m.OverrideRespawnSeconds);
     }
 
     // ----- close -----------------------------------------------------
@@ -372,7 +427,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private void Close()
     {
         _loops.LoopsChanged -= RebuildLoops;
-        _autoLair.MarkedChanged -= RebuildLairs;
+        _lairSetups.SetupsChanged -= RebuildLairSetups;
         CloseRequested?.Invoke(true);
     }
 }
@@ -385,5 +440,10 @@ public sealed record ManagerLoopRow(Loop Source)
     public string Notes => string.IsNullOrWhiteSpace(Source.Notes) ? "—" : Source.Notes!;
 }
 
-/// <summary>Single marked Auto-Lair room shown in the manager.</summary>
-public sealed record ManagerLairRow(RoomKey Key, string DisplayLabel);
+/// <summary>Single saved Auto-Lair setup row shown in the manager.</summary>
+public sealed record ManagerLairSetupRow(LairSetup Source)
+{
+    public string Name => Source.Name;
+    public int MarkerCount => Source.Markers.Count;
+    public string Notes => string.IsNullOrWhiteSpace(Source.Notes) ? "—" : Source.Notes!;
+}

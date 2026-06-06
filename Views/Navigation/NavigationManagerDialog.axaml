@@ -233,7 +233,12 @@
                 <!-- Visual gap -->
                 <Border Grid.Row="1" Height="6"/>
 
-                <!-- Auto-Lair section -->
+                <!-- Auto-Lair Mode section — saved setups (.lair.json
+                     files in the shared Loops folder). Same row shape
+                     as the Loops section above: Run / Load / Edit /
+                     Delete buttons per row. New setups are authored
+                     via the rail's "Save lairs" button or this
+                     section's "New" button. -->
                 <Border Grid.Row="2"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1"
@@ -244,60 +249,78 @@
                                 Padding="6,3">
                             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                 <TextBlock Grid.Column="0"
-                                           Text="Auto-Lair markers"
+                                           Text="Auto-Lair Mode"
                                            FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           Foreground="{StaticResource AccentAmberBrush}"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1"
                                            FontSize="10"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
                                            VerticalAlignment="Center"
                                            Margin="0,0,8,0">
-                                    <Run Text="{Binding Lairs.Count, FallbackValue=0}"/>
-                                    <Run Text=" marked"/>
+                                    <Run Text="{Binding LairSetups.Count, FallbackValue=0}"/>
+                                    <Run Text=" saved"/>
                                 </TextBlock>
-                                <!-- New: symmetric with the Loops "New"
-                                     button — opens the (forthcoming)
-                                     Auto-Lair editor dialog so the
-                                     user can pick rooms without
-                                     leaving the manager. Disabled
-                                     until that editor lands; right-
-                                     click on the map remains the
-                                     working path until then. -->
                                 <Button Grid.Column="2"
                                         Content="New"
                                         FontSize="10"
                                         Padding="8,2"
-                                        IsEnabled="False"
                                         Command="{Binding NewLairCommand}"
-                                        ToolTip.Tip="Lair editor lands in a later PR. Right-click a room on the map for now."/>
+                                        ToolTip.Tip="Create a new Auto-Lair setup from scratch."/>
                             </Grid>
                         </Border>
                         <ScrollViewer Grid.Row="1"
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <TextBlock Text="No Auto-Lair rooms marked — right-click a room on the map to mark it."
+                                <TextBlock Text="No Auto-Lair setups saved on this BBS yet — click New, or use the rail's Save-lairs button after marking rooms."
                                            Padding="8"
                                            FontSize="11"
+                                           TextWrapping="Wrap"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           IsVisible="{Binding !HasLairs}"/>
-                                <ItemsControl ItemsSource="{Binding Lairs}"
-                                              IsVisible="{Binding HasLairs}">
+                                           IsVisible="{Binding !HasLairSetups}"/>
+                                <ItemsControl ItemsSource="{Binding LairSetups}"
+                                              IsVisible="{Binding HasLairSetups}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ManagerLairRow">
+                                        <DataTemplate x:DataType="vm:ManagerLairSetupRow">
                                             <Border Classes="ManagerRow">
-                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                                    <TextBlock Grid.Column="0"
-                                                               Text="{Binding DisplayLabel}"
-                                                               VerticalAlignment="Center"
-                                                               TextTrimming="CharacterEllipsis"/>
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
+                                                      ColumnSpacing="6">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource AccentAmberBrush}"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding MarkerCount}"/>
+                                                            <Run Text=" lair(s) · "/>
+                                                            <Run Text="{Binding Notes}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
                                                     <Button Grid.Column="1"
-                                                            Content="Unmark"
-                                                            FontSize="10"
-                                                            Padding="6,2"
+                                                            Content="Load" FontSize="10"
+                                                            Padding="8,2"
+                                                            ToolTip.Tip="Load these markers into Auto-Lair without starting."
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).LoadLairSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
+                                                            Content="Run" FontSize="10"
+                                                            Padding="8,2"
+                                                            Classes="Accent"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).RunLairSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="3"
+                                                            Content="Edit" FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="4"
+                                                            Content="Delete" FontSize="10"
+                                                            Padding="8,2"
                                                             Foreground="{StaticResource AccentRedBrush}"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).UnmarkLairCommand}"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
                                                             CommandParameter="{Binding}"/>
                                                 </Grid>
                                             </Border>

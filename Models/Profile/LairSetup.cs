@@ -7,7 +7,8 @@ namespace FujinTerm.Models.Profile;
 /// the scheduler cycles through. Mirrors <see cref="Game.Map.Loop"/>'s
 /// role for loops: storage shape, not runtime state. The
 /// <see cref="Game.Map.LairManager"/> round-trips one file per setup
-/// under <see cref="Services.AppPaths.BbsLairsFolder"/>.
+/// under <see cref="Services.AppPaths.BbsLoopsFolder"/> with the
+/// <see cref="Game.Map.LairManager.LairFileSuffix"/> filename suffix.
 /// </summary>
 /// <remarks>
 /// <para>
