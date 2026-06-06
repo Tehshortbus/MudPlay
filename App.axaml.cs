@@ -132,6 +132,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.LairTimerEditDialogViewModel,
                 FujinTerm.Views.Navigation.LairTimerEditDialog>();
 
+            // Loop editor ✎ button on a waypoint row → per-waypoint
+            // command + delay editor. Payload routes back through the
+            // Loop editor's apply path.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.WaypointActionEditDialogViewModel,
+                FujinTerm.Views.Navigation.WaypointActionEditDialog>();
+
             // Navigation → "Manage" chip → loops + auto-lair markers
             // CRUD surface. Modeless; replaces the bottom-strip
             // save/discard/name textbox UX with a dedicated window.

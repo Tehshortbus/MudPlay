@@ -43,7 +43,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     public event Action<bool>? CloseRequested;
 
     private readonly LoopManager _loops;
-    private readonly AutoLairManager _autoLair;
     private readonly LairManager _lairSetups;
     private readonly LairTimerStore _lairTimers;
     private readonly RoomGraphManager _graph;
@@ -87,7 +86,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     public NavigationManagerDialogViewModel(
         LoopManager loops,
-        AutoLairManager autoLair,
         LairManager lairSetups,
         LairTimerStore lairTimers,
         RoomGraphManager graph,
@@ -100,14 +98,12 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
-        ArgumentNullException.ThrowIfNull(autoLair);
         ArgumentNullException.ThrowIfNull(lairSetups);
         ArgumentNullException.ThrowIfNull(lairTimers);
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(confirm);
         ArgumentNullException.ThrowIfNull(dialogs);
         _loops = loops;
-        _autoLair = autoLair;
         _lairSetups = lairSetups;
         _lairTimers = lairTimers;
         _graph = graph;
@@ -388,38 +384,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _lairSetups.Delete(row.Source.Name);
     }
 
-    /// <summary>
-    /// Load a saved setup's markers into <see cref="AutoLairManager"/>
-    /// + start the scheduler. Stops any in-flight loop / lair first
-    /// so the engine has clean ground.
-    /// </summary>
-    [RelayCommand]
-    private void RunLairSetup(ManagerLairSetupRow? row)
-    {
-        if (row is null) return;
-        LoadLairSetupInternal(row.Source);
-        _autoLair.Start();
-    }
-
-    /// <summary>Load a saved setup's markers into AutoLair without starting.</summary>
-    [RelayCommand]
-    private void LoadLairSetup(ManagerLairSetupRow? row)
-    {
-        if (row is null) return;
-        LoadLairSetupInternal(row.Source);
-    }
-
-    private void LoadLairSetupInternal(LairSetup setup)
-    {
-        if (_runner is not null && _runner.State != LoopState.Idle)
-            _runner.Stop("auto-lair setup loaded");
-        if (_autoLair.IsActive)
-            _autoLair.Stop("auto-lair setup loaded");
-
-        _autoLair.Clear();
-        foreach (LairMarker m in setup.Markers)
-            _autoLair.Mark(new RoomKey(m.Map, m.Room), m.OverrideRespawnSeconds);
-    }
+    // Run / Load are rail-only actions per UX direction; the manager
+    // dialog is CRUD-only (Edit + Delete) for saved setups, mirroring
+    // how the Loops section works.
 
     // ----- close -----------------------------------------------------
 

@@ -839,7 +839,7 @@
                                                   IsVisible="{Binding HasSetups}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:LairSetupRowViewModel">
-                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2" ColumnSpacing="4">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Name}"
                                                                    FontSize="11"
@@ -866,21 +866,6 @@
                                                             Classes="Accent"
                                                             Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunSetupCommand}"
                                                             CommandParameter="{Binding}"/>
-                                                    <Button Grid.Column="3"
-                                                            Content="…" FontSize="10"
-                                                            Padding="6,2"
-                                                            ToolTip.Tip="Edit / Delete">
-                                                        <Button.Flyout>
-                                                            <MenuFlyout>
-                                                                <MenuItem Header="Edit…"
-                                                                          Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).EditSetupCommand}"
-                                                                          CommandParameter="{Binding}"/>
-                                                                <MenuItem Header="Delete"
-                                                                          Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).DeleteSetupCommand}"
-                                                                          CommandParameter="{Binding}"/>
-                                                            </MenuFlyout>
-                                                        </Button.Flyout>
-                                                    </Button>
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>

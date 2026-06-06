@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="220"
+        x:Class="FujinTerm.Views.Navigation.WaypointActionEditDialog"
+        x:DataType="vm:WaypointActionEditDialogViewModel"
+        Title="Waypoint action"
+        Width="380" Height="220"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding WaypointLabel}"
+                       FontSize="12" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <Grid Grid.Row="1" ColumnDefinitions="80,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Command" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding Command, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           PlaceholderText="e.g. rest, dep 100, ask barmaid pie"
+                           FontSize="11"/>
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnDefinitions="80,Auto,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Delay (ms)" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding DelayMs, Mode=TwoWay}"
+                               Minimum="0" Maximum="600000" Increment="100"
+                               FormatString="0"
+                               Width="140"
+                               ShowButtonSpinner="True"
+                               ToolTip.Tip="Milliseconds to wait after sending the command before resuming the loop."/>
+                <TextBlock Grid.Column="2"
+                           Text="0 = default per-step delay"
+                           FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <Grid Grid.Row="3"/>
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+                <Button Content="Save" Command="{Binding SaveCommand}"
+                        IsDefault="True" MinWidth="80"
+                        Classes="Accent"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

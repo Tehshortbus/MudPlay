@@ -170,6 +170,29 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     }
 
     /// <summary>
+    /// Per-row ✎ button → opens the modeless WaypointActionEditDialog
+    /// pre-seeded with the row's current command + delay. On Save the
+    /// returned values are applied to the row in place. The dialog is
+    /// the primary path for editing per-waypoint actions; the in-dialog
+    /// footer editor is gone.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditWaypointActionAsync(LoopWaypointRowViewModel? row)
+    {
+        if (row is null) return;
+        WaypointActionEditDialogViewModel vm = new(
+            waypointLabel: row.DisplayLabel,
+            command: row.Command,
+            delayMs: row.DelayMs);
+        WaypointActionEditResult? result = await AppServices.Current.Dialogs
+            .OpenWindowAsync<WaypointActionEditDialogViewModel, WaypointActionEditResult?>(vm);
+        if (result is null) return;
+        row.Command = result.Command;
+        row.DelayMs = result.DelayMs;
+        row.RefreshDisplay();
+    }
+
+    /// <summary>
     /// Apply the inline command/delay edits to the selected waypoint
     /// row so the list reflects them. Save consolidates the rows into
     /// the persisted loop.
@@ -495,6 +518,23 @@ public sealed partial class LoopWaypointRowViewModel : ObservableObject
     /// <summary>True when this waypoint has a command attached — drives the row's command badge in the AXAML.</summary>
     public bool HasCommand => !string.IsNullOrEmpty(Command);
 
+    /// <summary>
+    /// One-line summary for the row's cyan badge — combines Command
+    /// with DelayMs when both are set, so the user can see at a glance
+    /// what the waypoint will fire and how long the loop waits after.
+    /// Examples: <c>"rest"</c>, <c>"dep 100 · 1500ms"</c>.
+    /// </summary>
+    public string CommandSummary
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Command)) return string.Empty;
+            return DelayMs > 0
+                ? $"{Command} · {DelayMs}ms"
+                : Command;
+        }
+    }
+
     public LoopWaypointRowViewModel(LoopWaypoint source, RoomGraphManager graph)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -508,6 +548,7 @@ public sealed partial class LoopWaypointRowViewModel : ObservableObject
     public void RefreshDisplay()
     {
         OnPropertyChanged(nameof(HasCommand));
+        OnPropertyChanged(nameof(CommandSummary));
     }
 
     private void RefreshDisplayFor(RoomGraphManager graph)

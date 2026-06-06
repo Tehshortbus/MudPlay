@@ -133,7 +133,7 @@ public sealed class LairEditorDialogViewModelTests : IDisposable
         Assert.Equal("Sewer A", row.RoomName);
         Assert.Equal(90, row.OverrideRespawnSeconds);
         Assert.Equal("1/100 — Sewer A", row.DisplayHeader);
-        Assert.Equal("no game-data default", row.DefaultHint);
+        Assert.Equal("no game-data timer", row.DefaultHint);
     }
 
     [Fact]

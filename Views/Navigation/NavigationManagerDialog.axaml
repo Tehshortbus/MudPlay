@@ -284,7 +284,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:ManagerLairSetupRow">
                                             <Border Classes="ManagerRow">
-                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
+                                                <Grid ColumnDefinitions="*,Auto,Auto"
                                                       ColumnSpacing="6">
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Name}"
@@ -299,26 +299,19 @@
                                                             <Run Text="{Binding Notes}"/>
                                                         </TextBlock>
                                                     </StackPanel>
+                                                    <!-- Run / Load belong on the rail row, not the
+                                                         Manage dialog — per UX direction. Edit + ✕
+                                                         delete are the two CRUD actions the dialog
+                                                         exposes, same shape as the Loops rows. -->
                                                     <Button Grid.Column="1"
-                                                            Content="Load" FontSize="10"
-                                                            Padding="8,2"
-                                                            ToolTip.Tip="Load these markers into Auto-Lair without starting."
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).LoadLairSetupCommand}"
-                                                            CommandParameter="{Binding}"/>
-                                                    <Button Grid.Column="2"
-                                                            Content="Run" FontSize="10"
-                                                            Padding="8,2"
-                                                            Classes="Accent"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).RunLairSetupCommand}"
-                                                            CommandParameter="{Binding}"/>
-                                                    <Button Grid.Column="3"
                                                             Content="Edit" FontSize="10"
                                                             Padding="8,2"
                                                             Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
                                                             CommandParameter="{Binding}"/>
-                                                    <Button Grid.Column="4"
-                                                            Content="Delete" FontSize="10"
-                                                            Padding="8,2"
+                                                    <Button Grid.Column="2"
+                                                            Content="✕" FontSize="10"
+                                                            Padding="6,2"
+                                                            ToolTip.Tip="Delete this setup"
                                                             Foreground="{StaticResource AccentRedBrush}"
                                                             Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
                                                             CommandParameter="{Binding}"/>

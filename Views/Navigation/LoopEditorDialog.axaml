@@ -75,7 +75,7 @@
                     <DataTemplate x:DataType="vm:LoopWaypointRowViewModel">
                         <Border Classes="WaypointRow"
                                 Classes.HasCommand="{Binding HasCommand}">
-                            <Grid ColumnDefinitions="32,*,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+                            <Grid ColumnDefinitions="32,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding Index}"
                                            HorizontalAlignment="Right"
@@ -86,25 +86,32 @@
                                            VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Grid.Column="2"
-                                           Text="{Binding Command}"
+                                           Text="{Binding CommandSummary}"
                                            VerticalAlignment="Center"
                                            FontSize="10"
                                            Foreground="{StaticResource AccentCyanBrush}"
                                            Margin="6,0"
                                            IsVisible="{Binding HasCommand}"
                                            TextTrimming="CharacterEllipsis"
-                                           MaxWidth="120"/>
+                                           MaxWidth="160"/>
+                                <!-- ✎ Per-row command + delay editor. Sits LEFT
+                                     of the arrange-up arrow per UX direction. -->
                                 <Button Grid.Column="3"
+                                        Content="✎" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Set command / delay for this waypoint"
+                                        Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).EditWaypointActionCommand}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Grid.Column="4"
                                         Content="↑" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move earlier in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveUpCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="4"
+                                <Button Grid.Column="5"
                                         Content="↓" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move later in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveDownCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="5"
+                                <Button Grid.Column="6"
                                         Content="✕" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Remove waypoint"
                                         Foreground="{StaticResource AccentRedBrush}"
@@ -186,38 +193,10 @@
                            Foreground="{StaticResource AccentRedBrush}"/>
             </Grid>
 
-            <!-- Selected-waypoint command editor — only meaningful with a
-                 selection. Apply writes the textbox values back to the
-                 selected row; Clear blanks them. -->
-            <Border Grid.Row="5"
-                    BorderBrush="{StaticResource ChromeBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="3"
-                    Padding="6"
-                    IsVisible="{Binding HasSelection}">
-                <Grid ColumnDefinitions="Auto,*,Auto,80,Auto,Auto" ColumnSpacing="6">
-                    <TextBlock Grid.Column="0" Text="Command:"
-                               VerticalAlignment="Center"
-                               FontSize="11"
-                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBox   Grid.Column="1"
-                               Text="{Binding SelectedCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                               FontSize="11"/>
-                    <TextBlock Grid.Column="2" Text="Delay (ms):"
-                               VerticalAlignment="Center"
-                               FontSize="11"
-                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBox   Grid.Column="3"
-                               Text="{Binding SelectedDelayMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                               FontSize="11"/>
-                    <Button    Grid.Column="4"
-                               Content="Apply"
-                               Command="{Binding ApplyCommandEditCommand}"/>
-                    <Button    Grid.Column="5"
-                               Content="Clear"
-                               Command="{Binding ClearCommandCommand}"/>
-                </Grid>
-            </Border>
+            <!-- Per-row command + delay edits live in the modeless
+                 WaypointActionEditDialog spawned by each row's ✎
+                 button. No footer inline editor — dialog is the
+                 single path. -->
 
             <!-- Dialog buttons -->
             <Grid Grid.Row="6"

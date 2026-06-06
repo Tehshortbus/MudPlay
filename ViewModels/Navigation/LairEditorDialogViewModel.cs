@@ -120,7 +120,7 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
         string roomName = _graph.GetRoom(key)?.DisplayName ?? key.ToString();
         int? defaultRespawn = _timers.DefaultRespawnSeconds(key);
         Markers.Add(new LairMarkerRowViewModel(
-            key, roomName, defaultRespawn, marker.OverrideRespawnSeconds, marker.Skip));
+            key, roomName, defaultRespawn, marker.OverrideRespawnSeconds));
     }
 
     [RelayCommand]
@@ -303,6 +303,9 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
         // Persist a fresh LairSetup. We don't mutate _original — the
         // rail rows hold references to it via LairSetupRowViewModel,
         // and the LairManager keys on Name for the on-disk file.
+        // Skip is no longer surfaced in the editor (the field stays on
+        // LairMarker for forward-compat with the scheduler's eventual
+        // pause-this-lair affordance); always emit false here.
         List<LairMarker> markers = new(Markers.Count);
         foreach (LairMarkerRowViewModel r in Markers)
         {
@@ -310,7 +313,7 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
                 map: r.Key.Map,
                 room: r.Key.Room,
                 overrideRespawnSeconds: r.OverrideRespawnSeconds,
-                skip: r.Skip));
+                skip: false));
         }
 
         LairSetup saved = new(trimmed, markers) { Notes = Notes ?? string.Empty };
@@ -332,7 +335,8 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
 /// <summary>
 /// One row in the editor's marker grid: the room key + display name
 /// + game-data default respawn (read-only context) + user override
-/// (editable) + Skip toggle.
+/// (editable). The default hint stays visible even when an override
+/// is set so the user can always see what they're replacing.
 /// </summary>
 public sealed partial class LairMarkerRowViewModel : ObservableObject
 {
@@ -350,26 +354,27 @@ public sealed partial class LairMarkerRowViewModel : ObservableObject
     /// </summary>
     public int? DefaultRespawnSeconds { get; }
 
-    /// <summary>"default 1800s" / "no default" hint next to the override field.</summary>
+    /// <summary>
+    /// Sub-text shown below the room header — always visible, even
+    /// when the user has set an override. Format:
+    /// <c>"game default 270s"</c> / <c>"no game-data timer"</c>.
+    /// </summary>
     public string DefaultHint =>
         DefaultRespawnSeconds is int s
             ? $"game default {s}s"
-            : "no game-data default";
+            : "no game-data timer";
 
     [ObservableProperty] private int? _overrideRespawnSeconds;
-    [ObservableProperty] private bool _skip;
 
     public LairMarkerRowViewModel(
         RoomKey key,
         string roomName,
         int? defaultRespawnSeconds,
-        int? overrideRespawnSeconds,
-        bool skip)
+        int? overrideRespawnSeconds)
     {
         Key = key;
         RoomName = roomName;
         DefaultRespawnSeconds = defaultRespawnSeconds;
         _overrideRespawnSeconds = overrideRespawnSeconds;
-        _skip = skip;
     }
 }

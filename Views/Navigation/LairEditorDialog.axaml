@@ -73,11 +73,15 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:LairMarkerRowViewModel">
                         <Border Classes="MarkerRow">
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DisplayHeader}"
                                                Foreground="{StaticResource AccentAmberBrush}"
                                                TextTrimming="CharacterEllipsis"/>
+                                    <!-- Always visible (was hidden when override
+                                         was set) so the user can compare the
+                                         live override against the game-data
+                                         default at a glance. -->
                                     <TextBlock Text="{Binding DefaultHint}"
                                                FontSize="10"
                                                Foreground="{StaticResource ChromeFgMutedBrush}"/>
@@ -86,20 +90,17 @@
                                            Text="Override:" FontSize="10"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
                                            VerticalAlignment="Center"/>
+                                <!-- Width bumped from 100 → 140 so three-digit
+                                     overrides ("270" / "330") render without
+                                     truncating against the spinner buttons. -->
                                 <NumericUpDown Grid.Column="2"
                                                Value="{Binding OverrideRespawnSeconds, Mode=TwoWay}"
                                                Minimum="0" Maximum="86400" Increment="30"
                                                FormatString="0"
-                                               Width="100"
+                                               Width="140"
                                                ShowButtonSpinner="True"
                                                ToolTip.Tip="Override respawn seconds. Leave blank (0) to use the game-data default."/>
-                                <CheckBox Grid.Column="3"
-                                          Content="Skip"
-                                          IsChecked="{Binding Skip, Mode=TwoWay}"
-                                          FontSize="10"
-                                          VerticalAlignment="Center"
-                                          ToolTip.Tip="Pause this marker — the scheduler keeps it in the setup but skips it for now."/>
-                                <Button Grid.Column="4"
+                                <Button Grid.Column="3"
                                         Content="✕" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Remove marker from this setup"
                                         Foreground="{StaticResource AccentRedBrush}"
