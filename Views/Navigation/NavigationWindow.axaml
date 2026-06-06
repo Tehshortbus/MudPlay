@@ -344,7 +344,7 @@
                         Classes.Active="{Binding IsLairMode}"
                         Classes.Stop="{Binding LairModeButtonIsStop}"
                         Content="{Binding LairModeButtonLabel}"
-                        Command="{Binding ToggleLairModeCommand}"/>
+                        Command="{Binding LairModeButtonCommand}"/>
             </Grid>
         </Border>
 

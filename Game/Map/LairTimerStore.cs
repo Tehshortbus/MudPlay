@@ -113,6 +113,25 @@ public sealed class LairTimerStore : IDisposable
         _log?.Debug("LairTimerStore", "arrival history cleared.");
     }
 
+    /// <summary>
+    /// Drop the recorded arrival for the supplied subset of rooms,
+    /// leaving any others intact. Used by
+    /// <see cref="AutoLairManager.Start"/> so a Run begins with every
+    /// marked room treated as "ready" regardless of whether the
+    /// player happened to walk through it earlier in the session —
+    /// the in-game spawn check still fires on the next entry, but
+    /// from the scheduler's POV the countdown starts on THAT entry,
+    /// not on whatever stale wall-clock anchor the store had.
+    /// </summary>
+    public void ResetArrivalsFor(IEnumerable<RoomKey> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        lock (_arrivalLock)
+        {
+            foreach (RoomKey k in keys) _lastEntered.Remove(k);
+        }
+    }
+
     // ----- internals -------------------------------------------------
 
     private void OnActiveSetChanged(string? _)

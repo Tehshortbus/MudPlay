@@ -256,6 +256,14 @@ public sealed class AutoLairManager : IDisposable
             return false;
         }
 
+        // Treat every marked room as "ready now" at Start, ignoring
+        // any stale LastEntered the store picked up from passive walk-
+        // throughs earlier in the session. Per user direction:
+        // respawn timers should only tick from the moment the
+        // scheduler ENTERS each lair as part of this run, not from
+        // some wall-clock anchor the player set incidentally.
+        _timers.ResetArrivalsFor(_markers.Keys);
+
         SetPhase(AutoLairPhase.Approaching);
         ActiveChanged?.Invoke(true);
         _log?.Info("AutoLair", $"start ({_markers.Count} markers)");

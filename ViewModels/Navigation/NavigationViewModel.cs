@@ -1569,10 +1569,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         else
         {
-            // If we're entering Loop build mode from Auto-Lair build
-            // mode, tear that down first — the user can only be in one
-            // build mode at a time. The discard-on-exit semantics
-            // match the standalone Lair-toggle behaviour.
+            // Entering Loop build from anywhere else — tear down any
+            // engine that's currently driving (AutoLair scheduler OR
+            // an in-flight walk) AND any opposing build mode so the
+            // user lands in a clean Loop build session.
+            if (_services.AutoLair.IsActive)
+                _services.AutoLair.Stop("loop mode requested");
+            if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+                _services.Walker.Stop("loop mode requested");
+            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
             if (CurrentMode == NavigationMode.AutoLair)
             {
                 if (!_services.AutoLair.IsActive) _services.AutoLair.Clear();
@@ -1742,11 +1747,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         else
         {
-            // Tear down Loop build mode first if it's open — the user
-            // can only be in one build mode at a time, and the Loop
-            // builder's discard-on-exit semantics match. Goes through
-            // the public ToggleLoopMode so the LoopBuilder.PropertyChanged
-            // unsubscribe + observable reset happen exactly once.
+            // Entering Lair mode from anywhere else — tear down any
+            // active loop run / walker / loop-build session so the
+            // user lands in a clean Lair build mode regardless of
+            // what was happening before.
+            if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
+                _services.LoopRunner.Stop("lair mode requested");
+            if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
+                _services.Walker.Stop("lair mode requested");
+            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
             if (CurrentMode == NavigationMode.LoopBuild)
                 ToggleLoopMode();
             CurrentMode = NavigationMode.AutoLair;
@@ -2224,6 +2233,24 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         : (CurrentMode == NavigationMode.AutoLair ? "Building" : "Lair mode");
 
     public bool LairModeButtonIsStop => EngineActionKind == NavigationEngineKind.AutoLair;
+
+    /// <summary>
+    /// Dispatcher for the Lair-mode chip — symmetric with
+    /// <see cref="LoopModeButton"/>. When the scheduler is active
+    /// the button carries Stop semantics (routes through
+    /// <see cref="StopAll"/>); otherwise it's the build-mode
+    /// toggle.
+    /// </summary>
+    [RelayCommand]
+    private void LairModeButton()
+    {
+        if (LairModeButtonIsStop)
+        {
+            StopAll();
+            return;
+        }
+        ToggleLairMode();
+    }
 
     private void RefreshDerivedState()
     {
