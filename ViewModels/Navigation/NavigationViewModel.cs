@@ -942,6 +942,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             // level; the scheduler treats every marker as active.
             // Phase 7 PR 7.24 wires Skip through the candidate filter.
         }
+
+        // Transition the Navigation window into Lair build mode so the
+        // user sees the just-loaded markers on the map (numbered amber
+        // overlay) and the BUILDING LAIR bottom strip. Tear down any
+        // existing LoopBuild session first so the two build modes
+        // don't overlap. If we're called from Run (scheduler is about
+        // to Start), the subsequent ActiveChanged event flips the
+        // engine UI over; until then build mode is the right surface.
+        if (CurrentMode == NavigationMode.LoopBuild)
+            ToggleLoopMode();
+        if (CurrentMode != NavigationMode.AutoLair)
+            CurrentMode = NavigationMode.AutoLair;
     }
 
     /// <summary>
