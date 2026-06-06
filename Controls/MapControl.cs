@@ -107,6 +107,17 @@ public sealed class MapControl : Control
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoLairRooms));
 
     /// <summary>
+    /// Ordered list of Auto-Lair markers — when non-null + non-empty,
+    /// each room gets a numbered amber circle overlay matching the
+    /// CURRENT NAV row index. Same pattern as
+    /// <see cref="LoopBuilderWaypoints"/> for loops; the order is
+    /// supplied by <see cref="ViewModels.Navigation.NavigationViewModel"/>
+    /// so the map and the CURRENT NAV list always agree.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<RoomKey>?> AutoLairWaypointsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(AutoLairWaypoints));
+
+    /// <summary>
     /// Set of rooms with a CMD-driven teleport command (TBInfo Action
     /// chain contains a <c>teleport &lt;r&gt; &lt;m&gt;</c> directive).
     /// Rendered with diagonal cross-hatch lines over the cell fill so
@@ -224,6 +235,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AutoLairRoomsProperty);
         set => SetValue(AutoLairRoomsProperty, value);
+    }
+
+    public IReadOnlyList<RoomKey>? AutoLairWaypoints
+    {
+        get => GetValue(AutoLairWaypointsProperty);
+        set => SetValue(AutoLairWaypointsProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? TeleportRooms
@@ -421,6 +438,14 @@ public sealed class MapControl : Control
     private static readonly IBrush LoopBuilderWaypointTextBrush =
         new SolidColorBrush(Color.Parse("#FFFFFFFF"));
 
+    /// <summary>Auto-Lair numbered overlay — amber to match the section theme.</summary>
+    private static readonly IBrush AutoLairWaypointFill =
+        new SolidColorBrush(Color.Parse("#DC821E"));
+    private static readonly IPen   AutoLairWaypointRing =
+        new Pen(new SolidColorBrush(Color.Parse("#FFFFFFFF")), 1.5);
+    private static readonly IBrush AutoLairWaypointTextBrush =
+        new SolidColorBrush(Color.Parse("#FFFFFFFF"));
+
     // Cross-hatch overlay for teleport-CMD rooms. Fully-opaque bright
     // cyan with a 1.5 px stroke so the pattern reads at default zoom
     // without disappearing into the cell fill — the prior #B0FFFFFF
@@ -460,6 +485,7 @@ public sealed class MapControl : Control
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
+            AutoLairWaypointsProperty,
             LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty);
@@ -875,6 +901,7 @@ public sealed class MapControl : Control
         // Pass 5: numbered builder waypoint markers — drawn last so
         // they sit on top of every polyline and every room node fill.
         DrawLoopBuilderWaypoints(context, tilePixels, cx, cy);
+        DrawAutoLairWaypoints(context, tilePixels, cx, cy);
     }
 
     private static Rect ComputeCellRect((int X, int Y) coord, double tilePixels, double cx, double cy)
@@ -1053,6 +1080,42 @@ public sealed class MapControl : Control
             string label = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             FormattedText ft = new(label, System.Globalization.CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight, tf, textSize, LoopBuilderWaypointTextBrush);
+            ctx.DrawText(ft, new Point(
+                centre.X - ft.Width  / 2,
+                centre.Y - ft.Height / 2));
+        }
+    }
+
+    /// <summary>
+    /// Render numbered amber circles on every marked Auto-Lair room.
+    /// Index matches the CURRENT NAV row order supplied by
+    /// <see cref="ViewModels.Navigation.NavigationViewModel.AutoLairMarkedKeys"/>
+    /// so the map and the rail are always in sync. Mirrors
+    /// <see cref="DrawLoopBuilderWaypoints"/> with the amber theme.
+    /// </summary>
+    private void DrawAutoLairWaypoints(DrawingContext ctx, double tilePixels, double cx, double cy)
+    {
+        if (AutoLairWaypoints is not { Count: > 0 } waypoints) return;
+        if (Layout is null) return;
+
+        double radius = Math.Clamp(tilePixels * 0.32, 6.0, 14.0);
+        Typeface tf = new("Inter", FontStyle.Normal, FontWeight.Bold);
+        double textSize = Math.Clamp(tilePixels * 0.28, 8.0, 12.0);
+
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            RoomKey key = waypoints[i];
+            if (!Layout.Positions.TryGetValue(key, out var coord)) continue;
+            Rect cell = ComputeCellRect(coord, tilePixels, cx, cy);
+            Point centre = new(
+                cell.X + cell.Width  / 2.0,
+                cell.Y + cell.Height / 2.0);
+            ctx.DrawEllipse(AutoLairWaypointFill, AutoLairWaypointRing,
+                centre, radius, radius);
+
+            string label = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            FormattedText ft = new(label, System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, tf, textSize, AutoLairWaypointTextBrush);
             ctx.DrawText(ft, new Point(
                 centre.X - ft.Width  / 2,
                 centre.Y - ft.Height / 2));

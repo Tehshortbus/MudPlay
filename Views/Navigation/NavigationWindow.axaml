@@ -355,6 +355,7 @@
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
                                  AutoLairRooms="{Binding AutoLairRooms}"
+                                 AutoLairWaypoints="{Binding AutoLairMarkedKeys}"
                                  TeleportRooms="{Binding TeleportRooms}"
                                  WalkPathIsAutoLair="{Binding IsAutoLairing}"
                                  SelectedRoomKey="{Binding SelectedRoomKey, Mode=TwoWay}"

@@ -125,10 +125,39 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAutoLairMarkedChanged()
     {
         AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
+        RefreshAutoLairMarkedKeys();
         OnPropertyChanged(nameof(HasLairMarkers));
         OnPropertyChanged(nameof(LairBuildStatusText));
         EnsureLairTickRunning();
         RefreshDerivedState();
+    }
+
+    /// <summary>
+    /// Rebuild <see cref="AutoLairMarkedKeys"/> using the same
+    /// ordering as <see cref="PopulateLairRows"/> — active target
+    /// first when there is one, then sorted by Map / Room. Null when
+    /// no markers OR the user isn't in any Lair-related context (so
+    /// the map doesn't draw stale overlays).
+    /// </summary>
+    private void RefreshAutoLairMarkedKeys()
+    {
+        Game.Map.AutoLairManager mgr = _services.AutoLair;
+        bool relevant = CurrentMode == NavigationMode.AutoLair || mgr.IsActive;
+        if (!relevant || mgr.Marked.Count == 0)
+        {
+            AutoLairMarkedKeys = null;
+            return;
+        }
+
+        RoomKey? target = mgr.CurrentTarget;
+        List<RoomKey> ordered = new(mgr.Marked.Count);
+        if (target is { } t && mgr.Marked.Contains(t)) ordered.Add(t);
+        foreach (RoomKey key in mgr.Marked
+            .Where(k => target is not { } tt || !tt.Equals(k))
+            .OrderBy(k => k.Map).ThenBy(k => k.Room))
+            ordered.Add(key);
+
+        AutoLairMarkedKeys = ordered;
     }
 
     /// <summary>
@@ -185,6 +214,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(AutoLairPhaseLabel));
         OnPropertyChanged(nameof(AutoLairStatusText));
+        // Target switch reorders the map overlay (active target = #1).
+        RefreshAutoLairMarkedKeys();
     }
 
     /// <summary>
@@ -407,6 +438,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
+
+    /// <summary>
+    /// Ordered marker list driving the map's numbered amber overlay.
+    /// Same ordering rule as <see cref="PopulateLairRows"/>: active
+    /// target first (when the scheduler is running), then the rest
+    /// sorted by Map / Room. Visible whenever the user is in
+    /// AutoLair mode OR the scheduler is running; null when no
+    /// markers are placed.
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairMarkedKeys;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _teleportRooms;
     [ObservableProperty] private bool _isAutoLairing;
     [ObservableProperty] private RoomKey? _selectedRoomKey;
@@ -1332,6 +1373,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsLairBuilding));
         OnPropertyChanged(nameof(LairBuildStatusText));
         EnsureLairTickRunning();
+        // Map overlay is gated on AutoLair mode OR scheduler-active —
+        // toggle mode flip needs to refresh either way.
+        RefreshAutoLairMarkedKeys();
         // Entering / leaving LoopBuild flips the overlay-suppression
         // branch in RefreshLoopOverlays — re-render so the blue cycle
         // (running) or red preview (build) switches over without
