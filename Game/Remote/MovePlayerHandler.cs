@@ -131,13 +131,15 @@ public sealed class MovePlayerHandler : IDisposable
                 ctx.Reply($"no neighbour to wait at for {match.Name}");
                 return;
             }
+            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.None);
             if (_walker.WalkTo(wait.Value))
-                ctx.Reply($"walking to wait outside {match.Name} ({match.Key.Map}/{match.Key.Room})");
+                ctx.Reply($"walking outside {match.Name} ({match.Key.Map}/{match.Key.Room})");
             else
                 ctx.Reply($"no path to {match.Name}");
             return;
         }
 
+        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.None);
         if (_walker.WalkTo(match.Key))
             ctx.Reply($"walking to {match.Name} ({match.Key.Map}/{match.Key.Room})");
         else
@@ -167,17 +169,19 @@ public sealed class MovePlayerHandler : IDisposable
 
         if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
+            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Loop);
             List<LoopWaypoint> waypoints = coords.Select(k => new LoopWaypoint(k)).ToList();
             _loopRunner.Start(new Loop($"@loop from {ctx.Sender}", waypoints));
-            ctx.Reply($"starting loop with {coords.Count} waypoints");
+            ctx.Reply($"looping {coords.Count} rooms");
             return;
         }
 
         Loop? saved = _loops.Loops.FirstOrDefault(l =>
             string.Equals(l.Name, raw, StringComparison.OrdinalIgnoreCase));
         if (saved is null) { ctx.Reply($"no saved loop named '{raw}'"); return; }
+        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Loop);
         _loopRunner.Start(saved);
-        ctx.Reply($"starting loop '{saved.Name}'");
+        ctx.Reply($"looping '{saved.Name}' ({saved.Waypoints.Count} rooms)");
     }
 
     private void OnLair(RemoteCommandContext ctx)
@@ -187,10 +191,11 @@ public sealed class MovePlayerHandler : IDisposable
 
         if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
+            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Lair);
             _autoLair.Clear();
             foreach (RoomKey k in coords) _autoLair.Mark(k);
             ctx.Reply(_autoLair.Start()
-                ? $"cycling {coords.Count} lairs"
+                ? $"auto-lair: {coords.Count} lairs"
                 : "auto-lair failed to start");
             return;
         }
@@ -198,23 +203,91 @@ public sealed class MovePlayerHandler : IDisposable
         Models.Profile.LairSetup? setup = _lairs.Setups.FirstOrDefault(s =>
             string.Equals(s.Name, raw, StringComparison.OrdinalIgnoreCase));
         if (setup is null) { ctx.Reply($"no saved lair setup named '{raw}'"); return; }
+        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Lair);
         _autoLair.Clear();
         foreach (Models.Profile.LairMarker m in setup.Markers)
             _autoLair.Mark(new RoomKey(m.Map, m.Room), m.OverrideRespawnSeconds);
         ctx.Reply(_autoLair.Start()
-            ? $"cycling setup '{setup.Name}' ({setup.MarkerCount} lairs)"
+            ? $"auto-lair '{setup.Name}': {setup.MarkerCount} lairs"
             : "auto-lair failed to start");
     }
 
+    /// <summary>
+    /// Pause-gate semantics:
+    /// <list type="bullet">
+    /// <item>Walker + LoopRunner pause off the coordinator's UserGate
+    /// (<see cref="AutoWalkManager.OnCoordinatorPauseChanged"/> +
+    /// <see cref="LoopRunner.OnPauseChanged"/>) — asserting the gate
+    /// directly is sufficient for those two.</item>
+    /// <item>AutoLair owns its own scheduler tick + entry / engage /
+    /// retry timers; asserting the gate alone halts the walker but
+    /// leaves the scheduler spinning every interval, re-dispatching
+    /// WalkTo into the paused gate and churning state. Route through
+    /// <see cref="AutoLairManager.Pause"/> so its internal timers stop
+    /// and the IsPaused flag flips for the UI.</item>
+    /// </list>
+    /// </summary>
     private void OnStop(RemoteCommandContext ctx)
     {
-        _coordinator.AssertGate(MovementCoordinator.UserGate);
+        if (_autoLair.IsActive && !_autoLair.IsPaused) _autoLair.Pause();
+        else _coordinator.AssertGate(MovementCoordinator.UserGate);
         ctx.Reply("movement paused");
     }
 
+    /// <summary>
+    /// Mirror of <see cref="OnStop"/>: route through
+    /// <see cref="AutoLairManager.Resume"/> when AutoLair holds the
+    /// pause, so its respawn-aware re-evaluation runs (in-game timers
+    /// kept ticking through the stop window — the original target may
+    /// no longer be the best pick). Otherwise just clear the gate.
+    /// </summary>
     private void OnRego(RemoteCommandContext ctx)
     {
-        _coordinator.ClearGate(MovementCoordinator.UserGate);
+        if (_autoLair.IsActive && _autoLair.IsPaused) _autoLair.Resume();
+        else _coordinator.ClearGate(MovementCoordinator.UserGate);
         ctx.Reply("movement resumed");
+    }
+
+    /// <summary>
+    /// Identifies which of the three concurrent movement engines a
+    /// new command intends to drive, so <see cref="StopConflictingEngines"/>
+    /// can tear the others down without stopping the one we're about
+    /// to start.
+    /// </summary>
+    private enum ActiveEngine { None, Loop, Lair }
+
+    /// <summary>
+    /// Stop the engines that would collide with the new command.
+    /// Without this, a remote @goto issued during an active loop would
+    /// see the walker supersede its prior plan while LoopRunner kept
+    /// writing circle moves directly to the wire — both engines fight
+    /// for the command stream. AutoLair is the same: its scheduler
+    /// re-issues WalkTo on every tick, immediately overriding the new
+    /// goto. Mirror the Navigation UI's pattern
+    /// (NavigationViewModel.cs:1192-1194) and stop the conflicting
+    /// engines explicitly before starting fresh.
+    /// </summary>
+    private void StopConflictingEngines(string sender, ActiveEngine keep)
+    {
+        string reason = $"superseded by remote @ from {sender}";
+
+        if (keep != ActiveEngine.Loop
+            && _loopRunner.State is not LoopState.Idle)
+        {
+            _loopRunner.Stop(reason);
+        }
+        if (keep != ActiveEngine.Lair && _autoLair.IsActive)
+        {
+            _autoLair.Stop(reason);
+        }
+        // Walker only needs explicit stop when keeping a different
+        // engine — WalkTo already supersedes its own prior plan on the
+        // @goto path, but a new @loop / @lair would otherwise leave a
+        // goto-walk in flight when their first BFS hop fires.
+        if (keep != ActiveEngine.None
+            && _walker.State is not WalkState.Idle)
+        {
+            _walker.Stop(reason);
+        }
     }
 }
