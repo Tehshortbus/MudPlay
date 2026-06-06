@@ -125,6 +125,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.LairEditorDialogViewModel,
                 FujinTerm.Views.Navigation.LairEditorDialog>();
 
+            // CURRENT NAV ✎ button on a marked-lair row → single-marker
+            // timer-override editor. Mutates AutoLairManager directly;
+            // result payload is only used by callers that care.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.LairTimerEditDialogViewModel,
+                FujinTerm.Views.Navigation.LairTimerEditDialog>();
+
             // Navigation → "Manage" chip → loops + auto-lair markers
             // CRUD surface. Modeless; replaces the bottom-strip
             // save/discard/name textbox UX with a dedicated window.

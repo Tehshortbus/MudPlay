@@ -921,6 +921,27 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// CURRENT NAV ✎ button on a marked-lair row → single-marker timer
+    /// override editor. Dialog mutates <see cref="AutoLairManager"/>
+    /// directly via SetOverride; the scheduler picks up the change on
+    /// its next tick.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditLairTimerAsync(CurrentNavRowViewModel? row)
+    {
+        if (row is null || row.EditKey is not { } key) return;
+        LairTimerEditDialogViewModel vm = new(
+            _services.AutoLair,
+            _services.LairTimers,
+            key,
+            row.Label);
+        await _services.Dialogs
+            .OpenWindowAsync<LairTimerEditDialogViewModel, LairTimerEditDialogResult?>(vm);
+        // Override changes fire AutoLair.MarkedChanged which rebuilds
+        // the CURRENT NAV rows; no manual refresh needed.
+    }
+
+    /// <summary>
     /// Right-click → Delete on a Setups row. Confirms via the shared
     /// ConfirmService (which honours the user's "skip delete confirms"
     /// setting), then removes the setup from disk + refreshes the rail.
@@ -1851,7 +1872,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 label: FormatRoomRef(key),
                 status: isTarget ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Ready,
                 subLabel: BuildLairSubLabel(key, isTarget),
-                removeKey: key));
+                removeKey: key,
+                editKey: key));
         }
     }
 
@@ -1900,16 +1922,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 : $"respawns in {FormatMmSs(delta)}";
         }
 
-        // Never visited → fall back to the game-data default so the
-        // user can confirm at click-time whether the room they marked
-        // has a usable lair timer.
+        // Never visited → fall back to the resolved timer (override
+        // first, then game-data default) so the user can confirm at
+        // click-time whether the room has a usable lair timer.
         int? defaultSec = overrideSec ?? _services.LairTimers.DefaultRespawnSeconds(key);
         if (defaultSec is { } secs)
-            return overrideSec is null
-                ? $"game default {FormatMmSs(TimeSpan.FromSeconds(secs))}"
-                : $"override {FormatMmSs(TimeSpan.FromSeconds(secs))}";
+            return FormatMmSs(TimeSpan.FromSeconds(secs));
 
-        return "no game-data timer";
+        return "no timer";
     }
 
     /// <summary>
@@ -2244,6 +2264,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                     _ => $"{clicks} rooms clicked",
                 };
                 return $"Building loop: {namePart} · {suffix}";
+            }
+            // Auto-Lair build mode mirrors the loop-builder line — show
+            // the marked-rooms hint instead of the default "No Active
+            // Navigation" placeholder so the CURRENT NAV section's
+            // header reflects the live work-in-progress.
+            if (IsLairBuilding)
+            {
+                int markers = _services.AutoLair.Marked.Count;
+                return markers switch
+                {
+                    0 => "Building lair setup · click rooms to add markers",
+                    1 => "Building lair setup · 1 lair marked",
+                    _ => $"Building lair setup · {markers} lairs marked",
+                };
             }
             return EngineActionKind switch
             {

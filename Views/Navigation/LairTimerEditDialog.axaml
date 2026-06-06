@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="220"
+        x:Class="FujinTerm.Views.Navigation.LairTimerEditDialog"
+        x:DataType="vm:LairTimerEditDialogViewModel"
+        Title="Lair timer"
+        Width="380" Height="220"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding RoomLabel}"
+                       FontSize="12" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <TextBlock Grid.Row="1"
+                       Text="{Binding DefaultHint}"
+                       FontSize="11"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <!-- Override seconds. 0 = no override (fall back to default). -->
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8"
+                  Margin="0,8,0,0">
+                <TextBlock Grid.Column="0" Text="Override"
+                           FontSize="11"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding OverrideSeconds, Mode=TwoWay}"
+                               Minimum="0" Maximum="86400" Increment="10"
+                               FormatString="0"
+                               Width="120"
+                               ShowButtonSpinner="True"
+                               ToolTip.Tip="Override respawn time in seconds. 0 = use the game-data default."/>
+                <TextBlock Grid.Column="2" Text="seconds (0 = use default)"
+                           FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- Spacer row keeps the button bar pinned to the bottom. -->
+            <Grid Grid.Row="3"/>
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Clear override"
+                        Command="{Binding ClearOverrideCommand}"
+                        ToolTip.Tip="Wipe the override and fall back to the game-data default."/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+                <Button Content="Save" Command="{Binding SaveCommand}"
+                        IsDefault="True" MinWidth="80"
+                        Classes="Accent"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

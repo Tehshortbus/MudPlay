@@ -688,7 +688,7 @@
                                                 Classes.Current="{Binding IsCurrent}"
                                                 Classes.Upcoming="{Binding IsUpcoming}"
                                                 Classes.Ready="{Binding IsReady}">
-                                            <Grid ColumnDefinitions="24,*,Auto,Auto">
+                                            <Grid ColumnDefinitions="24,*,Auto,Auto,Auto">
                                                 <TextBlock Grid.Column="0"
                                                            Text="{Binding Index}"
                                                            FontSize="11"
@@ -704,7 +704,18 @@
                                                                TextTrimming="CharacterEllipsis"
                                                                IsVisible="{Binding SubLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                                 </StackPanel>
+                                                <!-- ✎ Edit timer override (Auto-Lair rows only). -->
                                                 <Button Grid.Column="3"
+                                                        Content="✎"
+                                                        FontSize="10"
+                                                        Padding="6,0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        ToolTip.Tip="Override this lair's respawn timer"
+                                                        IsVisible="{Binding HasEdit}"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).EditLairTimerCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="4"
                                                         Content="✕"
                                                         FontSize="10"
                                                         Padding="6,0"

@@ -17,23 +17,34 @@ public sealed class CurrentNavRowViewModel
     public CurrentNavRowStatus Status { get; }
     public RoomKey? RemoveKey { get; }
 
+    /// <summary>
+    /// When non-null, the row shows an Edit (✎) button alongside
+    /// Remove. Currently used by the Auto-Lair rows to expose a
+    /// per-marker timer-override dialog; loop / walk steps don't
+    /// have a per-step edit affordance so they leave this null.
+    /// </summary>
+    public RoomKey? EditKey { get; }
+
     public bool IsCompleted => Status == CurrentNavRowStatus.Completed;
     public bool IsCurrent   => Status == CurrentNavRowStatus.Current;
     public bool IsUpcoming  => Status == CurrentNavRowStatus.Upcoming;
     public bool IsReady     => Status == CurrentNavRowStatus.Ready;
     public bool HasRemove   => RemoveKey is not null;
+    public bool HasEdit     => EditKey   is not null;
 
     public CurrentNavRowViewModel(
         int index, string label,
         CurrentNavRowStatus status,
         string? subLabel = null,
-        RoomKey? removeKey = null)
+        RoomKey? removeKey = null,
+        RoomKey? editKey = null)
     {
         Index = index;
         Label = label;
         Status = status;
         SubLabel = subLabel;
         RemoveKey = removeKey;
+        EditKey = editKey;
     }
 }
 
