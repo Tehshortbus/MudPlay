@@ -315,14 +315,34 @@ public sealed class AutoLairManager : IDisposable
     /// the scheduler tick, and forces an immediate re-evaluation so the
     /// run picks up from the player's current position.
     /// </summary>
+    /// <remarks>
+    /// In-game respawn timers don't pause when WE pause — they're
+    /// wall-clock anchored on the player's last arrival at each lair.
+    /// So Resume drops the latched leg state (LastDecision, CurrentTarget,
+    /// CurrentWaitRoom, CurrentEntryArrivalAt) and snaps Phase back to
+    /// Approaching before re-evaluating. The next pick is computed
+    /// against the NEW timer landscape — the lair we were heading to
+    /// before the pause may have over-spawned while paused, and a
+    /// different marker may now be the better target.
+    /// </remarks>
     public void Resume()
     {
         if (!IsActive || !IsPaused) return;
         IsPaused = false;
         _coordinator?.ClearGate(MovementCoordinator.UserGate);
+
+        // Drop the stale leg — respawn timers ticked while paused.
+        LastDecision = null;
+        CurrentTarget = null;
+        CurrentWaitRoom = null;
+        CurrentEntryArrivalAt = null;
+        _entryTimer.Stop();
+        _engageTimer.Stop();
+        SetPhase(AutoLairPhase.Approaching);
+
         _schedulerTick.Start();
         PausedChanged?.Invoke(false);
-        _log?.Info("AutoLair", "resumed.");
+        _log?.Info("AutoLair", "resumed; re-evaluating against current timer state.");
         EvaluateAndDispatch();
     }
 
