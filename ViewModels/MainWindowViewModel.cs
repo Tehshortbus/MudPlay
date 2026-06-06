@@ -557,6 +557,11 @@ public partial class MainWindowViewModel : ObservableObject
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(engineSend);
 
+        // Phase 8 PR 8.2 — bind the same gate-wrapped wire path to the
+        // EventManager so Command-action events route through
+        // SendUserInput like every other engine.
+        AppServices.Current.Events.SetWireSender(engineSend);
+
         // Trigger engine subscribes to the LineExtractor for game-message
         // dispatch (chat + system-log subscriptions wired in its ctor) and
         // borrows the same wire sender so a fired trigger's Response goes
@@ -986,6 +991,18 @@ public partial class MainWindowViewModel : ObservableObject
         _userInitiatedDisconnect = true;
         _lastDisconnectCause = DisconnectCause.UserInitiated;
         _reactiveReconnectCount = 0;
+
+        // Phase 8 PR 8.2 — fire user's Logoff events BEFORE we close
+        // the socket. Bounded flush window gives the wire writes time
+        // to drain. Dropped connections take the Disconnected path
+        // straight without coming through here, so they never fire
+        // Logoff — by design (clean shutdown only).
+        AppServices.Current.Events.FireLogoffEvents();
+        if (_telnet?.IsConnected == true)
+        {
+            try { await Task.Delay(TimeSpan.FromSeconds(2)); }
+            catch (TaskCanceledException) { /* shutdown — keep going */ }
+        }
 
         TelnetClient? t = _telnet;
         _telnet = null;
@@ -1704,6 +1721,10 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Cleanup.Reset();
                 CancelCleanupReconnect("connected");
                 ArmStableConnectionReset();
+                // Phase 8 PR 8.2 — let the EventScheduler reset its
+                // "are we in-game?" latch. The actual Logon fire
+                // happens on the first PromptObserved, not here.
+                AppServices.Current.EventScheduler.NotifyConnected();
             });
         };
         client.Disconnected += () =>
@@ -1718,6 +1739,9 @@ public partial class MainWindowViewModel : ObservableObject
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
                 CancelStableConnectionReset();
+                // Phase 8 PR 8.2 — stop the event scheduler's timers
+                // and latch the Re-log flag (only if we were in-game).
+                AppServices.Current.EventScheduler.NotifyDisconnected();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a

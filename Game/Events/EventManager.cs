@@ -189,6 +189,27 @@ public sealed class EventManager
         }
     }
 
+    /// <summary>
+    /// Synchronously fires every <see cref="EventTriggerType.Logoff"/>
+    /// event in the list. Called from the user-initiated disconnect
+    /// path BEFORE the wire closes (and BEFORE the dropped-connection
+    /// auto-reconnect kicks in for dropped paths — those skip Logoff
+    /// entirely because nobody calls this method on a server-side
+    /// drop). Caller is responsible for the bounded flush window
+    /// between this call and the actual <c>DisposeAsync</c> so the
+    /// wire writes have time to drain.
+    /// </summary>
+    public void FireLogoffEvents()
+    {
+        // Snapshot to a list so an event action that adds / removes
+        // events mid-fire doesn't invalidate the iterator. Fairly
+        // contrived but cheap insurance.
+        List<ScheduledEvent> snapshot = Events
+            .Where(e => e.TriggerType == EventTriggerType.Logoff && !e.Disabled)
+            .ToList();
+        foreach (ScheduledEvent e in snapshot) Fire(e);
+    }
+
     private void ExecuteWalkTo(ScheduledEvent e)
     {
         if (_walker is null) return;

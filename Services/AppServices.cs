@@ -478,10 +478,23 @@ public sealed class AppServices
     /// dispatcher (Phase 8 PR 8.1). CRUD surface for the Settings →
     /// Events tab; <see cref="Game.Events.EventManager.Fire"/> routes
     /// to <see cref="Walker"/> / <see cref="LoopRunner"/> /
-    /// <see cref="AutoLair"/> / the bound wire sender. Trigger sources
-    /// (Logon / Logoff / Re-log / AtTime / Every) wire in PR 8.2.
+    /// <see cref="AutoLair"/> / the bound wire sender.
     /// </summary>
     public Game.Events.EventManager Events { get; private set; } = null!;
+
+    /// <summary>
+    /// Trigger sources for <see cref="Events"/> (Phase 8 PR 8.2).
+    /// Owns the AtTime ticker, per-event Every-timers, and the
+    /// connection-aware Logon / Re-log latch. MainWindowVM calls
+    /// <see cref="Game.Events.EventScheduler.NotifyConnected"/> /
+    /// <see cref="Game.Events.EventScheduler.NotifyDisconnected"/> as
+    /// its <see cref="TelnetClient"/> raises those events, since the
+    /// telnet client is per-connection and not a stable singleton.
+    /// Logoff events fire via
+    /// <see cref="Game.Events.EventManager.FireLogoffEvents"/>
+    /// directly from the user-initiated disconnect path.
+    /// </summary>
+    public Game.Events.EventScheduler EventScheduler { get; private set; } = null!;
 
     /// <summary>
     /// Per-character keybindings for built-in app actions (toolbar +
@@ -1268,9 +1281,18 @@ public sealed class AppServices
         // scheduled / lifecycle events, dispatches actions into the
         // existing movement / command stack, and reconciles saved Loop /
         // AutoLair target references against their managers'
-        // collections. Trigger sources wire in PR 8.2.
+        // collections.
         Events = new Game.Events.EventManager(
             Profile, Loops, Lairs, LoopRunner, AutoLair, Walker, Log);
+
+        // Phase 8 PR 8.2 — EventScheduler. Owns the AtTime ticker +
+        // per-event Every-timers + connection-aware Logon / Re-log
+        // latch. Subscribes to the stable WirePromptScanner singleton
+        // for in-game detection; MainWindowVM signals Connected /
+        // Disconnected via NotifyConnected / NotifyDisconnected since
+        // the TelnetClient itself is per-connection.
+        EventScheduler = new Game.Events.EventScheduler(
+            Events, PromptScanner, Profile, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
