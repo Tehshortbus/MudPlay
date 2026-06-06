@@ -987,6 +987,9 @@ public sealed class AppServices
         Profile.ProfileLoaded  += _ => ApplyOtherFromActiveProfile();
         Profile.ProfileClosed  += ResetOtherToDefaults;
         Profile.ProfileMutated += _ => ApplyOtherFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyAutoLairFromActiveProfile();
+        Profile.ProfileClosed  += ResetAutoLairToDefaults;
+        Profile.ProfileMutated += _ => ApplyAutoLairFromActiveProfile();
 
         // Bridge: follow the pinned BBS's preferred game-data set.
         // Active set lives at BBS scope (every character on the same
@@ -1383,6 +1386,39 @@ public sealed class AppServices
         GameCommands.ExitCommand  = defaults.GameExitCommand;
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
+    }
+
+    /// <summary>
+    /// Push the loaded character's
+    /// <see cref="Models.Profile.AutoLairSettings"/> into
+    /// <see cref="AutoLair"/> — heuristic, idle penalty, engage timeout,
+    /// and the chosen <see cref="Game.Map.ITravelCostModel"/>
+    /// implementation. Same shape as
+    /// <see cref="ApplyOtherFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyAutoLairFromActiveProfile()
+    {
+        Models.Profile.AutoLairSettings dto =
+            ReadSection<Models.Profile.AutoLairSettings>(Profile.Current, "AutoLair");
+        AutoLair.Heuristic = dto.Heuristic;
+        AutoLair.IdlePenalty = Math.Max(0, dto.IdlePenalty);
+        AutoLair.EngageTimeoutSeconds = Math.Clamp(dto.EngageTimeoutSeconds, 1, 3600);
+        AutoLair.TravelCostModel = dto.TravelCostMode switch
+        {
+            Models.Profile.AutoLairTravelCostMode.EncumbranceGated =>
+                new Game.Map.EncumbranceGatedTravelCostModel(PlayerState, dto.HopTimesByEncumbrance),
+            _ =>
+                new Game.Map.FlatTravelCostModel(Math.Max(0.1, dto.FlatSecondsPerHop)),
+        };
+    }
+
+    private void ResetAutoLairToDefaults()
+    {
+        Models.Profile.AutoLairSettings defaults = new();
+        AutoLair.Heuristic = defaults.Heuristic;
+        AutoLair.IdlePenalty = defaults.IdlePenalty;
+        AutoLair.EngageTimeoutSeconds = defaults.EngageTimeoutSeconds;
+        AutoLair.TravelCostModel = new Game.Map.FlatTravelCostModel(defaults.FlatSecondsPerHop);
     }
 
     /// <summary>
