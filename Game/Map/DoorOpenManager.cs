@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -60,7 +59,7 @@ public sealed class DoorOpenManager : IDisposable
     private readonly IDisposable _lockedSub;
     private readonly IDisposable _keyOkSub;
     private readonly IDisposable _keyUnknownSub;
-    private Action<byte[]>? _wireSender;
+    private readonly WireSender _wire = new();
     private bool _disposed;
 
     private readonly Queue<DoorRequest> _queue = new();
@@ -119,14 +118,10 @@ public sealed class DoorOpenManager : IDisposable
     /// Bind the wire-sender. Same shape as <see cref="TrapDisarmManager.SetWireSender"/>
     /// — MainWindowVM supplies the gate-wrapped <c>SendUserInput</c>.
     /// </summary>
-    public void SetWireSender(Action<byte[]> sender)
-    {
-        ArgumentNullException.ThrowIfNull(sender);
-        _wireSender = sender;
-    }
+    public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
-    internal List<byte[]> LastSentForTests { get; } = new();
+    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
     {
@@ -268,7 +263,7 @@ public sealed class DoorOpenManager : IDisposable
             return;
         }
         _state = DoorState.WaitingUseKey;
-        SendWire($"use {keyName} {cur.DirectionShort}");
+        _wire.Send($"use {keyName} {cur.DirectionShort}");
         _log?.Info("Door",
             $"use {keyName} {cur.DirectionShort} (single-shot — keys have limited charges).");
     }
@@ -286,7 +281,7 @@ public sealed class DoorOpenManager : IDisposable
     {
         if (_current is not { } cur || _verb is null) return;
         _verbAttempts++;
-        SendWire($"{_verb} {cur.DirectionShort}");
+        _wire.Send($"{_verb} {cur.DirectionShort}");
         int cap = _verb == "bash" ? _maxBashProvider() : _maxPickProvider();
         _log?.Info("Door",
             $"{_verb} {cur.DirectionShort} (attempt {_verbAttempts}/{cap}).");
@@ -296,7 +291,7 @@ public sealed class DoorOpenManager : IDisposable
     {
         if (_current is not { } cur) return;
         _state = DoorState.WaitingOpen;
-        SendWire($"open {cur.DirectionShort}");
+        _wire.Send($"open {cur.DirectionShort}");
         _log?.Info("Door", $"open {cur.DirectionShort} (after pick success).");
     }
 
@@ -481,13 +476,6 @@ public sealed class DoorOpenManager : IDisposable
     }
 
     // ----- helpers ----------------------------------------------------
-
-    private void SendWire(string command)
-    {
-        byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
-        LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
-    }
 
     internal static string DirectionShort(Direction d) => d switch
     {

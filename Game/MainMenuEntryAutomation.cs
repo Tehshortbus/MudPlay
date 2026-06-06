@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -65,7 +64,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     private readonly HangupSignal _hangup;
     private readonly LogService? _log;
     private readonly IDisposable _patternSub;
-    private Action<byte[]>? _wireSender;
+    private readonly WireSender _wire = new();
     private DateTime _armedUntilUtc = DateTime.MinValue;
     private Avalonia.Threading.DispatcherTimer? _startupTimer;
     private int _startupIndex;
@@ -106,7 +105,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
     /// <summary>Test seam — most recent bytes the engine asked to write to the wire.</summary>
-    internal List<byte[]> LastSentForTests { get; } = new();
+    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     /// <summary>True when armed AND inside the window.</summary>
     public bool IsArmed => NowProvider() < _armedUntilUtc;
@@ -133,11 +132,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     /// Without it the engine still observes pattern matches but
     /// produces no wire output.
     /// </summary>
-    public void SetWireSender(Action<byte[]> sender)
-    {
-        ArgumentNullException.ThrowIfNull(sender);
-        _wireSender = sender;
-    }
+    public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     /// <summary>
     /// Open the arm window — UNLESS a hangup signal is pending, in
@@ -192,22 +187,14 @@ public sealed class MainMenuEntryAutomation : IDisposable
 
         string command = _commands.EntryCommand;
         if (string.IsNullOrEmpty(command)) return;
-        if (_wireSender is null) return;
+        if (!_wire.IsBound) return;
 
-        SendWire(command);
+        _wire.Send(command);
         _log?.Log(LogSeverity.Info, "MainMenuEntry",
             $"Auto-entered realm with '{command}' after login automation completed.");
         StartStartupSequence();
     }
 
-    private void SendWire(string text)
-    {
-        // Empty string + \r = bare CR (flushes MOTD pagination). Other
-        // strings get the same \r suffix every other engine uses.
-        byte[] bytes = Encoding.Latin1.GetBytes(text + "\r");
-        LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
-    }
 
     // ----- Post-entry startup sequence ----------------------------------
 
@@ -237,7 +224,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
         }
         string next = StartupSequence[_startupIndex];
         _startupIndex++;
-        SendWire(next);
+        _wire.Send(next);
         _log?.Log(LogSeverity.Debug, "MainMenuEntry",
             next.Length == 0
                 ? "Sent post-entry CR (MOTD flush)."

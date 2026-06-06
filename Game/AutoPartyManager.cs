@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -44,7 +43,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly PartyState _party;
     private readonly TrainerMenuTracker? _trainerMenu;
     private readonly LogService? _log;
-    private Action<byte[]>? _wireSender;
+    private readonly WireSender _wire = new();
     private readonly IDisposable _alsoHereSub;
     private readonly IDisposable _partyInviteSub;
     private readonly IDisposable _telepathSub;
@@ -78,7 +77,7 @@ public sealed class AutoPartyManager : IDisposable
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
     /// <summary>Test seam — most recent bytes the engine asked to write to the wire.</summary>
-    internal List<byte[]> LastSentForTests { get; } = new();
+    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     /// <summary>Per-given-name TTL map suppressing rapid re-invites.</summary>
     private readonly Dictionary<string, DateTime> _recentlyInvited =
@@ -267,11 +266,7 @@ public sealed class AutoPartyManager : IDisposable
     /// tests can inspect <see cref="LastSentForTests"/> without
     /// configuring a real sender).
     /// </summary>
-    public void SetWireSender(Action<byte[]> sender)
-    {
-        ArgumentNullException.ThrowIfNull(sender);
-        _wireSender = sender;
-    }
+    public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     public void Dispose()
     {
@@ -388,7 +383,7 @@ public sealed class AutoPartyManager : IDisposable
         // every subsequent "Also here:" within 60 s would be TTL-
         // suppressed and the user would never get auto-invited that
         // session.
-        if (_wireSender is null) return;
+        if (!_wire.IsBound) return;
 
         // TTL suppression — skip if we've invited them in the cooldown
         // window. Lazy pruning happens here on read.
@@ -400,7 +395,7 @@ public sealed class AutoPartyManager : IDisposable
         }
         _recentlyInvited[given] = now;
 
-        SendWire($"invite {given}");
+        _wire.Send($"invite {given}");
         _log?.Log(LogSeverity.Info, "AutoParty", $"Auto-invited {given} (InviteToPartyIfSeen).");
 
         // Start the @join nag escalation — fires the first /given @join
@@ -423,7 +418,7 @@ public sealed class AutoPartyManager : IDisposable
     private void OnTrainerMenuExited()
     {
         if (_trainerMenu is null) return;
-        if (_wireSender is null) return;
+        if (!_wire.IsBound) return;
         IReadOnlyList<string> snapshot = _trainerMenu.RosterAtMenuEntry;
         if (snapshot.Count == 0) return;
 
@@ -453,7 +448,7 @@ public sealed class AutoPartyManager : IDisposable
             // is a deliberate refresh signal, not the rapid room
             // re-render the cooldown protects against.
             _recentlyInvited[given] = now;
-            SendWire($"invite {given}");
+            _wire.Send($"invite {given}");
             _log?.Log(LogSeverity.Info, "AutoParty",
                 $"Re-invited {given} after trainer-menu exit.");
             StartNag(given, now);
@@ -475,7 +470,7 @@ public sealed class AutoPartyManager : IDisposable
                 return;
         }
 
-        SendWire($"follow {sender}");
+        _wire.Send($"follow {sender}");
         _log?.Log(LogSeverity.Info, "AutoParty", $"Auto-accepted invite from {sender} (JoinPartyIfInvited).");
     }
 
@@ -496,13 +491,6 @@ public sealed class AutoPartyManager : IDisposable
         }
         c = default;
         return false;
-    }
-
-    private void SendWire(string command)
-    {
-        byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
-        LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
     }
 
     // ----- @join nag escalation ----------------------------------------
@@ -606,8 +594,8 @@ public sealed class AutoPartyManager : IDisposable
 
     private void SendJoinNag(NagState s, DateTime now)
     {
-        if (_wireSender is null) return;
-        SendWire($"/{s.Given} @join");
+        if (!_wire.IsBound) return;
+        _wire.Send($"/{s.Given} @join");
         s.LastJoinAt = now;
         s.JoinSends++;
         _log?.Log(LogSeverity.Info, "AutoParty",

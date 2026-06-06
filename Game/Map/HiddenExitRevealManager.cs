@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -31,7 +30,7 @@ public sealed class HiddenExitRevealManager : IDisposable
     private readonly IDisposable? _searchFailSub;
     private readonly Func<int> _maxAttemptsProvider;
     private readonly LogService? _log;
-    private Action<byte[]>? _wireSender;
+    private readonly WireSender _wire = new();
     private bool _disposed;
 
     private readonly Queue<HiddenRequest> _queue = new();
@@ -80,14 +79,10 @@ public sealed class HiddenExitRevealManager : IDisposable
     }
 
     /// <summary>Bind the wire-sender — same shape as the rest of the engine-side handlers.</summary>
-    public void SetWireSender(Action<byte[]> sender)
-    {
-        ArgumentNullException.ThrowIfNull(sender);
-        _wireSender = sender;
-    }
+    public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
-    internal List<byte[]> LastSentForTests { get; } = new();
+    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
     {
@@ -188,7 +183,7 @@ public sealed class HiddenExitRevealManager : IDisposable
     {
         if (_current is not { } cur) return;
         _attempts++;
-        SendWire($"sea {DirectionShort(cur.Direction)}");
+        _wire.Send($"sea {DirectionShort(cur.Direction)}");
         _log?.Info("Hidden",
             $"sea {DirectionShort(cur.Direction)} (attempt {_attempts}/{_maxAttemptsProvider()}).");
     }
@@ -227,13 +222,6 @@ public sealed class HiddenExitRevealManager : IDisposable
         _current = null;
         _attempts = 0;
         TryStartNext();
-    }
-
-    private void SendWire(string command)
-    {
-        byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
-        LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
     }
 
     private static string DirectionShort(Direction d) => d switch

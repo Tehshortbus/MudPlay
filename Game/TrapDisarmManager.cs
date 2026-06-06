@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -45,7 +44,7 @@ public sealed class TrapDisarmManager : IDisposable
     private readonly IDisposable _foundSub;
     private readonly IDisposable _noneSub;
     private readonly IDisposable _disarmedSub;
-    private Action<byte[]>? _wireSender;
+    private readonly WireSender _wire = new();
     private bool _disposed;
 
     /// <summary>FIFO queue of pending trap requests (oldest at the front).</summary>
@@ -100,14 +99,10 @@ public sealed class TrapDisarmManager : IDisposable
     /// handlers — MainWindowVM supplies the gate-wrapped
     /// <c>SendUserInput</c>.
     /// </summary>
-    public void SetWireSender(Action<byte[]> sender)
-    {
-        ArgumentNullException.ThrowIfNull(sender);
-        _wireSender = sender;
-    }
+    public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
-    internal List<byte[]> LastSentForTests { get; } = new();
+    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
     {
@@ -202,7 +197,7 @@ public sealed class TrapDisarmManager : IDisposable
     {
         if (_current is not { } cur) return;
         _searchAttempts++;
-        SendWire($"sea {cur.Direction}");
+        _wire.Send($"sea {cur.Direction}");
         _log?.Log(LogSeverity.Info, "Trap",
             $"Searching {cur.Direction} (attempt {_searchAttempts}/{MaxSearchAttempts}).");
     }
@@ -211,7 +206,7 @@ public sealed class TrapDisarmManager : IDisposable
     {
         if (_current is not { } cur) return;
         _disarmAttempts++;
-        SendWire($"disarm trap {cur.Direction}");
+        _wire.Send($"disarm trap {cur.Direction}");
         _log?.Log(LogSeverity.Info, "Trap",
             $"Disarming {cur.Direction} (attempt {_disarmAttempts}/{MaxDisarmAttempts}).");
     }
@@ -273,13 +268,6 @@ public sealed class TrapDisarmManager : IDisposable
         _searchAttempts = 0;
         _disarmAttempts = 0;
         TryStartNext();
-    }
-
-    private void SendWire(string command)
-    {
-        byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
-        LastSentForTests.Add(bytes);
-        _wireSender?.Invoke(bytes);
     }
 
     /// <summary>
