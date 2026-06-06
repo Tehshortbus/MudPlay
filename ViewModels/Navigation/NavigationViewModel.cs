@@ -1381,10 +1381,39 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
 
+    /// <summary>
+    /// Toggle the Lair "build" mode (mirrors <see cref="ToggleLoopMode"/>).
+    /// Exiting build mode DISCARDS the in-progress marker set — matches
+    /// LoopBuilder's "exit discards clicks" semantics so the user has a
+    /// clean idle state. Markers loaded from a saved setup are equally
+    /// transient; persist them via the rail's "Save lairs" button before
+    /// toggling out.
+    /// </summary>
+    /// <remarks>
+    /// Exception: when the scheduler is actively running we keep the
+    /// markers in place — clearing them would yank the rug out from
+    /// under the live engine. The Lair-mode chip then shows "Stop"
+    /// instead of "Building" and routes through the
+    /// <c>LoopModeButtonCommand</c> dispatcher (per
+    /// <see cref="LairModeButtonIsStop"/>).
+    /// </remarks>
     [RelayCommand]
     private void ToggleLairMode()
-        => CurrentMode = CurrentMode == NavigationMode.AutoLair
-            ? NavigationMode.Idle : NavigationMode.AutoLair;
+    {
+        if (CurrentMode == NavigationMode.AutoLair)
+        {
+            // Drop transient build-state on exit, unless the scheduler
+            // is using it. The Save button persisted what the user
+            // wanted; everything else is scratchpad.
+            if (!_services.AutoLair.IsActive)
+                _services.AutoLair.Clear();
+            CurrentMode = NavigationMode.Idle;
+        }
+        else
+        {
+            CurrentMode = NavigationMode.AutoLair;
+        }
+    }
 
     // ----- Walker controls (mirrored on the top-right Run/Stop) -----
 
@@ -1741,10 +1770,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         ToggleLoopMode();
     }
 
-    /// <summary>Lair-mode button face: idle → "Lair mode"; mode-on → "Marking"; running → "Stop".</summary>
+    /// <summary>Lair-mode button face: idle → "Lair mode"; mode-on → "Building"; running → "Stop".</summary>
     public string LairModeButtonLabel => EngineActionKind == NavigationEngineKind.AutoLair
         ? "Stop"
-        : (CurrentMode == NavigationMode.AutoLair ? "Marking" : "Lair mode");
+        : (CurrentMode == NavigationMode.AutoLair ? "Building" : "Lair mode");
 
     public bool LairModeButtonIsStop => EngineActionKind == NavigationEngineKind.AutoLair;
 
