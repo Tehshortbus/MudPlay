@@ -138,4 +138,19 @@ public static class KnownPatterns
     public const string TrapFoundInSearch     = "trap.found-in-search";   // "You found a trap to the <dir>!"
     public const string TrapNoneInSearch      = "trap.none-in-search";    // "You notice nothing different to the <dir>."
     public const string TrapDisarmedSuccess   = "trap.disarmed-success";  // "You successfully disarmed the trap to the <dir>."
+
+    // ----- Door open/bash/pick (Phase 7 DoorOpenManager) ----------------
+    // Drives the walker's door FSM. Phrasing ports from MudProxy's door
+    // handler — covers the door / gate noun pair (some realms render
+    // "gate" for the same lock state) and the bash / pick / open verbs.
+    public const string DoorBashSuccess       = "door.bash.success";       // "you bashed the door open" / "bashed the gate open"
+    public const string DoorBashFailure       = "door.bash.failure";       // "your attempts to bash through fail"
+    public const string DoorPickSuccess       = "door.pick.success";       // "you successfully unlock the door"
+    public const string DoorPickFailure       = "door.pick.failure";       // "your lockpicking skill fails you"
+    public const string DoorPickNotLocked     = "door.pick.notlocked";     // "was not locked"
+    public const string DoorOpenedNow         = "door.opened.now";         // "is now open" (after open)
+    public const string DoorAlreadyOpen       = "door.opened.already";     // "is already open"
+    public const string DoorIsLocked          = "door.islocked";           // "is locked" (open hit a keyed door)
+    public const string DoorKeyUnlockSuccess  = "door.key.unlocked";       // "successfully unlocked" (after use <key> <dir>)
+    public const string DoorKeyUnknown        = "door.key.unknown";        // "have no <item>" / "you don't have" (use <key> failed)
 }

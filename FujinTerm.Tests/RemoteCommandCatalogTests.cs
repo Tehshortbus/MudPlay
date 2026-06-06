@@ -59,12 +59,17 @@ public sealed class RemoteCommandCatalogTests
     [Theory]
     [InlineData("@goto")]
     [InlineData("@loop")]
-    [InlineData("@looponce")]
-    [InlineData("@roam")]
+    [InlineData("@lair")]
     [InlineData("@stop")]
     [InlineData("@rego")]
     public void MovePlayer_NavigationCommands(string cmd)
         => Assert.Equal(PlayerRemoteControls.MovePlayer, Lookup(cmd));
+
+    [Theory]
+    [InlineData("@looponce")]
+    [InlineData("@roam")]
+    public void RemovedFromCatalog(string cmd)
+        => Assert.False(RemoteCommandCatalog.TryGetCategory(cmd, out _));
 
     // ===== Toggle Settings (12 auto-* + @settings + @reset + @attack-last) =====
 

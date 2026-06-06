@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="760"
+             x:Class="FujinTerm.Views.Settings.AutoLairSectionView"
+             x:DataType="vm:AutoLairSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+        <Style Selector="TextBlock.FieldSuffix">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+        <Style Selector="TextBlock.HelpText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="6"
+                    MaxWidth="780" HorizontalAlignment="Left">
+
+            <!-- Routing heuristic -->
+            <TextBlock Classes="SectionHeader" Text="ROUTING HEURISTIC"/>
+
+            <RadioButton Content="Default — balance wasted respawn vs idle wait"
+                         GroupName="Heuristic"
+                         IsChecked="{Binding IsDefaultHeuristic, Mode=TwoWay}"
+                         ToolTip.Tip="Picks the lair that minimises max(0, slack) + max(0, -slack) × idlePenalty. Slack = entry-arrival minus ready-at; positive = wasted respawn, negative = idle wait."/>
+            <RadioButton Content="Throughput — minimise wasted respawn only"
+                         GroupName="Heuristic"
+                         IsChecked="{Binding IsThroughputHeuristic, Mode=TwoWay}"
+                         ToolTip.Tip="Treats idle wait as free; always chases the soonest-ready lair. Best when the player doesn't mind standing in a wait-room for a while."/>
+
+            <Grid ColumnDefinitions="200,Auto,*" Margin="0,8,0,0" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Idle penalty weight"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding IdlePenalty, Mode=TwoWay}"
+                               Minimum="0" Maximum="100" Increment="0.1"
+                               FormatString="0.0"
+                               Width="120"
+                               ShowButtonSpinner="True"
+                               ToolTip.Tip="Default 1.0 (treat idle and wasted equally). 0 = ignore idle (same as Throughput). 2+ = prefer ready-now lairs."/>
+                <TextBlock Grid.Column="2" Classes="FieldSuffix"
+                           Text="× idle-seconds in score"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="200,Auto,*" Margin="0,4,0,0" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Engage timeout"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding EngageTimeoutSeconds, Mode=TwoWay}"
+                               Minimum="1" Maximum="3600" Increment="5"
+                               FormatString="0"
+                               Width="120"
+                               ShowButtonSpinner="True"
+                               ToolTip.Tip="How long the scheduler stays in Engaging after entering a lair before re-evaluating. Default 30 s. Phase 13's CombatManager will eventually expose a combat-ended signal that replaces this timer."/>
+                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="seconds"/>
+            </Grid>
+
+            <!-- Travel cost model -->
+            <TextBlock Classes="SectionHeader" Text="TRAVEL COST MODEL"/>
+
+            <TextBlock Classes="HelpText"
+                       Text="How long the scheduler thinks each BFS hop takes. Used to project entry-arrival time and pick lairs whose ready-at lines up with our arrival. Calibrate via Settings → Other → &quot;Log movement hop timing&quot;."/>
+
+            <RadioButton Content="Flat seconds per hop"
+                         GroupName="TravelCostMode"
+                         IsChecked="{Binding IsFlatMode, Mode=TwoWay}"
+                         ToolTip.Tip="Single value applied to every hop regardless of encumbrance. Simplest; right for sneak-classes whose encumbrance never moves."/>
+            <Grid ColumnDefinitions="32,Auto,Auto,*" Margin="0,2,0,4" ColumnSpacing="8"
+                  IsEnabled="{Binding IsFlatMode}">
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding FlatSecondsPerHop, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0"
+                               Width="120"
+                               ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="2" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+
+            <RadioButton Content="Encumbrance-gated"
+                         GroupName="TravelCostMode"
+                         IsChecked="{Binding IsEncumbranceGatedMode, Mode=TwoWay}"
+                         ToolTip.Tip="Per-bucket seconds-per-hop. The scheduler reads the live PlayerState.Encumbrance each tick and picks the matching estimate."/>
+            <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
+                  IsEnabled="{Binding IsEncumbranceGatedMode}">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="None"/>
+                <NumericUpDown Grid.Column="2"
+                               Value="{Binding HopNone, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+            <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
+                  IsEnabled="{Binding IsEncumbranceGatedMode}">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Light"/>
+                <NumericUpDown Grid.Column="2"
+                               Value="{Binding HopLight, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+            <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
+                  IsEnabled="{Binding IsEncumbranceGatedMode}">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Medium"/>
+                <NumericUpDown Grid.Column="2"
+                               Value="{Binding HopMedium, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+            <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
+                  IsEnabled="{Binding IsEncumbranceGatedMode}">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Heavy"/>
+                <NumericUpDown Grid.Column="2"
+                               Value="{Binding HopHeavy, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+            <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
+                  IsEnabled="{Binding IsEncumbranceGatedMode}">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Encumbered"/>
+                <NumericUpDown Grid.Column="2"
+                               Value="{Binding HopEncumbered, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="60" Increment="0.1"
+                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

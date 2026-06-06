@@ -16,6 +16,60 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
+    <Window.Styles>
+        <!-- Engine-state chip — same colour-code rules as the Navigation
+             window's badge (idle grey / walking + looping green / lair
+             amber). Living here keeps the two windows in visual sync
+             without dragging a shared theme file in. -->
+        <Style Selector="Border.EngineBadge">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.EngineBadge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.WalkingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.WalkingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LoopingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LoopingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LairState">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.LairState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <!-- Tier overlays — engine-recovery gate state. Border-only;
+             fill stays the engine colour. Tier 2 = gate watching for
+             1-of-1 recovery (yellow); Tier 3 = backtrack recovery
+             active (red). Declared after engine classes so the
+             BorderBrush setter precedence lands here. -->
+        <Style Selector="Border.EngineBadge.Tier2State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="Border.EngineBadge.Tier3State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+    </Window.Styles>
+
     <!-- KeyBindings are wired in code-behind from KeybindingStore so the
          per-character rebind UI takes effect at runtime — see
          GlobalHotkeys.AttachMain in MainWindow.axaml.cs. -->
@@ -154,7 +208,6 @@
                 <Separator/>
                 <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
                 <Separator/>
-                <MenuItem Header="License…"            Command="{Binding OpenLicenseCommand}"/>
                 <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
         </Menu>
@@ -298,20 +351,37 @@
                      MA (natural / medi). Source-of-truth: TickEngine +
                      RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
-            <Grid ColumnDefinitions="*,Auto,*" VerticalAlignment="Center">
+            <!-- Layout (left → right):
+                 [chip] [room name, flex] [ticks] [connection] -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+                  VerticalAlignment="Center"
+                  ColumnSpacing="14">
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{StaticResource ChromeFgMutedBrush}"/>
-                    <TextBlock Classes="StatusSlot StatusMuted"
-                               Text="Unknown location"
-                               TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
+                <!-- Engine-state chip — mirrors the Navigation badge.
+                     Tier overlays paint the border yellow when the
+                     engine-recovery gate is in tier 2, red in tier 3. -->
+                <Border Grid.Column="0"
+                        Classes="EngineBadge"
+                        Classes.WalkingState="{Binding EngineActionIsWalking}"
+                        Classes.LoopingState="{Binding EngineActionIsLooping}"
+                        Classes.LairState="{Binding EngineActionIsLair}"
+                        Classes.Tier2State="{Binding IsTier2}"
+                        Classes.Tier3State="{Binding IsTier3}">
+                    <TextBlock Text="{Binding EngineActionBadge}"/>
+                </Border>
 
-                <!-- Cycle countdowns as plain text. Natural HP / MA are always
-                     visible once observed; rest / medi are appended only while
-                     Position=Resting / Position=Meditating. -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                <!-- Current room. VM already abbreviates long names;
+                     TextTrimming covers narrow-window resizes too. -->
+                <TextBlock Grid.Column="1"
+                           Classes="StatusSlot"
+                           Text="{Binding LocationText}"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <!-- Cycle countdowns. Natural HP / MA are always visible
+                     once observed; rest / medi append while resting / meditating. -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal" Spacing="14"
+                            VerticalAlignment="Center">
                     <TextBlock x:Name="CombatTickLabel"
                                Classes="StatusSlot StatusMono"
                                Text="{Binding CombatTickText}"/>
@@ -319,9 +389,15 @@
                     <TextBlock Classes="StatusSlot StatusMono" Text="{Binding MaTickText}"/>
                 </StackPanel>
 
-                <!-- Connection stoplight: red disconnected · yellow connecting · green connected. -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
-                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                <!-- Connection stoplight: red idle · yellow connecting · green connected.
+                     Live reconnect countdown shown beside the status text
+                     when a long-delay reconnect is armed (eg cleanup-mode
+                     backoff). Hides itself when the timer fires or the
+                     user cancels. -->
+                <StackPanel Grid.Column="3"
+                            Orientation="Horizontal" Spacing="6"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource AccentRedBrush}"
                              IsVisible="{Binding IsIdle}"/>
@@ -331,6 +407,10 @@
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                              Fill="{StaticResource AccentGreenBrush}"
                              IsVisible="{Binding IsConnected}"/>
+                    <TextBlock Classes="StatusSlot"
+                               Foreground="{StaticResource AccentAmberBrush}"
+                               Text="{Binding ReconnectCountdownText}"
+                               IsVisible="{Binding IsReconnectCountdownVisible}"/>
                     <TextBlock Classes="StatusSlot" Text="{Binding ConnectionStatusText}"/>
                 </StackPanel>
             </Grid>

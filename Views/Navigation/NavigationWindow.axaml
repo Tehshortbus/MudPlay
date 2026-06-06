@@ -1,0 +1,1042 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:controls="using:FujinTerm.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+        x:Class="FujinTerm.Views.Navigation.NavigationWindow"
+        x:DataType="vm:NavigationViewModel"
+        Title="Navigation"
+        Width="1280" Height="720"
+        MinWidth="900" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <!-- Display-toggle chip (Lairs / Shops / Spells / Legend) — colour-
+             coded per chip to mirror the map fill brushes so the toggle's
+             active state matches the room glyphs the user is filtering. -->
+        <Style Selector="Button.ToggleChip">
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="MinWidth" Value="56"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        </Style>
+        <!-- Lair: pink/magenta (MapControl.LairFill) -->
+        <Style Selector="Button.ToggleChip.LairFill">
+            <Setter Property="Background" Value="#8E4F7B"/>
+            <Setter Property="BorderBrush" Value="#8E4F7B"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <!-- Shop: blue (MapControl.ShopFill) -->
+        <Style Selector="Button.ToggleChip.ShopFill">
+            <Setter Property="Background" Value="#4A7791"/>
+            <Setter Property="BorderBrush" Value="#4A7791"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <!-- Spell: purple (MapControl.SpellFill) -->
+        <Style Selector="Button.ToggleChip.SpellFill">
+            <Setter Property="Background" Value="#6428A0"/>
+            <Setter Property="BorderBrush" Value="#6428A0"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+        <!-- Legend: neutral amber (no map equivalent) -->
+        <Style Selector="Button.ToggleChip.LegendFill">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+
+        <!-- Top-right action button (Run / Stop / Loop mode / Lair mode) -->
+        <Style Selector="Button.ActionChip">
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="MinWidth" Value="86"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Active">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Stop">
+            <Setter Property="Background" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Primary">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <!-- Run: green when the action chip is in "start something"
+             mode. Pause: yellow when it's in "halt the in-flight
+             engine" mode. Distinct from Stop (red, full teardown)
+             so the user can tell at a glance whether a click will
+             pause-resumable or hard-stop. -->
+        <Style Selector="Button.ActionChip.Run">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Button.ActionChip.Pause">
+            <Setter Property="Background" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+        </Style>
+
+        <!-- Right-rail section header -->
+        <Style Selector="TextBlock.RailSectionHeader">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+        <!-- GOTO header is blue-themed to match the walk-to line
+             colour on the map. -->
+        <Style Selector="TextBlock.RailSectionHeader.Goto">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+        <!-- CURRENT NAV header recolours per running engine so the
+             user sees at a glance which line on the map drives the
+             header: orange Auto-Lair, green loop, blue walk-to. -->
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavLair">
+            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavLoop">
+            <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavWalk">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+
+        <!-- Compact right-rail Expander — slimmer header, no chrome
+             box, chevron on the right. HorizontalAlignment=Stretch +
+             HorizontalContentAlignment=Stretch so the section keeps a
+             stable rail-fitting width whether collapsed or expanded. -->
+        <Style Selector="Expander.RailSection">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Expander.RailSection /template/ ToggleButton#PART_toggle">
+            <Setter Property="Padding" Value="0,2"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Expander.RailSection /template/ Border#ToggleButtonBackground">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- Engine-state badge in the top bar — Idle grey, Walking +
+             Looping green, Auto-Lair orange. -->
+        <Style Selector="Border.StatusBadge">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.StatusBadge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.WalkingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.WalkingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LoopingState">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LoopingState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LairState">
+            <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.LairState TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
+        <!-- Tier overlays — engine-recovery gate state. Border-only;
+             fill stays the engine colour. Tier 2 = gate watching for
+             1-of-1 recovery (yellow); Tier 3 = backtrack recovery
+             active (red). -->
+        <Style Selector="Border.StatusBadge.Tier2State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentYellowBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="Border.StatusBadge.Tier3State">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+
+        <!-- CURRENT NAV step row dynamic styling -->
+        <Style Selector="Border.NavRow">
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Margin" Value="0,1"/>
+        </Style>
+        <Style Selector="Border.NavRow.Current">
+            <Setter Property="Background" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="Border.NavRow.Current TextBlock">
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.NavRow.Completed TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="TextDecorations" Value="Strikethrough"/>
+        </Style>
+        <Style Selector="Border.NavRow.Upcoming TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        </Style>
+        <Style Selector="Border.NavRow.Ready TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Row 0: title + status badge + status text -->
+        <Border Grid.Row="0"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="12,6">
+                <TextBlock Grid.Column="0"
+                           Text="Navigation"
+                           FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0"/>
+                <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR.
+                     Tier overlays paint the border yellow / red on top of
+                     whichever engine fill is active. -->
+                <Border Grid.Column="1"
+                        Classes="StatusBadge"
+                        Classes.WalkingState="{Binding EngineActionIsWalking}"
+                        Classes.LoopingState="{Binding EngineActionIsLooping}"
+                        Classes.LairState="{Binding EngineActionIsLair}"
+                        Classes.Tier2State="{Binding IsTier2}"
+                        Classes.Tier3State="{Binding IsTier3}">
+                    <TextBlock Text="{Binding TopBarStatusBadge}"/>
+                </Border>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding TopBarStatusText}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="11"
+                           TextTrimming="CharacterEllipsis"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 1: chip row (display toggles + selected indicator + search + actions) -->
+        <Border Grid.Row="1"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
+                  Margin="12,6"
+                  ColumnSpacing="6">
+                <!-- Display-toggle chips. The Manage button lives down
+                     in the loops-rail footer (already wired to
+                     OpenManagerCommand) — putting it here too would be
+                     redundant. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="ToggleChip" Content="Lairs"
+                            Command="{Binding ToggleLairsCommand}"
+                            Classes.LairFill="{Binding HighlightLairs}"/>
+                    <Button Classes="ToggleChip" Content="Shops"
+                            Command="{Binding ToggleShopsCommand}"
+                            Classes.ShopFill="{Binding HighlightShops}"/>
+                    <Button Classes="ToggleChip" Content="Spells"
+                            Command="{Binding ToggleSpellsCommand}"
+                            Classes.SpellFill="{Binding HighlightSpells}"/>
+                    <Button Classes="ToggleChip" Content="Legend"
+                            Command="{Binding ToggleLegendCommand}"
+                            Classes.LegendFill="{Binding LegendVisible}"/>
+                </StackPanel>
+
+                <!-- Queued destination chip (centre). Click clears the
+                     queue + preview line. -->
+                <Button Grid.Column="2"
+                        IsVisible="{Binding HasQueuedDestination}"
+                        Command="{Binding ClearQueuedDestinationCommand}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,3"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"
+                        ToolTip.Tip="Click to clear queued destination">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding QueuedDestinationLabel}"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="220"/>
+                        <TextBlock Text="✕"
+                                   FontSize="10"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Search box -->
+                <TextBox Grid.Column="3"
+                         Name="SearchBox"
+                         Text="{Binding SearchQuery, Mode=TwoWay}"
+                         PlaceholderText="Search rooms, lairs, loops…"
+                         Width="220"
+                         FontSize="11"
+                         VerticalAlignment="Center"/>
+
+                <!-- Save — opens the appropriate editor dialog
+                     (LoopEditor / LairEditor) pre-seeded with the
+                     current build session OR running engine state.
+                     Enabled in four cases: Loop build mode with
+                     savable clicks, Loop running, AutoLair build
+                     mode with markers, AutoLair running with
+                     markers. -->
+                <Button Grid.Column="4"
+                        Classes="ActionChip"
+                        Content="Save"
+                        ToolTip.Tip="Save the current loop / lair setup."
+                        Command="{Binding SaveCurrentCommand}"
+                        IsEnabled="{Binding CanSaveCurrent}"/>
+
+                <!-- Run / Pause — loop running shows "Pause" (assert
+                     user gate + open builder seeded from running loop);
+                     loop paused shows "Run" (resume); walker/auto-lair
+                     keep the legacy Run/Stop one-shot semantics. -->
+                <Button Grid.Column="5"
+                        Classes="ActionChip"
+                        Classes.Run="{Binding !IsAnyExecuting}"
+                        Classes.Pause="{Binding IsAnyExecuting}"
+                        Content="{Binding RunStopLabel}"
+                        Command="{Binding RunStopCommand}"
+                        IsEnabled="{Binding CanRun}"/>
+
+                <!-- Loop mode chip — doubles as the full Stop when a
+                     loop is running. The dispatcher
+                     LoopModeButtonCommand routes to StopAll when in
+                     Stop mode, ToggleLoopMode otherwise, so the user
+                     sees a single chip that always means "exit the
+                     current loop context." -->
+                <Button Grid.Column="6"
+                        Classes="ActionChip"
+                        Classes.Active="{Binding IsLoopMode}"
+                        Classes.Stop="{Binding LoopModeButtonIsStop}"
+                        Content="{Binding LoopModeButtonLabel}"
+                        Command="{Binding LoopModeButtonCommand}"/>
+
+                <!-- Lair mode -->
+                <Button Grid.Column="7"
+                        Classes="ActionChip"
+                        Classes.Active="{Binding IsLairMode}"
+                        Classes.Stop="{Binding LairModeButtonIsStop}"
+                        Content="{Binding LairModeButtonLabel}"
+                        Command="{Binding LairModeButtonCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 2: map + right rail -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,290">
+
+            <controls:MapControl Grid.Column="0"
+                                 Name="MapHost"
+                                 Layout="{Binding Layout}"
+                                 CurrentRoomKey="{Binding CurrentRoomKey}"
+                                 DestinationRoomKey="{Binding DestinationRoomKey}"
+                                 Graph="{Binding Graph}"
+                                 HighlightLairs="{Binding HighlightLairs}"
+                                 HighlightShops="{Binding HighlightShops}"
+                                 HighlightSpells="{Binding HighlightSpells}"
+                                 WalkPath="{Binding WalkPath}"
+                                 PreviewPath="{Binding PreviewPath}"
+                                 LoopPath="{Binding LoopPath}"
+                                 LoopBuilderPath="{Binding LoopBuilderPath}"
+                                 LoopBuilderWaypoints="{Binding LoopBuilderWaypoints}"
+                                 LoopApproachPreviewPath="{Binding LoopApproachPreviewPath}"
+                                 AvoidedRooms="{Binding AvoidedRooms}"
+                                 LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
+                                 AutoLairRooms="{Binding AutoLairRooms}"
+                                 AutoLairWaypoints="{Binding AutoLairMarkedKeys}"
+                                 AutoLairApproachPath="{Binding AutoLairApproachPath}"
+                                 TeleportRooms="{Binding TeleportRooms}"
+                                 WalkPathIsAutoLair="{Binding IsAutoLairing}"
+                                 SelectedRoomKey="{Binding SelectedRoomKey, Mode=TwoWay}"
+                                 UpStepChord="{Binding UpStepChord}"
+                                 DownStepChord="{Binding DownStepChord}">
+                <controls:MapControl.ContextMenu>
+                    <ContextMenu Name="RoomContextMenu">
+                        <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
+                                  IsEnabled="False" FontWeight="SemiBold"/>
+                        <Separator/>
+                        <MenuItem Header="Walk here"
+                                  Command="{Binding WalkToContextRoomCommand}"/>
+                        <MenuItem Header="I am here (set located)"
+                                  Command="{Binding SetContextRoomLocatedCommand}"/>
+                        <MenuItem Header="Add to favorites"
+                                  Command="{Binding ToggleContextRoomFavoriteCommand}"
+                                  IsVisible="{Binding !ContextIsFavorite}"/>
+                        <MenuItem Header="Remove from favorites"
+                                  Command="{Binding ToggleContextRoomFavoriteCommand}"
+                                  IsVisible="{Binding ContextIsFavorite}"/>
+                        <Separator/>
+                        <MenuItem Header="Center on Player"
+                                  Command="{Binding CenterOnPlayerCommand}"/>
+                        <MenuItem Header="Center on…"
+                                  Command="{Binding CenterOnSpecificCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="Toggle: Avoid this room"
+                                  Command="{Binding ToggleContextRoomAvoidedCommand}"/>
+                        <MenuItem Header="Toggle: Stash room"
+                                  Command="{Binding ToggleContextRoomStashCommand}"/>
+                        <!-- Auto-lair marking moved into the top-right
+                             "Lair mode" toggle: enter the mode, click
+                             rooms on the map to add / remove markers,
+                             save via the rail's "Save lairs" button.
+                             Mirrors how Loop build mode works. -->
+
+                        <Separator/>
+                        <MenuItem Header="Add this room to Blacklist"
+                                  Foreground="{StaticResource AccentRedBrush}"
+                                  Command="{Binding AddContextRoomToBlacklistCommand}"/>
+                    </ContextMenu>
+                </controls:MapControl.ContextMenu>
+            </controls:MapControl>
+
+            <!-- Hover tooltip popup. MaxWidth + Wrap on the text keeps
+                 long single-line content (e.g. multi-action commands
+                 with all their alternatives) readable instead of
+                 stretching half-way across the window. Embedded "\n"
+                 from RoomTooltipBuilder still produces multi-row
+                 layouts. ZIndex lifts the tooltip above the right rail
+                 and the loop-builder strip so it never disappears
+                 under sibling panels. -->
+            <Border Grid.Column="0"
+                    Name="HoverTooltip"
+                    IsVisible="False"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Background="#FFFFC0"
+                    BorderBrush="#888" BorderThickness="1"
+                    CornerRadius="6" Padding="8,6"
+                    IsHitTestVisible="False"
+                    ZIndex="100"
+                    MaxWidth="540">
+                <TextBlock Name="HoverTooltipText"
+                           Text=""
+                           FontFamily="{StaticResource FontTerminal}"
+                           FontSize="13"
+                           Foreground="#000000"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Search dropdown — anchored under the search box,
+                 visible only when results exist. Code-behind sizes
+                 + positions via Margin. -->
+            <Border Grid.Column="0"
+                    Name="SearchDropdown"
+                    IsVisible="{Binding HasSearchResults}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,0,8,0"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Width="260" MaxHeight="320">
+                <ListBox ItemsSource="{Binding SearchResults}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RoomSearchResult">
+                            <Border Padding="8,5"
+                                    PointerPressed="OnSearchResultClicked"
+                                    Background="Transparent">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PrimaryLine}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SecondaryLine}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Legend overlay — bottom-left of the map per user direction. -->
+            <Border Grid.Column="0"
+                    IsVisible="{Binding LegendVisible}"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="12,0,0,12"
+                    Background="#1A1A1AEE"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}" BorderThickness="1"
+                    CornerRadius="4" Padding="10">
+                <StackPanel Spacing="4" MinWidth="180">
+                    <TextBlock Text="MAP LEGEND" FontSize="10"
+                               FontWeight="SemiBold" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#F8B500"/>
+                        <TextBlock Text="Current room" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#8E4F7B"/>
+                        <TextBlock Text="Lair" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#4A7791"/>
+                        <TextBlock Text="Shop / banks" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#6428A0"/>
+                        <TextBlock Text="Spell room" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#DC821E"/>
+                        <TextBlock Text="Auto-lair mark" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <!-- Up / Down exits show up two ways on the map: a
+                         full-cell fill on rooms whose ONLY vertical
+                         exit is U (or D), and a small corner
+                         triangle on rooms that ALSO have horizontal
+                         exits. Legend carries one swatch per shape
+                         so the user can map either back to the
+                         legend without guessing. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#00C800"/>
+                        <TextBlock Text="(full block) Up exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Polygon Points="14,0 7,0 14,7" Fill="#00C800"/>
+                        </Grid>
+                        <TextBlock Text="(corner mark) Up exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#DCDC00"/>
+                        <TextBlock Text="(full block) Down exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Polygon Points="14,14 7,14 14,7" Fill="#DCDC00"/>
+                        </Grid>
+                        <TextBlock Text="(corner mark) Down exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Path Stroke="#FF50E6FF" StrokeThickness="1.5" Data="M 0,14 L 14,0 M 0,7 L 7,0 M 7,14 L 14,7"/>
+                            <Path Stroke="#FF50E6FF" StrokeThickness="1.5" Data="M 0,0 L 14,14 M 0,7 L 7,14 M 7,0 L 14,7"/>
+                        </Grid>
+                        <TextBlock Text="Teleport (CMD)" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- RIGHT RAIL — ClipToBounds keeps long text from overflowing
+                 the 290px column. Without it, a long CurrentNavHeader
+                 (e.g. "Looping {long name} on step 10 of 16") was
+                 measuring wider than the rail and rendering past the
+                 right edge, making the section look stretched relative
+                 to GOTO/LOOPS. -->
+            <Border Grid.Column="1"
+                    ClipToBounds="True"
+                    Background="{StaticResource ChromeBgSunkenBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1,0,0,0">
+                <Grid RowDefinitions="*,Auto">
+                    <ScrollViewer Grid.Row="0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="10,6,10,6">
+                        <StackPanel Spacing="4">
+
+                            <!-- CURRENT NAV. HorizontalAlignment=Stretch on
+                                 the body StackPanel is the same width
+                                 normalisation GOTO/LOOPS get implicitly
+                                 from their button/border rows; without it
+                                 the body inherits content-driven sizing
+                                 and the expanded section appears narrower
+                                 than the other two sidebar pills. -->
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsCurrentNavExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader"
+                                               Classes.CurrentNavLair="{Binding EngineActionIsLair}"
+                                               Classes.CurrentNavLoop="{Binding EngineActionIsLooping}"
+                                               Classes.CurrentNavWalk="{Binding EngineActionIsWalking}"
+                                               Text="CURRENT NAV"
+                                               Margin="0"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+                            <!-- TextTrimming + single-line + MaxWidth keeps
+                                 a long loop name ("Looping {name} on step
+                                 X of Y") from forcing a wrap or pushing
+                                 the StackPanel's MEASURED width past the
+                                 rail (trimming only affects rendering;
+                                 measure still reports the natural text
+                                 width unless we cap it).
+                                 250 ≈ 290 px rail – 10/10 padding – 20 px
+                                 safety so the text never reaches the
+                                 chevron column. Tooltip carries the
+                                 untrimmed value for users who hover. -->
+                            <TextBlock Text="{Binding CurrentNavHeader}"
+                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                       FontSize="11"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxWidth="250"
+                                       HorizontalAlignment="Left"
+                                       ToolTip.Tip="{Binding CurrentNavHeader}"
+                                       Margin="0,0,0,4"/>
+                            <!-- Building-loop click list — visible only while in LoopBuild mode.
+                                 Click a row to remove that waypoint; drag a row to reorder. -->
+                            <ListBox Name="BuilderClicksList"
+                                     ItemsSource="{Binding LoopBuilder.Clicks}"
+                                     IsVisible="{Binding IsLoopBuilding}"
+                                     MaxHeight="240"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     SelectionMode="Single"
+                                     HorizontalAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     DragDrop.AllowDrop="True">
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin"  Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Cursor"  Value="Hand"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#22FFFFFF"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LoopBuilderRow">
+                                        <Border Padding="6,3"
+                                                Margin="0,1"
+                                                CornerRadius="3"
+                                                BorderThickness="1"
+                                                BorderBrush="{StaticResource AccentRedBrush}"
+                                                Background="Transparent">
+                                            <Grid ColumnDefinitions="24,*,Auto,Auto,Auto" ColumnSpacing="2">
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Index}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentRedBrush}"
+                                                           HorizontalAlignment="Left"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Name}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource ChromeFgBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"/>
+                                                <Button Grid.Column="2"
+                                                        Content="↑" FontSize="10" Padding="4,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        ToolTip.Tip="Move earlier"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).MoveBuilderClickUpCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="3"
+                                                        Content="↓" FontSize="10" Padding="4,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        ToolTip.Tip="Move later"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).MoveBuilderClickDownCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="4"
+                                                        Content="✕" FontSize="10" Padding="4,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        ToolTip.Tip="Remove waypoint"
+                                                        Foreground="{StaticResource AccentRedBrush}"
+                                                        Click="OnBuilderRowRemoveClicked"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <ListBox Name="CurrentNavList"
+                                     ItemsSource="{Binding CurrentNavRows}"
+                                     SelectedItem="{Binding CurrentNavSelectedRow, Mode=OneWay}"
+                                     IsVisible="{Binding !IsLoopBuilding}"
+                                     MaxHeight="240"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Focusable="False"
+                                     SelectionMode="Single"
+                                     HorizontalAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.Styles>
+                                    <!-- Strip default selection / hover chrome — our
+                                         NavRow border-classes (Completed / Current /
+                                         Upcoming / Ready) own the per-row visuals. -->
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CurrentNavRowViewModel">
+                                        <Border Classes="NavRow"
+                                                Classes.Completed="{Binding IsCompleted}"
+                                                Classes.Current="{Binding IsCurrent}"
+                                                Classes.Upcoming="{Binding IsUpcoming}"
+                                                Classes.Ready="{Binding IsReady}">
+                                            <Grid ColumnDefinitions="24,*,Auto,Auto,Auto">
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding Index}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                           HorizontalAlignment="Left"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Label}"
+                                                               FontSize="11"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding SubLabel}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               IsVisible="{Binding SubLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                </StackPanel>
+                                                <!-- ✎ Edit timer override (Auto-Lair rows only). -->
+                                                <Button Grid.Column="3"
+                                                        Content="✎"
+                                                        FontSize="10"
+                                                        Padding="6,0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        ToolTip.Tip="Override this lair's respawn timer"
+                                                        IsVisible="{Binding HasEdit}"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).EditLairTimerCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="4"
+                                                        Content="✕"
+                                                        FontSize="10"
+                                                        Padding="6,0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        IsVisible="{Binding HasRemove}"
+                                                        Command="{Binding $parent[ListBox].((vm:NavigationViewModel)DataContext).UnmarkAutoLairRoomCommand}"
+                                                        CommandParameter="{Binding RemoveKey}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- GOTO — favourite rooms saved via the map's
+                                 right-click "Add to favorites" item. Each
+                                 row click walks there; the X button removes
+                                 the bookmark. Persisted on the active
+                                 character profile. -->
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsGotoExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader Goto" Text="GOTO" Margin="0"/>
+                                </Expander.Header>
+                                <StackPanel Spacing="2" HorizontalAlignment="Stretch">
+                                    <!-- Empty-state hint — cap MaxWidth +
+                                         keep wrapping so a long string
+                                         can't push the rail wider than
+                                         the 290 px column (same gotcha
+                                         CurrentNavHeader hit). -->
+                                    <TextBlock Text="No favourites — right-click a room → Add to favorites."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               MaxWidth="250"
+                                               HorizontalAlignment="Left"
+                                               IsVisible="{Binding !HasFavorites}"/>
+                                    <ItemsControl ItemsSource="{Binding Favorites}"
+                                                  IsVisible="{Binding HasFavorites}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:FavoriteRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                                    <Button Grid.Column="0"
+                                                            Content="{Binding Label}"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Left"
+                                                            FontSize="11"
+                                                            Padding="6,2"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).GoToFavoriteCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="1"
+                                                            Content="✕"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            ToolTip.Tip="Remove from favourites"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RemoveFavoriteCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- LOOPS + AUTO-LAIRS — single combined
+                                 section. Header tokens are
+                                 individually coloured: "Loops"
+                                 green to match loop-name rows, "+"
+                                 neutral white, "Auto-Lairs" orange
+                                 to match (future) auto-lair setup
+                                 rows. -->
+                            <Expander Classes="RailSection"
+                                      IsExpanded="{Binding IsLoopsExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <TextBlock Classes="RailSectionHeader" Margin="0">
+                                        <Run Text="LOOPS"
+                                             Foreground="{StaticResource AccentGreenBrush}"/>
+                                        <Run Text=" + "
+                                             Foreground="{StaticResource ChromeFgBrush}"/>
+                                        <Run Text="AUTO-LAIRS"
+                                             Foreground="{StaticResource AccentAmberBrush}"/>
+                                    </TextBlock>
+                                </Expander.Header>
+                                <StackPanel Spacing="2" HorizontalAlignment="Stretch">
+                                    <TextBlock Text="No loops saved on this BBS."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               IsVisible="{Binding !HasLoops}"/>
+                                    <!-- Saved Auto-Lair setups — same row shape as Loops
+                                         but with the amber accent matching the section
+                                         header's "AUTO-LAIRS" run. Renders ABOVE loops
+                                         per UX direction: lairs come first in scan
+                                         order since they're the primary surface this
+                                         section is named after when the user is mid
+                                         farming run. -->
+                                    <TextBlock Text="No auto-lair setups saved on this BBS."
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="11"
+                                               IsVisible="{Binding !HasSetups}"/>
+                                    <ItemsControl ItemsSource="{Binding Setups}"
+                                                  IsVisible="{Binding HasSetups}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LairSetupRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource AccentAmberBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding Name}"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding AnchorKey}"/>
+                                                            <Run Text=" · "/>
+                                                            <Run Text="{Binding SubLabel}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Content="Load" FontSize="10"
+                                                            Padding="8,2"
+                                                            ToolTip.Tip="Load these markers into Auto-Lair without starting."
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
+                                                            Content="Run" FontSize="10"
+                                                            Padding="8,2"
+                                                            Classes="Accent"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <ItemsControl ItemsSource="{Binding Loops}"
+                                                  IsVisible="{Binding HasLoops}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LoopRowViewModel">
+                                                <!-- Inline Load + Run buttons cover the per-row actions;
+                                                     Preview / Edit / Delete live in the Manage dialog,
+                                                     so the right-click context menu is intentionally
+                                                     omitted (per UX direction). -->
+                                                <!-- Name on top (ellipsised when long so the rail
+                                                     can't be stretched by overlong loop labels);
+                                                     start-room key + room count on a smaller
+                                                     second line. Load + Run stay aligned on the
+                                                     right at any name length. -->
+                                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <!-- Loop names are green to match the section
+                                                             header's "LOOPS" run; auto-lair setup
+                                                             rows (future) will be amber. -->
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource AccentGreenBrush}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   ToolTip.Tip="{Binding Name}"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding StartRoomKey}"/>
+                                                            <Run Text=" · "/>
+                                                            <Run Text="{Binding SubLabel}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <!-- Load: enters LoopBuild mode pre-seeded with this
+                                                         loop's waypoints so the user can preview the
+                                                         red overlay / edit before running. -->
+                                                    <Button Grid.Column="1"
+                                                            Content="Load" FontSize="10"
+                                                            Padding="8,2"
+                                                            ToolTip.Tip="Load this loop into the builder so you can preview / edit before running."
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).LoadLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
+                                                            Content="Run" FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RunLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Bottom action strip — Manage is the single
+                         entry into the loops/lairs CRUD surface; the
+                         .mp importer used to live here as a separate
+                         button but moved INTO the Manage dialog per
+                         UX direction (it's a CRUD action on saved
+                         loops, not a top-level rail action). -->
+                    <Border Grid.Row="1"
+                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="0,1,0,0"
+                            Background="{StaticResource ChromeBgBrush}">
+                        <Grid Margin="6,4">
+                            <Button Content="Manage"
+                                    FontSize="10"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Command="{Binding OpenManagerCommand}"
+                                    ToolTip.Tip="Rename / delete / import saved loops + Auto-Lair setups"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Row 3: bottom strip — loop builder session status only.
+             Per UX direction the bar carries no actions: Save+Start
+             is the top-right Run button, naming/deleting/renaming
+             live in the Manage dialog, and exiting build mode
+             discards the in-progress clicks. -->
+        <Border Grid.Row="3"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsLoopBuilding}">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,6" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentAmberBrush}">
+                    <TextBlock Text="BUILDING LOOP"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="#0E0E0E"/>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <TextBlock FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}">
+                        <Run Text="{Binding LoopBuilder.Clicks.Count, FallbackValue=0}"/>
+                        <Run Text=" room(s) clicked · "/>
+                        <Run Text="{Binding LoopBuilder.ExpandedStepCount, FallbackValue=0}"/>
+                        <Run Text=" step(s) total · Run to save+start, toggle Loop to discard"/>
+                    </TextBlock>
+                    <TextBlock FontSize="11" Foreground="{StaticResource AccentRedBrush}"
+                               Text="{Binding LoopBuilder.UnreachableSummary}"
+                               IsVisible="{Binding LoopBuilder.UnreachableSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- The dedicated Auto-Lair RUNNING phase strip used to live
+             here. Its content (phase + current target + wait-room)
+             now rides next to the top-left AUTO-LAIR badge via
+             TopBarStatusText, so the bottom edge stays clean during
+             active runs. The BUILDING LAIR strip below still shows
+             pre-Run because the top-bar status reads the engine, not
+             the build session. -->
+
+        <!-- Row 3 (alternate): Auto-Lair BUILDING status strip. Mirrors
+             the Loop-builder strip — visible only while the user is
+             actively marking lair rooms (CurrentMode == AutoLair AND
+             scheduler not yet running). The Lair phase strip above
+             takes over the moment the scheduler starts. -->
+        <Border Grid.Row="3"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsLairBuilding}">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,6" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentAmberBrush}">
+                    <TextBlock Text="BUILDING LAIR"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="#0E0E0E"/>
+                </Border>
+                <TextBlock Grid.Column="1"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           Text="{Binding LairBuildStatusText}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

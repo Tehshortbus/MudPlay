@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="200"
+        x:Class="FujinTerm.Views.Navigation.LostRecoveryDialog"
+        x:DataType="vm:LostRecoveryDialogViewModel"
+        Title="Lost"
+        Width="420" Height="200"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Header}"
+                       FontWeight="SemiBold"
+                       FontSize="13"
+                       Foreground="{StaticResource AccentRedBrush}"/>
+
+            <TextBlock Grid.Row="1"
+                       Text="{Binding Body}"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Top"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="11"/>
+
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="OK"
+                        Command="{Binding OkCommand}"
+                        IsDefault="True"
+                        IsCancel="True"
+                        MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

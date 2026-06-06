@@ -101,4 +101,49 @@ public sealed class OtherSettings
     /// we lose HP) ships with the Phase 13 HealthManager wiring.
     /// </summary>
     public int MaxTrapDisarmAttempts { get; set; } = 5;
+
+    // ----- Door / lock handling --------------------------------------
+
+    /// <summary>
+    /// Walker's max <c>bash &lt;dir&gt;</c> retries before giving up
+    /// on a single door. Hits when the player's strength is below
+    /// the door's requirement and the server keeps replying with
+    /// <c>"attempts to bash through fail"</c>. Default 10 per user
+    /// direction.
+    /// </summary>
+    public int MaxBashAttempts { get; set; } = 10;
+
+    /// <summary>
+    /// Walker's max <c>pick &lt;dir&gt;</c> retries before giving up
+    /// on a single door. Picking is probabilistic — the skill can
+    /// fail even when the value meets the door requirement. Default
+    /// 10 per user direction.
+    /// </summary>
+    public int MaxPickAttempts { get; set; } = 10;
+
+    /// <summary>
+    /// When <c>true</c>, the walker prefers <c>pick &lt;dir&gt;</c>
+    /// over <c>bash &lt;dir&gt;</c> on doors where both verbs are
+    /// viable. Bash is louder and breaks stealth; thieves typically
+    /// flip this on. Default <c>false</c> (bash-first).
+    /// </summary>
+    public bool PicklocksOverBash { get; set; }
+
+    /// <summary>
+    /// Walker max <c>sea &lt;dir&gt;</c> retries when revealing a
+    /// hidden exit (<c>(Hidden)</c> modifier) along the path. Default
+    /// 20 — mirrors the trap-search cap since it's the same verb,
+    /// kept separate so the user can tune them independently.
+    /// </summary>
+    public int MaxHiddenSearchAttempts { get; set; } = 20;
+
+    /// <summary>
+    /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
+    /// one Info line per observed hop with the wall-clock time + the
+    /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate
+    /// the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
+    /// defaults against in-game truth. Off by default — it's a
+    /// developer / data-collection knob, not a normal-play affordance.
+    /// </summary>
+    public bool LogMovementHopTiming { get; set; }
 }

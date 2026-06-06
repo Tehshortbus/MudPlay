@@ -297,6 +297,27 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
     /// <summary>
+    /// Per-BBS folder holding BOTH navigation loops AND Auto-Lair
+    /// setups. Loops save as <c>{name}.json</c>; lair setups save as
+    /// <c>{name}.lair.json</c> — the filename extension is the schema
+    /// discriminator so the two managers can scan the same folder and
+    /// pick up only their own files. Earlier exports under a separate
+    /// <c>Lairs/</c> folder are migrated on first load by
+    /// <see cref="Game.Map.LairManager.LoadAll"/>.
+    /// </summary>
+    public static string BbsLoopsFolder(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "Loops");
+
+    /// <summary>
+    /// Legacy per-BBS folder that held Auto-Lair setups before the
+    /// Loops + Lairs storage unification. Kept around as a source for
+    /// the one-shot migration in <see cref="Game.Map.LairManager.LoadAll"/>;
+    /// once empty, the folder is removed and never recreated.
+    /// </summary>
+    public static string LegacyBbsLairsFolder(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "Lairs");
+
+    /// <summary>
     /// Per-BBS observed-players side-file. One PlayerObservation per
     /// player ever seen on this BBS; the Phase 5 PR 5.20 design keeps
     /// observations at the BBS tier so the same display name on a
@@ -304,6 +325,15 @@ public static class AppPaths
     /// </summary>
     public static string BbsPlayersFile(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "players.json");
+
+    /// <summary>
+    /// Per-BBS map-room blacklist file. Entries hide their target
+    /// rooms from the navigation map render and the search box —
+    /// typical use is hiding ganghouse / sysop-only rooms behind
+    /// dead-end doors that clutter the layout.
+    /// </summary>
+    public static string BbsRoomBlacklistFile(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "room_blacklist.json");
 
     /// <summary>
     /// Folder holding all files for one character — primary profile

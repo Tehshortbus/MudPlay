@@ -213,6 +213,21 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
+    /// category: @goto / @loop / @lair / @stop / @rego. Wires the
+    /// remote walk-to / loop-start / lair-cycle / pause / resume
+    /// dispatch into the Phase 7 Navigation stack.
+    /// </summary>
+    public Game.Remote.MovePlayerHandler MoveRemote { get; private set; } = null!;
+
+    /// <summary>
+    /// Centralised room-search resolver. Backs the Navigation rail
+    /// search box, the Loop / Lair editor "Add room" rows, the
+    /// Center-on dialog, and the @goto remote handler.
+    /// </summary>
+    public RoomSearchService RoomSearch { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the
     /// <see cref="Models.GameData.PlayerRemoteControls.ExecuteCommands"/>
     /// permission category's <c>@do &lt;command&gt;</c> passthrough.
@@ -232,6 +247,27 @@ public sealed class AppServices
     /// / <c>MaxTrapDisarmAttempts</c> knobs in Settings → Other.
     /// </summary>
     public Game.TrapDisarmManager TrapDisarm { get; }
+
+    /// <summary>
+    /// Walker's door-handling FSM — bash / pick / open with
+    /// configurable attempt caps. Subscribes to <see cref="Router"/>
+    /// for the door-message patterns; the walker calls
+    /// <see cref="Game.Map.DoorOpenManager.Enqueue"/> at door-exit
+    /// step time and resumes on the callback's terminal
+    /// <see cref="Game.Map.DoorOpenResult"/>. Attempt caps + verb
+    /// preference (bash vs pick) read live from Settings.Other on
+    /// each request.
+    /// </summary>
+    public Game.Map.DoorOpenManager Door { get; }
+
+    /// <summary>
+    /// Walker's hidden-exit reveal FSM — fires <c>sea &lt;dir&gt;</c>
+    /// in a retry loop until the exit appears on the room display.
+    /// Subscribes to <see cref="RoomTracker.StateChanged"/> for the
+    /// "exit now visible" signal; max retries pulled live from
+    /// <see cref="Models.Profile.OtherSettings.MaxHiddenSearchAttempts"/>.
+    /// </summary>
+    public Game.Map.HiddenExitRevealManager HiddenSearch { get; }
 
     /// <summary>
     /// Auth boundary + queue gate for <c>@trap</c>: parses the
@@ -501,6 +537,197 @@ public sealed class AppServices
     /// </summary>
     public SpellCoverageAuditor SpellCoverage { get; private set; } = null!;
 
+    /// <summary>
+    /// In-memory graph of every room in the active game-data set, built
+    /// once at set-switch time from <c>Rooms.json</c>. Phase 7's
+    /// navigation stack (room tracker, BFS mapper, walker, loop
+    /// manager, auto-lair scheduler) all read from this; Phase 7 PR
+    /// 7.4 ships the loader + indexer. Subscribes to
+    /// <see cref="GameDataCache.ActiveSetChanged"/> in
+    /// <see cref="Initialize"/>; consumers subscribe to
+    /// <see cref="Game.Map.RoomGraphManager.GraphReloaded"/> to drop
+    /// any cached room references.
+    /// </summary>
+    public Game.Map.RoomGraphManager RoomGraph { get; private set; } = null!;
+
+    /// <summary>
+    /// TextBlock Info index for the active game-data set. Loaded from
+    /// <c>TBInfo.json</c>; consumed by the teleport handler (room
+    /// <c>CMD &gt; 0</c> + <c>(Item: N)</c> exit promotes to
+    /// <see cref="Game.Map.RoomExitHint.Teleport"/>, then the walker
+    /// follows the chain to extract keyword + destination).
+    /// </summary>
+    public TBInfoStore TBInfo { get; private set; } = null!;
+
+    /// <summary>
+    /// Reverse index of <c>RoomKey → monster ids whose Monsters.json
+    /// "Summoned By" field references that room</c>. Lets the tooltip's
+    /// <c>Also Here</c> line surface boss / script-spawn monsters whose
+    /// presence lives only on the monster record (no room-side lair
+    /// tag entry). Lazily built on first lookup per active set.
+    /// </summary>
+    public MonsterSpawnIndex MonsterSpawns { get; private set; } = null!;
+
+    /// <summary>
+    /// Item-id → name lookup for the active set. Consumed by the
+    /// keyed-door FSM (<see cref="Game.Map.DoorOpenManager"/>) to
+    /// translate an exit's <see cref="Game.Map.RoomExit.KeyItemId"/>
+    /// into the verbatim name fed to <c>use &lt;name&gt; &lt;dir&gt;</c>.
+    /// </summary>
+    public ItemNameStore ItemNames { get; private set; } = null!;
+
+    /// <summary>
+    /// Trust-by-default room tracker. Owns
+    /// <see cref="Game.Map.RoomState"/>; the Navigation status strip
+    /// and any source-room-required engine (walker, loop runner,
+    /// auto-lair scheduler) bind here. PR 7.1 ships the FSM; PR 7.1b
+    /// wires the wire-side parser that feeds it
+    /// <c>NoteRoomObserved</c> / <c>NoteMoveBlocked</c>.
+    /// </summary>
+    public Game.Map.RoomTracker RoomTracker { get; private set; } = null!;
+
+    /// <summary>
+    /// Shared tier-1/2/3 recovery gate for the walker / loop runner /
+    /// auto-lair scheduler. Engines attach themselves on Start and
+    /// detach on Stop; the gate owns the strict-1-of-1 anchor + the
+    /// executed-step history + tier-3 backtrack logic.
+    /// </summary>
+    public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
+
+    /// <summary>
+    /// Writer that persists tracker-learned room names back into the
+    /// active set's <c>Rooms.json</c>. Consumed by the
+    /// MainWindowViewModel name-learned prompt handler after the user
+    /// confirms the rename.
+    /// </summary>
+    public RoomNamePersistence RoomNamePersist { get; private set; } = null!;
+
+    /// <summary>
+    /// Sniffs outbound user-typed commands and tells
+    /// <see cref="RoomTracker"/> about <c>look &lt;dir&gt;</c> peeks
+    /// (so the next room display is dropped instead of mistaken for a
+    /// move) and text-exit movement verbs (<c>go path</c>,
+    /// <c>enter portal</c>, etc., so the step is captured in
+    /// <see cref="Models.Profile.CharacterProfile.RecentSteps"/>).
+    /// Hooked from <c>MainWindowViewModel.SendUserInput</c>.
+    /// </summary>
+    public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
+
+    /// <summary>
+    /// Death-message detector — watches lines for the post-suicide /
+    /// killed-in-combat <c>You now have N lives remaining.</c> shape
+    /// and fires <see cref="Game.Map.RoomTracker.NoteDeath"/>. Captures
+    /// a <see cref="Models.Profile.DeathRecord"/> on the loaded profile
+    /// for the Phase 9 Workshop DEATH section and pivots the tracker
+    /// into <see cref="Game.Map.RoomConfidence.PendingRespawn"/>.
+    /// Bound to the per-session LineExtractor by
+    /// <c>MainWindowViewModel</c>.
+    /// </summary>
+    public Game.DeathDetector Death { get; private set; } = null!;
+
+    /// <summary>
+    /// BFS pathfinding + planar layout over the active
+    /// <see cref="RoomGraph"/>. Consumed by the walker, loop runner,
+    /// auto-lair scheduler (pathfinding), and the Navigation
+    /// <c>MapControl</c> (layout). PR 7.5.
+    /// </summary>
+    public Game.Map.BfsMapper Bfs { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-character avoided + stash room set. Implements
+    /// <see cref="Game.Map.IRoomFilter"/> so pathing layers can plug
+    /// it into <see cref="Bfs"/> without further wiring. PR 7.6.
+    /// </summary>
+    public MovementFilter Movement { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-character favourite-room bookmarks. Wires Navigation's
+    /// GOTO pane + the map's "Add to favorites" context menu;
+    /// persisted via <see cref="ProfileService"/>.
+    /// </summary>
+    public FavoritesStore Favorites { get; private set; } = null!;
+
+    /// <summary>
+    /// Shared pause-gate aggregator for every Phase 7 movement engine
+    /// (walker, loop runner, auto-lair scheduler). A pause from any
+    /// source halts whichever engine is active. PR 7.7.
+    /// </summary>
+    public Game.Map.MovementCoordinator MovementCoordinator { get; private set; } = null!;
+
+    /// <summary>
+    /// Walk-to engine — sends one move at a time, waits for the room
+    /// tracker to confirm before advancing, and honours
+    /// <see cref="MovementCoordinator"/> pause gates. PR 7.7.
+    /// </summary>
+    public Game.Map.AutoWalkManager Walker { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-BBS saved-loop catalogue. CRUD over
+    /// <c>Data/BBS/{bbs}/Loops/</c>; consumers re-bind when the active
+    /// BBS changes. PR 7.8.
+    /// </summary>
+    public Game.Map.LoopManager Loops { get; private set; } = null!;
+
+    /// <summary>
+    /// MegaMUD <c>.mp</c> loop-file importer. Stateless w.r.t. the
+    /// profile; takes the active <see cref="RoomGraph"/> at construct
+    /// time and resolves anchors against whatever it currently
+    /// contains. See <c>docs/08-phase-7-…</c> PR 7.9.
+    /// </summary>
+    public Game.Map.MpFile.MpFileImporter MpImporter { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-BBS Auto-Lair setup catalogue. Loads on profile load + BBS
+    /// pin via the same ResolveActiveBbs path Loops uses. The Manage
+    /// dialog reads / writes through this surface; the
+    /// <see cref="LairTimers"/> store derives default respawn timers
+    /// from game data and tracks in-session arrivals.
+    /// </summary>
+    public Game.Map.LairManager Lairs { get; private set; } = null!;
+
+    /// <summary>
+    /// Game-data-derived respawn timer resolver + in-session arrival
+    /// tracker for marked lair rooms. The Phase 7 PR 7.19 Auto-Lair
+    /// scheduler reads <c>NextReadyAt</c> to choose the next leg.
+    /// </summary>
+    public Game.Map.LairTimerStore LairTimers { get; private set; } = null!;
+
+    /// <summary>
+    /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
+    /// Subscribes the <c>enc</c> line via MessageRouter.
+    /// </summary>
+    public Game.EncumbranceParser Encumbrance { get; private set; } = null!;
+
+    /// <summary>
+    /// Debug instrumentation logging measured per-hop times tagged
+    /// with the current <see cref="Game.EncumbranceLevel"/>. Off by
+    /// default; flipped on via Settings → Other.
+    /// </summary>
+    public Game.HopTimingCalibrator HopCalibrator { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-BBS room blacklist — hides target rooms from the
+    /// Navigation map render and the search box. Consumed by
+    /// <see cref="Game.Map.BfsMapper"/> (skip placement, keep edge
+    /// for dangling stub) and the right-click "Add to blacklist"
+    /// + "Modify Blacklist…" flows.
+    /// </summary>
+    public RoomBlacklistStore RoomBlacklist { get; private set; } = null!;
+
+    /// <summary>
+    /// Loop execution engine — Phase 7 PR 7.16. Shares
+    /// <see cref="MovementCoordinator"/> + <see cref="RoomTracker"/>
+    /// with the walker, plus <see cref="WirePromptScanner"/> for
+    /// command-step confirmation.
+    /// </summary>
+    public Game.Map.LoopRunner LoopRunner { get; private set; } = null!;
+
+    /// <summary>
+    /// Random-walk roam scheduler. Foundation for the deterministic
+    /// Auto-Lair scheduler. Session-only state.
+    /// </summary>
+    public Game.Map.AutoLairManager AutoLair { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -693,6 +920,25 @@ public sealed class AppServices
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
+
+        // Phase 7 PR 7.23 — @goto / @loop / @lair / @stop / @rego land
+        // in the Navigation block below, after Walker / LoopRunner /
+        // AutoLair are constructed.
+
+        // DoorOpenManager — walker's bash/pick/open FSM. Attempt caps
+        // + verb preference are pulled live from the resolved Other
+        // settings so the user can edit thresholds mid-session without
+        // restarting an engine. Wire-sender is bound by MainWindowVM
+        // alongside the trap one (gate-wrapped SendUserInput).
+        Door = new Game.Map.DoorOpenManager(Router, PlayerStats,
+            maxBashAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxBashAttempts,
+            maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
+            picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
+            itemNameLookup:             id => ItemNames.GetName(id),
+            log: Log);
+        // HiddenSearch is constructed later, after RoomTracker exists
+        // (it subscribes to RoomTracker.StateChanged for the reveal
+        // signal). See the wiring near RoomTracker = new(...).
         // SuicideHandler — needs the raw wire-sender (NOT the gate-
         // wrapped one) because it owns the suicide flow and must keep
         // sending while the password tracker locks the gate. Bound by
@@ -760,6 +1006,9 @@ public sealed class AppServices
         Profile.ProfileLoaded  += _ => ApplyOtherFromActiveProfile();
         Profile.ProfileClosed  += ResetOtherToDefaults;
         Profile.ProfileMutated += _ => ApplyOtherFromActiveProfile();
+        Profile.ProfileLoaded  += _ => ApplyAutoLairFromActiveProfile();
+        Profile.ProfileClosed  += ResetAutoLairToDefaults;
+        Profile.ProfileMutated += _ => ApplyAutoLairFromActiveProfile();
 
         // Bridge: follow the pinned BBS's preferred game-data set.
         // Active set lives at BBS scope (every character on the same
@@ -813,6 +1062,197 @@ public sealed class AppServices
         // detail-handler registration itself lives in App startup
         // (it needs DialogService to spawn the modeless window).
         SpellCoverage = new SpellCoverageAuditor(GameData, Messages, Log);
+
+        // Phase 7 room graph — seeded from the active set's Rooms.json
+        // every time the set switches. Built once per swap; consumers
+        // hold typed Room references for the lifetime of the set.
+        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log);
+        GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
+
+        // TBInfo store — TextBlock Info table indexed by Room.Cmd. Used
+        // by the teleport / NPC-service / gambling code paths (commit 5+
+        // wires the teleport resolver). Mirrors RoomGraph's load shape:
+        // active-set-driven, raw JSON evicted after typed conversion.
+        TBInfo = new TBInfoStore(GameData, Log);
+        MonsterSpawns = new MonsterSpawnIndex(GameData, Log);
+        GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // ItemNameStore — int→name index for the active Items.json so
+        // the keyed-door FSM can resolve KeyItemId → in-game name and
+        // send `use <name> <dir>`.
+        ItemNames = new ItemNameStore(GameData, Log);
+        GameData.ActiveSetChanged += ItemNames.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            ItemNames.OnActiveSetChanged(GameData.ActiveSet);
+
+        // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
+        // graph reload because per-room references are invalidated
+        // when the active set rebuilds.
+        RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
+        RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
+
+        // Shared engine-level recovery gate. Walker / LoopRunner /
+        // AutoLair attach themselves on Start (next commits).
+        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+
+        // Writer that persists tracker-learned names back to
+        // Rooms.json. The MainWindowVM subscribes to NameLearned to
+        // prompt the user, then calls this on accept.
+        RoomNamePersist = new RoomNamePersistence(GameData, Log);
+
+        // Hand the loaded profile to the tracker so it can hydrate
+        // LastKnownRoom + RecentSteps (replay-from-last-Confirmed
+        // recovery) and write back on every Confirmed transition /
+        // step. Persistence flushes to disk on the regular profile-save
+        // cycle (app close / settings Apply / explicit save).
+        Profile.ProfileLoaded += p => RoomTracker.Hydrate(p);
+        Profile.ProfileClosed += () => RoomTracker.OnProfileClosed();
+        if (Profile.Current is { } loaded) RoomTracker.Hydrate(loaded);
+
+        // Outbound-command observer — recognises `look <dir>` peeks and
+        // text-exit movement (go path / enter portal / climb tree / …)
+        // typed at the terminal or conversation window. Hooked into the
+        // wire-send pipeline by MainWindowViewModel.SendUserInput.
+        OutboundMovement = new Game.Map.OutboundMovementObserver(RoomTracker, Log);
+
+        // Death-message detector — bound to the per-session
+        // LineExtractor by MainWindowViewModel.AttachLineExtractor.
+        Death = new Game.DeathDetector(RoomTracker, Log);
+
+        // "There is no exit in that direction!" → demote tracker to
+        // Suspect so the next observation re-resolves via candidate
+        // search. Without this hook, a bonk while the tracker's
+        // model is wrong silently sticks; the user's only recourse
+        // is to walk back through a unique room to re-anchor.
+        Router.Subscribe(Services.Patterns.KnownPatterns.DirectionFailed,
+            _ => RoomTracker.NoteDirectionFailed());
+
+        // HiddenExitRevealManager — walker's sea-retry loop for
+        // SearchableHidden exits. Subscribes to RoomTracker.StateChanged
+        // for the "exit now visible" signal. Constructed here (after
+        // RoomTracker exists); the walker's enqueuer binding and the
+        // wire-sender land in MainWindowVM.
+        HiddenSearch = new Game.Map.HiddenExitRevealManager(
+            RoomTracker,
+            maxAttemptsProvider: () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxHiddenSearchAttempts,
+            router: Router,
+            log: Log);
+
+        // Phase 7 PR 7.5 — BFS pathfinding + planar layout. Layout
+        // cache invalidates on every graph reload.
+        Bfs = new Game.Map.BfsMapper(RoomGraph, Log);
+        RoomGraph.GraphReloaded += Bfs.OnGraphReloaded;
+        // Pre-warm the layout on a thread-pool task so the user
+        // doesn't pay the BFS cost on the UI thread when they first
+        // open the Navigation window.
+        RoomGraph.GraphReloaded += Bfs.PrewarmAsync;
+
+        // Phase 7 PR 7.6 — per-character avoided + stash rooms.
+        // Constructor subscribes ProfileLoaded / ProfileClosed and
+        // hydrates from the currently-loaded profile if there is one.
+        Movement = new MovementFilter(Profile, Log);
+        Favorites = new FavoritesStore(Profile, Log);
+
+        // Phase 7 PR 7.7 — coordinator + walker. Coordinator is the
+        // single pause-gate hub for every movement engine (walker now,
+        // loop / auto-lair later). Walker's wire sender is bound by
+        // MainWindowViewModel once the telnet client is up (matching
+        // the PartyPoller / AutoPartyManager pattern).
+        MovementCoordinator = new Game.Map.MovementCoordinator();
+        Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
+            MovementCoordinator, filter: Movement, log: Log,
+            promptScanner: PromptScanner, recovery: Recovery);
+        // Phase 7 PR 7.22 — route walker over trapped exits through
+        // the Phase 6 TrapDisarmManager.
+        Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+
+        // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
+        // BBS-change signals so the catalogue reloads on profile load
+        // and on explicit BBS pin from Settings → BBS Apply.
+        //
+        // Resolve through ResolveActiveBbs (NOT raw Profile.BbsName)
+        // so a blank-draft profile + global default-BBS still binds
+        // the catalogue to that default. Otherwise Save on a
+        // brand-new loop silently no-ops in LoopManager (the
+        // _bbsName==null bail) and the user-visible Save button
+        // appears to do nothing.
+        Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
+        Profile.ProfileLoaded += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.ProfileClosed += () => Loops.LoadAll(null);
+
+        // Phase 7 PR 7.9 — MegaMUD .mp loop importer. Pure resolution
+        // service over the active graph; no per-profile state of its
+        // own. The Manage dialog calls it on user "Import .mp".
+        MpImporter = new Game.Map.MpFile.MpFileImporter(RoomGraph, Log);
+
+        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-BBS, mirrors
+        // LoopManager) + game-data-driven respawn timer resolver +
+        // in-session arrival tracker.
+        Lairs = new Game.Map.LairManager(Log);
+        Profile.ProfileLoaded += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
+        Profile.ProfileClosed += () => Lairs.LoadAll(null);
+        LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
+
+        // Phase 7 PR 7.18 — Encumbrance parser writes
+        // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
+        // logs measured per-hop times tagged with that level. Enabled via
+        // Settings → Other → "Log movement-hop timing".
+        Encumbrance = new Game.EncumbranceParser(Router, PlayerState, Log);
+        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Log);
+
+        // Per-BBS room blacklist — hides ganghouse / dead-end rooms
+        // from the map render + room search. Loaded on BBS pin so
+        // BFS picks it up via the Changed event before the first
+        // layout build for the new BBS.
+        RoomBlacklist = new RoomBlacklistStore(Log);
+        Profile.ProfileLoaded += p => RoomBlacklist.OnBbsPinApplied(p);
+        Profile.BbsPinApplied += p => RoomBlacklist.OnBbsPinApplied(p);
+        // BFS consults the blacklist to skip placement of hidden
+        // rooms (edge still recorded → dangling stub). Cache flushes
+        // on every blacklist change so the next layout build picks
+        // up the new filter.
+        Bfs.ConfigureBlacklist(RoomBlacklist.IsBlacklisted);
+        RoomBlacklist.Changed += () => Bfs.InvalidateCache();
+
+        // Phase 7 PR 7.16 — loop execution engine. MainWindowViewModel
+        // binds the wire-sender once telnet is up (same pattern as
+        // the walker). RoomGraph passed in so the runner can resolve
+        // MoveLoopStep sequences into room-key polylines for the map
+        // overlay.
+        LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
+            PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
+        // Avoid-list mutation mid-loop → LoopRunner re-routes via a
+        // Stop+Start cycle so the new filter applies on the next BFS.
+        Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
+
+        // Deterministic Auto-Lair scheduler — picks the next marked
+        // lair to enter based on respawn timers + travel cost, parks
+        // at a wait-room one hop short, then steps in on the tick.
+        AutoLair = new Game.Map.AutoLairManager(
+            Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
+
+        // Shared room-search resolver — backs the Nav rail search
+        // box AND the @goto handler. Subscribes to ActiveSetChanged
+        // + GraphReloaded internally so callers don't need to wire
+        // cache invalidation.
+        RoomSearch = new RoomSearchService(
+            RoomGraph, GameData, Bfs, RoomBlacklist, Movement, Log);
+
+        // Phase 7 PR 7.23 — MovePlayer remote-command handler.
+        // Registers @goto, @loop, @lair, @stop, @rego against the
+        // RemoteCommandManager. Dispatch routes to the now-existing
+        // Walker / LoopRunner / AutoLairManager. The Catalog permission
+        // gate ensures only players the user has granted MovePlayer
+        // can issue these.
+        MoveRemote = new Game.Remote.MovePlayerHandler(
+            RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
+            Lairs, AutoLair, MovementCoordinator);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
@@ -977,6 +1417,9 @@ public sealed class AppServices
         // @trap auto-disarm attempt caps.
         TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+        // Hop-timing calibration logger — off by default; user flips
+        // on for a data-collection session.
+        HopCalibrator.Enabled = dto.LogMovementHopTiming;
     }
 
     private void ResetOtherToDefaults()
@@ -987,6 +1430,39 @@ public sealed class AppServices
         GameCommands.ExitCommand  = defaults.GameExitCommand;
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
+    }
+
+    /// <summary>
+    /// Push the loaded character's
+    /// <see cref="Models.Profile.AutoLairSettings"/> into
+    /// <see cref="AutoLair"/> — heuristic, idle penalty, engage timeout,
+    /// and the chosen <see cref="Game.Map.ITravelCostModel"/>
+    /// implementation. Same shape as
+    /// <see cref="ApplyOtherFromActiveProfile"/>.
+    /// </summary>
+    public void ApplyAutoLairFromActiveProfile()
+    {
+        Models.Profile.AutoLairSettings dto =
+            ReadSection<Models.Profile.AutoLairSettings>(Profile.Current, "AutoLair");
+        AutoLair.Heuristic = dto.Heuristic;
+        AutoLair.IdlePenalty = Math.Max(0, dto.IdlePenalty);
+        AutoLair.EngageTimeoutSeconds = Math.Clamp(dto.EngageTimeoutSeconds, 1, 3600);
+        AutoLair.TravelCostModel = dto.TravelCostMode switch
+        {
+            Models.Profile.AutoLairTravelCostMode.EncumbranceGated =>
+                new Game.Map.EncumbranceGatedTravelCostModel(PlayerState, dto.HopTimesByEncumbrance),
+            _ =>
+                new Game.Map.FlatTravelCostModel(Math.Max(0.1, dto.FlatSecondsPerHop)),
+        };
+    }
+
+    private void ResetAutoLairToDefaults()
+    {
+        Models.Profile.AutoLairSettings defaults = new();
+        AutoLair.Heuristic = defaults.Heuristic;
+        AutoLair.IdlePenalty = defaults.IdlePenalty;
+        AutoLair.EngageTimeoutSeconds = defaults.EngageTimeoutSeconds;
+        AutoLair.TravelCostModel = new Game.Map.FlatTravelCostModel(defaults.FlatSecondsPerHop);
     }
 
     /// <summary>

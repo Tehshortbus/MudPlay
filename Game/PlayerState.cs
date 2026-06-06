@@ -41,4 +41,13 @@ public sealed partial class PlayerState : ObservableObject
     /// render as <c>HP 0/0</c>.
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(PromptParser))] private bool _hasPromptData;
+
+    /// <summary>
+    /// Latest observed encumbrance bracket from the <c>enc</c> line.
+    /// Stays <see cref="EncumbranceLevel.Unknown"/> until the player
+    /// runs <c>enc</c> (or it gets reported during an inventory).
+    /// Drives the Auto-Lair scheduler's per-hop travel-cost lookup and
+    /// the hop-timing calibrator's bucket tag.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(EncumbranceParser))] private EncumbranceLevel _encumbrance;
 }

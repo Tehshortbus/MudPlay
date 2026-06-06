@@ -1,0 +1,84 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:nvm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="360"
+        x:Class="FujinTerm.Views.ManualCenterDialog"
+        x:DataType="vm:ManualCenterDialogViewModel"
+        Title="Center map on…"
+        Width="420" Height="360"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="8">
+
+            <TextBlock Grid.Row="0"
+                       Text="Type a room key (1/297), bare number (297), or part of a room name."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"/>
+
+            <!-- Single search box — mirrors the Navigation rail's
+                 search input. Enter commits the highlighted (or top)
+                 row; up/down arrows move through the dropdown. -->
+            <TextBox Grid.Row="1"
+                     Name="QueryBox"
+                     Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="Search rooms…"
+                     FontSize="12"
+                     KeyDown="OnQueryKeyDown"/>
+
+            <!-- Live results dropdown — visible only while there are
+                 matches. Same row template as the Navigation
+                 dropdown / LoopEditor add-room row. -->
+            <Border Grid.Row="2"
+                    IsVisible="{Binding HasSearchResults}"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3">
+                <ListBox Name="ResultsList"
+                         ItemsSource="{Binding SearchResults}"
+                         SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="nvm:RoomSearchResult">
+                            <Border Padding="6,3"
+                                    PointerPressed="OnResultClicked"
+                                    Background="Transparent">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PrimaryLine}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SecondaryLine}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <TextBlock Grid.Row="3"
+                       Text="{Binding ErrorMessage}"
+                       Foreground="#FFE06D6D" FontSize="11"
+                       IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap"/>
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Center" Command="{Binding CommitCommand}"
+                        IsEnabled="{Binding CanCommit}"
+                        IsDefault="True" MinWidth="80"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True"  MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

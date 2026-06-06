@@ -1,0 +1,340 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.Navigation.NavigationManagerDialog"
+        x:DataType="vm:NavigationManagerDialogViewModel"
+        Title="Manage"
+        Width="640" Height="560"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="Border.ManagerRow">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding"      Value="6,3"/>
+            <Setter Property="Margin"       Value="0,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush"  Value="Transparent"/>
+            <Setter Property="Background"   Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.ManagerRow TextBlock">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <!-- Draft section — visible only while the NavigationWindow
+                 is in LoopBuild mode. This is the explicit Save surface
+                 (Run on the main window is transient and never writes
+                 to disk per UX direction). -->
+            <Border Grid.Row="0"
+                    BorderBrush="{StaticResource AccentAmberBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Padding="8"
+                    IsVisible="{Binding HasDraft}">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+                        <Border Grid.Column="0"
+                                CornerRadius="3" Padding="6,1"
+                                VerticalAlignment="Center"
+                                Background="{StaticResource AccentAmberBrush}">
+                            <TextBlock Text="DRAFT"
+                                       FontSize="10" FontWeight="SemiBold"
+                                       Foreground="#0E0E0E"/>
+                        </Border>
+                        <TextBlock Grid.Column="1"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgSecBrush}">
+                            <Run Text="{Binding Draft.Clicks.Count, FallbackValue=0}"/>
+                            <Run Text=" room(s) clicked · "/>
+                            <Run Text="{Binding Draft.ExpandedStepCount, FallbackValue=0}"/>
+                            <Run Text=" step(s)"/>
+                        </TextBlock>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0"
+                                   Text="Name:"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding Draft.ProposedName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="11"/>
+                        <Button Grid.Column="2"
+                                Content="Save"
+                                Command="{Binding SaveDraftCommand}"
+                                IsEnabled="{Binding Draft.CanSave, FallbackValue=False}"
+                                MinWidth="70"/>
+                        <Button Grid.Column="3"
+                                Content="Discard"
+                                Command="{Binding DiscardDraftCommand}"
+                                Foreground="{StaticResource AccentRedBrush}"
+                                MinWidth="70"/>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Two-pane body: Loops on top, Auto-Lair on bottom. Both
+                 scroll independently so a long loop list doesn't crowd
+                 the lair list out of view. -->
+            <Grid Grid.Row="1" RowDefinitions="*,Auto,*">
+
+                <!-- Loops section -->
+                <Border Grid.Row="0"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Background="{StaticResource ChromeBgElevBrush}"
+                                Padding="6,3">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0"
+                                           Text="Loops"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           VerticalAlignment="Center">
+                                    <Run Text="{Binding Loops.Count, FallbackValue=0}"/>
+                                    <Run Text=" saved"/>
+                                </TextBlock>
+                                <!-- New: opens the LoopEditor dialog in
+                                     create mode (title flips to "Create
+                                     Loop"). Away-from-the-map flow —
+                                     the user types the name + adds
+                                     rooms via the editor's search box
+                                     without leaving this surface. -->
+                                <Button Grid.Column="2"
+                                        Content="New"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding NewLoopCommand}"
+                                        ToolTip.Tip="Open the loop editor on an empty loop."/>
+                                <!-- Import .mp: file picker → MegaMUD
+                                     .mp loop file → anchor resolver →
+                                     LoopEditor with the imported loop
+                                     pre-filled. -->
+                                <Button Grid.Column="3"
+                                        Content="Import .mp"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding ImportMpCommand}"
+                                        ToolTip.Tip="Import a MegaMUD .mp loop file. Path-style .mp files (one-way A→B) are rejected."/>
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- .mp import status line — empty until the
+                                     user clicks "Import .mp" the first time.
+                                     Persists for the lifetime of the dialog
+                                     so the user can re-read the last
+                                     attempt's reason. -->
+                                <Border IsVisible="{Binding HasImportStatus}"
+                                        Padding="6,4"
+                                        Margin="0,0,0,2"
+                                        Background="{StaticResource ChromeBgElevBrush}">
+                                    <TextBlock Text="{Binding ImportStatus}"
+                                               FontSize="10"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                                </Border>
+                                <!-- Running-loop save row — visible only when
+                                     the runner is actually driving a loop.
+                                     Editable name + Save persists the in-
+                                     flight loop without stopping it. -->
+                                <Border Padding="6,4"
+                                        Margin="0,0,0,2"
+                                        Background="{StaticResource ChromeBgElevBrush}"
+                                        IsVisible="{Binding HasRunningLoop}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                        <Border Grid.Column="0"
+                                                CornerRadius="3" Padding="6,1"
+                                                VerticalAlignment="Center"
+                                                Background="{StaticResource AccentGreenBrush}">
+                                            <TextBlock Text="RUNNING"
+                                                       FontSize="9" FontWeight="SemiBold"
+                                                       Foreground="#0E0E0E"/>
+                                        </Border>
+                                        <TextBox Grid.Column="1"
+                                                 Text="{Binding RunningLoopName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontSize="11"/>
+                                        <Button Grid.Column="2"
+                                                Content="Save"
+                                                FontSize="10"
+                                                Padding="8,2"
+                                                Command="{Binding SaveRunningLoopCommand}"
+                                                ToolTip.Tip="Persist the currently-running loop to disk under the typed name."/>
+                                    </Grid>
+                                </Border>
+                                <TextBlock Text="No loops saved on this BBS yet — build one from the Navigation map."
+                                           Padding="8"
+                                           FontSize="11"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding !HasLoops}"/>
+                                <ItemsControl ItemsSource="{Binding Loops}"
+                                              IsVisible="{Binding HasLoops}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ManagerLoopRow">
+                                            <Border Classes="ManagerRow">
+                                                <Grid ColumnDefinitions="*,60,*,Auto,Auto" ColumnSpacing="6">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Name}"
+                                                               VerticalAlignment="Center"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}">
+                                                        <Run Text="{Binding WaypointCount}"/>
+                                                        <Run Text=" wpt"/>
+                                                    </TextBlock>
+                                                    <TextBlock Grid.Column="2"
+                                                               Text="{Binding Notes}"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="3"
+                                                            Content="Edit"
+                                                            FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="4"
+                                                            Content="✕"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            ToolTip.Tip="Delete loop"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLoopCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Visual gap -->
+                <Border Grid.Row="1" Height="6"/>
+
+                <!-- Auto-Lair Mode section — saved setups (.lair.json
+                     files in the shared Loops folder). Same row shape
+                     as the Loops section above: Run / Load / Edit /
+                     Delete buttons per row. New setups are authored
+                     via the rail's "Save lairs" button or this
+                     section's "New" button. -->
+                <Border Grid.Row="2"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Background="{StaticResource ChromeBgElevBrush}"
+                                Padding="6,3">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0"
+                                           Text="Auto-Lair Mode"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentAmberBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0">
+                                    <Run Text="{Binding LairSetups.Count, FallbackValue=0}"/>
+                                    <Run Text=" saved"/>
+                                </TextBlock>
+                                <Button Grid.Column="2"
+                                        Content="New"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding NewLairCommand}"
+                                        ToolTip.Tip="Create a new Auto-Lair setup from scratch."/>
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="No Auto-Lair setups saved on this BBS yet — click New, or use the rail's Save-lairs button after marking rooms."
+                                           Padding="8"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           IsVisible="{Binding !HasLairSetups}"/>
+                                <ItemsControl ItemsSource="{Binding LairSetups}"
+                                              IsVisible="{Binding HasLairSetups}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ManagerLairSetupRow">
+                                            <Border Classes="ManagerRow">
+                                                <Grid ColumnDefinitions="*,Auto,Auto"
+                                                      ColumnSpacing="6">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource AccentAmberBrush}"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock FontSize="10"
+                                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <Run Text="{Binding MarkerCount}"/>
+                                                            <Run Text=" lair(s) · "/>
+                                                            <Run Text="{Binding Notes}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <!-- Run / Load belong on the rail row, not the
+                                                         Manage dialog — per UX direction. Edit + ✕
+                                                         delete are the two CRUD actions the dialog
+                                                         exposes, same shape as the Loops rows. -->
+                                                    <Button Grid.Column="1"
+                                                            Content="Edit" FontSize="10"
+                                                            Padding="8,2"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
+                                                            Content="✕" FontSize="10"
+                                                            Padding="6,2"
+                                                            ToolTip.Tip="Delete this setup"
+                                                            Foreground="{StaticResource AccentRedBrush}"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Footer -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button Content="Close"
+                        Command="{Binding CloseCommand}"
+                        IsCancel="True" MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

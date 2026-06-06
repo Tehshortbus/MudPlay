@@ -1,0 +1,228 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.Navigation.LoopEditorDialog"
+        x:DataType="vm:LoopEditorDialogViewModel"
+        Title="{Binding DialogTitle}"
+        Width="540" Height="560"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <!-- Per-row container; cyan border when the row has a command. -->
+        <Style Selector="Border.WaypointRow">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding"      Value="6,3"/>
+            <Setter Property="Margin"       Value="0,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush"  Value="Transparent"/>
+            <Setter Property="Background"   Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.WaypointRow.HasCommand">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+        <Style Selector="Border.WaypointRow TextBlock">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" RowSpacing="8">
+
+            <!-- Header row: Name -->
+            <Grid Grid.Row="0" ColumnDefinitions="60,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Name" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           FontSize="11"/>
+            </Grid>
+            <Grid Grid.Row="1" ColumnDefinitions="60,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Notes" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Top" Margin="0,4,0,0"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           FontSize="11"
+                           AcceptsReturn="True"
+                           Height="48"
+                           TextWrapping="Wrap"/>
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="Waypoints" FontSize="11"
+                       Margin="0,4,0,0"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <!-- Waypoint list -->
+            <ListBox Grid.Row="3"
+                     ItemsSource="{Binding Waypoints}"
+                     SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                     Background="Transparent"
+                     BorderThickness="1"
+                     BorderBrush="{StaticResource ChromeBorderBrush}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin"  Value="0"/>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LoopWaypointRowViewModel">
+                        <Border Classes="WaypointRow"
+                                Classes.HasCommand="{Binding HasCommand}">
+                            <Grid ColumnDefinitions="32,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="4">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Index}"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding DisplayLabel}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding CommandSummary}"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{StaticResource AccentCyanBrush}"
+                                           Margin="6,0"
+                                           IsVisible="{Binding HasCommand}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="160"/>
+                                <!-- ✎ Per-row command + delay editor. Sits LEFT
+                                     of the arrange-up arrow per UX direction. -->
+                                <Button Grid.Column="3"
+                                        Content="✎" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Set command / delay for this waypoint"
+                                        Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).EditWaypointActionCommand}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Grid.Column="4"
+                                        Content="↑" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Move earlier in cycle"
+                                        Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveUpCommand}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Grid.Column="5"
+                                        Content="↓" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Move later in cycle"
+                                        Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveDownCommand}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Grid.Column="6"
+                                        Content="✕" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Remove waypoint"
+                                        Foreground="{StaticResource AccentRedBrush}"
+                                        Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).RemoveCommand}"
+                                        CommandParameter="{Binding}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Add waypoint row — mirrors the Navigation window's
+                 search box. Accepts a raw room key (1/297, 1,297,
+                 bare 297) or substring against room names; live
+                 results dropdown shows up to 50 matches. Enter on
+                 the TextBox adds the highlighted (or top) result;
+                 click a row to commit immediately. Save IsDefault
+                 is disabled while typing here so Enter doesn't
+                 accidentally dismiss the dialog. -->
+            <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                    <TextBlock Grid.Column="0"
+                               Text="Add room:"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    <TextBox Grid.Column="1"
+                             Name="AddRoomTextBox"
+                             Text="{Binding NewWaypointQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PlaceholderText="Room key (1/297) or name"
+                             FontSize="11"
+                             KeyDown="OnAddRoomKeyDown"/>
+                    <Button Grid.Column="2"
+                            Content="Add"
+                            Command="{Binding AddWaypointCommand}"/>
+                </Grid>
+                <!-- Live results dropdown — visible only while there
+                     are matches. Capped height so the dialog stays
+                     usable on a small window; clicking a row adds
+                     that room straight away. -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasSearchResults}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        MaxHeight="180"
+                        Margin="60,2,40,0">
+                    <ListBox Name="AddRoomResults"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RoomSearchResult">
+                                <Border Padding="6,3"
+                                        PointerPressed="OnAddRoomResultClicked"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PrimaryLine}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SecondaryLine}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                <TextBlock Grid.Row="2"
+                           Text="{Binding AddWaypointError}"
+                           IsVisible="{Binding HasAddWaypointError}"
+                           FontSize="10"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+            </Grid>
+
+            <!-- Per-row command + delay edits live in the modeless
+                 WaypointActionEditDialog spawned by each row's ✎
+                 button. No footer inline editor — dialog is the
+                 single path. -->
+
+            <!-- Dialog buttons -->
+            <Grid Grid.Row="6"
+                  ColumnDefinitions="*,Auto"
+                  Margin="0,6,0,0">
+                <!-- Inline save error so the user sees why a Save
+                     click didn't persist (empty name, too few
+                     waypoints, no BBS bound). -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding SaveError}"
+                           IsVisible="{Binding HasSaveError}"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button Content="Cancel"
+                            Command="{Binding CancelCommand}"
+                            IsCancel="True" MinWidth="80"/>
+                    <Button Content="Save"
+                            Command="{Binding SaveCommand}"
+                            IsDefault="True" MinWidth="80"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

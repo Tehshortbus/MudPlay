@@ -152,4 +152,63 @@ public sealed class CharacterProfile
     /// values instead of zeros. <c>null</c> until the first capture.
     /// </summary>
     public LastKnownStats? LastKnownStats { get; set; }
+
+    /// <summary>
+    /// Rooms the walker / loop / auto-lair scheduler must not route
+    /// through. Per-character only (each player picks their own no-go
+    /// list) — does not flow through <see cref="SettingsResolver"/>.
+    /// Persisted as a flat list of <see cref="RoomRef"/>; consumed at
+    /// runtime by <see cref="Services.MovementFilter"/>. <c>null</c>
+    /// or empty = no rooms avoided.
+    /// </summary>
+    public List<RoomRef>? AvoidedRooms { get; set; }
+
+    /// <summary>
+    /// Rooms the user has flagged as drop-off / stash points (Phase 7
+    /// — basic flag; downstream consumers like the cash auto-deposit
+    /// flow and the Workshop EQUIP sets land later). Per-character
+    /// only. <c>null</c> or empty = no stash rooms flagged.
+    /// </summary>
+    public List<RoomRef>? StashRooms { get; set; }
+
+    /// <summary>
+    /// User-bookmarked rooms shown in the Navigation window's GOTO
+    /// pane. Per-character; each entry carries the
+    /// <see cref="Game.Map.RoomKey"/> wire pair plus an optional
+    /// custom label. Persisted as a flat list; consumed at runtime by
+    /// <see cref="Services.FavoritesStore"/>. <c>null</c> or empty =
+    /// no favorites flagged.
+    /// </summary>
+    public List<FavoriteRoom>? Favorites { get; set; }
+
+    /// <summary>
+    /// Last room the character was known to be standing in. Hydrated
+    /// from <see cref="Game.Map.RoomTracker"/> on a successful manual
+    /// or auto locate; saved with the rest of the profile and used as
+    /// the initial Navigation map origin on the next session so the
+    /// user opens the map already centred on where they left off.
+    /// <c>null</c> until the first successful locate.
+    /// </summary>
+    public RoomRef? LastKnownRoom { get; set; }
+
+    /// <summary>
+    /// Ordered list of move commands sent since <see cref="LastKnownRoom"/>
+    /// was Confirmed — the tracker's replay-from-last-Confirmed input.
+    /// Written by <see cref="Game.Map.RoomTracker"/> on every successful
+    /// move, cleared on the next Confirmed transition (the new
+    /// <c>LastKnownRoom</c> takes over). Hydrated on profile load so the
+    /// next session can replay through the graph and recover position
+    /// without manual intervention. <c>null</c> or empty = no pending
+    /// steps to replay.
+    /// </summary>
+    public List<DirectionDto>? RecentSteps { get; set; }
+
+    /// <summary>
+    /// Append-only history of deaths observed for this character.
+    /// Written by <see cref="Game.DeathDetector"/> when the
+    /// <c>You now have N lives remaining.</c> message arrives;
+    /// consumed by the Phase 9 Workshop DEATH section. <c>null</c> /
+    /// empty means no deaths yet (the lucky case).
+    /// </summary>
+    public List<DeathRecord>? DeathHistory { get; set; }
 }

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace FujinTerm.Services.Patterns;
 
 /// <summary>
@@ -76,8 +78,12 @@ public static class DefaultPatterns
         // ----- Searching ------------------------------------------------- (source: classifier.js searching)
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
             @"^You notice nothing different to the \w+");
+        // Cardinal forms use "to the <dir>" ("north" / "northeast" / etc.);
+        // U/D drop the preposition and use the "<dir>wards" suffix
+        // ("upwards" / "downwards"). One regex covers both — the
+        // direction word lands in the same capture group either way.
         yield return new RegexPattern(KnownPatterns.UserSearchSucceeded,
-            @"^You found an exit to the (?<direction>\w+)!");
+            @"^You found an exit (?:to the )?(?<direction>\w+)!");
 
         // ----- Combat ---------------------------------------------------- (source: classifier.js combat)
         yield return new RegexPattern(KnownPatterns.CombatStatus,
@@ -347,6 +353,40 @@ public static class DefaultPatterns
             @"^You notice nothing different to the (?<dir>\w+)\.?\s*$");
         yield return new RegexPattern(KnownPatterns.TrapDisarmedSuccess,
             @"^You successfully disarmed the trap to the (?<dir>\w+)\.?\s*$");
+
+        // ----- Door handling (Phase 7 DoorOpenManager) ----------------
+        // Single-shot match — DoorOpenManager runs one request at a time,
+        // so we don't need direction capture in the match. Both "door"
+        // and "gate" nouns covered.
+        yield return new RegexPattern(KnownPatterns.DoorBashSuccess,
+            @"\bbashed the (?:door|gate) open\b");
+        yield return new RegexPattern(KnownPatterns.DoorBashFailure,
+            @"\battempts? to bash through fails?\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickSuccess,
+            @"\bsuccessfully unlocks? the (?:door|gate)\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickFailure,
+            @"\b(?:lockpicking )?skill fails you\b");
+        yield return new RegexPattern(KnownPatterns.DoorPickNotLocked,
+            @"\b(?:door|gate|exit|passage) (?:was|is) not locked\b");
+        yield return new RegexPattern(KnownPatterns.DoorOpenedNow,
+            @"\b(?:door|gate) is now open\b");
+        yield return new RegexPattern(KnownPatterns.DoorAlreadyOpen,
+            @"\b(?:door|gate) is already open\b");
+        yield return new RegexPattern(KnownPatterns.DoorIsLocked,
+            @"\b(?:door|gate) is locked\b");
+        // "You successfully unlocked the door/gate" — after `use <key> <dir>`.
+        // Distinct id from DoorPickSuccess so the FSM can branch on which
+        // verb produced the unlock (pick goes to open; use-key also goes
+        // to open, but the source state determines the next step).
+        yield return new RegexPattern(KnownPatterns.DoorKeyUnlockSuccess,
+            @"\bsuccessfully unlocked the (?:door|gate)\b",
+            options: RegexOptions.IgnoreCase);
+        // "You have no <item>" / "You don't have a key for that"
+        // — generic missing-key reply. Coarse to cover both phrasings;
+        // the manager only consults it during WaitingUseKey.
+        yield return new RegexPattern(KnownPatterns.DoorKeyUnknown,
+            @"\b(?:you have no |you don'?t have|nothing happens)\b",
+            options: RegexOptions.IgnoreCase);
     }
 
 }

@@ -1,0 +1,196 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.Navigation.LairEditorDialog"
+        x:DataType="vm:LairEditorDialogViewModel"
+        Title="{Binding DialogTitle}"
+        Width="560" Height="540"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="Border.MarkerRow">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding"      Value="6,4"/>
+            <Setter Property="Margin"       Value="0,1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush"  Value="Transparent"/>
+            <Setter Property="Background"   Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.MarkerRow TextBlock">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
+
+            <!-- Header row: Name -->
+            <Grid Grid.Row="0" ColumnDefinitions="60,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Name" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           FontSize="11"
+                           Classes.error="{Binding HasNameError}"/>
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="60,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="Notes" FontSize="11"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           VerticalAlignment="Top" Margin="0,4,0,0"/>
+                <TextBox   Grid.Column="1"
+                           Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           FontSize="11"
+                           AcceptsReturn="True"
+                           Height="48"
+                           TextWrapping="Wrap"/>
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="Marked lairs" FontSize="11"
+                       Margin="0,4,0,0"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <!-- Marker list. Right-click → "Add to Auto-Lair" on the
+                 map adds rows; the editor is read-only for marker
+                 placement. Override-seconds is editable inline. -->
+            <ListBox Grid.Row="3"
+                     ItemsSource="{Binding Markers}"
+                     Background="Transparent"
+                     BorderThickness="1"
+                     BorderBrush="{StaticResource ChromeBorderBrush}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin"  Value="0"/>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LairMarkerRowViewModel">
+                        <Border Classes="MarkerRow">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DisplayHeader}"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <!-- Always visible (was hidden when override
+                                         was set) so the user can compare the
+                                         live override against the game-data
+                                         default at a glance. -->
+                                    <TextBlock Text="{Binding DefaultHint}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           Text="Override:" FontSize="10"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           VerticalAlignment="Center"/>
+                                <!-- Width bumped from 100 → 140 so three-digit
+                                     overrides ("270" / "330") render without
+                                     truncating against the spinner buttons. -->
+                                <NumericUpDown Grid.Column="2"
+                                               Value="{Binding OverrideRespawnSeconds, Mode=TwoWay}"
+                                               Minimum="0" Maximum="86400" Increment="30"
+                                               FormatString="0"
+                                               Width="140"
+                                               ShowButtonSpinner="True"
+                                               ToolTip.Tip="Override respawn seconds. Leave blank (0) to use the game-data default."/>
+                                <Button Grid.Column="3"
+                                        Content="✕" FontSize="10" Padding="6,1"
+                                        ToolTip.Tip="Remove marker from this setup"
+                                        Foreground="{StaticResource AccentRedBrush}"
+                                        Command="{Binding $parent[ListBox].((vm:LairEditorDialogViewModel)DataContext).RemoveMarkerCommand}"
+                                        CommandParameter="{Binding}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Add-marker row (mirrors LoopEditor's add-room search):
+                 type a room key or substring, dropdown surfaces live
+                 matches, Enter / Add commits. Or right-click → Add to
+                 Auto-Lair on the map. -->
+            <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                    <TextBlock Grid.Column="0"
+                               Text="Add room:"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    <TextBox Grid.Column="1"
+                             Name="AddRoomTextBox"
+                             Text="{Binding NewMarkerQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PlaceholderText="Room key (1/297) or name"
+                             FontSize="11"
+                             KeyDown="OnAddRoomKeyDown"/>
+                    <Button Grid.Column="2"
+                            Content="Add"
+                            Command="{Binding AddMarkerCommand}"/>
+                </Grid>
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasSearchResults}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        MaxHeight="180"
+                        Margin="72,2,40,0">
+                    <ListBox Name="AddRoomResults"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RoomSearchResult">
+                                <Border Padding="6,3"
+                                        PointerPressed="OnAddRoomResultClicked"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PrimaryLine}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SecondaryLine}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                <TextBlock Grid.Row="2"
+                           Text="{Binding AddMarkerError}"
+                           IsVisible="{Binding HasAddMarkerError}"
+                           FontSize="10"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+            </Grid>
+
+            <!-- Action strip -->
+            <Grid Grid.Row="5" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,8,0,0">
+                <TextBlock Grid.Column="0"
+                           Text="Or right-click a room on the map → Add to Auto-Lair."
+                           FontSize="10"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <Button Grid.Column="1"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"/>
+                <Button Grid.Column="2"
+                        Content="Save"
+                        IsDefault="True"
+                        Classes="Accent"
+                        IsEnabled="{Binding CanSave}"
+                        Command="{Binding SaveCommand}"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

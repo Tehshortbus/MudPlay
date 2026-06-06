@@ -38,16 +38,38 @@ public partial class MainWindowViewModel : ObservableObject
     private Action<PromptObservation>? _loginKillSwitch;
     private CancellationTokenSource? _cleanupReconnectCts;
     // Counts reactive reconnect arms in a row (carrier-lost / no-response).
-    // Resets to 0 on a successful Connect or any user-initiated disconnect /
-    // connect — so the (REDIAL m/N) hint in the armed status only reflects
-    // the current uninterrupted disconnect cycle.
+    // Resets to 0 on a user-initiated connect/disconnect OR after the
+    // connection has stayed alive long enough to count as "real" (see
+    // _stableConnectionResetCts). Resetting on plain TCP-Connected
+    // would let a BBS-in-cleanup loop (connect → unavailable message →
+    // drop → reconnect) run forever because each fresh connect would
+    // zero the counter and never hit MaxRedials.
     private int _reactiveReconnectCount;
+    // Fires after StableConnectionWindowSeconds of continuous connect
+    // to reset _reactiveReconnectCount. Cancelled on every Disconnect
+    // so a flap inside the window is held against the redial budget.
+    private CancellationTokenSource? _stableConnectionResetCts;
+    private const int StableConnectionWindowSeconds = 30;
+
+    // Live "dialing in 4m 23s" countdown shown in the status bar when
+    // a long-delay reconnect is armed. Only shown when the delay is
+    // ≥ ReconnectCountdownThresholdSeconds — the 5s reactive cycle
+    // doesn't need a status-bar countdown that flashes for one second
+    // before vanishing.
+    private DispatcherTimer? _reconnectCountdownTimer;
+    private DateTimeOffset _reconnectFireAt;
+    private const int ReconnectCountdownThresholdSeconds = 30;
     // GC root for the who-list parser — it subscribes to LineExtractor
     // in its ctor and stays alive as long as MainWindowViewModel does.
     private readonly Game.WhoListParser _whoListParser;
     // GC root for the look-on-player parser — sibling to the who-list
     // parser; populates race / class / equipment from `look <player>`.
     private readonly Game.LookParser _lookParser;
+    // GC root for the room-display + movement-refusal parsers (PR 7.1b).
+    // Both subscribe to LineExtractor in their ctors and stay alive
+    // with this view-model.
+    private readonly Game.Map.RoomDisplayParser _roomDisplayParser;
+    private readonly Game.Map.MovementRefusalDetector _movementRefusalDetector;
 
     /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
     public TerminalEmulator Emulator { get; } = new(80, 25);
@@ -201,6 +223,82 @@ public partial class MainWindowViewModel : ObservableObject
          : "Disconnected";
 
     /// <summary>
+    /// Live "dialing in 4m 23s" countdown text. Empty when no
+    /// reconnect is armed OR when the armed delay is too short to
+    /// warrant a status-bar countdown. Updated once per second by
+    /// <see cref="_reconnectCountdownTimer"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReconnectCountdownVisible))]
+    private string _reconnectCountdownText = string.Empty;
+
+    /// <summary>True when <see cref="ReconnectCountdownText"/> should render. Bound by the status bar.</summary>
+    public bool IsReconnectCountdownVisible => !string.IsNullOrEmpty(ReconnectCountdownText);
+
+    // ----- Status-bar location slot (mirrors NavigationViewModel) ----
+
+    /// <summary>
+    /// Text shown in the bottom status bar's location slot. Mirrors
+    /// the Navigation window's current-room label so the two stay in
+    /// sync — the bottom bar should never show "Unknown location"
+    /// while the Navigation strip knows where the player is.
+    /// </summary>
+    [ObservableProperty] private string _locationText = "Unknown location";
+
+
+    // ----- Engine-state chip (mirrors the Navigation window's badge) -----
+
+    private Game.Map.WalkState _walkerState   = Game.Map.WalkState.Idle;
+    private bool               _loopRunning;
+    private bool               _autoLairOn;
+
+    /// <summary>Label inside the chip — short upper-case state tag.</summary>
+    public string EngineActionBadge =>
+        _autoLairOn                                     ? "AUTO-LAIR"
+        : _loopRunning                                  ? "LOOPING"
+        : (_walkerState != Game.Map.WalkState.Idle)     ? "WALKING"
+        :                                                 "IDLE";
+
+    public bool EngineActionIsIdle    => !_autoLairOn && !_loopRunning && _walkerState == Game.Map.WalkState.Idle;
+    public bool EngineActionIsWalking => !_autoLairOn && !_loopRunning && _walkerState != Game.Map.WalkState.Idle;
+    public bool EngineActionIsLooping => !_autoLairOn &&  _loopRunning;
+    public bool EngineActionIsLair    =>  _autoLairOn;
+
+    private void OnWalkerEngineEvent(Game.Map.WalkEvent _)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _walkerState = AppServices.Current.Walker.State;
+            RefreshEngineActionChip();
+        });
+
+    private void OnLoopRunnerEngineEvent(Game.Map.LoopEvent _)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _loopRunning = AppServices.Current.LoopRunner.State != Game.Map.LoopState.Idle;
+            RefreshEngineActionChip();
+            // Loop status owns the location slot while active — refresh
+            // on every event so the "step N of M" tail keeps pace with
+            // StepCompleted / RepeatStarted / Stopped transitions.
+            RefreshLocationSlot();
+        });
+
+    private void OnAutoLairActiveChanged(bool active)
+        => Dispatcher.UIThread.Post(() =>
+        {
+            _autoLairOn = active;
+            RefreshEngineActionChip();
+        });
+
+    private void RefreshEngineActionChip()
+    {
+        OnPropertyChanged(nameof(EngineActionBadge));
+        OnPropertyChanged(nameof(EngineActionIsIdle));
+        OnPropertyChanged(nameof(EngineActionIsWalking));
+        OnPropertyChanged(nameof(EngineActionIsLooping));
+        OnPropertyChanged(nameof(EngineActionIsLair));
+    }
+
+    /// <summary>
     /// Cancels an in-flight connect attempt — covers both the socket-level
     /// <see cref="TelnetClient.ConnectAsync"/> and the inter-attempt
     /// <see cref="Task.Delay"/>. Cleared in the finally block.
@@ -302,6 +400,31 @@ public partial class MainWindowViewModel : ObservableObject
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
 
+        // Mirror RoomTracker into the status-bar location slot so the
+        // bottom bar and the Navigation window's strip stay in sync.
+        AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+
+        // Engine-state chip — same shape as the Navigation window's
+        // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
+        // on the status bar so the user always sees which engine is
+        // driving without having to peek at the Nav window.
+        AppServices.Current.Walker.Event           += OnWalkerEngineEvent;
+        AppServices.Current.LoopRunner.Event       += OnLoopRunnerEngineEvent;
+        AppServices.Current.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        // Name-learned prompt: fires when the tracker adopts a name
+        // for a previously-unnamed room (typical of map-15 ganghouse
+        // rooms in 1.x exports). Modeless yes/no asks whether to write
+        // the new name back to Rooms.json; session-deduped so a single
+        // walk doesn't re-prompt the same room on every observation.
+        AppServices.Current.RoomTracker.NameLearned += OnRoomNameLearned;
+
+        // EngineRecoveryGate terminal failure → modeless "Lost" info
+        // dialog. The gate already aborted the engine; we just surface
+        // the message so the user knows automation gave up.
+        AppServices.Current.Recovery.RecoveryFailed += OnRecoveryFailed;
+        AppServices.Current.Recovery.TierChanged    += OnRecoveryTierChanged;
+        RefreshLocationSlot();
+
         // Seed File → Recent profile slots + Save profile label.
         // Notify both the display labels (Recent0..4 — "name - bbs")
         // and the raw profile names (ProfileName0..4 — used as the
@@ -340,6 +463,12 @@ public partial class MainWindowViewModel : ObservableObject
         // the user knows to type `quit` at a safe room. The auto-reconnect
         // schedule is armed later, on the Disconnected event.
         AppServices.Current.Cleanup.WarningObserved += OnCleanupWarningObserved;
+        // CleanupModeDetected fires when the BBS rejects us mid-connect
+        // with "this system is not available" (we connected during the
+        // cleanup window). Used by TryScheduleReactiveReconnect to
+        // switch from the 5s reactive cycle to a single long-delay
+        // attempt at now + CleanupPeriodMinutes.
+        AppServices.Current.Cleanup.CleanupModeDetected += OnCleanupModeDetected;
 
         // Forward DisplayConfig.FontSize changes to TerminalFontSize so the
         // bound TerminalControl re-renders when the Display tab changes the
@@ -382,6 +511,14 @@ public partial class MainWindowViewModel : ObservableObject
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
 
+        // Phase 7 PR 7.1b — room-display + movement-refusal parsers
+        // feeding RoomTracker. Same per-session LineExtractor binding
+        // shape as the who/look parsers above.
+        _roomDisplayParser       = new Game.Map.RoomDisplayParser(Lines,
+            AppServices.Current.RoomTracker, AppServices.Current.Log);
+        _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
+            AppServices.Current.RoomTracker, AppServices.Current.Log);
+
         // PartyManager lives at AppServices level (so the @-command engine
         // and PartyWindow can grab a stable reference), but its par-block
         // state machine needs the per-session LineExtractor. Same wiring
@@ -392,6 +529,12 @@ public partial class MainWindowViewModel : ObservableObject
         // field onto AppServices.Current.PlayerStats; feeds
         // RemoteCommandManager.LivesProvider for the @suicide gate.
         AppServices.Current.Stats.AttachLineExtractor(Lines);
+        // DeathDetector — watches for the post-death
+        // "You now have N lives remaining." line; fires
+        // RoomTracker.NoteDeath which appends to
+        // CharacterProfile.DeathHistory and transitions to
+        // PendingRespawn ahead of the respawn-room display.
+        AppServices.Current.Death.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
@@ -449,6 +592,37 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Do.SetWireSender(engineSend);
         // @trap auto-disarm — gate-wrapped (same reason).
         AppServices.Current.TrapDisarm.SetWireSender(engineSend);
+        // DoorOpenManager wire-sender — gate-wrapped so the bash/pick
+        // sequence can't land in a password-entry prompt. Walker
+        // routes door exits through Door.Enqueue at step-send time.
+        AppServices.Current.Door.SetWireSender(engineSend);
+        AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
+        AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
+        // HiddenExitRevealManager — same gate-wrapped sender so the
+        // sea loop can't land mid-password-prompt. Walker routes
+        // SearchableHidden exits here.
+        AppServices.Current.HiddenSearch.SetWireSender(engineSend);
+        AppServices.Current.Walker.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
+        AppServices.Current.Walker.SetHiddenSearchStopper(AppServices.Current.HiddenSearch.StopAll);
+        // Teleport-exit wiring — walker resolves (source, destination)
+        // → keyword via TBInfoTeleportResolver against the active
+        // TBInfoStore, and pre-broadcasts the keyword to followers via
+        // `.@party <kw>` when the local character is party leader.
+        AppServices.Current.Walker.SetTeleportResolver(
+            (source, dest) =>
+            {
+                Game.Map.Room? src = AppServices.Current.RoomGraph.GetRoom(source);
+                if (src is null || src.Cmd <= 0) return null;
+                return Game.Map.TBInfoTeleportResolver.Resolve(
+                    AppServices.Current.TBInfo, src.Cmd, dest);
+            });
+        AppServices.Current.Walker.SetPartyLeaderCheck(
+            () => AppServices.Current.Party.State.SelfIsLeader
+                && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf));
+        // Phase 7 walker + loop runner — gate-wrapped so a long walk
+        // doesn't blast moves through a password-entry prompt.
+        AppServices.Current.Walker.SetWireSender(engineSend);
+        AppServices.Current.LoopRunner.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate
@@ -629,6 +803,110 @@ public partial class MainWindowViewModel : ObservableObject
     /// when the player is resting or meditating — the two cycles have
     /// independent anchors and can be desynced.
     /// </summary>
+    private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
+
+    private void OnRecoveryFailed(Game.Map.RecoveryFailedEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowLostRecoveryDialogAsync(e));
+
+    private async void ShowLostRecoveryDialogAsync(Game.Map.RecoveryFailedEvent e)
+    {
+        var vm = new ViewModels.Navigation.LostRecoveryDialogViewModel(e.EngineName, e.Detail);
+        await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.Navigation.LostRecoveryDialogViewModel, bool>(vm);
+    }
+
+    private void OnRecoveryTierChanged(Game.Map.RecoveryTierChangedEvent _)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshRecoveryTierBools);
+
+    /// <summary>True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.</summary>
+    public bool IsTier2 => _isTier2;
+    /// <summary>True when the engine-recovery gate is in tier 3 — engine chip border goes red.</summary>
+    public bool IsTier3 => _isTier3;
+    private bool _isTier2;
+    private bool _isTier3;
+
+    private void RefreshRecoveryTierBools()
+    {
+        Game.Map.TierLevel tier = AppServices.Current.Recovery.CurrentTier;
+        bool tier2 = tier == Game.Map.TierLevel.Tier2;
+        bool tier3 = tier == Game.Map.TierLevel.Tier3;
+        if (tier2 != _isTier2)
+        {
+            _isTier2 = tier2;
+            OnPropertyChanged(nameof(IsTier2));
+        }
+        if (tier3 != _isTier3)
+        {
+            _isTier3 = tier3;
+            OnPropertyChanged(nameof(IsTier3));
+        }
+    }
+
+    /// <summary>
+    /// Rooms we've already prompted about this session. Prevents
+    /// asking the same yes/no twice when the player re-enters or the
+    /// tracker re-observes the same null-name room.
+    /// </summary>
+    private readonly HashSet<Game.Map.RoomKey> _nameLearnedPrompted = new();
+
+    private void OnRoomNameLearned(Game.Map.NameLearnedEvent e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => PromptForLearnedNameAsync(e));
+
+    private async void PromptForLearnedNameAsync(Game.Map.NameLearnedEvent e)
+    {
+        // Session-dedupe — one prompt per (RoomKey) per app run.
+        if (!_nameLearnedPrompted.Add(e.Key)) return;
+
+        var vm = new ViewModels.RoomNameLearnedDialogViewModel(e.Key, e.ObservedName);
+        bool save = await AppServices.Current.Dialogs
+            .OpenWindowAsync<ViewModels.RoomNameLearnedDialogViewModel, bool>(vm);
+        if (!save) return;
+
+        bool ok = AppServices.Current.RoomNamePersist.Persist(e.Key, e.ObservedName);
+        if (!ok)
+        {
+            AppServices.Current.Log.Log(Services.LogSeverity.Warn, "Main",
+                $"Failed to persist learned name '{e.ObservedName}' for {e.Key}.");
+        }
+    }
+
+    private void RefreshLocationSlot()
+    {
+        // Loop status takes over the location slot while a loop is
+        // active so the user sees step progress alongside the chip,
+        // not just the in-flight room (which the loop is responsible
+        // for already). Tracker fallback handles every other state.
+        Game.Map.LoopRunner runner = AppServices.Current.LoopRunner;
+        if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is { } loop)
+        {
+            int total = runner.StepCount;
+            if (total > 0)
+            {
+                int human = Math.Min(total, runner.CurrentIndex + 1);
+                LocationText = $"Looping {loop.Name} on step {human} of {total}";
+                return;
+            }
+            LocationText = $"Looping {loop.Name}";
+            return;
+        }
+
+        Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
+        Game.Map.Room? room = state.CurrentRoom;
+        // Full room display name + key — TextTrimming on the status-bar
+        // TextBlock clips long names down to the column's actual width
+        // at render time. The VM stays a faithful mirror of game state.
+        LocationText = room is not null
+            ? $"{room.DisplayName}  ·  {room.Key}"
+            : state.Confidence switch
+            {
+                Game.Map.RoomConfidence.Pending        => "Pending move…",
+                Game.Map.RoomConfidence.Lost           => "Lost — pick a room on the map",
+                Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
+                _                                      => "Unknown location",
+            };
+    }
+
     private void RefreshStatusBarTicks()
     {
         Game.RegenTracker regen = AppServices.Current.Regen;
@@ -937,6 +1215,108 @@ public partial class MainWindowViewModel : ObservableObject
         });
     }
 
+    private void OnCleanupModeDetected()
+    {
+        // Fires on the wire feed thread; marshal to UI before logging.
+        // We deliberately don't drop a second terminal banner here —
+        // the auto-reconnect armed banner already says "BBS IN
+        // CLEANUP" in its reason label, so the user gets one message,
+        // not two redundant ones stacking on top of each other.
+        Dispatcher.UIThread.Post(() =>
+        {
+            AppServices.Current.Log.Warn("Cleanup",
+                "Server returned 'this system is not available' — BBS is in cleanup mode right now.");
+        });
+    }
+
+    // ----- Stable-connection counter reset -----------------------------
+
+    /// <summary>
+    /// Arm a one-shot 30s timer that resets
+    /// <see cref="_reactiveReconnectCount"/> only if the connection
+    /// stays alive for the full window. A flap inside the window
+    /// (BBS-in-cleanup connect → unavailable banner → drop)
+    /// cancels the timer and the counter keeps climbing toward
+    /// <see cref="BbsProfile.MaxRedials"/>.
+    /// </summary>
+    private void ArmStableConnectionReset()
+    {
+        CancelStableConnectionReset();
+        _stableConnectionResetCts = new CancellationTokenSource();
+        CancellationToken token = _stableConnectionResetCts.Token;
+        _ = Task.Delay(TimeSpan.FromSeconds(StableConnectionWindowSeconds), token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!IsConnected) return;
+                if (_reactiveReconnectCount > 0)
+                    AppServices.Current.Log.Info("Reconnect",
+                        $"Connection stable for {StableConnectionWindowSeconds}s; resetting redial counter (was {_reactiveReconnectCount}).");
+                _reactiveReconnectCount = 0;
+                _stableConnectionResetCts?.Dispose();
+                _stableConnectionResetCts = null;
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void CancelStableConnectionReset()
+    {
+        if (_stableConnectionResetCts is null) return;
+        try { _stableConnectionResetCts.Cancel(); } catch { }
+        _stableConnectionResetCts.Dispose();
+        _stableConnectionResetCts = null;
+    }
+
+    // ----- Live reconnect countdown ------------------------------------
+
+    /// <summary>
+    /// Start (or restart) the status-bar countdown for an armed
+    /// reconnect that fires after <paramref name="delay"/>. Short
+    /// delays (&lt; <see cref="ReconnectCountdownThresholdSeconds"/>)
+    /// don't get a countdown — the status bar would just flash a
+    /// "5s, 4s, 3s…" indicator for a moment before the dial fires.
+    /// </summary>
+    private void StartReconnectCountdown(TimeSpan delay)
+    {
+        if (delay.TotalSeconds < ReconnectCountdownThresholdSeconds)
+        {
+            StopReconnectCountdown();
+            return;
+        }
+        _reconnectFireAt = DateTimeOffset.UtcNow + delay;
+        RefreshReconnectCountdownText();
+        _reconnectCountdownTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _reconnectCountdownTimer.Tick -= OnReconnectCountdownTick;
+        _reconnectCountdownTimer.Tick += OnReconnectCountdownTick;
+        _reconnectCountdownTimer.Start();
+    }
+
+    private void StopReconnectCountdown()
+    {
+        _reconnectCountdownTimer?.Stop();
+        if (_reconnectCountdownTimer is not null)
+            _reconnectCountdownTimer.Tick -= OnReconnectCountdownTick;
+        ReconnectCountdownText = string.Empty;
+    }
+
+    private void OnReconnectCountdownTick(object? sender, EventArgs e)
+        => RefreshReconnectCountdownText();
+
+    private void RefreshReconnectCountdownText()
+    {
+        TimeSpan remaining = _reconnectFireAt - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero || !IsReconnectPending)
+        {
+            StopReconnectCountdown();
+            return;
+        }
+        ReconnectCountdownText = $"Reconnect in {FormatDelay(remaining)}";
+    }
+
     /// <summary>
     /// On disconnect, if a cleanup warning was observed during this
     /// session AND the active BBS has <see cref="BbsProfile.ReconnectAfterCleanup"/>
@@ -1002,6 +1382,8 @@ public partial class MainWindowViewModel : ObservableObject
             $"{warning.ObservedAt.LocalDateTime:HH:mm:ss} with {warning.MinutesRemaining}m remaining " +
             $"+ {bbs.CleanupPeriodMinutes}m cleanup period.");
 
+        StartReconnectCountdown(delay);
+
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
             if (t.IsCanceled) return;
@@ -1011,6 +1393,7 @@ public partial class MainWindowViewModel : ObservableObject
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
                 NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
                 AppServices.Current.Cleanup.Reset();
                 _ = ConnectWithRetriesAsync();
             });
@@ -1024,6 +1407,7 @@ public partial class MainWindowViewModel : ObservableObject
         _cleanupReconnectCts.Dispose();
         _cleanupReconnectCts = null;
         NotifyReconnectPendingChanged();
+        StopReconnectCountdown();
         if (reason is not null)
         {
             AppServices.Current.Log.Info("Cleanup", $"Auto-reconnect cancelled — {reason}.");
@@ -1114,21 +1498,42 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
+        // Cleanup-mode override: BBS just rejected us with "this
+        // system is not available". A 5s redial loop would hammer
+        // it pointlessly — switch to a single long-delay attempt at
+        // the BBS's CleanupPeriodMinutes setting (default 0 → fall
+        // back to RedialPauseSeconds so the behaviour is unchanged
+        // when the user hasn't configured the field).
+        bool cleanupMode = AppServices.Current.Cleanup.InCleanupMode;
+        TimeSpan delay = cleanupMode && bbs.CleanupPeriodMinutes > 0
+            ? TimeSpan.FromMinutes(bbs.CleanupPeriodMinutes)
+            : TimeSpan.FromSeconds(Math.Max(1, bbs.RedialPauseSeconds));
+
         _cleanupReconnectCts?.Cancel();
         _cleanupReconnectCts?.Dispose();
         _cleanupReconnectCts = new CancellationTokenSource();
         NotifyReconnectPendingChanged();
         CancellationToken token = _cleanupReconnectCts.Token;
 
-        string reasonLabel = _lastDisconnectCause == DisconnectCause.NoResponse
-            ? "no response"
-            : "carrier lost";
-        WriteTerminalStatus(
-            $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {(int)delay.TotalSeconds}s. PRESS CONNECT TO CANCEL.]",
-            TerminalStatusKind.Notice);
+        string reasonLabel = cleanupMode
+            ? "BBS in cleanup"
+            : _lastDisconnectCause == DisconnectCause.NoResponse
+                ? "no response"
+                : "carrier lost";
+
+        // Banner phrasing: first arm of a disconnect cycle carries the
+        // full "PRESS CONNECT TO CANCEL" instructional line; follow-up
+        // arms inside the same cycle compress to the short progress
+        // form so the terminal doesn't get spammed with the full text
+        // ten times in a row.
+        string bannerText = _reactiveReconnectCount == 1
+            ? $"[AUTO-RECONNECT ARMED ({reasonLabel.ToUpperInvariant()}, REDIAL {_reactiveReconnectCount}/{maxRedials}) — DIALING IN {FormatDelay(delay)}. PRESS CONNECT TO CANCEL.]"
+            : $"[ATTEMPTING REDIAL {_reactiveReconnectCount}/{maxRedials} IN {FormatDelay(delay)}.]";
+        WriteTerminalStatus(bannerText, TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Reconnect",
-            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {(int)delay.TotalSeconds}s.");
+            $"Reactive reconnect scheduled ({reasonLabel}, redial {_reactiveReconnectCount}/{maxRedials}) in {FormatDelay(delay)}.");
+
+        StartReconnectCountdown(delay);
 
         _ = Task.Delay(delay, token).ContinueWith(t =>
         {
@@ -1139,9 +1544,22 @@ public partial class MainWindowViewModel : ObservableObject
                 _cleanupReconnectCts?.Dispose();
                 _cleanupReconnectCts = null;
                 NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
                 _ = ConnectWithRetriesAsync();
             });
         }, TaskScheduler.Default);
+    }
+
+    /// <summary>Human-friendly delay rendering for the auto-reconnect banner / log.</summary>
+    private static string FormatDelay(TimeSpan delay)
+    {
+        if (delay.TotalMinutes >= 1)
+        {
+            int min = (int)delay.TotalMinutes;
+            int sec = delay.Seconds;
+            return sec == 0 ? $"{min}m" : $"{min}m{sec:D2}s";
+        }
+        return $"{(int)delay.TotalSeconds}s";
     }
 
     /// <summary>
@@ -1274,13 +1692,18 @@ public partial class MainWindowViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 IsConnected = true;
-                // Fresh session — drop any cleanup warning carried over,
-                // clear any pending auto-reconnect schedule, and reset the
-                // reactive-redial counter so the next disconnect cycle
-                // starts from 1/N again.
+                // Fresh session — drop any cleanup-watcher state carried
+                // over and clear any pending auto-reconnect schedule.
+                // Do NOT zero _reactiveReconnectCount here: a BBS in
+                // cleanup mode answers every dial with a banner + drop,
+                // and resetting on the TCP-connect would burn through
+                // unbounded redials instead of hitting MaxRedials.
+                // Instead arm a 30s "this connection survived" timer
+                // (StableConnectionWindowSeconds) that resets the
+                // counter only if the connection lasts that long.
                 AppServices.Current.Cleanup.Reset();
-                _reactiveReconnectCount = 0;
                 CancelCleanupReconnect("connected");
+                ArmStableConnectionReset();
             });
         };
         client.Disconnected += () =>
@@ -1291,6 +1714,10 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 bool wasConnected = IsConnected;
                 IsConnected = false;
+                // Cancel any pending stable-window reset — this drop
+                // happened before the 30s threshold, so the connect
+                // didn't earn a counter reset.
+                CancelStableConnectionReset();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a
@@ -1391,6 +1818,10 @@ public partial class MainWindowViewModel : ObservableObject
         // containing "Strength: 60" or similar can't bleed into the
         // PlayerStats snapshot.
         AppServices.Current.Stats.ObserveOutbound(data);
+        // Movement observer — peeks for `look <dir>` (so the next room
+        // display is dropped as a peek) and text-exit movement verbs
+        // (so the step is captured for replay-from-last-Confirmed).
+        AppServices.Current.OutboundMovement.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }
@@ -1945,6 +2376,20 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand] private void OpenGameDataAliases()  => ShowGameDataBrowser("aliases");
 
     /// <summary>
+    /// Game Data menu → "Modify Blacklist…". Staged editor over the
+    /// per-BBS room blacklist. Save commits + redraws the map;
+    /// Cancel discards.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenBlacklistEditorAsync()
+    {
+        var svc = AppServices.Current;
+        ViewModels.BlacklistEditorDialogViewModel vm = new(svc.RoomBlacklist, svc.RoomGraph);
+        await svc.Dialogs.OpenWindowAsync<
+            ViewModels.BlacklistEditorDialogViewModel, bool>(vm);
+    }
+
+    /// <summary>
     /// Open the Game Data Browser, optionally pre-selected to a named
     /// section. Toggles per the standard window-command rule
     /// (CLAUDE.md): when the browser is already open re-press behavior
@@ -2140,18 +2585,29 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
+    /// <summary>Singleton handle for the live NavigationWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private Views.Navigation.NavigationWindow? _navigationWindow;
+
     [RelayCommand]
     private void OpenNavigation()
-        => OpenPlaceholder(
-            id: "navigation",
-            panelName: "Navigation",
-            phaseTag: "Phase 7",
-            headline: "Map + walk + loops + Auto-Lair",
-            description:
-                "Single unified window. Always-visible map (BFS planar layout from " +
-                "MDB Rooms+Paths). Left rail: room tree, favorites, saved loops. " +
-                "Trust-by-default RoomTracker; walk-from-anywhere; Auto-Lair " +
-                "scheduler with entry-triggered respawn + wait-room logic.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_navigationWindow is { } existing) { existing.Close(); return; }
+
+        Views.Navigation.NavigationWindow window = new()
+        {
+            DataContext = new ViewModels.Navigation.NavigationViewModel(AppServices.Current),
+        };
+        window.Closed += (_, _) =>
+        {
+            if (window.DataContext is IDisposable d) d.Dispose();
+            _navigationWindow = null;
+        };
+        _navigationWindow = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenSpellBook()
@@ -2301,24 +2757,6 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void ReportIssue() => ShellLaunch.OpenUrl(AppInfo.IssuesUrl);
-
-    /// <summary>Help → License… Project + third-party license summary.</summary>
-    [RelayCommand]
-    private void OpenLicense()
-        => ShowInfoDialog("Licenses — FujinTerm",
-            """
-            FujinTerm is open source. See the LICENSE file in the project root
-            for the full text.
-
-            Third-party components used in this build:
-
-              • Avalonia UI                — MIT
-              • CommunityToolkit.Mvvm       — MIT
-              • JetDatabaseReader           — MIT (Phase 5 MDB import)
-
-            Other dependencies arrive with their respective phases; their
-            licenses will appear here once they're added.
-            """);
 
     // ----- Live-bound input-gesture labels for menu items ---------------
     // Each property reads the current chord for one BuiltInAction.

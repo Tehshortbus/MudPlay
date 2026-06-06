@@ -111,10 +111,14 @@ public static class RemoteCommandCatalog
             ["@trap"]         = PlayerRemoteControls.ExecuteCommands,
 
             // ===== Movement / Loops =====
+            // @looponce / @roam from the upstream MegaMUD catalog don't
+            // exist in FujinTerm — there's no random-walk roam mode and
+            // loops always cycle. @lair is the FujinTerm-specific
+            // counterpart for the Auto-Lair scheduler. Handler lives in
+            // MovePlayerHandler.cs.
             ["@goto"]         = PlayerRemoteControls.MovePlayer,
             ["@loop"]         = PlayerRemoteControls.MovePlayer,
-            ["@looponce"]     = PlayerRemoteControls.MovePlayer,
-            ["@roam"]         = PlayerRemoteControls.MovePlayer,
+            ["@lair"]         = PlayerRemoteControls.MovePlayer,
             ["@stop"]         = PlayerRemoteControls.MovePlayer,
             ["@rego"]         = PlayerRemoteControls.MovePlayer,
 
