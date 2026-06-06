@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
@@ -43,6 +45,40 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
 
     /// <summary>Per-marker row, ordered by Map / Room for a stable display.</summary>
     public ObservableCollection<LairMarkerRowViewModel> Markers { get; } = new();
+
+    // ----- Add-marker search box (mirrors LoopEditor's Add row) -----
+
+    /// <summary>
+    /// Text input for the add-marker row. Accepts the same dialects as
+    /// the Loop editor's add-room box: coordinate (<c>1/297</c>,
+    /// <c>1,297</c>, bare <c>297</c>) or substring against room names.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddMarkerError))]
+    private string _newMarkerQuery = string.Empty;
+
+    /// <summary>
+    /// Inline validation message for the add-marker row. Empty when
+    /// the input is valid OR not yet evaluated; set after a failed
+    /// Add attempt.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddMarkerError))]
+    private string _addMarkerError = string.Empty;
+
+    public bool HasAddMarkerError => !string.IsNullOrEmpty(AddMarkerError);
+
+    /// <summary>Live-search dropdown rows mirroring the Loop editor's.</summary>
+    public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
+
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    [ObservableProperty] private RoomSearchResult? _selectedSearchResult;
+
+    // Debounce keystrokes — same 120 ms window as the Loop editor +
+    // Navigation search box so the surfaces feel identical.
+    private DispatcherTimer? _searchDebounce;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
 
     /// <summary>True when the name field is non-empty after trim.</summary>
     public bool HasName => !string.IsNullOrWhiteSpace(Name);
@@ -92,6 +128,158 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
     {
         if (row is null) return;
         Markers.Remove(row);
+    }
+
+    /// <summary>
+    /// Add a marker resolved from the search box. Priority: highlighted
+    /// dropdown row → top dropdown row → literal query parsed as a key
+    /// or matched as a unique room name. Mirrors LoopEditor.AddWaypoint.
+    /// </summary>
+    [RelayCommand]
+    private void AddMarker()
+    {
+        RoomKey? resolved =
+              SelectedSearchResult?.Key
+           ?? (SearchResults.Count > 0 ? SearchResults[0].Key : (RoomKey?)null)
+           ?? ResolveLiteralQuery(NewMarkerQuery);
+
+        if (resolved is null)
+        {
+            string query = (NewMarkerQuery ?? string.Empty).Trim();
+            AddMarkerError = query.Length == 0
+                ? "Enter a room key (1/297) or room name."
+                : $"No graph match for '{query}'.";
+            return;
+        }
+
+        RoomKey key = resolved.Value;
+        if (Markers.Any(m => m.Key.Equals(key)))
+        {
+            AddMarkerError = "That room is already marked.";
+            return;
+        }
+
+        AddMarkerRow(new LairMarker(key.Map, key.Room));
+        NewMarkerQuery = string.Empty;
+        SearchResults.Clear();
+        SelectedSearchResult = null;
+        OnPropertyChanged(nameof(HasSearchResults));
+        AddMarkerError = string.Empty;
+    }
+
+    partial void OnNewMarkerQueryChanged(string value)
+    {
+        AddMarkerError = string.Empty;
+        _searchDebounce ??= new DispatcherTimer { Interval = SearchDebounceDelay };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounceTick;
+        _searchDebounce.Tick += OnSearchDebounceTick;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounceTick(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        RebuildSearchResults(NewMarkerQuery);
+    }
+
+    /// <summary>
+    /// Rebuild <see cref="SearchResults"/> from the supplied query.
+    /// Same two-dialect parser as the Loop editor: coordinate
+    /// (<c>1/297</c>, <c>1,297</c>, <c>1 297</c>, or bare <c>297</c>
+    /// across all maps) and room-name substring.
+    /// </summary>
+    private void RebuildSearchResults(string query)
+    {
+        SearchResults.Clear();
+        string needle = (query ?? string.Empty).Trim();
+        if (needle.Length == 0)
+        {
+            OnPropertyChanged(nameof(HasSearchResults));
+            return;
+        }
+
+        List<RoomSearchResult> matches = new();
+
+        (int? mapPart, int? roomPart) = TryParseCoordinate(needle);
+        if (mapPart is int m && roomPart is int r
+            && _graph.GetRoom(new RoomKey(m, r)) is { } exactRoom)
+        {
+            matches.Add(new RoomSearchResult(exactRoom.Key, exactRoom.DisplayName, null));
+        }
+        else if (mapPart is null && roomPart is int onlyRoom)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (room.Key.Room != onlyRoom) continue;
+                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, null));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        if (needle.Length >= 2)
+        {
+            foreach (Room room in _graph.Rooms)
+            {
+                if (!room.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                 && !room.DisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (matches.Any(x => x.Key.Equals(room.Key))) continue;
+                matches.Add(new RoomSearchResult(room.Key, room.DisplayName, null));
+                if (matches.Count >= 200) break;
+            }
+        }
+
+        foreach (RoomSearchResult rr in matches
+                     .OrderBy(rr => rr.PrimaryLine, StringComparer.OrdinalIgnoreCase)
+                     .Take(50))
+            SearchResults.Add(rr);
+        OnPropertyChanged(nameof(HasSearchResults));
+    }
+
+    private static (int? Map, int? Room) TryParseCoordinate(string text)
+    {
+        string[] parts = text.Split(new[] { '/', ',', ' ', '\t' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1 && int.TryParse(parts[0], out int onlyRoom))
+            return (null, onlyRoom);
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out int map)
+            && int.TryParse(parts[1], out int room))
+            return (map, room);
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Last-resort literal resolution for an exact key or unique name
+    /// the user typed before the debounce fired.
+    /// </summary>
+    private RoomKey? ResolveLiteralQuery(string? query)
+    {
+        string q = (query ?? string.Empty).Trim();
+        if (q.Length == 0) return null;
+
+        if (RoomKey.TryParseWire(q, out RoomKey key)
+            && _graph.GetRoom(key) is not null)
+            return key;
+
+        RoomKey? exact = null;
+        List<RoomKey> substrings = new();
+        foreach (Room r in _graph.Rooms)
+        {
+            if (string.Equals(r.Name, q, StringComparison.OrdinalIgnoreCase))
+            {
+                if (exact is not null) return null;
+                exact = r.Key;
+            }
+            else if (r.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
+            {
+                substrings.Add(r.Key);
+            }
+        }
+        if (exact is { } e) return e;
+        if (substrings.Count == 1) return substrings[0];
+        return null;
     }
 
     [RelayCommand]

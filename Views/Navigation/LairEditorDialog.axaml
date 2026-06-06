@@ -26,7 +26,7 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
 
             <!-- Header row: Name -->
             <Grid Grid.Row="0" ColumnDefinitions="60,*" ColumnSpacing="8">
@@ -111,10 +111,72 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
+            <!-- Add-marker row (mirrors LoopEditor's add-room search):
+                 type a room key or substring, dropdown surfaces live
+                 matches, Enter / Add commits. Or right-click → Add to
+                 Auto-Lair on the map. -->
+            <Grid Grid.Row="4" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                    <TextBlock Grid.Column="0"
+                               Text="Add room:"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    <TextBox Grid.Column="1"
+                             Name="AddRoomTextBox"
+                             Text="{Binding NewMarkerQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PlaceholderText="Room key (1/297) or name"
+                             FontSize="11"
+                             KeyDown="OnAddRoomKeyDown"/>
+                    <Button Grid.Column="2"
+                            Content="Add"
+                            Command="{Binding AddMarkerCommand}"/>
+                </Grid>
+                <Border Grid.Row="1"
+                        IsVisible="{Binding HasSearchResults}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        MaxHeight="180"
+                        Margin="72,2,40,0">
+                    <ListBox Name="AddRoomResults"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RoomSearchResult">
+                                <Border Padding="6,3"
+                                        PointerPressed="OnAddRoomResultClicked"
+                                        Background="Transparent">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PrimaryLine}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SecondaryLine}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                <TextBlock Grid.Row="2"
+                           Text="{Binding AddMarkerError}"
+                           IsVisible="{Binding HasAddMarkerError}"
+                           FontSize="10"
+                           Foreground="{StaticResource AccentRedBrush}"/>
+            </Grid>
+
             <!-- Action strip -->
-            <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,8,0,0">
+            <Grid Grid.Row="5" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,8,0,0">
                 <TextBlock Grid.Column="0"
-                           Text="Add markers via right-click → Add to Auto-Lair on the map."
+                           Text="Or right-click a room on the map → Add to Auto-Lair."
                            FontSize="10"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
