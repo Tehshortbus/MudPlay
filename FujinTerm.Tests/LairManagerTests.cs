@@ -181,6 +181,36 @@ public sealed class LairManagerTests : IDisposable
     }
 
     [Fact]
+    public void LoadAll_MigratesIntermediateLairJsonSuffix_ToFinalLairSuffix()
+    {
+        // The first storage-unification commit shipped with .lair.json
+        // as the suffix; the subsequent commit shortened it to .lair.
+        // Users in the transition window get their files renamed
+        // transparently on the next LoadAll.
+        string loops = AppPaths.BbsLoopsFolder(_bbs);
+        Directory.CreateDirectory(loops);
+        const string intermediate = """
+            {
+              "SchemaVersion": 1,
+              "Name": "Transition",
+              "Notes": "",
+              "Markers": [ { "Map": 1, "Room": 1, "OverrideRespawnSeconds": null, "Skip": false } ]
+            }
+            """;
+        File.WriteAllText(Path.Combine(loops, "Transition" + LairManager.LegacyLairFileSuffix),
+            intermediate);
+
+        LairManager m = new();
+        m.LoadAll(_bbs);
+
+        // Renamed to the final suffix.
+        Assert.True(File.Exists(Path.Combine(loops, "Transition" + LairManager.LairFileSuffix)));
+        Assert.False(File.Exists(Path.Combine(loops, "Transition" + LairManager.LegacyLairFileSuffix)));
+        // And accessible.
+        Assert.NotNull(m.Get("Transition"));
+    }
+
+    [Fact]
     public void LoadAll_MigratesLegacyLairsFolder_IntoSharedLoopsFolder()
     {
         // Pre-existing legacy file under Data/BBS/{bbs}/Lairs/<name>.json

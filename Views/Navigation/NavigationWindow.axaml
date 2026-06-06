@@ -242,7 +242,7 @@
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
                 <!-- Display-toggle chips. The Manage button lives down
@@ -299,11 +299,25 @@
                          FontSize="11"
                          VerticalAlignment="Center"/>
 
+                <!-- Save — opens the appropriate editor dialog
+                     (LoopEditor / LairEditor) pre-seeded with the
+                     current build session OR running engine state.
+                     Enabled in four cases: Loop build mode with
+                     savable clicks, Loop running, AutoLair build
+                     mode with markers, AutoLair running with
+                     markers. -->
+                <Button Grid.Column="4"
+                        Classes="ActionChip"
+                        Content="Save"
+                        ToolTip.Tip="Save the current loop / lair setup."
+                        Command="{Binding SaveCurrentCommand}"
+                        IsEnabled="{Binding CanSaveCurrent}"/>
+
                 <!-- Run / Pause — loop running shows "Pause" (assert
                      user gate + open builder seeded from running loop);
                      loop paused shows "Run" (resume); walker/auto-lair
                      keep the legacy Run/Stop one-shot semantics. -->
-                <Button Grid.Column="4"
+                <Button Grid.Column="5"
                         Classes="ActionChip"
                         Classes.Run="{Binding !IsAnyExecuting}"
                         Classes.Pause="{Binding IsAnyExecuting}"
@@ -317,7 +331,7 @@
                      Stop mode, ToggleLoopMode otherwise, so the user
                      sees a single chip that always means "exit the
                      current loop context." -->
-                <Button Grid.Column="5"
+                <Button Grid.Column="6"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLoopMode}"
                         Classes.Stop="{Binding LoopModeButtonIsStop}"
@@ -325,7 +339,7 @@
                         Command="{Binding LoopModeButtonCommand}"/>
 
                 <!-- Lair mode -->
-                <Button Grid.Column="6"
+                <Button Grid.Column="7"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLairMode}"
                         Classes.Stop="{Binding LairModeButtonIsStop}"
@@ -936,26 +950,13 @@
                             BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,1,0,0"
                             Background="{StaticResource ChromeBgBrush}">
-                        <Grid Margin="6,4" ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                            <Button Grid.Column="0"
-                                    Content="Manage"
+                        <Grid Margin="6,4">
+                            <Button Content="Manage"
                                     FontSize="10"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
                                     Command="{Binding OpenManagerCommand}"
-                                    ToolTip.Tip="Rename / delete / import saved loops, unmark Auto-Lair rooms"/>
-                            <!-- Save the in-memory marker set as a named
-                                 setup. Visible only when at least one
-                                 marker is placed — keeps the strip
-                                 minimal when there's nothing to save. -->
-                            <Button Grid.Column="1"
-                                    Content="Save lairs"
-                                    FontSize="10"
-                                    Padding="8,2"
-                                    Classes="Accent"
-                                    IsVisible="{Binding HasLairMarkers}"
-                                    Command="{Binding SaveCurrentMarkersAsSetupCommand}"
-                                    ToolTip.Tip="Save the currently-marked Auto-Lair rooms as a named setup."/>
+                                    ToolTip.Tip="Rename / delete / import saved loops + Auto-Lair setups"/>
                         </Grid>
                     </Border>
                 </Grid>

@@ -997,6 +997,87 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// True when the top-bar Save chip should be active — covers the
+    /// four situations the user might want to persist what they've
+    /// built or are running: Loop build mode with savable clicks,
+    /// Loop running, Auto-Lair build mode with markers, Auto-Lair
+    /// running with markers. Drives the chip's visibility AND its
+    /// enabled state (we show the chip in all four situations and
+    /// disable it only when nothing is savable yet).
+    /// </summary>
+    public bool CanSaveCurrent
+    {
+        get
+        {
+            // Loop build: at least 2 reachable clicks committed.
+            if (CurrentMode == NavigationMode.LoopBuild
+                && LoopBuilder is { CanSave: true })
+                return true;
+            // Loop running: the runner has a loop in flight.
+            if (_services.LoopRunner.State is Game.Map.LoopState.Running
+                                          or Game.Map.LoopState.Approaching
+                                          or Game.Map.LoopState.Paused
+                && _services.LoopRunner.CurrentLoop is not null)
+                return true;
+            // Auto-Lair build / running with at least one marker.
+            if ((CurrentMode == NavigationMode.AutoLair || _services.AutoLair.IsActive)
+                && _services.AutoLair.Marked.Count > 0)
+                return true;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Dispatcher for the top-bar Save chip. Opens the right editor
+    /// dialog (Loop or Lair) pre-seeded with the current state — the
+    /// user reviews / renames / commits there. Mirrors the dispatch
+    /// in <see cref="RunStop"/> so the chip's behaviour stays
+    /// predictable regardless of which build / running combination
+    /// the user is in.
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveCurrentAsync()
+    {
+        // Lair takes priority over Loop when both could apply — the
+        // chip is only relevant for ONE of them at a time, but if a
+        // weird state has both build modes briefly active (e.g.
+        // transition jitter), Lair is the more recent surface.
+        if ((CurrentMode == NavigationMode.AutoLair || _services.AutoLair.IsActive)
+            && _services.AutoLair.Marked.Count > 0)
+        {
+            await SaveCurrentMarkersAsSetupAsync();
+            return;
+        }
+
+        // Loop build: open the editor pre-seeded with the click list.
+        if (CurrentMode == NavigationMode.LoopBuild
+            && LoopBuilder is { CanSave: true } b
+            && b.BuildTransient() is { } transient)
+        {
+            LoopEditorDialogViewModel vm = new(
+                transient, _services.Loops, _services.RoomGraph,
+                _services.LoopRunner, _services.Confirm, isNew: true);
+            await _services.Dialogs
+                .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+            return;
+        }
+
+        // Loop running: snapshot from the runner.
+        if (_services.LoopRunner.CurrentLoop is { } running)
+        {
+            Loop draft = new(running.Name, running.Waypoints)
+            {
+                Notes = running.Notes ?? string.Empty,
+            };
+            LoopEditorDialogViewModel vm = new(
+                draft, _services.Loops, _services.RoomGraph,
+                _services.LoopRunner, _services.Confirm, isNew: true);
+            await _services.Dialogs
+                .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+        }
+    }
+
+    /// <summary>
     /// Save the live <see cref="AutoLairManager.Marked"/> set (plus the
     /// per-marker overrides the user has set) as a new named setup.
     /// Opens <see cref="LairEditorDialog"/> on a draft so the user can
@@ -2071,6 +2152,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LairModeButtonIsStop));
         OnPropertyChanged(nameof(IsLairBuilding));
         OnPropertyChanged(nameof(LairBuildStatusText));
+        OnPropertyChanged(nameof(CanSaveCurrent));
         OnPropertyChanged(nameof(CurrentNavHeader));
         OnPropertyChanged(nameof(CurrentNavProgress));
         OnPropertyChanged(nameof(CurrentNavHasProgress));

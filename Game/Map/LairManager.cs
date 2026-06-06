@@ -26,7 +26,16 @@ namespace FujinTerm.Game.Map;
 public sealed class LairManager
 {
     /// <summary>Suffix that flags a file in the shared Loops folder as a lair setup.</summary>
-    public const string LairFileSuffix = ".lair.json";
+    public const string LairFileSuffix = ".lair";
+
+    /// <summary>
+    /// Intermediate suffix used briefly between the original
+    /// <c>Lairs/{name}.json</c> layout and the current <c>{name}.lair</c>
+    /// layout. <see cref="LoadAll"/> picks these up and renames them
+    /// to <see cref="LairFileSuffix"/> so users who shipped a build
+    /// during that transition window keep their setups.
+    /// </summary>
+    public const string LegacyLairFileSuffix = ".lair.json";
 
     private readonly LogService? _log;
     private readonly Dictionary<string, LairSetup> _setups
@@ -68,13 +77,15 @@ public sealed class LairManager
             return;
         }
 
-        // One-shot migration: drain the legacy Lairs/ folder into the
-        // shared Loops/ folder with the new .lair.json suffix. Safe to
-        // re-run — the move skips files whose destination already
-        // exists (later loads can't tell the difference).
+        // One-shot migration step A: drain the legacy Lairs/ folder
+        // into the shared Loops/ folder. Step B (right after) renames
+        // any intermediate .lair.json files to the final .lair suffix.
+        // Both steps are safe to re-run.
         MigrateLegacyFolderIfPresent(bbsName);
 
         string folder = AppPaths.BbsLoopsFolder(bbsName);
+        MigrateIntermediateSuffixIfPresent(folder);
+
         if (!Directory.Exists(folder))
         {
             _log?.Info("Lairs", $"no loops folder for '{bbsName}'; empty lair catalogue.");
@@ -89,6 +100,10 @@ public sealed class LairManager
             try
             {
                 LairSetup? setup = JsonStore.Load<LairSetup>(path);
+                // Schema-validate: a .lair file the user drops in by
+                // hand that doesn't match the LairSetup shape (or
+                // can't be deserialised) is silently skipped — no-op
+                // per user direction.
                 if (setup is null || string.IsNullOrWhiteSpace(setup.Name)) { failed++; continue; }
                 _setups[setup.Name] = setup;
                 loaded++;
@@ -158,6 +173,9 @@ public sealed class LairManager
         {
             string baseName = Path.GetFileNameWithoutExtension(srcPath);
             if (string.IsNullOrWhiteSpace(baseName)) continue;
+            // Land on the FINAL suffix (.lair) — skip the intermediate
+            // .lair.json stage entirely for legacy-folder migration so
+            // users don't see two renames in their git diff.
             string destPath = Path.Combine(target, baseName + LairFileSuffix);
             if (File.Exists(destPath)) continue; // already migrated; user-edited copy wins
 
@@ -188,6 +206,42 @@ public sealed class LairManager
         if (moved > 0)
             _log?.Info("Lairs",
                 $"migrated {moved} setup(s) from legacy Lairs/ → Loops/{LairFileSuffix}.");
+    }
+
+    /// <summary>
+    /// Rename intermediate <c>{name}.lair.json</c> files to the final
+    /// <c>{name}.lair</c> suffix. Covers the very short window in
+    /// which the unification commit shipped with the longer suffix.
+    /// </summary>
+    private void MigrateIntermediateSuffixIfPresent(string folder)
+    {
+        if (!Directory.Exists(folder)) return;
+        int moved = 0;
+        foreach (string srcPath in Directory.EnumerateFiles(folder, "*" + LegacyLairFileSuffix))
+        {
+            // Strip the FULL legacy suffix to get the user's chosen
+            // name back — Path.GetFileNameWithoutExtension would only
+            // peel ".json".
+            string fileName = Path.GetFileName(srcPath);
+            string baseName = fileName.Substring(0,
+                fileName.Length - LegacyLairFileSuffix.Length);
+            if (string.IsNullOrWhiteSpace(baseName)) continue;
+            string destPath = Path.Combine(folder, baseName + LairFileSuffix);
+            if (File.Exists(destPath)) continue;
+            try
+            {
+                File.Move(srcPath, destPath);
+                moved++;
+            }
+            catch (Exception ex)
+            {
+                _log?.Warn("Lairs",
+                    $"migration: failed to rename '{srcPath}' → '{destPath}': {ex.Message}");
+            }
+        }
+        if (moved > 0)
+            _log?.Info("Lairs",
+                $"migrated {moved} setup(s) from {LegacyLairFileSuffix} → {LairFileSuffix}.");
     }
 
     private static string SafeFileName(string name)

@@ -122,7 +122,7 @@ public sealed class LoopManagerTests : IDisposable
         Assert.Equal("Sewer farm", m.Loops[0].Name);
 
         string expectedPath = Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "Sewer farm.json");
+            AppPaths.BbsLoopsFolder(_bbs), "Sewer farm" + LoopManager.LoopFileSuffix);
         Assert.True(File.Exists(expectedPath));
     }
 
@@ -172,7 +172,8 @@ public sealed class LoopManagerTests : IDisposable
 
         Assert.True(removed);
         Assert.Empty(m.Loops);
-        Assert.False(File.Exists(Path.Combine(AppPaths.BbsLoopsFolder(_bbs), "test.json")));
+        Assert.False(File.Exists(Path.Combine(
+            AppPaths.BbsLoopsFolder(_bbs), "test" + LoopManager.LoopFileSuffix)));
     }
 
     [Fact]

@@ -85,19 +85,22 @@ public sealed class LoopManager
             return;
         }
 
+        // One-shot migration: rename pre-suffix .json loop files to
+        // .loop so subsequent loads find them. Skips lair files.
+        MigrateLegacyJsonFilesIfPresent(folder);
+
         int loaded = 0;
         int failed = 0;
         int upgraded = 0;
-        foreach (string path in Directory.EnumerateFiles(folder, "*.json"))
+        foreach (string path in Directory.EnumerateFiles(folder, "*" + LoopFileSuffix))
         {
-            // Lair setups share this folder under the .lair.json
-            // suffix; skip them here so LoopManager only sees real
-            // loop files. (LairManager owns the inverse filter.)
-            if (path.EndsWith(LairManager.LairFileSuffix, StringComparison.OrdinalIgnoreCase))
-                continue;
             try
             {
                 Loop? loop = JsonStore.Load<Loop>(path);
+                // Schema-validate: a JSON file dropped in this folder
+                // that isn't a Loop (or one we can't deserialise) is
+                // silently skipped — the user can hand-drop .loop
+                // files without us blowing up.
                 if (loop is null || string.IsNullOrWhiteSpace(loop.Name)) { failed++; continue; }
                 if (UpgradeIfNeeded(loop)) upgraded++;
                 _loops[loop.Name] = loop;
@@ -274,6 +277,46 @@ public sealed class LoopManager
         var sb = new System.Text.StringBuilder(name.Length);
         foreach (char c in name)
             sb.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
-        return sb.ToString() + ".json";
+        return sb.ToString() + LoopFileSuffix;
+    }
+
+    /// <summary>Filename suffix for loop files in the shared Loops folder.</summary>
+    public const string LoopFileSuffix = ".loop";
+
+    /// <summary>
+    /// Rename pre-suffix-migration <c>{name}.json</c> files to
+    /// <c>{name}.loop</c> so the new <see cref="LoadAll"/> scan picks
+    /// them up. Skips files whose target already exists. Best-effort —
+    /// failures are logged but don't break the load path.
+    /// </summary>
+    private void MigrateLegacyJsonFilesIfPresent(string folder)
+    {
+        if (!Directory.Exists(folder)) return;
+        int moved = 0;
+        foreach (string srcPath in Directory.EnumerateFiles(folder, "*.json"))
+        {
+            // Skip lair setups (those still carry the .lair.json
+            // intermediate suffix — LairManager owns their migration).
+            if (srcPath.EndsWith(LairManager.LairFileSuffix, StringComparison.OrdinalIgnoreCase)
+                || srcPath.EndsWith(LairManager.LegacyLairFileSuffix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            string baseName = Path.GetFileNameWithoutExtension(srcPath);
+            if (string.IsNullOrWhiteSpace(baseName)) continue;
+            string destPath = Path.Combine(folder, baseName + LoopFileSuffix);
+            if (File.Exists(destPath)) continue;
+            try
+            {
+                File.Move(srcPath, destPath);
+                moved++;
+            }
+            catch (Exception ex)
+            {
+                _log?.Warn("Loops",
+                    $"migration: failed to rename '{srcPath}' → '{destPath}': {ex.Message}");
+            }
+        }
+        if (moved > 0)
+            _log?.Info("Loops",
+                $"migrated {moved} loop file(s) from .json → {LoopFileSuffix}.");
     }
 }
