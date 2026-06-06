@@ -102,6 +102,23 @@
             <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
             <Setter Property="Margin" Value="0,8,0,4"/>
         </Style>
+        <!-- GOTO header is blue-themed to match the walk-to line
+             colour on the map. -->
+        <Style Selector="TextBlock.RailSectionHeader.Goto">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
+        <!-- CURRENT NAV header recolours per running engine so the
+             user sees at a glance which line on the map drives the
+             header: orange Auto-Lair, green loop, blue walk-to. -->
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavLair">
+            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavLoop">
+            <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.RailSectionHeader.CurrentNavWalk">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+        </Style>
 
         <!-- Compact right-rail Expander — slimmer header, no chrome
              box, chevron on the right. HorizontalAlignment=Stretch +
@@ -578,7 +595,11 @@
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsCurrentNavExpanded, Mode=TwoWay}">
                                 <Expander.Header>
-                                    <TextBlock Classes="RailSectionHeader" Text="CURRENT NAV"
+                                    <TextBlock Classes="RailSectionHeader"
+                                               Classes.CurrentNavLair="{Binding EngineActionIsLair}"
+                                               Classes.CurrentNavLoop="{Binding EngineActionIsLooping}"
+                                               Classes.CurrentNavWalk="{Binding EngineActionIsWalking}"
+                                               Text="CURRENT NAV"
                                                Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="4" HorizontalAlignment="Stretch">
@@ -756,7 +777,7 @@
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsGotoExpanded, Mode=TwoWay}">
                                 <Expander.Header>
-                                    <TextBlock Classes="RailSectionHeader" Text="GOTO" Margin="0"/>
+                                    <TextBlock Classes="RailSectionHeader Goto" Text="GOTO" Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="2" HorizontalAlignment="Stretch">
                                     <!-- Empty-state hint — cap MaxWidth +
