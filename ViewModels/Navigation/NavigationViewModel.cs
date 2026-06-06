@@ -25,6 +25,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(services);
         _services = services;
+
+        // 1 s tick — keeps the CURRENT NAV lair countdowns + the
+        // BUILDING-LAIR strip in sync as time passes. Only runs while
+        // the user cares (build mode OR active run); idle Navigation
+        // pays nothing. Constructed BEFORE the AutoLair event hookups
+        // below so the initial OnAutoLairMarkedChanged call below
+        // (which routes through EnsureLairTickRunning) doesn't deref a
+        // null timer.
+        _lairTick = new DispatcherTimer(TimeSpan.FromSeconds(1),
+            DispatcherPriority.Normal, (_, _) => OnLairTick());
+        _lairTick.Stop();
+
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
         _services.Recovery.TierChanged    += OnRecoveryTierChanged;
         _services.Walker.Event += OnWalkerEvent;
@@ -45,15 +57,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         IsAutoLairing = _services.AutoLair.IsActive;
         RefreshSetups();
         Graph = _services.RoomGraph;
-
-        // 1 s tick — keeps the CURRENT NAV lair countdowns + the
-        // BUILDING-LAIR strip in sync as time passes. Only runs while
-        // the user cares (build mode OR active run); idle Navigation
-        // pays nothing. State-change handlers (mode flip, marker add,
-        // scheduler Start/Stop) call EnsureLairTickRunning to flip it.
-        _lairTick = new DispatcherTimer(TimeSpan.FromSeconds(1),
-            DispatcherPriority.Normal, (_, _) => OnLairTick());
-        _lairTick.Stop();
         EnsureLairTickRunning();
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
