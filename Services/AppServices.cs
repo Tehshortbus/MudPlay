@@ -213,6 +213,14 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
+    /// category: @goto / @loop / @lair / @stop / @rego. Wires the
+    /// remote walk-to / loop-start / lair-cycle / pause / resume
+    /// dispatch into the Phase 7 Navigation stack.
+    /// </summary>
+    public Game.Remote.MovePlayerHandler MoveRemote { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the
     /// <see cref="Models.GameData.PlayerRemoteControls.ExecuteCommands"/>
     /// permission category's <c>@do &lt;command&gt;</c> passthrough.
@@ -906,6 +914,10 @@ public sealed class AppServices
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
+        // Phase 7 PR 7.23 — @goto / @loop / @lair / @stop / @rego land
+        // in the Navigation block below, after Walker / LoopRunner /
+        // AutoLair are constructed.
+
         // DoorOpenManager — walker's bash/pick/open FSM. Attempt caps
         // + verb preference are pulled live from the resolved Other
         // settings so the user can edit thresholds mid-session without
@@ -1217,6 +1229,16 @@ public sealed class AppServices
         // at a wait-room one hop short, then steps in on the tick.
         AutoLair = new Game.Map.AutoLairManager(
             Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
+
+        // Phase 7 PR 7.23 — MovePlayer remote-command handler.
+        // Registers @goto, @loop, @lair, @stop, @rego against the
+        // RemoteCommandManager. Dispatch routes to the now-existing
+        // Walker / LoopRunner / AutoLairManager. The Catalog permission
+        // gate ensures only players the user has granted MovePlayer
+        // can issue these.
+        MoveRemote = new Game.Remote.MovePlayerHandler(
+            RemoteCommands, RoomGraph, Walker, Loops, LoopRunner,
+            Lairs, AutoLair, MovementCoordinator);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
