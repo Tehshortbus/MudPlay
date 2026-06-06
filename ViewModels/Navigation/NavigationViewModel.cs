@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Map;
@@ -44,6 +45,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         IsAutoLairing = _services.AutoLair.IsActive;
         RefreshSetups();
         Graph = _services.RoomGraph;
+
+        // 1 s tick — keeps the CURRENT NAV lair countdowns + the
+        // BUILDING-LAIR strip in sync as time passes. Only runs while
+        // the user cares (build mode OR active run); idle Navigation
+        // pays nothing. State-change handlers (mode flip, marker add,
+        // scheduler Start/Stop) call EnsureLairTickRunning to flip it.
+        _lairTick = new DispatcherTimer(TimeSpan.FromSeconds(1),
+            DispatcherPriority.Normal, (_, _) => OnLairTick());
+        _lairTick.Stop();
+        EnsureLairTickRunning();
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
         RefreshFromWalker();
@@ -54,8 +65,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshTeleportRooms();
     }
 
+    /// <summary>
+    /// Per-second pump for CURRENT NAV lair countdowns. Cheap to leave
+    /// running, but explicitly gated so an idle Navigation window does
+    /// no work. See <see cref="EnsureLairTickRunning"/>.
+    /// </summary>
+    private readonly DispatcherTimer _lairTick;
+
     public void Dispose()
     {
+        _lairTick.Stop();
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
         _services.Recovery.TierChanged    -= OnRecoveryTierChanged;
         _services.Walker.Event -= OnWalkerEvent;
@@ -105,7 +124,38 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
         OnPropertyChanged(nameof(HasLairMarkers));
         OnPropertyChanged(nameof(LairBuildStatusText));
+        EnsureLairTickRunning();
         RefreshDerivedState();
+    }
+
+    /// <summary>
+    /// Flip the per-second pump (<see cref="_lairTick"/>) on / off
+    /// based on whether the user is currently looking at a CURRENT
+    /// NAV that has lair countdowns. Active = build mode with at
+    /// least one marker OR scheduler running. Anything else means
+    /// nothing on screen ticks once a second, so leave the timer off.
+    /// </summary>
+    private void EnsureLairTickRunning()
+    {
+        bool shouldRun =
+            (CurrentMode == NavigationMode.AutoLair && _services.AutoLair.Marked.Count > 0)
+            || _services.AutoLair.IsActive;
+        if (shouldRun && !_lairTick.IsEnabled) _lairTick.Start();
+        else if (!shouldRun && _lairTick.IsEnabled) _lairTick.Stop();
+    }
+
+    /// <summary>
+    /// One-second tick — re-render the lair rows so the countdown
+    /// sub-labels stay current. Rebuilding the whole list isn't free,
+    /// but the list is short (typically &lt; 10 rows) and a once-a-
+    /// second refresh keeps the binding logic simple. If profile + UI
+    /// scale demand a finer touch later, move the sub-label out to a
+    /// per-row observable property.
+    /// </summary>
+    private void OnLairTick()
+    {
+        RebuildCurrentNavRows();
+        OnPropertyChanged(nameof(AutoLairStatusText));
     }
 
     /// <summary>
@@ -177,6 +227,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAutoLairActiveChanged(bool active)
     {
         IsAutoLairing = active;
+        EnsureLairTickRunning();
         RefreshEngineActionLabel();
     }
 
@@ -1256,6 +1307,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsLairMode));
         OnPropertyChanged(nameof(IsLairBuilding));
         OnPropertyChanged(nameof(LairBuildStatusText));
+        EnsureLairTickRunning();
         // Entering / leaving LoopBuild flips the overlay-suppression
         // branch in RefreshLoopOverlays — re-render so the blue cycle
         // (running) or red preview (build) switches over without
@@ -1768,11 +1820,52 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Compose the CURRENT NAV sub-label for a marked lair row. The
-    /// active target adds the scheduler's phase + countdown
-    /// ("Waiting · 0:42 to entry"); other lairs surface
-    /// "ready" or "respawns in mm:ss" so the user sees which one will
-    /// come up next.
+    /// Shared row population for the AutoLair branch of
+    /// <see cref="RebuildCurrentNavRows"/> — runs both in Build mode
+    /// (pre-scheduler) and during an active run. The only behavioural
+    /// difference is the per-row status / sub-label, both keyed off
+    /// whether the scheduler has a <see cref="Game.Map.AutoLairManager.CurrentTarget"/>.
+    /// Order: target first, then the rest sorted by Map / Room.
+    /// </summary>
+    private void PopulateLairRows()
+    {
+        Game.Map.AutoLairManager mgr = _services.AutoLair;
+        RoomKey? target = mgr.CurrentTarget;
+
+        List<RoomKey> ordered = new(mgr.Marked.Count);
+        if (target is { } t && mgr.Marked.Contains(t)) ordered.Add(t);
+        foreach (RoomKey key in mgr.Marked
+            .Where(k => target is not { } tt || !tt.Equals(k))
+            .OrderBy(k => k.Map).ThenBy(k => k.Room))
+            ordered.Add(key);
+
+        int i = 1;
+        foreach (RoomKey key in ordered)
+        {
+            bool isTarget = target is { } t2 && t2.Equals(key);
+            CurrentNavRows.Add(new CurrentNavRowViewModel(
+                index: i++,
+                label: FormatRoomRef(key),
+                status: isTarget ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Ready,
+                subLabel: BuildLairSubLabel(key, isTarget),
+                removeKey: key));
+        }
+    }
+
+    /// <summary>
+    /// Compose the CURRENT NAV sub-label for a marked lair row.
+    /// Behaviour by phase:
+    /// <list type="bullet">
+    ///   <item><b>Active target</b> — show the scheduler phase + the
+    ///   countdown to entry ("Waiting · 0:42 to entry").</item>
+    ///   <item><b>Visited this session</b> — show the per-room
+    ///   respawn countdown ("respawns in 12:34") or "ready" once
+    ///   <see cref="LairTimerStore.NextReadyAt"/> falls past now.</item>
+    ///   <item><b>Never visited</b> — show the game-data default
+    ///   respawn ("game default 30:00") so the user can see whether
+    ///   the room they marked actually carries a lair tag; rooms
+    ///   without a tag surface "no game-data timer" instead.</item>
+    /// </list>
     /// </summary>
     private string BuildLairSubLabel(RoomKey key, bool isTarget)
     {
@@ -1793,22 +1886,42 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             return phase;
         }
 
+        // Visited this session → live countdown from LastEntered.
         int? overrideSec = mgr.GetOverride(key);
         DateTimeOffset? ready = _services.LairTimers.NextReadyAt(key, overrideSec);
-        if (ready is null) return "ready";
-        TimeSpan delta = ready.Value - now;
-        return delta <= TimeSpan.Zero
-            ? "ready"
-            : $"respawns in {FormatMmSs(delta)}";
+        if (ready is { } readyAt)
+        {
+            TimeSpan delta = readyAt - now;
+            return delta <= TimeSpan.Zero
+                ? "ready"
+                : $"respawns in {FormatMmSs(delta)}";
+        }
+
+        // Never visited → fall back to the game-data default so the
+        // user can confirm at click-time whether the room they marked
+        // has a usable lair timer.
+        int? defaultSec = overrideSec ?? _services.LairTimers.DefaultRespawnSeconds(key);
+        if (defaultSec is { } secs)
+            return overrideSec is null
+                ? $"game default {FormatMmSs(TimeSpan.FromSeconds(secs))}"
+                : $"override {FormatMmSs(TimeSpan.FromSeconds(secs))}";
+
+        return "no game-data timer";
     }
 
+    /// <summary>
+    /// Format a lair-timer duration for the CURRENT NAV sub-labels.
+    /// Plain total seconds (e.g. <c>"270s"</c>) — per user direction
+    /// the rooms we mark in this surface only ever respawn in the
+    /// 30-300 s range, so a single number stays compact and scannable
+    /// without the user mentally converting <c>4:30</c> back into
+    /// seconds. Negative inputs clamp to 0.
+    /// </summary>
     private static string FormatMmSs(TimeSpan t)
     {
         if (t < TimeSpan.Zero) t = TimeSpan.Zero;
         int totalSec = (int)Math.Round(t.TotalSeconds);
-        int mm = totalSec / 60;
-        int ss = totalSec % 60;
-        return $"{mm}:{ss:00}";
+        return $"{totalSec}s";
     }
 
     /// <summary>
@@ -2211,6 +2324,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RebuildCurrentNavRows()
     {
         CurrentNavRows.Clear();
+
+        // Build mode for Auto-Lair populates the rows BEFORE the
+        // scheduler starts so the user sees what they've marked +
+        // each room's resolved respawn timer as they click. The same
+        // builder produces the running view too — the only difference
+        // is whether the scheduler's CurrentTarget is set.
+        if (EngineActionKind != NavigationEngineKind.AutoLair
+            && CurrentMode == NavigationMode.AutoLair
+            && _services.AutoLair.Marked.Count > 0)
+        {
+            PopulateLairRows();
+            return;
+        }
+
         switch (EngineActionKind)
         {
             case NavigationEngineKind.Walking:
@@ -2228,34 +2355,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 break;
             }
             case NavigationEngineKind.AutoLair:
-            {
-                // Highlight the scheduler's CurrentTarget as Current;
-                // every other marker is Ready (its respawn / ETA hint
-                // lives on the sub-label). Order: target first, then
-                // the rest by Map / Room for a stable display.
-                Game.Map.AutoLairManager mgr = _services.AutoLair;
-                RoomKey? target = mgr.CurrentTarget;
-
-                List<RoomKey> ordered = new(mgr.Marked.Count);
-                if (target is { } t && mgr.Marked.Contains(t)) ordered.Add(t);
-                foreach (RoomKey key in mgr.Marked
-                    .Where(k => target is not { } tt || !tt.Equals(k))
-                    .OrderBy(k => k.Map).ThenBy(k => k.Room))
-                    ordered.Add(key);
-
-                int i = 1;
-                foreach (RoomKey key in ordered)
-                {
-                    bool isTarget = target is { } t2 && t2.Equals(key);
-                    CurrentNavRows.Add(new CurrentNavRowViewModel(
-                        index: i++,
-                        label: FormatRoomRef(key),
-                        status: isTarget ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Ready,
-                        subLabel: BuildLairSubLabel(key, isTarget),
-                        removeKey: key));
-                }
+                PopulateLairRows();
                 break;
-            }
             case NavigationEngineKind.Looping:
             {
                 Game.Map.LoopRunner runner = _services.LoopRunner;
