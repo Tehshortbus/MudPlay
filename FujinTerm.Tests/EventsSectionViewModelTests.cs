@@ -120,17 +120,11 @@ public sealed class EventsSectionViewModelTests
 
     // ----- CRUD commands -------------------------------------------
 
-    [Fact]
-    public void NewCommand_AddsPlaceholderAndSelectsIt()
-    {
-        var (events, _, vm, _) = Build();
-        vm.NewCommand.Execute(null);
-
-        Assert.Single(events.Events);
-        Assert.Single(vm.Rows);
-        Assert.Same(vm.Rows[0], vm.SelectedRow);
-        Assert.True(vm.Rows[0].IsDisabled);  // placeholder ships disabled.
-    }
+    // NewCommand / ModifyCommand both open EventEditDialog via the
+    // DialogService — see EventEditDialogViewModelTests for the
+    // dialog-side coverage. The end-to-end open-edit-save flow is
+    // smoke-tested manually because DialogService needs the Avalonia
+    // window stack running.
 
     [Fact]
     public void RemoveCommand_RequiresSelection()

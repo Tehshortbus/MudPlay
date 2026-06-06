@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -123,34 +124,54 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
     }
 
     /// <summary>
-    /// Add a placeholder event. PR 8.4 swaps this for the full
-    /// editor dialog. The placeholder is disabled by default so a
-    /// stray click can't accidentally start firing commands; the user
-    /// either Removes it or enables + hand-edits the profile JSON
-    /// until 8.4 lands.
+    /// Open <see cref="EventEditDialogViewModel"/> with a blank event;
+    /// on Save (non-null result) the new event is appended via
+    /// <see cref="EventManager.Add"/>, which fires CollectionChanged
+    /// and selects the new row. Cancel discards.
     /// </summary>
     [RelayCommand(CanExecute = nameof(HasProfileForCommand))]
-    private void New()
+    private async Task NewAsync()
     {
-        ScheduledEvent placeholder = new()
+        ScheduledEvent template = new()
         {
-            Name = "(new event)",
+            Name = string.Empty,
             TriggerType = EventTriggerType.Logon,
             ActionType = EventActionType.Command,
-            CommandText = "look",
-            Disabled = true,
+            CommandText = string.Empty,
         };
-        _events.Add(placeholder);
-        SelectedRow = Rows.LastOrDefault();
-        _log?.Info("Events", "Added placeholder event — open profile JSON to customise until PR 8.4 ships the editor.");
+        EventEditDialogViewModel dialog = BuildDialogVM(template, isNew: true);
+        ScheduledEvent? result = await AppServices.Current.Dialogs
+            .OpenWindowAsync<EventEditDialogViewModel, ScheduledEvent?>(dialog);
+        if (result is null) return;
+
+        _events.Add(result);
+        SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Source, result));
     }
 
-    /// <summary>PR 8.4 wires this to the full <c>EventEditDialog</c>.</summary>
+    /// <summary>
+    /// Open <see cref="EventEditDialogViewModel"/> with the selected
+    /// row's event as the starting state. On Save (non-null result)
+    /// the original is replaced via <see cref="EventManager.Replace"/>.
+    /// Cancel discards.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanModifyOrRemove))]
-    private void Modify()
+    private async Task ModifyAsync()
     {
-        _log?.Info("Events", "Modify clicked — editor dialog ships in PR 8.4.");
+        if (SelectedRow?.Source is not { } original) return;
+        EventEditDialogViewModel dialog = BuildDialogVM(original, isNew: false);
+        ScheduledEvent? edited = await AppServices.Current.Dialogs
+            .OpenWindowAsync<EventEditDialogViewModel, ScheduledEvent?>(dialog);
+        if (edited is null) return;
+
+        _events.Replace(original, edited);
+        SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Source, edited));
     }
+
+    private EventEditDialogViewModel BuildDialogVM(ScheduledEvent seed, bool isNew) =>
+        new(seed, isNew,
+            AppServices.Current.Loops,
+            AppServices.Current.Lairs,
+            AppServices.Current.RoomSearch);
 
     [RelayCommand(CanExecute = nameof(CanModifyOrRemove))]
     private void Remove()
