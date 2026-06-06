@@ -474,6 +474,16 @@ public sealed class AppServices
     public MacroDispatcher MacroDispatcher { get; }
 
     /// <summary>
+    /// Loaded character's scheduled / lifecycle events store +
+    /// dispatcher (Phase 8 PR 8.1). CRUD surface for the Settings →
+    /// Events tab; <see cref="Game.Events.EventManager.Fire"/> routes
+    /// to <see cref="Walker"/> / <see cref="LoopRunner"/> /
+    /// <see cref="AutoLair"/> / the bound wire sender. Trigger sources
+    /// (Logon / Logoff / Re-log / AtTime / Every) wire in PR 8.2.
+    /// </summary>
+    public Game.Events.EventManager Events { get; private set; } = null!;
+
+    /// <summary>
     /// Per-character keybindings for built-in app actions (toolbar +
     /// menu shortcuts). Sister service to <see cref="Macros"/> — both
     /// contribute to the unified conflict-detection check so a chord
@@ -1253,6 +1263,14 @@ public sealed class AppServices
         MoveRemote = new Game.Remote.MovePlayerHandler(
             RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
             Lairs, AutoLair, MovementCoordinator);
+
+        // Phase 8 PR 8.1 — EventManager. Holds the loaded character's
+        // scheduled / lifecycle events, dispatches actions into the
+        // existing movement / command stack, and reconciles saved Loop /
+        // AutoLair target references against their managers'
+        // collections. Trigger sources wire in PR 8.2.
+        Events = new Game.Events.EventManager(
+            Profile, Loops, Lairs, LoopRunner, AutoLair, Walker, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR
