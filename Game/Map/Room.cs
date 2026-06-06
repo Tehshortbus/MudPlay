@@ -82,7 +82,15 @@ public sealed record Room
     /// </summary>
     public int Spell { get; init; }
 
-    /// <summary>Per-room delay seconds from the MDB. Preserved for completeness; not used by Phase 7.</summary>
+    /// <summary>
+    /// Per-room respawn delay tick from the MDB. Encodes the lair's
+    /// time-to-repopulate via the GreaterMUD formula
+    /// <c>seconds = (Delay - 1) × 60 + 30</c> (so <c>Delay = 5</c> →
+    /// 4 m 30 s). <c>0</c> means "no per-room delay set" —
+    /// <see cref="LairTimerStore.DefaultRespawnSeconds"/> falls
+    /// through to the <c>GroupIndex → Lairs.AvgDelay</c> path or the
+    /// pre-1.83 monster-list fallback when this is unset.
+    /// </summary>
     public int Delay { get; init; }
 
     /// <summary>

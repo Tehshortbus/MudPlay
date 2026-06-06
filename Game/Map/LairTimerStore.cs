@@ -141,10 +141,21 @@ public sealed class LairTimerStore : IDisposable
         if (_graph.GetRoom(key) is not { } room) return null;
         if (!room.HasLair) return null;
 
+        // Primary: the per-room MDB Delay field. GreaterMUD formula
+        // (D-1)m + 30s — same one RoomTooltipBuilder uses for its
+        // "Max Regen: N @ Xm 30s" line, so the user sees a consistent
+        // timer between the room tooltip + the CURRENT NAV row. Delay
+        // = 0 means "no respawn delay" (or unset); fall through to the
+        // lair-tag paths below.
+        if (room.Delay > 0)
+            return (room.Delay - 1) * 60 + 30;
+
         LairTagInfo? info = LairTagParser.TryParse(room.RawLairTag);
         if (info is null) return null;
 
-        // NMR 1.83+ shape: prefer the GroupIndex → Lairs.AvgDelay path.
+        // NMR 1.83+ shape (rooms with no per-room Delay): try the
+        // GroupIndex → Lairs.AvgDelay path. Stock exports populate
+        // Lairs.AvgDelay in minutes; we convert to seconds.
         if (info.GroupIndex is { } gi && ResolveGroupDelaySeconds(gi) is int groupSeconds)
             return groupSeconds;
 

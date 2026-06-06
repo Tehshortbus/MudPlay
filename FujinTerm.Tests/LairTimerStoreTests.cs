@@ -92,6 +92,67 @@ public sealed class LairTimerStoreTests : IDisposable
         return (cache, graph, tracker);
     }
 
+    // ----- DefaultRespawnSeconds — per-room Delay (primary) -------
+
+    [Fact]
+    public void DefaultRespawnSeconds_PerRoomDelay_TakesPrecedence()
+    {
+        // Rooms.json with Delay=5 → GreaterMUD formula (D-1)*60+30
+        // = 270s. Lairs.json says 30 min (1800s) for the same group
+        // index — the per-room Delay must win because that's the
+        // tooltip's source of truth + the actual server behaviour.
+        const string roomsWithDelay = """
+            [
+              { "Map Number": 1, "Room Number": 35, "Name": "Intersection",
+                "Light": 0, "Shop": 0, "Lair": "[1-1-1][1]Group(lair): 1/35", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), roomsWithDelay);
+        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),
+            """[ { "GroupIndex": "1-1-1", "AvgDelay": 30 } ]""");
+
+        GameDataCache cache = new();
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        RoomTracker tracker = new(graph);
+        using LairTimerStore store = new(cache, graph, tracker);
+
+        Assert.Equal(270, store.DefaultRespawnSeconds(new RoomKey(1, 35)));
+    }
+
+    [Fact]
+    public void DefaultRespawnSeconds_PerRoomDelayOne_ReturnsThirtySeconds()
+    {
+        // Edge of the formula: Delay=1 → (1-1)*60 + 30 = 30 s.
+        const string roomsJson = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "FastRespawn",
+                "Light": 0, "Shop": 0, "Lair": "[1-1-1][1]Group(lair): 1/1", "Delay": 1,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),    roomsJson);
+        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),    "[]");
+        File.WriteAllText(Path.Combine(setRoot, "Monsters.json"), "[]");
+
+        GameDataCache cache = new();
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        RoomTracker tracker = new(graph);
+        using LairTimerStore store = new(cache, graph, tracker);
+
+        Assert.Equal(30, store.DefaultRespawnSeconds(new RoomKey(1, 1)));
+    }
+
     // ----- DefaultRespawnSeconds — NMR 1.83+ path -------------------
 
     [Fact]
