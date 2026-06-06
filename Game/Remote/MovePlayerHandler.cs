@@ -100,22 +100,100 @@ public sealed class MovePlayerHandler : IDisposable
         // Drop informational rows (monsters with no known lair room)
         // — they can't be walked to.
         List<RoomSearchResult> walkable = matches.Where(m => !m.IsInformational).ToList();
-        switch (walkable.Count)
+
+        // Rooms beat monsters. Rationale: when the user types a place
+        // name that ALSO happens to be a monster substring, the room is
+        // almost always what they meant — they'd specify a coordinate
+        // if they meant a particular spawn. Falling through to the
+        // monster tier only when there's no room hit keeps "@goto
+        // godfrey" routing to the Bank of Godfrey instead of drowning
+        // in the Mayor's three spawn rooms.
+        List<RoomSearchResult> roomMatches = walkable.Where(m => m.MonsterTag is null).ToList();
+        if (roomMatches.Count > 0)
         {
-            case 0:
-                ctx.Reply($"no match for '{query}'");
-                return;
+            DispatchRoomMatches(ctx, query, roomMatches);
+            return;
+        }
+
+        List<RoomSearchResult> monsterMatches = walkable.Where(m => m.MonsterTag is not null).ToList();
+        DispatchMonsterMatches(ctx, query, monsterMatches);
+    }
+
+    private void DispatchRoomMatches(RemoteCommandContext ctx, string query, List<RoomSearchResult> rooms)
+    {
+        switch (rooms.Count)
+        {
             case 1:
-                DispatchGoto(ctx, walkable[0]);
+                DispatchGoto(ctx, rooms[0]);
                 return;
             case <= 3:
                 ctx.Reply("did you mean: " + string.Join(", ",
-                    walkable.Select(m => $"{m.Name} ({m.Key.Map}/{m.Key.Room})")) + "?");
+                    rooms.Select(m => $"{m.Name} ({m.Key.Map}/{m.Key.Room})")) + "?");
                 return;
             default:
-                ctx.Reply($"too many matches ({walkable.Count}) for '{query}'");
+                ctx.Reply($"too many room matches ({rooms.Count}) for '{query}'");
                 return;
         }
+    }
+
+    private void DispatchMonsterMatches(RemoteCommandContext ctx, string query, List<RoomSearchResult> monsters)
+    {
+        if (monsters.Count == 0)
+        {
+            ctx.Reply($"no match for '{query}'");
+            return;
+        }
+
+        // Collapse multiple spawns of the same monster into one group —
+        // the user wants "this monster has N lairs", not N separate
+        // "did you mean" entries for the same name.
+        List<IGrouping<string, RoomSearchResult>> groups = monsters
+            .GroupBy(m => m.MonsterTag!)
+            .ToList();
+
+        switch (groups.Count)
+        {
+            case 1:
+                IGrouping<string, RoomSearchResult> only = groups[0];
+                List<RoomSearchResult> spawns = only.ToList();
+                string name = ExtractMonsterName(only.Key);
+                if (spawns.Count == 1)
+                {
+                    DispatchGoto(ctx, spawns[0]);
+                    return;
+                }
+                string coords = string.Join(", ", spawns.Select(s => $"{s.Key.Map}/{s.Key.Room}"));
+                ctx.Reply($"{name} has {spawns.Count} lairs: {coords} — specify a coordinate");
+                return;
+
+            case <= 3:
+                ctx.Reply("did you mean: " + string.Join(", ", groups.Select(FormatMonsterGroup)) + "?");
+                return;
+
+            default:
+                ctx.Reply($"too many monster matches ({groups.Count}) for '{query}'");
+                return;
+        }
+    }
+
+    private static string FormatMonsterGroup(IGrouping<string, RoomSearchResult> group)
+    {
+        List<RoomSearchResult> spawns = group.ToList();
+        string name = ExtractMonsterName(group.Key);
+        return spawns.Count == 1
+            ? $"{name} ({spawns[0].Key.Map}/{spawns[0].Key.Room})"
+            : $"{name} ({spawns.Count} lairs)";
+    }
+
+    /// <summary>
+    /// Strip the regen suffix from the search result's MonsterTag.
+    /// Tag format from RoomSearchService: "Mayor of Godfrey · regen 4h"
+    /// — we want just the monster name for chat replies.
+    /// </summary>
+    private static string ExtractMonsterName(string monsterTag)
+    {
+        int sep = monsterTag.IndexOf(" · ", StringComparison.Ordinal);
+        return sep > 0 ? monsterTag.Substring(0, sep) : monsterTag;
     }
 
     private void DispatchGoto(RemoteCommandContext ctx, RoomSearchResult match)
