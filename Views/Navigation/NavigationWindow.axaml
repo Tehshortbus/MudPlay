@@ -1011,5 +1011,32 @@
                            Text="{Binding AutoLairStatusText}"/>
             </Grid>
         </Border>
+
+        <!-- Row 3 (alternate): Auto-Lair BUILDING status strip. Mirrors
+             the Loop-builder strip — visible only while the user is
+             actively marking lair rooms (CurrentMode == AutoLair AND
+             scheduler not yet running). The Lair phase strip above
+             takes over the moment the scheduler starts. -->
+        <Border Grid.Row="3"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsLairBuilding}">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,6" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentAmberBrush}">
+                    <TextBlock Text="BUILDING LAIR"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="#0E0E0E"/>
+                </Border>
+                <TextBlock Grid.Column="1"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           Text="{Binding LairBuildStatusText}"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

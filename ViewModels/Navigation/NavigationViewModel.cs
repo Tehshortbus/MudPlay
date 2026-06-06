@@ -104,7 +104,28 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         AutoLairRooms = new HashSet<RoomKey>(_services.AutoLair.Marked);
         OnPropertyChanged(nameof(HasLairMarkers));
+        OnPropertyChanged(nameof(LairBuildStatusText));
         RefreshDerivedState();
+    }
+
+    /// <summary>
+    /// Bottom-strip status for Auto-Lair build mode — counterpart of
+    /// the loop builder's room/step count line. Reads the live marker
+    /// count and explains how to commit (Run) vs discard (toggle Lair).
+    /// </summary>
+    public string LairBuildStatusText
+    {
+        get
+        {
+            int n = _services.AutoLair.Marked.Count;
+            string lairWord = n == 1 ? "lair" : "lairs";
+            return n switch
+            {
+                0 => "click rooms on the map to mark them as lairs",
+                1 => "1 lair marked — add at least one more, or click Save lairs to keep this one for later",
+                _ => $"{n} {lairWord} marked · Run to start cycling, Save lairs to persist, toggle Lair mode to discard",
+            };
+        }
     }
 
     private void OnAutoLairPhaseChanged(AutoLairPhase _)
@@ -1218,10 +1239,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public bool IsLoopMode => CurrentMode == NavigationMode.LoopBuild;
     public bool IsLairMode => CurrentMode == NavigationMode.AutoLair;
 
+    /// <summary>
+    /// True while the user is in <see cref="NavigationMode.AutoLair"/>
+    /// AND the Auto-Lair scheduler isn't actively running. Drives the
+    /// bottom-strip "Building lair setup: N lair(s) marked" surface —
+    /// counterpart of <see cref="IsLoopBuilding"/> for loops. While
+    /// the scheduler is running, the engine phase strip
+    /// (<see cref="IsAutoLairing"/>) takes precedence.
+    /// </summary>
+    public bool IsLairBuilding =>
+        CurrentMode == NavigationMode.AutoLair && !IsAutoLairing;
+
     partial void OnCurrentModeChanged(NavigationMode value)
     {
         OnPropertyChanged(nameof(IsLoopMode));
         OnPropertyChanged(nameof(IsLairMode));
+        OnPropertyChanged(nameof(IsLairBuilding));
+        OnPropertyChanged(nameof(LairBuildStatusText));
         // Entering / leaving LoopBuild flips the overlay-suppression
         // branch in RefreshLoopOverlays — re-render so the blue cycle
         // (running) or red preview (build) switches over without
@@ -1249,6 +1283,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         else
         {
+            // If we're entering Loop build mode from Auto-Lair build
+            // mode, tear that down first — the user can only be in one
+            // build mode at a time. The discard-on-exit semantics
+            // match the standalone Lair-toggle behaviour.
+            if (CurrentMode == NavigationMode.AutoLair)
+            {
+                if (!_services.AutoLair.IsActive) _services.AutoLair.Clear();
+                CurrentMode = NavigationMode.Idle;
+            }
+
             LoopBuilder = new LoopBuilderSessionViewModel(
                 _services.Loops, _services.RoomGraph, _services.Movement);
             // Mirror the builder's PreviewedRoomKeys onto our own
@@ -1411,6 +1455,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         else
         {
+            // Tear down Loop build mode first if it's open — the user
+            // can only be in one build mode at a time, and the Loop
+            // builder's discard-on-exit semantics match. Goes through
+            // the public ToggleLoopMode so the LoopBuilder.PropertyChanged
+            // unsubscribe + observable reset happen exactly once.
+            if (CurrentMode == NavigationMode.LoopBuild)
+                ToggleLoopMode();
             CurrentMode = NavigationMode.AutoLair;
         }
     }
@@ -1717,6 +1768,50 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Compose the CURRENT NAV sub-label for a marked lair row. The
+    /// active target adds the scheduler's phase + countdown
+    /// ("Waiting · 0:42 to entry"); other lairs surface
+    /// "ready" or "respawns in mm:ss" so the user sees which one will
+    /// come up next.
+    /// </summary>
+    private string BuildLairSubLabel(RoomKey key, bool isTarget)
+    {
+        Game.Map.AutoLairManager mgr = _services.AutoLair;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        if (isTarget)
+        {
+            string phase = mgr.Phase.ToString();
+            if (mgr.Phase == Game.Map.AutoLairPhase.Waiting
+                && mgr.CurrentEntryArrivalAt is { } at)
+            {
+                TimeSpan remain = at - now;
+                return remain > TimeSpan.Zero
+                    ? $"{phase} · {FormatMmSs(remain)} to entry"
+                    : $"{phase} · entering";
+            }
+            return phase;
+        }
+
+        int? overrideSec = mgr.GetOverride(key);
+        DateTimeOffset? ready = _services.LairTimers.NextReadyAt(key, overrideSec);
+        if (ready is null) return "ready";
+        TimeSpan delta = ready.Value - now;
+        return delta <= TimeSpan.Zero
+            ? "ready"
+            : $"respawns in {FormatMmSs(delta)}";
+    }
+
+    private static string FormatMmSs(TimeSpan t)
+    {
+        if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+        int totalSec = (int)Math.Round(t.TotalSeconds);
+        int mm = totalSec / 60;
+        int ss = totalSec % 60;
+        return $"{mm}:{ss:00}";
+    }
+
+    /// <summary>
     /// Canonical room reference format used across the Navigation
     /// surfaces — <c>"(map/room) - Name"</c>. Falls back to "(M/R) - ???"
     /// when the graph doesn't know the room (typical of unimported
@@ -1792,6 +1887,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LoopModeButtonIsStop));
         OnPropertyChanged(nameof(LairModeButtonLabel));
         OnPropertyChanged(nameof(LairModeButtonIsStop));
+        OnPropertyChanged(nameof(IsLairBuilding));
+        OnPropertyChanged(nameof(LairBuildStatusText));
         OnPropertyChanged(nameof(CurrentNavHeader));
         OnPropertyChanged(nameof(CurrentNavProgress));
         OnPropertyChanged(nameof(CurrentNavHasProgress));
@@ -2132,15 +2229,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             }
             case NavigationEngineKind.AutoLair:
             {
+                // Highlight the scheduler's CurrentTarget as Current;
+                // every other marker is Ready (its respawn / ETA hint
+                // lives on the sub-label). Order: target first, then
+                // the rest by Map / Room for a stable display.
+                Game.Map.AutoLairManager mgr = _services.AutoLair;
+                RoomKey? target = mgr.CurrentTarget;
+
+                List<RoomKey> ordered = new(mgr.Marked.Count);
+                if (target is { } t && mgr.Marked.Contains(t)) ordered.Add(t);
+                foreach (RoomKey key in mgr.Marked
+                    .Where(k => target is not { } tt || !tt.Equals(k))
+                    .OrderBy(k => k.Map).ThenBy(k => k.Room))
+                    ordered.Add(key);
+
                 int i = 1;
-                foreach (RoomKey key in _services.AutoLair.Marked)
+                foreach (RoomKey key in ordered)
                 {
-                    // Status data isn't tracked yet — show "ready" for
-                    // all marked lairs until LairTimerStore lands.
+                    bool isTarget = target is { } t2 && t2.Equals(key);
                     CurrentNavRows.Add(new CurrentNavRowViewModel(
-                        index: i++, label: FormatRoomRef(key),
-                        status: CurrentNavRowStatus.Ready,
-                        subLabel: "ready",
+                        index: i++,
+                        label: FormatRoomRef(key),
+                        status: isTarget ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Ready,
+                        subLabel: BuildLairSubLabel(key, isTarget),
                         removeKey: key));
                 }
                 break;

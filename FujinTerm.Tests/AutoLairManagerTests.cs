@@ -300,4 +300,25 @@ public sealed class AutoLairManagerTests : IDisposable
 
         Assert.Contains(AutoLairPhase.Approaching, phases);
     }
+
+    [Fact]
+    public void Stop_ClearsEntryArrivalLatch()
+    {
+        // CurrentEntryArrivalAt is part of the public surface so the
+        // CURRENT NAV countdown can render against it. Stop() must
+        // wipe the latch alongside the rest of the runtime state so
+        // a stale value doesn't leak into the idle render.
+        using Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 3));
+
+        h.Roam.Start();
+        h.Roam.Stop();
+
+        Assert.Null(h.Roam.CurrentEntryArrivalAt);
+        Assert.Null(h.Roam.CurrentTarget);
+        Assert.Null(h.Roam.CurrentWaitRoom);
+        Assert.Null(h.Roam.LastDecision);
+    }
 }

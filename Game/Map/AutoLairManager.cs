@@ -94,6 +94,17 @@ public sealed class AutoLairManager : IDisposable
     /// <summary>Latest scheduler decision the controller is acting on. Null in Idle.</summary>
     public LairDecision? LastDecision { get; private set; }
 
+    /// <summary>
+    /// Latched entry-arrival instant for the current Waiting cycle. Set
+    /// once on Approaching→Waiting (and on the "already at wait-room"
+    /// short-circuit) and NOT recomputed on every scheduler tick — that
+    /// was the bug that left the player parked in the wait-room
+    /// forever, with the 1 s tick resetting the entry timer to
+    /// <c>now + entryHopDuration</c> before it could fire. Cleared on
+    /// Entering / Stop / target-change.
+    /// </summary>
+    public DateTimeOffset? CurrentEntryArrivalAt { get; private set; }
+
     public bool IsActive => Phase != AutoLairPhase.Idle;
 
     public IReadOnlyCollection<RoomKey> Marked => _markers.Keys.ToArray();
@@ -247,6 +258,7 @@ public sealed class AutoLairManager : IDisposable
         _retryTimer.Stop();
         CurrentTarget = null;
         CurrentWaitRoom = null;
+        CurrentEntryArrivalAt = null;
         LastDecision = null;
         SetPhase(AutoLairPhase.Idle);
         ActiveChanged?.Invoke(false);
@@ -287,33 +299,39 @@ public sealed class AutoLairManager : IDisposable
         if (pick is null) return;
 
         LairDecision? prev = LastDecision;
+        // Same-target tick during Waiting: the entry timer is already
+        // running against a latched CurrentEntryArrivalAt. Don't touch
+        // LastDecision (would keep racing pick.EntryArrival forward),
+        // don't redispatch, just let the timer fire. This was the
+        // entry-timer-never-fires bug.
+        bool targetUnchanged = prev is not null
+            && prev.Lair.Equals(pick.Lair)
+            && prev.WaitRoom.Equals(pick.WaitRoom);
+        if (Phase == AutoLairPhase.Waiting && targetUnchanged) return;
+
         LastDecision = pick;
 
         // Phase-specific dispatch.
         if (Phase is AutoLairPhase.Approaching or AutoLairPhase.Waiting)
         {
-            // Same target → just refresh the wait-room countdown.
-            bool targetUnchanged = prev is not null
-                && prev.Lair.Equals(pick.Lair)
-                && prev.WaitRoom.Equals(pick.WaitRoom);
+            // Different target reached us here — wipe any in-flight
+            // entry latch from the previous target so the next arrival
+            // gets a fresh ScheduleEntryAt.
+            CurrentEntryArrivalAt = null;
+            _entryTimer.Stop();
 
-            if (targetUnchanged && Phase == AutoLairPhase.Waiting)
-            {
-                ScheduleEntryAt(pick.EntryArrival);
-                return;
-            }
-
-            // Different target OR fresh start — dispatch walker to (new) wait-room.
+            // Dispatch walker to the new wait-room.
             CurrentTarget = pick.Lair;
             CurrentWaitRoom = pick.WaitRoom;
 
             if (current.Key.Equals(pick.WaitRoom))
             {
-                // Already at the wait-room — skip the walk, jump straight to Waiting.
+                // Already at the wait-room — skip the walk, latch the
+                // entry-arrival once, jump straight to Waiting.
                 SetPhase(AutoLairPhase.Waiting);
                 _log?.Info("AutoLair",
                     $"already at wait-room {pick.WaitRoom}; waiting {FormatSlack(pick.SlackAtEntry)} to enter {pick.Lair}.");
-                ScheduleEntryAt(pick.EntryArrival);
+                LatchAndScheduleEntry(pick.EntryArrival);
                 return;
             }
 
@@ -443,13 +461,22 @@ public sealed class AutoLairManager : IDisposable
 
     // ----- entry timer ---------------------------------------------
 
-    private void ScheduleEntryAt(DateTimeOffset entryArrival)
+    /// <summary>
+    /// Latch <see cref="CurrentEntryArrivalAt"/> and start the entry
+    /// timer once per Waiting cycle. Subsequent scheduler ticks that
+    /// resolve to the same target take the early-return in
+    /// <see cref="EvaluateAndDispatch"/> and don't touch this — the
+    /// running timer is allowed to fire on time.
+    /// </summary>
+    private void LatchAndScheduleEntry(DateTimeOffset entryArrival)
     {
         if (Phase != AutoLairPhase.Waiting) return;
+        CurrentEntryArrivalAt = entryArrival;
+
         TimeSpan wait = entryArrival - DateTimeOffset.UtcNow;
         if (wait <= TimeSpan.Zero)
         {
-            // Already past entry-time → step in immediately.
+            // Past entry-time on arrival → step in immediately.
             EnterLairNow();
             return;
         }
@@ -468,6 +495,7 @@ public sealed class AutoLairManager : IDisposable
     {
         if (CurrentTarget is not { } lair) return;
         SetPhase(AutoLairPhase.Entering);
+        CurrentEntryArrivalAt = null; // we're stepping in; the latch served its purpose
         _log?.Info("AutoLair", $"entering {lair}.");
         if (!_walker.WalkTo(lair))
         {
@@ -507,10 +535,26 @@ public sealed class AutoLairManager : IDisposable
         {
             case WalkEventKind.Finished:
                 // The walker landed on its destination. Branch on phase.
-                if (Phase == AutoLairPhase.Approaching && LastDecision is { } a)
+                if (Phase == AutoLairPhase.Approaching && CurrentTarget is { } target)
                 {
                     SetPhase(AutoLairPhase.Waiting);
-                    ScheduleEntryAt(a.EntryArrival);
+                    // Latch entry-arrival to either "now + entry hop"
+                    // (lair already ready, just step in) or the lair's
+                    // ReadyAt (mob hasn't respawned yet — wait it out).
+                    // Recomputing from "now" beats reusing
+                    // LastDecision.EntryArrival, which was estimated at
+                    // PickNext time and would be skewed if our travel
+                    // estimate didn't match reality. Subsequent same-
+                    // target scheduler ticks won't touch the latch (see
+                    // EvaluateAndDispatch early-return).
+                    DateTimeOffset entryFloor =
+                        DateTimeOffset.UtcNow + TravelCostModel.EntryHopDuration;
+                    DateTimeOffset entryAt = entryFloor;
+                    int? overrideSec = _markers.TryGetValue(target, out int? o) ? o : null;
+                    if (_timers.NextReadyAt(target, overrideSec) is { } readyAt
+                        && readyAt > entryAt)
+                        entryAt = readyAt;
+                    LatchAndScheduleEntry(entryAt);
                 }
                 else if (Phase == AutoLairPhase.Entering)
                 {
