@@ -166,12 +166,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         else _services.AutoLair.Start();
     }
 
-    [RelayCommand]
-    private void ToggleContextRoomAutoLair()
-    {
-        if (ContextRoomKey is { } k) _services.AutoLair.Toggle(k);
-    }
-
     /// <summary>
     /// Right-click → "Add this room to Blacklist". Captures the
     /// selected room's <see cref="Room.DisplayName"/> from the
@@ -1303,10 +1297,34 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Called by the window when the map is left-clicked. Forwards to the loop builder when active.</summary>
+    /// <summary>
+    /// Called by the window when the map is left-clicked. Dispatched by
+    /// the active <see cref="CurrentMode"/>:
+    /// <list type="bullet">
+    ///   <item><see cref="NavigationMode.LoopBuild"/> — forward the
+    ///   click to the loop builder so the room joins the click
+    ///   sequence.</item>
+    ///   <item><see cref="NavigationMode.AutoLair"/> — toggle the room
+    ///   as a marker on <see cref="AutoLairManager"/>. Mirrors how
+    ///   loop-build mode accumulates waypoints; the user enters
+    ///   Lair mode from the top-right action chip, clicks rooms to
+    ///   add / remove, then commits via the rail's "Save lairs"
+    ///   button.</item>
+    ///   <item>Idle — no-op (the click already moved
+    ///   <see cref="SelectedRoomKey"/> upstream).</item>
+    /// </list>
+    /// </summary>
     public void OnRoomLeftClicked(RoomKey key)
     {
-        LoopBuilder?.AddClick(key);
+        switch (CurrentMode)
+        {
+            case NavigationMode.LoopBuild:
+                LoopBuilder?.AddClick(key);
+                break;
+            case NavigationMode.AutoLair:
+                _services.AutoLair.Toggle(key);
+                break;
+        }
     }
 
     /// <summary>

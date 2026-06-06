@@ -385,8 +385,12 @@
                                   Command="{Binding ToggleContextRoomAvoidedCommand}"/>
                         <MenuItem Header="Toggle: Stash room"
                                   Command="{Binding ToggleContextRoomStashCommand}"/>
-                        <MenuItem Header="Toggle: Auto-lair this room"
-                                  Command="{Binding ToggleContextRoomAutoLairCommand}"/>
+                        <!-- Auto-lair marking moved into the top-right
+                             "Lair mode" toggle: enter the mode, click
+                             rooms on the map to add / remove markers,
+                             save via the rail's "Save lairs" button.
+                             Mirrors how Loop build mode works. -->
+
                         <Separator/>
                         <MenuItem Header="Add this room to Blacklist"
                                   Foreground="{StaticResource AccentRedBrush}"
