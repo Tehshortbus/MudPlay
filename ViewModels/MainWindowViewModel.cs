@@ -569,6 +569,10 @@ public partial class MainWindowViewModel : ObservableObject
         // CombatManager re-picks correctly on the next arrival /
         // re-display.
         AppServices.Current.MonsterDeath.AttachLineExtractor(Lines);
+        // Phase 9 PR 9.D — ConditionTracker scans inbound lines
+        // against every game-data Messages record's AppliedMessage /
+        // AppliedEndsWith pair to surface live ActiveFlags.
+        AppServices.Current.Conditions.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while

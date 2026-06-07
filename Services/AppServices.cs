@@ -615,6 +615,17 @@ public sealed class AppServices
     public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.D — condition tracker driven by the game-data
+    /// Messages tab. Subscribes to inbound lines, matches against
+    /// every <see cref="Models.GameData.MessageRecord.AppliedMessage"/>
+    /// / <see cref="Models.GameData.MessageRecord.AppliedEndsWith"/>
+    /// pair, surfaces the aggregated
+    /// <see cref="Models.GameData.MessageFlags"/> bitfield. Consumed
+    /// by CastingDirector's Tier-2 cure path.
+    /// </summary>
+    public Game.Conditions.ConditionTracker Conditions { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.F — stealth state tracker. Owns
     /// <see cref="PlayerState.IsSneaking"/> /
     /// <see cref="PlayerState.IsHidden"/> and emits FSM-state
@@ -1453,12 +1464,19 @@ public sealed class AppServices
         Cast = new Game.Spells.CastCoordinator(Router, Log);
         Tick.CombatTickElapsed += Cast.OnCombatTick;
 
+        // Phase 9 PR 9.D — ConditionTracker reads MessageStore +
+        // line-side patterns to surface ActiveFlags. CastingDirector
+        // consumes it for Tier-2 cure decisions. AttachLineExtractor
+        // lands in MainWindowViewModel alongside the other line
+        // consumers.
+        Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
+
         // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on
         // PlayerState + Spells/Health settings. AutoHealRest gates
         // the engine (shared toggle with HealthManager's passive rest).
         CastDirector = new Game.Spells.CastingDirector(
-            PlayerState, Cast,
+            PlayerState, Cast, Conditions,
             readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
             readHealth: () => ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),

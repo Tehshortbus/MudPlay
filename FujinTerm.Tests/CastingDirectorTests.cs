@@ -1,5 +1,7 @@
 using FujinTerm.Game;
+using FujinTerm.Game.Conditions;
 using FujinTerm.Game.Spells;
+using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -117,18 +119,18 @@ public sealed class CastingDirectorTests
     // ----- Tier 3: routine in-combat heal -----------------------------
 
     [Fact]
-    public void RoutineCombat_CastsMinorHeal_OnTick()
+    public void RoutineCombat_CastsMinorHeal()
     {
+        // HP below MinorHealCombatTrigger while in combat → Minor heal
+        // candidate is ready, fires on the prompt-driven evaluation
+        // (no tick required — the cooldown layer handles cadence).
         using Harness h = new();
         h.Spells.MinorHealSpell = "heal";
         h.Health.MinorHealCombatTrigger = 70;
         h.Health.MajorHealCombatTrigger = 40;
 
         h.SetPrompt(hp: 65, maxHp: 100, inCombat: true);    // 65% < 70%
-        // Hp PropertyChanged is non-tick-driven — Tier 3 only fires on tick.
-        Assert.Empty(h.CastsSent);
 
-        h.Director.OnCombatTick();
         Assert.Single(h.CastsSent);
         Assert.Equal("c heal", h.CastsSent[0]);
     }
@@ -242,10 +244,13 @@ public sealed class CastingDirectorTests
     // ----- tier interaction -------------------------------------------
 
     [Fact]
-    public void LifeThreat_Wins_OverRoutine()
+    public void DefaultPriority_MinorBeatsMajor_WhenBothCandidates()
     {
-        // HP below both thresholds — life-threat (major) takes
-        // precedence over routine (minor) regardless of tick.
+        // Default priority: Minor self heal=3, Major self heal=4.
+        // HP=30% triggers BOTH (Minor threshold 70%, Major threshold
+        // 40%). Lower priority number wins → Minor goes first. If
+        // the user wants Major to win at life-threat, they re-order
+        // priorities on the Spells tab.
         using Harness h = new();
         h.Spells.MajorHealSpell = "fullheal";
         h.Spells.MinorHealSpell = "heal";
@@ -253,7 +258,25 @@ public sealed class CastingDirectorTests
         h.Health.MinorHealCombatTrigger = 70;
 
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
-        // PropertyChanged on Hp fired Tier 1 — no need to tick.
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c heal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void CustomPriority_MajorBeforeMinor_LifeThreatFiresMajor()
+    {
+        // User reordered priorities: Major=3, Minor=4. Now Major
+        // wins when both candidates qualify.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.PriorityMajorSelfHeal = 3;
+        h.Spells.PriorityMinorSelfHeal = 4;
+        h.Health.MajorHealCombatTrigger = 40;
+        h.Health.MinorHealCombatTrigger = 70;
+
+        h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
         Assert.Equal("c fullheal", h.CastsSent[0]);
@@ -277,5 +300,166 @@ public sealed class CastingDirectorTests
         // skip that here so the recent-cast cooldown still gates.
         h.Director.OnCombatTick();
         Assert.Single(h.CastsSent);
+    }
+
+    // ----- Tier 2 cures (game-data Messages driven) -----------------
+
+    private sealed class CureHarness : IDisposable
+    {
+        public MessageRouter Router { get; } = new();
+        public LogService Log { get; } = new();
+        public PlayerState State { get; } = new();
+        public MessageStore Messages { get; } = new();
+        public CastCoordinator Cast { get; }
+        public ConditionTracker Conditions { get; }
+        public CastingDirector Director { get; }
+        public List<string> CastsSent { get; } = new();
+        public SpellsSettings Spells { get; set; } = new();
+        public HealthSettings Health { get; set; } = new();
+
+        public CureHarness()
+        {
+            DefaultPatterns.Seed(Router);
+            Cast = new CastCoordinator(Router, Log);
+            Cast.SetWireSender(_ => { });
+            Cast.CastSent += CastsSent.Add;
+            Conditions = new ConditionTracker(Messages, Log);
+            Director = new CastingDirector(State, Cast, Conditions,
+                readSpells: () => Spells,
+                readHealth: () => Health,
+                isEnabled: () => true,
+                log: Log);
+            // Healthy baseline so Tier-1 doesn't fire over the cure path.
+            State.MaxHp = 200;
+            State.Hp = 200;
+            State.HasPromptData = true;
+        }
+
+        public void RecordCondition(string name, MessageFlags flags,
+                                    string applied, string endsWith = "")
+        {
+            Messages.Messages.Add(new MessageRecord(
+                Id: MessageRecord.ComputeId(name, "", "", "", applied, endsWith),
+                Name: name,
+                Action: MessageAction.Ignore,
+                Flags: flags,
+                RawFlagsHex: (ushort)flags,
+                Response: string.Empty,
+                CasterMessage: string.Empty,
+                TargetMessage: string.Empty,
+                WitnessMessage: string.Empty,
+                AppliedMessage: applied,
+                AppliedEndsWith: endsWith));
+        }
+
+        public void FeedLine(string text)
+        {
+            var emitted = new LineExtractor.EmittedLine(
+                text, Array.Empty<CellAttributes>(),
+                DateTimeOffset.UtcNow, IsPromptLine: false);
+            typeof(ConditionTracker)
+                .GetMethod("OnLine",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(Conditions, new object[] { emitted });
+        }
+
+        public void Dispose()
+        {
+            Director.Dispose();
+            Cast.Dispose();
+            Conditions.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Cure_Poisoned_CastsCurePoison()
+    {
+        using CureHarness h = new();
+        h.Spells.CurePoisonSpell = "neutralize";
+        h.RecordCondition("Poison", MessageFlags.Poisoned, "poisoned!");
+
+        h.FeedLine("You have been poisoned!");
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c neutralize", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Cure_MovementPrevented_CastsCureHolds()
+    {
+        using CureHarness h = new();
+        h.Spells.CureHoldsSpell = "freedom";
+        h.RecordCondition("Paralyze", MessageFlags.MovementPrevented, "paralyzed!");
+
+        h.FeedLine("You have been paralyzed!");
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c freedom", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Cure_NoSpellConfigured_NoCast()
+    {
+        using CureHarness h = new();
+        // CurePoisonSpell is null/empty.
+        h.RecordCondition("Poison", MessageFlags.Poisoned, "poisoned!");
+
+        h.FeedLine("You have been poisoned!");
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Cure_PriorityOrder_MovementBeatsPoison()
+    {
+        // Both conditions are already active when we evaluate (the
+        // tracker already saw both lines + ActiveFlags = paralyze |
+        // poison). PickCure walks the priority list and chooses
+        // CureHoldsSpell because movement-prevented is the most
+        // disabling. Real-world race protection (cooldown) is tested
+        // elsewhere; this isolates the priority decision.
+        using CureHarness h = new();
+        h.Spells.CureHoldsSpell = "freedom";
+        h.Spells.CurePoisonSpell = "neutralize";
+        h.RecordCondition("Paralyze", MessageFlags.MovementPrevented, "paralyzed!");
+        h.RecordCondition("Poison",   MessageFlags.Poisoned,          "poisoned!");
+
+        // Pre-load both conditions on the tracker WITHOUT triggering
+        // an immediate cure cast — feed the applied lines, then
+        // bounce the coordinator's cooldown so the next evaluation
+        // is free to fire.
+        h.FeedLine("You have been poisoned!");
+        h.FeedLine("You have been paralyzed!");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();      // clear recent-cast cooldown
+
+        // Trigger a fresh evaluation (combat tick path).
+        h.Director.OnCombatTick();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c freedom", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Cure_LifeThreatBeatsCure()
+    {
+        // HP critical AND poisoned — life-threat heal wins over the
+        // cure dispatch. Order matters: set HP low FIRST so the cast
+        // attempt happens through the life-threat path, not the
+        // cure path.
+        using CureHarness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Spells.CurePoisonSpell = "neutralize";
+        h.Health.MajorHealCombatTrigger = 40;
+        h.RecordCondition("Poison", MessageFlags.Poisoned, "poisoned!");
+
+        // Drop HP into life-threat range BEFORE applying the
+        // condition so Hp PropertyChanged drives Tier 1 (life-
+        // threat) cast.
+        h.State.Hp = 30;
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c fullheal", h.CastsSent[0]);
     }
 }
