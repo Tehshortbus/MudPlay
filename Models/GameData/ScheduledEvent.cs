@@ -37,14 +37,6 @@ public sealed class ScheduledEvent
     /// </summary>
     public bool Disabled { get; set; }
 
-    /// <summary>
-    /// When true, the event only fires while the AFK engine reports
-    /// the user is idle. AFK engine ships in a follow-up PR — this
-    /// flag is stored from PR 8.1 but has no runtime effect until the
-    /// engine lands.
-    /// </summary>
-    public bool AfkOnly { get; set; }
-
     /// <summary>Which lifecycle / schedule trigger fires this event.</summary>
     public EventTriggerType TriggerType { get; set; }
 

@@ -42,16 +42,13 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto">
 
-            <!-- Header: Name + flags. -->
-            <Grid Grid.Row="0" ColumnDefinitions="60,*,Auto,Auto" ColumnSpacing="8">
+            <!-- Header: Name + Disabled flag. -->
+            <Grid Grid.Row="0" ColumnDefinitions="60,*,Auto" ColumnSpacing="8">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name"/>
                 <TextBox Grid.Column="1"
                          Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 <CheckBox Grid.Column="2" Content="Disabled" Margin="14,0,0,0"
                           IsChecked="{Binding DisabledFlag, Mode=TwoWay}"/>
-                <CheckBox Grid.Column="3" Content="AFK only" Margin="8,0,0,0"
-                          IsChecked="{Binding AfkOnlyFlag, Mode=TwoWay}"
-                          ToolTip.Tip="Fires only while AFK — wires when the AFK engine ships in PR 8.6."/>
             </Grid>
 
             <!-- WHEN section: single grid so the time / numeric / unit

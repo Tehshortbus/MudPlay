@@ -171,7 +171,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
-            new StubField("Allow hangup when not AFK",       StubFieldKind.Check, "Phase 13 — gate hangup unless AFK Mode is on."),
             new StubField("Allow hangup in all-off mode",    StubFieldKind.Check, "Phase 13 — gate hangup when every Auto-* toggle is off."),
             new StubField("Hangup if naked",                 StubFieldKind.Check, "Phase 13 — recovery safety, disconnect if equipment got lost."),
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),

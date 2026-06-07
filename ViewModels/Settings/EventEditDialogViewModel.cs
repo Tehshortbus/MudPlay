@@ -68,7 +68,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
         Name = existing.Name;
         DisabledFlag = existing.Disabled;
-        AfkOnlyFlag = existing.AfkOnly;
 
         switch (existing.TriggerType)
         {
@@ -101,7 +100,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private bool _disabledFlag;
-    [ObservableProperty] private bool _afkOnlyFlag;
 
     // ----- WHEN (trigger) — mutually-exclusive flags managed by XAML radios -----
 
@@ -195,7 +193,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         {
             Name = Name?.Trim() ?? string.Empty,
             Disabled = DisabledFlag,
-            AfkOnly = AfkOnlyFlag,
             TriggerType = SelectedTriggerType(),
             ActionType = SelectedActionType(),
         };

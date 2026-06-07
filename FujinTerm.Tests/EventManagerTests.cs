@@ -33,7 +33,7 @@ public sealed class EventManagerTests
             EveryUnit = EventTimeUnit.Seconds,
             ActionType = EventActionType.Command,
             CommandText = "stat",
-            AfkOnly = true,
+            Disabled = true,
         };
         string json = JsonSerializer.Serialize(original);
         ScheduledEvent? round = JsonSerializer.Deserialize<ScheduledEvent>(json);
@@ -45,8 +45,7 @@ public sealed class EventManagerTests
         Assert.Equal(EventTimeUnit.Seconds, round.EveryUnit);
         Assert.Equal(EventActionType.Command, round.ActionType);
         Assert.Equal("stat", round.CommandText);
-        Assert.True(round.AfkOnly);
-        Assert.False(round.Disabled);
+        Assert.True(round.Disabled);
         Assert.Null(round.AtTime);
         Assert.Null(round.LoopName);
     }

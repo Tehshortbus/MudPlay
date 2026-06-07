@@ -92,7 +92,7 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
         "Events", "Scheduled event", "Lifecycle event",
         "Logon", "Logoff", "Re-log", "At time", "Every",
         "Walk to", "Loop", "Auto-lair", "Command",
-        "AFK only", "Disable all events", "Target missing",
+        "Disable all events", "Target missing",
     };
 
     public EventsSectionViewModel()

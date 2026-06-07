@@ -7,12 +7,6 @@ namespace FujinTerm.Models.Profile;
 /// </summary>
 /// <remarks>
 /// <para>
-/// AFK Mode fields (auto-AFK timer, AFK response message, minimise →
-/// AFK, input cancels AFK) live with this section in the UI but
-/// aren't persisted here yet — their consumer lands in Phase 11.
-/// They'll get their own fields when that phase opens.
-/// </para>
-/// <para>
 /// Per-channel disable rows govern only the three channels
 /// <see cref="Game.Remote.RemoteChannel"/> accepts inbound @-commands
 /// from. Gossip / Auction / Broadcast / Yell are hard-excluded engine-

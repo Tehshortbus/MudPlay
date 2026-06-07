@@ -16,12 +16,6 @@ namespace FujinTerm.ViewModels.Settings;
 /// into the live engine via <see cref="ApplyToServices"/> so changes
 /// take effect without a profile reload.
 /// </summary>
-/// <remarks>
-/// AFK Mode rows (auto-AFK timer, AFK response message, etc.) belong on
-/// this tab visually because they're chat-policy, but their consumer
-/// lands in Phase 11. They render as disabled-stubs alongside the wired
-/// rows below until that phase opens.
-/// </remarks>
 public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Talk";
@@ -38,10 +32,10 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
 
-    public string PhaseTag => "Phase 6 (RemoteCommandManager) + Phase 11 (AFK Mode)";
+    public string PhaseTag => "Phase 6 (RemoteCommandManager)";
 
     public string Description =>
-        "Engine-level policy for inbound @-commands and (Phase 11) AFK Mode. " +
+        "Engine-level policy for inbound @-commands. " +
         "Per-channel disable rows below cover only the three channels the engine ever listens on — Gossip / Auction " +
         "/ Broadcast / Yell are hard-excluded engine-wide and don't need a toggle. " +
         "Per-player permissions live on the Game Data → Players tab; this tab is the master policy layer above them.";
@@ -50,7 +44,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "Talk", "Remote", "@-command", "Disallow", "AFK",
+        "Talk", "Remote", "@-command", "Disallow",
         "telepaths", "gangpaths", "say", "local",
         "failure message", "party commands", "kill switch", "greet",
     };

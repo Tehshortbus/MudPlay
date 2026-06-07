@@ -72,8 +72,7 @@ public sealed class CharacterProfile
     /// on profile load. Trigger types: Logon / Logoff / Re-log /
     /// AtTime / Every. Action types: Walk to / Loop / Auto-lair /
     /// Command (with <c>^M</c> / <c>;</c> multi-fire). Per-event
-    /// Disabled + AfkOnly flags. <c>null</c> means no events
-    /// configured.
+    /// Disabled flag. <c>null</c> means no events configured.
     /// </summary>
     public List<GameData.ScheduledEvent>? Events { get; set; }
 

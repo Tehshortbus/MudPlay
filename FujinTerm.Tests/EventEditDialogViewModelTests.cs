@@ -26,7 +26,7 @@ public sealed class EventEditDialogViewModelTests
             EveryUnit = EventTimeUnit.Seconds,
             ActionType = EventActionType.Command,
             CommandText = "stat",
-            AfkOnly = true,
+            Disabled = true,
         };
 
         EventEditDialogViewModel vm = new(existing, isNew: false);
@@ -37,8 +37,7 @@ public sealed class EventEditDialogViewModelTests
         Assert.Equal(EventTimeUnit.Seconds, vm.EveryUnit);
         Assert.True(vm.IsActionCommand);
         Assert.Equal("stat", vm.CommandText);
-        Assert.True(vm.AfkOnlyFlag);
-        Assert.False(vm.DisabledFlag);
+        Assert.True(vm.DisabledFlag);
     }
 
     [Fact]
