@@ -211,8 +211,9 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         switch (result.ActionType)
         {
             case EventActionType.WalkTo:
-                if (TryResolveWalkTo(out int m, out int r))
-                    result.WalkToTarget = new RoomRef(m, r);
+                WalkToResolution wt = ResolveWalkTo();
+                if (wt.Ok)
+                    result.WalkToTarget = new RoomRef(wt.Map!.Value, wt.Room!.Value);
                 break;
             case EventActionType.Loop:
                 result.LoopName = LoopName;
@@ -237,8 +238,13 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     /// </summary>
     internal string? TryGetMissingTargetMessage()
     {
-        if (IsActionWalkTo && !TryResolveWalkTo(out _, out _))
-            return "No walk-to target selected. Enter a coordinate (e.g. 1/297) or an unambiguous room name.";
+        if (IsActionWalkTo)
+        {
+            WalkToResolution wt = ResolveWalkTo();
+            if (!wt.Ok)
+                return wt.ErrorMessage
+                    ?? "No walk-to target selected. Enter a coordinate (e.g. 1/297) or an unambiguous room name.";
+        }
         if (IsActionLoop && string.IsNullOrWhiteSpace(LoopName))
             return "No loop selected. Pick a saved loop from the dropdown.";
         if (IsActionAutoLair && string.IsNullOrWhiteSpace(AutoLairSetupName))
@@ -329,39 +335,57 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     }
 
     /// <summary>
+    /// Three-state result of resolving <see cref="WalkToText"/>:
+    /// resolved (Map+Room set, no error), unresolved-with-reason
+    /// (ErrorMessage set — no match or ambiguous), or empty
+    /// (everything null — the validator supplies the default
+    /// "No walk-to target selected" message).
+    /// </summary>
+    internal readonly record struct WalkToResolution(int? Map, int? Room, string? ErrorMessage)
+    {
+        public bool Ok => Map is not null && Room is not null;
+    }
+
+    /// <summary>
     /// Resolve <see cref="WalkToText"/> via
     /// <see cref="RoomSearchService"/>. Accepts coord (<c>1/297</c>,
     /// <c>1 297</c>, <c>1,297</c>) directly; for names, requires
     /// exactly one room-name match (room-tier only — monster matches
     /// don't qualify here since walk-to means a destination, not a
-    /// mob).
+    /// mob). Distinguishes no-match vs ambiguous-match in the error
+    /// so the user-facing popup can say the right thing instead of
+    /// blanket "no target selected".
     /// </summary>
-    internal bool TryResolveWalkTo(out int map, out int room)
+    internal WalkToResolution ResolveWalkTo()
     {
-        map = 0; room = 0;
-        if (string.IsNullOrWhiteSpace(WalkToText)) return false;
+        if (string.IsNullOrWhiteSpace(WalkToText)) return new(null, null, null);
 
         // Coord short-circuit — works without a RoomSearchService.
         (int? coordMap, int? coordRoom) = RoomSearchService.TryParseCoordinate(WalkToText);
         if (coordMap is int cm && coordRoom is int cr)
-        {
-            map = cm; room = cr;
-            return true;
-        }
+            return new(cm, cr, null);
 
-        if (_search is null) return false;
+        if (_search is null) return new(null, null, null);
+
+        // Cap chosen large enough to count ambiguity without
+        // truncating it into a false "no match". The old cap=5
+        // would fill on a popular room-name prefix before the
+        // ambiguity could even be observed.
         IReadOnlyList<RoomSearchResult> matches =
-            _search.Search(WalkToText, source: null, cap: 5, includeAcronyms: false);
+            _search.Search(WalkToText, source: null, cap: 50, includeAcronyms: false);
         // Want exactly one ROOM match (MonsterTag null). Monster
         // matches are ignored — the editor's WalkTo is for places,
         // not mob lairs.
         List<RoomSearchResult> rooms = matches
             .Where(mm => mm.MonsterTag is null && !mm.IsInformational)
             .ToList();
-        if (rooms.Count != 1) return false;
-        map = rooms[0].Key.Map;
-        room = rooms[0].Key.Room;
-        return true;
+        if (rooms.Count == 0)
+            return new(null, null,
+                $"No room matches '{WalkToText}'. Try a coordinate (e.g. 1/297) or a more specific name.");
+        if (rooms.Count > 1)
+            return new(null, null,
+                $"'{WalkToText}' matches {rooms.Count} rooms — be more specific or use a coordinate (e.g. 1/297).");
+        return new(rooms[0].Key.Map, rooms[0].Key.Room, null);
     }
 
     private static bool LooksLikeHHmm(string s) =>
