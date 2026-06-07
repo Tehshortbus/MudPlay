@@ -95,8 +95,22 @@ public sealed class LogService
 
     /// <summary>Append an entry. Stamps <see cref="LogEntry.Timestamp"/> at call time.</summary>
     public void Log(LogSeverity severity, string source, string message)
+        => Log(severity, source, message, context: null);
+
+    /// <summary>
+    /// Append an entry with an optional <paramref name="context"/> payload —
+    /// the raw wire line (or producer-supplied string) that the LogPane's
+    /// double-click handler copies to the clipboard. See
+    /// <see cref="LogEntry.Context"/> for the convention.
+    /// </summary>
+    public void Log(LogSeverity severity, string source, string message, string? context)
     {
-        LogEntry entry = new(DateTimeOffset.Now, severity, source ?? string.Empty, message ?? string.Empty);
+        LogEntry entry = new(
+            DateTimeOffset.Now,
+            severity,
+            source ?? string.Empty,
+            message ?? string.Empty,
+            context);
 
         lock (_gate)
         {
@@ -152,4 +166,26 @@ public sealed class LogService
     public void Error(string source, string message)   => Log(LogSeverity.Error,   source, message);
     public void GameMsg(string source, string message) => Log(LogSeverity.GameMsg, source, message);
     public void Cmd(string source, string message)     => Log(LogSeverity.Cmd,     source, message);
+
+    // ----- Convenience shorthands with context payload ----------------
+    // The Warn / Debug paths are the only ones that actually need it
+    // today (Phase 9 RoomClassifier emits Warn rows with the raw "Also
+    // Here" line carried in Context). Other severities can grow their
+    // own overload when a producer wants one.
+
+    /// <summary>
+    /// Append a <see cref="LogSeverity.Warn"/> entry with a
+    /// <see cref="LogEntry.Context"/> payload that the LogPane's
+    /// double-click handler copies to the clipboard. Phase 9
+    /// <c>RoomClassifier</c> uses this for Unknown-entity rows.
+    /// </summary>
+    public void Warn(string source, string message, string? context)
+        => Log(LogSeverity.Warn, source, message, context);
+
+    /// <summary>
+    /// Append a <see cref="LogSeverity.Debug"/> entry with a
+    /// <see cref="LogEntry.Context"/> payload.
+    /// </summary>
+    public void Debug(string source, string message, string? context)
+        => Log(LogSeverity.Debug, source, message, context);
 }

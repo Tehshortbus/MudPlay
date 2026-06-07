@@ -37,11 +37,23 @@
                               Foreground="{StaticResource SeverityCmdBrush}" FontSize="11"/>
                 </StackPanel>
 
-                <CheckBox Grid.Column="1" Margin="14,0,0,0"
-                          IsChecked="{Binding AutoScroll}"
-                          Content="Auto-scroll"
-                          Foreground="{StaticResource ChromeFgSecBrush}"
-                          FontSize="11"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                            VerticalAlignment="Center" Margin="14,0,0,0">
+                    <!-- Phase 9 Cross-cut 3: one-click preset filter narrowing
+                         the displayed rows to the combat-engine source
+                         categories (Combat, CombatGate, Casting, etc.). Off
+                         by default. -->
+                    <CheckBox IsChecked="{Binding CombatPreset}"
+                              Content="Combat preset"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"
+                              ToolTip.Tip="When checked: show only rows from the Phase 9 combat-engine source categories (Combat / CombatGate / RoomClassifier / Health / HealthGate / Casting / CastSend / Round / Gate)."/>
+
+                    <CheckBox IsChecked="{Binding AutoScroll}"
+                              Content="Auto-scroll"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"/>
+                </StackPanel>
 
                 <TextBox Grid.Column="3" MinWidth="220"
                          PlaceholderText="Search source / message…"

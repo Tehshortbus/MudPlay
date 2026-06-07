@@ -40,6 +40,30 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _searchText = string.Empty;
 
     /// <summary>
+    /// One-click "Combat preset" — when on, filters the displayed rows to the
+    /// Phase 9 combat-engine source categories
+    /// (<see cref="CombatPresetSources"/>). When off, every source passes.
+    /// Defaults off so the normal multi-subsystem view is unchanged.
+    /// </summary>
+    [ObservableProperty] private bool _combatPreset;
+
+    /// <summary>
+    /// Source-name set that <see cref="CombatPreset"/> filters to. Sourced
+    /// from <c>docs/10-phase-9-automation-engines.md</c> § Cross-cut 3
+    /// — the categories Phase 9 engines emit under. Match is
+    /// ordinal case-insensitive (the producer's tag wins; the preset
+    /// doesn't care which case the engine chose).
+    /// </summary>
+    public static IReadOnlySet<string> CombatPresetSources { get; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Combat", "CombatGate", "RoomClassifier",
+            "Health", "HealthGate",
+            "Casting", "CastSend",
+            "Round", "Gate",
+        };
+
+    /// <summary>
     /// When true, every appended row scrolls the list to the bottom. The
     /// XAML hooks the actual scroll-into-view call; this flag gates it.
     /// </summary>
@@ -79,6 +103,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     partial void OnShowGameMsgChanged(bool value) => Rebuild();
     partial void OnShowCmdChanged(bool value)     => Rebuild();
     partial void OnSearchTextChanged(string value) => Rebuild();
+    partial void OnCombatPresetChanged(bool value) => Rebuild();
 
     /// <summary>Recompute <see cref="Rows"/> from the live log snapshot.</summary>
     private void Rebuild()
@@ -95,6 +120,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     private bool Passes(LogEntry entry)
     {
         if (!SeverityAllowed(entry.Severity)) return false;
+        if (CombatPreset && !CombatPresetSources.Contains(entry.Source)) return false;
         if (string.IsNullOrEmpty(SearchText)) return true;
 
         return entry.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase)

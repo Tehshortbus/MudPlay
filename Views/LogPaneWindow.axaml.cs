@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.VisualTree;
@@ -67,11 +68,19 @@ public partial class LogPaneWindow : Window
 
     /// <summary>
     /// Find the LogPaneRowViewModel under the tapped point (walks up
-    /// the visual tree from the event source) and dispatch via
-    /// <see cref="FujinTerm.Services.LogService.TryInvokeDetailHandler"/>.
-    /// No registered handler ⇒ no-op (same behaviour as today for
-    /// every existing entry — only opt-in sources get a detail
-    /// surface).
+    /// the visual tree from the event source) and react:
+    /// <list type="number">
+    /// <item>If the entry carries a <see cref="FujinTerm.Services.LogEntry.Context"/>
+    /// payload (Phase 9 RoomClassifier emits these on Unknown rows with
+    /// the raw "Also Here" line), copy the context to the clipboard so
+    /// the user can immediately paste into a fix dialog. The transient
+    /// confirmation goes to the LogService at Info severity.</item>
+    /// <item>Dispatch via
+    /// <see cref="FujinTerm.Services.LogService.TryInvokeDetailHandler"/>
+    /// — opens the source-specific detail window when one is registered
+    /// (e.g. SpellCoverageAuditor, Phase 9 sub-G fix dialog).</item>
+    /// </list>
+    /// Either path can no-op without affecting the other.
     /// </summary>
     private void OnRowDoubleTapped(object? sender, RoutedEventArgs e)
     {
@@ -82,11 +91,48 @@ public partial class LogPaneWindow : Window
         {
             if (cur is Control c && c.DataContext is LogPaneRowViewModel row)
             {
+                if (row.Entry.Context is { Length: > 0 } ctx)
+                    CopyContextToClipboard(ctx);
                 FujinTerm.Services.AppServices.Current.Log
                     .TryInvokeDetailHandler(row.Entry.Source);
                 return;
             }
             cur = cur.GetVisualParent();
+        }
+    }
+
+    /// <summary>
+    /// Push <paramref name="text"/> to the top-level window's clipboard
+    /// asynchronously and surface a one-line Info-severity confirmation
+    /// in the LogPane so the user sees the copy happened. Clipboard
+    /// failures are surfaced as Warn — usually a sandboxed environment
+    /// or a missing top-level (the latter shouldn't happen since we're
+    /// running inside one).
+    /// </summary>
+    private void CopyContextToClipboard(string text)
+    {
+        TopLevel? top = TopLevel.GetTopLevel(this);
+        if (top?.Clipboard is not { } cb)
+        {
+            FujinTerm.Services.AppServices.Current.Log.Warn("LogPane",
+                "Clipboard unavailable; context not copied.");
+            return;
+        }
+        _ = CopyAsync(cb, text);
+    }
+
+    private static async Task CopyAsync(Avalonia.Input.Platform.IClipboard cb, string text)
+    {
+        try
+        {
+            await cb.SetTextAsync(text).ConfigureAwait(false);
+            FujinTerm.Services.AppServices.Current.Log.Info("LogPane",
+                "Copied context to clipboard.");
+        }
+        catch (Exception ex)
+        {
+            FujinTerm.Services.AppServices.Current.Log.Warn("LogPane",
+                $"Clipboard copy failed: {ex.Message}");
         }
     }
 
