@@ -607,6 +607,14 @@ public sealed class AppServices
     public Game.Spells.CastCoordinator Cast { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.D — unified self+party heal / cure / buff
+    /// decision engine. Sits on top of <see cref="Cast"/> and decides
+    /// which spell (if any) to issue based on HP / MA / ailment state
+    /// + the user's Spells + Health tab thresholds.
+    /// </summary>
+    public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1403,6 +1411,18 @@ public sealed class AppServices
         // TickEngine.CombatTickElapsed so the next round can cast.
         Cast = new Game.Spells.CastCoordinator(Router, Log);
         Tick.CombatTickElapsed += Cast.OnCombatTick;
+
+        // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
+        // decides which heal / cure / buff (if any) to issue based on
+        // PlayerState + Spells/Health settings. AutoHealRest gates
+        // the engine (shared toggle with HealthManager's passive rest).
+        CastDirector = new Game.Spells.CastingDirector(
+            PlayerState, Cast,
+            readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
+            readHealth: () => ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            log: Log);
+        Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
