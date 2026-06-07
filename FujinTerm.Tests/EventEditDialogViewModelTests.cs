@@ -102,16 +102,16 @@ public sealed class EventEditDialogViewModelTests
     }
 
     [Fact]
-    public void CanSave_Command_RequiresNonEmptyText()
+    public void CanSave_Command_AllowsEmptyText_TreatedAsBareCR()
     {
+        // Empty CommandText is intentional now — Fire sends a bare
+        // CR (useful for MOTD pagination + single-Enter prompts).
         EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
         {
             IsTriggerLogon = true,
             IsActionCommand = true,
             CommandText = "",
         };
-        Assert.False(vm.CanSave);
-        vm.CommandText = "stat";
         Assert.True(vm.CanSave);
     }
 

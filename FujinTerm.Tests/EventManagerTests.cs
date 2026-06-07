@@ -223,7 +223,7 @@ public sealed class EventManagerTests
     }
 
     [Fact]
-    public void Fire_EmptyCommandText_DoesNothing()
+    public void Fire_EmptyCommandText_SendsBareCarriageReturn()
     {
         EventManager mgr = new();
         List<byte[]> sent = new();
@@ -232,7 +232,9 @@ public sealed class EventManagerTests
         mgr.Fire(new ScheduledEvent { ActionType = EventActionType.Command, CommandText = "" });
         mgr.Fire(new ScheduledEvent { ActionType = EventActionType.Command, CommandText = null });
 
-        Assert.Empty(sent);
+        Assert.Equal(2, sent.Count);
+        Assert.Equal("\r", Encoding.Latin1.GetString(sent[0]));
+        Assert.Equal("\r", Encoding.Latin1.GetString(sent[1]));
     }
 
     // ----- CharacterProfile integration ---------------------------

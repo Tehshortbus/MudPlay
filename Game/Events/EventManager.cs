@@ -270,7 +270,14 @@ public sealed class EventManager
 
     private void ExecuteCommand(ScheduledEvent e)
     {
-        if (string.IsNullOrEmpty(e.CommandText)) return;
+        // Empty CommandText is a valid Command action — fires a bare
+        // CR. Useful for MOTD pagination + similar single-Enter
+        // prompts. WireSender.Send("") encodes to just "\r".
+        if (string.IsNullOrEmpty(e.CommandText))
+        {
+            _wire.Send(string.Empty);
+            return;
+        }
         foreach (string chunk in SplitCommand(e.CommandText))
         {
             if (chunk.Length == 0) continue;

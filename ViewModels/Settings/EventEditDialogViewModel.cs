@@ -169,13 +169,8 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     /// <summary>Saved auto-lair setups for the AutoLair action.</summary>
     public ObservableCollection<string> AvailableAutoLairNames { get; } = new();
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CommandError))]
-    private bool _isActionCommand;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CommandError))]
-    private string _commandText = string.Empty;
+    [ObservableProperty] private bool _isActionCommand;
+    [ObservableProperty] private string _commandText = string.Empty;
 
     public string WalkToError
     {
@@ -195,25 +190,23 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
             ? "Pick a saved auto-lair setup."
             : string.Empty;
 
-    public string CommandError =>
-        IsActionCommand && string.IsNullOrWhiteSpace(CommandText)
-            ? "Enter a command."
-            : string.Empty;
-
+    /// <summary>
+    /// Command never errors at edit time: an empty CommandText is a
+    /// valid event whose Fire sends a bare carriage return (useful for
+    /// MOTD pagination and similar single-CR prompts).
+    /// </summary>
     public bool HasAtTimeError   => AtTimeError.Length   > 0;
     public bool HasEveryError    => EveryError.Length    > 0;
     public bool HasWalkToError   => WalkToError.Length   > 0;
     public bool HasLoopError     => LoopError.Length     > 0;
     public bool HasAutoLairError => AutoLairError.Length > 0;
-    public bool HasCommandError  => CommandError.Length  > 0;
 
     public bool CanSave =>
         AtTimeError.Length == 0
         && EveryError.Length == 0
         && WalkToError.Length == 0
         && LoopError.Length == 0
-        && AutoLairError.Length == 0
-        && CommandError.Length == 0;
+        && AutoLairError.Length == 0;
 
     // ----- Save / Cancel ----------------------------------------------
 
@@ -320,7 +313,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     }
     partial void OnLoopNameChanged(string? value)       => OnPropertyChanged(nameof(LoopError));
     partial void OnAutoLairSetupNameChanged(string? value) => OnPropertyChanged(nameof(AutoLairError));
-    partial void OnCommandTextChanged(string value)     => OnPropertyChanged(nameof(CommandError));
     partial void OnWalkToTextChanged(string value)      => OnPropertyChanged(nameof(WalkToError));
     partial void OnAtTimeChanged(string value)          => OnPropertyChanged(nameof(AtTimeError));
     partial void OnEveryAmountChanged(int value)        => OnPropertyChanged(nameof(EveryError));
@@ -332,13 +324,11 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         OnPropertyChanged(nameof(WalkToError));
         OnPropertyChanged(nameof(LoopError));
         OnPropertyChanged(nameof(AutoLairError));
-        OnPropertyChanged(nameof(CommandError));
         OnPropertyChanged(nameof(HasAtTimeError));
         OnPropertyChanged(nameof(HasEveryError));
         OnPropertyChanged(nameof(HasWalkToError));
         OnPropertyChanged(nameof(HasLoopError));
         OnPropertyChanged(nameof(HasAutoLairError));
-        OnPropertyChanged(nameof(HasCommandError));
         OnPropertyChanged(nameof(CanSave));
     }
 
