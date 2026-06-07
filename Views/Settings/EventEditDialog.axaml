@@ -63,15 +63,26 @@
                 <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
                            Classes="SectionHeader" Text="WHEN (trigger)"/>
 
-                <RadioButton Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
-                             Classes="Row" GroupName="When" Content="Logon"
+                <RadioButton Grid.Row="1" Grid.Column="0" Classes="Row"
+                             GroupName="When" Content="Logon"
                              IsChecked="{Binding IsTriggerLogon, Mode=TwoWay}"/>
-                <RadioButton Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4"
-                             Classes="Row" GroupName="When" Content="Logoff"
+                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                           Classes="Hint" Text="(every game entry)"
+                           VerticalAlignment="Center"/>
+
+                <RadioButton Grid.Row="2" Grid.Column="0" Classes="Row"
+                             GroupName="When" Content="Logoff"
                              IsChecked="{Binding IsTriggerLogoff, Mode=TwoWay}"/>
-                <RadioButton Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="4"
-                             Classes="Row" GroupName="When" Content="Re-log"
+                <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
+                           Classes="Hint" Text="(when BBS announces shutdown)"
+                           VerticalAlignment="Center"/>
+
+                <RadioButton Grid.Row="3" Grid.Column="0" Classes="Row"
+                             GroupName="When" Content="Re-log"
                              IsChecked="{Binding IsTriggerRelog, Mode=TwoWay}"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+                           Classes="Hint" Text="(reconnects only, never first connect)"
+                           VerticalAlignment="Center"/>
 
                 <RadioButton Grid.Row="4" Grid.Column="0" Classes="Row"
                              GroupName="When" Content="At time"
@@ -83,7 +94,7 @@
                          HorizontalAlignment="Stretch"
                          Margin="0,0,8,0"/>
                 <TextBlock Grid.Row="4" Grid.Column="2" Classes="Hint"
-                           Text="wall-clock local"
+                           Text="system time"
                            VerticalAlignment="Center"/>
                 <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
                            Classes="Error"
@@ -162,7 +173,7 @@
                              AcceptsReturn="False"
                              PlaceholderText="stat; who; abil 145^M (empty = bare CR)" />
                     <TextBlock Classes="Hint"
-                               Text="Supports ^M and ; for multi-fire; leave empty to fire a bare carriage return."/>
+                               Text="Supports ^M and ; for multi-fire; empty = carriage return"/>
                 </StackPanel>
             </Grid>
 
