@@ -527,6 +527,22 @@ public sealed class AppServices
     public MonsterMessageStore MonsterMessages { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.0b — turns the wire's <c>Also here:</c> line into
+    /// a classified Player / Monster / Unknown list. Feeds
+    /// <see cref="CombatTracker"/>'s gate decisions and the LogPane's
+    /// unknown-entity click-to-fix dialog.
+    /// </summary>
+    public Game.Combat.RoomEntityClassifier RoomClassifier { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.0b — owns <see cref="PlayerState.InCombat"/> and
+    /// the <see cref="Game.Map.MovementCoordinator.CombatGate"/> hold
+    /// state. Cleared automatically when the room is free of
+    /// engageable monsters.
+    /// </summary>
+    public Game.Combat.CombatStateTracker CombatTracker { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1186,6 +1202,28 @@ public sealed class AppServices
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
+
+        // Phase 9 PR 9.0b — RoomEntityClassifier + CombatStateTracker.
+        // Classifier subscribes to RoomAlsoHere; tracker subscribes to
+        // classifier output + combat-status / damage patterns to drive
+        // PlayerState.InCombat + the MovementCoordinator.CombatGate.
+        //
+        // CombatStateTracker's master switch reads
+        // CombatSettings.MasterAutoAttackEnabled from the live profile
+        // via the existing ReadSection helper. When the user toggles
+        // the setting in Settings → Combat, the next classifier emit
+        // re-evaluates against the new value (no event subscription
+        // needed — the delegate is queried on every Also-Here line).
+        RoomClassifier = new Game.Combat.RoomEntityClassifier(
+            Router, MonsterMessages, Players, Log);
+        CombatTracker = new Game.Combat.CombatStateTracker(
+            Router, MovementCoordinator, RoomClassifier, MonsterMessages,
+            PlayerState,
+            isAutoAttackEnabled: () =>
+                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat")
+                    .MasterAutoAttackEnabled,
+            log: Log);
+
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner, recovery: Recovery);

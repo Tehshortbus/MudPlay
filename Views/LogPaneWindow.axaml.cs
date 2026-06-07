@@ -93,8 +93,15 @@ public partial class LogPaneWindow : Window
             {
                 if (row.Entry.Context is { Length: > 0 } ctx)
                     CopyContextToClipboard(ctx);
-                FujinTerm.Services.AppServices.Current.Log
-                    .TryInvokeDetailHandler(row.Entry.Source);
+                // Both registration styles fire when both are present —
+                // SpellCoverageAuditor's no-arg handler + the Phase 9
+                // RoomClassifier's entry-aware handler use different
+                // sources today, but a future producer could register
+                // both for the same Source without losing either.
+                FujinTerm.Services.LogService logSvc =
+                    FujinTerm.Services.AppServices.Current.Log;
+                logSvc.TryInvokeDetailHandler(row.Entry.Source);
+                logSvc.TryInvokeDetailHandler(row.Entry);
                 return;
             }
             cur = cur.GetVisualParent();

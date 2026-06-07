@@ -46,12 +46,14 @@ public sealed class LogService
     /// entry's Source tag).
     /// </summary>
     private readonly Dictionary<string, Action> _detailHandlers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Action<LogEntry>> _entryHandlers = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Register a double-click handler for entries whose
+    /// Register a no-arg double-click handler for entries whose
     /// <see cref="LogEntry.Source"/> matches <paramref name="source"/>.
     /// Replaces any prior handler for that source (last one wins).
-    /// Idempotent at startup time.
+    /// Idempotent at startup time. Use when the handler doesn't need
+    /// the row's payload (e.g. opens a singleton detail window).
     /// </summary>
     public void RegisterDetailHandler(string source, Action handler)
     {
@@ -61,9 +63,23 @@ public sealed class LogService
     }
 
     /// <summary>
-    /// Invoke the detail handler for <paramref name="source"/>, or
-    /// return <c>false</c> if no handler is registered. The LogPane's
-    /// double-click handler is the only caller today.
+    /// Register an entry-aware double-click handler. Used when the
+    /// handler needs the row's <see cref="LogEntry.Context"/> or
+    /// <see cref="LogEntry.Message"/> — e.g. the Phase 9 RoomClassifier
+    /// unknown-entity fix dialog, which reads the raw "Also Here:"
+    /// line from Context and parses the unknown name out of Message.
+    /// Coexists with the no-arg variant; both fire on double-click.
+    /// </summary>
+    public void RegisterDetailHandler(string source, Action<LogEntry> handler)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+        ArgumentNullException.ThrowIfNull(handler);
+        lock (_entryHandlers) { _entryHandlers[source] = handler; }
+    }
+
+    /// <summary>
+    /// Invoke the no-arg detail handler for <paramref name="source"/>,
+    /// or return <c>false</c> if no handler is registered.
     /// </summary>
     public bool TryInvokeDetailHandler(string source)
     {
@@ -74,6 +90,25 @@ public sealed class LogService
             if (!_detailHandlers.TryGetValue(source, out handler)) return false;
         }
         handler();
+        return true;
+    }
+
+    /// <summary>
+    /// Invoke the entry-aware detail handler for
+    /// <paramref name="entry"/>'s source, or return <c>false</c> if no
+    /// entry-aware handler is registered. The LogPane fires both this
+    /// AND the no-arg overload on double-click so the two registration
+    /// styles can coexist.
+    /// </summary>
+    public bool TryInvokeDetailHandler(LogEntry entry)
+    {
+        if (string.IsNullOrEmpty(entry.Source)) return false;
+        Action<LogEntry>? handler;
+        lock (_entryHandlers)
+        {
+            if (!_entryHandlers.TryGetValue(entry.Source, out handler)) return false;
+        }
+        handler(entry);
         return true;
     }
 

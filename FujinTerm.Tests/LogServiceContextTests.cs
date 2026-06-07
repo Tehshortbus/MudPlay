@@ -77,6 +77,51 @@ public sealed class LogServiceContextTests
     }
 
     [Fact]
+    public void RegisterDetailHandler_EntryAware_InvokesWithPayload()
+    {
+        LogService log = new();
+        LogEntry? observed = null;
+        log.RegisterDetailHandler("RoomClassifier",
+            (LogEntry e) => observed = e);
+
+        LogEntry trigger = new(DateTimeOffset.Now, LogSeverity.Warn,
+            "RoomClassifier", "unknown 'foozle'", "Also here: foozle.");
+        bool fired = log.TryInvokeDetailHandler(trigger);
+
+        Assert.True(fired);
+        Assert.NotNull(observed);
+        Assert.Equal("Also here: foozle.", observed!.Value.Context);
+        Assert.Equal("unknown 'foozle'", observed.Value.Message);
+    }
+
+    [Fact]
+    public void EntryAware_And_NoArg_Handlers_CoexistOnSameSource()
+    {
+        // Two registration styles, same source. The LogPane fires both
+        // — neither implementation should clobber the other's slot.
+        LogService log = new();
+        bool noArgFired = false;
+        bool entryFired = false;
+        log.RegisterDetailHandler("X", () => noArgFired = true);
+        log.RegisterDetailHandler("X", (LogEntry _) => entryFired = true);
+
+        LogEntry trigger = new(DateTimeOffset.Now, LogSeverity.Info, "X", "");
+        log.TryInvokeDetailHandler("X");
+        log.TryInvokeDetailHandler(trigger);
+
+        Assert.True(noArgFired);
+        Assert.True(entryFired);
+    }
+
+    [Fact]
+    public void TryInvokeDetailHandler_Entry_NoHandlerRegistered_ReturnsFalse()
+    {
+        LogService log = new();
+        LogEntry trigger = new(DateTimeOffset.Now, LogSeverity.Info, "Unknown", "");
+        Assert.False(log.TryInvokeDetailHandler(trigger));
+    }
+
+    [Fact]
     public void LogService_Snapshot_PreservesContext()
     {
         LogService log = new();

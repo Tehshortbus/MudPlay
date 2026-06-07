@@ -209,8 +209,78 @@ public partial class App : Application
                     coverageWindow.Closed += (_, _) => coverageWindow = null;
                     coverageWindow.Show(desktop.MainWindow!);
                 });
+
+            // Phase 9 PR 9.0b sub-D — RoomClassifier unknown-entity
+            // click-to-fix. The classifier emits Warn rows with the
+            // raw "Also Here:" line carried as LogEntry.Context and the
+            // unknown name quoted in the Message. Double-click on such
+            // a row opens the fix dialog. The dialog returns Add-as-
+            // flavor-prefix / Add-as-player-observation / Cancel; the
+            // handler commits the latter directly via PlayerDatabase.
+            // The former just logs the intent for now — picking the
+            // target monster needs a UI affordance (search + selection)
+            // beyond the 9.0b foundation scope.
+            AppServices.Current.Log.RegisterDetailHandler(
+                FujinTerm.Game.Combat.RoomEntityClassifier.LogCategory,
+                async (entry) =>
+                {
+                    if (entry.Context is not { Length: > 0 } rawLine) return;
+                    string unknownName = ParseUnknownNameFromMessage(entry.Message);
+                    if (unknownName.Length == 0) return;
+
+                    var vm = new FujinTerm.ViewModels.UnknownEntityFixDialogViewModel(
+                        rawLine, unknownName);
+                    FujinTerm.ViewModels.UnknownEntityFixResult? result =
+                        await AppServices.Current.Dialogs
+                            .OpenWindowAsync<
+                                FujinTerm.ViewModels.UnknownEntityFixDialogViewModel,
+                                FujinTerm.ViewModels.UnknownEntityFixResult?>(vm);
+                    if (result is null) return;
+
+                    switch (result.Action)
+                    {
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddPlayerObservation:
+                            if (AppServices.Current.Players.AddManual(
+                                    result.EntityName, familyName: string.Empty,
+                                    nowUtc: DateTime.UtcNow))
+                            {
+                                AppServices.Current.Log.Info("RoomClassifier",
+                                    $"Added player observation: {result.EntityName}");
+                            }
+                            else
+                            {
+                                AppServices.Current.Log.Warn("RoomClassifier",
+                                    $"Player observation for '{result.EntityName}' already exists.");
+                            }
+                            break;
+
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddFlavorPrefix:
+                            // Future PR: open a monster picker, then attach
+                            // the prefix to the selected MonsterMessageRecord.
+                            AppServices.Current.Log.Info("RoomClassifier",
+                                $"Flavor-prefix add for '{result.EntityName}' " +
+                                "queued — monster-picker UI ships in a follow-up PR.");
+                            break;
+                    }
+                });
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Extract the single-quoted name from a RoomClassifier Warn message
+    /// of the form <c>"unknown entity 'foozle' — double-click to fix"</c>.
+    /// Returns empty when the message doesn't carry a quoted name —
+    /// caller treats that as "nothing to fix".
+    /// </summary>
+    private static string ParseUnknownNameFromMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return string.Empty;
+        int open = message.IndexOf('\'');
+        if (open < 0) return string.Empty;
+        int close = message.IndexOf('\'', open + 1);
+        if (close <= open) return string.Empty;
+        return message.Substring(open + 1, close - open - 1);
     }
 }
