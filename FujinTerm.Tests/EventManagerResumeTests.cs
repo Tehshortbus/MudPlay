@@ -89,6 +89,11 @@ public sealed class EventManagerResumeTests : IDisposable
         LairTimerStore timers = new(cache, graph, tracker);
         AutoLairManager autoLair = new(walker, tracker, graph, bfs, timers);
         LoopManager loops = new(bfs, graph);
+        // LoopManager.Save no-ops unless a BBS context is set. Tests
+        // that want to add a saved loop need this; LoadAll("") seeds
+        // an empty in-memory collection bound to the BBS name without
+        // touching disk (no folder exists for the test guid).
+        loops.LoadAll("resume-test");
         LairManager lairs = new();
 
         // EventManager via its full-engine ctor — parameterless ctor
@@ -336,21 +341,45 @@ public sealed class EventManagerResumeTests : IDisposable
     }
 
     [Fact]
-    public void OnResume_Stopped_FromSecondaryEngine_DropsPlan()
+    public void OnResume_Stopped_DirectFire_DropsPlan()
     {
-        // Direct-fire equivalent of "Loop event fires mid-walk-to" —
-        // the production path runs walker.Stop("event supersede")
-        // which raises Stopped to our watcher. Here we just synthesise
-        // the Stopped event directly so the assertion targets the
-        // watcher contract (drop plan + unhook) without depending on
-        // the inter-engine call graph that's already exercised in the
-        // Cascade + Fire_WalkToEvent tests above.
+        // Synthesised Stopped — pure watcher-contract test.
         using Harness h = NewHarness();
         h.Events.PendingResumeForTests =
             new EventManager.EventResumePlan.Loop(
                 new Loop("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
 
         h.Events.OnResumeWalkEvent(new WalkEvent(WalkEventKind.Stopped, "event supersede", null));
+
+        Assert.Null(h.Events.PendingResumeForTests);
+    }
+
+    [Fact]
+    public void Fire_LoopEvent_AfterWalkToInFlight_DropsResumePlan()
+    {
+        // End-to-end: the Loop event's walker.Stop("event supersede")
+        // call should raise Stopped to our resume watcher, which then
+        // drops the plan. This catches breakage in the inter-engine
+        // call graph (ExecuteLoop's Stop ordering, walker event
+        // subscription, etc.) that the direct-fire test above can't.
+        using Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Loop loop = new("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) });
+        h.Runner.Start(loop);
+        h.Loops.Save(new Loop("xy", new[] { new RoomKey(1, 2), new RoomKey(1, 3) }));
+
+        h.Events.Fire(WalkToEvent(1, 3));
+        Assert.NotNull(h.Events.PendingResumeForTests);
+        Assert.Equal(WalkState.Walking, h.Walker.State);  // event-walk in flight.
+
+        ScheduledEvent loopEvent = new()
+        {
+            Name = "switch",
+            TriggerType = EventTriggerType.Logon,
+            ActionType = EventActionType.Loop,
+            LoopName = "xy",
+        };
+        h.Events.Fire(loopEvent);
 
         Assert.Null(h.Events.PendingResumeForTests);
     }
