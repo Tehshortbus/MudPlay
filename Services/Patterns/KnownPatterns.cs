@@ -107,6 +107,14 @@ public static class KnownPatterns
     /// confirmation.</summary>
     public const string CashDropped         = "cash.dropped";
 
+    /// <summary>"You hid N &lt;coin&gt; pieces." — stash-room
+    /// confirmation. Wire shape distinct from <see cref="CashDropped"/>
+    /// because the <c>hide</c> command is the stash-room verb in stock
+    /// MajorMUD. Without this, the held-coin tally goes stale after a
+    /// stash and the auto-deposit threshold fires on phantom wealth.
+    /// Lifted from MudProxy <c>CombatSessionTracker.cs:503-505</c>.</summary>
+    public const string CashHidden          = "cash.hidden";
+
     /// <summary>
     /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
     /// from &lt;direction&gt;." Fires when a monster spawns OR a

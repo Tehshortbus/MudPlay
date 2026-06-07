@@ -78,6 +78,7 @@ public sealed class CashManager : IDisposable
     private readonly IDisposable _groundSub;
     private readonly IDisposable _pickedUpSub;
     private readonly IDisposable _droppedSub;
+    private readonly IDisposable _hiddenSub;
 
     private Action<byte[]>? _wireSender;
     private readonly Dictionary<string, long> _held = new(StringComparer.OrdinalIgnoreCase);
@@ -111,6 +112,14 @@ public sealed class CashManager : IDisposable
         _groundSub   = router.Subscribe(KnownPatterns.CashOnGround,  OnCashOnGround);
         _pickedUpSub = router.Subscribe(KnownPatterns.CashPickedUp,  OnCashPickedUp);
         _droppedSub  = router.Subscribe(KnownPatterns.CashDropped,   OnCashDropped);
+        // `hide N <coin>` is the stash-room verb — same tally semantics
+        // as drop. Without this subscription, stashing decrements only
+        // via item-hide (UserHides) which isn't currency-aware; the
+        // held tally would go stale and AutoDeposit would misfire on
+        // phantom wealth. Note for future inventory subsystem: its
+        // UserHides handler must skip currency-shape item text so we
+        // don't double-decrement here vs. there.
+        _hiddenSub   = router.Subscribe(KnownPatterns.CashHidden,    OnCashHidden);
     }
 
     /// <summary>Bind the wire sender — typically the gate-wrapped
@@ -153,6 +162,22 @@ public sealed class CashManager : IDisposable
     {
         _held.Clear();
         _autoDepositFiredThisCrossing = false;
+    }
+
+    /// <summary>
+    /// Re-evaluate state after a settings edit. Call this when the
+    /// user changes a per-currency policy (e.g. flips Collect to
+    /// Discard) or the auto-deposit threshold so the engine reacts
+    /// immediately instead of waiting for the next CashPickedUp /
+    /// CashOnGround line. Mirrors MudProxy's
+    /// <c>CashManager.OnSettingsChanged</c> (CashManager.cs:479-497).
+    /// </summary>
+    public void OnSettingsChanged()
+    {
+        _log?.Debug(LogCategory, "settings changed — re-evaluating auto-deposit");
+        CheckAutoDeposit();
+        // Future: when Discard auto-drop lands, walk _held here and
+        // emit drops for any Discard-flagged currency we still hold.
     }
 
     // ----- handlers ----------------------------------------------------
@@ -199,6 +224,22 @@ public sealed class CashManager : IDisposable
         (string? currency, int count) = ParseCashLine(m);
         if (currency is null) return;
 
+        AdjustHeld(currency, -count);
+        CheckAutoDeposit();
+    }
+
+    /// <summary>
+    /// Stash-room confirmation handler — tally identically to drop.
+    /// The <c>hide</c> wire shape is what stash-room visits use to
+    /// dump excess coin / items; without this the auto-deposit
+    /// threshold drifts stale after a stash run.
+    /// </summary>
+    private void OnCashHidden(MatchResult m)
+    {
+        (string? currency, int count) = ParseCashLine(m);
+        if (currency is null) return;
+
+        _log?.Debug(LogCategory, $"hidden currency={currency} count={count}");
         AdjustHeld(currency, -count);
         CheckAutoDeposit();
     }
@@ -287,5 +328,6 @@ public sealed class CashManager : IDisposable
         _groundSub.Dispose();
         _pickedUpSub.Dispose();
         _droppedSub.Dispose();
+        _hiddenSub.Dispose();
     }
 }

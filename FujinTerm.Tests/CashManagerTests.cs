@@ -225,4 +225,66 @@ public sealed class CashManagerTests
         Assert.Equal(0, h.Cash.HeldCoin("gold"));
         Assert.Equal(0, h.Cash.HeldGoldEquivalent);
     }
+
+    // ----- stash-room foundation (hide pattern) ----------------------
+
+    [Fact]
+    public void Hidden_DecrementsHeldCoin()
+    {
+        // Stash room visits run `hide N <coin>` — server replies
+        // "You hid N <coin> pieces.". Without subscribing here the
+        // held tally goes stale and AutoDeposit misfires.
+        using Harness h = new();
+        h.Feed("You picked up 50 gold pieces.");
+        h.Feed("You hid 30 gold pieces.");
+
+        Assert.Equal(20, h.Cash.HeldCoin("gold"));
+    }
+
+    [Fact]
+    public void Hidden_Singular_DecrementsByOne()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 5 gold pieces.");
+        h.Feed("You hid a gold piece.");
+
+        Assert.Equal(4, h.Cash.HeldCoin("gold"));
+    }
+
+    [Fact]
+    public void Hidden_TriggersAutoDepositReArm()
+    {
+        // Wealth crossed threshold, fires deposit. Then we hide
+        // enough coin to drop back under — next pickup that crosses
+        // again should re-fire.
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+
+        h.Feed("You picked up 150 gold pieces.");
+        Assert.Single(h.AutoDeposits);
+
+        h.Feed("You hid 100 gold pieces.");         // down to 50 — re-arms
+        h.Feed("You picked up 100 gold pieces.");   // back to 150 — re-fires
+
+        Assert.Equal(2, h.AutoDeposits.Count);
+    }
+
+    // ----- settings-changed reapply ----------------------------------
+
+    [Fact]
+    public void OnSettingsChanged_ReEvaluatesAutoDeposit()
+    {
+        // User edits threshold while holding coin above the new value.
+        // Without OnSettingsChanged() the trigger waits for the next
+        // pickup line — could be a long time.
+        using Harness h = new();
+        h.Feed("You picked up 200 gold pieces.");
+        Assert.Empty(h.AutoDeposits);                // no threshold yet
+
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Cash.OnSettingsChanged();
+
+        Assert.Single(h.AutoDeposits);
+        Assert.Equal(200, h.AutoDeposits[0]);
+    }
 }

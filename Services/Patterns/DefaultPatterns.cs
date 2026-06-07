@@ -144,6 +144,8 @@ public static class DefaultPatterns
             @"^You pick(?:ed)? up (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
         yield return new RegexPattern(KnownPatterns.CashDropped,
             @"^You drop(?:ped)? (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        yield return new RegexPattern(KnownPatterns.CashHidden,
+            @"^You hid (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
 
         // Phase 9 PR 9.A — party / room attack announce. Mirrors
         // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
