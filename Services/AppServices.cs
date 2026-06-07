@@ -633,6 +633,17 @@ public sealed class AppServices
     public Game.PvP.PvPManager PvP { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.I — death observation aggregator. Mirrors the
+    /// most recent death record from the loaded profile into live
+    /// observables (LivesRemaining / LastKiller / LastDeathAt /
+    /// DeathCount) so the Workshop DEATH section can bind without
+    /// walking <see cref="Models.Profile.CharacterProfile.DeathHistory"/>.
+    /// Also exposes the <c>@comeback</c> hook for
+    /// <c>RemoteCommandManager</c>.
+    /// </summary>
+    public Game.Recovery.DeathRecoveryManager DeathRecovery { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1463,6 +1474,16 @@ public sealed class AppServices
             readSettings: () => ReadSection<Models.Profile.PvPSettings>(Profile.Current, "PvP"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             log: Log);
+
+        // Phase 9 PR 9.I — DeathRecoveryManager. Aggregates the
+        // DeathLineWatcher.PlayerDied event + the profile's
+        // DeathHistory list (written by DeathDetector ->
+        // RoomTracker.NoteDeath) into observables the Workshop
+        // DEATH section will bind to. Comeback flow stub fires
+        // ComebackRequested; full walker-driven flow lands in a
+        // follow-up.
+        DeathRecovery = new Game.Recovery.DeathRecoveryManager(
+            DeathWatcher, Profile, Log);
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
