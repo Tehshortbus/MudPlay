@@ -26,12 +26,7 @@
         <StackPanel Margin="22" Spacing="4"
                     MaxWidth="780" HorizontalAlignment="Left">
 
-            <!-- ============ Tab header ============ -->
-            <TextBlock Text="{Binding Title}"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,8"/>
+
 
             <!-- ============ Party behavior ============ -->
             <TextBlock Classes="SectionHeader" Text="Party behavior"/>

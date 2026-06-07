@@ -44,19 +44,8 @@
                         Margin="22" Spacing="4"
                         MaxWidth="720" HorizontalAlignment="Left">
 
-                <TextBlock Text="{Binding Title}"
-                           Foreground="{StaticResource ChromeFgBrush}"
-                           FontSize="{StaticResource FontSizeLg}"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,8"/>
-
                 <!-- ============ Per-currency policy ============ -->
                 <TextBlock Classes="SectionHeader" Text="Per-currency policy"/>
-                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeMd}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,8"
-                           Text="Collect → CashManager sends `get all &lt;coin&gt;` on every cash-on-ground line. Ignore → leave it. Discard → don't pick up; held-cash drop logic ships with the discard handler follow-up."/>
 
                 <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Copper"/>
@@ -92,11 +81,6 @@
 
                 <!-- ============ Auto-deposit ============ -->
                 <TextBlock Classes="SectionHeader" Text="Auto-deposit"/>
-                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeMd}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,8"
-                           Text="When held wealth (gold-equivalent) exceeds the threshold, CashManager fires the AutoDepositRequested event. 0 disables the trigger. Walker-driven reroute to the bank ships as a follow-up; v1 only signals."/>
 
                 <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
@@ -124,13 +108,8 @@
                               ToolTip.Tip="Populated from the active game-data Shops table where ShopType == 7 (banks), plus every room you've toggled as a stash on the Navigation map."/>
                 </Grid>
 
-                <!-- ============ Encumbrance gates + cascade ============ -->
-                <TextBlock Classes="SectionHeader" Text="Encumbrance + cascade"/>
-                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeMd}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,8"
-                           Text="Persisted now; engines wire as follow-ups. The Collect path respects the gates as soon as the in-flight delta projection + encumbrance projection land."/>
+                <!-- ============ Collection Rules ============ -->
+                <TextBlock Classes="SectionHeader" Text="Collection Rules"/>
 
                 <CheckBox Content="Don't collect if it makes you Light"
                           IsChecked="{Binding SkipCollectIfMakesLight, Mode=TwoWay}"
@@ -150,11 +129,6 @@
 
                 <!-- ============ Stash rooms — per-currency keep ============ -->
                 <TextBlock Classes="SectionHeader" Text="Stash rooms — keep on hand"/>
-                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeMd}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,8"
-                           Text="At any room marked as a stash (right-click on the Navigation map → Toggle: Stash room), StashRoomManager dumps the excess of each currency above the floor below via `hide N &lt;coin&gt;`. 0 means dump all of that currency at every stash."/>
 
                 <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Keep copper"/>

@@ -43,18 +43,7 @@
                         Margin="22" Spacing="4"
                         MaxWidth="700" HorizontalAlignment="Left">
 
-                <!-- ============ Tab header ============ -->
-                <TextBlock Text="{Binding Title}"
-                           Foreground="{StaticResource ChromeFgBrush}"
-                           FontSize="{StaticResource FontSizeLg}"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,8"/>
 
-                <TextBlock Text="Heal-trigger thresholds (HP / MA percentages) live on the Health tab; this tab names the spells. CastingDirector (PR 9.D) reads both."
-                           Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeMd}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,4"/>
 
                 <!-- ============ Spell type priority ============ -->
                 <TextBlock Classes="SectionHeader" Text="Spell type priority (between-round casting order)"/>

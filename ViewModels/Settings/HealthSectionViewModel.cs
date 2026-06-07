@@ -83,18 +83,95 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _preRestCommand  = string.Empty;
     [ObservableProperty] private string _postRestCommand = string.Empty;
 
-    public HealthSectionViewModel() : this(AppServices.Current.Profile) { }
+    public HealthSectionViewModel() : this(
+        AppServices.Current.Profile,
+        TryGetPlayerState()) { }
 
-    public HealthSectionViewModel(ProfileService profile)
+    public HealthSectionViewModel(ProfileService profile, Game.PlayerState? state = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
+        _state = state;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        if (_state is not null) _state.PropertyChanged += OnStateChanged;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
     }
+
+    private static Game.PlayerState? TryGetPlayerState()
+    {
+        try { return AppServices.Current.PlayerState; }
+        catch { return null; }    // design-time
+    }
+
+    private readonly Game.PlayerState? _state;
+
+    /// <summary>Live MaxHp from <see cref="Game.PlayerState"/>.
+    /// 0 when no connection / no prompt observed yet — conversion
+    /// strings then render empty.</summary>
+    public int LiveMaxHp => _state?.MaxHp ?? 0;
+
+    /// <summary>Live MaxMa from <see cref="Game.PlayerState"/>.</summary>
+    public int LiveMaxMa => _state?.MaxMa ?? 0;
+
+    private void OnStateChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Game.PlayerState.MaxHp))
+        {
+            OnPropertyChanged(nameof(LiveMaxHp));
+            OnPropertyChanged(nameof(RestMaxHpConverted));
+            OnPropertyChanged(nameof(RestIfBelowHpConverted));
+            OnPropertyChanged(nameof(HealRestTriggerConverted));
+            OnPropertyChanged(nameof(MinorHealCombatTriggerConverted));
+            OnPropertyChanged(nameof(MajorHealCombatTriggerConverted));
+            OnPropertyChanged(nameof(RunIfBelowHpConverted));
+            OnPropertyChanged(nameof(HangIfBelowHpConverted));
+        }
+        else if (e.PropertyName == nameof(Game.PlayerState.MaxMa))
+        {
+            OnPropertyChanged(nameof(LiveMaxMa));
+            OnPropertyChanged(nameof(RestMaxMaConverted));
+            OnPropertyChanged(nameof(RestIfBelowMaConverted));
+            OnPropertyChanged(nameof(RunIfBelowMaConverted));
+            OnPropertyChanged(nameof(BlessIfAboveMaConverted));
+        }
+    }
+
+    /// <summary>
+    /// Render the live conversion of a threshold field against the
+    /// player's live max. Percentage mode shows the absolute equivalent
+    /// (<c>"= 120/200"</c>); Value mode shows the percentage
+    /// (<c>"= 60%"</c>). Empty string when no connection / no prompt
+    /// data yet so the layout doesn't render a misleading "= 0/0".
+    /// </summary>
+    private static string FormatConversion(int value, int max, bool isPercentageMode)
+    {
+        if (max <= 0) return string.Empty;
+        if (isPercentageMode)
+        {
+            int abs = (int)Math.Round(max * value / 100.0);
+            return $"= {abs}/{max}";
+        }
+        int pct = (int)Math.Round(value * 100.0 / max);
+        return $"= {pct}%";
+    }
+
+    // ----- HP conversion strings -----
+    public string RestMaxHpConverted              => FormatConversion(RestMaxHp,              LiveMaxHp, HpModePercentage);
+    public string RestIfBelowHpConverted          => FormatConversion(RestIfBelowHp,          LiveMaxHp, HpModePercentage);
+    public string HealRestTriggerConverted        => FormatConversion(HealRestTrigger,        LiveMaxHp, HpModePercentage);
+    public string MinorHealCombatTriggerConverted => FormatConversion(MinorHealCombatTrigger, LiveMaxHp, HpModePercentage);
+    public string MajorHealCombatTriggerConverted => FormatConversion(MajorHealCombatTrigger, LiveMaxHp, HpModePercentage);
+    public string RunIfBelowHpConverted           => FormatConversion(RunIfBelowHp,           LiveMaxHp, HpModePercentage);
+    public string HangIfBelowHpConverted          => FormatConversion(HangIfBelowHp,          LiveMaxHp, HpModePercentage);
+
+    // ----- MA conversion strings -----
+    public string RestMaxMaConverted              => FormatConversion(RestMaxMa,              LiveMaxMa, MaModePercentage);
+    public string RestIfBelowMaConverted          => FormatConversion(RestIfBelowMa,          LiveMaxMa, MaModePercentage);
+    public string RunIfBelowMaConverted           => FormatConversion(RunIfBelowMa,           LiveMaxMa, MaModePercentage);
+    public string BlessIfAboveMaConverted         => FormatConversion(BlessIfAboveMa,         LiveMaxMa, MaModePercentage);
 
     public override void Apply()
     {
@@ -222,23 +299,62 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     }
 
     // HP column
-    partial void OnHpModePercentageChanged(bool value)        { if (value) HpModeAbsolute   = false; MarkDirty(); }
-    partial void OnHpModeAbsoluteChanged(bool value)          { if (value) HpModePercentage = false; MarkDirty(); }
-    partial void OnRestMaxHpChanged(int value)                => MarkDirty();
-    partial void OnRestIfBelowHpChanged(int value)            => MarkDirty();
-    partial void OnHealRestTriggerChanged(int value)          => MarkDirty();
-    partial void OnMinorHealCombatTriggerChanged(int value)   => MarkDirty();
-    partial void OnMajorHealCombatTriggerChanged(int value)   => MarkDirty();
-    partial void OnRunIfBelowHpChanged(int value)             => MarkDirty();
-    partial void OnHangIfBelowHpChanged(int value)            => MarkDirty();
+    partial void OnHpModePercentageChanged(bool value)
+    {
+        if (value) HpModeAbsolute = false;
+        RefreshAllHpConverted();
+        MarkDirty();
+    }
+    partial void OnHpModeAbsoluteChanged(bool value)
+    {
+        if (value) HpModePercentage = false;
+        RefreshAllHpConverted();
+        MarkDirty();
+    }
+    partial void OnRestMaxHpChanged(int value)                { OnPropertyChanged(nameof(RestMaxHpConverted));              MarkDirty(); }
+    partial void OnRestIfBelowHpChanged(int value)            { OnPropertyChanged(nameof(RestIfBelowHpConverted));          MarkDirty(); }
+    partial void OnHealRestTriggerChanged(int value)          { OnPropertyChanged(nameof(HealRestTriggerConverted));        MarkDirty(); }
+    partial void OnMinorHealCombatTriggerChanged(int value)   { OnPropertyChanged(nameof(MinorHealCombatTriggerConverted)); MarkDirty(); }
+    partial void OnMajorHealCombatTriggerChanged(int value)   { OnPropertyChanged(nameof(MajorHealCombatTriggerConverted)); MarkDirty(); }
+    partial void OnRunIfBelowHpChanged(int value)             { OnPropertyChanged(nameof(RunIfBelowHpConverted));           MarkDirty(); }
+    partial void OnHangIfBelowHpChanged(int value)            { OnPropertyChanged(nameof(HangIfBelowHpConverted));          MarkDirty(); }
 
     // MA column
-    partial void OnMaModePercentageChanged(bool value)        { if (value) MaModeAbsolute   = false; MarkDirty(); }
-    partial void OnMaModeAbsoluteChanged(bool value)          { if (value) MaModePercentage = false; MarkDirty(); }
-    partial void OnRestMaxMaChanged(int value)                => MarkDirty();
-    partial void OnRestIfBelowMaChanged(int value)            => MarkDirty();
-    partial void OnRunIfBelowMaChanged(int value)             => MarkDirty();
-    partial void OnBlessIfAboveMaChanged(int value)           => MarkDirty();
+    partial void OnMaModePercentageChanged(bool value)
+    {
+        if (value) MaModeAbsolute = false;
+        RefreshAllMaConverted();
+        MarkDirty();
+    }
+    partial void OnMaModeAbsoluteChanged(bool value)
+    {
+        if (value) MaModePercentage = false;
+        RefreshAllMaConverted();
+        MarkDirty();
+    }
+    partial void OnRestMaxMaChanged(int value)                { OnPropertyChanged(nameof(RestMaxMaConverted));      MarkDirty(); }
+    partial void OnRestIfBelowMaChanged(int value)            { OnPropertyChanged(nameof(RestIfBelowMaConverted));  MarkDirty(); }
+    partial void OnRunIfBelowMaChanged(int value)             { OnPropertyChanged(nameof(RunIfBelowMaConverted));   MarkDirty(); }
+    partial void OnBlessIfAboveMaChanged(int value)           { OnPropertyChanged(nameof(BlessIfAboveMaConverted)); MarkDirty(); }
+
+    private void RefreshAllHpConverted()
+    {
+        OnPropertyChanged(nameof(RestMaxHpConverted));
+        OnPropertyChanged(nameof(RestIfBelowHpConverted));
+        OnPropertyChanged(nameof(HealRestTriggerConverted));
+        OnPropertyChanged(nameof(MinorHealCombatTriggerConverted));
+        OnPropertyChanged(nameof(MajorHealCombatTriggerConverted));
+        OnPropertyChanged(nameof(RunIfBelowHpConverted));
+        OnPropertyChanged(nameof(HangIfBelowHpConverted));
+    }
+
+    private void RefreshAllMaConverted()
+    {
+        OnPropertyChanged(nameof(RestMaxMaConverted));
+        OnPropertyChanged(nameof(RestIfBelowMaConverted));
+        OnPropertyChanged(nameof(RunIfBelowMaConverted));
+        OnPropertyChanged(nameof(BlessIfAboveMaConverted));
+    }
 
     // Meditation
     partial void OnUseMeditateAbilityChanged(bool value)      => MarkDirty();
