@@ -190,6 +190,17 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
 
+    /// <summary>
+    /// True during the user-initiated disconnect path — between the
+    /// toolbar click and the wire actually closing. Drives the
+    /// "Disconnecting…" label + short-circuits the toggle command so
+    /// a fast double-click can't initiate a reconnect mid-disconnect.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
+    private bool _isDisconnecting;
+
     public bool IsDisconnected => !IsConnected;
 
     /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
@@ -211,14 +222,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// "Disconnect".
     /// </summary>
     public string ConnectionLabel
-        => IsConnected ? "Disconnect"
+        => IsDisconnecting ? "Disconnecting…"
+         : IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
          : IsReconnectPending ? "Cancel reconnect"
          : "Connect";
 
     /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
     public string ConnectionStatusText
-        => IsConnected ? "Connected"
+        => IsDisconnecting ? "Disconnecting…"
+         : IsConnected ? "Connected"
          : IsConnecting ? "Connecting…"
          : "Disconnected";
 
@@ -556,6 +569,11 @@ public partial class MainWindowViewModel : ObservableObject
         // dispatcher on KeyDown — without a sender bound, the call returns
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(engineSend);
+
+        // Phase 8 PR 8.2 — bind the same gate-wrapped wire path to the
+        // EventManager so Command-action events route through
+        // SendUserInput like every other engine.
+        AppServices.Current.Events.SetWireSender(engineSend);
 
         // Trigger engine subscribes to the LineExtractor for game-message
         // dispatch (chat + system-log subscriptions wired in its ctor) and
@@ -951,6 +969,13 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
+        // Re-entry guard: a fast double-click while the disconnect
+        // path is still flushing Logoff events would otherwise hit the
+        // "if (!IsConnected) ... ConnectWithRetriesAsync()" branch and
+        // immediately try to dial again. The disconnect path flips
+        // IsDisconnecting=true at its start; this short-circuit makes
+        // every subsequent click a no-op until the disconnect settles.
+        if (IsDisconnecting) return;
         if (IsConnected)
         {
             // User-initiated disconnect path — prompt if the Confirm
@@ -987,13 +1012,29 @@ public partial class MainWindowViewModel : ObservableObject
         _lastDisconnectCause = DisconnectCause.UserInitiated;
         _reactiveReconnectCount = 0;
 
-        TelnetClient? t = _telnet;
-        _telnet = null;
-        DetachLoginKillSwitch();
-        _automator?.Dispose();
-        _automator = null;
-        if (t is not null) await t.DisposeAsync();
-        IsConnected = false;
+        // Flip IsDisconnecting so the toolbar label updates to
+        // "Disconnecting…" immediately + a fast double-click hits the
+        // re-entry guard in ToggleConnectionAsync instead of flipping
+        // straight back into a reconnect.
+        IsDisconnecting = true;
+
+        // NB: Logoff events DON'T fire here. The button is a "close the
+        // wire now" affordance — there's no time to flush bank /
+        // store-gear / etc. cleanup commands. Logoff events instead fire
+        // when CleanupWarningWatcher recognises the BBS announcing
+        // upcoming shutdown (EventScheduler subscribes to it directly).
+
+        try
+        {
+            TelnetClient? t = _telnet;
+            _telnet = null;
+            DetachLoginKillSwitch();
+            _automator?.Dispose();
+            _automator = null;
+            if (t is not null) await t.DisposeAsync();
+            IsConnected = false;
+        }
+        finally { IsDisconnecting = false; }
 
         WriteTerminalStatus($"[DISCONNECTED FROM: {Host} {Port}]", TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Telnet", $"Disconnected from {Host}:{Port}");
@@ -1704,6 +1745,10 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Cleanup.Reset();
                 CancelCleanupReconnect("connected");
                 ArmStableConnectionReset();
+                // Phase 8 PR 8.2 — let the EventScheduler reset its
+                // "are we in-game?" latch. The actual Logon fire
+                // happens on the first PromptObserved, not here.
+                AppServices.Current.EventScheduler.NotifyConnected();
             });
         };
         client.Disconnected += () =>
@@ -1718,6 +1763,9 @@ public partial class MainWindowViewModel : ObservableObject
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
                 CancelStableConnectionReset();
+                // Phase 8 PR 8.2 — stop the event scheduler's timers
+                // and latch the Re-log flag (only if we were in-game).
+                AppServices.Current.EventScheduler.NotifyDisconnected();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a
@@ -2272,6 +2320,14 @@ public partial class MainWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenBbsSettings() => OpenSettingsAt("bbs");
+
+    /// <summary>
+    /// View → Events menu entry. Opens the Settings window deep-linked
+    /// to the Events tab (Phase 8 PR 8.5 — matches the
+    /// <see cref="MenuCommandIds.SettingsOpenEvents"/> reserved id).
+    /// </summary>
+    [RelayCommand]
+    private void OpenEvents() => OpenSettingsAt("events");
 
     /// <summary>
     /// Singleton-ish handle to the Quick Connect window so re-press of

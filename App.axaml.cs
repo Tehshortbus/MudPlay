@@ -77,6 +77,16 @@ public partial class App : Application
                 FujinTerm.ViewModels.Keybind.KeybindEditDialogViewModel,
                 FujinTerm.Views.Keybind.KeybindEditDialog>();
 
+            // Phase 8 PR 8.4 — Settings.Events tab's per-row editor.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Settings.EventEditDialogViewModel,
+                FujinTerm.Views.Settings.EventEditDialog>();
+
+            // Favourite-room rename — Navigation GOTO pane pencil button.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.FavoriteRenameDialogViewModel,
+                FujinTerm.Views.Navigation.FavoriteRenameDialog>();
+
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
             // profiles live as subfolders, not flat .json files).

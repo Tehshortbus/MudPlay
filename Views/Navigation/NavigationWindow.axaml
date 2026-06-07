@@ -796,7 +796,7 @@
                                                   IsVisible="{Binding HasFavorites}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:FavoriteRowViewModel">
-                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
                                                     <Button Grid.Column="0"
                                                             Content="{Binding Label}"
                                                             HorizontalAlignment="Stretch"
@@ -808,6 +808,13 @@
                                                             Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).GoToFavoriteCommand}"
                                                             CommandParameter="{Binding}"/>
                                                     <Button Grid.Column="1"
+                                                            Content="✎"
+                                                            FontSize="10"
+                                                            Padding="6,2"
+                                                            ToolTip.Tip="Rename favourite"
+                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationViewModel)DataContext).RenameFavoriteCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Grid.Column="2"
                                                             Content="✕"
                                                             FontSize="10"
                                                             Padding="6,2"

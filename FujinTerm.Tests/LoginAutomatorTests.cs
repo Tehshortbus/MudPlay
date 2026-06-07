@@ -256,7 +256,7 @@ public sealed class LoginAutomatorTests
     [Fact]
     public void TryBuild_NoMenuNavSteps_ReturnsNull()
     {
-        BbsCredentials creds = new() { Username = "alice" };
+        BbsCredentials creds = new() { EncryptedUsername = NewProtector().Protect("alice") };
         LoginAutomator? a = LoginAutomator.TryBuild(
             creds, NewProtector(), (_, _) => Task.CompletedTask);
         Assert.Null(a);
@@ -274,7 +274,7 @@ public sealed class LoginAutomatorTests
 
             BbsCredentials creds = new()
             {
-                Username = "alice",
+                EncryptedUsername = protector.Protect("alice"),
                 EncryptedPassword = encrypted,
                 MenuNavSteps =
                 {

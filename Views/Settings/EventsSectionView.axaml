@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="520"
+             x:Class="FujinTerm.Views.Settings.EventsSectionView"
+             x:DataType="vm:EventsSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.ColumnHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="10,8,0,8"/>
+        </Style>
+        <Style Selector="TextBlock.RowText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        <Style Selector="ListBoxItem[IsEnabled=False] TextBlock.RowText">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="Border.MissingBadge">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.MissingText">
+            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22">
+        <!-- "Open a profile first" placeholder when no profile loaded. -->
+        <TextBlock IsVisible="{Binding !HasProfile}"
+                   Text="Open or create a character profile to manage its scheduled events."
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   FontStyle="Italic"
+                   VerticalAlignment="Top"/>
+
+        <!-- Main content. -->
+        <Grid IsVisible="{Binding HasProfile}"
+              RowDefinitions="Auto,*,Auto">
+
+            <!-- Toolbar: New / Modify / Remove above the table. -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6"
+                        Margin="0,0,0,8">
+                <Button Content="New…" Command="{Binding NewCommand}" Width="92"/>
+                <Button Content="Modify…" Command="{Binding ModifyCommand}" Width="92"/>
+                <Button Content="Remove" Command="{Binding RemoveCommand}" Width="92"/>
+            </StackPanel>
+
+            <!-- Table: full-width, NAME / WHEN / WHAT columns. -->
+            <Border Grid.Row="1"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CornerSm}"
+                    Background="{StaticResource ChromeBgElevBrush}">
+                <Grid RowDefinitions="Auto,1,*">
+                    <!-- Header row. -->
+                    <Grid Grid.Row="0" ColumnDefinitions="200,180,*"
+                          Background="{StaticResource ChromeBgBrush}">
+                        <TextBlock Grid.Column="0" Classes="ColumnHeader" Text="NAME"/>
+                        <TextBlock Grid.Column="1" Classes="ColumnHeader" Text="WHEN"/>
+                        <TextBlock Grid.Column="2" Classes="ColumnHeader" Text="WHAT"/>
+                    </Grid>
+                    <Border Grid.Row="1" Background="{StaticResource ChromeBorderSoftBrush}"/>
+                    <!-- Rows. -->
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding Rows}"
+                             SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             DoubleTapped="OnRowDoubleTapped">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="vm:EventRowViewModel">
+                                <Grid ColumnDefinitions="200,180,*" Margin="0,2,0,2">
+                                    <TextBlock Grid.Column="0" Classes="RowText"
+                                               Text="{Binding Name}"
+                                               Margin="6,0,8,0"/>
+                                    <TextBlock Grid.Column="1" Classes="RowText"
+                                               Text="{Binding TimeText}"
+                                               Margin="6,0,8,0"/>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                Margin="6,0,8,0">
+                                        <TextBlock Classes="RowText"
+                                                   Text="{Binding EventText}"/>
+                                        <Border Classes="MissingBadge"
+                                                IsVisible="{Binding IsAutoDisabled}">
+                                            <TextBlock Classes="MissingText"
+                                                       Text="↻ target missing"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Master switch below the table. -->
+            <CheckBox Grid.Row="2"
+                      Content="Disable all events"
+                      IsChecked="{Binding IsGloballyDisabled, Mode=TwoWay}"
+                      ToolTip.Tip="Master switch — pauses every event regardless of per-row state. Persists immediately."
+                      Margin="0,12,0,0"/>
+        </Grid>
+    </Grid>
+</UserControl>

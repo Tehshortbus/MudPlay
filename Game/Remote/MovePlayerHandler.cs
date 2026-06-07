@@ -213,7 +213,7 @@ public sealed class MovePlayerHandler : IDisposable
                 ctx.Reply($"no neighbour to wait at for {match.Name}");
                 return;
             }
-            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.None);
+            StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Walker);
             if (_walker.WalkTo(wait.Value))
                 ctx.Reply($"walking outside {match.Name} ({match.Key.Map}/{match.Key.Room})");
             else
@@ -221,7 +221,7 @@ public sealed class MovePlayerHandler : IDisposable
             return;
         }
 
-        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.None);
+        StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Walker);
         if (_walker.WalkTo(match.Key))
             ctx.Reply($"walking to {match.Name} ({match.Key.Map}/{match.Key.Room})");
         else
@@ -251,7 +251,7 @@ public sealed class MovePlayerHandler : IDisposable
 
         if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
-            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Loop);
+            StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Loop);
             List<LoopWaypoint> waypoints = coords.Select(k => new LoopWaypoint(k)).ToList();
             _loopRunner.Start(new Loop($"@loop from {ctx.Sender}", waypoints));
             ctx.Reply($"looping {coords.Count} rooms");
@@ -261,7 +261,7 @@ public sealed class MovePlayerHandler : IDisposable
         Loop? saved = _loops.Loops.FirstOrDefault(l =>
             string.Equals(l.Name, raw, StringComparison.OrdinalIgnoreCase));
         if (saved is null) { ctx.Reply($"no saved loop named '{raw}'"); return; }
-        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Loop);
+        StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Loop);
         _loopRunner.Start(saved);
         ctx.Reply($"looping '{saved.Name}' ({saved.Waypoints.Count} rooms)");
     }
@@ -273,7 +273,7 @@ public sealed class MovePlayerHandler : IDisposable
 
         if (RoomSearchService.TryParseCoordList(raw) is { Count: >= 2 } coords)
         {
-            StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Lair);
+            StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Lair);
             _autoLair.Clear();
             foreach (RoomKey k in coords) _autoLair.Mark(k);
             ctx.Reply(_autoLair.Start()
@@ -285,7 +285,7 @@ public sealed class MovePlayerHandler : IDisposable
         Models.Profile.LairSetup? setup = _lairs.Setups.FirstOrDefault(s =>
             string.Equals(s.Name, raw, StringComparison.OrdinalIgnoreCase));
         if (setup is null) { ctx.Reply($"no saved lair setup named '{raw}'"); return; }
-        StopConflictingEngines(ctx.Sender, keep: ActiveEngine.Lair);
+        StopConflictingEngines(ctx.Sender, keep: SupersedeKeep.Lair);
         _autoLair.Clear();
         foreach (Models.Profile.LairMarker m in setup.Markers)
             _autoLair.Mark(new RoomKey(m.Map, m.Room), m.OverrideRespawnSeconds);
@@ -437,45 +437,18 @@ public sealed class MovePlayerHandler : IDisposable
     }
 
     /// <summary>
-    /// Identifies which of the three concurrent movement engines a
-    /// new command intends to drive, so <see cref="StopConflictingEngines"/>
-    /// can tear the others down without stopping the one we're about
-    /// to start.
-    /// </summary>
-    private enum ActiveEngine { None, Loop, Lair }
-
-    /// <summary>
     /// Stop the engines that would collide with the new command.
     /// Without this, a remote @goto issued during an active loop would
     /// see the walker supersede its prior plan while LoopRunner kept
     /// writing circle moves directly to the wire — both engines fight
     /// for the command stream. AutoLair is the same: its scheduler
     /// re-issues WalkTo on every tick, immediately overriding the new
-    /// goto. Mirror the Navigation UI's pattern
-    /// (NavigationViewModel.cs:1192-1194) and stop the conflicting
-    /// engines explicitly before starting fresh.
+    /// goto. Mirrors the Navigation UI's pattern
+    /// (NavigationViewModel.cs:1192-1194) via the shared
+    /// <see cref="EngineSupersede"/> helper.
     /// </summary>
-    private void StopConflictingEngines(string sender, ActiveEngine keep)
-    {
-        string reason = $"superseded by remote @ from {sender}";
-
-        if (keep != ActiveEngine.Loop
-            && _loopRunner.State is not LoopState.Idle)
-        {
-            _loopRunner.Stop(reason);
-        }
-        if (keep != ActiveEngine.Lair && _autoLair.IsActive)
-        {
-            _autoLair.Stop(reason);
-        }
-        // Walker only needs explicit stop when keeping a different
-        // engine — WalkTo already supersedes its own prior plan on the
-        // @goto path, but a new @loop / @lair would otherwise leave a
-        // goto-walk in flight when their first BFS hop fires.
-        if (keep != ActiveEngine.None
-            && _walker.State is not WalkState.Idle)
-        {
-            _walker.Stop(reason);
-        }
-    }
+    private void StopConflictingEngines(string sender, SupersedeKeep keep)
+        => EngineSupersede.StopOthers(
+            _walker, _loopRunner, _autoLair,
+            keep, $"superseded by remote @ from {sender}");
 }

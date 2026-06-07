@@ -83,28 +83,6 @@
                           ToolTip.Tip="Sent verbatim back to the originator on per-player denial / unknown-command / party-whitelist denial."/>
             </Grid>
 
-            <!-- ============ AFK Mode (Phase 11 stub) ============ -->
-            <TextBlock Classes="SectionHeader" Text="AFK Mode  ·  Phase 11 — engine not yet wired"/>
-
-            <CheckBox Content="Disable all AFK settings" IsEnabled="False"
-                      ToolTip.Tip="Phase 11 — master kill-switch above every AFK behaviour below."/>
-            <Grid ColumnDefinitions="180,Auto,Auto,*" Margin="0,4,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Auto-AFK after"/>
-                <NumericUpDown Grid.Column="1" IsEnabled="False" Value="10" Minimum="0" Maximum="600" Width="100"
-                               ToolTip.Tip="Phase 11 — auto-flip into AFK after this many minutes of input idle. 0 disables."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="min" Margin="6,0,0,0"/>
-            </Grid>
-            <CheckBox Content="Auto-AFK when window minimised" IsEnabled="False"
-                      Margin="0,4,0,0"
-                      ToolTip.Tip="Phase 11."/>
-            <CheckBox Content="User input cancels AFK mode" IsEnabled="False"
-                      ToolTip.Tip="Phase 11."/>
-            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="AFK response message"/>
-                <TextBox  Grid.Column="1" IsEnabled="False" Text="{}{AFK}" MaxWidth="380" HorizontalAlignment="Left"
-                          ToolTip.Tip="Phase 11 — reply text for incoming tells while AFK."/>
-            </Grid>
-
             <!-- ============ Chat etiquette (Phase 13 stub) ============ -->
             <TextBlock Classes="SectionHeader" Text="Chat etiquette  ·  Phase 13 stub"/>
             <CheckBox Content="Greet players when first met" IsEnabled="False"

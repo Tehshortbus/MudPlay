@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="180"
+        x:Class="FujinTerm.Views.Navigation.FavoriteRenameDialog"
+        x:DataType="vm:FavoriteRenameDialogViewModel"
+        Title="Rename favourite"
+        Width="360"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <StackPanel Spacing="8">
+            <TextBlock Text="Rename favourite"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding CoordTag}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontFamily="{StaticResource FontMono}"
+                       FontSize="10"/>
+
+            <TextBox Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="(leave empty to use the graph room name)"
+                     Margin="0,6,0,0"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" Margin="0,12,0,0">
+                <Button Content="Save" Width="100"
+                        Command="{Binding SaveCommand}"
+                        IsDefault="True"/>
+                <Button Content="Cancel" Width="100"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
