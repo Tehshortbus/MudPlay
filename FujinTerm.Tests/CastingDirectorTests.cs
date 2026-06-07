@@ -541,6 +541,124 @@ public sealed class CastingDirectorTests
         Assert.Empty(h.CastsSent);
     }
 
+    // ----- Utility (regen buffs + idle-fallback) --------------------
+
+    [Fact]
+    public void Utility_HpRegenSpell_PicksWhenNotActive()
+    {
+        using CureHarness h = new();
+        h.Spells.HpRegenSpell = "trollskin";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c trollskin", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Utility_RegenSlotsAfterBless1To10()
+    {
+        // Bless1 configured + active → utility regen is next non-
+        // active slot.
+        using CureHarness h = new();
+        h.Spells.Bless1Spell = "bless";
+        h.Spells.HpRegenSpell = "trollskin";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+
+        h.RecordCondition("bless", MessageFlags.None,
+            applied: "You are blessed!", endsWith: "Your blessing fades.");
+        h.FeedLine("You are blessed!");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c trollskin", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Utility_WhenHpFullSpell_FiresInBuffSlot()
+    {
+        // WhenHpFull is a buff with extra eligibility (HP at max).
+        // Out-of-combat, MA above BlessIfAboveMa, HP at max → fires.
+        using CureHarness h = new();
+        h.Spells.WhenHpFullSpell = "detect";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;
+        h.State.InCombat = false;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c detect", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Utility_WhenHpFull_InCombat_NoCast()
+    {
+        // Buff path hard-gates out of combat; the WhenHpFull slot
+        // inherits that gate.
+        using CureHarness h = new();
+        h.State.InCombat = true;
+        h.Spells.WhenHpFullSpell = "detect";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Utility_WhenHpFull_HpBelowMax_NoFire()
+    {
+        using CureHarness h = new();
+        // Drop HP first so subsequent PropertyChangeds never see
+        // the HP-at-max + spell-configured combo and don't fire
+        // through the buff path before our explicit Evaluate().
+        h.State.Hp = 150;
+        h.Spells.WhenHpFullSpell = "detect";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Utility_WhenHpFullSpell_AlreadyActive_NoCast()
+    {
+        using CureHarness h = new();
+        h.Spells.WhenHpFullSpell = "detect";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;
+
+        h.RecordCondition("detect", MessageFlags.None,
+            applied: "You can see hidden!", endsWith: "Your detection fades.");
+        h.FeedLine("You can see hidden!");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
     // ----- Party-heal (single + AOE thresholding) -------------------
 
     private sealed class PartyHarness : IDisposable

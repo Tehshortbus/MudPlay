@@ -413,15 +413,34 @@ public sealed class CastingDirector : IDisposable
         // toggles get added.
         if (_state.InCombat) return null;
 
-        string?[] slots =
+        // All 14 buff slots walk together: 10 explicit Bless picks +
+        // HpRegen + MaRegen + WhenHpFull + WhenMaFull. Each has its
+        // own eligibility predicate. First eligible AND not-active
+        // slot fires.
+        (string? Spell, bool Eligible)[] slots =
         {
-            spells.Bless1Spell, spells.Bless2Spell, spells.Bless3Spell,
-            spells.Bless4Spell, spells.Bless5Spell, spells.Bless6Spell,
-            spells.Bless7Spell, spells.Bless8Spell, spells.Bless9Spell,
-            spells.Bless10Spell,
+            (spells.Bless1Spell,      true),
+            (spells.Bless2Spell,      true),
+            (spells.Bless3Spell,      true),
+            (spells.Bless4Spell,      true),
+            (spells.Bless5Spell,      true),
+            (spells.Bless6Spell,      true),
+            (spells.Bless7Spell,      true),
+            (spells.Bless8Spell,      true),
+            (spells.Bless9Spell,      true),
+            (spells.Bless10Spell,     true),
+            (spells.HpRegenSpell,     true),
+            (spells.MaRegenSpell,     true),
+            // WhenHp/MaFull additionally require the matching pool
+            // to be at max — they're "downtime, ready for next
+            // fight" buffs.
+            (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
+            (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
         };
-        foreach (string? slot in slots)
+
+        foreach ((string? slot, bool eligible) in slots)
         {
+            if (!eligible) continue;
             if (string.IsNullOrWhiteSpace(slot)) continue;
             if (_conditions?.IsActiveByName(slot) == true) continue;
             return slot;
