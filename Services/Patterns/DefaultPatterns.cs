@@ -112,6 +112,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSlain,
             @"^You have been slain by (?<killer>[\w '-]+?)[.!]\s*$");
 
+        // "You don't see <X> here!" — target-gone signal. Lifted from
+        // MudProxy CombatManager:1269. Trailing punctuation tolerant —
+        // "!" canonical but some realms emit ".".
+        yield return new RegexPattern(KnownPatterns.TargetNotHere,
+            @"^You don't see (?<target>.+?) here[.!]\s*$");
+
         // Phase 9 PR 9.A — party / room attack announce. Mirrors
         // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
         // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")

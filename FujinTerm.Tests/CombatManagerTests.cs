@@ -795,6 +795,37 @@ public sealed class CombatManagerTests
         Assert.Equal("l", h.LastSent);
     }
 
+    // ----- target-not-here: server says we whiffed against a phantom -
+
+    [Fact]
+    public void TargetNotHere_DropsCurrentTarget_AndRefreshesRoom()
+    {
+        // Our `attack giant rat` raced the rat's death (or it fled);
+        // server replies "You don't see giant rat here!". Drop our
+        // target and force a re-display so the next round picks fresh.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+
+        h.Feed("You don't see giant rat here!");
+
+        Assert.Null(h.Combat.CurrentTarget);
+        Assert.Equal("l", h.LastSent);
+    }
+
+    [Fact]
+    public void TargetNotHere_WithoutCurrentTarget_NoOp()
+    {
+        // No target → nothing to drop. Don't send `l` either; some
+        // other system can react to the target-gone signal if needed.
+        using Harness h = new();
+        h.Feed("You don't see giant rat here!");
+        Assert.Empty(h.Sent);
+    }
+
     [Fact]
     public void CombatLine_MasterOff_NoRefresh()
     {

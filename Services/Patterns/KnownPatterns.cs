@@ -64,6 +64,16 @@ public static class KnownPatterns
     public const string PartyAttackAnnounce  = "combat.party-attack-announce";
 
     /// <summary>
+    /// "You don't see &lt;X&gt; here!" — server's response when our
+    /// <c>attack X</c> resolves against a target that left or died
+    /// between our send and the server's resolve (our death-line
+    /// match was missed, the mob fled, a partymate killed it first,
+    /// etc.). <see cref="Game.Combat.CombatManager"/> clears
+    /// <c>_currentTarget</c> and forces a room re-display.
+    /// </summary>
+    public const string TargetNotHere        = "combat.target-not-here";
+
+    /// <summary>
     /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
     /// from &lt;direction&gt;." Fires when a monster spawns OR a
     /// player walks in mid-room (no full re-display). The wire

@@ -78,6 +78,7 @@ public sealed class CombatManager : IDisposable
     private readonly IDisposable _userHitsSub;
     private readonly IDisposable _mobHitsSub;
     private readonly IDisposable _mobMissesSub;
+    private readonly IDisposable _targetGoneSub;
 
     /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
     /// a flurry of miss/hit lines from spamming the server.</summary>
@@ -122,6 +123,7 @@ public sealed class CombatManager : IDisposable
         _userHitsSub  = router.Subscribe(KnownPatterns.UserHits,  OnCombatLine);
         _mobHitsSub   = router.Subscribe(KnownPatterns.MobHits,   OnCombatLine);
         _mobMissesSub = router.Subscribe(KnownPatterns.MobMisses, OnCombatLine);
+        _targetGoneSub = router.Subscribe(KnownPatterns.TargetNotHere, OnTargetNotHere);
     }
 
     /// <summary>Bind the wire sender — typically the
@@ -310,6 +312,32 @@ public sealed class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("l\r"));
     }
 
+    /// <summary>
+    /// "You don't see &lt;X&gt; here!" — server can't find the target
+    /// we just attacked. Different from MonsterDeathWatcher's path:
+    /// catches cases where the death line was missed, the mob fled,
+    /// or a partymate killed it between our send and the server's
+    /// resolve. Drop the current target and refresh the room so the
+    /// next observation picks a fresh target.
+    /// </summary>
+    private void OnTargetNotHere(MatchResult _)
+    {
+        if (!_isEnabled()) return;
+        if (_wireSender is null) return;
+        if (_currentTarget is null) return;
+
+        _log?.Info(LogCategory,
+            $"target-not-here — dropping target={_currentTarget} + refreshing room");
+        _currentTarget = null;
+
+        // Force a refresh (debounce shared with OnCombatLine so a
+        // simultaneous miss-line + target-not-here doesn't double-send).
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+        _wireSender(Encoding.Latin1.GetBytes("l\r"));
+    }
+
     private bool HasEngageable(RoomEntitiesObservation obs)
     {
         for (int i = 0; i < obs.Entities.Count; i++)
@@ -379,6 +407,7 @@ public sealed class CombatManager : IDisposable
         _userHitsSub.Dispose();
         _mobHitsSub.Dispose();
         _mobMissesSub.Dispose();
+        _targetGoneSub.Dispose();
     }
 
     private readonly record struct EngageableCandidate(
