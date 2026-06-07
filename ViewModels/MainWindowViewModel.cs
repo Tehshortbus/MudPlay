@@ -610,6 +610,9 @@ public partial class MainWindowViewModel : ObservableObject
         // wrapped sender prevents the swing command from landing
         // mid-password-entry on a stale combat round.
         AppServices.Current.Combat.SetWireSender(engineSend);
+        // Phase 9 PR 9.B — HealthManager sends rest / stand / pre- /
+        // post-rest commands via the same gate-wrapped engine pipeline.
+        AppServices.Current.Health.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);

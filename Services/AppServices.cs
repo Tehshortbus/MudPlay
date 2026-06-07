@@ -570,6 +570,15 @@ public sealed class AppServices
     public Game.Combat.CombatManager Combat { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.B — passive HP/MA threshold engine. Asserts /
+    /// clears HealthRecovery + ManaRecovery gates and drives the
+    /// rest / stand cycle with pre- and post-rest command sequencing.
+    /// Does NOT cast spells — those route through CastingDirector
+    /// (PR 9.D).
+    /// </summary>
+    public Game.Health.HealthManager Health { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1284,6 +1293,17 @@ public sealed class AppServices
             RoomClassifier, MonsterMessages,
             readSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            log: Log);
+
+        // Phase 9 PR 9.B — HealthManager. Reads HealthSettings live
+        // (same pattern as the other Phase 9 engines) and watches
+        // PlayerState.Hp/Ma/InCombat/HasPromptData/Max* via
+        // PropertyChanged. Wire-sender bound from MainWindowViewModel
+        // alongside the other engines.
+        Health = new Game.Health.HealthManager(
+            PlayerState, MovementCoordinator,
+            readSettings: () =>
+                ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
             log: Log);
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
