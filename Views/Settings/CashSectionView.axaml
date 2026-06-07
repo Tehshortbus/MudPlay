@@ -122,6 +122,30 @@
                              ToolTip.Tip="Map/room reference for the bank. v1 stores it; the reroute that uses it ships as a follow-up."/>
                 </Grid>
 
+                <!-- ============ Encumbrance gates + cascade ============ -->
+                <TextBlock Classes="SectionHeader" Text="Encumbrance + cascade"/>
+                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"
+                           Text="Persisted now; engines wire as follow-ups. The Collect path respects the gates as soon as the in-flight delta projection + encumbrance projection land."/>
+
+                <CheckBox Content="Don't collect if it makes you Light"
+                          IsChecked="{Binding SkipCollectIfMakesLight, Mode=TwoWay}"
+                          ToolTip.Tip="Skip pickups that would push the character into the Light bracket."/>
+                <CheckBox Content="Don't collect if it makes you Medium"
+                          IsChecked="{Binding SkipCollectIfMakesMedium, Mode=TwoWay}"
+                          ToolTip.Tip="Skip pickups that would push past Light → Medium."/>
+                <CheckBox Content="Don't collect if it makes you Heavy"
+                          IsChecked="{Binding SkipCollectIfMakesHeavy, Mode=TwoWay}"
+                          ToolTip.Tip="Skip pickups that would push past Medium → Heavy."/>
+                <CheckBox Content="Collect after combat finished"
+                          IsChecked="{Binding CollectAfterCombatFinished, Mode=TwoWay}"
+                          ToolTip.Tip="Defer pickups until the round ends so the pre-attack roll isn't lost."/>
+                <CheckBox Content="Drop smaller currency to make room for larger Collect-flagged coin"
+                          IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
+                          ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>
+
                 <!-- ============ Stash rooms — per-currency keep ============ -->
                 <TextBlock Classes="SectionHeader" Text="Stash rooms — keep on hand"/>
                 <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"

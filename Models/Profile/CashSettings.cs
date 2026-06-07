@@ -77,6 +77,34 @@ public sealed class CashSettings
     /// <summary>How much runic to leave in hand at a stash room.
     /// Default 0 — dump all.</summary>
     public long KeepRunicOnHand { get; set; }
+
+    // ----- Encumbrance + cascade (persisted; engines deferred) -------
+    // These knobs are visible in the Settings → Cash tab for MudProxy
+    // parity but their engines haven't shipped yet (the original
+    // CashManager audit deferred them). When the engines land they
+    // pick these up from the DTO with no schema change.
+
+    /// <summary>Skip a pickup that would push the character into the
+    /// Light encumbrance bracket. Engine deferred.</summary>
+    public bool SkipCollectIfMakesLight { get; set; }
+
+    /// <summary>Skip a pickup that would push past Light → Medium.
+    /// Engine deferred.</summary>
+    public bool SkipCollectIfMakesMedium { get; set; }
+
+    /// <summary>Skip a pickup that would push past Medium → Heavy.
+    /// Engine deferred.</summary>
+    public bool SkipCollectIfMakesHeavy { get; set; }
+
+    /// <summary>Defer pickups until the current combat round ends so
+    /// the pre-attack roll isn't lost. Engine deferred.</summary>
+    public bool CollectAfterCombatFinished { get; set; }
+
+    /// <summary>When a Collect-flagged currency would push past an
+    /// encumbrance gate, drop just enough lower-value Collect-flagged
+    /// held coin to make room. Never sacrifices Ignore-flagged coin.
+    /// Engine deferred.</summary>
+    public bool DropSmallerForLarger { get; set; }
 }
 
 /// <summary>Per-currency pickup decision.</summary>

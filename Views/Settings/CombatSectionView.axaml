@@ -55,7 +55,13 @@
                            Foreground="{StaticResource ChromeFgBrush}"
                            FontSize="{StaticResource FontSizeLg}"
                            FontWeight="SemiBold"
-                           Margin="0,0,0,8"/>
+                           Margin="0,0,0,4"/>
+
+                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"
+                           Text="Wired now: target-selection, weapon-swap matrix (normal / alternate / backstab end-of-combat re-equip), min/max monsters gate. Spell-combat slots + BS attack path + polite-mode dispatch persist now; their engines land in follow-ups."/>
 
                 <!-- The master on/off for auto-attack lives on
                      Settings → General → Auto-Combat (mirrored by the

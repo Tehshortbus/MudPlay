@@ -70,6 +70,14 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private long _keepPlatinumOnHand;
     [ObservableProperty] private long _keepRunicOnHand;
 
+    // ----- Encumbrance + cascade (persisted; engines deferred) -----
+
+    [ObservableProperty] private bool _skipCollectIfMakesLight;
+    [ObservableProperty] private bool _skipCollectIfMakesMedium;
+    [ObservableProperty] private bool _skipCollectIfMakesHeavy;
+    [ObservableProperty] private bool _collectAfterCombatFinished;
+    [ObservableProperty] private bool _dropSmallerForLarger;
+
     /// <summary>Static list of policy choices for the per-currency
     /// ComboBoxes. The view binds ItemsSource to this.</summary>
     public IReadOnlyList<CashPolicy> PolicyChoices { get; } = new[]
@@ -111,6 +119,12 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
             KeepGoldOnHand     = ClampNonNeg(KeepGoldOnHand),
             KeepPlatinumOnHand = ClampNonNeg(KeepPlatinumOnHand),
             KeepRunicOnHand    = ClampNonNeg(KeepRunicOnHand),
+
+            SkipCollectIfMakesLight    = SkipCollectIfMakesLight,
+            SkipCollectIfMakesMedium   = SkipCollectIfMakesMedium,
+            SkipCollectIfMakesHeavy    = SkipCollectIfMakesHeavy,
+            CollectAfterCombatFinished = CollectAfterCombatFinished,
+            DropSmallerForLarger       = DropSmallerForLarger,
         };
 
         profile.Settings ??= new();
@@ -167,6 +181,12 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         KeepGoldOnHand     = dto.KeepGoldOnHand;
         KeepPlatinumOnHand = dto.KeepPlatinumOnHand;
         KeepRunicOnHand    = dto.KeepRunicOnHand;
+
+        SkipCollectIfMakesLight    = dto.SkipCollectIfMakesLight;
+        SkipCollectIfMakesMedium   = dto.SkipCollectIfMakesMedium;
+        SkipCollectIfMakesHeavy    = dto.SkipCollectIfMakesHeavy;
+        CollectAfterCombatFinished = dto.CollectAfterCombatFinished;
+        DropSmallerForLarger       = dto.DropSmallerForLarger;
     }
 
     private CashSettings ReadOrDefault()
@@ -215,4 +235,9 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnKeepGoldOnHandChanged(long value)                  => MarkDirty();
     partial void OnKeepPlatinumOnHandChanged(long value)              => MarkDirty();
     partial void OnKeepRunicOnHandChanged(long value)                 => MarkDirty();
+    partial void OnSkipCollectIfMakesLightChanged(bool value)         => MarkDirty();
+    partial void OnSkipCollectIfMakesMediumChanged(bool value)        => MarkDirty();
+    partial void OnSkipCollectIfMakesHeavyChanged(bool value)         => MarkDirty();
+    partial void OnCollectAfterCombatFinishedChanged(bool value)      => MarkDirty();
+    partial void OnDropSmallerForLargerChanged(bool value)            => MarkDirty();
 }

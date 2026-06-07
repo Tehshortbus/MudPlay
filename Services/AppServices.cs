@@ -239,6 +239,19 @@ public sealed class AppServices
     public Game.Remote.DoHandler Do { get; }
 
     /// <summary>
+    /// Phase 9 Cluster 5d — <c>@auto-*</c> remote command family
+    /// (party member toggles our AutoMode flags). Backed by the
+    /// loaded character profile's <c>General</c> section.
+    /// </summary>
+    public Game.Remote.AutoModeRemoteHandler AutoMode { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 Cluster 5d — <c>@comeback</c> remote command. Forwards
+    /// to <see cref="DeathRecovery"/>'s comeback hook.
+    /// </summary>
+    public Game.Remote.ComebackHandler Comeback { get; private set; } = null!;
+
+    /// <summary>
     /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
     /// search → disarm state machine + FIFO request queue + Stats-
     /// skill gate. Bound by <see cref="TrapRemote"/>'s handler at
@@ -1077,6 +1090,10 @@ public sealed class AppServices
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
         Do = new Game.Remote.DoHandler(RemoteCommands, Log);
+        // Cluster 5d — @auto-* family + @comeback. AutoMode handler
+        // mutates the loaded profile's General section + persists.
+        // ComebackHandler forwards to DeathRecoveryManager.
+        AutoMode = new Game.Remote.AutoModeRemoteHandler(RemoteCommands, Profile, Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
@@ -1515,6 +1532,8 @@ public sealed class AppServices
         // follow-up.
         DeathRecovery = new Game.Recovery.DeathRecoveryManager(
             DeathWatcher, Profile, Log);
+        // Cluster 5d — @comeback handler routes to DeathRecovery.
+        Comeback = new Game.Remote.ComebackHandler(RemoteCommands, DeathRecovery, Log);
 
         // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
