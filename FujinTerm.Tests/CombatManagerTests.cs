@@ -134,15 +134,61 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void PrefixedDisplay_AttackUsesBaseName()
+    public void PrefixedDisplay_AttackUsesPrefixedName()
     {
-        // "nasty giant rat" displayed — wire sends `a giant rat`.
+        // Critical for ambiguity resolution: when two variants of the
+        // same base ("angry kobold thief" + "large kobold thief") are
+        // in the same room, the server can't disambiguate
+        // `attack kobold thief`. We always send the full prefixed
+        // display name so the target uniquely identifies the
+        // instance — and `attack nasty giant rat` works fine in the
+        // single-instance case too.
         using Harness h = new();
         h.AddMonster(1, "giant rat", killable: true, allowNoPrefix: true, "nasty");
 
         h.Feed("Also here: nasty giant rat.");
 
-        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("a nasty giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void TwoSameBaseMonsters_AttackBySpecificPrefix()
+    {
+        // The user's reference scenario: "angry kobold thief" +
+        // "large kobold thief" in the same room. We want to engage
+        // the angry one (first by appearance, default priority +
+        // Normal target order); the wire MUST send "attack angry
+        // kobold thief", not "attack kobold thief", or the server
+        // picks an instance for us.
+        using Harness h = new();
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large", "fierce");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+
+        Assert.Equal("a angry kobold thief", h.LastSent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TwoSameBaseMonsters_OneDies_SwingsAtRemainingByPrefix()
+    {
+        // First instance dies (room re-displays without it); we must
+        // detect the change and send a new attack against the
+        // remaining instance by its prefixed name.
+        using Harness h = new();
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Also here: large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
     }
 
     [Fact]
@@ -559,5 +605,74 @@ public sealed class CombatManagerTests
         h.Feed("[HP=100/MA=50]:Bob moves to attack giant rat.");
 
         Assert.Equal(2, h.Sent.Count);
+    }
+
+    // ----- mirror modes: switch our target to follow the announcer ----
+
+    [Fact]
+    public void AttackLastParty_SwitchesTargetToFollowParty()
+    {
+        // Two kobold thiefs in the room; we pick angry by default.
+        // Party member Tank announces against the LARGE one. Mirror
+        // mode switches our target so we attack the same instance —
+        // critical when the user wants "attack what other party
+        // members attack".
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Tank" });
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+
+        h.Feed("Tank moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void AttackLastRoom_DoesNotSwitch_JustReFiresOwnTarget()
+    {
+        // Room-mode is "be last in initiative on MY target", not
+        // "follow whoever shouts". Stranger announcing a different
+        // target shouldn't pull us off ours.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Stranger moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a angry kobold thief", h.LastSent);   // unchanged target
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void AttackAfter_MirrorsNamedPlayersTarget()
+    {
+        // AttackAfter is the named-player-mirror mode. Wait for the
+        // named player to announce; mirror their target.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackAfter;
+        h.Settings.AttackAfterPlayerName = "Tank";
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);    // initial own pick
+
+        h.Feed("Tank moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
     }
 }

@@ -137,8 +137,15 @@ public sealed class CombatManager : IDisposable
         }
         CombatSettings settings = _readSettings();
 
-        // Score every Monster entity once: (ResolvedName, MonsterNumber,
-        // overlay-resolved Priority + Relationship, appearance-order).
+        // Score every Monster entity once. We need BOTH names:
+        //   RawName       — full prefixed form ("angry kobold thief"),
+        //                   used on the wire so the server engages the
+        //                   specific instance, not whichever
+        //                   "<adj> kobold thief" it happens to pick.
+        //   ResolvedName  — base form ("kobold thief"), used for the
+        //                   in-room counting / re-pick logic when the
+        //                   server auto-continues against the same
+        //                   base across multiple identical instances.
         List<EngageableCandidate> engageable = new();
         for (int i = 0; i < obs.Entities.Count; i++)
         {
@@ -152,6 +159,7 @@ public sealed class CombatManager : IDisposable
             if (!HasDeathLine(n)) continue;
 
             engageable.Add(new EngageableCandidate(
+                RawName:         e.RawName,
                 ResolvedName:    e.ResolvedName,
                 MonsterNumber:   n,
                 Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
@@ -180,19 +188,19 @@ public sealed class CombatManager : IDisposable
             ? engageable[^1]
             : engageable[0];
 
-        // Server auto-attacks the named target each round; re-sending
-        // the same command mid-fight would burn a swing. If the
-        // existing target's base name is still in the engageable list
-        // (regardless of which prefix-variant instance), keep going.
+        // Server auto-attacks the specific named target each round;
+        // re-sending the same command mid-fight would burn a swing.
+        // If the exact RawName we last sent is still in the engageable
+        // list, keep going — the server is still swinging at it.
         if (_currentTarget is { } current &&
-            engageable.Any(e => string.Equals(e.ResolvedName, current,
+            engageable.Any(e => string.Equals(e.RawName, current,
                                               StringComparison.OrdinalIgnoreCase)))
         {
             return;
         }
 
-        SendAttack(settings.NormalAttackCommand, picked.ResolvedName, picked.Priority);
-        _currentTarget = picked.ResolvedName;
+        SendAttack(settings.NormalAttackCommand, picked.RawName, picked.Priority);
+        _currentTarget = picked.RawName;
     }
 
     /// <summary>
@@ -205,7 +213,8 @@ public sealed class CombatManager : IDisposable
         // (?<player>\w+) at positional 0, (?<target>.+?) at 1.
         if (match.Groups.Count < 2) return;
         string announcer = match.Groups[0];
-        if (announcer.Length == 0) return;
+        string announcedTarget = match.Groups[1].Trim();
+        if (announcer.Length == 0 || announcedTarget.Length == 0) return;
 
         // Never re-fire on our own announce — we already swung.
         string? ownName = _readOwnGivenName();
@@ -214,23 +223,45 @@ public sealed class CombatManager : IDisposable
             return;
 
         if (!_isEnabled()) return;
-        if (_currentTarget is null) return;          // nothing to re-fire against
         CombatSettings settings = _readSettings();
 
-        bool fire = settings.AttackTiming switch
+        // Decide whether to fire AND whether to switch our target. The
+        // "mirror" modes follow the announcer's choice (party
+        // coordination + named-player follow); "stay" modes keep
+        // attacking our own target and just re-issue the command to
+        // stay last in initiative.
+        (bool fire, bool mirror) = settings.AttackTiming switch
         {
-            AttackTiming.Default          => false,
-            AttackTiming.AttackLastParty  => IsPartyMember(announcer),
-            AttackTiming.AttackLastRoom   => true,
-            AttackTiming.AttackAfter      => string.Equals(announcer,
+            AttackTiming.Default          => (false, false),
+            AttackTiming.AttackLastParty  => (IsPartyMember(announcer), true),
+            AttackTiming.AttackLastRoom   => (true,                     false),
+            AttackTiming.AttackAfter      => (string.Equals(announcer,
                                                   settings.AttackAfterPlayerName ?? string.Empty,
-                                                  StringComparison.OrdinalIgnoreCase),
-            _                              => false,
+                                                  StringComparison.OrdinalIgnoreCase),  true),
+            _                              => (false, false),
         };
 
         if (!fire) return;
 
-        SendAttack(settings.NormalAttackCommand, _currentTarget, refire: true,
+        string target;
+        if (mirror)
+        {
+            // Switch to the announcer's specific instance. Server
+            // resolves `attack large kobold thief` against the right
+            // entity even when "angry kobold thief" is also present.
+            target = announcedTarget;
+            _currentTarget = announcedTarget;
+        }
+        else if (_currentTarget is { } cur)
+        {
+            target = cur;
+        }
+        else
+        {
+            return;     // re-fire mode without an existing target → nothing to do
+        }
+
+        SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
     }
 
@@ -295,6 +326,7 @@ public sealed class CombatManager : IDisposable
     }
 
     private readonly record struct EngageableCandidate(
+        string RawName,
         string ResolvedName,
         int MonsterNumber,
         MonsterAttackPriority Priority,
