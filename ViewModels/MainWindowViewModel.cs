@@ -638,11 +638,6 @@ public partial class MainWindowViewModel : ObservableObject
         // ride the same gate-wrapped pipeline so spell commands respect
         // the suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
-        // Phase 9 PR 9.G — PvPManager's flee / hangup commands ride the
-        // same gate-wrapped pipeline. Hangup is destructive so the
-        // engine logs a Warn before sending; the gate-wrap ensures it
-        // doesn't fire mid-password-entry.
-        AppServices.Current.PvP.SetWireSender(engineSend);
         // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
         // ride the gate-wrapped pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);

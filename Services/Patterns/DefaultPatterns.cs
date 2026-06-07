@@ -118,15 +118,6 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.TargetNotHere,
             @"^You don't see (?<target>.+?) here[.!]\s*$");
 
-        // PvP — another player attacking us. Distinguished from mob
-        // lines by the missing "The " prefix (mob hit lines always
-        // start "The <mob>"). Player names are single-token; the
-        // attacker capture is the bare name.
-        yield return new RegexPattern(KnownPatterns.PlayerHitsYou,
-            @"^(?<player>[A-Z]\w*) (?:critically )?\w+ you for (?<damage>\d+) damage!");
-        yield return new RegexPattern(KnownPatterns.PlayerMissesYou,
-            @"^(?<player>[A-Z]\w*) \w+ at you\b(?!.*for \d+ damage)");
-
         // ----- Spellcasting failures ------------------------------------
         // Cast outcomes that block further casts for the current round.
         // CastCoordinator subscribes to flag the engine's _castBlocked

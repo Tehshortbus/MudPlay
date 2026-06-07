@@ -73,23 +73,6 @@ public static class KnownPatterns
     /// </summary>
     public const string TargetNotHere        = "combat.target-not-here";
 
-    /// <summary>
-    /// Another player attacking us — "&lt;PlayerName&gt; verb you for
-    /// N damage!". Distinguished from <see cref="MobHits"/> by the
-    /// missing "The" prefix (mob lines always start "The X").
-    /// PvPManager subscribes here to drive its reactive Flee / Hangup
-    /// path.
-    /// </summary>
-    public const string PlayerHitsYou        = "combat.player-hits-you";
-
-    /// <summary>
-    /// Another player swinging-and-missing at us. Same source-prefix
-    /// distinction as <see cref="PlayerHitsYou"/>. PvPManager treats
-    /// it the same as a successful hit — the intent to attack is
-    /// what matters for the reactive trigger.
-    /// </summary>
-    public const string PlayerMissesYou      = "combat.player-misses-you";
-
     // ----- Spellcasting -------------------------------------------------
     /// <summary>"You attempt to cast &lt;spell&gt;, but fail." — failed
     /// concentration / fizzle. Blocks further casts for the current
