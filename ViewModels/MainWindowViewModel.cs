@@ -641,6 +641,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
         // ride the gate-wrapped pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);
+        // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
+        // commands ride the same gate-wrapped pipeline.
+        AppServices.Current.Stash.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);

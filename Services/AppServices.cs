@@ -646,6 +646,16 @@ public sealed class AppServices
     public Game.Cash.CashManager Cash { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.E follow-up — on-entry stash plan for user-
+    /// marked stash rooms. Dispatches <c>hide N &lt;coin&gt;</c>
+    /// commands per <see cref="Models.Profile.StashCurrencyRule"/>
+    /// when <see cref="RoomTracker"/> reports we've arrived in a
+    /// configured <see cref="Models.Profile.StashRoom"/>. Item-side
+    /// stash rules land when the inventory subsystem ships.
+    /// </summary>
+    public Game.Cash.StashRoomManager Stash { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1489,6 +1499,25 @@ public sealed class AppServices
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
+
+        // Phase 9 PR 9.E follow-up — StashRoomManager. Driven by
+        // RoomTracker.StateChanged; looks up the entered room in
+        // the user's stash list and dispatches per-currency hide
+        // commands. Shares AutoGetCash gating with CashManager
+        // (cash automation is one mental toggle).
+        Stash = new Game.Cash.StashRoomManager(Cash,
+            readSettings: () => ReadSection<Models.Profile.StashRoomSettings>(Profile.Current, "StashRooms"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            log: Log);
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.NewRoom is null) return;
+            // Only fire on actual room change (key differs) — same
+            // pattern HealthManager / StealthManager use.
+            if (t.PreviousRoom is not null
+             && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            Stash.NoteRoomEntered(t.NewRoom.Key);
+        };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
