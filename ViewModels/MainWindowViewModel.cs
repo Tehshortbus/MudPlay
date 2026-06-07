@@ -2382,6 +2382,45 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenEvents() => OpenSettingsAt("events");
 
+    /// <summary>Singleton handle to the Player Workshop window for the
+    /// toggle convention (re-press closes; deep-link to a section
+    /// activates).</summary>
+    private Views.CharacterWorkshop.CharacterWorkshopWindow? _workshop;
+
+    [RelayCommand]
+    private void OpenWorkshopDeath() => OpenWorkshopAt("death");
+
+    private void OpenWorkshopAt(string? sectionId)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_workshop is { } existing)
+        {
+            if (existing.DataContext is ViewModels.CharacterWorkshop.CharacterWorkshopViewModel vm
+                && sectionId is not null)
+            {
+                ViewModels.CharacterWorkshop.WorkshopSectionViewModel? section = vm.Sections
+                    .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+                if (section is not null) vm.SelectedSection = section;
+                existing.Activate();
+                return;
+            }
+            existing.Close();
+            return;
+        }
+
+        AppServices svc = AppServices.Current;
+        Views.CharacterWorkshop.CharacterWorkshopWindow window = new()
+        {
+            DataContext = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
+                svc.DeathRecovery, svc.Profile, sectionId),
+        };
+        window.Closed += (_, _) => _workshop = null;
+        _workshop = window;
+        window.Show(main);
+    }
+
     /// <summary>
     /// Singleton-ish handle to the Quick Connect window so re-press of
     /// the menu / hotkey toggles it closed (per CLAUDE.md).
@@ -2745,18 +2784,7 @@ public partial class MainWindowViewModel : ObservableObject
                 "sparkline. Counters reset on connect.");
 
     [RelayCommand]
-    private void OpenWorkshop()
-        => OpenPlaceholder(
-            id: "workshop",
-            panelName: "Character Workshop",
-            phaseTag: "Phase 9",
-            headline: "Unified character hub — six section groups",
-            description:
-                "STATS (Sheet / CP Alloc / Builds / Character Planner) — PROGRESS " +
-                "(Levels / EXP-CP / Spells) — EQUIP (Slots / Sets+Triggers / Find " +
-                "Items) — COMBAT (Preview) — QUESTS — DEATH. Absorbs the old Player " +
-                "Status panel into STATS → Status; View → Player Status (F4) opens " +
-                "Workshop on that section.");
+    private void OpenWorkshop() => OpenWorkshopAt(null);
 
     /// <summary>
     /// Tools → Wire Inspector. Singleton-ish: a second open activates the

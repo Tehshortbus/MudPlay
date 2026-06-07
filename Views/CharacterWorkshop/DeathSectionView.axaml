@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:profile="using:FujinTerm.Models.Profile"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="500"
+             x:Class="FujinTerm.Views.CharacterWorkshop.DeathSectionView"
+             x:DataType="vm:DeathSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="22" Spacing="4"
+                    MaxWidth="720" HorizontalAlignment="Left">
+
+            <TextBlock Text="Death"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8"/>
+
+            <!-- Live summary from DeathRecoveryManager -->
+            <TextBlock Classes="SectionHeader" Text="Live status"/>
+            <Grid ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Lives remaining"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue"
+                           Text="{Binding LivesRemaining}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Total deaths recorded"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue"
+                           Text="{Binding DeathCount}"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Last killer"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue"
+                           Text="{Binding LastKiller, FallbackValue='—'}"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Last death at"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue"
+                           Text="{Binding LastDeathAt, FallbackValue='—', StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"/>
+            </Grid>
+
+            <!-- Death history -->
+            <TextBlock Classes="SectionHeader" Text="Death history"/>
+
+            <ItemsControl ItemsSource="{Binding History}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="profile:DeathRecord">
+                        <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="0,6,0,6">
+                            <Grid ColumnDefinitions="180,*">
+                                <TextBlock Grid.Column="0" Classes="FieldLabel"
+                                           Text="{Binding At, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="FieldValue"
+                                               Text="{Binding MessageText, FallbackValue='(no message)'}"/>
+                                    <TextBlock Classes="FieldLabel"
+                                               Text="{Binding LivesRemaining, StringFormat='Lives remaining: {0}'}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
