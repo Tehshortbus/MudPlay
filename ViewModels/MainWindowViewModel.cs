@@ -563,6 +563,12 @@ public partial class MainWindowViewModel : ObservableObject
         // CharacterProfile.DeathHistory and transitions to
         // PendingRespawn ahead of the respawn-room display.
         AppServices.Current.Death.AttachLineExtractor(Lines);
+        // Phase 9 — MonsterDeathWatcher needs the raw line stream to
+        // match per-monster DeathLine patterns. Specific-match path
+        // removes the dead entity from RoomEntityClassifier so
+        // CombatManager re-picks correctly on the next arrival /
+        // re-display.
+        AppServices.Current.MonsterDeath.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while

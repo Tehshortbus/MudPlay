@@ -318,6 +318,54 @@ public sealed class RoomEntityClassifier : IDisposable
     }
 
     /// <summary>
+    /// Remove ONE entity matching <paramref name="monsterName"/>
+    /// (case-insensitive match against <see cref="RoomEntity.ResolvedName"/>
+    /// then <see cref="RoomEntity.RawName"/> as fallback) from
+    /// <see cref="Current"/> and re-fire <see cref="EntitiesObserved"/>.
+    /// Called by <see cref="MonsterDeathWatcher"/> when a specific
+    /// death-line pattern is observed so CombatManager doesn't sit
+    /// on a stale entity that already died — the bug behind the
+    /// "fierce kobold thief arrived but no attack" scenario where the
+    /// just-killed "giant rat" still appeared in the Current list and
+    /// blocked the target re-pick.
+    /// </summary>
+    /// <param name="monsterName">The dead monster's name. The
+    /// death-line patterns use the base / canonical name (no flavour
+    /// prefix), so resolved-name matches first; raw-name match
+    /// covers the edge case where a no-prefix monster carries the
+    /// same string in both fields.</param>
+    /// <returns><c>true</c> when a matching entity was removed,
+    /// <c>false</c> otherwise (defensive caller logging).</returns>
+    public bool RemoveDeadEntity(string monsterName)
+    {
+        if (string.IsNullOrWhiteSpace(monsterName)) return false;
+        if (Current is not { } cur) return false;
+
+        int removeIndex = -1;
+        for (int i = 0; i < cur.Entities.Count; i++)
+        {
+            RoomEntity e = cur.Entities[i];
+            if (e.Kind != EntityKind.Monster) continue;
+            if (string.Equals(e.ResolvedName, monsterName, StringComparison.OrdinalIgnoreCase)
+             || string.Equals(e.RawName,      monsterName, StringComparison.OrdinalIgnoreCase))
+            {
+                removeIndex = i;
+                break;
+            }
+        }
+        if (removeIndex < 0) return false;
+
+        List<RoomEntity> updated = new(cur.Entities.Count - 1);
+        for (int i = 0; i < cur.Entities.Count; i++)
+            if (i != removeIndex) updated.Add(cur.Entities[i]);
+
+        RoomEntitiesObservation obs = new(cur.RawAlsoHereLine, updated, DateTimeOffset.Now);
+        Current = obs;
+        EntitiesObserved?.Invoke(obs);
+        return true;
+    }
+
+    /// <summary>
     /// Wipe <see cref="Current"/> and re-fire <see cref="EntitiesObserved"/>
     /// with an empty observation — drives CombatManager to clear its
     /// target so the next round doesn't waste a swing on a monster

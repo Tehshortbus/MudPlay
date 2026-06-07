@@ -360,6 +360,69 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal("Also here: giant rat.", h.Observations[0].RawAlsoHereLine);
     }
 
+    // ----- RemoveDeadEntity --------------------------------------------
+
+    [Fact]
+    public void RemoveDeadEntity_DropsMatchingMonster_FiresObservation()
+    {
+        // The user's "kobold thief arrived but no attack" bug: after a
+        // mob dies, its entry must be removed from Current so
+        // CombatManager doesn't sit thinking it's still alive when an
+        // arrival event appends a new entity.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "kobold thief", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, kobold thief.");
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+
+        Assert.True(removed);
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Single(h.Observations[1].Entities);
+        Assert.Equal("kobold thief", h.Observations[1].Entities[0].ResolvedName);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_RemovesOnlyOne_OfMultipleSameName()
+    {
+        // Three giant rats — one dies. We remove ONE entry; the next
+        // room re-display corrects if our local count diverges.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, giant rat, giant rat.");
+        Assert.Equal(3, h.Observations[0].Entities.Count);
+
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+
+        Assert.True(removed);
+        Assert.Equal(2, h.Observations[1].Entities.Count);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_NoMatch_ReturnsFalse_NoEmit()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.Feed("Also here: giant rat.");
+        int observationsBefore = h.Observations.Count;
+
+        bool removed = h.Classifier.RemoveDeadEntity("goblin");
+
+        Assert.False(removed);
+        Assert.Equal(observationsBefore, h.Observations.Count);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_NullCurrent_ReturnsFalse()
+    {
+        using Harness h = new();
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+        Assert.False(removed);
+    }
+
     [Fact]
     public void NoteRoomChanged_WipesCurrent_EmitsEmptyObservation()
     {

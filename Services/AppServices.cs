@@ -579,6 +579,16 @@ public sealed class AppServices
     public Game.Combat.RoomEntryWatcher RoomEntry { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.A — recognises monster deaths via the per-monster
+    /// <see cref="Models.GameData.MonsterMessageRecord.DeathLine"/>
+    /// patterns + the "experience + Combat Off" fallback. On a match,
+    /// the dead monster is removed from <see cref="RoomClassifier"/>'s
+    /// observation so CombatManager re-picks correctly instead of
+    /// sitting on a stale entry.
+    /// </summary>
+    public Game.Combat.MonsterDeathWatcher MonsterDeath { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.B — passive HP/MA threshold engine. Asserts /
     /// clears HealthRecovery + ManaRecovery gates and drives the
     /// rest / stand cycle with pre- and post-rest command sequencing.
@@ -1306,6 +1316,40 @@ public sealed class AppServices
         // RoomEntryArrival pattern + appends to the classifier so the
         // Combat gate / CombatManager react to spawns immediately.
         RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
+
+        // Phase 9 — monster death watcher. Specific-pattern matches
+        // (per-monster DeathLine) + fallback (exp + Combat Off). On a
+        // death event the classifier removes the dead entity so
+        // CombatManager re-picks correctly instead of being blocked
+        // by a stale "still in the list" check against the
+        // just-killed mob (the "kobold thief arrived but no attack"
+        // bug). Multiple candidates per pattern are normal — shared
+        // wordings; we remove ONE matching entry and let the next
+        // room re-display correct any cross-variant ambiguity.
+        MonsterDeath = new Game.Combat.MonsterDeathWatcher(
+            Router, MonsterMessages, Log);
+        MonsterDeath.MonsterDied += evt =>
+        {
+            if (evt.IsFallback)
+            {
+                // Fallback path: we don't know which monster died.
+                // CombatManager's next swing window will be correct
+                // because the server's room re-display (or the next
+                // arrival) eventually rebuilds the list. We just log.
+                Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
+                    $"fallback death — no entity removed");
+                return;
+            }
+            foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
+            {
+                if (RoomClassifier.RemoveDeadEntity(id.Name))
+                {
+                    Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
+                        $"removed dead entity name={id.Name}");
+                    break;     // remove one — multiple candidates are alt-names for the same death
+                }
+            }
+        };
 
         Combat = new Game.Combat.CombatManager(
             Router, RoomClassifier, MonsterMessages,
