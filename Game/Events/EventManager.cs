@@ -69,8 +69,15 @@ public sealed class EventManager
     /// Snapshot of "what was happening" when an event-walk took over.
     /// Set in <see cref="ExecuteWalkTo"/>, consumed in
     /// <see cref="OnResumeWalkEvent"/> when the walker reaches the
-    /// event's target. Null when no resume is queued.
+    /// event's target. Null when no resume is queued. Internal-set so
+    /// tests can assert on it; production callers use the public
+    /// surface.
     /// </summary>
+    internal EventResumePlan? PendingResumeForTests
+    {
+        get => _pendingResume;
+        set => _pendingResume = value;
+    }
     private EventResumePlan? _pendingResume;
 
     /// <summary>
@@ -472,7 +479,7 @@ public sealed class EventManager
     /// null when nothing was running, in which case the event-walk
     /// just runs and ends — no resume.
     /// </summary>
-    private EventResumePlan? SnapshotCurrentActivity()
+    internal EventResumePlan? SnapshotCurrentActivity()
     {
         if (_autoLair is { IsActive: true } al && al.Marked.Count > 0)
         {
@@ -514,7 +521,7 @@ public sealed class EventManager
     /// the plan (user can intervene). Pause / Resume / Started are
     /// not interesting — the walk is still in progress.
     /// </summary>
-    private void OnResumeWalkEvent(WalkEvent e)
+    internal void OnResumeWalkEvent(WalkEvent e)
     {
         switch (e.Kind)
         {
@@ -568,9 +575,9 @@ public sealed class EventManager
     /// <summary>
     /// What to do after the event-walk reaches its target. Discriminated
     /// across the three engine types <see cref="SnapshotCurrentActivity"/>
-    /// distinguishes.
+    /// distinguishes. Internal so tests can pattern-match the snapshot.
     /// </summary>
-    private abstract record EventResumePlan
+    internal abstract record EventResumePlan
     {
         public abstract string Describe();
 
