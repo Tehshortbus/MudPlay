@@ -194,8 +194,11 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void Recovery_SendsStand_ClearsInFlight()
+    public void Recovery_DoesNotSendStand_JustClearsInFlight()
     {
+        // "stand" isn't a valid MajorMUD command. We clear the gate +
+        // the in-flight latch; the walker resuming (because the gate
+        // cleared) issues a move which the server auto-stands on.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
@@ -204,7 +207,7 @@ public sealed class HealthManagerTests
 
         h.State.Hp = 195;             // past 95% target
         Assert.False(h.HealthGateHeld);
-        Assert.Contains("stand", h.SentLines);
+        Assert.DoesNotContain("stand", h.SentLines);
         Assert.False(h.Health.RestInFlight);
     }
 
@@ -273,21 +276,79 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void PostRestCommand_SentAfterStand()
+    public void PostRestCommand_SentOnRecovery()
     {
         HealthSettings s = new() { PostRestCommand = "look;exits" };
         using Harness h = new(s);
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 50;
+        int restIdx = h.SentLines.IndexOf("rest");
         h.State.Hp = 195;
 
-        int stand  = h.SentLines.IndexOf("stand");
+        // No "stand"; post-rest commands fire after the recovery flip.
+        Assert.DoesNotContain("stand", h.SentLines);
         int look   = h.SentLines.LastIndexOf("look");
         int exits  = h.SentLines.LastIndexOf("exits");
-        Assert.True(stand >= 0);
-        Assert.True(look  > stand);
-        Assert.True(exits > stand);
+        Assert.True(look  > restIdx);
+        Assert.True(exits > restIdx);
+    }
+
+    // ----- NoteRoomChanged drops the in-flight latch -------------------
+
+    [Fact]
+    public void NoteRoomChanged_DropsRestInFlight()
+    {
+        // Server-side resting state auto-clears on move. Our latch
+        // must follow — otherwise the next threshold breach would
+        // see _restInFlight==true and skip the `rest` emit.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.Health.RestInFlight);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_NoLatch_NoOp()
+    {
+        // Calling NoteRoomChanged with nothing in flight is a no-op.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 180;    // above trigger — no rest started
+        Assert.False(h.Health.RestInFlight);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_GateStillAsserted_NextBreachReFiresRest()
+    {
+        // We rested, walker tugged us into a new room mid-recovery
+        // (HP still below target → gate still held). Latch dropped
+        // by NoteRoomChanged. Next Evaluate (any state change) AND
+        // out-of-combat AND gate still held → rest is re-sent.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+        int restCount1 = h.SentLines.Count(l => l == "rest");
+        Assert.Equal(1, restCount1);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+        Assert.True(h.HealthGateHeld);     // still need recovery
+
+        // Drive any state change to re-evaluate (in real use the next
+        // HP/MA tick from PromptParser would do this naturally).
+        h.State.Hp = 60;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
     }
 
     // ----- MA gate (independent of HP) -------------------------------
@@ -351,7 +412,7 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void BothPoolsRecover_StandsAndClears()
+    public void BothPoolsRecover_ClearsGates_NoStand()
     {
         using Harness h = new();
         h.State.MaxHp = 200;
@@ -365,7 +426,7 @@ public sealed class HealthManagerTests
 
         Assert.False(h.HealthGateHeld);
         Assert.False(h.ManaGateHeld);
-        Assert.Contains("stand", h.SentLines);
+        Assert.DoesNotContain("stand", h.SentLines);
         Assert.False(h.Health.RestInFlight);
     }
 

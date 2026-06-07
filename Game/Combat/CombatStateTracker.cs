@@ -57,6 +57,7 @@ public sealed class CombatStateTracker : IDisposable
     private readonly MovementCoordinator _coordinator;
     private readonly RoomEntityClassifier _classifier;
     private readonly MonsterMessageStore _monsters;
+    private readonly Func<int, MonsterOverlay>? _resolveOverlay;
     private readonly PlayerState _state;
     private readonly Func<bool> _isAutoAttackEnabled;
     private readonly LogService? _log;
@@ -77,6 +78,27 @@ public sealed class CombatStateTracker : IDisposable
         PlayerState state,
         Func<bool> isAutoAttackEnabled,
         LogService? log = null)
+        : this(router, coordinator, classifier, monsters, state,
+               isAutoAttackEnabled, resolveOverlay: null, log) { }
+
+    /// <summary>
+    /// Construct with a per-monster overlay resolver so the engageable
+    /// predicate matches CombatManager (Relationship-based). Without
+    /// it, the tracker falls back to "every monster engageable" which
+    /// can spuriously assert the Combat gate against shopkeepers
+    /// (CombatManager would skip them but the walker would still
+    /// pause). AppServices wires the same delegate it gives
+    /// CombatManager so the two stay in sync.
+    /// </summary>
+    public CombatStateTracker(
+        MessageRouter router,
+        MovementCoordinator coordinator,
+        RoomEntityClassifier classifier,
+        MonsterMessageStore monsters,
+        PlayerState state,
+        Func<bool> isAutoAttackEnabled,
+        Func<int, MonsterOverlay>? resolveOverlay,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -88,6 +110,7 @@ public sealed class CombatStateTracker : IDisposable
         _coordinator = coordinator;
         _classifier  = classifier;
         _monsters    = monsters;
+        _resolveOverlay = resolveOverlay;
         _state       = state;
         _isAutoAttackEnabled = isAutoAttackEnabled;
         _log         = log;
@@ -142,20 +165,22 @@ public sealed class CombatStateTracker : IDisposable
     }
 
     /// <summary>
-    /// Until PR 9.A wires per-monster AttackPriority, "engageable"
-    /// means the monster has a populated DeathLine — i.e. there's
-    /// a known death message for it, so it's a real killable mob
-    /// (not a shopkeeper / quest-giver / friendly NPC). Returns true
-    /// when the classifier-emitted entity has no associated
-    /// MonsterMessageRecord (defensive — better to wait on an
-    /// unknown-to-store mob than walk past it).
+    /// Engageable = MonsterOverlay.Relationship is Enemy (or null,
+    /// which defaults to Enemy). Shopkeepers / quest-givers / friendly
+    /// NPCs are marked Friend / Neutral / Hangup explicitly in the
+    /// overlay seed; un-tagged monsters are treated as fightable so
+    /// the engine doesn't sit through a respawn just because the data
+    /// table is missing a DeathLine (152 of 1100 monsters in stock
+    /// data ship with empty DeathLine — acid slime, etc.).
     /// </summary>
     private bool IsEngageable(RoomEntity e)
     {
         if (e.MonsterNumber is not int n) return true;
-        MonsterMessageRecord? rec = _monsters.FindByMonsterNumber(n);
-        if (rec is null) return true;
-        return rec.DeathLine.Count > 0;
+        if (_resolveOverlay is null) return true;        // legacy ctor — engage everything
+        MonsterOverlay overlay;
+        try { overlay = _resolveOverlay(n) ?? new MonsterOverlay(); }
+        catch { return true; }
+        return (overlay.Relationship ?? MonsterRelationship.Enemy) == MonsterRelationship.Enemy;
     }
 
     private void AssertGate(string reason)

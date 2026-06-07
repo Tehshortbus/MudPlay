@@ -220,14 +220,39 @@ public sealed class CombatManagerTests
     // ----- engageable filter ------------------------------------------
 
     [Fact]
-    public void ShopkeeperOnly_NoSwing()
+    public void ShopkeeperFlaggedFriend_NoSwing()
     {
+        // Engageability is Relationship-based: a shopkeeper marked
+        // Friend (via MonsterOverlay seed at the active set) gets
+        // skipped. An empty DeathLine on its message record no
+        // longer matters — the user's clarification: DeathLine is
+        // the *death-message pattern*, not a "killable" flag, so
+        // we can't use it as the engage gate.
         using Harness h = new();
-        h.AddMonster(7, "shopkeeper", killable: false);
+        h.AddMonster(7, "shopkeeper", killable: true);
+        h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: shopkeeper.");
 
         Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void UnknownToDataMonster_EmptyDeathLine_StillEngaged()
+    {
+        // Regression check for the acid-slime bug: 152 of 1100
+        // monsters in stock data ship with empty DeathLine
+        // (incomplete data, not unkillable). Without the
+        // Relationship filter, those mobs would be silently
+        // skipped — walker keeps walking while the server beats
+        // on the player.
+        using Harness h = new();
+        h.AddMonster(99, "acid slime", killable: false);   // killable=false → empty DeathLine
+
+        h.Feed("Also here: acid slime.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("a acid slime", h.LastSent);
     }
 
     [Fact]

@@ -245,7 +245,13 @@ public sealed class HealthManager : IDisposable
             }
         }
 
-        // ----- rest / stand pacing ---------------------------------
+        // ----- rest pacing ------------------------------------------
+        // On recovery we send the user's configured post-rest chain
+        // (if any) and clear _restInFlight. No "stand" — that's not a
+        // valid MajorMUD command; the server auto-stands the player
+        // when they next move or act, and the walker's next move
+        // (which the resumed nav engine fires once both gates clear)
+        // is what actually exits the (resting) state.
         bool anyGate = _hpGateAsserted || _maGateAsserted;
 
         if (anyGate && !_state.InCombat && !_restInFlight)
@@ -258,12 +264,26 @@ public sealed class HealthManager : IDisposable
         }
         else if (!anyGate && _restInFlight)
         {
-            SendCommand("stand");
             SendChained(s.PostRestCommand);
             _log?.Info(LogCategory,
-                $"stand hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+                $"recovered hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = false;
         }
+    }
+
+    /// <summary>
+    /// Called by an external observer (RoomTracker via AppServices)
+    /// when the player's location changes. Server-side resting state
+    /// is auto-cleared on move, so our <see cref="_restInFlight"/>
+    /// latch must drop too — otherwise the next recovery cycle would
+    /// skip the <c>rest</c> emit because we'd still think we were
+    /// sitting.
+    /// </summary>
+    public void NoteRoomChanged()
+    {
+        if (!_restInFlight) return;
+        _restInFlight = false;
+        _log?.Info(LogCategory, "rest-in-flight cleared on room change");
     }
 
     /// <summary>

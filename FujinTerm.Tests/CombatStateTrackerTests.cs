@@ -27,6 +27,7 @@ public sealed class CombatStateTrackerTests
         public CombatStateTracker Tracker { get; }
 
         public bool AutoAttackEnabled { get; set; } = true;
+        public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
 
         public Harness()
         {
@@ -36,7 +37,20 @@ public sealed class CombatStateTrackerTests
             Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
             Tracker = new CombatStateTracker(
                 Router, Coordinator, Classifier, Monsters, State,
-                () => AutoAttackEnabled, Log);
+                () => AutoAttackEnabled,
+                resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o)
+                                     ? o : new MonsterOverlay(),
+                log: Log);
+        }
+
+        public void SetOverlay(int number, MonsterRelationship? relationship = null,
+                               MonsterAttackPriority? priority = null)
+        {
+            Overlays[number] = new MonsterOverlay
+            {
+                Relationship = relationship,
+                Priority     = priority,
+            };
         }
 
         public void AddMonster(int number, string name, bool killable,
@@ -104,10 +118,11 @@ public sealed class CombatStateTrackerTests
     }
 
     [Fact]
-    public void ShopkeeperOnly_DoesNotAssertGate()
+    public void ShopkeeperFlaggedFriend_DoesNotAssertGate()
     {
         using Harness h = new();
-        h.AddMonster(7, "shopkeeper", killable: false);
+        h.AddMonster(7, "shopkeeper", killable: true);
+        h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: shopkeeper.");
 
@@ -115,11 +130,26 @@ public sealed class CombatStateTrackerTests
     }
 
     [Fact]
-    public void MixedKillableAndFriendly_AssertsOnKillable()
+    public void UnknownToDataMonster_EmptyDeathLine_AssertsGate()
+    {
+        // Acid-slime regression: empty DeathLine in monster messages
+        // doesn't mean unkillable; the engageable predicate now
+        // ignores it.
+        using Harness h = new();
+        h.AddMonster(99, "acid slime", killable: false);
+
+        h.Feed("Also here: acid slime.");
+
+        Assert.True(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void MixedHostileAndFriendly_AssertsOnHostile()
     {
         using Harness h = new();
         h.AddMonster(1, "giant rat",  killable: true);
-        h.AddMonster(7, "shopkeeper", killable: false);
+        h.AddMonster(7, "shopkeeper", killable: true);
+        h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: giant rat, shopkeeper.");
 

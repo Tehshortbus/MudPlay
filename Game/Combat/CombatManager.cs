@@ -156,7 +156,13 @@ public sealed class CombatManager : IDisposable
             MonsterOverlay overlay = ResolveOverlay(n);
             if ((overlay.Relationship ?? MonsterRelationship.Enemy) != MonsterRelationship.Enemy)
                 continue;
-            if (!HasDeathLine(n)) continue;
+            // Engageability is Relationship-based ONLY. Earlier we
+            // also required MonsterMessageRecord.DeathLine non-empty
+            // as a "killable" proxy, but 152 of 1100 monsters in the
+            // stock data set ship with empty DeathLine (incomplete
+            // data, not actually unkillable — acid slime, etc.). The
+            // overlay seed marks the real friendlies explicitly; if
+            // a monster is Enemy / unmarked, it's a target.
 
             engageable.Add(new EngageableCandidate(
                 RawName:         e.RawName,
@@ -286,12 +292,6 @@ public sealed class CombatManager : IDisposable
         }
     }
 
-    private bool HasDeathLine(int monsterNumber)
-    {
-        MonsterMessageRecord? rec = _monsters.FindByMonsterNumber(monsterNumber);
-        if (rec is null) return true;            // unknown to message store — defensive engage
-        return rec.DeathLine.Count > 0;
-    }
 
     private void SendAttack(string command, string target, MonsterAttackPriority? priority = null)
     {

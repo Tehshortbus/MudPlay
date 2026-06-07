@@ -1264,6 +1264,13 @@ public sealed class AppServices
             Router, MovementCoordinator, RoomClassifier, MonsterMessages,
             PlayerState,
             isAutoAttackEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
+            // Same overlay-resolve closure CombatManager uses — keeps
+            // the engageable predicate consistent so the gate and the
+            // swing decision can't diverge on the same room state.
+            resolveOverlay: n => Resolver.ResolveGameData<Models.GameData.MonsterOverlay>(
+                "Monsters",
+                n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                MonsterOverlaySeed.GetOverlay(n)),
             log: Log);
 
         // Phase 9 PR 9.0c — RoundDamageTracker. shouldWriteTrace
@@ -1326,6 +1333,17 @@ public sealed class AppServices
                 ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             log: Log);
+
+        // Server-side resting state clears on move; drop our latch
+        // too so the next threshold breach actually fires `rest`
+        // again instead of skipping it on a stale _restInFlight.
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.PreviousRoom is null || t.NewRoom is null) return;
+            if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
+            if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            Health.NoteRoomChanged();
+        };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
