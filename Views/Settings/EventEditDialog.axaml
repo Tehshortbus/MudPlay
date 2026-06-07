@@ -3,11 +3,11 @@
         xmlns:vm="using:FujinTerm.ViewModels.Settings"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="580" d:DesignHeight="540"
         x:Class="FujinTerm.Views.Settings.EventEditDialog"
         x:DataType="vm:EventEditDialogViewModel"
         Title="{Binding DialogTitle}"
-        Width="520" Height="560"
+        Width="580" Height="540"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -25,16 +25,20 @@
         <Style Selector="TextBlock.Error">
             <Setter Property="Foreground" Value="#E55353"/>
             <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
         </Style>
         <Style Selector="TextBlock.FieldLabel">
             <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <Style Selector="RadioButton.Row">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
             <!-- Header: Name + flags. -->
             <Grid Grid.Row="0" ColumnDefinitions="60,*,Auto,Auto" ColumnSpacing="8">
@@ -48,118 +52,135 @@
                           ToolTip.Tip="Fires only while AFK — wires when the AFK engine ships in PR 8.6."/>
             </Grid>
 
-            <!-- WHEN section. -->
-            <StackPanel Grid.Row="1" Spacing="3" Margin="0,12,0,0">
-                <TextBlock Classes="SectionHeader" Text="WHEN (trigger)"/>
-                <RadioButton GroupName="When" Content="Logon"
+            <!-- WHEN section: single grid so the time / numeric / unit
+                 columns line up across rows. Errors collapse when empty. -->
+            <Grid Grid.Row="1" Margin="0,12,0,0"
+                  ColumnDefinitions="100,140,140,*"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
+                           Classes="SectionHeader" Text="WHEN (trigger)"/>
+
+                <RadioButton Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                             Classes="Row" GroupName="When" Content="Logon"
                              IsChecked="{Binding IsTriggerLogon, Mode=TwoWay}"/>
-                <RadioButton GroupName="When" Content="Logoff"
+                <RadioButton Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4"
+                             Classes="Row" GroupName="When" Content="Logoff"
                              IsChecked="{Binding IsTriggerLogoff, Mode=TwoWay}"/>
-                <RadioButton GroupName="When" Content="Re-log"
+                <RadioButton Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="4"
+                             Classes="Row" GroupName="When" Content="Re-log"
                              IsChecked="{Binding IsTriggerRelog, Mode=TwoWay}"/>
 
-                <!-- At time row. -->
-                <Grid ColumnDefinitions="Auto,140,Auto,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="When" Content="At time"
-                                 IsChecked="{Binding IsTriggerAtTime, Mode=TwoWay}"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding AtTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding IsTriggerAtTime}"
-                             PlaceholderText="HH:mm (24-hour)"/>
-                    <TextBlock Grid.Column="2" Classes="Hint" Text="wall-clock local"
-                               VerticalAlignment="Center" Margin="6,0,0,0"/>
-                    <TextBlock Grid.Column="3" Classes="Error"
-                               Text="{Binding AtTimeError}"
-                               VerticalAlignment="Center"/>
-                </Grid>
+                <RadioButton Grid.Row="4" Grid.Column="0" Classes="Row"
+                             GroupName="When" Content="At time"
+                             IsChecked="{Binding IsTriggerAtTime, Mode=TwoWay}"/>
+                <TextBox Grid.Row="4" Grid.Column="1"
+                         Text="{Binding AtTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding IsTriggerAtTime}"
+                         PlaceholderText="HH:mm"
+                         HorizontalAlignment="Stretch"
+                         Margin="0,0,8,0"/>
+                <TextBlock Grid.Row="4" Grid.Column="2" Classes="Hint"
+                           Text="wall-clock local"
+                           VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
+                           Classes="Error"
+                           Text="{Binding AtTimeError}"
+                           IsVisible="{Binding HasAtTimeError}"/>
 
-                <!-- Every row. -->
-                <Grid ColumnDefinitions="Auto,80,100,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="When" Content="Every"
-                                 IsChecked="{Binding IsTriggerEvery, Mode=TwoWay}"/>
-                    <NumericUpDown Grid.Column="1"
-                                   Value="{Binding EveryAmount, Mode=TwoWay}"
-                                   Minimum="1" Maximum="86400"
-                                   IsEnabled="{Binding IsTriggerEvery}"
-                                   FormatString="0"/>
-                    <ComboBox Grid.Column="2"
-                              ItemsSource="{Binding EveryUnits}"
-                              SelectedItem="{Binding EveryUnit, Mode=TwoWay}"
-                              IsEnabled="{Binding IsTriggerEvery}"/>
-                    <TextBlock Grid.Column="3" Classes="Error"
-                               Text="{Binding EveryError}"
-                               VerticalAlignment="Center"/>
-                </Grid>
-            </StackPanel>
+                <RadioButton Grid.Row="6" Grid.Column="0" Classes="Row"
+                             GroupName="When" Content="Every"
+                             IsChecked="{Binding IsTriggerEvery, Mode=TwoWay}"/>
+                <NumericUpDown Grid.Row="6" Grid.Column="1"
+                               Value="{Binding EveryAmount, Mode=TwoWay}"
+                               Minimum="1" Maximum="86400"
+                               IsEnabled="{Binding IsTriggerEvery}"
+                               FormatString="0"
+                               HorizontalAlignment="Stretch"
+                               Margin="0,0,8,0"/>
+                <ComboBox Grid.Row="6" Grid.Column="2"
+                          ItemsSource="{Binding EveryUnits}"
+                          SelectedItem="{Binding EveryUnit, Mode=TwoWay}"
+                          IsEnabled="{Binding IsTriggerEvery}"
+                          HorizontalAlignment="Stretch"/>
+                <TextBlock Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="3"
+                           Classes="Error"
+                           Text="{Binding EveryError}"
+                           IsVisible="{Binding HasEveryError}"/>
+            </Grid>
 
-            <!-- WHAT section. -->
-            <StackPanel Grid.Row="2" Spacing="3" Margin="0,12,0,0">
-                <TextBlock Classes="SectionHeader" Text="WHAT (action)"/>
+            <!-- WHAT section: shared two-column layout so every action
+                 input starts at the same x. Errors collapse when empty. -->
+            <Grid Grid.Row="2" Margin="0,16,0,0"
+                  ColumnDefinitions="100,*"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  RowSpacing="4">
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                           Classes="SectionHeader" Text="WHAT (action)"/>
 
-                <!-- Walk to row. -->
-                <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="What" Content="Walk to"
-                                 IsChecked="{Binding IsActionWalkTo, Mode=TwoWay}"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding WalkToText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding IsActionWalkTo}"
-                             PlaceholderText="coord (1/297) or room name"/>
-                    <TextBlock Grid.Column="2" Classes="Error"
-                               Text="{Binding WalkToError}"
-                               VerticalAlignment="Center"/>
-                </Grid>
+                <RadioButton Grid.Row="1" Grid.Column="0" Classes="Row"
+                             GroupName="What" Content="Walk to"
+                             IsChecked="{Binding IsActionWalkTo, Mode=TwoWay}"/>
+                <TextBox Grid.Row="1" Grid.Column="1"
+                         Text="{Binding WalkToText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding IsActionWalkTo}"
+                         PlaceholderText="coord (1/297) or room name"/>
+                <TextBlock Grid.Row="2" Grid.Column="1"
+                           Classes="Error"
+                           Text="{Binding WalkToError}"
+                           IsVisible="{Binding HasWalkToError}"/>
 
-                <!-- Loop row. -->
-                <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="What" Content="Start loop"
-                                 IsChecked="{Binding IsActionLoop, Mode=TwoWay}"/>
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding AvailableLoopNames}"
-                              SelectedItem="{Binding LoopName, Mode=TwoWay}"
-                              IsEnabled="{Binding IsActionLoop}"
-                              PlaceholderText="(select a saved loop)"/>
-                    <TextBlock Grid.Column="2" Classes="Error"
-                               Text="{Binding LoopError}"
-                               VerticalAlignment="Center"/>
-                </Grid>
+                <RadioButton Grid.Row="3" Grid.Column="0" Classes="Row"
+                             GroupName="What" Content="Start loop"
+                             IsChecked="{Binding IsActionLoop, Mode=TwoWay}"/>
+                <ComboBox Grid.Row="3" Grid.Column="1"
+                          ItemsSource="{Binding AvailableLoopNames}"
+                          SelectedItem="{Binding LoopName, Mode=TwoWay}"
+                          IsEnabled="{Binding IsActionLoop}"
+                          PlaceholderText="(select a saved loop)"
+                          HorizontalAlignment="Stretch"/>
+                <TextBlock Grid.Row="4" Grid.Column="1"
+                           Classes="Error"
+                           Text="{Binding LoopError}"
+                           IsVisible="{Binding HasLoopError}"/>
 
-                <!-- Auto-lair row. -->
-                <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="What" Content="Auto-lair"
-                                 IsChecked="{Binding IsActionAutoLair, Mode=TwoWay}"/>
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding AvailableAutoLairNames}"
-                              SelectedItem="{Binding AutoLairSetupName, Mode=TwoWay}"
-                              IsEnabled="{Binding IsActionAutoLair}"
-                              PlaceholderText="(select a saved auto-lair setup)"/>
-                    <TextBlock Grid.Column="2" Classes="Error"
-                               Text="{Binding AutoLairError}"
-                               VerticalAlignment="Center"/>
-                </Grid>
+                <RadioButton Grid.Row="5" Grid.Column="0" Classes="Row"
+                             GroupName="What" Content="Auto-lair"
+                             IsChecked="{Binding IsActionAutoLair, Mode=TwoWay}"/>
+                <ComboBox Grid.Row="5" Grid.Column="1"
+                          ItemsSource="{Binding AvailableAutoLairNames}"
+                          SelectedItem="{Binding AutoLairSetupName, Mode=TwoWay}"
+                          IsEnabled="{Binding IsActionAutoLair}"
+                          PlaceholderText="(select a saved auto-lair setup)"
+                          HorizontalAlignment="Stretch"/>
+                <TextBlock Grid.Row="6" Grid.Column="1"
+                           Classes="Error"
+                           Text="{Binding AutoLairError}"
+                           IsVisible="{Binding HasAutoLairError}"/>
 
-                <!-- Command row. -->
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                    <RadioButton Grid.Column="0" GroupName="What" Content="Command"
-                                 VerticalAlignment="Top" Margin="0,4,0,0"
-                                 IsChecked="{Binding IsActionCommand, Mode=TwoWay}"/>
-                    <StackPanel Grid.Column="1" Spacing="2">
-                        <TextBox Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 IsEnabled="{Binding IsActionCommand}"
-                                 AcceptsReturn="False"
-                                 PlaceholderText="stat; who; abil 145^M" />
-                        <TextBlock Classes="Hint"
-                                   Text="Supports ^M and ; for multi-fire (each chunk sent as its own line)."/>
-                        <TextBlock Classes="Error" Text="{Binding CommandError}"/>
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
+                <RadioButton Grid.Row="7" Grid.Column="0"
+                             VerticalAlignment="Top" Margin="0,4,0,0"
+                             GroupName="What" Content="Command"
+                             IsChecked="{Binding IsActionCommand, Mode=TwoWay}"/>
+                <StackPanel Grid.Row="7" Grid.Column="1" Spacing="2">
+                    <TextBox Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding IsActionCommand}"
+                             AcceptsReturn="False"
+                             PlaceholderText="stat; who; abil 145^M" />
+                    <TextBlock Classes="Hint"
+                               Text="Supports ^M and ; for multi-fire (each chunk sent as its own line)."/>
+                </StackPanel>
+                <TextBlock Grid.Row="8" Grid.Column="1"
+                           Classes="Error"
+                           Text="{Binding CommandError}"
+                           IsVisible="{Binding HasCommandError}"/>
+            </Grid>
 
-            <!-- Spacer. -->
-            <Border Grid.Row="3" Height="0"/>
-            <Border Grid.Row="4" Height="0"/>
+            <!-- Spacer row to push the Save/Cancel buttons to the bottom. -->
+            <Border Grid.Row="3"/>
 
             <!-- Save / Cancel. -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8"
                         HorizontalAlignment="Right" Margin="0,12,0,0">
                 <Button Content="Save" Width="100"
                         IsEnabled="{Binding CanSave}"

@@ -200,6 +200,13 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
             ? "Enter a command."
             : string.Empty;
 
+    public bool HasAtTimeError   => AtTimeError.Length   > 0;
+    public bool HasEveryError    => EveryError.Length    > 0;
+    public bool HasWalkToError   => WalkToError.Length   > 0;
+    public bool HasLoopError     => LoopError.Length     > 0;
+    public bool HasAutoLairError => AutoLairError.Length > 0;
+    public bool HasCommandError  => CommandError.Length  > 0;
+
     public bool CanSave =>
         AtTimeError.Length == 0
         && EveryError.Length == 0
@@ -326,6 +333,12 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         OnPropertyChanged(nameof(LoopError));
         OnPropertyChanged(nameof(AutoLairError));
         OnPropertyChanged(nameof(CommandError));
+        OnPropertyChanged(nameof(HasAtTimeError));
+        OnPropertyChanged(nameof(HasEveryError));
+        OnPropertyChanged(nameof(HasWalkToError));
+        OnPropertyChanged(nameof(HasLoopError));
+        OnPropertyChanged(nameof(HasAutoLairError));
+        OnPropertyChanged(nameof(HasCommandError));
         OnPropertyChanged(nameof(CanSave));
     }
 
