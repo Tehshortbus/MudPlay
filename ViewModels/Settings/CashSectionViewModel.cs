@@ -1,55 +1,193 @@
-using System.Collections.Generic;
+using System.Text.Json;
+using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Cash" tab stub — per-currency collect policy, three-tier
-/// encumbrance gates (Light / Medium / Heavy), auto-deposit triggers,
-/// and the bank-room lookup. Currency labels read from the active
-/// realm at runtime (copper farthings / silver nobles / platinum
-/// crowns / etc.) — the labels listed below are the generic categories.
+/// "Cash" tab — per-currency Collect / Ignore / Discard policy plus the
+/// auto-deposit threshold + bank-room key. Persists as the
+/// <c>"Cash"</c> entry in <see cref="CharacterProfile.Settings"/>; read
+/// at runtime by <see cref="Game.Cash.CashManager"/>.
 /// </summary>
-public sealed class CashSectionViewModel : StubSectionViewModel
+/// <remarks>
+/// <para>
+/// Stash-room rules ship in a separate editor (their own list-of-rooms
+/// shape doesn't fit a flat-fields tab). Encumbrance gates, cascade
+/// drop-smaller-for-larger, and the walker-driven auto-deposit reroute
+/// stay deferred — the stub fields they used to occupy aren't surfaced
+/// because clicking them today does nothing.
+/// </para>
+/// </remarks>
+public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 {
+    private const string TabKey = "Cash";
+
+    private readonly ProfileService _profile;
+    private Control? _view;
+    private bool _suppressDirty;
+    private bool _dirty;
+
     public override string Id => "cash";
     public override string Title => "Cash";
-    public override string PhaseTag => "Phase 13 PR 13.E (CashManager)";
-    public override string Description =>
-        "Per-currency pickup behaviour with three-tier encumbrance gating (Light / Medium / Heavy), auto-deposit " +
-        "rules, and bank routing. Bank rooms come from the Phase 5 Shops table where ShopType == 7. Stash rooms / " +
-        "auto-withdrawal / toll-aware withdraw are explicitly out of scope for v1.";
+    public override bool IsDirty => _dirty;
 
-    public override IReadOnlyList<StubGroup> Groups { get; } = new[]
+    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    public bool HasProfile => _profile.Current is not null;
+
+    public override Control View => _view ??= new CashSectionView { DataContext = this };
+
+    public override IEnumerable<string> SearchableLabels => new[]
     {
-        new StubGroup("Per-currency policy", new[]
-        {
-            new StubField("Copper",   StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Silver",   StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Gold",     StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Platinum", StubFieldKind.Combo, "Collect / Ignore / Discard."),
-            new StubField("Runic",    StubFieldKind.Combo, "Collect / Ignore / Discard."),
-        }),
-        new StubGroup("Encumbrance gates", new[]
-        {
-            new StubField("Don't collect if it makes you Light",  StubFieldKind.Check, "Skip pickups that would push the character into the Light category."),
-            new StubField("Don't collect if it makes you Medium", StubFieldKind.Check, "Skip pickups that would push past Light → Medium."),
-            new StubField("Don't collect if it makes you Heavy",  StubFieldKind.Check, "Skip pickups that would push past Medium → Heavy."),
-            new StubField("Collect after combat finished", StubFieldKind.Check, "Defer pickups until the round ends (avoids losing pre-attack rolls)."),
-            new StubField("Drop smaller currency to make room for larger Collect-flagged coin", StubFieldKind.Check,
-                          "Cascade — drops just enough lower-value Collect-flagged held coin; never sacrifices Ignore-flagged."),
-        }),
-        new StubGroup("Auto-deposit / sell", new[]
-        {
-            new StubField("Auto-deposit if wealth exceeds", StubFieldKind.Text, "Triggers when total wealth crosses this."),
-            new StubField("Auto-deposit if coins exceed",   StubFieldKind.Text, "Triggers when total coin count crosses this."),
-            new StubField("Minimum cash to keep on hand",   StubFieldKind.Text, "Don't deposit below this floor."),
-            new StubField("Banking done at",                StubFieldKind.Combo, "Picked from the Phase 5 Shops table where ShopType == 7."),
-        }),
-        new StubGroup("Party loot", new[]
-        {
-            new StubField("Auto-share collected cash",      StubFieldKind.Check, "Split loot evenly with the party via the party-share command. Engine wires alongside Phase 13 PR 13.E (CashManager) + Phase 6 (PartyManager)."),
-        }),
-        // Runic currency naming moved to the BBS + Display tab — it's a
-        // per-BBS / per-realm label, not a per-character preference.
+        "Cash", "Coin", "Currency",
+        "Copper", "Silver", "Gold", "Platinum", "Runic",
+        "Collect", "Ignore", "Discard",
+        "Auto-deposit", "Bank", "Minimum cash on hand", "Wealth threshold",
     };
+
+    // ----- Per-currency policy --------------------------------------
+
+    [ObservableProperty] private CashPolicy _copperPolicy   = CashPolicy.Ignore;
+    [ObservableProperty] private CashPolicy _silverPolicy   = CashPolicy.Collect;
+    [ObservableProperty] private CashPolicy _goldPolicy     = CashPolicy.Collect;
+    [ObservableProperty] private CashPolicy _platinumPolicy = CashPolicy.Collect;
+    [ObservableProperty] private CashPolicy _runicPolicy    = CashPolicy.Collect;
+
+    // ----- Auto-deposit ---------------------------------------------
+
+    [ObservableProperty] private long _autoDepositIfWealthExceeds;
+    [ObservableProperty] private long _minimumCashOnHand;
+    [ObservableProperty] private string _bankRoomKey = string.Empty;
+
+    /// <summary>Static list of policy choices for the per-currency
+    /// ComboBoxes. The view binds ItemsSource to this.</summary>
+    public IReadOnlyList<CashPolicy> PolicyChoices { get; } = new[]
+    {
+        CashPolicy.Collect, CashPolicy.Ignore, CashPolicy.Discard,
+    };
+
+    public CashSectionViewModel() : this(AppServices.Current.Profile) { }
+
+    public CashSectionViewModel(ProfileService profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+    }
+
+    public override void Apply()
+    {
+        if (_profile.Current is not { } profile) return;
+
+        CashSettings dto = new()
+        {
+            CopperPolicy   = CopperPolicy,
+            SilverPolicy   = SilverPolicy,
+            GoldPolicy     = GoldPolicy,
+            PlatinumPolicy = PlatinumPolicy,
+            RunicPolicy    = RunicPolicy,
+
+            AutoDepositIfWealthExceeds = ClampNonNeg(AutoDepositIfWealthExceeds),
+            MinimumCashOnHand          = ClampNonNeg(MinimumCashOnHand),
+            BankRoomKey                = BankRoomKey ?? string.Empty,
+        };
+
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        _profile.Save();
+
+        // Re-evaluate auto-deposit trigger immediately so a tighter
+        // threshold fires now instead of waiting for the next coin
+        // event. Mirrors MudProxy's OnSettingsChanged reapply pattern.
+        try { AppServices.Current.Cash.OnSettingsChanged(); }
+        catch { /* AppServices may not be initialized in design-time / tests */ }
+
+        ClearDirty();
+    }
+
+    public override void Discard()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+    }
+
+    private static long ClampNonNeg(long value) => Math.Max(0, value);
+
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
+    private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void ReloadAfterProfileSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
+    {
+        CashSettings dto = ReadOrDefault();
+
+        CopperPolicy   = dto.CopperPolicy;
+        SilverPolicy   = dto.SilverPolicy;
+        GoldPolicy     = dto.GoldPolicy;
+        PlatinumPolicy = dto.PlatinumPolicy;
+        RunicPolicy    = dto.RunicPolicy;
+
+        AutoDepositIfWealthExceeds = dto.AutoDepositIfWealthExceeds;
+        MinimumCashOnHand          = dto.MinimumCashOnHand;
+        BankRoomKey                = dto.BankRoomKey ?? string.Empty;
+    }
+
+    private CashSettings ReadOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new CashSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json))
+            return new CashSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<CashSettings>(json) ?? new CashSettings();
+        }
+        catch
+        {
+            // Malformed delta — fall back to defaults rather than throwing.
+            return new CashSettings();
+        }
+    }
+
+    // ----- IsDirty plumbing -----------------------------------------
+
+    private void ClearDirty()
+    {
+        _dirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressDirty) return;
+        if (_dirty) return;
+        _dirty = true;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    partial void OnCopperPolicyChanged(CashPolicy value)              => MarkDirty();
+    partial void OnSilverPolicyChanged(CashPolicy value)              => MarkDirty();
+    partial void OnGoldPolicyChanged(CashPolicy value)                => MarkDirty();
+    partial void OnPlatinumPolicyChanged(CashPolicy value)            => MarkDirty();
+    partial void OnRunicPolicyChanged(CashPolicy value)               => MarkDirty();
+    partial void OnAutoDepositIfWealthExceedsChanged(long value)      => MarkDirty();
+    partial void OnMinimumCashOnHandChanged(long value)               => MarkDirty();
+    partial void OnBankRoomKeyChanged(string value)                   => MarkDirty();
 }
