@@ -141,6 +141,19 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.CastInterrupted,
             @"^You lost your concentration on the spell!");
 
+        // ----- Cash ----------------------------------------------------
+        // Stock MajorMUD wording for cash on the ground. Singular form
+        // (1 coin) drops the count entirely ("There is a gold piece
+        // here."). Plural carries the count + currency word. Currency
+        // word capture so CashManager can dispatch per-currency policy
+        // without per-currency regexes.
+        yield return new RegexPattern(KnownPatterns.CashOnGround,
+            @"^There (?:is a (?<currency>\w+) piece|are (?<count>\d+) (?<currency2>\w+) pieces) here\.");
+        yield return new RegexPattern(KnownPatterns.CashPickedUp,
+            @"^You pick(?:ed)? up (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        yield return new RegexPattern(KnownPatterns.CashDropped,
+            @"^You drop(?:ped)? (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+
         // Phase 9 PR 9.A — party / room attack announce. Mirrors
         // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
         // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")

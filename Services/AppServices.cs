@@ -644,6 +644,16 @@ public sealed class AppServices
     public Game.Recovery.DeathRecoveryManager DeathRecovery { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.E — per-currency cash pickup engine. Dispatches
+    /// <c>get all &lt;coin&gt;</c> commands per
+    /// <see cref="Models.Profile.CashSettings"/> policy when the
+    /// room-cash line lands; tracks held tallies for the auto-
+    /// deposit trigger. Walker-driven reroute + encumbrance gates
+    /// + cascade-drop are follow-up work.
+    /// </summary>
+    public Game.Cash.CashManager Cash { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1484,6 +1494,18 @@ public sealed class AppServices
         // follow-up.
         DeathRecovery = new Game.Recovery.DeathRecoveryManager(
             DeathWatcher, Profile, Log);
+
+        // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
+        // / cash-picked-up / cash-dropped patterns and dispatches
+        // per-currency policy. AutoGetCash gates the whole engine
+        // (Settings -> General toggle + toolbar Toggle command).
+        Cash = new Game.Cash.CashManager(Router,
+            readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            log: Log);
+        // Reset held tallies on profile swap — prior character's
+        // counts aren't relevant to the new one.
+        Profile.ProfileLoaded += _ => Cash.ResetTallies();
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,

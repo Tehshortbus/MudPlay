@@ -643,6 +643,9 @@ public partial class MainWindowViewModel : ObservableObject
         // engine logs a Warn before sending; the gate-wrap ensures it
         // doesn't fire mid-password-entry.
         AppServices.Current.PvP.SetWireSender(engineSend);
+        // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
+        // ride the gate-wrapped pipeline like the other engines.
+        AppServices.Current.Cash.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);

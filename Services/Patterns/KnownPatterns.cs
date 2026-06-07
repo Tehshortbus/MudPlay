@@ -108,6 +108,22 @@ public static class KnownPatterns
     /// interrupt (took damage during prep, broke stealth, etc.).</summary>
     public const string CastInterrupted      = "spell.cast-interrupted";
 
+    // ----- Cash --------------------------------------------------------
+    /// <summary>"There are N &lt;coin&gt; pieces here." / singular
+    /// variant. Fired on room display when cash is on the ground.
+    /// CashManager subscribes to react per
+    /// <see cref="Models.Profile.CashSettings"/> policy.</summary>
+    public const string CashOnGround        = "cash.on-ground";
+
+    /// <summary>"You picked up N &lt;coin&gt; pieces." / singular
+    /// variant — confirmation that a get succeeded. CashManager
+    /// updates internal tallies + the auto-deposit trigger check.</summary>
+    public const string CashPickedUp        = "cash.picked-up";
+
+    /// <summary>"You dropped N &lt;coin&gt; pieces." — discard
+    /// confirmation.</summary>
+    public const string CashDropped         = "cash.dropped";
+
     /// <summary>
     /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
     /// from &lt;direction&gt;." Fires when a monster spawns OR a
