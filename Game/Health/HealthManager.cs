@@ -77,6 +77,7 @@ public sealed class HealthManager : IDisposable
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
     private bool _restInFlight;          // sent rest, awaiting recovery
+    private bool _restConfirmedByPrompt; // observed (Resting) since the last rest emit
     private bool _fledThisCombat;        // sent flee, awaiting combat to end
     private bool _disposed;
 
@@ -134,6 +135,7 @@ public sealed class HealthManager : IDisposable
             case nameof(PlayerState.HasPromptData):
             case nameof(PlayerState.MaxHp):
             case nameof(PlayerState.MaxMa):
+            case nameof(PlayerState.Position):
                 Evaluate();
                 break;
         }
@@ -164,6 +166,7 @@ public sealed class HealthManager : IDisposable
                     AsserterName, "auto-heal disabled");
             }
             _restInFlight = false;
+            _restConfirmedByPrompt = false;
             _fledThisCombat = false;
             return;
         }
@@ -178,6 +181,39 @@ public sealed class HealthManager : IDisposable
         // gate.
         if (_state.Hp <= 0 && _state.Ma <= 0) return;
         HealthSettings s = _readSettings();
+
+        // Rest-interruption recovery (mirrors MudProxy's
+        // OnRestingStateChanged). Two-step latch so we don't race the
+        // (Resting) prompt arrival:
+        //   1. We send `rest` and set _restInFlight=true.
+        //   2. On the FIRST Evaluate tick where Position==Resting, we
+        //      flip _restConfirmedByPrompt=true — the server has put
+        //      us into the resting state.
+        //   3. Any subsequent tick where Position!=Resting (server
+        //      broke our rest because we took damage, entered combat,
+        //      or moved) drops _restInFlight so the rest-out branch
+        //      below re-fires.
+        // Without step 2, a fast follow-up HP-changed tick that fires
+        // before the (Resting) prompt arrives would spuriously clear
+        // _restInFlight and double-send `rest`.
+        // The re-issue is gated on !InCombat — while a hostile is
+        // engaging us we let CombatManager handle the swing; the
+        // moment combat clears (CombatStateTracker flips InCombat
+        // false), Evaluate ticks again and the rest goes out.
+        if (_restInFlight && _state.Position == PlayerPosition.Resting)
+        {
+            _restConfirmedByPrompt = true;
+        }
+        else if (_restInFlight && _restConfirmedByPrompt
+                              && _state.Position != PlayerPosition.Resting)
+        {
+            _restInFlight = false;
+            _restConfirmedByPrompt = false;
+            _log?.Info(LogCategory,
+                $"rest interrupted — position now {_state.Position} " +
+                $"(hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa} " +
+                $"inCombat={_state.InCombat})");
+        }
 
         // ----- HP gate transitions ---------------------------------
         int hpRestTrigger = ResolveThreshold(s.HpThresholdMode, s.RestIfBelowHp, _state.MaxHp);
@@ -268,6 +304,7 @@ public sealed class HealthManager : IDisposable
             _log?.Info(LogCategory,
                 $"recovered hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = false;
+            _restConfirmedByPrompt = false;
         }
     }
 
@@ -283,6 +320,7 @@ public sealed class HealthManager : IDisposable
     {
         if (!_restInFlight) return;
         _restInFlight = false;
+        _restConfirmedByPrompt = false;
         _log?.Info(LogCategory, "rest-in-flight cleared on room change");
     }
 

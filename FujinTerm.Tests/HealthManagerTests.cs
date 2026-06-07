@@ -545,6 +545,102 @@ public sealed class HealthManagerTests
         Assert.Contains("rest", h.SentLines);
     }
 
+    // ----- rest-interruption recovery (server breaks our rest) ----
+
+    [Fact]
+    public void Rest_ServerBreaksRest_OutOfCombat_ReRests()
+    {
+        // We rested; server confirmed (Resting). Then a monster enters
+        // and swings — server boots us back to (Standing). HP still
+        // below rest-target → on the next Evaluate tick we re-send
+        // `rest` (mirrors MudProxy's OnRestingStateChanged).
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        // Server prompt confirms we're resting.
+        h.State.Position = PlayerPosition.Resting;
+        Assert.True(h.Health.RestInFlight);
+
+        // Server breaks rest — position flips to Standing. We're not
+        // in combat (mob hit someone else in the room, didn't engage
+        // us directly — common party scenario).
+        h.State.Position = PlayerPosition.Standing;
+
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_ServerBreaksRest_InCombat_HoldsUntilCombatEnds()
+    {
+        // Server breaks rest because we got engaged. Don't fight the
+        // combat by re-sending rest mid-fight — wait for combat to
+        // clear, then rest goes out again.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        h.State.Position = PlayerPosition.Resting;
+        h.State.InCombat = true;
+        h.State.Position = PlayerPosition.Standing;     // server stood us up
+
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));  // not yet
+        Assert.False(h.Health.RestInFlight);                   // latch dropped
+
+        // Combat ends — next Evaluate tick re-rests.
+        h.State.InCombat = false;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_PositionStandingBeforeConfirm_NoSpuriousReRest()
+    {
+        // Race protection: we send rest, but an HP-changed tick fires
+        // BEFORE the server's (Resting) prompt arrives. Position is
+        // still Standing. We must NOT treat that as an interruption —
+        // we haven't confirmed the rest landed yet.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        // HP drops further before the (Resting) prompt — Position
+        // hasn't transitioned to Resting yet.
+        h.State.Hp = 30;
+
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_RecoveryComplete_ClearsLatchAndConfirmFlag()
+    {
+        // After full recovery, both _restInFlight and the prompt-
+        // confirmed flag reset so the next low-HP cycle starts clean.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Position = PlayerPosition.Resting;
+        Assert.True(h.Health.RestInFlight);
+
+        h.State.Hp = 200;       // recovered — gate clears, post-rest path fires
+        Assert.False(h.Health.RestInFlight);
+
+        // Next low-HP must rest cleanly, not get tricked by stale
+        // confirm state.
+        h.State.Position = PlayerPosition.Standing;
+        h.State.Hp = 50;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]
