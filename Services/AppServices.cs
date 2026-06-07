@@ -615,6 +615,16 @@ public sealed class AppServices
     public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.F — stealth state tracker. Owns
+    /// <see cref="PlayerState.IsSneaking"/> /
+    /// <see cref="PlayerState.IsHidden"/> and emits FSM-state
+    /// transitions + silent-loss detection on room change. Auto-
+    /// sneak / auto-hide engines (which actually issue commands)
+    /// layer on top in a follow-up.
+    /// </summary>
+    public Game.Stealth.StealthManager Stealth { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1423,6 +1433,19 @@ public sealed class AppServices
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             log: Log);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
+
+        // Phase 9 PR 9.F — StealthManager state tracker. Owns
+        // PlayerState.IsSneaking/IsHidden and detects silent loss on
+        // room change. Auto-sneak / auto-hide engines layer on top
+        // in a follow-up.
+        Stealth = new Game.Stealth.StealthManager(Router, PlayerState, Log);
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.PreviousRoom is null || t.NewRoom is null) return;
+            if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
+            if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            Stealth.NoteRoomChanged();
+        };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,

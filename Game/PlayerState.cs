@@ -64,4 +64,23 @@ public sealed partial class PlayerState : ObservableObject
     /// damage-line-driven decay.
     /// </summary>
     [ObservableProperty] [field: Owner(typeof(CombatStateTracker))] private bool _inCombat;
+
+    /// <summary>
+    /// True while we're confirmed sneaking — the server emitted
+    /// <c>Sneaking...</c> on the last room entry. Cleared on
+    /// <c>"You make a sound as you enter the room!"</c> OR when a
+    /// room-entry doesn't carry the sneak confirmation (silent loss).
+    /// Drives CombatManager's pre-attack-buff suppression so we don't
+    /// burn the backstab window casting buffs.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(Game.Stealth.StealthManager))] private bool _isSneaking;
+
+    /// <summary>
+    /// True while we're confirmed hidden — server confirmed the
+    /// <c>hide</c> command. Cleared on any action that breaks hide
+    /// (move, attack, cast). Same role as
+    /// <see cref="IsSneaking"/>: read by CombatManager's
+    /// backstab-window logic.
+    /// </summary>
+    [ObservableProperty] [field: Owner(typeof(Game.Stealth.StealthManager))] private bool _isHidden;
 }
