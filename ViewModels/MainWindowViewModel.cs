@@ -578,6 +578,9 @@ public partial class MainWindowViewModel : ObservableObject
         // pattern only sees the first row. AttachLineExtractor
         // buffers continuations until the period.
         AppServices.Current.RoomClassifier.AttachLineExtractor(Lines);
+        // Same shape for "You notice <list> here." — CashManager
+        // buffers wrapped rows to parse the full cash + item list.
+        AppServices.Current.Cash.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while

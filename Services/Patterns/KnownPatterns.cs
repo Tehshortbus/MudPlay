@@ -128,6 +128,15 @@ public static class KnownPatterns
     /// Lifted from MudProxy <c>CombatSessionTracker.cs:503-505</c>.</summary>
     public const string CashHidden          = "cash.hidden";
 
+    /// <summary>"You notice &lt;list&gt; here." — the realm-specific
+    /// room-survey line. Cash entries appear FIRST (server orders
+    /// runic → platinum → gold → copper → silver), followed by items.
+    /// Comma-separated, last entry ends with a period. Server wraps
+    /// at 80 cols mid-token so multi-line stitching is required.
+    /// CashManager parses each comma-separated entry and pulls
+    /// recognisable currency tokens for tally + collect dispatch.</summary>
+    public const string YouNoticeRoom       = "cash.you-notice-room";
+
     /// <summary>
     /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
     /// from &lt;direction&gt;." Fires when a monster spawns OR a

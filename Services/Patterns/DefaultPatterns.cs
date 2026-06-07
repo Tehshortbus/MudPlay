@@ -153,6 +153,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.CashHidden,
             @"^You hid (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
 
+        // Realm-specific room survey — "You notice <list> here." with
+        // cash entries (always first) + items. The single-line case
+        // is matched here; multi-line wraps stitch back through
+        // CashManager.AttachLineExtractor.
+        yield return new RegexPattern(KnownPatterns.YouNoticeRoom,
+            @"^You notice (?<list>.+?) here\.\s*$");
+
         // Phase 9 PR 9.A — party / room attack announce. Mirrors
         // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
         // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")

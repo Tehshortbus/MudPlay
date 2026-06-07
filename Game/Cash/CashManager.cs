@@ -79,6 +79,20 @@ public sealed class CashManager : IDisposable
     private readonly IDisposable _pickedUpSub;
     private readonly IDisposable _droppedSub;
     private readonly IDisposable _hiddenSub;
+    private readonly IDisposable _noticeSub;
+    private Terminal.LineExtractor? _lines;
+    private string? _noticeBuffer;       // multi-line continuation
+    private string? _noticeRawFirst;     // raw first row that started the buffer
+
+    /// <summary>Recognised cash denomination words (case-insensitive).
+    /// User's screenshot showed "silver nobles" / "copper farthings";
+    /// expand by adding more entries here when realms use unique
+    /// denomination words.</summary>
+    private static readonly HashSet<string> CashDenominations =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "copper", "silver", "gold", "platinum", "runic",
+        };
 
     private Action<byte[]>? _wireSender;
     private readonly Dictionary<string, long> _held = new(StringComparer.OrdinalIgnoreCase);
@@ -120,6 +134,7 @@ public sealed class CashManager : IDisposable
         // UserHides handler must skip currency-shape item text so we
         // don't double-decrement here vs. there.
         _hiddenSub   = router.Subscribe(KnownPatterns.CashHidden,    OnCashHidden);
+        _noticeSub   = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
     }
 
     /// <summary>Bind the wire sender — typically the gate-wrapped
@@ -271,6 +286,140 @@ public sealed class CashManager : IDisposable
         CheckAutoDeposit();
     }
 
+    /// <summary>
+    /// Single-line "You notice <list> here." — splits the list and
+    /// dispatches each recognised cash entry through the same
+    /// per-currency policy path as <see cref="OnCashOnGround"/>.
+    /// The multi-line wrap variant joins through the LineExtractor
+    /// buffer (see <see cref="OnLine"/>) and feeds the same parse.
+    /// </summary>
+    private void OnYouNoticeRoom(MatchResult m)
+    {
+        if (m.Groups.Count == 0) return;
+        DispatchYouNoticeList(m.Groups[0]);
+    }
+
+    /// <summary>
+    /// Bind the per-session <see cref="Terminal.LineExtractor"/> so
+    /// the manager can stitch wrapped "You notice" lines back
+    /// together — same shape as the
+    /// <see cref="Game.Combat.RoomEntityClassifier"/> fix for
+    /// "Also here:".
+    /// </summary>
+    public void AttachLineExtractor(Terminal.LineExtractor lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (ReferenceEquals(_lines, lines)) return;
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = lines;
+        _lines.LineEmitted += OnLine;
+    }
+
+    private void OnLine(Terminal.LineExtractor.EmittedLine line)
+    {
+        if (line.IsPromptLine) return;
+        string text = line.Text.TrimEnd();
+        if (text.Length == 0) return;
+
+        if (_noticeBuffer is not null)
+        {
+            _noticeBuffer = _noticeBuffer + " " + text;
+            if (text.EndsWith(".", StringComparison.Ordinal))
+            {
+                string complete = _noticeBuffer;
+                _noticeBuffer = null;
+                _noticeRawFirst = null;
+                ProcessYouNoticeMultiLine(complete);
+            }
+            return;
+        }
+
+        if (text.StartsWith("You notice ", StringComparison.Ordinal))
+        {
+            if (text.EndsWith(".", StringComparison.Ordinal))
+            {
+                // Single-line case — pattern subscription already
+                // handles it; skip to avoid double-processing.
+                return;
+            }
+            _noticeBuffer = text;
+            _noticeRawFirst = line.Text;
+        }
+    }
+
+    private void ProcessYouNoticeMultiLine(string completeLine)
+    {
+        // Strip "You notice " prefix and " here." suffix.
+        const string prefix = "You notice ";
+        if (!completeLine.StartsWith(prefix, StringComparison.Ordinal)) return;
+        string body = completeLine[prefix.Length..].TrimEnd();
+        const string suffix = " here.";
+        if (body.EndsWith(suffix, StringComparison.Ordinal))
+            body = body[..^suffix.Length];
+        else if (body.EndsWith(".", StringComparison.Ordinal))
+            body = body[..^1];
+        DispatchYouNoticeList(body);
+    }
+
+    /// <summary>
+    /// Split "X gold sovereigns, Y silver nobles, an item, ..."
+    /// into entries; for each, decide if it's cash (count +
+    /// recognised denomination) and dispatch through the
+    /// per-currency policy. Non-cash entries are item references —
+    /// silently skipped until an items subsystem ships.
+    /// </summary>
+    private void DispatchYouNoticeList(string list)
+    {
+        if (!_isEnabled()) return;
+        CashSettings settings = _readSettings();
+
+        foreach (string raw in list.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (raw.Length == 0) continue;
+            if (!TryParseCashEntry(raw, out string? currency, out int count)) continue;
+
+            CashPolicy policy = ResolvePolicy(settings, currency!);
+            _log?.Info(LogCategory,
+                $"you-notice cash currency={currency} count={count} policy={policy}");
+            CashDispatched?.Invoke(currency!, count, policy);
+
+            if (policy == CashPolicy.Collect)
+                Send($"get all {currency}");
+        }
+    }
+
+    /// <summary>Recognise <c>"N {denomination} ..."</c> as cash —
+    /// requires a leading integer + the second word being a
+    /// <see cref="CashDenominations"/> entry. Singular form
+    /// <c>"a gold piece"</c> is also tolerated (count = 1).</summary>
+    private static bool TryParseCashEntry(string raw, out string? currency, out int count)
+    {
+        currency = null;
+        count = 0;
+        string[] words = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 2) return false;
+
+        // "a <denomination> ..." singular variant
+        if (string.Equals(words[0], "a", StringComparison.OrdinalIgnoreCase)
+         && CashDenominations.Contains(words[1]))
+        {
+            currency = words[1].ToLowerInvariant();
+            count = 1;
+            return true;
+        }
+
+        // "N <denomination> ..." plural variant
+        if (int.TryParse(words[0], out int n) && words.Length >= 2
+         && CashDenominations.Contains(words[1]))
+        {
+            currency = words[1].ToLowerInvariant();
+            count = n;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Parse (count, currency) from a cash line match.
     /// Returns count=1 for singular form ("a gold piece") and the
     /// captured digit for plural form.</summary>
@@ -356,5 +505,8 @@ public sealed class CashManager : IDisposable
         _pickedUpSub.Dispose();
         _droppedSub.Dispose();
         _hiddenSub.Dispose();
+        _noticeSub.Dispose();
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = null;
     }
 }

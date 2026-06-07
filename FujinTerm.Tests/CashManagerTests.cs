@@ -343,4 +343,73 @@ public sealed class CashManagerTests
         Assert.Single(h.AutoDeposits);
         Assert.Equal(200, h.AutoDeposits[0]);
     }
+
+    // ----- You-notice room survey (realm-specific format) -----------
+
+    [Fact]
+    public void YouNotice_SingleLine_DispatchesCashEntries()
+    {
+        // Mirrors the user's smoke-test wire output:
+        //   "You notice 56 silver nobles, 198 copper farthings here."
+        using Harness h = new();
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.CopperPolicy = CashPolicy.Ignore;
+
+        h.Feed("You notice 56 silver nobles, 198 copper farthings here.");
+
+        Assert.Equal(2, h.Dispatches.Count);
+        Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 56);
+        Assert.Contains(h.Dispatches, d => d.Currency == "copper" && d.Count == 198);
+        // Silver is Collect → `get all silver`. Copper is Ignore.
+        List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("get all silver", lines);
+        Assert.DoesNotContain("get all copper", lines);
+    }
+
+    [Fact]
+    public void YouNotice_WithItems_SkipsItems_ParsesOnlyCash()
+    {
+        using Harness h = new();
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+
+        h.Feed("You notice 5 gold sovereigns, a longsword, a potion of healing here.");
+
+        Assert.Single(h.Dispatches);
+        Assert.Equal("gold", h.Dispatches[0].Currency);
+        Assert.Equal(5, h.Dispatches[0].Count);
+    }
+
+    [Fact]
+    public void YouNotice_MultiLine_Wrap_StitchesAndParses()
+    {
+        // 80-col wrap mid-list, just like Also-Here. Requires the
+        // LineExtractor buffer-path.
+        using Harness h = new();
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+
+        Terminal.LineExtractor lines = new(new FujinTerm.Terminal.TerminalEmulator(80, 24));
+        h.Cash.AttachLineExtractor(lines);
+
+        FeedLine(lines, "You notice 5 gold sovereigns, 10 silver nobles, a longsword, a shield, a potion of");
+        FeedLine(lines, "healing here.");
+
+        Assert.Equal(2, h.Dispatches.Count);
+        Assert.Contains(h.Dispatches, d => d.Currency == "gold" && d.Count == 5);
+        Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 10);
+    }
+
+    private static void FeedLine(Terminal.LineExtractor lines, string text)
+    {
+        System.Reflection.FieldInfo? field = typeof(Terminal.LineExtractor)
+            .GetField("LineEmitted",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+        if (field?.GetValue(lines) is Action<Terminal.LineExtractor.EmittedLine> handler)
+        {
+            handler(new Terminal.LineExtractor.EmittedLine(
+                text, Array.Empty<CellAttributes>(),
+                DateTimeOffset.UtcNow, IsPromptLine: false));
+        }
+    }
 }
