@@ -79,6 +79,7 @@ public sealed class HealthManager : IDisposable
     private bool _restInFlight;          // sent rest, awaiting recovery
     private bool _restConfirmedByPrompt; // observed (Resting) since the last rest emit
     private bool _fledThisCombat;        // sent flee, awaiting combat to end
+    private bool _hangFired;             // disconnect-on-emergency single-shot per session
     private bool _disposed;
 
     public HealthManager(
@@ -292,10 +293,23 @@ public sealed class HealthManager : IDisposable
 
         if (anyGate && !_state.InCombat && !_restInFlight)
         {
+            // Pick rest vs meditate based on user settings + which
+            // pool is the proximate trigger.
+            //
+            // - UseMeditateAbility is the master toggle (defaults true;
+            //   non-Kai classes should turn it off).
+            // - MeditateBeforeResting flips the order when BOTH pools
+            //   are gated: meditate fills MA first, then rest fills
+            //   HP. Without this, rest is sent regardless.
+            // - With only MA gated (HP at max), prefer meditate when
+            //   UseMeditateAbility is on — rest doesn't recover MA on
+            //   most classes.
+            string command = ChooseRestCommand(s);
+
             SendChained(s.PreRestCommand);
-            SendCommand("rest");
+            SendCommand(command);
             _log?.Info(LogCategory,
-                $"rest hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+                $"{command} hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = true;
         }
         else if (!anyGate && _restInFlight)
@@ -306,6 +320,39 @@ public sealed class HealthManager : IDisposable
             _restInFlight = false;
             _restConfirmedByPrompt = false;
         }
+
+        // Hangup-on-emergency: HP below HangIfBelowHp triggers a hard
+        // disconnect. Single-shot — the disconnect command goes once
+        // per session and the engine_log captures it for postmortem.
+        // Defaults: HangIfBelowHp=5 (%). Setting it to 0 disables the
+        // check entirely (no false positives on dead/respawned chars).
+        if (!_hangFired && s.HangIfBelowHp > 0 && _state.MaxHp > 0)
+        {
+            int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
+            if (_state.Hp > 0 && _state.Hp <= hangTrigger)
+            {
+                _hangFired = true;
+                _log?.Warn(LogCategory,
+                    $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger}");
+                SendCommand("/q");
+            }
+        }
+    }
+
+    private string ChooseRestCommand(HealthSettings s)
+    {
+        // No meditate ability → always rest.
+        if (!s.UseMeditateAbility) return "rest";
+
+        bool needsHp = _hpGateAsserted;
+        bool needsMa = _maGateAsserted;
+
+        if (needsMa && !needsHp) return "meditate";
+        if (needsHp && needsMa && s.MeditateBeforeResting) return "meditate";
+        // Default: rest covers both pools for most classes; user can
+        // flip MeditateBeforeResting for casters where mana recovery
+        // matters more than HP catchup.
+        return "rest";
     }
 
     /// <summary>

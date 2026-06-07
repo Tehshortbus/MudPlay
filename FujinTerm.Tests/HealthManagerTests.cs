@@ -641,6 +641,119 @@ public sealed class HealthManagerTests
         Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
     }
 
+    // ----- Meditate vs Rest (Cluster 5c) -----------------------------
+
+    [Fact]
+    public void Meditate_OnlyMaGated_PrefersMeditate()
+    {
+        // Caster: MA dropped below trigger, HP at max → meditate.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;        // HP healthy first so HP gate stays clear
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;         // below default 30% trigger
+
+        Assert.Contains("meditate", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_UseMeditateOff_FallsBackToRest()
+    {
+        HealthSettings s = new() { UseMeditateAbility = false };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;
+
+        Assert.Contains("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_BothPoolsGated_MeditateBeforeRestingFlipsOrder()
+    {
+        HealthSettings s = new() { MeditateBeforeResting = true };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;        // below rest-trigger
+        h.State.Ma = 20;        // below rest-trigger
+
+        Assert.Contains("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_BothPoolsGated_DefaultOrderUsesRest()
+    {
+        // Default MeditateBeforeResting=false → rest covers both pools
+        // for non-Kai classes.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        h.State.Ma = 20;
+
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    // ----- Hangup-on-emergency (Cluster 5c) -------------------------
+
+    [Fact]
+    public void Hangup_HpBelowTrigger_SendsDisconnect()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+
+        Assert.Contains("/q", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ZeroSetting_Disabled()
+    {
+        HealthSettings s = new() { HangIfBelowHp = 0 };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 1;        // would normally trigger
+
+        Assert.DoesNotContain("/q", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_AboveThreshold_NoFire()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;        // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("/q", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_SingleShot_DoesNotRefire()
+    {
+        // First crossing fires; subsequent property changes within
+        // the same low-HP window must not re-fire.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
+        int hangCount = h.SentLines.Count(l => l == "/q");
+        Assert.Equal(1, hangCount);
+
+        h.State.Hp = 3;        // even lower — still no second hang
+        Assert.Equal(1, h.SentLines.Count(l => l == "/q"));
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]
