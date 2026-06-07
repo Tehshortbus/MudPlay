@@ -744,4 +744,66 @@ public sealed class CombatManagerTests
         Assert.Equal("a large kobold thief", h.LastSent);
         Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
     }
+
+    // ----- safety net: combat line + empty room → send `l` ------------
+
+    [Fact]
+    public void CombatLine_WithNoEngageable_SendsLookToRefreshRoom()
+    {
+        // Real-world bug: monster swings at us but our classifier shows
+        // no engageable. Without the safety net we sit dumbstruck. With
+        // it, we send `l` so the server re-displays Also Here and the
+        // next observation rebuilds the picture.
+        using Harness h = new();
+        h.AddMonster(1, "kobold thief", killable: true);
+
+        // No room observation yet — classifier.Current is null.
+        h.Feed("The kobold thief swings at you but misses!");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("l", h.LastSent);
+    }
+
+    [Fact]
+    public void CombatLine_WithEngageableInRoom_DoesNotRefresh()
+    {
+        // Normal case: we have a target. Combat line is expected; no
+        // wire send.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Single(h.Sent);
+
+        h.Feed("The giant rat swings at you but misses!");
+
+        Assert.Single(h.Sent);                  // no `l` — engageable still here
+    }
+
+    [Fact]
+    public void CombatLine_Debounced_NoSecondRefreshWithinCooldown()
+    {
+        // Burst of miss lines must not flood the wire with `l`.
+        using Harness h = new();
+
+        h.Feed("The kobold thief swings at you but misses!");
+        h.Feed("The kobold thief swings at you but misses!");
+        h.Feed("The kobold thief swings at you but misses!");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("l", h.LastSent);
+    }
+
+    [Fact]
+    public void CombatLine_MasterOff_NoRefresh()
+    {
+        // Auto-combat disabled → safety net also disabled.
+        using Harness h = new();
+        h.AutoCombatEnabled = false;
+
+        h.Feed("The kobold thief swings at you but misses!");
+
+        Assert.Empty(h.Sent);
+    }
 }

@@ -75,10 +75,18 @@ public sealed class CombatManager : IDisposable
     private readonly LogService? _log;
 
     private readonly IDisposable _announceSub;
+    private readonly IDisposable _userHitsSub;
+    private readonly IDisposable _mobHitsSub;
+    private readonly IDisposable _mobMissesSub;
+
+    /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
+    /// a flurry of miss/hit lines from spamming the server.</summary>
+    private static readonly TimeSpan RoomRefreshCooldown = TimeSpan.FromSeconds(3);
 
     private Action<byte[]>? _wireSender;
     private string? _currentTarget;
     private string? _lastAttackCommand;
+    private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
     private bool _disposed;
 
     public CombatManager(
@@ -110,7 +118,10 @@ public sealed class CombatManager : IDisposable
         _log = log;
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
-        _announceSub = router.Subscribe(KnownPatterns.PartyAttackAnnounce, OnAttackAnnounce);
+        _announceSub  = router.Subscribe(KnownPatterns.PartyAttackAnnounce, OnAttackAnnounce);
+        _userHitsSub  = router.Subscribe(KnownPatterns.UserHits,  OnCombatLine);
+        _mobHitsSub   = router.Subscribe(KnownPatterns.MobHits,   OnCombatLine);
+        _mobMissesSub = router.Subscribe(KnownPatterns.MobMisses, OnCombatLine);
     }
 
     /// <summary>Bind the wire sender — typically the
@@ -271,6 +282,48 @@ public sealed class CombatManager : IDisposable
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
     }
 
+    /// <summary>
+    /// Safety net: a combat line (user hit / mob hit / mob miss) means
+    /// something is swinging at us — but if the classifier shows no
+    /// engageable monster and we have no current target, our view of
+    /// the room is stale (entity dropped after a death, arrival line
+    /// lost, prefix not resolved against the overlay, etc.). Send
+    /// <c>l</c> so the server re-displays the Also Here line; the
+    /// classifier will repopulate, OnEntitiesObserved picks a target,
+    /// and the next round we swing back. Debounced so a burst of
+    /// combat lines doesn't flood the wire.
+    /// </summary>
+    private void OnCombatLine(MatchResult _)
+    {
+        if (!_isEnabled()) return;
+        if (_currentTarget is not null) return;
+        if (_wireSender is null) return;
+
+        if (_classifier.Current is { } cur && HasEngageable(cur)) return;
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+
+        _log?.Info(LogCategory,
+            "combat-line while room appears empty — sending `l` to re-display");
+        _wireSender(Encoding.Latin1.GetBytes("l\r"));
+    }
+
+    private bool HasEngageable(RoomEntitiesObservation obs)
+    {
+        for (int i = 0; i < obs.Entities.Count; i++)
+        {
+            RoomEntity e = obs.Entities[i];
+            if (e.Kind != EntityKind.Monster) continue;
+            if (e.MonsterNumber is not int n) return true; // unknown → assume engageable
+            MonsterOverlay overlay = ResolveOverlay(n);
+            if ((overlay.Relationship ?? MonsterRelationship.Enemy) == MonsterRelationship.Enemy)
+                return true;
+        }
+        return false;
+    }
+
     private bool IsPartyMember(string name)
     {
         foreach (PartyMember m in _party.Members)
@@ -323,6 +376,9 @@ public sealed class CombatManager : IDisposable
         _disposed = true;
         _classifier.EntitiesObserved -= OnEntitiesObserved;
         _announceSub.Dispose();
+        _userHitsSub.Dispose();
+        _mobHitsSub.Dispose();
+        _mobMissesSub.Dispose();
     }
 
     private readonly record struct EngageableCandidate(
