@@ -56,15 +56,6 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
     public override string Id => "events";
     public override string Title => "Events";
 
-    /// <summary>Phase tag shown under the tab header.</summary>
-    public string PhaseTag => "Phase 8 PR 8.3 (list view + master switch + reconciliation badge) + PR 8.4 (editor dialog)";
-
-    /// <summary>Description shown under the phase tag.</summary>
-    public string Description =>
-        "User-defined scheduled or lifecycle events — fire on Logon / Logoff / Re-log, at a wall-clock time, " +
-        "or on a recurring cadence. Actions walk to a room, start a saved loop or auto-lair setup, or send a " +
-        "free-form command (with ^M / ; multi-fire).";
-
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
 
