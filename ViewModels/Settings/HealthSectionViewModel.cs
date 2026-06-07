@@ -1,40 +1,250 @@
+using System.Text.Json;
 using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
 using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Health" tab — bespoke two-column layout (HP left, Mana / Kai right)
-/// with a Percentage / Value mode picker per column, so the user can
-/// express a threshold either way depending on what they're tuning
-/// against. Wiring lands in Phase 13 PR 13.B (HealthManager) for the
-/// rest / hang / run knobs and PR 13.D (CastingDirector) for the
-/// heal-cast thresholds.
+/// "Health" tab — two-column layout (HP left, Mana / Kai right) with a
+/// Percentage / Value mode picker per column so the user can express a
+/// threshold either way. Persists as the <c>"Health"</c> entry in
+/// <see cref="CharacterProfile.Settings"/>.
 /// </summary>
-public sealed class HealthSectionViewModel : SettingsSectionViewModel
+/// <remarks>
+/// Wires DTO storage now (PR 9.0a sub-B); engines that read these values
+/// arrive in PR 9.B (HealthManager — rest / hang / run flow) and PR 9.D
+/// (CastingDirector — heal-cast thresholds). No <c>ApplyToServices</c>
+/// call because the consumer services don't exist on the branch yet —
+/// they will subscribe to <see cref="ProfileService.ProfileLoaded"/> when
+/// they land and re-read the DTO from there.
+/// </remarks>
+public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 {
+    private const string TabKey = "Health";
+
+    private readonly ProfileService _profile;
     private Control? _view;
+    private bool _suppressDirty;
+    private bool _dirty;
 
     public override string Id => "health";
     public override string Title => "Health";
+    public override bool IsDirty => _dirty;
 
-    /// <summary>Phase tag shown under the tab header.</summary>
-    public string PhaseTag => "Phase 13 PR 13.B (HealthManager) + 13.D (CastingDirector heal thresholds)";
-
-    /// <summary>Description shown under the phase tag.</summary>
-    public string Description =>
-        "Two parallel columns — HP on the left, Mana / Kai on the right — each with its own Percentage / Value " +
-        "mode picker so the user can specify thresholds either as a fraction of max or as an absolute number. " +
-        "Rest / hang / run flow into HealthManager; heal-cast thresholds flow into CastingDirector.";
+    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new HealthSectionView { DataContext = this };
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "Health", "HP", "Mana", "Kai",
-        "Rest max", "Rest if below", "Heal rest", "Heal combat",
+        "Rest max", "Rest if below", "Heal rest", "Heal combat", "Heal during rest",
+        "Minor heal combat", "Major heal combat",
         "Run if below", "Hang up if below", "Bless if above",
         "Use meditate ability", "Meditate before resting",
         "Pre-rest", "Post-rest", "Pre-meditate", "Post-meditate",
+        "Percentage", "Value", "Absolute",
     };
+
+    // ----- HP column ------------------------------------------------
+
+    [ObservableProperty] private bool _hpModePercentage = true;
+    [ObservableProperty] private bool _hpModeAbsolute;
+
+    [ObservableProperty] private int _restMaxHp        = 95;
+    [ObservableProperty] private int _restIfBelowHp    = 60;
+    [ObservableProperty] private int _healRestTrigger  = 80;
+    [ObservableProperty] private int _minorHealCombatTrigger = 70;
+    [ObservableProperty] private int _majorHealCombatTrigger = 40;
+    [ObservableProperty] private int _runIfBelowHp     = 20;
+    [ObservableProperty] private int _hangIfBelowHp    = 5;
+
+    // ----- MA / Kai column ------------------------------------------
+
+    [ObservableProperty] private bool _maModePercentage = true;
+    [ObservableProperty] private bool _maModeAbsolute;
+
+    [ObservableProperty] private int _restMaxMa        = 95;
+    [ObservableProperty] private int _restIfBelowMa    = 30;
+    [ObservableProperty] private int _runIfBelowMa     = 10;
+    [ObservableProperty] private int _blessIfAboveMa   = 70;
+
+    // ----- Meditation -----------------------------------------------
+
+    [ObservableProperty] private bool _useMeditateAbility = true;
+    [ObservableProperty] private bool _meditateBeforeResting;
+
+    // ----- Resting commands -----------------------------------------
+
+    [ObservableProperty] private string _preRestCommand  = string.Empty;
+    [ObservableProperty] private string _postRestCommand = string.Empty;
+
+    public HealthSectionViewModel() : this(AppServices.Current.Profile) { }
+
+    public HealthSectionViewModel(ProfileService profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+    }
+
+    public override void Apply()
+    {
+        if (_profile.Current is not { } profile) return;
+
+        HealthSettings dto = new()
+        {
+            HpThresholdMode        = HpModeAbsolute ? ThresholdMode.Absolute : ThresholdMode.Percentage,
+            RestMaxHp              = Clamp(RestMaxHp),
+            RestIfBelowHp          = Clamp(RestIfBelowHp),
+            RunIfBelowHp           = Clamp(RunIfBelowHp),
+            HangIfBelowHp          = Clamp(HangIfBelowHp),
+            HealRestTrigger        = Clamp(HealRestTrigger),
+            MinorHealCombatTrigger = Clamp(MinorHealCombatTrigger),
+            MajorHealCombatTrigger = Clamp(MajorHealCombatTrigger),
+
+            MaThresholdMode        = MaModeAbsolute ? ThresholdMode.Absolute : ThresholdMode.Percentage,
+            RestMaxMa              = Clamp(RestMaxMa),
+            RestIfBelowMa          = Clamp(RestIfBelowMa),
+            RunIfBelowMa           = Clamp(RunIfBelowMa),
+            BlessIfAboveMa         = Clamp(BlessIfAboveMa),
+
+            UseMeditateAbility     = UseMeditateAbility,
+            MeditateBeforeResting  = MeditateBeforeResting,
+
+            PreRestCommand         = PreRestCommand  ?? string.Empty,
+            PostRestCommand        = PostRestCommand ?? string.Empty,
+        };
+
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        _profile.Save();
+
+        ClearDirty();
+    }
+
+    public override void Discard()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+    }
+
+    /// <summary>
+    /// Clamp threshold inputs to the realistic range. Percentage values
+    /// run 0..100; absolute values run 0..100,000 (same cap the stub
+    /// NumericUpDowns used — covers every realistic HP/MA pool). One
+    /// floor for both modes keeps the engine code from having to remember
+    /// which mode produced the number.
+    /// </summary>
+    private static int Clamp(int value) => Math.Clamp(value, 0, 100_000);
+
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
+    private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void ReloadAfterProfileSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
+    {
+        HealthSettings dto = ReadOrDefault();
+
+        HpModePercentage = dto.HpThresholdMode == ThresholdMode.Percentage;
+        HpModeAbsolute   = dto.HpThresholdMode == ThresholdMode.Absolute;
+        RestMaxHp              = dto.RestMaxHp;
+        RestIfBelowHp          = dto.RestIfBelowHp;
+        HealRestTrigger        = dto.HealRestTrigger;
+        MinorHealCombatTrigger = dto.MinorHealCombatTrigger;
+        MajorHealCombatTrigger = dto.MajorHealCombatTrigger;
+        RunIfBelowHp           = dto.RunIfBelowHp;
+        HangIfBelowHp          = dto.HangIfBelowHp;
+
+        MaModePercentage = dto.MaThresholdMode == ThresholdMode.Percentage;
+        MaModeAbsolute   = dto.MaThresholdMode == ThresholdMode.Absolute;
+        RestMaxMa        = dto.RestMaxMa;
+        RestIfBelowMa    = dto.RestIfBelowMa;
+        RunIfBelowMa     = dto.RunIfBelowMa;
+        BlessIfAboveMa   = dto.BlessIfAboveMa;
+
+        UseMeditateAbility    = dto.UseMeditateAbility;
+        MeditateBeforeResting = dto.MeditateBeforeResting;
+
+        PreRestCommand  = dto.PreRestCommand  ?? string.Empty;
+        PostRestCommand = dto.PostRestCommand ?? string.Empty;
+    }
+
+    private HealthSettings ReadOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new HealthSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json))
+            return new HealthSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<HealthSettings>(json) ?? new HealthSettings();
+        }
+        catch
+        {
+            // Malformed delta — fall back to defaults rather than throwing.
+            return new HealthSettings();
+        }
+    }
+
+    // ----- IsDirty plumbing -----------------------------------------
+
+    private void ClearDirty()
+    {
+        _dirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressDirty) return;
+        if (_dirty) return;
+        _dirty = true;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    // HP column
+    partial void OnHpModePercentageChanged(bool value)        { if (value) HpModeAbsolute   = false; MarkDirty(); }
+    partial void OnHpModeAbsoluteChanged(bool value)          { if (value) HpModePercentage = false; MarkDirty(); }
+    partial void OnRestMaxHpChanged(int value)                => MarkDirty();
+    partial void OnRestIfBelowHpChanged(int value)            => MarkDirty();
+    partial void OnHealRestTriggerChanged(int value)          => MarkDirty();
+    partial void OnMinorHealCombatTriggerChanged(int value)   => MarkDirty();
+    partial void OnMajorHealCombatTriggerChanged(int value)   => MarkDirty();
+    partial void OnRunIfBelowHpChanged(int value)             => MarkDirty();
+    partial void OnHangIfBelowHpChanged(int value)            => MarkDirty();
+
+    // MA column
+    partial void OnMaModePercentageChanged(bool value)        { if (value) MaModeAbsolute   = false; MarkDirty(); }
+    partial void OnMaModeAbsoluteChanged(bool value)          { if (value) MaModePercentage = false; MarkDirty(); }
+    partial void OnRestMaxMaChanged(int value)                => MarkDirty();
+    partial void OnRestIfBelowMaChanged(int value)            => MarkDirty();
+    partial void OnRunIfBelowMaChanged(int value)             => MarkDirty();
+    partial void OnBlessIfAboveMaChanged(int value)           => MarkDirty();
+
+    // Meditation
+    partial void OnUseMeditateAbilityChanged(bool value)      => MarkDirty();
+    partial void OnMeditateBeforeRestingChanged(bool value)   => MarkDirty();
+
+    // Resting commands
+    partial void OnPreRestCommandChanged(string value)        => MarkDirty();
+    partial void OnPostRestCommandChanged(string value)       => MarkDirty();
 }
