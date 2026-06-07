@@ -1,28 +1,40 @@
+using System.Text.Json;
 using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
 using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Combat" tab — bespoke layout (was a generic stub). Weapon Combat
-/// table at the top, then Options, then a five-row Spell Combat table
-/// whose mana column is governed by a Percentage / Value toggle (same
-/// convention as the Health tab's HP / MA columns).
+/// "Combat" tab — auto-attack engine config. Weapon Combat picks the items
+/// for each role, Targeting governs target order + attack timing + polite
+/// mode, Options governs room-skip + BS flow, Spell Combat picks per-role
+/// damage / debuff spells. Persists as the <c>"Combat"</c> entry in
+/// <see cref="CharacterProfile.Settings"/>.
 /// </summary>
-public sealed class CombatSectionViewModel : SettingsSectionViewModel
+/// <remarks>
+/// Wires DTO storage now (PR 9.0a sub-C); the engine that reads these
+/// values arrives in PR 9.A (CombatManager). No <c>ApplyToServices</c>
+/// call yet — CombatManager will subscribe to
+/// <see cref="ProfileService.ProfileLoaded"/> when it lands and re-read
+/// the DTO from there.
+/// </remarks>
+public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 {
+    private const string TabKey = "Combat";
+
+    private readonly ProfileService _profile;
     private Control? _view;
+    private bool _suppressDirty;
+    private bool _dirty;
 
     public override string Id => "combat";
     public override string Title => "Combat";
+    public override bool IsDirty => _dirty;
 
-    public string PhaseTag => "Phase 13 PR 13.A (CombatManager)";
-
-    public string Description =>
-        "Auto-attack engine config. Weapon Combat picks the items for each role; Options governs target gating " +
-        "and bash / flee behaviour; Spell Combat picks the per-role damage / debuff spells. Min-mana thresholds " +
-        "in Spell Combat respect the Percentage / Value toggle at the top of that section — same convention as " +
-        "the Health tab.";
+    public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
 
@@ -30,12 +42,419 @@ public sealed class CombatSectionViewModel : SettingsSectionViewModel
     {
         "Combat", "Weapon", "Normal weapon", "Alternate weapon",
         "BS weapon", "BS weapon off-hand", "Off-hand",
+        "Auto-attack", "Master enable", "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
-        "Attack all monsters", "Polite attacks",
+        "Target order", "Normal", "Reverse",
+        "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
+        "Polite mode", "Skip room", "Attack different",
         "Min monsters", "Max monsters", "Run distance",
+        "Failure tracking", "No effect threshold",
         "Multi-attack", "Debuff single target", "Debuff AOE",
         "Normal attack spell", "Alternate attack spell",
-        "Min enemies", "Max consecutive casts", "Minimum mana per cast",
+        "Min enemies", "Max casts per room", "Minimum mana per cast",
         "Show combat round totals", "Display",
     };
+
+    // ----- Master ---------------------------------------------------
+
+    [ObservableProperty] private bool _masterAutoAttackEnabled;
+    [ObservableProperty] private string _normalAttackCommand = "a";
+
+    // ----- Weapon slots --------------------------------------------
+
+    [ObservableProperty] private string? _normalWeapon;
+    [ObservableProperty] private string? _normalOffHand;
+    [ObservableProperty] private string? _alternateWeapon;
+    [ObservableProperty] private string? _alternateOffHand;
+    [ObservableProperty] private string? _backstabWeapon;
+    [ObservableProperty] private string? _backstabOffHand;
+
+    // ----- Backstab options -----------------------------------------
+
+    [ObservableProperty] private bool _doBackstab;
+    [ObservableProperty] private bool _skipBackstabIfMultiAttack = true;
+    [ObservableProperty] private bool _runIfBackstabFails;
+
+    // ----- Targeting ------------------------------------------------
+
+    [ObservableProperty] private bool _targetOrderNormal = true;
+    [ObservableProperty] private bool _targetOrderReverse;
+
+    /// <summary>
+    /// Bound to the AttackTiming ComboBox <c>SelectedItem</c>. Default
+    /// <see cref="AttackTiming.Default"/> — no party / room re-fire.
+    /// </summary>
+    [ObservableProperty] private AttackTiming _attackTiming = AttackTiming.Default;
+
+    /// <summary>Player name required when
+    /// <see cref="AttackTiming"/> is <see cref="AttackTiming.AttackAfter"/>.</summary>
+    [ObservableProperty] private string _attackAfterPlayerName = string.Empty;
+
+    /// <summary>True when the player-name field is enabled — only
+    /// meaningful for <see cref="AttackTiming.AttackAfter"/>.</summary>
+    public bool AttackAfterEnabled => AttackTiming == AttackTiming.AttackAfter;
+
+    /// <summary>Available <see cref="AttackTiming"/> values for the
+    /// ComboBox ItemsSource.</summary>
+    public IReadOnlyList<AttackTiming> AttackTimingOptions { get; } =
+        new[]
+        {
+            AttackTiming.Default,
+            AttackTiming.AttackLastParty,
+            AttackTiming.AttackLastRoom,
+            AttackTiming.AttackAfter,
+        };
+
+    /// <summary>Bound to the PoliteMode ComboBox <c>SelectedItem</c>.
+    /// Default <see cref="PoliteMode.Off"/>.</summary>
+    [ObservableProperty] private PoliteMode _politeMode = PoliteMode.Off;
+
+    public IReadOnlyList<PoliteMode> PoliteModeOptions { get; } =
+        new[]
+        {
+            PoliteMode.Off,
+            PoliteMode.WaitForOthers,
+            PoliteMode.SkipRoom,
+            PoliteMode.AttackDifferent,
+        };
+
+    // ----- Room-skip + failure --------------------------------------
+
+    [ObservableProperty] private int _minMonstersInRoom;
+    [ObservableProperty] private int _maxMonstersInRoom = 20;
+    [ObservableProperty] private int _runDistance = 3;
+    [ObservableProperty] private int _noEffectFailureThreshold = 1;
+
+    // ----- Spell combat ---------------------------------------------
+
+    [ObservableProperty] private bool _spellManaModePercentage = true;
+    [ObservableProperty] private bool _spellManaModeAbsolute;
+
+    // Five slots × 4 fields each — flat to keep the AXAML grid binding straightforward.
+
+    [ObservableProperty] private string? _multiAttackSpellName;
+    [ObservableProperty] private int _multiAttackMinEnemies;
+    [ObservableProperty] private int _multiAttackMaxCastsPerRoom;
+    [ObservableProperty] private int _multiAttackMinManaPerCast;
+
+    [ObservableProperty] private string? _areaDebuffSpellName;
+    [ObservableProperty] private int _areaDebuffMinEnemies;
+    [ObservableProperty] private int _areaDebuffMaxCastsPerRoom;
+    [ObservableProperty] private int _areaDebuffMinManaPerCast;
+
+    [ObservableProperty] private string? _singleTargetDebuffSpellName;
+    [ObservableProperty] private int _singleTargetDebuffMaxCastsPerRoom;
+    [ObservableProperty] private int _singleTargetDebuffMinManaPerCast;
+
+    [ObservableProperty] private string? _normalAttackSpellName;
+    [ObservableProperty] private int _normalAttackSpellMaxCastsPerRoom;
+    [ObservableProperty] private int _normalAttackSpellMinManaPerCast;
+
+    [ObservableProperty] private string? _alternateAttackSpellName;
+    [ObservableProperty] private int _alternateAttackSpellMaxCastsPerRoom;
+    [ObservableProperty] private int _alternateAttackSpellMinManaPerCast;
+
+    // ----- Display --------------------------------------------------
+
+    [ObservableProperty] private bool _showCombatRoundTotals;
+
+    public CombatSectionViewModel() : this(AppServices.Current.Profile) { }
+
+    public CombatSectionViewModel(ProfileService profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _profile = profile;
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+    }
+
+    public override void Apply()
+    {
+        if (_profile.Current is not { } profile) return;
+
+        CombatSettings dto = new()
+        {
+            MasterAutoAttackEnabled    = MasterAutoAttackEnabled,
+            NormalAttackCommand        = NormalAttackCommand ?? "a",
+
+            NormalWeapon       = NullIfBlank(NormalWeapon),
+            NormalOffHand      = NullIfBlank(NormalOffHand),
+            AlternateWeapon    = NullIfBlank(AlternateWeapon),
+            AlternateOffHand   = NullIfBlank(AlternateOffHand),
+            BackstabWeapon     = NullIfBlank(BackstabWeapon),
+            BackstabOffHand    = NullIfBlank(BackstabOffHand),
+
+            DoBackstab                = DoBackstab,
+            SkipBackstabIfMultiAttack = SkipBackstabIfMultiAttack,
+            RunIfBackstabFails        = RunIfBackstabFails,
+
+            TargetOrder            = TargetOrderReverse ? TargetOrder.Reverse : TargetOrder.Normal,
+            AttackTiming           = AttackTiming,
+            AttackAfterPlayerName  = AttackTiming == AttackTiming.AttackAfter
+                                     ? NullIfBlank(AttackAfterPlayerName)
+                                     : null,
+            PoliteMode             = PoliteMode,
+
+            MinMonstersInRoom = Math.Clamp(MinMonstersInRoom, 0, 20),
+            MaxMonstersInRoom = Math.Clamp(MaxMonstersInRoom, 1, 20),
+            RunDistance       = Math.Clamp(RunDistance, 1, 100),
+
+            NoEffectFailureThreshold = Math.Clamp(NoEffectFailureThreshold, 1, 20),
+
+            SpellManaThresholdMode = SpellManaModeAbsolute
+                                     ? ThresholdMode.Absolute
+                                     : ThresholdMode.Percentage,
+
+            MultiAttackSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(MultiAttackSpellName),
+                MinEnemies      = ClampSpell(MultiAttackMinEnemies),
+                MaxCastsPerRoom = ClampSpell(MultiAttackMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(MultiAttackMinManaPerCast),
+            },
+            AreaDebuffSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(AreaDebuffSpellName),
+                MinEnemies      = ClampSpell(AreaDebuffMinEnemies),
+                MaxCastsPerRoom = ClampSpell(AreaDebuffMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(AreaDebuffMinManaPerCast),
+            },
+            SingleTargetDebuffSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(SingleTargetDebuffSpellName),
+                MinEnemies      = 0, // ignored for single-target
+                MaxCastsPerRoom = ClampSpell(SingleTargetDebuffMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(SingleTargetDebuffMinManaPerCast),
+            },
+            NormalAttackSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(NormalAttackSpellName),
+                MinEnemies      = 0,
+                MaxCastsPerRoom = ClampSpell(NormalAttackSpellMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(NormalAttackSpellMinManaPerCast),
+            },
+            AlternateAttackSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(AlternateAttackSpellName),
+                MinEnemies      = 0,
+                MaxCastsPerRoom = ClampSpell(AlternateAttackSpellMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(AlternateAttackSpellMinManaPerCast),
+            },
+
+            ShowCombatRoundTotals = ShowCombatRoundTotals,
+        };
+
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        _profile.Save();
+
+        ClearDirty();
+    }
+
+    public override void Discard()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+    }
+
+    private static string? NullIfBlank(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>Spell-slot integer fields share a 0..100,000 range — covers
+    /// both percentage and absolute mana thresholds + the cast / enemy
+    /// counts which top out far below.</summary>
+    private static int ClampSpell(int value) => Math.Clamp(value, 0, 100_000);
+
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
+    private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void ReloadAfterProfileSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
+    {
+        CombatSettings dto = ReadOrDefault();
+
+        MasterAutoAttackEnabled = dto.MasterAutoAttackEnabled;
+        NormalAttackCommand     = dto.NormalAttackCommand ?? "a";
+
+        NormalWeapon       = dto.NormalWeapon;
+        NormalOffHand      = dto.NormalOffHand;
+        AlternateWeapon    = dto.AlternateWeapon;
+        AlternateOffHand   = dto.AlternateOffHand;
+        BackstabWeapon     = dto.BackstabWeapon;
+        BackstabOffHand    = dto.BackstabOffHand;
+
+        DoBackstab                = dto.DoBackstab;
+        SkipBackstabIfMultiAttack = dto.SkipBackstabIfMultiAttack;
+        RunIfBackstabFails        = dto.RunIfBackstabFails;
+
+        TargetOrderNormal  = dto.TargetOrder == TargetOrder.Normal;
+        TargetOrderReverse = dto.TargetOrder == TargetOrder.Reverse;
+
+        AttackTiming           = dto.AttackTiming;
+        AttackAfterPlayerName  = dto.AttackAfterPlayerName ?? string.Empty;
+        PoliteMode             = dto.PoliteMode;
+
+        MinMonstersInRoom = dto.MinMonstersInRoom;
+        MaxMonstersInRoom = dto.MaxMonstersInRoom;
+        RunDistance       = dto.RunDistance;
+
+        NoEffectFailureThreshold = dto.NoEffectFailureThreshold;
+
+        SpellManaModePercentage = dto.SpellManaThresholdMode == ThresholdMode.Percentage;
+        SpellManaModeAbsolute   = dto.SpellManaThresholdMode == ThresholdMode.Absolute;
+
+        MultiAttackSpellName       = dto.MultiAttackSpell.SpellName;
+        MultiAttackMinEnemies      = dto.MultiAttackSpell.MinEnemies;
+        MultiAttackMaxCastsPerRoom = dto.MultiAttackSpell.MaxCastsPerRoom;
+        MultiAttackMinManaPerCast  = dto.MultiAttackSpell.MinManaPerCast;
+
+        AreaDebuffSpellName       = dto.AreaDebuffSpell.SpellName;
+        AreaDebuffMinEnemies      = dto.AreaDebuffSpell.MinEnemies;
+        AreaDebuffMaxCastsPerRoom = dto.AreaDebuffSpell.MaxCastsPerRoom;
+        AreaDebuffMinManaPerCast  = dto.AreaDebuffSpell.MinManaPerCast;
+
+        SingleTargetDebuffSpellName       = dto.SingleTargetDebuffSpell.SpellName;
+        SingleTargetDebuffMaxCastsPerRoom = dto.SingleTargetDebuffSpell.MaxCastsPerRoom;
+        SingleTargetDebuffMinManaPerCast  = dto.SingleTargetDebuffSpell.MinManaPerCast;
+
+        NormalAttackSpellName             = dto.NormalAttackSpell.SpellName;
+        NormalAttackSpellMaxCastsPerRoom  = dto.NormalAttackSpell.MaxCastsPerRoom;
+        NormalAttackSpellMinManaPerCast   = dto.NormalAttackSpell.MinManaPerCast;
+
+        AlternateAttackSpellName            = dto.AlternateAttackSpell.SpellName;
+        AlternateAttackSpellMaxCastsPerRoom = dto.AlternateAttackSpell.MaxCastsPerRoom;
+        AlternateAttackSpellMinManaPerCast  = dto.AlternateAttackSpell.MinManaPerCast;
+
+        ShowCombatRoundTotals = dto.ShowCombatRoundTotals;
+    }
+
+    private CombatSettings ReadOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new CombatSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json))
+            return new CombatSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<CombatSettings>(json) ?? new CombatSettings();
+        }
+        catch
+        {
+            return new CombatSettings();
+        }
+    }
+
+    // ----- IsDirty plumbing -----------------------------------------
+
+    private void ClearDirty()
+    {
+        _dirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressDirty) return;
+        if (_dirty) return;
+        _dirty = true;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    // Master + attack command
+    partial void OnMasterAutoAttackEnabledChanged(bool value)    => MarkDirty();
+    partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
+
+    // Weapon slots
+    partial void OnNormalWeaponChanged(string? value)            => MarkDirty();
+    partial void OnNormalOffHandChanged(string? value)           => MarkDirty();
+    partial void OnAlternateWeaponChanged(string? value)         => MarkDirty();
+    partial void OnAlternateOffHandChanged(string? value)        => MarkDirty();
+    partial void OnBackstabWeaponChanged(string? value)          => MarkDirty();
+    partial void OnBackstabOffHandChanged(string? value)         => MarkDirty();
+
+    // BS options
+    partial void OnDoBackstabChanged(bool value)                 => MarkDirty();
+    partial void OnSkipBackstabIfMultiAttackChanged(bool value)  => MarkDirty();
+    partial void OnRunIfBackstabFailsChanged(bool value)         => MarkDirty();
+
+    // Targeting
+    partial void OnTargetOrderNormalChanged(bool value)
+    {
+        if (value) TargetOrderReverse = false;
+        MarkDirty();
+    }
+    partial void OnTargetOrderReverseChanged(bool value)
+    {
+        if (value) TargetOrderNormal = false;
+        MarkDirty();
+    }
+    partial void OnAttackTimingChanged(AttackTiming value)
+    {
+        // Refresh the AttackAfter player-name field's enabled state.
+        OnPropertyChanged(nameof(AttackAfterEnabled));
+        MarkDirty();
+    }
+    partial void OnAttackAfterPlayerNameChanged(string value)    => MarkDirty();
+    partial void OnPoliteModeChanged(PoliteMode value)           => MarkDirty();
+
+    // Room-skip + failure
+    partial void OnMinMonstersInRoomChanged(int value)           => MarkDirty();
+    partial void OnMaxMonstersInRoomChanged(int value)           => MarkDirty();
+    partial void OnRunDistanceChanged(int value)                 => MarkDirty();
+    partial void OnNoEffectFailureThresholdChanged(int value)    => MarkDirty();
+
+    // Spell mana mode
+    partial void OnSpellManaModePercentageChanged(bool value)
+    {
+        if (value) SpellManaModeAbsolute = false;
+        MarkDirty();
+    }
+    partial void OnSpellManaModeAbsoluteChanged(bool value)
+    {
+        if (value) SpellManaModePercentage = false;
+        MarkDirty();
+    }
+
+    // Spell slot — multi-attack
+    partial void OnMultiAttackSpellNameChanged(string? value)        => MarkDirty();
+    partial void OnMultiAttackMinEnemiesChanged(int value)           => MarkDirty();
+    partial void OnMultiAttackMaxCastsPerRoomChanged(int value)      => MarkDirty();
+    partial void OnMultiAttackMinManaPerCastChanged(int value)       => MarkDirty();
+
+    // Spell slot — AOE debuff
+    partial void OnAreaDebuffSpellNameChanged(string? value)         => MarkDirty();
+    partial void OnAreaDebuffMinEnemiesChanged(int value)            => MarkDirty();
+    partial void OnAreaDebuffMaxCastsPerRoomChanged(int value)       => MarkDirty();
+    partial void OnAreaDebuffMinManaPerCastChanged(int value)        => MarkDirty();
+
+    // Spell slot — single-target debuff
+    partial void OnSingleTargetDebuffSpellNameChanged(string? value)        => MarkDirty();
+    partial void OnSingleTargetDebuffMaxCastsPerRoomChanged(int value)      => MarkDirty();
+    partial void OnSingleTargetDebuffMinManaPerCastChanged(int value)       => MarkDirty();
+
+    // Spell slot — normal attack spell
+    partial void OnNormalAttackSpellNameChanged(string? value)          => MarkDirty();
+    partial void OnNormalAttackSpellMaxCastsPerRoomChanged(int value)   => MarkDirty();
+    partial void OnNormalAttackSpellMinManaPerCastChanged(int value)    => MarkDirty();
+
+    // Spell slot — alternate attack spell
+    partial void OnAlternateAttackSpellNameChanged(string? value)          => MarkDirty();
+    partial void OnAlternateAttackSpellMaxCastsPerRoomChanged(int value)   => MarkDirty();
+    partial void OnAlternateAttackSpellMinManaPerCastChanged(int value)    => MarkDirty();
+
+    // Display
+    partial void OnShowCombatRoundTotalsChanged(bool value)      => MarkDirty();
 }
