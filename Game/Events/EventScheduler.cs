@@ -63,6 +63,7 @@ public sealed class EventScheduler : IDisposable
 
     private readonly EventManager _events;
     private readonly WirePromptScanner _prompt;
+    private readonly CleanupWarningWatcher? _cleanup;
     private readonly ProfileService? _profile;
     private readonly LogService? _log;
 
@@ -78,6 +79,7 @@ public sealed class EventScheduler : IDisposable
     public EventScheduler(
         EventManager events,
         WirePromptScanner prompt,
+        CleanupWarningWatcher? cleanup = null,
         ProfileService? profile = null,
         LogService? log = null)
     {
@@ -85,6 +87,7 @@ public sealed class EventScheduler : IDisposable
         ArgumentNullException.ThrowIfNull(prompt);
         _events = events;
         _prompt = prompt;
+        _cleanup = cleanup;
         _profile = profile;
         _log = log;
 
@@ -92,6 +95,15 @@ public sealed class EventScheduler : IDisposable
         _atTimeTicker.Tick += OnAtTimeTick;
 
         prompt.PromptObserved += OnPromptObserved;
+        if (cleanup is not null)
+        {
+            // Logoff events fire ONCE per cleanup-warning observation —
+            // when the BBS announces upcoming shutdown. That's the only
+            // window in which Logoff actions (bank cash, stash gear,
+            // etc.) actually reach the game; the disconnect button is
+            // too late.
+            cleanup.WarningObserved += OnCleanupWarningObserved;
+        }
         if (profile is not null)
         {
             profile.ProfileLoaded += OnProfileLoaded;
@@ -110,6 +122,7 @@ public sealed class EventScheduler : IDisposable
         StopAllEveryTimers();
 
         _prompt.PromptObserved -= OnPromptObserved;
+        if (_cleanup is not null) _cleanup.WarningObserved -= OnCleanupWarningObserved;
         if (_profile is not null)
         {
             _profile.ProfileLoaded -= OnProfileLoaded;
@@ -146,6 +159,23 @@ public sealed class EventScheduler : IDisposable
         _isInGame = false;
         _atTimeTicker.Stop();
         StopAllEveryTimers();
+    }
+
+    /// <summary>
+    /// BBS announced upcoming shutdown — fire user-configured Logoff
+    /// events so cleanup commands (bank, store gear, etc.) hit the
+    /// wire while we still have a connection. Idempotent on the
+    /// EventManager side: every Logoff event runs each time the
+    /// watcher observes a fresh warning. If the user wants
+    /// once-per-cleanup-cycle semantics they can manage that with
+    /// per-event Disabled toggles.
+    /// </summary>
+    private void OnCleanupWarningObserved(Services.CleanupWarning _)
+    {
+        if (!_isInGame) return;  // not in-game means no commands would land anyway.
+        int fired = _events.FireLogoffEvents();
+        if (fired > 0)
+            _log?.Info("Events", $"Cleanup warning observed — fired {fired} Logoff event(s).");
     }
 
     private void OnPromptObserved(PromptObservation _)

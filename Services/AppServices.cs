@@ -1292,7 +1292,7 @@ public sealed class AppServices
         // Disconnected via NotifyConnected / NotifyDisconnected since
         // the TelnetClient itself is per-connection.
         EventScheduler = new Game.Events.EventScheduler(
-            Events, PromptScanner, Profile, Log);
+            Events, PromptScanner, Cleanup, Profile, Log);
 
         // Always start with a blank draft. Auto-loading the most recently used
         // profile is a deliberate opt-in feature that ships in a later PR

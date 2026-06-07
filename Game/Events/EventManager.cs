@@ -202,9 +202,11 @@ public sealed class EventManager
     /// entirely because nobody calls this method on a server-side
     /// drop). Caller is responsible for the bounded flush window
     /// between this call and the actual <c>DisposeAsync</c> so the
-    /// wire writes have time to drain.
+    /// wire writes have time to drain. Returns the number of events
+    /// actually dispatched so the caller can skip the flush wait
+    /// when nothing fired.
     /// </summary>
-    public void FireLogoffEvents()
+    public int FireLogoffEvents()
     {
         // Snapshot to a list so an event action that adds / removes
         // events mid-fire doesn't invalidate the iterator. Fairly
@@ -213,6 +215,7 @@ public sealed class EventManager
             .Where(e => e.TriggerType == EventTriggerType.Logoff && !e.Disabled)
             .ToList();
         foreach (ScheduledEvent e in snapshot) Fire(e);
+        return snapshot.Count;
     }
 
     private void ExecuteWalkTo(ScheduledEvent e)

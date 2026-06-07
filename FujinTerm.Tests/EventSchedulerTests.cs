@@ -33,6 +33,18 @@ public sealed class EventSchedulerTests
         return (events, scheduler, prompt, sent);
     }
 
+    private static (EventManager events, EventScheduler scheduler, WirePromptScanner prompt,
+                    CleanupWarningWatcher cleanup, List<byte[]> sent) BuildWithCleanup()
+    {
+        EventManager events = new();
+        WirePromptScanner prompt = new();
+        CleanupWarningWatcher cleanup = new();
+        EventScheduler scheduler = new(events, prompt, cleanup);
+        List<byte[]> sent = new();
+        events.SetWireSender(sent.Add);
+        return (events, scheduler, prompt, cleanup, sent);
+    }
+
     private static ScheduledEvent CommandEvent(EventTriggerType trigger, string cmd, string? name = null) =>
         new()
         {
@@ -168,6 +180,35 @@ public sealed class EventSchedulerTests
 
         Assert.Single(sent);
         Assert.Equal("drop\r", Encoding.Latin1.GetString(sent[0]));
+    }
+
+    // ----- Cleanup-warning → Logoff wiring --------------------------
+
+    [Fact]
+    public void CleanupWarning_WhileInGame_FiresLogoffEvents()
+    {
+        var (events, scheduler, prompt, cleanup, sent) = BuildWithCleanup();
+        events.Add(CommandEvent(EventTriggerType.Logoff, "save"));
+
+        scheduler.NotifyConnected();
+        prompt.Append(PromptBytes);
+        // Feed the cleanup-warning line — watcher parses it and fires
+        // WarningObserved, which the scheduler routes to Logoff.
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 5 minutes"));
+
+        Assert.Single(sent);
+        Assert.Equal("save\r", Encoding.Latin1.GetString(sent[0]));
+    }
+
+    [Fact]
+    public void CleanupWarning_BeforeInGame_DoesNotFireLogoff()
+    {
+        var (events, _, _, cleanup, sent) = BuildWithCleanup();
+        events.Add(CommandEvent(EventTriggerType.Logoff, "save"));
+        // Connected at TCP level but we never got the in-game prompt —
+        // Logoff events would have nowhere to land.
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 5 minutes"));
+        Assert.Empty(sent);
     }
 
     [Fact]

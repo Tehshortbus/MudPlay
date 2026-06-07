@@ -190,6 +190,17 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
 
+    /// <summary>
+    /// True during the user-initiated disconnect path — between the
+    /// toolbar click and the wire actually closing. Drives the
+    /// "Disconnecting…" label + short-circuits the toggle command so
+    /// a fast double-click can't initiate a reconnect mid-disconnect.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
+    [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
+    private bool _isDisconnecting;
+
     public bool IsDisconnected => !IsConnected;
 
     /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
@@ -211,14 +222,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// "Disconnect".
     /// </summary>
     public string ConnectionLabel
-        => IsConnected ? "Disconnect"
+        => IsDisconnecting ? "Disconnecting…"
+         : IsConnected ? "Disconnect"
          : IsConnecting ? "Cancel connect"
          : IsReconnectPending ? "Cancel reconnect"
          : "Connect";
 
     /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
     public string ConnectionStatusText
-        => IsConnected ? "Connected"
+        => IsDisconnecting ? "Disconnecting…"
+         : IsConnected ? "Connected"
          : IsConnecting ? "Connecting…"
          : "Disconnected";
 
@@ -956,6 +969,13 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
+        // Re-entry guard: a fast double-click while the disconnect
+        // path is still flushing Logoff events would otherwise hit the
+        // "if (!IsConnected) ... ConnectWithRetriesAsync()" branch and
+        // immediately try to dial again. The disconnect path flips
+        // IsDisconnecting=true at its start; this short-circuit makes
+        // every subsequent click a no-op until the disconnect settles.
+        if (IsDisconnecting) return;
         if (IsConnected)
         {
             // User-initiated disconnect path — prompt if the Confirm
@@ -992,25 +1012,29 @@ public partial class MainWindowViewModel : ObservableObject
         _lastDisconnectCause = DisconnectCause.UserInitiated;
         _reactiveReconnectCount = 0;
 
-        // Phase 8 PR 8.2 — fire user's Logoff events BEFORE we close
-        // the socket. Bounded flush window gives the wire writes time
-        // to drain. Dropped connections take the Disconnected path
-        // straight without coming through here, so they never fire
-        // Logoff — by design (clean shutdown only).
-        AppServices.Current.Events.FireLogoffEvents();
-        if (_telnet?.IsConnected == true)
-        {
-            try { await Task.Delay(TimeSpan.FromSeconds(2)); }
-            catch (TaskCanceledException) { /* shutdown — keep going */ }
-        }
+        // Flip IsDisconnecting so the toolbar label updates to
+        // "Disconnecting…" immediately + a fast double-click hits the
+        // re-entry guard in ToggleConnectionAsync instead of flipping
+        // straight back into a reconnect.
+        IsDisconnecting = true;
 
-        TelnetClient? t = _telnet;
-        _telnet = null;
-        DetachLoginKillSwitch();
-        _automator?.Dispose();
-        _automator = null;
-        if (t is not null) await t.DisposeAsync();
-        IsConnected = false;
+        // NB: Logoff events DON'T fire here. The button is a "close the
+        // wire now" affordance — there's no time to flush bank /
+        // store-gear / etc. cleanup commands. Logoff events instead fire
+        // when CleanupWarningWatcher recognises the BBS announcing
+        // upcoming shutdown (EventScheduler subscribes to it directly).
+
+        try
+        {
+            TelnetClient? t = _telnet;
+            _telnet = null;
+            DetachLoginKillSwitch();
+            _automator?.Dispose();
+            _automator = null;
+            if (t is not null) await t.DisposeAsync();
+            IsConnected = false;
+        }
+        finally { IsDisconnecting = false; }
 
         WriteTerminalStatus($"[DISCONNECTED FROM: {Host} {Port}]", TerminalStatusKind.Notice);
         AppServices.Current.Log.Info("Telnet", $"Disconnected from {Host}:{Port}");
