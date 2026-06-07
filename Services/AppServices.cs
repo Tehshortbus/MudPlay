@@ -543,6 +543,15 @@ public sealed class AppServices
     public Game.Combat.CombatStateTracker CombatTracker { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.0c — aggregates combat lines into per-round
+    /// <see cref="Game.Combat.RoundSummary"/> records, keeping the
+    /// last 50 in a ring buffer. <c>CastingDirector</c> (PR 9.D) and
+    /// Phase 11 <c>CombatSessionTracker</c> consume the
+    /// <c>RoundComplete</c> event.
+    /// </summary>
+    public Game.Combat.RoundDamageTracker RoundDamage { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1223,6 +1232,21 @@ public sealed class AppServices
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat")
                     .MasterAutoAttackEnabled,
             log: Log);
+
+        // Phase 9 PR 9.0c — RoundDamageTracker. shouldWriteTrace
+        // delegate reads Settings.Other.WriteCombatRoundTrace from
+        // the live profile, so the user can toggle the opt-in trace
+        // file mid-session.
+        RoundDamage = new Game.Combat.RoundDamageTracker(
+            Router, PlayerState, Log,
+            shouldWriteTrace: () =>
+                ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other")
+                    .WriteCombatRoundTrace);
+        // Reset round counter + ring on BBS connect to match
+        // CombatSessionTracker's session-boundary convention (PR 9.0c
+        // doesn't ship CombatSessionTracker — Phase 11 does — but the
+        // reset hook lives here on the data producer).
+        Profile.ProfileLoaded += _ => RoundDamage.Reset();
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
