@@ -306,7 +306,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             cred = new BbsCredentials();
             character.BbsCredentials[bbs] = cred;
         }
-        cred.Username = Username;
+        cred.EncryptedUsername = string.IsNullOrEmpty(Username) ? null : _passwords.Protect(Username);
+        cred.Username = null;  // null out legacy plaintext field — encrypted form is canonical now.
         cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
         cred.HasSysopPowers = HasSysopPowers;
 
@@ -481,7 +482,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         if (character?.BbsCredentials is not null
             && character.BbsCredentials.TryGetValue(bbsName, out BbsCredentials? cred))
         {
-            Username = cred.Username;
+            // Username is encrypted at rest; decrypted for the UI
+            // because the doc shows it plainly. Fall back to the
+            // legacy plaintext field for profiles saved before the
+            // encryption transition.
+            Username = cred.EncryptedUsername is { } enc
+                ? (_passwords.Unprotect(enc) ?? string.Empty)
+                : (cred.Username ?? string.Empty);
             // Password isn't pulled from the credential store eagerly — that
             // would surface the plaintext over a logging boundary every time
             // the user clicks around. Show empty + a placeholder; typing a
