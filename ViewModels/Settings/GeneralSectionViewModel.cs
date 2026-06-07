@@ -136,8 +136,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     public bool IsAutoLightWired    => false;   // PR 9.D — CastingDirector
     public bool IsAutoGetItemsWired => false;   // PR 9.E — CashManager (items partial)
     public bool IsAutoGetCashWired  => true;    // PR 9.E — CashManager + StashRoomManager (both gate here)
-    public bool IsAutoSneakWired    => false;   // PR 9.F — StealthManager
-    public bool IsAutoHideWired     => false;   // PR 9.F — StealthManager
+    public bool IsAutoSneakWired    => true;    // PR 9.F Cluster 3 — StealthManager auto-sneak
+    public bool IsAutoHideWired     => true;    // PR 9.F Cluster 3 — StealthManager auto-hide
     public bool IsAutoSearchWired   => false;   // future hidden-exit walker integration
 
     public GeneralSectionViewModel(ProfileService profile)

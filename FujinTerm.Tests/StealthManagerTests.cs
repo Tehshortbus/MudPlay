@@ -204,4 +204,139 @@ public sealed class StealthManagerTests
 
         Assert.Single(h.Transitions);
     }
+
+    // ----- Auto-sneak / auto-hide engines (Cluster 3) ----------------
+
+    private sealed class AutoHarness : IDisposable
+    {
+        public MessageRouter Router { get; } = new();
+        public LogService Log { get; } = new();
+        public PlayerState State { get; } = new();
+        public StealthManager Stealth { get; }
+        public List<byte[]> Sent { get; } = new();
+        public bool AutoSneakOn { get; set; }
+        public bool AutoHideOn { get; set; }
+
+        public AutoHarness()
+        {
+            DefaultPatterns.Seed(Router);
+            Stealth = new StealthManager(Router, State, Log);
+            Stealth.SetWireSender(b => Sent.Add(b));
+            Stealth.SetAutoToggles(
+                () => AutoSneakOn,
+                () => AutoHideOn);
+        }
+
+        public string LastSent() =>
+            Sent.Count == 0
+                ? string.Empty
+                : System.Text.Encoding.Latin1.GetString(Sent[^1]).TrimEnd('\r');
+
+        public void Dispose() => Stealth.Dispose();
+    }
+
+    [Fact]
+    public void AutoSneak_OnRoomChange_SendsSneak()
+    {
+        using AutoHarness h = new() { AutoSneakOn = true };
+
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Single(h.Sent);
+        Assert.Equal("sneak", h.LastSent());
+    }
+
+    [Fact]
+    public void AutoSneak_AlreadySneaking_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "Sneaking...", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoSneak_InCombat_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.State.InCombat = true;
+
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoSneak_Off_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = false };
+
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoHide_NoteIdle_SendsHide()
+    {
+        using AutoHarness h = new() { AutoHideOn = true };
+
+        h.Stealth.NoteIdleOpportunity();
+
+        Assert.Single(h.Sent);
+        Assert.Equal("hide", h.LastSent());
+    }
+
+    [Fact]
+    public void AutoHide_AlreadyHidden_NoSend()
+    {
+        using AutoHarness h = new() { AutoHideOn = true };
+        h.Stealth.NoteHideConfirmed();
+
+        h.Stealth.NoteIdleOpportunity();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoHide_InCombat_NoSend()
+    {
+        using AutoHarness h = new() { AutoHideOn = true };
+        h.State.InCombat = true;
+
+        h.Stealth.NoteIdleOpportunity();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void IsStealthed_TrueWhenSneaking()
+    {
+        using AutoHarness h = new();
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "Sneaking...", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        Assert.True(h.Stealth.IsStealthed);
+    }
+
+    [Fact]
+    public void IsStealthed_TrueWhenHidden()
+    {
+        using AutoHarness h = new();
+        h.Stealth.NoteHideConfirmed();
+
+        Assert.True(h.Stealth.IsStealthed);
+    }
+
+    [Fact]
+    public void IsStealthed_FalseWhenIdle()
+    {
+        using AutoHarness h = new();
+        Assert.False(h.Stealth.IsStealthed);
+    }
 }

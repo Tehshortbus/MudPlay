@@ -59,6 +59,10 @@ public sealed class StealthManager : IDisposable
     private readonly IDisposable _sneakFailedSub;
     private readonly IDisposable _cantSneakSub;
 
+    private Action<byte[]>? _wireSender;
+    private Func<bool>? _isAutoSneakEnabled;
+    private Func<bool>? _isAutoHideEnabled;
+
     private StealthState _stateValue;
     private bool _sneakConfirmedThisRoom;
     private bool _disposed;
@@ -96,6 +100,34 @@ public sealed class StealthManager : IDisposable
         _cantSneakSub     = router.Subscribe(KnownPatterns.UserCantSneak,     OnCantSneak);
     }
 
+    /// <summary>Bind the wire sender for the auto-sneak / auto-hide
+    /// engines. Until set, the auto-engines log decisions but don't
+    /// send commands.</summary>
+    public void SetWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _wireSender = sender;
+    }
+
+    /// <summary>Wire the AutoSneak / AutoHide master switches —
+    /// typically <c>GeneralSettings.AutoMode.AutoSneak</c> /
+    /// <c>AutoHide</c>. When the funcs are null the auto-engines
+    /// stay dormant (passive tracker behavior).</summary>
+    public void SetAutoToggles(Func<bool> isAutoSneakEnabled, Func<bool> isAutoHideEnabled)
+    {
+        _isAutoSneakEnabled = isAutoSneakEnabled;
+        _isAutoHideEnabled = isAutoHideEnabled;
+    }
+
+    /// <summary>
+    /// True while we hold any active stealth (Sneaking or Hidden).
+    /// Read by <c>CastingDirector</c> to suppress buff casts that
+    /// would break stealth, and (future) by <c>CombatManager</c> to
+    /// pick backstab over normal attack.
+    /// </summary>
+    public bool IsStealthed =>
+        _stateValue == StealthState.Sneaking || _stateValue == StealthState.Hidden;
+
     /// <summary>
     /// Called by an external observer (RoomTracker via AppServices)
     /// when the player's room changes. If we believed we were
@@ -117,6 +149,40 @@ public sealed class StealthManager : IDisposable
             SilentSneakLost?.Invoke();
         }
         _sneakConfirmedThisRoom = false;
+
+        // Auto-sneak: enabled + idle + not in combat → send `sneak`.
+        // Fires after the silent-loss check so a just-lost sneak
+        // immediately re-attempts on the next move.
+        if (_isAutoSneakEnabled?.Invoke() == true
+         && _stateValue == StealthState.Idle
+         && !_state.InCombat)
+        {
+            _log?.Info(LogCategory, "auto-sneak triggered (room change + idle + !combat)");
+            Send("sneak");
+        }
+    }
+
+    /// <summary>
+    /// Called when the player goes idle (e.g. enters a safe room and
+    /// the walker stops). Drives the auto-hide engine. Wire from
+    /// <c>AppServices</c> on whatever "idle" signal is appropriate —
+    /// for v1, fire it from the same RoomTracker.StateChanged hook
+    /// as auto-sneak; hide is silent on failure and the server
+    /// rate-limits attempts.
+    /// </summary>
+    public void NoteIdleOpportunity()
+    {
+        if (_isAutoHideEnabled?.Invoke() != true) return;
+        if (_state.InCombat) return;
+        if (_stateValue == StealthState.Hidden) return;
+        _log?.Info(LogCategory, "auto-hide triggered");
+        Send("hide");
+    }
+
+    private void Send(string text)
+    {
+        if (_wireSender is null) return;
+        _wireSender(System.Text.Encoding.Latin1.GetBytes(text + "\r"));
     }
 
     /// <summary>

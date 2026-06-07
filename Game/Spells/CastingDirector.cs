@@ -71,6 +71,7 @@ public sealed class CastingDirector : IDisposable
     private readonly CastCoordinator _cast;
     private readonly Conditions.ConditionTracker? _conditions;
     private readonly PartyState? _party;
+    private Func<bool>? _isStealthedFunc;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -146,6 +147,16 @@ public sealed class CastingDirector : IDisposable
     /// <summary>Hook to <see cref="TickEngine.CombatTickElapsed"/> —
     /// drives between-round evaluations.</summary>
     public void OnCombatTick() => Evaluate();
+
+    /// <summary>
+    /// Wire a stealth-state predicate so the Buff slot can skip
+    /// candidate casts that would break stealth. Typically pointed
+    /// at <c>StealthManager.IsStealthed</c>. Optional — when unset
+    /// the buff slot fires regardless of stealth (back-compat for
+    /// tests / pre-Cluster-3 callers).
+    /// </summary>
+    public void SetStealthGate(Func<bool> isStealthed) =>
+        _isStealthedFunc = isStealthed;
 
     private void OnConditionApplied(Models.GameData.MessageRecord _) => Evaluate();
 
@@ -412,6 +423,10 @@ public sealed class CastingDirector : IDisposable
         // out-of-combat — refine later if buff-during-combat
         // toggles get added.
         if (_state.InCombat) return null;
+
+        // Stealth gate: any cast breaks sneak / hide; suppress buffs
+        // entirely while stealthed so a backstab window stays open.
+        if (_isStealthedFunc?.Invoke() == true) return null;
 
         // All 14 buff slots walk together: 10 explicit Bless picks +
         // HpRegen + MaRegen + WhenHpFull + WhenMaFull. Each has its

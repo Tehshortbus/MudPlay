@@ -1482,19 +1482,28 @@ public sealed class AppServices
             readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             log: Log);
+        // Cluster 3 stealth gate — buff casts suppressed while
+        // sneaking or hidden so we don't break the backstab window.
+        CastDirector.SetStealthGate(() => Stealth.IsStealthed);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
-        // Phase 9 PR 9.F — StealthManager state tracker. Owns
-        // PlayerState.IsSneaking/IsHidden and detects silent loss on
-        // room change. Auto-sneak / auto-hide engines layer on top
-        // in a follow-up.
+        // Phase 9 PR 9.F — StealthManager state tracker + auto-sneak /
+        // auto-hide engines. Owns PlayerState.IsSneaking/IsHidden,
+        // detects silent loss on room change, and sends `sneak` /
+        // `hide` per AutoMode toggles.
         Stealth = new Game.Stealth.StealthManager(Router, PlayerState, Log);
+        Stealth.SetAutoToggles(
+            isAutoSneakEnabled: () => ReadAutoModeFlag(d => d.AutoSneak),
+            isAutoHideEnabled:  () => ReadAutoModeFlag(d => d.AutoHide));
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;
             if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
             if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
             Stealth.NoteRoomChanged();
+            // Same hook drives the idle-hide opportunity for v1.
+            // Refine when a dedicated walker-idle signal lands.
+            Stealth.NoteIdleOpportunity();
         };
 
         // Phase 9 PR 9.I — DeathRecoveryManager. Aggregates the

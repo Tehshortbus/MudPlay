@@ -523,6 +523,24 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void Buff_StealthGate_Suppressed()
+    {
+        // Stealth gate (wired by AppServices to StealthManager.IsStealthed)
+        // suppresses buff casts to keep the backstab window open.
+        using CureHarness h = new();
+        h.Director.SetStealthGate(() => true);
+        h.Spells.Bless1Spell = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
     public void Buff_InCombat_Suppressed()
     {
         // v1 hard-gates buffs out of combat — never burn a round
