@@ -139,6 +139,7 @@
                 <MenuItem Header="Macros"   Command="{Binding OpenGameDataMacrosCommand}"/>
                 <MenuItem Header="Triggers" Command="{Binding OpenGameDataTriggersCommand}"/>
                 <MenuItem Header="Aliases"  Command="{Binding OpenGameDataAliasesCommand}"/>
+                <MenuItem Header="Events"   Command="{Binding OpenEventsCommand}"/>
                 <Separator/>
                 <MenuItem Header="Reset layout" Command="{Binding ResetLayoutCommand}"/>
             </MenuItem>

@@ -2298,6 +2298,14 @@ public partial class MainWindowViewModel : ObservableObject
     private void OpenBbsSettings() => OpenSettingsAt("bbs");
 
     /// <summary>
+    /// View → Events menu entry. Opens the Settings window deep-linked
+    /// to the Events tab (Phase 8 PR 8.5 — matches the
+    /// <see cref="MenuCommandIds.SettingsOpenEvents"/> reserved id).
+    /// </summary>
+    [RelayCommand]
+    private void OpenEvents() => OpenSettingsAt("events");
+
+    /// <summary>
     /// Singleton-ish handle to the Quick Connect window so re-press of
     /// the menu / hotkey toggles it closed (per CLAUDE.md).
     /// </summary>
