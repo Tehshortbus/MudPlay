@@ -1476,9 +1476,10 @@ public sealed class AppServices
         // PlayerState + Spells/Health settings. AutoHealRest gates
         // the engine (shared toggle with HealthManager's passive rest).
         CastDirector = new Game.Spells.CastingDirector(
-            PlayerState, Cast, Conditions,
+            PlayerState, Cast, Conditions, PartyState,
             readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
             readHealth: () => ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             log: Log);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;

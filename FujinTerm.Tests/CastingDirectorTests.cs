@@ -541,6 +541,170 @@ public sealed class CastingDirectorTests
         Assert.Empty(h.CastsSent);
     }
 
+    // ----- Party-heal (single + AOE thresholding) -------------------
+
+    private sealed class PartyHarness : IDisposable
+    {
+        public MessageRouter Router { get; } = new();
+        public LogService Log { get; } = new();
+        public PlayerState State { get; } = new();
+        public PartyState Party { get; } = new();
+        public CastCoordinator Cast { get; }
+        public CastingDirector Director { get; }
+        public List<string> CastsSent { get; } = new();
+        public List<byte[]> SentBytes { get; } = new();
+        public SpellsSettings Spells { get; set; } = new();
+        public HealthSettings Health { get; set; } = new();
+        public PartySettings PartySettings { get; set; } = new();
+
+        public PartyHarness()
+        {
+            DefaultPatterns.Seed(Router);
+            Cast = new CastCoordinator(Router, Log);
+            Cast.SetWireSender(b => SentBytes.Add(b));
+            Cast.CastSent += CastsSent.Add;
+            Director = new CastingDirector(State, Cast,
+                conditions: null, party: Party,
+                readSpells: () => Spells,
+                readHealth: () => Health,
+                readPartySettings: () => PartySettings,
+                isEnabled: () => true,
+                log: Log);
+            State.MaxHp = 200;
+            State.Hp = 200;
+            State.MaxMa = 100;
+            State.Ma = 100;
+            State.HasPromptData = true;
+        }
+
+        public PartyMember AddMember(string name, int hpPercent, int baselineHp = 100)
+        {
+            PartyMember m = new()
+            {
+                Name = name,
+                BaselineHp = baselineHp,
+                HpPercent = hpPercent,
+                BaselineMp = 100,
+                MpPercent = 100,
+            };
+            Party.Members.Add(m);
+            return m;
+        }
+
+        public void Dispose()
+        {
+            Director.Dispose();
+            Cast.Dispose();
+        }
+    }
+
+    [Fact]
+    public void PartyHeal_OneMemberBelowMinor_SingleCast()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Tank", hpPercent: 60);
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c heal Tank", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyHeal_TwoMembersBelow_FiresAoe()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorPartyHealAoeSpell = "groupheal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.PartySettings.AoeMinMembers = 2;
+        h.AddMember("Tank",  hpPercent: 60);
+        h.AddMember("Mage",  hpPercent: 50);
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c groupheal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyHeal_NoMembersBelow_NoCast()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Tank", hpPercent: 90);
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void PartyHeal_PicksLowestHp_AsTarget()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Tank",  hpPercent: 65);
+        h.AddMember("Mage",  hpPercent: 30);
+        h.AddMember("Druid", hpPercent: 55);
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c heal Mage", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyHeal_MajorThreshold_FiresMajorAoe()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MajorPartyHealSpell = "majorheal";
+        h.PartySettings.MajorPartyHealAoeSpell = "majorgroupheal";
+        h.PartySettings.MajorHealMemberThresholdPercent = 40;
+        h.PartySettings.AoeMinMembers = 2;
+        h.AddMember("Tank",  hpPercent: 30);
+        h.AddMember("Mage",  hpPercent: 25);
+        // Default priority puts MinorPartyHeal (1) above Major (2);
+        // disable minor by clearing the spell so major wins.
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c majorgroupheal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyHeal_NoPartySettings_NoCast()
+    {
+        // Mirror real wiring with no PartyState reader — just falls
+        // through to other categories.
+        using PartyHarness h = new();
+        // No spells configured anywhere.
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void PartyHeal_BelowThresholdSingleConfigured_SinglePrefersAoeAtCount()
+    {
+        // Both single and AOE configured; only one member below
+        // threshold; AoeMinMembers=2 — single fires.
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorPartyHealAoeSpell = "groupheal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.PartySettings.AoeMinMembers = 2;
+        h.AddMember("Tank", hpPercent: 60);
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c heal Tank", h.CastsSent[0]);
+    }
+
     [Fact]
     public void Cure_LifeThreatBeatsCure()
     {

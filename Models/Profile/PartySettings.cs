@@ -84,6 +84,46 @@ public sealed class PartySettings
     /// sending <c>@join</c>. Range 5..600, default 55.
     /// </summary>
     public int JoinNagMaxTotalSec { get; set; } = 55;
+
+    // ----- Party-cast spell pickers (CastingDirector PR 9.D) --------
+    // Each Minor / Major slot owns BOTH a single-target spell and an
+    // AOE / group spell. CastingDirector picks single vs AOE at cast
+    // time based on how many party members are below the threshold.
+
+    /// <summary>Single-target heal cast when one party member drops
+    /// below <see cref="MinorHealMemberThresholdPercent"/>.</summary>
+    public string? MinorPartyHealSpell { get; set; }
+
+    /// <summary>Group AOE heal cast when
+    /// <see cref="AoeMinMembers"/>+ members are below
+    /// <see cref="MinorHealMemberThresholdPercent"/>.</summary>
+    public string? MinorPartyHealAoeSpell { get; set; }
+
+    /// <summary>Symmetric major / critical single-target heal.</summary>
+    public string? MajorPartyHealSpell { get; set; }
+
+    /// <summary>Symmetric major / critical group AOE heal.</summary>
+    public string? MajorPartyHealAoeSpell { get; set; }
+
+    /// <summary>Cast Minor party heal when any party member's HP%
+    /// falls below this value. Default 70.</summary>
+    public int MinorHealMemberThresholdPercent { get; set; } = 70;
+
+    /// <summary>Cast Major party heal when any party member's HP%
+    /// falls below this value. Default 40 — mirrors self-heal's
+    /// MajorHealCombatTrigger default.</summary>
+    public int MajorHealMemberThresholdPercent { get; set; } = 40;
+
+    /// <summary>Minimum number of party members below threshold for
+    /// the engine to switch from single-target to AOE / group heal.
+    /// Default 2. Clamped to ≥ 2 at engine time so a misconfig can't
+    /// fire AOE on a single hurt member.</summary>
+    public int AoeMinMembers { get; set; } = 2;
+
+    // Party-cure + party-buff pickers ship in a follow-up commit —
+    // they need per-member condition tracking + per-member active-
+    // buff tracking, both of which are deferred until the spellbook
+    // gamedata duration model lands.
 }
 
 /// <summary>Local character's combat rank within a party.</summary>

@@ -70,8 +70,10 @@ public sealed class CastingDirector : IDisposable
     private readonly PlayerState _state;
     private readonly CastCoordinator _cast;
     private readonly Conditions.ConditionTracker? _conditions;
+    private readonly PartyState? _party;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
+    private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
@@ -84,20 +86,25 @@ public sealed class CastingDirector : IDisposable
         Func<HealthSettings> readHealth,
         Func<bool> isEnabled,
         LogService? log = null)
-        : this(state, cast, conditions: null, readSpells, readHealth, isEnabled, log) { }
+        : this(state, cast, conditions: null, party: null,
+               readSpells, readHealth, readPartySettings: null,
+               isEnabled, log) { }
 
     /// <summary>
-    /// Constructor that wires <see cref="Conditions.ConditionTracker"/>
-    /// so the engine can fire ailment cures. The legacy ctor stays
-    /// for tests that exercise heal-only behaviour without spinning up
-    /// the Messages-tab dependency.
+    /// Constructor with optional <see cref="Conditions.ConditionTracker"/>
+    /// (for ailment cures) and <see cref="PartyState"/> +
+    /// <see cref="PartySettings"/> reader (for party-cast). Pass
+    /// <c>null</c> for tests / engines that don't need the dependencies;
+    /// the matching Pick* methods short-circuit.
     /// </summary>
     public CastingDirector(
         PlayerState state,
         CastCoordinator cast,
         Conditions.ConditionTracker? conditions,
+        PartyState? party,
         Func<SpellsSettings> readSpells,
         Func<HealthSettings> readHealth,
+        Func<PartySettings>? readPartySettings,
         Func<bool> isEnabled,
         LogService? log = null)
     {
@@ -109,8 +116,10 @@ public sealed class CastingDirector : IDisposable
         _state = state;
         _cast = cast;
         _conditions = conditions;
+        _party = party;
         _readSpells = readSpells;
         _readHealth = readHealth;
+        _readPartySettings = readPartySettings;
         _isEnabled = isEnabled;
         _log = log;
 
@@ -118,6 +127,21 @@ public sealed class CastingDirector : IDisposable
         if (_conditions is not null)
             _conditions.ConditionApplied += OnConditionApplied;
     }
+
+    // Old 3-arg + 4-arg ctors kept as a convenience overload so the
+    // existing AppServices wiring + tests don't churn while
+    // party-cast wiring lands.
+    public CastingDirector(
+        PlayerState state,
+        CastCoordinator cast,
+        Conditions.ConditionTracker? conditions,
+        Func<SpellsSettings> readSpells,
+        Func<HealthSettings> readHealth,
+        Func<bool> isEnabled,
+        LogService? log = null)
+        : this(state, cast, conditions, party: null,
+               readSpells, readHealth, readPartySettings: null,
+               isEnabled, log) { }
 
     /// <summary>Hook to <see cref="TickEngine.CombatTickElapsed"/> —
     /// drives between-round evaluations.</summary>
@@ -157,30 +181,37 @@ public sealed class CastingDirector : IDisposable
         SpellsSettings spells = _readSpells();
         HealthSettings health = _readHealth();
 
+        PartySettings? partySettings = _readPartySettings?.Invoke();
+
         foreach (SpellCategory category in PrioritisedCategories(spells))
         {
-            string? pick = category switch
+            CastCandidate? pick = category switch
             {
-                SpellCategory.MinorPartyHeal  => PickMinorPartyHeal(spells, health),
-                SpellCategory.MajorPartyHeal  => PickMajorPartyHeal(spells, health),
-                SpellCategory.MinorSelfHeal   => PickMinorSelfHeal(spells, health),
-                SpellCategory.MajorSelfHeal   => PickMajorSelfHeal(spells, health),
-                SpellCategory.Curing          => PickCure(spells),
-                SpellCategory.Buffing         => PickBuff(spells, health),
-                SpellCategory.Debuffing       => PickDebuff(spells, health),
+                SpellCategory.MinorPartyHeal  => PickMinorPartyHeal(partySettings),
+                SpellCategory.MajorPartyHeal  => PickMajorPartyHeal(partySettings),
+                SpellCategory.MinorSelfHeal   => Wrap(PickMinorSelfHeal(spells, health)),
+                SpellCategory.MajorSelfHeal   => Wrap(PickMajorSelfHeal(spells, health)),
+                SpellCategory.Curing          => Wrap(PickCure(spells)),
+                SpellCategory.Buffing         => Wrap(PickBuff(spells, health)),
+                SpellCategory.Debuffing       => Wrap(PickDebuff(spells, health)),
                 _                              => null,
             };
 
-            if (string.IsNullOrWhiteSpace(pick)) continue;
-            if (!_cast.TryCast(pick)) return null;
+            if (pick is not { } cand) continue;
+            if (string.IsNullOrWhiteSpace(cand.Spell)) continue;
+            if (!_cast.TryCast(cand.Spell, cand.Target)) return null;
 
             _log?.Info(LogCategory,
-                $"{category} fired spell={pick} hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
-            return pick;
+                $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
+                $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+            return cand.Spell;
         }
 
         return null;
     }
+
+    private static CastCandidate? Wrap(string? spell) =>
+        string.IsNullOrWhiteSpace(spell) ? null : new CastCandidate(spell, Target: null);
 
     /// <summary>Categories in priority order (lowest int first, ties
     /// broken by category enum order for determinism).</summary>
@@ -275,10 +306,68 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    // ----- Party heal — pending PartySettings extensions --------------
+    // ----- Party heal -------------------------------------------------
 
-    private string? PickMinorPartyHeal(SpellsSettings _, HealthSettings __) => null;
-    private string? PickMajorPartyHeal(SpellsSettings _, HealthSettings __) => null;
+    /// <summary>
+    /// Walk live party members; cast the minor party heal on whoever
+    /// is below <see cref="PartySettings.MinorHealMemberThresholdPercent"/>.
+    /// When <see cref="PartySettings.AoeMinMembers"/> or more members are
+    /// below the threshold AND a group spell is configured, fire the
+    /// AOE variant instead (no target).
+    /// </summary>
+    private CastCandidate? PickMinorPartyHeal(PartySettings? settings) =>
+        PickPartyHeal(settings,
+            threshold: settings?.MinorHealMemberThresholdPercent ?? 70,
+            singleSpell: settings?.MinorPartyHealSpell,
+            aoeSpell:    settings?.MinorPartyHealAoeSpell);
+
+    /// <summary>Symmetric to <see cref="PickMinorPartyHeal"/> at the
+    /// major / critical threshold.</summary>
+    private CastCandidate? PickMajorPartyHeal(PartySettings? settings) =>
+        PickPartyHeal(settings,
+            threshold: settings?.MajorHealMemberThresholdPercent ?? 40,
+            singleSpell: settings?.MajorPartyHealSpell,
+            aoeSpell:    settings?.MajorPartyHealAoeSpell);
+
+    private CastCandidate? PickPartyHeal(
+        PartySettings? settings, int threshold, string? singleSpell, string? aoeSpell)
+    {
+        if (_party is null) return null;
+        if (settings is null) return null;
+        if (_party.Members.Count == 0) return null;
+        if (string.IsNullOrWhiteSpace(singleSpell)
+         && string.IsNullOrWhiteSpace(aoeSpell)) return null;
+
+        // Count members below threshold + remember the lowest one
+        // so single-target picks the most urgent target.
+        int below = 0;
+        PartyMember? lowest = null;
+        foreach (PartyMember m in _party.Members)
+        {
+            if (m.HpPercent >= threshold) continue;
+            below++;
+            if (lowest is null || m.HpPercent < lowest.HpPercent)
+                lowest = m;
+        }
+        if (below == 0) return null;
+
+        int aoeMin = Math.Max(2, settings.AoeMinMembers);
+        if (below >= aoeMin && !string.IsNullOrWhiteSpace(aoeSpell))
+            return new CastCandidate(aoeSpell, Target: null);
+
+        if (!string.IsNullOrWhiteSpace(singleSpell) && lowest is not null)
+            return new CastCandidate(singleSpell, Target: lowest.Name);
+
+        // Below threshold but only AOE configured and below count
+        // hasn't hit AoeMinMembers — accept the AOE anyway since
+        // a single-target alternative wasn't picked. Matches the
+        // user's "I configured AOE only because that's what I have"
+        // intent.
+        if (!string.IsNullOrWhiteSpace(aoeSpell))
+            return new CastCandidate(aoeSpell, Target: null);
+
+        return null;
+    }
 
     // ----- Buffing ----------------------------------------------------
 
@@ -353,6 +442,11 @@ public sealed class CastingDirector : IDisposable
             _conditions.ConditionApplied -= OnConditionApplied;
     }
 }
+
+/// <summary>One picked cast — spell name + optional target string.
+/// Used internally by <see cref="CastingDirector"/> to thread through
+/// the unified Pick* → TryCast pipeline.</summary>
+public readonly record struct CastCandidate(string Spell, string? Target);
 
 /// <summary>Spell-decision categories. Order matches the user-facing
 /// Spells settings tab; numeric position is just for deterministic
