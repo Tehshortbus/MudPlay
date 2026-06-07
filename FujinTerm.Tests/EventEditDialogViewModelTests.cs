@@ -115,22 +115,13 @@ public sealed class EventEditDialogViewModelTests
         Assert.True(vm.CanSave);
     }
 
-    [Fact]
-    public void CanSave_Loop_RequiresSelection()
-    {
-        EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
-        {
-            IsTriggerLogon = true,
-            IsActionLoop = true,
-            LoopName = null,
-        };
-        Assert.False(vm.CanSave);
-        vm.LoopName = "Sewer farm";
-        Assert.True(vm.CanSave);
-    }
+    // WHAT-side target validation lives in
+    // TryGetMissingTargetMessage and surfaces via a Save-time popup
+    // (DialogService.ShowInfo). CanSave only gates on the WHEN-side
+    // format errors now. Coverage for the popup path:
 
     [Fact]
-    public void CanSave_WalkTo_RequiresResolvableTarget()
+    public void TryGetMissingTargetMessage_WalkTo_EmptyText_ReturnsMessage()
     {
         EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
         {
@@ -138,10 +129,65 @@ public sealed class EventEditDialogViewModelTests
             IsActionWalkTo = true,
             WalkToText = "",
         };
-        Assert.False(vm.CanSave);
-        // Coord works without a search service.
-        vm.WalkToText = "1/297";
+        Assert.True(vm.CanSave);          // form-level OK
+        Assert.NotNull(vm.TryGetMissingTargetMessage());
+    }
+
+    [Fact]
+    public void TryGetMissingTargetMessage_WalkTo_ValidCoord_ReturnsNull()
+    {
+        EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
+        {
+            IsTriggerLogon = true,
+            IsActionWalkTo = true,
+            WalkToText = "1/297",
+        };
+        Assert.Null(vm.TryGetMissingTargetMessage());
+    }
+
+    [Fact]
+    public void TryGetMissingTargetMessage_Loop_NoSelection_ReturnsMessage()
+    {
+        EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
+        {
+            IsTriggerLogon = true,
+            IsActionLoop = true,
+            LoopName = null,
+        };
         Assert.True(vm.CanSave);
+        Assert.NotNull(vm.TryGetMissingTargetMessage());
+    }
+
+    [Fact]
+    public void TryGetMissingTargetMessage_AutoLair_NoSelection_ReturnsMessage()
+    {
+        EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
+        {
+            IsTriggerLogon = true,
+            IsActionAutoLair = true,
+            AutoLairSetupName = null,
+        };
+        Assert.True(vm.CanSave);
+        Assert.NotNull(vm.TryGetMissingTargetMessage());
+    }
+
+    [Fact]
+    public void Save_WithMissingTarget_DoesNotFireCloseRequested()
+    {
+        EventEditDialogViewModel vm = new(new ScheduledEvent(), isNew: true)
+        {
+            IsTriggerLogon = true,
+            IsActionLoop = true,
+            LoopName = null,
+        };
+        bool fired = false;
+        vm.CloseRequested += _ => fired = true;
+
+        vm.SaveCommand.Execute(null);
+        // The Save shorthand routes through TryGetMissingTargetMessage
+        // and the DialogService popup (no-op without a main window in
+        // tests) — but does NOT invoke CloseRequested.
+        Assert.False(fired);
     }
 
     // ----- Save / Cancel emit CloseRequested --------------------------

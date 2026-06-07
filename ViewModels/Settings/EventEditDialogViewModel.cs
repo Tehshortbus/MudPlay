@@ -139,32 +139,17 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
     // ----- WHAT (action) ----------------------------------------------
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WalkToError))]
-    private bool _isActionWalkTo;
+    [ObservableProperty] private bool _isActionWalkTo;
+    [ObservableProperty] private string _walkToText = string.Empty;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WalkToError))]
-    private string _walkToText = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LoopError))]
-    private bool _isActionLoop;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LoopError))]
-    private string? _loopName;
+    [ObservableProperty] private bool _isActionLoop;
+    [ObservableProperty] private string? _loopName;
 
     /// <summary>Saved loops the user can pick from for the Loop action.</summary>
     public ObservableCollection<string> AvailableLoopNames { get; } = new();
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(AutoLairError))]
-    private bool _isActionAutoLair;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(AutoLairError))]
-    private string? _autoLairSetupName;
+    [ObservableProperty] private bool _isActionAutoLair;
+    [ObservableProperty] private string? _autoLairSetupName;
 
     /// <summary>Saved auto-lair setups for the AutoLair action.</summary>
     public ObservableCollection<string> AvailableAutoLairNames { get; } = new();
@@ -172,41 +157,20 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     [ObservableProperty] private bool _isActionCommand;
     [ObservableProperty] private string _commandText = string.Empty;
 
-    public string WalkToError
-    {
-        get
-        {
-            if (!IsActionWalkTo) return string.Empty;
-            if (string.IsNullOrWhiteSpace(WalkToText)) return "Pick a room.";
-            return TryResolveWalkTo(out _, out _) ? string.Empty : "Unknown room — use coord (e.g. 1/297) or a more specific name.";
-        }
-    }
-
-    public string LoopError =>
-        IsActionLoop && string.IsNullOrWhiteSpace(LoopName) ? "Pick a saved loop." : string.Empty;
-
-    public string AutoLairError =>
-        IsActionAutoLair && string.IsNullOrWhiteSpace(AutoLairSetupName)
-            ? "Pick a saved auto-lair setup."
-            : string.Empty;
-
     /// <summary>
-    /// Command never errors at edit time: an empty CommandText is a
-    /// valid event whose Fire sends a bare carriage return (useful for
-    /// MOTD pagination and similar single-CR prompts).
+    /// WHAT-side validation happens on Save (popup), not inline —
+    /// fewer red labels cluttering the form. WHEN-side format errors
+    /// stay inline because they're objectively wrong syntax the user
+    /// can see at a glance. Command never errors at edit time: an
+    /// empty CommandText is a valid event whose Fire sends a bare
+    /// carriage return.
     /// </summary>
-    public bool HasAtTimeError   => AtTimeError.Length   > 0;
-    public bool HasEveryError    => EveryError.Length    > 0;
-    public bool HasWalkToError   => WalkToError.Length   > 0;
-    public bool HasLoopError     => LoopError.Length     > 0;
-    public bool HasAutoLairError => AutoLairError.Length > 0;
+    public bool HasAtTimeError => AtTimeError.Length > 0;
+    public bool HasEveryError  => EveryError.Length  > 0;
 
     public bool CanSave =>
         AtTimeError.Length == 0
-        && EveryError.Length == 0
-        && WalkToError.Length == 0
-        && LoopError.Length == 0
-        && AutoLairError.Length == 0;
+        && EveryError.Length == 0;
 
     // ----- Save / Cancel ----------------------------------------------
 
@@ -214,6 +178,18 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     private void Save()
     {
         if (!CanSave) return;
+
+        // WHAT-side validation: if the user selected an action but
+        // didn't fill in its target, popup a message + stay open.
+        // Doesn't apply to Command (empty = bare CR is intentional).
+        if (TryGetMissingTargetMessage() is { } missing)
+        {
+            // Try the popup; fall through silently if AppServices isn't
+            // initialized (tests). Either way, we don't fire CloseRequested.
+            try { AppServices.Current.Dialogs.ShowInfo("Event not saved", missing); }
+            catch (InvalidOperationException) { /* AppServices uninitialized — tests */ }
+            return;
+        }
 
         ScheduledEvent result = new()
         {
@@ -257,6 +233,21 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    /// <summary>
+    /// Internal so tests can poke the validation path without going
+    /// through a dispatcher / DialogService.
+    /// </summary>
+    internal string? TryGetMissingTargetMessage()
+    {
+        if (IsActionWalkTo && !TryResolveWalkTo(out _, out _))
+            return "No walk-to target selected. Enter a coordinate (e.g. 1/297) or an unambiguous room name.";
+        if (IsActionLoop && string.IsNullOrWhiteSpace(LoopName))
+            return "No loop selected. Pick a saved loop from the dropdown.";
+        if (IsActionAutoLair && string.IsNullOrWhiteSpace(AutoLairSetupName))
+            return "No auto-lair setup selected. Pick a saved setup from the dropdown.";
+        return null;
+    }
 
     /// <summary>
     /// Toggle-source partials. The XAML radios enforce mutual
@@ -311,9 +302,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         if (value) { IsActionWalkTo = IsActionLoop = IsActionAutoLair = false; }
         Refresh();
     }
-    partial void OnLoopNameChanged(string? value)       => OnPropertyChanged(nameof(LoopError));
-    partial void OnAutoLairSetupNameChanged(string? value) => OnPropertyChanged(nameof(AutoLairError));
-    partial void OnWalkToTextChanged(string value)      => OnPropertyChanged(nameof(WalkToError));
     partial void OnAtTimeChanged(string value)          => OnPropertyChanged(nameof(AtTimeError));
     partial void OnEveryAmountChanged(int value)        => OnPropertyChanged(nameof(EveryError));
 
@@ -321,14 +309,8 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     {
         OnPropertyChanged(nameof(AtTimeError));
         OnPropertyChanged(nameof(EveryError));
-        OnPropertyChanged(nameof(WalkToError));
-        OnPropertyChanged(nameof(LoopError));
-        OnPropertyChanged(nameof(AutoLairError));
         OnPropertyChanged(nameof(HasAtTimeError));
         OnPropertyChanged(nameof(HasEveryError));
-        OnPropertyChanged(nameof(HasWalkToError));
-        OnPropertyChanged(nameof(HasLoopError));
-        OnPropertyChanged(nameof(HasAutoLairError));
         OnPropertyChanged(nameof(CanSave));
     }
 

@@ -7,7 +7,9 @@
         x:Class="FujinTerm.Views.Settings.EventEditDialog"
         x:DataType="vm:EventEditDialogViewModel"
         Title="{Binding DialogTitle}"
-        Width="540" Height="520"
+        Width="540"
+        SizeToContent="Height"
+        CanResize="False"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -54,7 +56,7 @@
 
             <!-- WHEN section: single grid so the time / numeric / unit
                  columns line up across rows. Errors collapse when empty. -->
-            <Grid Grid.Row="1" Margin="0,12,0,0"
+            <Grid Grid.Row="1" Margin="0,8,0,0"
                   ColumnDefinitions="100,140,140,*"
                   RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                   RowSpacing="4">
@@ -110,10 +112,12 @@
             </Grid>
 
             <!-- WHAT section: shared two-column layout so every action
-                 input starts at the same x. Errors collapse when empty. -->
-            <Grid Grid.Row="2" Margin="0,16,0,0"
+                 input starts at the same x. WHAT-side targets are
+                 validated on Save (popup) rather than inline, per the
+                 PR 8.5 polish pass. -->
+            <Grid Grid.Row="2" Margin="0,12,0,0"
                   ColumnDefinitions="100,*"
-                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                   RowSpacing="4">
                 <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
                            Classes="SectionHeader" Text="WHAT (action)"/>
@@ -126,44 +130,32 @@
                          IsEnabled="{Binding IsActionWalkTo}"
                          PlaceholderText="coord (1/297) or room name"
                          HorizontalAlignment="Left" Width="320"/>
-                <TextBlock Grid.Row="2" Grid.Column="1"
-                           Classes="Error"
-                           Text="{Binding WalkToError}"
-                           IsVisible="{Binding HasWalkToError}"/>
 
-                <RadioButton Grid.Row="3" Grid.Column="0" Classes="Row"
+                <RadioButton Grid.Row="2" Grid.Column="0" Classes="Row"
                              GroupName="What" Content="Start loop"
                              IsChecked="{Binding IsActionLoop, Mode=TwoWay}"/>
-                <ComboBox Grid.Row="3" Grid.Column="1"
+                <ComboBox Grid.Row="2" Grid.Column="1"
                           ItemsSource="{Binding AvailableLoopNames}"
                           SelectedItem="{Binding LoopName, Mode=TwoWay}"
                           IsEnabled="{Binding IsActionLoop}"
                           PlaceholderText="(select a saved loop)"
                           HorizontalAlignment="Left" Width="320"/>
-                <TextBlock Grid.Row="4" Grid.Column="1"
-                           Classes="Error"
-                           Text="{Binding LoopError}"
-                           IsVisible="{Binding HasLoopError}"/>
 
-                <RadioButton Grid.Row="5" Grid.Column="0" Classes="Row"
+                <RadioButton Grid.Row="3" Grid.Column="0" Classes="Row"
                              GroupName="What" Content="Auto-lair"
                              IsChecked="{Binding IsActionAutoLair, Mode=TwoWay}"/>
-                <ComboBox Grid.Row="5" Grid.Column="1"
+                <ComboBox Grid.Row="3" Grid.Column="1"
                           ItemsSource="{Binding AvailableAutoLairNames}"
                           SelectedItem="{Binding AutoLairSetupName, Mode=TwoWay}"
                           IsEnabled="{Binding IsActionAutoLair}"
                           PlaceholderText="(select a saved auto-lair setup)"
                           HorizontalAlignment="Left" Width="320"/>
-                <TextBlock Grid.Row="6" Grid.Column="1"
-                           Classes="Error"
-                           Text="{Binding AutoLairError}"
-                           IsVisible="{Binding HasAutoLairError}"/>
 
-                <RadioButton Grid.Row="7" Grid.Column="0"
+                <RadioButton Grid.Row="4" Grid.Column="0"
                              VerticalAlignment="Top" Margin="0,4,0,0"
                              GroupName="What" Content="Command"
                              IsChecked="{Binding IsActionCommand, Mode=TwoWay}"/>
-                <StackPanel Grid.Row="7" Grid.Column="1" Spacing="2"
+                <StackPanel Grid.Row="4" Grid.Column="1" Spacing="2"
                             HorizontalAlignment="Left" Width="320">
                     <TextBox Text="{Binding CommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding IsActionCommand}"
@@ -176,7 +168,7 @@
 
             <!-- Save / Cancel — centered, snug under the WHAT section. -->
             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"
-                        HorizontalAlignment="Center" Margin="0,16,0,0">
+                        HorizontalAlignment="Center" Margin="0,12,0,0">
                 <Button Content="Save" Width="100"
                         IsEnabled="{Binding CanSave}"
                         Command="{Binding SaveCommand}"

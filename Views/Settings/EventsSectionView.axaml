@@ -80,7 +80,8 @@
                              ItemsSource="{Binding Rows}"
                              SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                              Background="Transparent"
-                             BorderThickness="0">
+                             BorderThickness="0"
+                             DoubleTapped="OnRowDoubleTapped">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:EventRowViewModel">
                                 <Grid ColumnDefinitions="200,180,*" Margin="0,2,0,2">
