@@ -638,6 +638,11 @@ public partial class MainWindowViewModel : ObservableObject
         // ride the same gate-wrapped pipeline so spell commands respect
         // the suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
+        // Phase 9 PR 9.G — PvPManager's flee / hangup commands ride the
+        // same gate-wrapped pipeline. Hangup is destructive so the
+        // engine logs a Warn before sending; the gate-wrap ensures it
+        // doesn't fire mid-password-entry.
+        AppServices.Current.PvP.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);

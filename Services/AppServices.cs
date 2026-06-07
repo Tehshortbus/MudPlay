@@ -625,6 +625,14 @@ public sealed class AppServices
     public Game.Stealth.StealthManager Stealth { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.G — reactive PvP engine. Subscribes to player-
+    /// attack patterns and fires the configured
+    /// <see cref="Models.Profile.PvPSettings.DefaultAction"/>
+    /// (Ignore / Flee / Hangup; Attack / Chase reserved for follow-up).
+    /// </summary>
+    public Game.PvP.PvPManager PvP { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1446,6 +1454,15 @@ public sealed class AppServices
             if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
             Stealth.NoteRoomChanged();
         };
+
+        // Phase 9 PR 9.G — PvPManager. Master gated by AutoCombat
+        // (same toggle CombatManager respects — if the user has
+        // auto-combat off, reactive PvP shouldn't auto-flee either;
+        // unattended characters should remain inert).
+        PvP = new Game.PvP.PvPManager(Router, PlayerState,
+            readSettings: () => ReadSection<Models.Profile.PvPSettings>(Profile.Current, "PvP"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
+            log: Log);
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
