@@ -46,7 +46,7 @@ namespace FujinTerm.Game.Events;
 /// internal locking is needed on the events list.
 /// </para>
 /// </remarks>
-public sealed class EventManager
+public sealed class EventManager : IDisposable
 {
     private readonly ProfileService? _profile;
     private readonly LoopManager? _loops;
@@ -136,6 +136,30 @@ public sealed class EventManager
 
     /// <summary>Parameterless ctor for tests / in-memory scenarios — no profile, no engines.</summary>
     public EventManager() { }
+
+    /// <summary>
+    /// Symmetric tear-down for the five ProfileService /
+    /// LoopManager / LairManager subscriptions wired in the
+    /// engine-bound ctor. Today AppServices keeps EventManager alive
+    /// for the app's lifetime so this is mostly hygiene — but it
+    /// keeps the rule explicit in case a future refactor scopes
+    /// EventManager per-character. Idempotent.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        DetachResumeWatcher();
+        if (_profile is not null)
+        {
+            _profile.ProfileLoaded -= LoadFrom;
+            _profile.ProfileClosed -= Clear;
+            _profile.ProfileSaving -= SnapshotForSave;
+        }
+        if (_loops is not null)  _loops.LoopsChanged -= ReconcileTargets;
+        if (_lairs is not null)  _lairs.SetupsChanged -= ReconcileTargets;
+    }
+    private bool _disposed;
 
     /// <summary>
     /// Bind the wire sender for <see cref="EventActionType.Command"/>
@@ -257,8 +281,9 @@ public sealed class EventManager
         EventResumePlan? plan = _pendingResume ?? SnapshotCurrentActivity();
 
         // Supersede any running engine so the walk owns the wire.
-        if (_loopRunner?.State is not LoopState.Idle) _loopRunner?.Stop("event walk-to");
-        if (_autoLair?.IsActive == true) _autoLair?.Stop("event walk-to");
+        EngineSupersede.StopOthers(
+            _walker, _loopRunner, _autoLair,
+            SupersedeKeep.Walker, "event walk-to");
 
         // Detach any prior watcher first — the cascade case means the
         // previous walk-to is being replaced by this one. The plan
@@ -300,8 +325,9 @@ public sealed class EventManager
             return;
         }
         // Supersede other engines.
-        if (_autoLair?.IsActive == true) _autoLair?.Stop("event supersede");
-        if (_walker?.State is not WalkState.Idle) _walker?.Stop("event supersede");
+        EngineSupersede.StopOthers(
+            _walker, _loopRunner, _autoLair,
+            SupersedeKeep.Loop, "event supersede");
         if (!_loopRunner.Start(saved))
             _log?.Warn("Events", $"Event '{Label(e)}' loop '{saved.Name}' failed to start.");
     }
@@ -316,8 +342,9 @@ public sealed class EventManager
             AutoDisable(e, $"referenced auto-lair setup '{e.AutoLairSetupName}' was deleted or renamed");
             return;
         }
-        if (_loopRunner?.State is not LoopState.Idle) _loopRunner?.Stop("event supersede");
-        if (_walker?.State is not WalkState.Idle) _walker?.Stop("event supersede");
+        EngineSupersede.StopOthers(
+            _walker, _loopRunner, _autoLair,
+            SupersedeKeep.Lair, "event supersede");
 
         _autoLair.Clear();
         foreach (LairMarker m in setup.Markers)

@@ -74,6 +74,14 @@ public sealed class EventScheduler : IDisposable
 
     private bool _isInGame;
     private bool _hadInSessionDisconnect;
+    /// <summary>
+    /// Latched true after the first cleanup-warning observation fires
+    /// Logoff events. The BBS warns repeatedly during a cleanup cycle
+    /// ("5 min", "4 min", "3 min", …); without this latch every
+    /// Logoff action would fire on every warning. Reset on the next
+    /// fresh TCP connect so a future cleanup gets a clean shot.
+    /// </summary>
+    private bool _logoffFiredThisSession;
     private bool _disposed;
 
     public EventScheduler(
@@ -138,10 +146,13 @@ public sealed class EventScheduler : IDisposable
     /// <see cref="TelnetClient.Connected"/> handler runs. Resets the
     /// "are we in-game?" latch — the first prompt observation will
     /// flip it to true and fire Logon (+ optionally Re-log) events.
+    /// Also resets the once-per-session Logoff-fire latch so a future
+    /// cleanup-warning cycle can dispatch Logoff events again.
     /// </summary>
     public void NotifyConnected()
     {
         _isInGame = false;
+        _logoffFiredThisSession = false;
     }
 
     /// <summary>
@@ -163,17 +174,19 @@ public sealed class EventScheduler : IDisposable
 
     /// <summary>
     /// BBS announced upcoming shutdown — fire user-configured Logoff
-    /// events so cleanup commands (bank, store gear, etc.) hit the
-    /// wire while we still have a connection. Idempotent on the
-    /// EventManager side: every Logoff event runs each time the
-    /// watcher observes a fresh warning. If the user wants
-    /// once-per-cleanup-cycle semantics they can manage that with
-    /// per-event Disabled toggles.
+    /// events ONCE per session so cleanup commands (bank, store gear,
+    /// etc.) hit the wire while we still have a connection. The
+    /// watcher fires per warning-line observation and the BBS warns
+    /// repeatedly during a cleanup cycle (5 / 4 / 3 / 2 / 1 min); the
+    /// <see cref="_logoffFiredThisSession"/> latch prevents the same
+    /// Logoff event from running 5+ times.
     /// </summary>
     private void OnCleanupWarningObserved(Services.CleanupWarning _)
     {
-        if (!_isInGame) return;  // not in-game means no commands would land anyway.
+        if (!_isInGame) return;            // not in-game means no commands would land anyway.
+        if (_logoffFiredThisSession) return; // already fired this session — wait for reconnect.
         int fired = _events.FireLogoffEvents();
+        _logoffFiredThisSession = true;    // latch even on fired==0 so we don't re-evaluate per warning.
         if (fired > 0)
             _log?.Info("Events", $"Cleanup warning observed — fired {fired} Logoff event(s).");
     }

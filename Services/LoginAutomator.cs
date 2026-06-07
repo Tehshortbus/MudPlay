@@ -131,11 +131,10 @@ public sealed class LoginAutomator : IDisposable
 
         // Username decrypted at build time — the BBS receives it
         // plaintext on the wire so there's no point keeping it sealed
-        // once we're inside the login flow. Fall back to the legacy
-        // plaintext field for profiles saved before encryption.
+        // once we're inside the login flow.
         string username = credentials.EncryptedUsername is { } usernameBlob
             ? (passwords.Unprotect(usernameBlob) ?? string.Empty)
-            : (credentials.Username ?? string.Empty);
+            : string.Empty;
 
         IReadOnlyList<AutomationStep> steps = BuildSteps(credentials);
         return new LoginAutomator(steps, username, resolvePassword, sendText, log);

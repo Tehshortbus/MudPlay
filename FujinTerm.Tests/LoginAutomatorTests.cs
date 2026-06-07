@@ -256,51 +256,10 @@ public sealed class LoginAutomatorTests
     [Fact]
     public void TryBuild_NoMenuNavSteps_ReturnsNull()
     {
-        BbsCredentials creds = new() { Username = "alice" };
+        BbsCredentials creds = new() { EncryptedUsername = NewProtector().Protect("alice") };
         LoginAutomator? a = LoginAutomator.TryBuild(
             creds, NewProtector(), (_, _) => Task.CompletedTask);
         Assert.Null(a);
-    }
-
-    [Fact]
-    public async Task TryBuild_DecryptsUsernameFromEncryptedField()
-    {
-        // Mirror of the legacy-Username flow but with the encrypted
-        // form populated. Verifies the wire sees plaintext after
-        // decryption.
-        string scratchDir = Path.Combine(Path.GetTempPath(), $"FT-cred-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(scratchDir);
-        try
-        {
-            PasswordProtector protector = new(Path.Combine(scratchDir, ".key"));
-            BbsCredentials creds = new()
-            {
-                EncryptedUsername = protector.Protect("alice"),
-                EncryptedPassword = protector.Protect("hunter2"),
-                MenuNavSteps =
-                {
-                    new MenuStep { WaitForPattern = "Login:",    Send = "{username}" },
-                    new MenuStep { WaitForPattern = "Password:", Send = "{password}" },
-                    new MenuStep { WaitForPattern = "Main Menu:", Send = "G" },
-                },
-            };
-
-            ConcurrentQueue<string> sent = new();
-            LoginAutomator? a = LoginAutomator.TryBuild(
-                creds, protector,
-                (text, _) => { sent.Enqueue(text); return Task.CompletedTask; });
-            Assert.NotNull(a);
-            a!.Start();
-            a.Feed(Ascii("Login:Password:Main Menu:"));
-            await Task.Delay(60);
-
-            Assert.True(sent.TryDequeue(out string? first));
-            Assert.Equal("alice\r", first);   // plaintext on the wire even though stored encrypted.
-        }
-        finally
-        {
-            try { Directory.Delete(scratchDir, recursive: true); } catch { }
-        }
     }
 
     [Fact]
@@ -315,7 +274,7 @@ public sealed class LoginAutomatorTests
 
             BbsCredentials creds = new()
             {
-                Username = "alice",
+                EncryptedUsername = protector.Protect("alice"),
                 EncryptedPassword = encrypted,
                 MenuNavSteps =
                 {

@@ -201,6 +201,33 @@ public sealed class EventSchedulerTests
     }
 
     [Fact]
+    public void CleanupWarning_RepeatedInSameSession_FiresLogoffOnlyOnce()
+    {
+        // BBS warns multiple times during a cleanup cycle
+        // ("5 min", "4 min", …) — the latch should keep Logoff actions
+        // from firing every warning. A reconnect (NotifyConnected)
+        // clears the latch so the next cycle can fire.
+        var (events, scheduler, prompt, cleanup, sent) = BuildWithCleanup();
+        events.Add(CommandEvent(EventTriggerType.Logoff, "save"));
+
+        scheduler.NotifyConnected();
+        prompt.Append(PromptBytes);
+
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 5 minutes"));
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 4 minutes"));
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 3 minutes"));
+        Assert.Single(sent);
+        Assert.Equal("save\r", Encoding.Latin1.GetString(sent[0]));
+
+        // Reconnect → latch clears → next cycle fires again.
+        scheduler.NotifyDisconnected();
+        scheduler.NotifyConnected();
+        prompt.Append(PromptBytes);
+        cleanup.Append(Encoding.Latin1.GetBytes("System shutting down in 5 minutes"));
+        Assert.Equal(2, sent.Count);
+    }
+
+    [Fact]
     public void CleanupWarning_BeforeInGame_DoesNotFireLogoff()
     {
         var (events, _, _, cleanup, sent) = BuildWithCleanup();

@@ -15,19 +15,6 @@ namespace FujinTerm.Models.Profile;
 public sealed class BbsCredentials
 {
     /// <summary>
-    /// Legacy plaintext username. Retained for one migration cycle —
-    /// profiles saved before usernames started getting encrypted have
-    /// this field populated and no <see cref="EncryptedUsername"/>.
-    /// New writes encrypt to <see cref="EncryptedUsername"/> and null
-    /// this field so subsequent saves only carry the encrypted form.
-    /// Consumers should never read this directly; the load path on
-    /// <see cref="ViewModels.Settings.BbsSectionViewModel"/> and
-    /// <see cref="Services.LoginAutomator.TryBuild"/> prefer
-    /// <see cref="EncryptedUsername"/> when it's present.
-    /// </summary>
-    public string? Username { get; set; }
-
-    /// <summary>
     /// AES-GCM-encrypted username, produced by
     /// <see cref="Services.PasswordProtector.Protect"/>. Same
     /// scheme as <see cref="EncryptedPassword"/> — usernames are less
