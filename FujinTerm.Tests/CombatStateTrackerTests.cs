@@ -225,13 +225,37 @@ public sealed class CombatStateTrackerTests
     }
 
     [Fact]
-    public void CombatStatus_OffFlipsInCombatFalse()
+    public void CombatStatus_Off_DoesNotFlipInCombatFalse()
     {
+        // Server emits *Combat Off* whenever auto-attack stops for
+        // any reason — including spell-casts mid-round with the mob
+        // still alive. We must NOT treat that as "out of combat" or
+        // HealthManager would start resting next to a hostile. The
+        // authoritative end-of-combat signal is the room going clear
+        // of engageable monsters (covered by Off_RoomClear_Flips...).
         using Harness h = new();
         h.Feed("*Combat Engaged*");
         Assert.True(h.State.InCombat);
 
         h.Feed("*Combat Off*");
+        Assert.True(h.State.InCombat);     // unchanged — mob still presumed alive
+    }
+
+    [Fact]
+    public void RoomClear_FlipsInCombatFalse()
+    {
+        // Authoritative end-of-combat: when the classifier emits an
+        // observation with no engageable monsters, InCombat goes
+        // false. CombatStateTracker.OnEntitiesObserved's "room
+        // cleared" branch owns this transition.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");          // assert gate + InCombat reflects fight
+        h.Feed("*Combat Engaged*");
+        Assert.True(h.State.InCombat);
+
+        h.Feed("Also here: Bob.");                // monster gone — only player
         Assert.False(h.State.InCombat);
     }
 

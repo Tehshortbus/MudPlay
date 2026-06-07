@@ -129,6 +129,15 @@ public sealed class CombatStateTracker : IDisposable
         else
         {
             ClearGate("room cleared");
+            // Room is now clear of engageable monsters → combat truly
+            // ended. This is the authoritative "we're out of combat"
+            // signal; CombatStatus=Off is unreliable (server emits it
+            // when we cast a spell mid-round, with the mob still
+            // alive — see CombatStateTracker.OnCombatStatus). Tying
+            // the false transition to the gate clear means
+            // HealthManager won't start resting while a hostile mob
+            // is still here.
+            if (_state.InCombat) _state.InCombat = false;
         }
     }
 
@@ -175,8 +184,20 @@ public sealed class CombatStateTracker : IDisposable
         // (?<status>Engaged|Off) capture in DefaultPatterns.
         if (match.Groups.Count == 0) return;
         string status = match.Groups[0];
-        bool nowEngaged = string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase);
-        if (_state.InCombat != nowEngaged) _state.InCombat = nowEngaged;
+
+        // Only Engaged matters — when the server says we're now in
+        // combat, mirror that. We do NOT flip to false on
+        // *Combat Off* because the server emits Off whenever
+        // auto-attack stops for ANY reason, including casting a
+        // spell mid-round with the mob still alive. Doing so would
+        // let HealthManager start resting while a hostile is right
+        // next to us. The authoritative end-of-combat signal is the
+        // room going clear of engageable monsters — handled by
+        // OnEntitiesObserved's "room cleared" branch.
+        if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!_state.InCombat) _state.InCombat = true;
+        }
     }
 
     public void Dispose()

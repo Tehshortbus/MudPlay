@@ -655,6 +655,50 @@ public sealed class CombatManagerTests
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
     }
 
+    // ----- room change drops current target ----------------------------
+
+    [Fact]
+    public void RoomChange_DropsCurrentTarget_NoExtraSwing()
+    {
+        // User's "wasted round on move" scenario. We attack X in room
+        // A; classifier wipes on the room change; CombatManager
+        // clears _currentTarget. No spurious wire send during the
+        // wipe — the next Also-Here parse rebuilds the picture and
+        // drives a fresh pick (covered separately).
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+        Assert.Single(h.Sent);
+
+        // Walker moves rooms — the classifier's NoteRoomChanged
+        // wipes.
+        h.Classifier.NoteRoomChanged();
+
+        Assert.Null(h.Combat.CurrentTarget);
+        Assert.Single(h.Sent);                  // no extra send during wipe
+    }
+
+    [Fact]
+    public void RoomChange_ThenNewRoomAlsoHere_PicksFreshTarget()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin",    killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+
+        h.Classifier.NoteRoomChanged();
+        Assert.Null(h.Combat.CurrentTarget);
+
+        h.Feed("Also here: goblin.");
+        Assert.Equal("goblin", h.Combat.CurrentTarget);
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a goblin", h.LastSent);
+    }
+
     [Fact]
     public void AttackAfter_MirrorsNamedPlayersTarget()
     {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -56,6 +57,7 @@ public sealed class RoomEntityClassifier : IDisposable
     private readonly MessageRouter _router;
     private readonly MonsterMessageStore _monsters;
     private readonly PlayerDatabase _players;
+    private readonly RoomTracker? _roomTracker;
     private readonly LogService? _log;
     private readonly IDisposable _alsoHereSub;
     private bool _disposed;
@@ -74,6 +76,21 @@ public sealed class RoomEntityClassifier : IDisposable
         MonsterMessageStore monsters,
         PlayerDatabase players,
         LogService? log = null)
+        : this(router, monsters, players, roomTracker: null, log) { }
+
+    /// <summary>
+    /// Construct with a <see cref="RoomTracker"/> binding so the
+    /// classifier wipes its observation when the player moves rooms.
+    /// Without this, a stale Also-Here from the previous room would
+    /// keep CombatManager swinging at a target that didn't follow us
+    /// in — the user's "wasted combat round on move" scenario.
+    /// </summary>
+    public RoomEntityClassifier(
+        MessageRouter router,
+        MonsterMessageStore monsters,
+        PlayerDatabase players,
+        RoomTracker? roomTracker,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(monsters);
@@ -81,8 +98,11 @@ public sealed class RoomEntityClassifier : IDisposable
         _router   = router;
         _monsters = monsters;
         _players  = players;
+        _roomTracker = roomTracker;
         _log      = log;
         _alsoHereSub = _router.Subscribe(KnownPatterns.RoomAlsoHere, OnRoomAlsoHere);
+        if (_roomTracker is not null)
+            _roomTracker.StateChanged += OnRoomTrackerStateChanged;
     }
 
     private void OnRoomAlsoHere(MatchResult match)
@@ -286,10 +306,46 @@ public sealed class RoomEntityClassifier : IDisposable
         return sp >= 0 ? s[..sp] : s;
     }
 
+    private void OnRoomTrackerStateChanged(RoomTransition transition)
+    {
+        // Only act on true location changes — confidence-only flips
+        // (Located ↔ Lost without a real room swap) don't qualify.
+        if (transition.PreviousRoom is null) return;     // initial location set
+        if (transition.NewRoom is null) return;
+        if (ReferenceEquals(transition.PreviousRoom, transition.NewRoom)) return;
+        if (transition.PreviousRoom.Key.Equals(transition.NewRoom.Key)) return;
+        NoteRoomChanged();
+    }
+
+    /// <summary>
+    /// Wipe <see cref="Current"/> and re-fire <see cref="EntitiesObserved"/>
+    /// with an empty observation — drives CombatManager to clear its
+    /// target so the next round doesn't waste a swing on a monster
+    /// that didn't follow us in. The next Also-Here parse (arrives
+    /// within milliseconds of the move) rebuilds the list for the
+    /// new room and CombatManager picks afresh.
+    /// </summary>
+    /// <remarks>
+    /// Public so callers other than <see cref="RoomTracker"/> can
+    /// drive the wipe (tests, future forced-refresh paths).
+    /// Idempotent on already-empty observations.
+    /// </remarks>
+    public void NoteRoomChanged()
+    {
+        RoomEntitiesObservation wiped = new(
+            RawAlsoHereLine: string.Empty,
+            Entities: Array.Empty<RoomEntity>(),
+            At: DateTimeOffset.Now);
+        Current = wiped;
+        EntitiesObserved?.Invoke(wiped);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _alsoHereSub.Dispose();
+        if (_roomTracker is not null)
+            _roomTracker.StateChanged -= OnRoomTrackerStateChanged;
     }
 }

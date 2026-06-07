@@ -361,6 +361,52 @@ public sealed class RoomEntityClassifierTests
     }
 
     [Fact]
+    public void NoteRoomChanged_WipesCurrent_EmitsEmptyObservation()
+    {
+        // User's "wasted combat round on move" scenario: we have a
+        // target in the previous room; when the walker moves, the
+        // classifier wipes its observation so CombatManager clears
+        // its target before the next round fires.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Observations[0].Entities);
+        Assert.NotNull(h.Classifier.Current);
+
+        h.Classifier.NoteRoomChanged();
+
+        // Now two observations: the original Also-Here parse + the
+        // wipe. Wipe carries an empty entity list.
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(string.Empty, h.Observations[1].RawAlsoHereLine);
+
+        // Current reflects the wipe.
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Empty(h.Classifier.Current!.Value.Entities);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_ThenAlsoHere_RebuildsForNewRoom()
+    {
+        // After a wipe, the new room's Also-Here parse drives a fresh
+        // emit with the new entities.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "goblin",    allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Classifier.NoteRoomChanged();
+        h.Feed("Also here: goblin.");
+
+        Assert.Equal(3, h.Observations.Count);
+        Assert.Equal("giant rat", h.Observations[0].Entities[0].ResolvedName);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal("goblin",    h.Observations[2].Entities[0].ResolvedName);
+    }
+
+    [Fact]
     public void Current_TracksLatestObservation()
     {
         using Harness h = new();
