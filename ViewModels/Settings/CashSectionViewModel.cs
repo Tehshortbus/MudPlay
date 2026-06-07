@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
@@ -62,6 +63,13 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private long _minimumCashOnHand;
     [ObservableProperty] private string _bankRoomKey = string.Empty;
 
+    /// <summary>Dropdown items for the Bank picker — banks from the
+    /// active game-data set's Shops.json (ShopType==7) plus the
+    /// user's stash rooms from <see cref="CharacterProfile.StashRooms"/>.</summary>
+    public List<BankChoice> BankChoices { get; private set; } = new();
+
+    [ObservableProperty] private BankChoice? _selectedBank;
+
     // ----- Per-currency keep-on-hand for stash rooms ---------------
 
     [ObservableProperty] private long _keepCopperOnHand;
@@ -112,7 +120,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 
             AutoDepositIfWealthExceeds = ClampNonNeg(AutoDepositIfWealthExceeds),
             MinimumCashOnHand          = ClampNonNeg(MinimumCashOnHand),
-            BankRoomKey                = BankRoomKey ?? string.Empty,
+            BankRoomKey                = SelectedBank?.Value ?? BankRoomKey ?? string.Empty,
 
             KeepCopperOnHand   = ClampNonNeg(KeepCopperOnHand),
             KeepSilverOnHand   = ClampNonNeg(KeepSilverOnHand),
@@ -175,6 +183,10 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         AutoDepositIfWealthExceeds = dto.AutoDepositIfWealthExceeds;
         MinimumCashOnHand          = dto.MinimumCashOnHand;
         BankRoomKey                = dto.BankRoomKey ?? string.Empty;
+
+        RebuildBankChoices();
+        SelectedBank = BankChoices.FirstOrDefault(c =>
+            string.Equals(c.Value, BankRoomKey, StringComparison.OrdinalIgnoreCase));
 
         KeepCopperOnHand   = dto.KeepCopperOnHand;
         KeepSilverOnHand   = dto.KeepSilverOnHand;
@@ -240,4 +252,111 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnSkipCollectIfMakesHeavyChanged(bool value)         => MarkDirty();
     partial void OnCollectAfterCombatFinishedChanged(bool value)      => MarkDirty();
     partial void OnDropSmallerForLargerChanged(bool value)            => MarkDirty();
+    partial void OnSelectedBankChanged(BankChoice? value)
+    {
+        if (value is not null) BankRoomKey = value.Value;
+        MarkDirty();
+    }
+
+    /// <summary>
+    /// Build the Bank ComboBox items. Two sources, in order:
+    /// (1) Shops table rows where ShopType == 7 (Bank) — each entry
+    ///     becomes "(map/room) RoomName - ShopName".
+    /// (2) Per-character stash rooms — each becomes "(map/room)
+    ///     RoomName - Stash" so the user can pick a marked stash
+    ///     as the deposit destination (treating it as an offline
+    ///     bank for personal caches).
+    /// Returns an empty list when no game-data set is loaded.
+    /// </summary>
+    private void RebuildBankChoices()
+    {
+        List<BankChoice> choices = new();
+        try
+        {
+            AppServices svc = AppServices.Current;
+            AppendShopBanks(svc, choices);
+            AppendStashRooms(svc, choices);
+        }
+        catch
+        {
+            // Design-time / test path with no AppServices initialised.
+        }
+        BankChoices = choices;
+        OnPropertyChanged(nameof(BankChoices));
+    }
+
+    private static void AppendShopBanks(AppServices svc, List<BankChoice> choices)
+    {
+        JsonDocument? doc = svc.GameData.GetRawTable("Shops");
+        if (doc is null) return;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!TryReadShopType(el, out int shopType)) continue;
+            if (shopType != 7) continue;       // not a bank
+
+            string shopName = el.TryGetProperty("Name", out JsonElement nameEl)
+                              && nameEl.ValueKind == JsonValueKind.String
+                ? nameEl.GetString() ?? string.Empty
+                : string.Empty;
+            (int map, int room) = TryReadAssignedRoom(el);
+            if (map == 0 && room == 0) continue;
+            string roomName = svc.RoomGraph.GetRoom(new RoomKey(map, room))?.Name ?? "(unknown)";
+            choices.Add(new BankChoice(
+                Value:   $"{map}/{room}",
+                Display: $"({map}/{room}) {roomName} - {shopName}"));
+        }
+    }
+
+    private static void AppendStashRooms(AppServices svc, List<BankChoice> choices)
+    {
+        if (svc.Profile.Current?.StashRooms is not { } stashes) return;
+        foreach (RoomRef r in stashes)
+        {
+            string roomName = svc.RoomGraph.GetRoom(new RoomKey(r.Map, r.Room))?.Name ?? "(unknown)";
+            string val = $"{r.Map}/{r.Room}";
+            // De-dup: if a shop bank is already in the same room,
+            // don't list it again as a stash entry.
+            if (choices.Any(c => string.Equals(c.Value, val, StringComparison.OrdinalIgnoreCase))) continue;
+            choices.Add(new BankChoice(
+                Value:   val,
+                Display: $"({val}) {roomName} - Stash"));
+        }
+    }
+
+    private static bool TryReadShopType(JsonElement el, out int shopType)
+    {
+        shopType = 0;
+        if (!el.TryGetProperty("ShopType", out JsonElement t)) return false;
+        if (t.ValueKind == JsonValueKind.Number) { shopType = t.GetInt32(); return true; }
+        if (t.ValueKind == JsonValueKind.String
+            && int.TryParse(t.GetString(), out int parsed)) { shopType = parsed; return true; }
+        return false;
+    }
+
+    private static (int Map, int Room) TryReadAssignedRoom(JsonElement el)
+    {
+        if (!el.TryGetProperty("Assigned To", out JsonElement aEl)) return (0, 0);
+        if (aEl.ValueKind != JsonValueKind.String) return (0, 0);
+        string s = aEl.GetString() ?? string.Empty;
+        // "Room 1/297" or "Room 1/297, Room 6/1334" — take the first.
+        int start = s.IndexOf("Room ", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return (0, 0);
+        string tail = s[(start + 5)..];
+        int slash = tail.IndexOf('/');
+        if (slash <= 0) return (0, 0);
+        if (!int.TryParse(tail[..slash], out int map)) return (0, 0);
+        string roomTail = tail[(slash + 1)..];
+        int end = 0;
+        while (end < roomTail.Length && char.IsDigit(roomTail[end])) end++;
+        if (end == 0) return (0, 0);
+        if (!int.TryParse(roomTail[..end], out int room)) return (0, 0);
+        return (map, room);
+    }
 }
+
+/// <summary>One entry in the Bank picker — gold-equivalent location
+/// the auto-deposit flow will walk to. Value is the canonical
+/// "{map}/{room}" key persisted on
+/// <see cref="CashSettings.BankRoomKey"/>; Display is the
+/// human-readable label rendered in the ComboBox.</summary>
+public sealed record BankChoice(string Value, string Display);

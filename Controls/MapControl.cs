@@ -500,7 +500,8 @@ public sealed class MapControl : Control
     /// <summary>Gold outline for stash rooms — distinct enough from
     /// the amber current-room ring + the white selection ring that
     /// the user can scan for stashes at a glance.</summary>
-    private static readonly IPen   StashRingPen   = new Pen(new SolidColorBrush(Color.Parse("#FFD24E")), 2.5)
+    private static readonly IBrush StashRingFill  = new SolidColorBrush(Color.Parse("#22FFD24E"));
+    private static readonly IPen   StashRingPen   = new Pen(new SolidColorBrush(Color.Parse("#FFFFD24E")), 3.0)
     {
         LineCap = PenLineCap.Round,
     };
@@ -921,9 +922,11 @@ public sealed class MapControl : Control
             if (StashRooms is not null && StashRooms.Contains(kvp.Value))
             {
                 // Inset slightly so the outline doesn't overlap with
-                // the cell border / selection ring.
-                Rect ring = cell.Deflate(2);
-                context.DrawRectangle(null, StashRingPen, ring);
+                // the cell border / selection ring. Soft gold fill +
+                // bright gold outline so the stash markers pop against
+                // both light and dark room glyphs.
+                Rect ring = cell.Deflate(1);
+                context.DrawRectangle(StashRingFill, StashRingPen, ring);
             }
 
             if (LoopSequenceNumbers is not null

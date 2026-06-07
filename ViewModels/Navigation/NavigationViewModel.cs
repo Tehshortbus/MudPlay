@@ -368,8 +368,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // directly and flushes its own distance cache.
     }
 
-    private void OnStashChanged() =>
-        StashRooms = new HashSet<RoomKey>(_services.Movement.Stash);
+    private void OnStashChanged()
+    {
+        HashSet<RoomKey> next = new(_services.Movement.Stash);
+        _services.Log?.Debug("Navigation",
+            $"stash set changed — count={next.Count}");
+        StashRooms = next;
+    }
 
     private void OnLoopRunnerEvent(LoopEvent _)
     {
@@ -1270,9 +1275,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleContextRoomStash()
     {
-        if (ContextRoomKey is not { } k) return;
-        if (_services.Movement.IsStash(k)) _services.Movement.UnmarkStash(k);
+        if (ContextRoomKey is not { } k)
+        {
+            _services.Log?.Debug("Navigation", "stash toggle aborted — no ContextRoomKey");
+            return;
+        }
+        bool wasStash = _services.Movement.IsStash(k);
+        if (wasStash) _services.Movement.UnmarkStash(k);
         else _services.Movement.MarkStash(k);
+        _services.Log?.Info("Navigation",
+            $"stash toggled key={k} {(wasStash ? "unmarked" : "marked")} profile-loaded={_services.Profile.Current is not null}");
         OnPropertyChanged(nameof(ContextIsStash));
     }
 
