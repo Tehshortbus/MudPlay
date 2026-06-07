@@ -598,6 +598,15 @@ public sealed class AppServices
     public Game.Health.HealthManager Health { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.C — low-level <c>c &lt;spell&gt; [target]</c>
+    /// emitter. Gates on combat-round cooldown + a cast-blocked latch
+    /// driven by server failure messages (fizzle / no-mana / already-
+    /// cast / interrupted). Consumed by CastingDirector (PR 9.D) and
+    /// any other engine that issues spell commands.
+    /// </summary>
+    public Game.Spells.CastCoordinator Cast { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1388,6 +1397,12 @@ public sealed class AppServices
             if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
             Health.NoteRoomChanged();
         };
+
+        // Phase 9 PR 9.C — CastCoordinator. Subscribes to spell-failure
+        // patterns directly; tick-clears its block latch + cooldown via
+        // TickEngine.CombatTickElapsed so the next round can cast.
+        Cast = new Game.Spells.CastCoordinator(Router, Log);
+        Tick.CombatTickElapsed += Cast.OnCombatTick;
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,

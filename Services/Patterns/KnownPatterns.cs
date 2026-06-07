@@ -73,6 +73,24 @@ public static class KnownPatterns
     /// </summary>
     public const string TargetNotHere        = "combat.target-not-here";
 
+    // ----- Spellcasting -------------------------------------------------
+    /// <summary>"You attempt to cast &lt;spell&gt;, but fail." — failed
+    /// concentration / fizzle. Blocks further casts for the current
+    /// round.</summary>
+    public const string CastFizzled          = "spell.cast-fizzled";
+
+    /// <summary>"You do not have enough mana to cast that spell." —
+    /// blocks further casts until mana recovers.</summary>
+    public const string CastNoMana           = "spell.cast-no-mana";
+
+    /// <summary>"You have already cast a spell this round!" — only one
+    /// cast per combat round; blocks until the next tick.</summary>
+    public const string CastAlreadyThisRound = "spell.cast-already-this-round";
+
+    /// <summary>"You lost your concentration on the spell!" — mid-cast
+    /// interrupt (took damage during prep, broke stealth, etc.).</summary>
+    public const string CastInterrupted      = "spell.cast-interrupted";
+
     /// <summary>
     /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
     /// from &lt;direction&gt;." Fires when a monster spawns OR a

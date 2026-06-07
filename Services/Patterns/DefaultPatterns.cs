@@ -118,6 +118,20 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.TargetNotHere,
             @"^You don't see (?<target>.+?) here[.!]\s*$");
 
+        // ----- Spellcasting failures ------------------------------------
+        // Cast outcomes that block further casts for the current round.
+        // CastCoordinator subscribes to flag the engine's _castBlocked
+        // latch; CastingDirector waits for the next CombatTick before
+        // retrying. Lifted from MudProxy CastCoordinator regex set.
+        yield return new RegexPattern(KnownPatterns.CastFizzled,
+            @"^You attempt to cast (?<spell>.+?), but fail\.");
+        yield return new RegexPattern(KnownPatterns.CastNoMana,
+            @"^You do not have enough mana to cast that spell\.");
+        yield return new RegexPattern(KnownPatterns.CastAlreadyThisRound,
+            @"^You have already cast a spell this round!");
+        yield return new RegexPattern(KnownPatterns.CastInterrupted,
+            @"^You lost your concentration on the spell!");
+
         // Phase 9 PR 9.A — party / room attack announce. Mirrors
         // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
         // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")

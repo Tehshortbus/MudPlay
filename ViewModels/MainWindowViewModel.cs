@@ -634,6 +634,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.B — HealthManager sends rest / stand / pre- /
         // post-rest commands via the same gate-wrapped engine pipeline.
         AppServices.Current.Health.SetWireSender(engineSend);
+        // Phase 9 PR 9.C — CastCoordinator's `c <spell> [target]` emits
+        // ride the same gate-wrapped pipeline so spell commands respect
+        // the suicide-password / trainer-menu lockouts upstream.
+        AppServices.Current.Cast.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);
