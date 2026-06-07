@@ -114,6 +114,41 @@ public sealed class RoomEntityClassifier : IDisposable
     /// </summary>
     public RoomEntity Classify(string entry) => Classify(entry, rawAlsoHereLine: string.Empty);
 
+    /// <summary>
+    /// Append a single freshly-arrived entity to the current room
+    /// observation and re-fire <see cref="EntitiesObserved"/>. Called
+    /// by <see cref="RoomEntryWatcher"/> when the wire reports
+    /// <c>"&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;."</c>
+    /// — the new entity slots into the existing
+    /// <see cref="RoomEntitiesObservation.Entities"/> list so
+    /// downstream consumers (CombatStateTracker re-evaluating the
+    /// Combat gate, CombatManager re-picking by priority) see the
+    /// updated room state without waiting for a full re-display.
+    /// </summary>
+    /// <remarks>
+    /// If no <see cref="Current"/> observation exists yet (player
+    /// just connected, mob spawned before the first Also-Here line),
+    /// synthesises a fresh observation with an empty raw line. The
+    /// caller's <paramref name="rawWireLine"/> is captured for the
+    /// new observation's raw-line field so consumers that read it
+    /// (LogPane click-to-fix) see the arrival line rather than the
+    /// stale Also-Here.
+    /// </remarks>
+    public void AppendArrivalEntity(RoomEntity entity, string rawWireLine)
+    {
+        IReadOnlyList<RoomEntity> baseEntities = Current is { } cur
+            ? cur.Entities
+            : Array.Empty<RoomEntity>();
+
+        List<RoomEntity> updated = new(baseEntities.Count + 1);
+        updated.AddRange(baseEntities);
+        updated.Add(entity);
+
+        RoomEntitiesObservation obs = new(rawWireLine, updated, DateTimeOffset.Now);
+        Current = obs;
+        EntitiesObserved?.Invoke(obs);
+    }
+
     private RoomEntity Classify(string entry, string rawAlsoHereLine)
     {
         // Pass 1 — monster match (direct + prefix-stripped).

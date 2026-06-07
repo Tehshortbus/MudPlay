@@ -120,6 +120,15 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
 
+        // Phase 9 PR 9.A — room-entry arrival. Anchored on "into the
+        // room from" so a wide alternation of verbs (crawls, walks,
+        // slithers, teleports, materialises, …) is folded into a
+        // single \w+ capture. Direction tolerates hyphens for
+        // potential "north-east" variants alongside the canonical
+        // cardinals + "nowhere" (script spawn).
+        yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
+            @"^(?<name>.+?) \w+ into the room from (?<direction>[\w-]+)\.\s*$");
+
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the
         // user wants them filtered under the same Gossip toggle in the

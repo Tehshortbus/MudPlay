@@ -570,6 +570,15 @@ public sealed class AppServices
     public Game.Combat.CombatManager Combat { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.A — observes mid-room arrival lines
+    /// ("&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;.")
+    /// and appends the new entity to
+    /// <see cref="RoomClassifier"/>'s observation so CombatStateTracker
+    /// re-evaluates the Combat gate immediately on spawn.
+    /// </summary>
+    public Game.Combat.RoomEntryWatcher RoomEntry { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.B — passive HP/MA threshold engine. Asserts /
     /// clears HealthRecovery + ManaRecovery gates and drives the
     /// rest / stand cycle with pre- and post-rest command sequencing.
@@ -1286,6 +1295,11 @@ public sealed class AppServices
         // pattern as CombatStateTracker) so toggling Master / changing
         // TargetOrder / etc. mid-session takes effect on the next
         // Also-Here line.
+        // Phase 9 — mid-room arrival watcher. Subscribes to the
+        // RoomEntryArrival pattern + appends to the classifier so the
+        // Combat gate / CombatManager react to spawns immediately.
+        RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
+
         Combat = new Game.Combat.CombatManager(
             Router, RoomClassifier, MonsterMessages,
             // Resolve per-monster overlay: seed-store value forms the

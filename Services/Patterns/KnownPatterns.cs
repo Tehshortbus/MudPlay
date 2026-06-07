@@ -63,6 +63,19 @@ public static class KnownPatterns
     /// </summary>
     public const string PartyAttackAnnounce  = "combat.party-attack-announce";
 
+    /// <summary>
+    /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
+    /// from &lt;direction&gt;." Fires when a monster spawns OR a
+    /// player walks in mid-room (no full re-display). The wire
+    /// colours the name segment yellow for monsters, red for players;
+    /// <see cref="Game.Combat.RoomEntryWatcher"/> reads the colour
+    /// off the line's attribute strip and uses it as a hint when the
+    /// name doesn't match the active game-data tables. Direction is
+    /// any cardinal / non-cardinal / up / down or the literal
+    /// <c>"nowhere"</c> (script-spawn).
+    /// </summary>
+    public const string RoomEntryArrival     = "presence.room-entry-arrival";
+
     // ----- Conversation --------------------------------------------------
     public const string ConversationGossip      = "conversation.gossip";
     public const string ConversationBroadcast   = "conversation.broadcast";
