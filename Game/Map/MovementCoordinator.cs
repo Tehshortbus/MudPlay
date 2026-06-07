@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
@@ -20,25 +21,57 @@ namespace FujinTerm.Game.Map;
 /// own the state of their own gate.
 /// </para>
 /// <para>
-/// PR 7.7 ships the coordinator with one built-in gate name
-/// (<c>"user"</c>); other gates plug in as their owning subsystems
-/// land. Health / Stealth gates wire in Phase 13; @wait wires when
-/// PartyManager exposes a parked-by-wait observable.
+/// Phase 9 cross-cut 1 names five PascalCase gate constants and adds
+/// the <see cref="History"/> ring buffer + canonical <c>[Gate]</c> log
+/// writer. Engines never call each other's pause — they all assert /
+/// clear on this one instance, optionally passing
+/// <paramref name="asserter"/> + <paramref name="reason"/> so the log
+/// timeline reads cleanly:
 /// </para>
+/// <code>
+/// [Gate] asserted — gate=Combat asserter=CombatStateTracker reason=room-entry targetable=3 first=fierce_warrior
+/// [Gate] cleared  — gate=Combat asserter=CombatStateTracker reason=lastKill=giant_rat heldFor=14.2s
+/// </code>
 /// </remarks>
 public sealed class MovementCoordinator
 {
-    /// <summary>Built-in gate name for the user's manual Pause button.</summary>
-    public const string UserGate = "user";
+    /// <summary>Manual pause button on the Navigation window. Built-in.</summary>
+    public const string UserGate = "User";
 
+    /// <summary>Phase 9 PR 9.0b — asserted by
+    /// <c>CombatStateTracker</c> while the room contains
+    /// auto-attack-eligible monsters. Holds until the room is cleared
+    /// (NOT just <c>*Combat Off*</c>).</summary>
+    public const string CombatGate = "Combat";
+
+    /// <summary>Phase 9 PR 9.B — asserted by <c>HealthManager</c> when
+    /// HP drops below the configured rest trigger; clears when HP
+    /// recovers past the configured rest target.</summary>
+    public const string HealthRecoveryGate = "HealthRecovery";
+
+    /// <summary>Phase 9 PR 9.B — asserted by <c>HealthManager</c> when
+    /// the caster pool drops below the configured meditate trigger;
+    /// clears when MA recovers past the configured target.</summary>
+    public const string ManaRecoveryGate = "ManaRecovery";
+
+    /// <summary>Phase 9 PR 9.I — asserted by
+    /// <c>DeathRecoveryManager</c> while the corpse-recovery loop is
+    /// running. Clears when recovery finishes.</summary>
+    public const string CorpseRecoveryGate = "CorpseRecovery";
+
+    private const int HistoryCapacity = 200;
+
+    private readonly LogService? _log;
     private readonly HashSet<string> _assertedGates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<GateTransitionEntry> _history = new(HistoryCapacity);
+    private readonly object _historyLock = new();
 
     /// <summary>True when at least one gate is asserting pause.</summary>
     public bool IsPaused => _assertedGates.Count > 0;
 
     /// <summary>
     /// Read-only snapshot of currently-asserted gate names. Useful for
-    /// the Navigation status strip: <c>"paused: user, @wait"</c>.
+    /// the Navigation status strip: <c>"paused: User, HealthRecovery"</c>.
     /// </summary>
     public IReadOnlyCollection<string> AssertedGates => _assertedGates.ToArray();
 
@@ -46,31 +79,96 @@ public sealed class MovementCoordinator
     /// Fires after every transition that changes <see cref="IsPaused"/>
     /// from <c>false</c> to <c>true</c> or vice versa. Single-gate
     /// changes that don't flip the overall paused state do not fire
-    /// (e.g. clearing <c>"@wait"</c> while <c>"user"</c> is still
+    /// (e.g. clearing <c>HealthRecovery</c> while <c>User</c> is still
     /// asserted).
     /// </summary>
     public event Action<bool>? PauseStateChanged;
 
     /// <summary>
-    /// Assert <paramref name="gate"/>. Idempotent — re-asserting an
-    /// already-asserted gate doesn't refire the event.
+    /// Last <see cref="HistoryCapacity"/> gate transitions, oldest
+    /// first. Enables a future "gate timeline" debug view + grep-
+    /// friendly forensics on what asserted / cleared when.
     /// </summary>
-    public void AssertGate(string gate)
+    public IReadOnlyList<GateTransitionEntry> History
+    {
+        get { lock (_historyLock) { return _history.ToArray(); } }
+    }
+
+    public MovementCoordinator(LogService? log = null)
+    {
+        _log = log;
+    }
+
+    /// <summary>
+    /// Assert <paramref name="gate"/>. Idempotent — re-asserting an
+    /// already-asserted gate doesn't refire the event or duplicate a
+    /// history entry.
+    /// </summary>
+    /// <param name="gate">The gate name (use one of the constants —
+    /// <see cref="UserGate"/>, <see cref="CombatGate"/>, etc.).</param>
+    /// <param name="asserter">Optional identifier for the subsystem
+    /// asserting the gate (e.g. <c>"CombatStateTracker"</c>). Recorded
+    /// in <see cref="History"/> + the <c>[Gate]</c> log line.</param>
+    /// <param name="reason">Optional human-readable reason
+    /// (e.g. <c>"room-entry targetable=3"</c>). Recorded with the
+    /// transition.</param>
+    public void AssertGate(string gate, string? asserter = null, string? reason = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gate);
         bool wasPaused = IsPaused;
         if (!_assertedGates.Add(gate)) return;
+        RecordTransition(gate, asserted: true, asserter, reason);
         if (!wasPaused) PauseStateChanged?.Invoke(true);
     }
 
     /// <summary>
     /// Clear <paramref name="gate"/>. Idempotent — clearing a gate
-    /// that wasn't asserted is a no-op.
+    /// that wasn't asserted is a no-op (no history entry, no event).
     /// </summary>
-    public void ClearGate(string gate)
+    /// <param name="gate">The gate name.</param>
+    /// <param name="asserter">Optional identifier for the subsystem
+    /// clearing the gate.</param>
+    /// <param name="reason">Optional human-readable reason for the
+    /// clear (e.g. <c>"lastKill=giant_rat heldFor=14.2s"</c>).</param>
+    public void ClearGate(string gate, string? asserter = null, string? reason = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gate);
         if (!_assertedGates.Remove(gate)) return;
+        RecordTransition(gate, asserted: false, asserter, reason);
         if (!IsPaused) PauseStateChanged?.Invoke(false);
     }
+
+    private void RecordTransition(string gate, bool asserted, string? asserter, string? reason)
+    {
+        GateTransitionEntry entry = new(
+            DateTimeOffset.Now, gate, asserted, asserter, reason);
+        lock (_historyLock)
+        {
+            if (_history.Count >= HistoryCapacity) _history.Dequeue();
+            _history.Enqueue(entry);
+        }
+        if (_log is null) return;
+        string verb = asserted ? "asserted" : "cleared ";
+        string line = $"{verb} — gate={gate}";
+        if (!string.IsNullOrWhiteSpace(asserter)) line += $" asserter={asserter}";
+        if (!string.IsNullOrWhiteSpace(reason))   line += $" reason={reason}";
+        _log.Info("Gate", line);
+    }
 }
+
+/// <summary>
+/// One row in <see cref="MovementCoordinator.History"/>.
+/// </summary>
+/// <param name="Timestamp">Wall-clock time of the transition.</param>
+/// <param name="Gate">Gate name (one of the
+/// <see cref="MovementCoordinator"/> constants).</param>
+/// <param name="Asserted"><c>true</c> = asserted; <c>false</c> = cleared.</param>
+/// <param name="Asserter">Subsystem that flipped the gate, or <c>null</c>
+/// when the caller didn't tag itself.</param>
+/// <param name="Reason">Human-readable rationale, or <c>null</c>.</param>
+public readonly record struct GateTransitionEntry(
+    DateTimeOffset Timestamp,
+    string Gate,
+    bool Asserted,
+    string? Asserter,
+    string? Reason);

@@ -1185,7 +1185,7 @@ public sealed class AppServices
         // loop / auto-lair later). Walker's wire sender is bound by
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
-        MovementCoordinator = new Game.Map.MovementCoordinator();
+        MovementCoordinator = new Game.Map.MovementCoordinator(Log);
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner, recovery: Recovery);
