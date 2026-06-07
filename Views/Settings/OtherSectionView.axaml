@@ -165,6 +165,37 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked: each observed hop emits one Info log line with the measured wall-clock time + the current encumbrance level. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play."/>
 
+            <!-- ============ Phase 9 diagnostic logging ============
+                 Per docs/10-phase-9-automation-engines.md § Cross-cut 3.
+                 Each Verbose toggle gates whether its category's Debug-
+                 severity log lines reach the LogPane (Info+ is always
+                 on). Round-trace writes one row per combat round to
+                 Data/Logs/combat-{sessionStart}.log regardless of the
+                 LogPane state. All off by default — these are
+                 troubleshooting knobs, not normal-play affordances. -->
+            <TextBlock Classes="FieldNote"
+                       Text="Verbose categories surface Debug-severity rows in the LogPane. Info+ is always on. All off by default — flip on while troubleshooting the corresponding subsystem."
+                       Margin="0,16,0,4"/>
+            <CheckBox Content="Verbose: Combat"
+                      IsChecked="{Binding VerboseCombat, Mode=TwoWay}"
+                      ToolTip.Tip="CombatManager swing decisions, target picks, weapon swaps, per-monster failure tracking."/>
+            <CheckBox Content="Verbose: Room classifier"
+                      IsChecked="{Binding VerboseRoomClassifier, Mode=TwoWay}"
+                      ToolTip.Tip="RoomEntityClassifier — Player / Monster / Unknown decisions per Also-Here entry, prefix-strip trail."/>
+            <CheckBox Content="Verbose: Casting"
+                      IsChecked="{Binding VerboseCasting, Mode=TwoWay}"
+                      ToolTip.Tip="CastingDirector — tier evaluation, candidate scoring, per-tier-1/2/3 trace."/>
+            <CheckBox Content="Verbose: Cash"
+                      IsChecked="{Binding VerboseCash, Mode=TwoWay}"
+                      ToolTip.Tip="CashManager — pick / drop decisions, in-flight deltas, encumbrance gates."/>
+            <CheckBox Content="Verbose: Stealth"
+                      IsChecked="{Binding VerboseStealth, Mode=TwoWay}"
+                      ToolTip.Tip="StealthManager — FSM transitions, silent-loss detection."/>
+            <CheckBox Content="Write combat round trace to file"
+                      IsChecked="{Binding WriteCombatRoundTrace, Mode=TwoWay}"
+                      Margin="0,4,0,0"
+                      ToolTip.Tip="RoundDamageTracker writes one row per combat round to Data/Logs/combat-{sessionStart}.log with the full round detail. Independent of LogPane state."/>
+
             <!-- ============ Inline stub catalog ============
                  Section headers stripped per user direction — the
                  catalog renders as a flat list of rows. The numeric-

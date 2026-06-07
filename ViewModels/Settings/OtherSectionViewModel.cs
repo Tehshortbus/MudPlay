@@ -145,6 +145,22 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty] private bool _logMovementHopTiming;
 
+    // ----- Phase 9 verbose diagnostic toggles -----
+    // Per docs/10-phase-9-automation-engines.md § Cross-cut 3. Each toggle
+    // gates whether its category's Debug-severity log lines reach the
+    // LogPane (Info+ severity is always on). Off by default — verbose
+    // channels are loud and only useful when troubleshooting a specific
+    // subsystem. Round-trace toggle is independent: it writes one row
+    // per combat round to Data/Logs/combat-{sessionStart}.log
+    // regardless of LogPane state.
+
+    [ObservableProperty] private bool _verboseCombat;
+    [ObservableProperty] private bool _verboseRoomClassifier;
+    [ObservableProperty] private bool _verboseCasting;
+    [ObservableProperty] private bool _verboseCash;
+    [ObservableProperty] private bool _verboseStealth;
+    [ObservableProperty] private bool _writeCombatRoundTrace;
+
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
@@ -245,6 +261,13 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             LogMovementHopTiming  = LogMovementHopTiming,
+
+            VerboseCombat          = VerboseCombat,
+            VerboseRoomClassifier  = VerboseRoomClassifier,
+            VerboseCasting         = VerboseCasting,
+            VerboseCash            = VerboseCash,
+            VerboseStealth         = VerboseStealth,
+            WriteCombatRoundTrace  = WriteCombatRoundTrace,
         };
 
         profile.Settings ??= new();
@@ -301,6 +324,12 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
+        VerboseCombat          = dto.VerboseCombat;
+        VerboseRoomClassifier  = dto.VerboseRoomClassifier;
+        VerboseCasting         = dto.VerboseCasting;
+        VerboseCash            = dto.VerboseCash;
+        VerboseStealth         = dto.VerboseStealth;
+        WriteCombatRoundTrace  = dto.WriteCombatRoundTrace;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -365,6 +394,13 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
+
+    partial void OnVerboseCombatChanged(bool value)         => MarkDirty();
+    partial void OnVerboseRoomClassifierChanged(bool value) => MarkDirty();
+    partial void OnVerboseCastingChanged(bool value)        => MarkDirty();
+    partial void OnVerboseCashChanged(bool value)           => MarkDirty();
+    partial void OnVerboseStealthChanged(bool value)        => MarkDirty();
+    partial void OnWriteCombatRoundTraceChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {

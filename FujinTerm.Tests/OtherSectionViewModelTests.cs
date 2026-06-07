@@ -44,6 +44,45 @@ public sealed class OtherSectionViewModelTests
     }
 
     [Fact]
+    public void OtherSettings_Phase9DiagnosticToggles_AllDefaultOff()
+    {
+        // Per docs/10-phase-9-automation-engines.md § Cross-cut 3 — all
+        // six diagnostic toggles default off. Verbose channels are loud
+        // and only useful when troubleshooting; defaults must be quiet.
+        OtherSettings dto = new();
+        Assert.False(dto.VerboseCombat);
+        Assert.False(dto.VerboseRoomClassifier);
+        Assert.False(dto.VerboseCasting);
+        Assert.False(dto.VerboseCash);
+        Assert.False(dto.VerboseStealth);
+        Assert.False(dto.WriteCombatRoundTrace);
+    }
+
+    [Fact]
+    public void OtherSettings_Phase9DiagnosticToggles_RoundTrip()
+    {
+        OtherSettings src = new()
+        {
+            VerboseCombat          = true,
+            VerboseRoomClassifier  = true,
+            VerboseCasting         = true,
+            VerboseCash            = true,
+            VerboseStealth         = true,
+            WriteCombatRoundTrace  = true,
+        };
+        string json = JsonSerializer.Serialize(src);
+        OtherSettings? back = JsonSerializer.Deserialize<OtherSettings>(json);
+
+        Assert.NotNull(back);
+        Assert.True(back!.VerboseCombat);
+        Assert.True(back.VerboseRoomClassifier);
+        Assert.True(back.VerboseCasting);
+        Assert.True(back.VerboseCash);
+        Assert.True(back.VerboseStealth);
+        Assert.True(back.WriteCombatRoundTrace);
+    }
+
+    [Fact]
     public void OtherSettings_Default_MatchesPhase6Spec()
     {
         // Per user direction: default 5. Range 0..9 (range enforced by

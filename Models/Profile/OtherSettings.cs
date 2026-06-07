@@ -146,4 +146,47 @@ public sealed class OtherSettings
     /// developer / data-collection knob, not a normal-play affordance.
     /// </summary>
     public bool LogMovementHopTiming { get; set; }
+
+    // ----- Phase 9 verbose diagnostic toggles -----------------------
+    // Per docs/10-phase-9-automation-engines.md § Cross-cut 3.
+    // Each toggle gates whether its category's Debug-severity log lines
+    // reach the LogPane. Info+ severity for the same category is always
+    // on; these only control the verbose Debug rows. Off by default —
+    // verbose channels are loud and only useful when troubleshooting a
+    // specific subsystem.
+
+    /// <summary>Enable Debug-severity logs from <c>Combat</c> category
+    /// (CombatManager swing decisions + target picks + weapon swaps).
+    /// Off by default.</summary>
+    public bool VerboseCombat { get; set; }
+
+    /// <summary>Enable Debug-severity logs from <c>RoomClassifier</c>
+    /// category (Player / Monster / Unknown decisions per Also-Here
+    /// entry, including the prefix-strip trail). Off by default.</summary>
+    public bool VerboseRoomClassifier { get; set; }
+
+    /// <summary>Enable Debug-severity logs from <c>Casting</c> category
+    /// (CastingDirector tier evaluation + candidate scoring +
+    /// per-tier-1/2/3 trace). Off by default.</summary>
+    public bool VerboseCasting { get; set; }
+
+    /// <summary>Enable Debug-severity logs from <c>Cash</c> category
+    /// (CashManager pick / drop decisions + in-flight deltas +
+    /// encumbrance gates). Off by default.</summary>
+    public bool VerboseCash { get; set; }
+
+    /// <summary>Enable Debug-severity logs from <c>Stealth</c> category
+    /// (StealthManager FSM transitions + silent-loss detection).
+    /// Off by default.</summary>
+    public bool VerboseStealth { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, <see cref="Game.Combat.RoundDamageTracker"/>
+    /// writes one row per combat round to
+    /// <c>Data/Logs/combat-{sessionStart}.log</c> with the full round
+    /// detail (observed lines + pre/post HP/MA snapshots + gate states +
+    /// decisions taken). Off by default — independent of the LogPane
+    /// Verbose toggles above.
+    /// </summary>
+    public bool WriteCombatRoundTrace { get; set; }
 }
