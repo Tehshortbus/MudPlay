@@ -73,6 +73,19 @@ public static class KnownPatterns
     /// </summary>
     public const string TargetNotHere        = "combat.target-not-here";
 
+    /// <summary>"Your weapon has no effect against this monster!" —
+    /// server's signal that the currently-equipped weapon can't
+    /// damage the current target. CombatManager swaps to the
+    /// AlternateWeapon (or marks the monster unhittable if already
+    /// on alt) per CombatSettings.NoEffectFailureThreshold.</summary>
+    public const string WeaponNoEffect       = "combat.weapon-no-effect";
+
+    /// <summary>"Your fists have no effect against this monster!" —
+    /// our weapon fell off (encumbrance, server quirk, missed
+    /// equip-confirm). CombatManager treats this as "re-equip from
+    /// scratch" and clears the shadow-equipped state.</summary>
+    public const string FistsNoEffect        = "combat.fists-no-effect";
+
     // ----- Spellcasting -------------------------------------------------
     /// <summary>"You attempt to cast &lt;spell&gt;, but fail." — failed
     /// concentration / fizzle. Blocks further casts for the current

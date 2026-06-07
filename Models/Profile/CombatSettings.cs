@@ -32,6 +32,12 @@ public sealed class CombatSettings
     /// Toggle button.</summary>
     public string NormalAttackCommand { get; set; } = "a";
 
+    /// <summary>Wire verb sent when we're swung the alternate weapon —
+    /// some 2H alt weapons want <c>swing</c> while a 1H normal uses
+    /// <c>a</c>. Default <c>a</c> so a single-weapon character doesn't
+    /// have to configure both fields.</summary>
+    public string AlternateAttackCommand { get; set; } = "a";
+
     // ----- Weapon slots ---------------------------------------------
 
     /// <summary>Primary weapon item ref (display name from game data).

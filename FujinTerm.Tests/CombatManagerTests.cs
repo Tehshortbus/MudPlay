@@ -826,6 +826,197 @@ public sealed class CombatManagerTests
         Assert.Empty(h.Sent);
     }
 
+    // ----- Weapon-swap matrix ----------------------------------------
+
+    [Fact]
+    public void Attack_EquipsNormalWeapon_BeforeFirstSwing()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.NormalOffHand = "shield";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        // Three sends: eq longsword, eq shield, a giant rat
+        Assert.Equal(3, h.Sent.Count);
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Equal("eq longsword", lines[0]);
+        Assert.Equal("eq shield", lines[1]);
+        Assert.Equal("a giant rat", lines[2]);
+    }
+
+    [Fact]
+    public void Attack_NoEquipChange_IdempotentOnSameWeapon()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "kobold",    killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal(2, h.Sent.Count);    // eq + attack
+
+        // Room change — same weapon should not re-equip.
+        h.Classifier.NoteRoomChanged();
+        h.Feed("Also here: kobold.");
+        Assert.Equal(3, h.Sent.Count);    // just attack, no second eq
+        Assert.Equal("a kobold", h.LastSent);
+    }
+
+    [Fact]
+    public void WeaponNoEffect_SwapsToAlternate_AndReSwings()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.AlternateWeapon = "warhammer";
+        h.Settings.AlternateAttackCommand = "swing";
+        h.AddMonster(1, "stone golem", killable: true);
+
+        h.Feed("Also here: stone golem.");
+        Assert.Equal(2, h.Sent.Count);    // eq longsword, a stone golem
+        h.Sent.Clear();
+
+        h.Feed("Your weapon has no effect against this monster!");
+
+        // eq warhammer + swing stone golem
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("eq warhammer", lines);
+        Assert.Contains("swing stone golem", lines);
+    }
+
+    [Fact]
+    public void RoomCleared_RevertsToNormal_WhenWasOnAlt()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.AlternateWeapon = "warhammer";
+        h.AddMonster(1, "stone golem", killable: true);
+
+        h.Feed("Also here: stone golem.");
+        h.Feed("Your weapon has no effect against this monster!");
+        h.Sent.Clear();
+
+        // Simulate room-cleared: drop the species from the classifier
+        // so the next observation has no engageable. Use the
+        // RemoveDeadEntity path which fires EntitiesObserved with the
+        // post-removal list.
+        h.Classifier.RemoveDeadEntity("stone golem");
+
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("eq longsword", lines);
+    }
+
+    [Fact]
+    public void RoomCleared_EquipsBackstab_WhenConfigured()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.BackstabWeapon = "dagger";
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Sent.Clear();
+
+        h.Classifier.RemoveDeadEntity("giant rat");
+
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("eq dagger", lines);
+    }
+
+    [Fact]
+    public void FistsNoEffect_ClearsShadowState_AndReEquipsOnNextRoom()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Sent.Clear();
+
+        h.Feed("Your fists have no effect against this monster!");
+
+        // Force a fresh observation — should re-equip from scratch.
+        h.Feed("Also here: giant rat.");
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("eq longsword", lines);
+    }
+
+    [Fact]
+    public void NextRoom_PreemptivelySwapsAlt_WhenSpeciesInFailSet()
+    {
+        // Stone golems fail vs longsword. After the first no-effect
+        // fires + species lands in the fail-set, the next pick of
+        // the same species in the same room skips longsword.
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.AlternateWeapon = "warhammer";
+        h.Settings.AlternateAttackCommand = "swing";
+        h.AddMonster(1, "stone golem", killable: true);
+
+        // First golem — normal weapon, no-effect fires, swap to alt.
+        h.Feed("Also here: stone golem.");
+        h.Feed("Your weapon has no effect against this monster!");
+
+        // Simulate the same species in another instance — classifier
+        // re-observes with the same species. EquipForAttack should
+        // pre-pick the alt (already on it; idempotent) and SendAttack
+        // should use the AlternateAttackCommand.
+        h.Sent.Clear();
+        h.Classifier.NoteRoomChanged();
+        h.Feed("Also here: stone golem.");
+
+        // Failed set clears on room change, so this is a fresh test
+        // of state cleanliness.
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("a stone golem", lines);     // back to normal command on new room
+    }
+
+    // ----- Min/Max monsters gate -------------------------------------
+
+    [Fact]
+    public void MinMonsters_BelowThreshold_NoAttack()
+    {
+        using Harness h = new();
+        h.Settings.MinMonstersInRoom = 2;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void MaxMonsters_AboveThreshold_NoAttack()
+    {
+        using Harness h = new();
+        h.Settings.MaxMonstersInRoom = 2;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "kobold", killable: true);
+        h.AddMonster(3, "goblin", killable: true);
+
+        h.Feed("Also here: giant rat, kobold, goblin.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void MinMonsters_InRange_AttacksNormally()
+    {
+        using Harness h = new();
+        h.Settings.MinMonstersInRoom = 1;
+        h.Settings.MaxMonstersInRoom = 5;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "kobold", killable: true);
+
+        h.Feed("Also here: giant rat, kobold.");
+
+        // Two monsters in range [1, 5] → attack fires.
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains(lines, l => l.StartsWith("a "));
+    }
+
     [Fact]
     public void CombatLine_MasterOff_NoRefresh()
     {

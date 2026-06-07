@@ -79,6 +79,8 @@ public sealed class CombatManager : IDisposable
     private readonly IDisposable _mobHitsSub;
     private readonly IDisposable _mobMissesSub;
     private readonly IDisposable _targetGoneSub;
+    private readonly IDisposable _weaponNoEffectSub;
+    private readonly IDisposable _fistsNoEffectSub;
 
     /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
     /// a flurry of miss/hit lines from spamming the server.</summary>
@@ -89,6 +91,37 @@ public sealed class CombatManager : IDisposable
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
     private bool _disposed;
+
+    // ----- Weapon-swap shadow state -----------------------------------
+    // No `inv`/`eq` parse — we shadow-track what we last sent to the
+    // server. Cleared on the fists-no-effect recovery path (equipment
+    // fell off; re-equip from scratch next attack).
+
+    /// <summary>The weapon name last sent via the equip helper.
+    /// <c>null</c> means we haven't sent an equip yet — first attack
+    /// will trigger an equip to the configured normal/BS weapon.</summary>
+    private string? _lastEquippedWeapon;
+
+    /// <summary>True when we've swapped to the alternate weapon for
+    /// the current room (a no-effect line fired against the normal
+    /// weapon vs the current target's species). Cleared on
+    /// room-cleared.</summary>
+    private bool _usingAlternateWeapon;
+
+    /// <summary>Canonical species names that produced a no-effect line
+    /// against our normal weapon. Room-scoped — cleared on
+    /// room-cleared so a fresh room re-tries the normal weapon. Keyed
+    /// to <see cref="EngageableCandidate.ResolvedName"/> (base species,
+    /// not the prefixed display name).</summary>
+    private readonly HashSet<string> _normalWeaponFailedMonsters =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How many no-effect lines a monster species needs to
+    /// produce before we add it to <see cref="_normalWeaponFailedMonsters"/>.
+    /// Mirrors <see cref="CombatSettings.NoEffectFailureThreshold"/>;
+    /// cached here to track per-species count.</summary>
+    private readonly Dictionary<string, int> _noEffectCounts =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public CombatManager(
         MessageRouter router,
@@ -124,6 +157,8 @@ public sealed class CombatManager : IDisposable
         _mobHitsSub   = router.Subscribe(KnownPatterns.MobHits,   OnCombatLine);
         _mobMissesSub = router.Subscribe(KnownPatterns.MobMisses, OnCombatLine);
         _targetGoneSub = router.Subscribe(KnownPatterns.TargetNotHere, OnTargetNotHere);
+        _weaponNoEffectSub = router.Subscribe(KnownPatterns.WeaponNoEffect, OnWeaponNoEffect);
+        _fistsNoEffectSub  = router.Subscribe(KnownPatterns.FistsNoEffect,  OnFistsNoEffect);
     }
 
     /// <summary>Bind the wire sender — typically the
@@ -190,6 +225,31 @@ public sealed class CombatManager : IDisposable
             if (_currentTarget is not null)
                 _log?.Info(LogCategory, $"room cleared — was=target={_currentTarget}");
             _currentTarget = null;
+            OnRoomCleared(settings);
+            return;
+        }
+
+        // Min/Max monsters gate — skip the room entirely when the
+        // engageable count falls outside [Min, Max]. Default settings
+        // (Min=0, Max=20) are effectively no-op. The user opts in by
+        // tightening either bound. Inverted config (Min > Max) is
+        // treated as "no gate" with a single log-once warning rather
+        // than silently never engaging.
+        int min = Math.Max(0, settings.MinMonstersInRoom);
+        int max = settings.MaxMonstersInRoom > 0 ? settings.MaxMonstersInRoom : int.MaxValue;
+        if (min > max)
+        {
+            // Misconfig — treat as off and warn once per room observation.
+            _log?.Warn(LogCategory,
+                $"MinMonsters={min} > MaxMonsters={max} — gate disabled for this observation");
+        }
+        else if (engageable.Count < min || engageable.Count > max)
+        {
+            _log?.Info(LogCategory,
+                $"min/max gate skip — count={engageable.Count} window=[{min}..{max}]");
+            // Clear target so we don't keep swinging at an old pick
+            // that's now out-of-window after a kill.
+            _currentTarget = null;
             return;
         }
 
@@ -218,8 +278,181 @@ public sealed class CombatManager : IDisposable
             return;
         }
 
-        SendAttack(settings.NormalAttackCommand, picked.RawName, picked.Priority);
+        // Per-target dedup — if the picked species is in this room's
+        // failed-vs-normal set, pre-emptively swap to the alternate
+        // weapon + use AlternateAttackCommand. Saves a wasted swing.
+        bool useAlt = _normalWeaponFailedMonsters.Contains(picked.ResolvedName);
+        EquipForAttack(settings, useAlt);
+        string verb = useAlt
+            ? settings.AlternateAttackCommand
+            : settings.NormalAttackCommand;
+        SendAttack(verb, picked.RawName, picked.Priority);
         _currentTarget = picked.RawName;
+    }
+
+    // ----- Weapon-swap mechanics --------------------------------------
+
+    /// <summary>
+    /// Re-equip cascade at end of combat (room cleared). Priority:
+    /// BS weapon (when configured) → normal weapon (when we'd
+    /// swapped to alt). The fail-set + alt-mode flag clear here so
+    /// the next room starts fresh.
+    /// </summary>
+    private void OnRoomCleared(CombatSettings settings)
+    {
+        _normalWeaponFailedMonsters.Clear();
+        _noEffectCounts.Clear();
+
+        // BS weapon takes precedence — re-equip after every fight so
+        // the next room can backstab. If no BS configured but we
+        // ended on the alternate, revert to normal.
+        if (settings.DoBackstab && !string.IsNullOrWhiteSpace(settings.BackstabWeapon))
+        {
+            EquipWeapon(settings.BackstabWeapon, settings.BackstabOffHand);
+            _usingAlternateWeapon = false;
+        }
+        else if (_usingAlternateWeapon)
+        {
+            EquipWeapon(settings.NormalWeapon, settings.NormalOffHand);
+            _usingAlternateWeapon = false;
+        }
+    }
+
+    /// <summary>
+    /// Decide which weapon should be on for the next attack and emit
+    /// the equip line if it's a change. Called from
+    /// <see cref="OnEntitiesObserved"/> just before <see cref="SendAttack"/>.
+    /// </summary>
+    private void EquipForAttack(CombatSettings settings, bool wantAlternate)
+    {
+        string? weapon;
+        string? offHand;
+        if (wantAlternate)
+        {
+            weapon = settings.AlternateWeapon;
+            offHand = settings.AlternateOffHand;
+            _usingAlternateWeapon = true;
+        }
+        else
+        {
+            weapon = settings.NormalWeapon;
+            offHand = settings.NormalOffHand;
+            _usingAlternateWeapon = false;
+        }
+        EquipWeapon(weapon, offHand);
+    }
+
+    /// <summary>
+    /// Send equip commands for the given weapon + off-hand. Idempotent
+    /// vs the shadow state: re-equipping the same weapon no-ops. The
+    /// off-hand is unconditional on every call (matches MudProxy —
+    /// we don't track off-hand state because cursed off-hands are
+    /// rare and the equip is cheap).
+    /// </summary>
+    private void EquipWeapon(string? weapon, string? offHand)
+    {
+        if (string.IsNullOrWhiteSpace(weapon)) return;
+        if (string.Equals(weapon, _lastEquippedWeapon, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _log?.Info(LogCategory, $"equip weapon={weapon} offhand={offHand ?? "<none>"}");
+        Send($"eq {weapon.Trim()}");
+        if (!string.IsNullOrWhiteSpace(offHand))
+            Send($"eq {offHand.Trim()}");
+        _lastEquippedWeapon = weapon;
+    }
+
+    private void Send(string text)
+    {
+        if (_wireSender is null) return;
+        _wireSender(Encoding.Latin1.GetBytes(text + "\r"));
+    }
+
+    // ----- No-effect handlers -----------------------------------------
+
+    /// <summary>
+    /// Server says our weapon has no effect against the current
+    /// target. Count the species; once the count crosses
+    /// <see cref="CombatSettings.NoEffectFailureThreshold"/>, add it
+    /// to the room-scoped fail-set so the next pick swaps preemptively.
+    /// If we're already on the alternate weapon when this fires, the
+    /// monster is genuinely unhittable for us — log + leave for the
+    /// user / future unhittable-set work.
+    /// </summary>
+    private void OnWeaponNoEffect(MatchResult _)
+    {
+        if (!_isEnabled()) return;
+        if (_currentTarget is null) return;
+
+        // Canonicalize the target to base species — strip any flavor
+        // prefix. The classifier's ResolvedName is the canonical form;
+        // _currentTarget holds RawName. We resolve by scanning the
+        // current observation.
+        string species = ResolveSpeciesFromCurrentTarget();
+        CombatSettings settings = _readSettings();
+
+        if (_usingAlternateWeapon)
+        {
+            _log?.Warn(LogCategory,
+                $"weapon-no-effect on ALT against {species} — monster unhittable for us");
+            return;
+        }
+
+        int threshold = Math.Max(1, settings.NoEffectFailureThreshold);
+        _noEffectCounts.TryGetValue(species, out int count);
+        count++;
+        _noEffectCounts[species] = count;
+        if (count < threshold)
+        {
+            _log?.Info(LogCategory,
+                $"weapon-no-effect species={species} count={count}/{threshold}");
+            return;
+        }
+
+        if (_normalWeaponFailedMonsters.Add(species))
+            _log?.Info(LogCategory, $"adding {species} to normal-weapon fail-set");
+
+        // Swap NOW and re-send the attack so we don't waste a round.
+        EquipForAttack(settings, wantAlternate: true);
+        if (_currentTarget is { } tgt)
+            SendAttack(settings.AlternateAttackCommand, tgt, priority: null);
+    }
+
+    /// <summary>
+    /// "Your fists have no effect" — our weapon fell off (server-side
+    /// drop / removal we didn't track). Clear the shadow state so the
+    /// next attack re-equips from scratch.
+    /// </summary>
+    private void OnFistsNoEffect(MatchResult _)
+    {
+        _log?.Warn(LogCategory, "fists-no-effect — clearing equipped-weapon shadow state");
+        _lastEquippedWeapon = null;
+        _usingAlternateWeapon = false;
+
+        // Force a re-equip on the next attack by triggering a fresh
+        // pick. The simplest path: drop _currentTarget so
+        // OnEntitiesObserved re-decides + re-equips on the next
+        // observation. (The classifier re-fires on every full room
+        // display + arrival.)
+        _currentTarget = null;
+    }
+
+    /// <summary>Map current target's RawName back to its base species
+    /// via the live observation. Falls back to <c>_currentTarget</c>
+    /// when no match is found (orphaned target).</summary>
+    private string ResolveSpeciesFromCurrentTarget()
+    {
+        if (_currentTarget is not { } tgt) return string.Empty;
+        if (_classifier.Current is { } obs)
+        {
+            foreach (RoomEntity e in obs.Entities)
+            {
+                if (e.Kind != EntityKind.Monster) continue;
+                if (string.Equals(e.RawName, tgt, StringComparison.OrdinalIgnoreCase))
+                    return e.ResolvedName;
+            }
+        }
+        return tgt;
     }
 
     /// <summary>
@@ -408,6 +641,8 @@ public sealed class CombatManager : IDisposable
         _mobHitsSub.Dispose();
         _mobMissesSub.Dispose();
         _targetGoneSub.Dispose();
+        _weaponNoEffectSub.Dispose();
+        _fistsNoEffectSub.Dispose();
     }
 
     private readonly record struct EngageableCandidate(
