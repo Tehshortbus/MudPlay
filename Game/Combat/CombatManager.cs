@@ -70,6 +70,7 @@ public sealed class CombatManager : IDisposable
     private readonly Func<int, MonsterOverlay> _resolveOverlay;
     private readonly PartyState _party;
     private readonly Func<CombatSettings> _readSettings;
+    private readonly Func<bool> _isEnabled;
     private readonly Func<string?> _readOwnGivenName;
     private readonly LogService? _log;
 
@@ -87,6 +88,7 @@ public sealed class CombatManager : IDisposable
         Func<int, MonsterOverlay> resolveOverlay,
         PartyState party,
         Func<CombatSettings> readSettings,
+        Func<bool> isEnabled,
         Func<string?> readOwnGivenName,
         LogService? log = null)
     {
@@ -96,12 +98,14 @@ public sealed class CombatManager : IDisposable
         ArgumentNullException.ThrowIfNull(resolveOverlay);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(readSettings);
+        ArgumentNullException.ThrowIfNull(isEnabled);
         ArgumentNullException.ThrowIfNull(readOwnGivenName);
         _classifier   = classifier;
         _monsters     = monsters;
         _resolveOverlay = resolveOverlay;
         _party        = party;
         _readSettings = readSettings;
+        _isEnabled    = isEnabled;
         _readOwnGivenName = readOwnGivenName;
         _log = log;
 
@@ -126,12 +130,12 @@ public sealed class CombatManager : IDisposable
 
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
-        CombatSettings settings = _readSettings();
-        if (!settings.MasterAutoAttackEnabled)
+        if (!_isEnabled())
         {
             _currentTarget = null;
             return;
         }
+        CombatSettings settings = _readSettings();
 
         // Score every Monster entity once: (ResolvedName, MonsterNumber,
         // overlay-resolved Priority + Relationship, appearance-order).
@@ -209,9 +213,9 @@ public sealed class CombatManager : IDisposable
             string.Equals(announcer, ownName, StringComparison.OrdinalIgnoreCase))
             return;
 
-        CombatSettings settings = _readSettings();
-        if (!settings.MasterAutoAttackEnabled) return;
+        if (!_isEnabled()) return;
         if (_currentTarget is null) return;          // nothing to re-fire against
+        CombatSettings settings = _readSettings();
 
         bool fire = settings.AttackTiming switch
         {

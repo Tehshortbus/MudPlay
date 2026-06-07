@@ -23,13 +23,16 @@ public sealed class HealthManagerTests
         public HealthManager Health { get; }
         public List<byte[]> Sent { get; } = new();
         public HealthSettings Settings { get; set; } = new();
+        public bool AutoHealRestEnabled { get; set; } = true;
 
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
             Coordinator = new MovementCoordinator(Log);
             Health = new HealthManager(State, Coordinator,
-                readSettings: () => Settings, log: Log);
+                readSettings: () => Settings,
+                isEnabled: () => AutoHealRestEnabled,
+                log: Log);
             Health.SetWireSender(b => Sent.Add(b));
         }
 

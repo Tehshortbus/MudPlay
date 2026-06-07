@@ -29,13 +29,13 @@ public sealed class CombatManagerTests
         public List<byte[]> Sent { get; } = new();
         public CombatSettings Settings { get; set; } = new()
         {
-            MasterAutoAttackEnabled = true,
             NormalAttackCommand = "a",
             TargetOrder = TargetOrder.Normal,
         };
 
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
         public string? OwnName { get; set; } = "Fujin";
+        public bool AutoCombatEnabled { get; set; } = true;
 
         public Harness()
         {
@@ -46,6 +46,7 @@ public sealed class CombatManagerTests
                                      ? o : new MonsterOverlay(),
                 party: Party,
                 readSettings: () => Settings,
+                isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => OwnName,
                 log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
@@ -110,7 +111,7 @@ public sealed class CombatManagerTests
     public void MasterOff_NoSwingSent()
     {
         using Harness h = new();
-        h.Settings.MasterAutoAttackEnabled = false;
+        h.AutoCombatEnabled = false;
         h.AddMonster(1, "giant rat", killable: true);
 
         h.Feed("Also here: giant rat.");
@@ -301,7 +302,7 @@ public sealed class CombatManagerTests
         h.Feed("Also here: giant rat.");
         Assert.NotNull(h.Combat.CurrentTarget);
 
-        h.Settings.MasterAutoAttackEnabled = false;
+        h.AutoCombatEnabled = false;
         h.Feed("Also here: giant rat.");        // re-display
         Assert.Null(h.Combat.CurrentTarget);
     }
@@ -317,6 +318,7 @@ public sealed class CombatManagerTests
             resolveOverlay: _ => new MonsterOverlay(),
             party: h.Party,
             readSettings: () => h.Settings,
+            isEnabled: () => h.AutoCombatEnabled,
             readOwnGivenName: () => h.OwnName,
             log: h.Log);
 
@@ -539,7 +541,7 @@ public sealed class CombatManagerTests
         h.Feed("Also here: giant rat.");
         Assert.Single(h.Sent);
 
-        h.Settings.MasterAutoAttackEnabled = false;
+        h.AutoCombatEnabled = false;
         h.Feed("Bob moves to attack giant rat.");
         Assert.Single(h.Sent);                  // no re-fire when master off
     }

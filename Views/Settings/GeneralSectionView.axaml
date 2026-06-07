@@ -144,35 +144,54 @@
 
                 <!-- Player auto-delete window moved to Settings → Other per user direction. -->
 
-                <!-- Two-column defaults grid. -->
-                <Grid Margin="0,16,0,0" ColumnDefinitions="*,24,*">
-                    <StackPanel Grid.Column="0" Spacing="2">
-                        <TextBlock Classes="ColumnHeader" Text="Manual-Mode Defaults"/>
-                        <CheckBox IsChecked="{Binding MmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
-                        <CheckBox IsChecked="{Binding MmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
-                        <CheckBox IsChecked="{Binding MmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
-                        <CheckBox IsChecked="{Binding MmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
-                        <CheckBox IsChecked="{Binding MmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
-                        <CheckBox IsChecked="{Binding MmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
-                        <CheckBox IsChecked="{Binding MmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
-                        <CheckBox IsChecked="{Binding MmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
-                        <CheckBox IsChecked="{Binding MmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
-                        <CheckBox IsChecked="{Binding MmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" Spacing="2">
-                        <TextBlock Classes="ColumnHeader" Text="Auto-Mode Defaults"/>
-                        <CheckBox IsChecked="{Binding AmAutoCombat,   Mode=TwoWay}" Content="Auto-Combat"/>
-                        <CheckBox IsChecked="{Binding AmAutoNuke,     Mode=TwoWay}" Content="Auto-Nuke"/>
-                        <CheckBox IsChecked="{Binding AmAutoHealRest, Mode=TwoWay}" Content="Auto-Heal / Rest"/>
-                        <CheckBox IsChecked="{Binding AmAutoBless,    Mode=TwoWay}" Content="Auto-Bless"/>
-                        <CheckBox IsChecked="{Binding AmAutoLight,    Mode=TwoWay}" Content="Auto-Light"/>
-                        <CheckBox IsChecked="{Binding AmAutoGetItems, Mode=TwoWay}" Content="Auto-Get Items"/>
-                        <CheckBox IsChecked="{Binding AmAutoGetCash,  Mode=TwoWay}" Content="Auto-Get Cash"/>
-                        <CheckBox IsChecked="{Binding AmAutoSneak,    Mode=TwoWay}" Content="Auto-Sneak"/>
-                        <CheckBox IsChecked="{Binding AmAutoHide,     Mode=TwoWay}" Content="Auto-Hide"/>
-                        <CheckBox IsChecked="{Binding AmAutoSearch,   Mode=TwoWay}" Content="Auto-Search"/>
-                    </StackPanel>
-                </Grid>
+                <!-- Auto-engine master switches. Each checkbox is the
+                     master on/off for one Phase 9+ engine. Disabled
+                     checkboxes are surface-only — their engine hasn't
+                     landed yet; the IsXxxWired flag on the VM flips
+                     true as each engine ships. -->
+                <StackPanel Margin="0,16,0,0" Spacing="2">
+                    <TextBlock Classes="ColumnHeader" Text="Auto-Engines"/>
+                    <CheckBox IsChecked="{Binding AmAutoCombat,   Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoCombatWired}"
+                              Content="Auto-Combat"
+                              ToolTip.Tip="Gates CombatManager — auto-attack, target picking, AttackTiming re-fire. PR 9.A."/>
+                    <CheckBox IsChecked="{Binding AmAutoNuke,     Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoNukeWired}"
+                              Content="Auto-Nuke"
+                              ToolTip.Tip="Combat damage spells. Wires in PR 9.D (CastingDirector)."/>
+                    <CheckBox IsChecked="{Binding AmAutoHealRest, Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoHealRestWired}"
+                              Content="Auto-Heal / Rest"
+                              ToolTip.Tip="Gates HealthManager — HP/MA thresholds, rest/stand cycle, flee. PR 9.B."/>
+                    <CheckBox IsChecked="{Binding AmAutoBless,    Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoBlessWired}"
+                              Content="Auto-Bless"
+                              ToolTip.Tip="Buff casts. Wires in PR 9.D (CastingDirector)."/>
+                    <CheckBox IsChecked="{Binding AmAutoLight,    Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoLightWired}"
+                              Content="Auto-Light"
+                              ToolTip.Tip="Auto-cast room-light on dark room entry. Wires in PR 9.D."/>
+                    <CheckBox IsChecked="{Binding AmAutoGetItems, Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoGetItemsWired}"
+                              Content="Auto-Get Items"
+                              ToolTip.Tip="Auto-collect loot on the ground. Wires in PR 9.E."/>
+                    <CheckBox IsChecked="{Binding AmAutoGetCash,  Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoGetCashWired}"
+                              Content="Auto-Get Cash"
+                              ToolTip.Tip="Gates CashManager — runic/coin pickup, deposit reroute. Wires in PR 9.E."/>
+                    <CheckBox IsChecked="{Binding AmAutoSneak,    Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoSneakWired}"
+                              Content="Auto-Sneak"
+                              ToolTip.Tip="Auto-sneak between moves. Wires in PR 9.F (StealthManager)."/>
+                    <CheckBox IsChecked="{Binding AmAutoHide,     Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoHideWired}"
+                              Content="Auto-Hide"
+                              ToolTip.Tip="Auto-hide while stationary. Wires in PR 9.F (StealthManager)."/>
+                    <CheckBox IsChecked="{Binding AmAutoSearch,   Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoSearchWired}"
+                              Content="Auto-Search"
+                              ToolTip.Tip="Walker auto-search for hidden exits. Wires in a future PR."/>
+                </StackPanel>
             </StackPanel>
 
         </Grid>

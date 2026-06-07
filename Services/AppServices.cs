@@ -1245,19 +1245,16 @@ public sealed class AppServices
         // PlayerState.InCombat + the MovementCoordinator.CombatGate.
         //
         // CombatStateTracker's master switch reads
-        // CombatSettings.MasterAutoAttackEnabled from the live profile
-        // via the existing ReadSection helper. When the user toggles
-        // the setting in Settings → Combat, the next classifier emit
-        // re-evaluates against the new value (no event subscription
-        // needed — the delegate is queried on every Also-Here line).
+        // GeneralSettings.AutoMode.AutoCombat from the live profile.
+        // Settings → General checkbox + the toolbar Toggle button
+        // write the same flag; the delegate is queried on every
+        // Also-Here line so toggling takes effect immediately.
         RoomClassifier = new Game.Combat.RoomEntityClassifier(
             Router, MonsterMessages, Players, Log);
         CombatTracker = new Game.Combat.CombatStateTracker(
             Router, MovementCoordinator, RoomClassifier, MonsterMessages,
             PlayerState,
-            isAutoAttackEnabled: () =>
-                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat")
-                    .MasterAutoAttackEnabled,
+            isAutoAttackEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             log: Log);
 
         // Phase 9 PR 9.0c — RoundDamageTracker. shouldWriteTrace
@@ -1301,18 +1298,19 @@ public sealed class AppServices
             party: PartyState,
             readSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log);
 
-        // Phase 9 PR 9.B — HealthManager. Reads HealthSettings live
-        // (same pattern as the other Phase 9 engines) and watches
-        // PlayerState.Hp/Ma/InCombat/HasPromptData/Max* via
-        // PropertyChanged. Wire-sender bound from MainWindowViewModel
-        // alongside the other engines.
+        // Phase 9 PR 9.B — HealthManager. Master on/off is
+        // GeneralSettings.AutoMode.AutoHealRest (shared with the
+        // Settings → General checkbox + toolbar Toggle button). When
+        // off, every threshold check + rest/stand emit short-circuits.
         Health = new Game.Health.HealthManager(
             PlayerState, MovementCoordinator,
             readSettings: () =>
                 ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             log: Log);
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
@@ -1477,6 +1475,21 @@ public sealed class AppServices
         {
             return new T();
         }
+    }
+
+    /// <summary>
+    /// Read a single boolean off the active profile's
+    /// <see cref="Models.Profile.GeneralSettings.AutoMode"/>. Used by
+    /// the Phase 9 engine isEnabled delegates so toggling Settings →
+    /// General → Auto-Combat (or the toolbar Toggle button) takes
+    /// effect immediately — no event subscription needed since each
+    /// engine queries on every tick / classifier emit.
+    /// </summary>
+    private bool ReadAutoModeFlag(Func<Models.Profile.AutoActionDefaults, bool> selector)
+    {
+        Models.Profile.GeneralSettings general =
+            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
+        return selector(general.AutoMode);
     }
 
     /// <summary>

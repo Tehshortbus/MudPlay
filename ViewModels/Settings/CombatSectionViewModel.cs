@@ -42,7 +42,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     {
         "Combat", "Weapon", "Normal weapon", "Alternate weapon",
         "BS weapon", "BS weapon off-hand", "Off-hand",
-        "Auto-attack", "Master enable", "Attack command",
+        "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
         "Target order", "Normal", "Reverse",
         "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
@@ -55,9 +55,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "Show combat round totals", "Display",
     };
 
-    // ----- Master ---------------------------------------------------
+    // ----- Wire command ---------------------------------------------
 
-    [ObservableProperty] private bool _masterAutoAttackEnabled;
     [ObservableProperty] private string _normalAttackCommand = "a";
 
     // ----- Weapon slots --------------------------------------------
@@ -177,7 +176,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
         CombatSettings dto = new()
         {
-            MasterAutoAttackEnabled    = MasterAutoAttackEnabled,
             NormalAttackCommand        = NormalAttackCommand ?? "a",
 
             NormalWeapon       = NullIfBlank(NormalWeapon),
@@ -286,7 +284,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     {
         CombatSettings dto = ReadOrDefault();
 
-        MasterAutoAttackEnabled = dto.MasterAutoAttackEnabled;
         NormalAttackCommand     = dto.NormalAttackCommand ?? "a";
 
         NormalWeapon       = dto.NormalWeapon;
@@ -374,7 +371,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     }
 
     // Master + attack command
-    partial void OnMasterAutoAttackEnabledChanged(bool value)    => MarkDirty();
     partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
 
     // Weapon slots

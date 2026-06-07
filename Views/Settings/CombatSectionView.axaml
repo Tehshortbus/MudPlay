@@ -57,10 +57,10 @@
                            FontWeight="SemiBold"
                            Margin="0,0,0,8"/>
 
-                <!-- ============ Master ============ -->
-                <CheckBox Content="Auto-attack enabled (master switch)"
-                          IsChecked="{Binding MasterAutoAttackEnabled, Mode=TwoWay}"
-                          ToolTip.Tip="Kill switch for the entire auto-attack loop. Off by default; user opts in deliberately."/>
+                <!-- The master on/off for auto-attack lives on
+                     Settings → General → Auto-Combat (mirrored by the
+                     toolbar Toggle button). This tab configures HOW
+                     to attack, not WHETHER to. -->
 
                 <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal attack command"/>

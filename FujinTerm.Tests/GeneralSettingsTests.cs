@@ -16,7 +16,6 @@ public sealed class GeneralSettingsTests
         Assert.Null(dto.DefaultAutoLairName);
         Assert.False(dto.AutoConnect);
         Assert.False(dto.BackupOnSave);
-        AssertDefaultColumn(dto.ManualMode);
         AssertDefaultColumn(dto.AutoMode);
     }
 
@@ -30,7 +29,6 @@ public sealed class GeneralSettingsTests
             DefaultAutoLairName = "City lairs",
             AutoConnect = true,
             BackupOnSave = true,
-            ManualMode = AllToggles(true),
             AutoMode   = AllToggles(false),
         };
 
@@ -43,7 +41,6 @@ public sealed class GeneralSettingsTests
         Assert.Equal(original.DefaultAutoLairName, round.DefaultAutoLairName);
         Assert.Equal(original.AutoConnect,         round.AutoConnect);
         Assert.Equal(original.BackupOnSave,        round.BackupOnSave);
-        AssertColumnsEqual(original.ManualMode, round.ManualMode);
         AssertColumnsEqual(original.AutoMode,   round.AutoMode);
     }
 
@@ -65,8 +62,42 @@ public sealed class GeneralSettingsTests
         Assert.Equal(InitialTask.BeginAutoLair, dto!.DefaultTask);
         Assert.True(dto.AutoConnect);
         Assert.False(dto.BackupOnSave);
-        AssertDefaultColumn(dto.ManualMode);
         AssertDefaultColumn(dto.AutoMode);
+    }
+
+    [Fact]
+    public void LegacyProfilesWithManualMode_DontThrow()
+    {
+        // Profiles written before the ManualMode field was removed will
+        // still carry the key in JSON. System.Text.Json drops unknown
+        // properties by default, so deserialisation must succeed and
+        // the resulting AutoMode must hold the persisted value.
+        const string legacy = """
+            {
+              "DefaultTask": 0,
+              "AutoConnect": false,
+              "BackupOnSave": false,
+              "ManualMode": {
+                "AutoCombat": false, "AutoNuke": false, "AutoHealRest": false,
+                "AutoBless": false, "AutoLight": false, "AutoGetItems": false,
+                "AutoGetCash": false, "AutoSneak": true, "AutoHide": true,
+                "AutoSearch": true
+              },
+              "AutoMode": {
+                "AutoCombat": true, "AutoNuke": false, "AutoHealRest": true,
+                "AutoBless": false, "AutoLight": false, "AutoGetItems": true,
+                "AutoGetCash": true, "AutoSneak": false, "AutoHide": false,
+                "AutoSearch": false
+              }
+            }
+            """;
+
+        GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(legacy);
+
+        Assert.NotNull(dto);
+        Assert.True(dto!.AutoMode.AutoCombat);
+        Assert.True(dto.AutoMode.AutoHealRest);
+        Assert.False(dto.AutoMode.AutoNuke);
     }
 
     private static AutoActionDefaults AllToggles(bool value) => new()

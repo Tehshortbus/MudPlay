@@ -201,6 +201,14 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isDisconnecting;
 
+    // Phase 9 — auto-engine master toggles. Backed by
+    // GeneralSettings.AutoMode.AutoCombat / AutoHealRest on the active
+    // profile; the toolbar Toggle buttons + the Settings → General
+    // checkbox all write here. The partial OnXxxChanged handlers
+    // persist to the profile and refresh the toolbar IsActive badge.
+    [ObservableProperty] private bool _isAutoCombatActive;
+    [ObservableProperty] private bool _isAutoHealRestActive;
+
     public bool IsDisconnected => !IsConnected;
 
     /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
@@ -459,7 +467,14 @@ public partial class MainWindowViewModel : ObservableObject
         RebuildRecentProfiles();
         SyncProfileMenuState();
         AppServices.Current.Profile.ProfileLoaded += OnProfileLoadedForConnect;
-        AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileLoaded += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileMutated += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileSaving  += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); SyncAutoEngineTogglesFromProfile(); };
+        // Seed at construction time so the toolbar IsActive badge is
+        // right on first paint (even with no profile, the engines'
+        // isEnabled delegates return false and the toggles render off).
+        SyncAutoEngineTogglesFromProfile();
         // ProfileMutated fires from BbsSectionViewModel.Apply after the
         // BBS pin has been stamped onto the profile — works for both
         // named profiles and unsaved drafts (Save no-ops on drafts but
@@ -759,7 +774,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (e.PropertyName != nameof(IsConnected)
          && e.PropertyName != nameof(IsConnecting)
-         && e.PropertyName != nameof(IsDumping)) return;
+         && e.PropertyName != nameof(IsDumping)
+         && e.PropertyName != nameof(IsAutoCombatActive)
+         && e.PropertyName != nameof(IsAutoHealRestActive)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
         {
@@ -778,6 +795,12 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleCapture":
                 row.IsActive = IsDumping;
+                break;
+            case "ToggleAutoCombat":
+                row.IsActive = IsAutoCombatActive;
+                break;
+            case "ToggleAutoHealRest":
+                row.IsActive = IsAutoHealRestActive;
                 break;
         }
     }
@@ -2888,6 +2911,88 @@ public partial class MainWindowViewModel : ObservableObject
             Help → Licenses… lists every third-party component shipped in
             this build.
             """);
+
+    // ----- Phase 9 auto-engine toggle commands ------------------------
+    // ToolbarItemCatalogue routes its ToggleAutoCombat / ToggleAutoHealRest
+    // entries here by command-name reflection. The Settings → General
+    // checkboxes write directly to GeneralSettings.AutoMode; both paths
+    // converge on the same profile field.
+
+    /// <summary>Flip the live <see cref="IsAutoCombatActive"/> bit
+    /// (which the partial OnXxxChanged hook persists to
+    /// GeneralSettings.AutoMode.AutoCombat and refreshes the toolbar
+    /// IsActive badge). Bound from the toolbar ToggleAutoCombat button
+    /// + the menu hotkey.</summary>
+    [RelayCommand]
+    private void ToggleAutoCombat() => IsAutoCombatActive = !IsAutoCombatActive;
+
+    /// <summary>Flip the live <see cref="IsAutoHealRestActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoHealRest() => IsAutoHealRestActive = !IsAutoHealRestActive;
+
+    private bool _suppressAutoEngineWriteback;
+
+    partial void OnIsAutoCombatActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoCombat = value);
+
+    partial void OnIsAutoHealRestActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoHealRest = value);
+
+    private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
+    {
+        if (_suppressAutoEngineWriteback) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        mutator(dto.AutoMode);
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+    }
+
+    /// <summary>
+    /// On profile load (or close), reseed the toggle observables from
+    /// the persisted <see cref="Models.Profile.GeneralSettings.AutoMode"/>
+    /// so the toolbar IsActive badges match what the engines will
+    /// actually read. Suppress writeback during the reseed — otherwise
+    /// the partial OnXxxChanged hooks would re-persist what we just
+    /// read.
+    /// </summary>
+    private void SyncAutoEngineTogglesFromProfile()
+    {
+        _suppressAutoEngineWriteback = true;
+        try
+        {
+            Models.Profile.CharacterProfile? profile = AppServices.Current.Profile.Current;
+            Models.Profile.AutoActionDefaults am = profile is null
+                ? new Models.Profile.AutoActionDefaults()
+                : ReadGeneralFromProfile(profile).AutoMode;
+            IsAutoCombatActive   = am.AutoCombat;
+            IsAutoHealRestActive = am.AutoHealRest;
+        }
+        finally
+        {
+            _suppressAutoEngineWriteback = false;
+        }
+    }
+
+    private static Models.Profile.GeneralSettings ReadGeneralFromProfile(
+        Models.Profile.CharacterProfile profile)
+    {
+        if (profile.Settings is null) return new Models.Profile.GeneralSettings();
+        if (!profile.Settings.TryGetValue("General", out System.Text.Json.JsonElement json))
+            return new Models.Profile.GeneralSettings();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.GeneralSettings>(
+                       json.GetRawText())
+                   ?? new Models.Profile.GeneralSettings();
+        }
+        catch
+        {
+            return new Models.Profile.GeneralSettings();
+        }
+    }
 
     /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>
     private readonly Dictionary<string, InfoDialog> _infoDialogs = new(StringComparer.Ordinal);

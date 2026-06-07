@@ -70,6 +70,7 @@ public sealed class HealthManager : IDisposable
     private readonly PlayerState _state;
     private readonly MovementCoordinator _coordinator;
     private readonly Func<HealthSettings> _readSettings;
+    private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -83,14 +84,17 @@ public sealed class HealthManager : IDisposable
         PlayerState state,
         MovementCoordinator coordinator,
         Func<HealthSettings> readSettings,
+        Func<bool> isEnabled,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(readSettings);
+        ArgumentNullException.ThrowIfNull(isEnabled);
         _state = state;
         _coordinator = coordinator;
         _readSettings = readSettings;
+        _isEnabled = isEnabled;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -142,6 +146,27 @@ public sealed class HealthManager : IDisposable
     /// </summary>
     public void Evaluate()
     {
+        if (!_isEnabled())
+        {
+            // Engine off via Settings → General → Auto-Heal / Rest.
+            // Defensive clear in case it was asserted just before the
+            // user toggled off.
+            if (_hpGateAsserted)
+            {
+                _hpGateAsserted = false;
+                _coordinator.ClearGate(MovementCoordinator.HealthRecoveryGate,
+                    AsserterName, "auto-heal disabled");
+            }
+            if (_maGateAsserted)
+            {
+                _maGateAsserted = false;
+                _coordinator.ClearGate(MovementCoordinator.ManaRecoveryGate,
+                    AsserterName, "auto-heal disabled");
+            }
+            _restInFlight = false;
+            _fledThisCombat = false;
+            return;
+        }
         if (!_state.HasPromptData) return;
         // Defensive: in real use PromptParser writes Hp + MaxHp before
         // flipping HasPromptData, so Hp == 0 here means either the

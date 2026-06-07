@@ -2,14 +2,15 @@ namespace FujinTerm.Models.Profile;
 
 /// <summary>
 /// Per-character "General" settings — what to do on logon and the
-/// default state of every Action-menu auto-toggle. Stored as the
+/// master on/off state for every auto-engine. Stored as the
 /// <c>"General"</c> entry in <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
-/// Manual / Auto-Mode pair: MegaMUD's convention is two presets a
-/// player flips between depending on whether they want hands-on or
-/// hands-off play. Both columns default to all auto-engines enabled;
-/// users tighten one or both as they prefer.
+/// <see cref="AutoMode"/> is the single source of truth for whether
+/// each auto-engine fires. The earlier ManualMode column (mirroring
+/// MegaMUD's manual-vs-auto preset pair) is gone — engines either
+/// run or they don't; the per-character preset story belongs on
+/// the engines themselves, not on a duplicate column here.
 /// </remarks>
 public sealed class GeneralSettings
 {
@@ -42,9 +43,17 @@ public sealed class GeneralSettings
     /// </summary>
     public bool BackupOnSave { get; set; }
 
-    /// <summary>Auto-engine boot state for Manual-Mode play.</summary>
-    public AutoActionDefaults ManualMode { get; set; } = new();
-
-    /// <summary>Auto-engine boot state for Auto-Mode play.</summary>
+    /// <summary>
+    /// Master on/off state for every auto-engine. Each flag gates
+    /// whether the matching Phase 9 engine actually fires:
+    /// <see cref="AutoActionDefaults.AutoCombat"/> gates
+    /// <see cref="Game.Combat.CombatManager"/> + the
+    /// <see cref="Game.Combat.CombatStateTracker"/>'s Combat-gate
+    /// assertion; <see cref="AutoActionDefaults.AutoHealRest"/>
+    /// gates <see cref="Game.Health.HealthManager"/>; the others land
+    /// as their engines do (PR 9.D / 9.E / 9.F / etc.). Loading the
+    /// profile, manual edit in Settings → General, and the toolbar
+    /// Toggle* commands all write the same field.
+    /// </summary>
     public AutoActionDefaults AutoMode { get; set; } = new();
 }

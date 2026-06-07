@@ -23,14 +23,13 @@ namespace FujinTerm.Models.Profile;
 /// </remarks>
 public sealed class CombatSettings
 {
-    // ----- Master ---------------------------------------------------
-
-    /// <summary>Master kill-switch for auto-attack. Default false; user must
-    /// opt in deliberately.</summary>
-    public bool MasterAutoAttackEnabled { get; set; }
+    // ----- Wire command ---------------------------------------------
 
     /// <summary>Wire command sent each round to swing — default <c>a</c>
-    /// (the canonical MajorMUD attack alias).</summary>
+    /// (the canonical MajorMUD attack alias). The master on/off for
+    /// auto-attack lives on <c>GeneralSettings.AutoMode.AutoCombat</c>,
+    /// shared with the Settings → General checkbox and the toolbar
+    /// Toggle button.</summary>
     public string NormalAttackCommand { get; set; } = "a";
 
     // ----- Weapon slots ---------------------------------------------

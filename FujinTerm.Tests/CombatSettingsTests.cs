@@ -15,8 +15,8 @@ public sealed class CombatSettingsTests
     {
         CombatSettings dto = new();
 
-        // Safety: nothing fires until the user opts in.
-        Assert.False(dto.MasterAutoAttackEnabled);
+        // Safety: nothing fires until the user opts in via
+        // GeneralSettings.AutoMode.AutoCombat.
         Assert.False(dto.DoBackstab);
         Assert.Equal(PoliteMode.Off, dto.PoliteMode);
 
@@ -72,7 +72,6 @@ public sealed class CombatSettingsTests
     {
         CombatSettings dto = new()
         {
-            MasterAutoAttackEnabled    = true,
             NormalAttackCommand        = "attack",
             NormalWeapon               = "long sword",
             NormalOffHand              = "kite shield",
@@ -99,8 +98,7 @@ public sealed class CombatSettingsTests
         CombatSettings? round = JsonSerializer.Deserialize<CombatSettings>(json);
 
         Assert.NotNull(round);
-        Assert.Equal(dto.MasterAutoAttackEnabled,   round!.MasterAutoAttackEnabled);
-        Assert.Equal(dto.NormalAttackCommand,       round.NormalAttackCommand);
+        Assert.Equal(dto.NormalAttackCommand,       round!.NormalAttackCommand);
         Assert.Equal(dto.NormalWeapon,              round.NormalWeapon);
         Assert.Equal(dto.NormalOffHand,             round.NormalOffHand);
         Assert.Equal(dto.AlternateWeapon,           round.AlternateWeapon);
