@@ -48,6 +48,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
         OnAvoidedChanged();
+        _services.Movement.StashChanged   += OnStashChanged;
+        OnStashChanged();
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  += OnAutoLairPhaseChanged;
@@ -89,6 +91,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.Changed -= OnFavoritesChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
+        _services.Movement.StashChanged   -= OnStashChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  -= OnAutoLairPhaseChanged;
@@ -365,6 +368,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // directly and flushes its own distance cache.
     }
 
+    private void OnStashChanged() =>
+        StashRooms = new HashSet<RoomKey>(_services.Movement.Stash);
+
     private void OnLoopRunnerEvent(LoopEvent _)
     {
         OnPropertyChanged(nameof(IsLoopRunning));
@@ -505,6 +511,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopApproachPreviewPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
+
+    /// <summary>Rooms the user has flagged as stash drops. Bound to
+    /// the MapControl's StashRooms property — each room renders with
+    /// a gold outline. Refreshed on
+    /// <see cref="OnStashChanged"/>.</summary>
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _stashRooms;
+
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
 

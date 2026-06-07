@@ -62,6 +62,14 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private long _minimumCashOnHand;
     [ObservableProperty] private string _bankRoomKey = string.Empty;
 
+    // ----- Per-currency keep-on-hand for stash rooms ---------------
+
+    [ObservableProperty] private long _keepCopperOnHand;
+    [ObservableProperty] private long _keepSilverOnHand;
+    [ObservableProperty] private long _keepGoldOnHand;
+    [ObservableProperty] private long _keepPlatinumOnHand;
+    [ObservableProperty] private long _keepRunicOnHand;
+
     /// <summary>Static list of policy choices for the per-currency
     /// ComboBoxes. The view binds ItemsSource to this.</summary>
     public IReadOnlyList<CashPolicy> PolicyChoices { get; } = new[]
@@ -97,6 +105,12 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
             AutoDepositIfWealthExceeds = ClampNonNeg(AutoDepositIfWealthExceeds),
             MinimumCashOnHand          = ClampNonNeg(MinimumCashOnHand),
             BankRoomKey                = BankRoomKey ?? string.Empty,
+
+            KeepCopperOnHand   = ClampNonNeg(KeepCopperOnHand),
+            KeepSilverOnHand   = ClampNonNeg(KeepSilverOnHand),
+            KeepGoldOnHand     = ClampNonNeg(KeepGoldOnHand),
+            KeepPlatinumOnHand = ClampNonNeg(KeepPlatinumOnHand),
+            KeepRunicOnHand    = ClampNonNeg(KeepRunicOnHand),
         };
 
         profile.Settings ??= new();
@@ -147,6 +161,12 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         AutoDepositIfWealthExceeds = dto.AutoDepositIfWealthExceeds;
         MinimumCashOnHand          = dto.MinimumCashOnHand;
         BankRoomKey                = dto.BankRoomKey ?? string.Empty;
+
+        KeepCopperOnHand   = dto.KeepCopperOnHand;
+        KeepSilverOnHand   = dto.KeepSilverOnHand;
+        KeepGoldOnHand     = dto.KeepGoldOnHand;
+        KeepPlatinumOnHand = dto.KeepPlatinumOnHand;
+        KeepRunicOnHand    = dto.KeepRunicOnHand;
     }
 
     private CashSettings ReadOrDefault()
@@ -190,4 +210,9 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnAutoDepositIfWealthExceedsChanged(long value)      => MarkDirty();
     partial void OnMinimumCashOnHandChanged(long value)               => MarkDirty();
     partial void OnBankRoomKeyChanged(string value)                   => MarkDirty();
+    partial void OnKeepCopperOnHandChanged(long value)                => MarkDirty();
+    partial void OnKeepSilverOnHandChanged(long value)                => MarkDirty();
+    partial void OnKeepGoldOnHandChanged(long value)                  => MarkDirty();
+    partial void OnKeepPlatinumOnHandChanged(long value)              => MarkDirty();
+    partial void OnKeepRunicOnHandChanged(long value)                 => MarkDirty();
 }

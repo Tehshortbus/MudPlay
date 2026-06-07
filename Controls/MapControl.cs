@@ -100,6 +100,14 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
+    /// <summary>Rooms the user has marked as stash drops. Rendered
+    /// with a gold outline so the user can spot them at a glance.
+    /// <see cref="Game.Cash.StashRoomManager"/> reads the same set
+    /// from <see cref="Models.Profile.CharacterProfile.StashRooms"/>
+    /// and dispatches <c>hide N &lt;coin&gt;</c> on entry.</summary>
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> StashRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(StashRooms));
+
     public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LoopSequenceNumbersProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LoopSequenceNumbers));
 
@@ -234,6 +242,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AvoidedRoomsProperty);
         set => SetValue(AvoidedRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? StashRooms
+    {
+        get => GetValue(StashRoomsProperty);
+        set => SetValue(StashRoomsProperty, value);
     }
 
     public IReadOnlyDictionary<RoomKey, int>? LoopSequenceNumbers
@@ -482,6 +496,14 @@ public sealed class MapControl : Control
     {
         LineCap = PenLineCap.Round,
     };
+
+    /// <summary>Gold outline for stash rooms — distinct enough from
+    /// the amber current-room ring + the white selection ring that
+    /// the user can scan for stashes at a glance.</summary>
+    private static readonly IPen   StashRingPen   = new Pen(new SolidColorBrush(Color.Parse("#FFD24E")), 2.5)
+    {
+        LineCap = PenLineCap.Round,
+    };
     private static readonly IBrush SeqNumberFill  = new SolidColorBrush(Color.Parse("#FFFFFF"));
     private static readonly IBrush AutoLairFill   = new SolidColorBrush(Color.Parse("#DC821E"));
     private static readonly IPen   AutoLairBorder = new Pen(new SolidColorBrush(Color.Parse("#FFA500")), 2.0)
@@ -512,7 +534,7 @@ public sealed class MapControl : Control
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
-            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty);
 
@@ -895,6 +917,14 @@ public sealed class MapControl : Control
 
             if (AvoidedRooms is not null && AvoidedRooms.Contains(kvp.Value))
                 DrawAvoidX(context, cell);
+
+            if (StashRooms is not null && StashRooms.Contains(kvp.Value))
+            {
+                // Inset slightly so the outline doesn't overlap with
+                // the cell border / selection ring.
+                Rect ring = cell.Deflate(2);
+                context.DrawRectangle(null, StashRingPen, ring);
+            }
 
             if (LoopSequenceNumbers is not null
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)

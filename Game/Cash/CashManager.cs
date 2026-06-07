@@ -174,10 +174,34 @@ public sealed class CashManager : IDisposable
     /// </summary>
     public void OnSettingsChanged()
     {
-        _log?.Debug(LogCategory, "settings changed — re-evaluating auto-deposit");
+        _log?.Debug(LogCategory, "settings changed — re-evaluating auto-deposit + discard");
         CheckAutoDeposit();
-        // Future: when Discard auto-drop lands, walk _held here and
-        // emit drops for any Discard-flagged currency we still hold.
+        AuditHeldForDiscard();
+    }
+
+    /// <summary>
+    /// Walk held tallies; for any currency whose policy is Discard
+    /// AND we hold > 0, emit a <c>drop all &lt;coin&gt;</c>. Fires on
+    /// settings change (user just flipped a policy to Discard) and
+    /// on every CashPickedUp (in case we got a Discard-flagged
+    /// currency via inventory transfer / chest loot).
+    /// </summary>
+    private void AuditHeldForDiscard()
+    {
+        if (!_isEnabled()) return;
+        CashSettings settings = _readSettings();
+        foreach ((string currency, long count) in _held.ToList())
+        {
+            if (count <= 0) continue;
+            if (ResolvePolicy(settings, currency) != CashPolicy.Discard) continue;
+            _log?.Info(LogCategory, $"discard audit drop currency={currency} count={count}");
+            Send($"drop all {currency}");
+            // Note: the CashDropped subscription decrements _held
+            // when the server confirms; we don't optimistically
+            // decrement here. If the drop fails for some reason
+            // (cursed coin? unheard of in MajorMUD but possible in
+            // mods), the next audit will re-attempt.
+        }
     }
 
     // ----- handlers ----------------------------------------------------
@@ -217,6 +241,9 @@ public sealed class CashManager : IDisposable
 
         AdjustHeld(currency, count);
         CheckAutoDeposit();
+        // Picked up a currency the user marked Discard (or settings
+        // changed since the last audit) — drop it.
+        AuditHeldForDiscard();
     }
 
     private void OnCashDropped(MatchResult m)

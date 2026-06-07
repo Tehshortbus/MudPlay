@@ -122,6 +122,41 @@
                              ToolTip.Tip="Map/room reference for the bank. v1 stores it; the reroute that uses it ships as a follow-up."/>
                 </Grid>
 
+                <!-- ============ Stash rooms — per-currency keep ============ -->
+                <TextBlock Classes="SectionHeader" Text="Stash rooms — keep on hand"/>
+                <TextBlock Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"
+                           Text="At any room marked as a stash (right-click on the Navigation map → Toggle: Stash room), StashRoomManager dumps the excess of each currency above the floor below via `hide N &lt;coin&gt;`. 0 means dump all of that currency at every stash."/>
+
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Keep copper"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding KeepCopperOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Keep silver"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding KeepSilverOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Keep gold"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                   Value="{Binding KeepGoldOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Keep platinum"/>
+                    <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                   Value="{Binding KeepPlatinumOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Keep runic"/>
+                    <NumericUpDown Grid.Row="4" Grid.Column="1"
+                                   Value="{Binding KeepRunicOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                </Grid>
+
             </StackPanel>
         </Grid>
     </ScrollViewer>

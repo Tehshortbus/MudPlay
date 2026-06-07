@@ -269,6 +269,62 @@ public sealed class CashManagerTests
         Assert.Equal(2, h.AutoDeposits.Count);
     }
 
+    // ----- Discard auto-drop -----------------------------------------
+
+    [Fact]
+    public void Discard_PickedUpFlaggedCurrency_DropsImmediately()
+    {
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Discard;
+
+        h.Feed("You picked up 50 copper pieces.");
+
+        // get-all logic doesn't fire because it's OnGround; PickedUp
+        // is the trigger. We should see a `drop all copper` after.
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("drop all copper", lines);
+    }
+
+    [Fact]
+    public void Discard_OnSettingsChange_DropsHeld()
+    {
+        using Harness h = new();
+        // Initially collect — pick up some gold.
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Feed("You picked up 100 gold pieces.");
+        Assert.Equal(100, h.Cash.HeldCoin("gold"));
+        h.Sent.Clear();
+
+        // User flips policy to Discard.
+        h.Settings.GoldPolicy = CashPolicy.Discard;
+        h.Cash.OnSettingsChanged();
+
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("drop all gold", lines);
+    }
+
+    [Fact]
+    public void Discard_NoHeldOfFlaggedCurrency_NoDrop()
+    {
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Discard;
+        // No copper held.
+        h.Cash.OnSettingsChanged();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Discard_Disabled_NoDrop()
+    {
+        using Harness h = new() { AutoGetCashEnabled = false };
+        h.Settings.CopperPolicy = CashPolicy.Discard;
+        // Tally adjusted via test seam — pick-up doesn't fire because
+        // the master is off.
+        h.Feed("You picked up 50 copper pieces.");
+        Assert.Empty(h.Sent);
+    }
+
     // ----- settings-changed reapply ----------------------------------
 
     [Fact]

@@ -11,8 +11,9 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// PR 9.E follow-up — <see cref="StashRoomManager"/> on-entry stash
-/// dispatch driven by user-marked rooms + per-currency keep-at-least
-/// rules.
+/// dispatch driven by user-marked rooms from
+/// <see cref="CharacterProfile.StashRooms"/> + per-currency
+/// keep-on-hand rules on <see cref="CashSettings"/>.
 /// </summary>
 public sealed class StashRoomManagerTests
 {
@@ -20,26 +21,35 @@ public sealed class StashRoomManagerTests
     {
         public MessageRouter Router { get; } = new();
         public LogService Log { get; } = new();
+        public ProfileService Profile { get; } = new();
         public CashManager Cash { get; }
         public StashRoomManager Stash { get; }
         public List<byte[]> Sent { get; } = new();
-        public StashRoomSettings Settings { get; set; } = new();
+        public CashSettings CashSettings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
-        public List<(StashRoom Room, IReadOnlyList<(string Currency, long Amount)> Dispatch)> Executed { get; } = new();
+        public List<(RoomKey Room, IReadOnlyList<(string Currency, long Amount)> Dispatch)> Executed { get; } = new();
 
         public Harness()
         {
             DefaultPatterns.Seed(Router);
+            Profile.LoadBlank();
             Cash = new CashManager(Router,
-                readSettings: () => new CashSettings(),
+                readSettings: () => CashSettings,
                 isEnabled: () => true,
                 log: Log);
-            Stash = new StashRoomManager(Cash,
-                readSettings: () => Settings,
+            Stash = new StashRoomManager(Cash, Profile,
+                readCash: () => CashSettings,
                 isEnabled: () => AutoGetCashEnabled,
                 log: Log);
             Stash.SetWireSender(b => Sent.Add(b));
             Stash.StashExecuted += (r, d) => Executed.Add((r, d));
+        }
+
+        public void MarkRoomAsStash(int map, int room)
+        {
+            CharacterProfile p = Profile.Current!;
+            p.StashRooms ??= new List<RoomRef>();
+            p.StashRooms.Add(new RoomRef(map, room));
         }
 
         public void Feed(string line)
@@ -59,74 +69,54 @@ public sealed class StashRoomManagerTests
         }
     }
 
-    private static StashRoom MakeRoom(int map, int room, string name,
-                                       params (string Currency, long Keep)[] rules)
-    {
-        return new StashRoom
-        {
-            Room = new RoomRef(map, room),
-            DisplayName = name,
-            CurrencyRules = rules
-                .Select(r => new StashCurrencyRule { Currency = r.Currency, KeepAtLeast = r.Keep })
-                .ToList(),
-        };
-    }
-
-    // ----- entry dispatch ---------------------------------------------
-
     [Fact]
-    public void Enter_MatchingRoom_DispatchesHide()
+    public void Enter_MatchingRoom_DumpsAll_WhenNoKeep()
     {
         using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Sewers cache",
-            ("gold", 100)));
-        h.Feed("You picked up 500 gold pieces.");      // held=500
+        h.MarkRoomAsStash(1, 42);
+        h.Feed("You picked up 500 gold pieces.");
+
+        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("hide 500 gold", h.SentLines().First());
+    }
+
+    [Fact]
+    public void Enter_MatchingRoom_KeepsConfiguredAmount()
+    {
+        using Harness h = new();
+        h.MarkRoomAsStash(1, 42);
+        h.CashSettings.KeepGoldOnHand = 100;
+        h.Feed("You picked up 500 gold pieces.");
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
         Assert.Single(h.Sent);
         Assert.Equal("hide 400 gold", h.SentLines().First());
-        Assert.Single(h.Executed);
-        Assert.Equal(400, h.Executed[0].Dispatch[0].Amount);
-    }
-
-    [Fact]
-    public void Enter_MatchingRoom_KeepZero_DumpsAll()
-    {
-        using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 0)));
-        h.Feed("You picked up 250 gold pieces.");
-
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
-
-        Assert.Single(h.Sent);
-        Assert.Equal("hide 250 gold", h.SentLines().First());
     }
 
     [Fact]
     public void Enter_HeldAtOrBelowKeep_NoDispatch()
     {
         using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 100)));
-        h.Feed("You picked up 80 gold pieces.");        // 80 <= 100 → skip
+        h.MarkRoomAsStash(1, 42);
+        h.CashSettings.KeepGoldOnHand = 100;
+        h.Feed("You picked up 80 gold pieces.");
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
         Assert.Empty(h.Sent);
-        Assert.Empty(h.Executed);
     }
 
     [Fact]
     public void Enter_NonMatchingRoom_NoDispatch()
     {
         using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 0)));
+        h.MarkRoomAsStash(1, 42);
         h.Feed("You picked up 500 gold pieces.");
 
-        h.Stash.NoteRoomEntered(new RoomKey(2, 99));    // different room
+        h.Stash.NoteRoomEntered(new RoomKey(2, 99));
 
         Assert.Empty(h.Sent);
     }
@@ -135,9 +125,9 @@ public sealed class StashRoomManagerTests
     public void Enter_MultipleCurrencies_DispatchesEach()
     {
         using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 100),
-            ("platinum", 10)));
+        h.MarkRoomAsStash(1, 42);
+        h.CashSettings.KeepGoldOnHand     = 100;
+        h.CashSettings.KeepPlatinumOnHand = 10;
         h.Feed("You picked up 300 gold pieces.");
         h.Feed("You picked up 50 platinum pieces.");
 
@@ -151,31 +141,10 @@ public sealed class StashRoomManagerTests
     }
 
     [Fact]
-    public void Enter_OnlyOverThresholdCurrencyDispatched()
-    {
-        // Two rules — only gold is over, platinum is exactly at
-        // keep — only one hide goes out.
-        using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold",     100),
-            ("platinum", 50)));
-        h.Feed("You picked up 300 gold pieces.");
-        h.Feed("You picked up 50 platinum pieces.");
-
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
-
-        Assert.Single(h.Sent);
-        Assert.Equal("hide 200 gold", h.SentLines().First());
-    }
-
-    // ----- master + empty settings ----------------------------------
-
-    [Fact]
     public void AutoGetCashOff_NoDispatch()
     {
         using Harness h = new() { AutoGetCashEnabled = false };
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 0)));
+        h.MarkRoomAsStash(1, 42);
         h.Feed("You picked up 100 gold pieces.");
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
@@ -184,7 +153,7 @@ public sealed class StashRoomManagerTests
     }
 
     [Fact]
-    public void EmptySettings_NoDispatch()
+    public void NoStashRoomsConfigured_NoDispatch()
     {
         using Harness h = new();
         h.Feed("You picked up 100 gold pieces.");
@@ -193,52 +162,22 @@ public sealed class StashRoomManagerTests
 
         Assert.Empty(h.Sent);
     }
-
-    [Fact]
-    public void RuleWithEmptyCurrency_Skipped()
-    {
-        // Malformed rule (empty Currency string) shouldn't crash or
-        // emit a bogus `hide N ` command.
-        using Harness h = new();
-        h.Settings.Rooms.Add(new StashRoom
-        {
-            Room = new RoomRef(1, 42),
-            DisplayName = "Cache",
-            CurrencyRules = new()
-            {
-                new() { Currency = "", KeepAtLeast = 0 },
-                new() { Currency = "gold", KeepAtLeast = 0 },
-            },
-        });
-        h.Feed("You picked up 100 gold pieces.");
-
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
-
-        Assert.Single(h.Sent);
-        Assert.Equal("hide 100 gold", h.SentLines().First());
-    }
-
-    // ----- second visit produces no dispatch (after server confirms) -
 
     [Fact]
     public void SecondVisit_AfterServerConfirms_NoReDispatch()
     {
-        // Real flow: enter room → hide 400 gold sent → server replies
-        // "You hid 400 gold pieces." → CashManager decrements tally
-        // to 100 (the keep floor) → next visit produces no dispatch.
         using Harness h = new();
-        h.Settings.Rooms.Add(MakeRoom(1, 42, "Cache",
-            ("gold", 100)));
+        h.MarkRoomAsStash(1, 42);
+        h.CashSettings.KeepGoldOnHand = 100;
         h.Feed("You picked up 500 gold pieces.");
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
         Assert.Single(h.Sent);
 
-        // Server confirmation → CashManager decrements held to 100.
         h.Feed("You hid 400 gold pieces.");
         Assert.Equal(100, h.Cash.HeldCoin("gold"));
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));    // visit #2
-        Assert.Single(h.Sent);                           // no new dispatch
+        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        Assert.Single(h.Sent);
     }
 }

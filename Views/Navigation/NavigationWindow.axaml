@@ -384,6 +384,7 @@
                                  LoopBuilderWaypoints="{Binding LoopBuilderWaypoints}"
                                  LoopApproachPreviewPath="{Binding LoopApproachPreviewPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
+                                 StashRooms="{Binding StashRooms}"
                                  LoopSequenceNumbers="{Binding LoopSequenceNumbers}"
                                  AutoLairRooms="{Binding AutoLairRooms}"
                                  AutoLairWaypoints="{Binding AutoLairMarkedKeys}"
