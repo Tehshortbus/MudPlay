@@ -60,6 +60,9 @@ public sealed class RoomEntityClassifier : IDisposable
     private readonly RoomTracker? _roomTracker;
     private readonly LogService? _log;
     private readonly IDisposable _alsoHereSub;
+    private Terminal.LineExtractor? _lines;
+    private string? _alsoHereBuffer;     // multi-line continuation
+    private string? _alsoHereRawFirst;   // raw line that started the buffer
     private bool _disposed;
 
     /// <summary>Fires after each successful <c>Also here:</c> parse.
@@ -103,6 +106,82 @@ public sealed class RoomEntityClassifier : IDisposable
         _alsoHereSub = _router.Subscribe(KnownPatterns.RoomAlsoHere, OnRoomAlsoHere);
         if (_roomTracker is not null)
             _roomTracker.StateChanged += OnRoomTrackerStateChanged;
+    }
+
+    /// <summary>
+    /// Bind to the per-session <see cref="Terminal.LineExtractor"/> so
+    /// the classifier can stitch wrapped "Also here:" lines back
+    /// together. The MajorMUD server wraps occupant lists at the
+    /// 80-column boundary, so the regex-based MessageRouter pattern
+    /// fires only when the list fits on one row. The fallback path
+    /// here buffers everything from "Also here:" until a line ends
+    /// with "." then re-feeds the joined text through the parse.
+    /// Idempotent — re-attaching to the same extractor is a no-op.
+    /// </summary>
+    public void AttachLineExtractor(Terminal.LineExtractor lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (ReferenceEquals(_lines, lines)) return;
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = lines;
+        _lines.LineEmitted += OnLine;
+    }
+
+    private void OnLine(Terminal.LineExtractor.EmittedLine line)
+    {
+        if (line.IsPromptLine) return;
+        string text = line.Text.TrimEnd();
+        if (text.Length == 0) return;
+
+        if (_alsoHereBuffer is not null)
+        {
+            // Continuation: append (space-separated) to the buffer.
+            _alsoHereBuffer = _alsoHereBuffer + " " + text;
+            if (text.EndsWith(".", StringComparison.Ordinal))
+            {
+                string complete = _alsoHereBuffer;
+                string raw      = _alsoHereRawFirst ?? complete;
+                _alsoHereBuffer = null;
+                _alsoHereRawFirst = null;
+                ProcessAlsoHere(complete, raw);
+            }
+            return;
+        }
+
+        if (text.StartsWith("Also here:", StringComparison.Ordinal))
+        {
+            if (text.EndsWith(".", StringComparison.Ordinal))
+            {
+                // Single line — pattern subscription will also fire
+                // for this; skip here to avoid double-processing.
+                return;
+            }
+            _alsoHereBuffer = text;
+            _alsoHereRawFirst = line.Text;
+        }
+    }
+
+    private void ProcessAlsoHere(string completeLine, string rawFirst)
+    {
+        // Strip the "Also here: " prefix and the trailing period.
+        const string prefix = "Also here:";
+        int start = prefix.Length;
+        while (start < completeLine.Length && completeLine[start] == ' ') start++;
+        string body = completeLine[start..].TrimEnd();
+        if (body.EndsWith(".", StringComparison.Ordinal))
+            body = body[..^1];
+
+        List<RoomEntity> entities = new();
+        foreach (string raw in SplitOccupantList(body))
+        {
+            string cleaned = StripTrailingNoise(raw);
+            if (cleaned.Length == 0) continue;
+            entities.Add(Classify(cleaned, rawFirst));
+        }
+
+        RoomEntitiesObservation obs = new(rawFirst, entities, DateTimeOffset.Now);
+        Current = obs;
+        EntitiesObserved?.Invoke(obs);
     }
 
     private void OnRoomAlsoHere(MatchResult match)
@@ -393,6 +472,8 @@ public sealed class RoomEntityClassifier : IDisposable
         if (_disposed) return;
         _disposed = true;
         _alsoHereSub.Dispose();
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = null;
         if (_roomTracker is not null)
             _roomTracker.StateChanged -= OnRoomTrackerStateChanged;
     }

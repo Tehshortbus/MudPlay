@@ -573,6 +573,11 @@ public partial class MainWindowViewModel : ObservableObject
         // against every game-data Messages record's AppliedMessage /
         // AppliedEndsWith pair to surface live ActiveFlags.
         AppServices.Current.Conditions.AttachLineExtractor(Lines);
+        // Multi-line "Also here:" wrap stitching — the server wraps
+        // long occupant lists at the 80-col boundary, so the regex
+        // pattern only sees the first row. AttachLineExtractor
+        // buffers continuations until the period.
+        AppServices.Current.RoomClassifier.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while

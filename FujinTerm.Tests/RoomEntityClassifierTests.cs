@@ -483,4 +483,76 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal("Also here: Bob.", h.Classifier.Current!.Value.RawAlsoHereLine);
         Assert.Equal(EntityKind.Player, h.Classifier.Current.Value.Entities[0].Kind);
     }
+
+    // ----- Multi-line wrap (80-col server boundary) ------------------
+
+    /// <summary>
+    /// MajorMUD wraps occupant lists at the 80-col boundary mid-token,
+    /// so an Also Here line can span N rows until a period closes it.
+    /// The classifier buffers continuation rows via the LineExtractor
+    /// subscription and parses the joined text on close.
+    /// </summary>
+    [Fact]
+    public void Wrap_AcrossTwoLines_ParsesAllOccupants()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat",     allowNoPrefix: true, "angry");
+        h.AddMonster(2, "carrion beast", allowNoPrefix: true, "nasty");
+        h.AddMonster(3, "giant rat",     allowNoPrefix: true);
+        h.AddMonster(4, "acid slime",    allowNoPrefix: true);
+        h.AddMonster(5, "kobold thief",  allowNoPrefix: true, "short");
+
+        // Attach the extractor so the wrap-buffer path is live.
+        Terminal.LineExtractor lines = new(new FujinTerm.Terminal.TerminalEmulator(80, 24));
+        h.Classifier.AttachLineExtractor(lines);
+
+        // Feed wrapped rows in the order the server produces them.
+        FeedLine(lines, "Also here: angry giant rat, nasty carrion beast, giant rat, acid slime, short");
+        FeedLine(lines, "kobold thief.");
+
+        Assert.Single(h.Observations);
+        RoomEntitiesObservation obs = h.Observations[0];
+        Assert.Equal(5, obs.Entities.Count);
+        Assert.Equal("giant rat",     obs.Entities[0].ResolvedName);
+        Assert.Equal("carrion beast", obs.Entities[1].ResolvedName);
+        Assert.Equal("giant rat",     obs.Entities[2].ResolvedName);
+        Assert.Equal("acid slime",    obs.Entities[3].ResolvedName);
+        Assert.Equal("kobold thief",  obs.Entities[4].ResolvedName);
+    }
+
+    [Fact]
+    public void Wrap_AcrossThreeLines_ParsesAllOccupants()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat",    allowNoPrefix: true);
+        h.AddMonster(2, "acid slime",   allowNoPrefix: true);
+        h.AddMonster(3, "kobold thief", allowNoPrefix: true);
+
+        Terminal.LineExtractor lines = new(new FujinTerm.Terminal.TerminalEmulator(80, 24));
+        h.Classifier.AttachLineExtractor(lines);
+
+        FeedLine(lines, "Also here: giant rat,");
+        FeedLine(lines, "acid slime,");
+        FeedLine(lines, "kobold thief.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(3, h.Observations[0].Entities.Count);
+    }
+
+    private static void FeedLine(Terminal.LineExtractor lines, string text)
+    {
+        // The classifier's LineEmitted subscription is what we want
+        // to exercise; reflect into the private event invoke since
+        // LineExtractor.LineEmitted isn't a public test hook.
+        System.Reflection.FieldInfo? field = typeof(Terminal.LineExtractor)
+            .GetField("LineEmitted",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+        if (field?.GetValue(lines) is Action<Terminal.LineExtractor.EmittedLine> handler)
+        {
+            handler(new Terminal.LineExtractor.EmittedLine(
+                text, Array.Empty<CellAttributes>(),
+                DateTimeOffset.UtcNow, IsPromptLine: false));
+        }
+    }
 }
