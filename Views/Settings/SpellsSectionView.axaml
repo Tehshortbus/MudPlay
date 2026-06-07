@@ -1,0 +1,255 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="680" d:DesignHeight="900"
+             x:Class="FujinTerm.Views.Settings.SpellsSectionView"
+             x:DataType="vm:SpellsSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid>
+            <!-- No-profile banner. -->
+            <Border IsVisible="{Binding !HasProfile}" Padding="22"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="Spells"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit spell picks."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22" Spacing="4"
+                        MaxWidth="700" HorizontalAlignment="Left">
+
+                <!-- ============ Tab header ============ -->
+                <TextBlock Text="{Binding Title}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="{StaticResource FontSizeLg}"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+
+                <TextBlock Text="Heal-trigger thresholds (HP / MA percentages) live on the Health tab; this tab names the spells. CastingDirector (PR 9.D) reads both."
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeMd}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,4"/>
+
+                <!-- ============ Spell type priority ============ -->
+                <TextBlock Classes="SectionHeader" Text="Spell type priority (between-round casting order)"/>
+                <TextBlock Text="Lower number = cast earlier. CastingDirector evaluates categories in this order each tick."
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           Margin="0,0,0,4"/>
+                <Grid ColumnDefinitions="240,*"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
+                               Text="Minor party heal (single + party)"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding PriorityMinorPartyHeal, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot shared by the Party tab's Minor single-target heal and Minor AOE party heal."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel"
+                               Text="Major party heal (single + party)"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding PriorityMajorPartyHeal, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot shared by the Party tab's Major single-target heal and Major AOE party heal."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                               Text="Minor self heal"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                   Value="{Binding PriorityMinorSelfHeal, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot for this tab's Minor heal pick."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel"
+                               Text="Major self heal"/>
+                    <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                   Value="{Binding PriorityMajorSelfHeal, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot for this tab's Major heal pick."/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel"
+                               Text="Curing"/>
+                    <NumericUpDown Grid.Row="4" Grid.Column="1"
+                                   Value="{Binding PriorityCuring, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot for cure spells."/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel"
+                               Text="Buffing"/>
+                    <NumericUpDown Grid.Row="5" Grid.Column="1"
+                                   Value="{Binding PriorityBuffing, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot for buff / bless casts."/>
+
+                    <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel"
+                               Text="Debuffing"/>
+                    <NumericUpDown Grid.Row="6" Grid.Column="1"
+                                   Value="{Binding PriorityDebuffing, Mode=TwoWay}"
+                                   Minimum="1" Maximum="7" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Priority slot for between-round debuffs (CombatSettings' debuff slots)."/>
+                </Grid>
+
+                <!-- ============ Healing / regeneration ============ -->
+                <TextBlock Classes="SectionHeader" Text="Healing / regeneration"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Minor heal"/>
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                             Text="{Binding MinorHealSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cheap self-heal — fires when Health → Minor heal (combat) threshold trips, or Health → Heal (rest) during rest."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Major heal"/>
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             Text="{Binding MajorHealSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Expensive self-heal — fires when Health → Major heal (combat) threshold trips."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="HP Regen"/>
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Text="{Binding HpRegenSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Auto-regen utility (e.g. troll-skin) cast during downtime."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Mana Regen"/>
+                    <TextBox Grid.Row="3" Grid.Column="1"
+                             Text="{Binding MaRegenSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Auto-regen utility for the mana pool."/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="When HP full"/>
+                    <TextBox Grid.Row="4" Grid.Column="1"
+                             Text="{Binding WhenHpFullSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cast when HP is full and we're between actions (room spell, debuff, etc.)."/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="When Mana full"/>
+                    <TextBox Grid.Row="5" Grid.Column="1"
+                             Text="{Binding WhenMaFullSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cast when MA is full and we're between actions."/>
+                </Grid>
+
+                <!-- ============ Other spells ============ -->
+                <TextBlock Classes="SectionHeader" Text="Other spells"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Cure Holds"/>
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                             Text="{Binding CureHoldsSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cure-paralyze / cure-hold spell — canonically `freedom` in stock MajorMUD."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Cure poison"/>
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             Text="{Binding CurePoisonSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cure-poison spell."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Cure disease"/>
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Text="{Binding CureDiseaseSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cure-disease spell."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Cure blindness"/>
+                    <TextBox Grid.Row="3" Grid.Column="1"
+                             Text="{Binding CureBlindnessSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cure-blindness spell."/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Room light"/>
+                    <TextBox Grid.Row="4" Grid.Column="1"
+                             Text="{Binding RoomLightSpell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Cast when entering a dark room."/>
+                </Grid>
+
+                <!-- ============ Bless spells (10 slots) ============ -->
+                <TextBlock Classes="SectionHeader" Text="Bless spells (10 slots)"/>
+                <TextBlock Text="Self-buff slots — CastingDirector recasts when not active."
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           Margin="0,0,0,4"/>
+                <Grid ColumnDefinitions="80,260,16,80,260"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <!-- Row 0 -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Bless 1"/>
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                             Text="{Binding Bless1Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldLabel" Text="Bless 6"/>
+                    <TextBox Grid.Row="0" Grid.Column="4"
+                             Text="{Binding Bless6Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+
+                    <!-- Row 1 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Bless 2"/>
+                    <TextBox Grid.Row="1" Grid.Column="1"
+                             Text="{Binding Bless2Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Bless 7"/>
+                    <TextBox Grid.Row="1" Grid.Column="4"
+                             Text="{Binding Bless7Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+
+                    <!-- Row 2 -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Bless 3"/>
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Text="{Binding Bless3Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Bless 8"/>
+                    <TextBox Grid.Row="2" Grid.Column="4"
+                             Text="{Binding Bless8Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+
+                    <!-- Row 3 -->
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Bless 4"/>
+                    <TextBox Grid.Row="3" Grid.Column="1"
+                             Text="{Binding Bless4Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldLabel" Text="Bless 9"/>
+                    <TextBox Grid.Row="3" Grid.Column="4"
+                             Text="{Binding Bless9Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+
+                    <!-- Row 4 -->
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bless 5"/>
+                    <TextBox Grid.Row="4" Grid.Column="1"
+                             Text="{Binding Bless5Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                    <TextBlock Grid.Row="4" Grid.Column="3" Classes="FieldLabel" Text="Bless 10"/>
+                    <TextBox Grid.Row="4" Grid.Column="4"
+                             Text="{Binding Bless10Spell, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"/>
+                </Grid>
+
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
