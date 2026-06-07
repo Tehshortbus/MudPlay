@@ -280,9 +280,65 @@ public sealed class CastingDirector : IDisposable
     private string? PickMinorPartyHeal(SpellsSettings _, HealthSettings __) => null;
     private string? PickMajorPartyHeal(SpellsSettings _, HealthSettings __) => null;
 
-    // ----- Buffing — pending bless-active tracking --------------------
+    // ----- Buffing ----------------------------------------------------
 
-    private string? PickBuff(SpellsSettings _, HealthSettings __) => null;
+    /// <summary>
+    /// Walk the user's Bless1–10 slots in order; return the first one
+    /// that's configured AND not currently active on us.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Active" is a Messages-tab signal in v1: each buff's
+    /// MessageRecord has AppliedMessage (the cast / refresh line)
+    /// and AppliedEndsWith (the wear-off line);
+    /// <see cref="Conditions.ConditionTracker.IsActiveByName"/>
+    /// answers from the live set.
+    /// </para>
+    /// <para>
+    /// <b>Intended canonical path (deferred until Spells gamedata
+    /// lands)</b>: any player-castable buff has a duration in the
+    /// game-data Spells table. The engine should record cast time
+    /// at TryCast and compute <c>active until = cast_time +
+    /// spell.Duration</c>. The Messages path stays as a fallback
+    /// for server-confirmed early wear-off (dispels, area-clears),
+    /// but duration is the authoritative answer. Until the Spells
+    /// model + spell-name → record lookup ship, we rely on the
+    /// Messages path alone.
+    /// </para>
+    /// <para>
+    /// MA-floor gate: only consider buffs when MA is at or above
+    /// <see cref="HealthSettings.BlessIfAboveMa"/>. Mirrors MegaMUD's
+    /// "don't burn buff mana when we'll need it for heals soon"
+    /// behaviour.
+    /// </para>
+    /// </remarks>
+    private string? PickBuff(SpellsSettings spells, HealthSettings health)
+    {
+        if (_state.MaxMa <= 0) return null;
+        int maPct = (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa);
+        if (maPct < health.BlessIfAboveMa) return null;
+
+        // Buffs are expensive; never burn a round on them mid-combat
+        // unless the user explicitly opts in. v1 hard-gates on
+        // out-of-combat — refine later if buff-during-combat
+        // toggles get added.
+        if (_state.InCombat) return null;
+
+        string?[] slots =
+        {
+            spells.Bless1Spell, spells.Bless2Spell, spells.Bless3Spell,
+            spells.Bless4Spell, spells.Bless5Spell, spells.Bless6Spell,
+            spells.Bless7Spell, spells.Bless8Spell, spells.Bless9Spell,
+            spells.Bless10Spell,
+        };
+        foreach (string? slot in slots)
+        {
+            if (string.IsNullOrWhiteSpace(slot)) continue;
+            if (_conditions?.IsActiveByName(slot) == true) continue;
+            return slot;
+        }
+        return null;
+    }
 
     // ----- Debuffing — pending CombatSettings pre-attack chain --------
 

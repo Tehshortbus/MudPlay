@@ -118,6 +118,27 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     /// (its applied message fired without a matching ends-with).</summary>
     public bool IsActive(MessageRecord r) => _active.Contains(r.Id);
 
+    /// <summary>
+    /// True when any currently-active record's <see cref="MessageRecord.Name"/>
+    /// matches <paramref name="name"/> (case-insensitive). Lets
+    /// <c>CastingDirector</c> ask "is the 'bless' buff still on me?"
+    /// without holding a record reference. Matches by name rather
+    /// than by content-hash Id because the user may have multiple
+    /// realm variants of the same spell + the name is what the
+    /// Spells settings tab stores.
+    /// </summary>
+    public bool IsActiveByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        foreach (MessageRecord r in _messages.Messages)
+        {
+            if (!_active.Contains(r.Id)) continue;
+            if (string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>Force-clear all conditions. Wire on disconnect / death /
     /// session reset — server state changes resets the truth, our
     /// observation log is stale.</summary>

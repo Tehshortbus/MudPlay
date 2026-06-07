@@ -441,6 +441,106 @@ public sealed class CastingDirectorTests
         Assert.Equal("c freedom", h.CastsSent[0]);
     }
 
+    // ----- Buffing (Bless1–10 slot walk) -----------------------------
+
+    [Fact]
+    public void Buff_OutOfCombat_FiresFirstUnactiveSlot()
+    {
+        using CureHarness h = new();
+        h.Spells.Bless1Spell = "bless";
+        h.Spells.Bless2Spell = "haste";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c bless", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Buff_SkipsActiveBuff_PicksNext()
+    {
+        using CureHarness h = new();
+        h.Spells.Bless1Spell = "bless";
+        h.Spells.Bless2Spell = "haste";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+
+        // bless is already active — record applied without ends.
+        h.RecordCondition("bless", MessageFlags.None,
+            applied: "You are blessed!", endsWith: "Your blessing fades.");
+        h.FeedLine("You are blessed!");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("c haste", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Buff_AllActive_NoCast()
+    {
+        using CureHarness h = new();
+        h.Spells.Bless1Spell = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+
+        h.RecordCondition("bless", MessageFlags.None,
+            applied: "You are blessed!", endsWith: "Your blessing fades.");
+        h.FeedLine("You are blessed!");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_BelowMaFloor_NoCast()
+    {
+        // MA too low — saving for heals.
+        using CureHarness h = new();
+        h.Spells.Bless1Spell = "bless";
+        h.Health.BlessIfAboveMa = 70;
+        h.State.MaxMa = 100;
+        h.State.Ma = 50;
+        h.State.InCombat = false;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_InCombat_Suppressed()
+    {
+        // v1 hard-gates buffs out of combat — never burn a round
+        // mid-fight on a buff. Set InCombat FIRST so the property-
+        // change cascade below doesn't fire a Buff cast through the
+        // (still-default) InCombat=false window.
+        using CureHarness h = new();
+        h.State.InCombat = true;
+        h.Spells.Bless1Spell = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
     [Fact]
     public void Cure_LifeThreatBeatsCure()
     {
