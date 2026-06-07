@@ -82,6 +82,11 @@ public partial class App : Application
                 FujinTerm.ViewModels.Settings.EventEditDialogViewModel,
                 FujinTerm.Views.Settings.EventEditDialog>();
 
+            // Favourite-room rename — Navigation GOTO pane pencil button.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.FavoriteRenameDialogViewModel,
+                FujinTerm.Views.Navigation.FavoriteRenameDialog>();
+
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
             // profiles live as subfolders, not flat .json files).

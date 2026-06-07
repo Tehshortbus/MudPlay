@@ -1012,6 +1012,26 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.Remove(row.Key);
     }
 
+    /// <summary>
+    /// Open a small modeless rename dialog for the favourite. The
+    /// dialog returns the new label string on Save or null on Cancel;
+    /// non-null results route through
+    /// <see cref="FavoritesStore.Rename"/> which fires
+    /// <c>Changed</c> and refreshes the rail.
+    /// </summary>
+    [RelayCommand]
+    private async Task RenameFavoriteAsync(FavoriteRowViewModel? row)
+    {
+        if (row is null) return;
+        FavoriteRenameDialogViewModel vm = new(
+            currentLabel: row.Label,
+            coordTag: $"{row.Key.Map}/{row.Key.Room}");
+        string? newLabel = await _services.Dialogs
+            .OpenWindowAsync<FavoriteRenameDialogViewModel, string?>(vm);
+        if (newLabel is null) return;  // cancelled
+        _services.Favorites.Rename(row.Key, string.IsNullOrWhiteSpace(newLabel) ? null : newLabel);
+    }
+
     [RelayCommand]
     private void RunLoop(LoopRowViewModel? row)
     {
