@@ -103,6 +103,16 @@ public partial class App : Application
                 FujinTerm.ViewModels.RoomNameLearnedDialogViewModel,
                 FujinTerm.Views.RoomNameLearnedDialog>();
 
+            // Phase 9 PR 9.0a sub-G — Unknown-entity fix dialog. PR 9.0b's
+            // RoomEntityClassifier opens this when it emits a Warn row
+            // for an Also-Here name it can't resolve to a Monster or a
+            // Player; the dialog collects the user's intent (flavor
+            // prefix / player observation) and returns it for the
+            // classifier to commit at the active 4-tier scope.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.UnknownEntityFixDialogViewModel,
+                FujinTerm.Views.UnknownEntityFixDialog>();
+
             // Modify Room Blacklist (Game Data menu) — staged editor
             // over the per-BBS room blacklist.
             AppServices.Current.Dialogs.RegisterWindow<
