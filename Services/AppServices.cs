@@ -560,6 +560,16 @@ public sealed class AppServices
     public Game.Combat.DeathLineWatcher DeathWatcher { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.A — auto-attack engine. Picks a target from
+    /// <see cref="RoomClassifier"/>'s last observation and sends the
+    /// configured attack command when
+    /// <see cref="Models.Profile.CombatSettings.MasterAutoAttackEnabled"/>
+    /// is on. Wire sender is bound by <see cref="MainWindowViewModel"/>
+    /// alongside the other engines once the telnet client is up.
+    /// </summary>
+    public Game.Combat.CombatManager Combat { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1263,6 +1273,18 @@ public sealed class AppServices
         // attributed to the next combat.
         DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
         DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
+
+        // Phase 9 PR 9.A — CombatManager. Picks a target on each
+        // classifier emit and sends the configured attack command via
+        // the bound wire sender. Reads CombatSettings live (same
+        // pattern as CombatStateTracker) so toggling Master / changing
+        // TargetOrder / etc. mid-session takes effect on the next
+        // Also-Here line.
+        Combat = new Game.Combat.CombatManager(
+            RoomClassifier, MonsterMessages,
+            readSettings: () =>
+                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            log: Log);
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,

@@ -605,6 +605,11 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
+        // target pick via the same engine-send pipeline; the gate-
+        // wrapped sender prevents the swing command from landing
+        // mid-password-entry on a stale combat round.
+        AppServices.Current.Combat.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);
