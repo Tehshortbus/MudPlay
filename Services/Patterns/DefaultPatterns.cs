@@ -112,6 +112,14 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSlain,
             @"^You have been slain by (?<killer>[\w '-]+?)[.!]\s*$");
 
+        // Phase 9 PR 9.A — party / room attack announce. Mirrors
+        // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
+        // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")
+        // OR a bare colon prefix that some realms emit before the
+        // name. Captures the announcer's name + the target.
+        yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
+            @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
+
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the
         // user wants them filtered under the same Gossip toggle in the

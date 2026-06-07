@@ -51,6 +51,18 @@ public static class KnownPatterns
     /// </summary>
     public const string UserSlain            = "combat.user-slain";
 
+    /// <summary>
+    /// "X moves to attack Y." — emitted by the server for every
+    /// player's combat announce, including ours. Used by
+    /// <see cref="Game.Combat.CombatManager"/> to implement the
+    /// AttackTiming re-fire mechanism (AttackLastParty / AttackLastRoom
+    /// / AttackAfter). The pattern tolerates the bracketed-prompt
+    /// prefix ("[HP=100/MA=50]:X moves to attack Y.") plus a bare
+    /// colon prefix; the announcer name + target are positional
+    /// captures.
+    /// </summary>
+    public const string PartyAttackAnnounce  = "combat.party-attack-announce";
+
     // ----- Conversation --------------------------------------------------
     public const string ConversationGossip      = "conversation.gossip";
     public const string ConversationBroadcast   = "conversation.broadcast";

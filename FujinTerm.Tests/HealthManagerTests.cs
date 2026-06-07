@@ -366,6 +366,121 @@ public sealed class HealthManagerTests
         Assert.False(h.Health.RestInFlight);
     }
 
+    // ----- run-if-below (flee) ---------------------------------------
+
+    [Fact]
+    public void HpBelowRunTrigger_InCombat_SendsFleeOnce()
+    {
+        // Default RunIfBelowHp=20% — set HP to 30 against MaxHp=200
+        // (15%) while in combat.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Contains("flee", h.SentLines);
+        Assert.True(h.Health.FledThisCombat);
+
+        // Drop further → no spam.
+        h.State.Hp = 25;
+        Assert.Equal(1, h.SentLines.Count(l => l == "flee"));
+    }
+
+    [Fact]
+    public void HpBelowRunTrigger_OutOfCombat_DoesNotFlee()
+    {
+        // Out of combat, low HP just enters the normal rest cycle.
+        // `flee` is combat-specific.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;            // 15% — below run threshold
+
+        Assert.DoesNotContain("flee", h.SentLines);
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void FledThisCombat_ResetsWhenCombatEnds()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.True(h.Health.FledThisCombat);
+
+        h.State.InCombat = false;
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void FledThisCombat_AllowsFleeOnNextCombat()
+    {
+        // Flee in fight #1, combat ends, flee should re-arm for #2.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.Equal(1, h.SentLines.Count(l => l == "flee"));
+
+        h.State.InCombat = false;
+        h.State.Hp = 100;            // recovered enough to be ~50%
+        h.State.InCombat = true;     // fight #2 begins
+        h.State.Hp = 25;             // low again
+        Assert.Equal(2, h.SentLines.Count(l => l == "flee"));
+    }
+
+    [Fact]
+    public void MaBelowRunTrigger_InCombat_SendsFlee()
+    {
+        // Caster low on MA mid-combat — flee too.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 150;            // healthy HP
+        h.State.Ma = 5;              // below default MA run-trigger (10%)
+
+        Assert.Contains("flee", h.SentLines);
+    }
+
+    [Fact]
+    public void NonCasterMaxMaZero_NoFleeFromMa()
+    {
+        // Non-caster — MA is 0/0 forever; must not flee from MA path.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 0;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 150;
+        h.State.Ma = 0;
+
+        Assert.DoesNotContain("flee", h.SentLines);
+    }
+
+    [Fact]
+    public void FleeAndRest_BothHappen_SamePass()
+    {
+        // HP crosses run-trigger and rest-trigger together (e.g. 30/200
+        // = 15% < both). We flee in combat; once combat ends, the rest
+        // cycle takes over.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.Contains("flee", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);   // still in combat — no rest
+
+        h.State.InCombat = false;
+        Assert.Contains("rest", h.SentLines);
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]

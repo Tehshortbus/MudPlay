@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game;
 using FujinTerm.Game.Combat;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
@@ -21,6 +22,7 @@ public sealed class CombatManagerTests
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
         public PlayerDatabase Players { get; } = new();
+        public PartyState Party { get; } = new();
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public CombatManager Combat { get; }
@@ -32,13 +34,31 @@ public sealed class CombatManagerTests
             TargetOrder = TargetOrder.Normal,
         };
 
+        public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
+        public string? OwnName { get; set; } = "Fujin";
+
         public Harness()
         {
             DefaultPatterns.Seed(Router);
             Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
-            Combat = new CombatManager(Classifier, Monsters,
-                readSettings: () => Settings, log: Log);
+            Combat = new CombatManager(Router, Classifier, Monsters,
+                resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o)
+                                     ? o : new MonsterOverlay(),
+                party: Party,
+                readSettings: () => Settings,
+                readOwnGivenName: () => OwnName,
+                log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
+        }
+
+        public void SetOverlay(int monsterNumber, MonsterAttackPriority? priority = null,
+                               MonsterRelationship? relationship = null)
+        {
+            Overlays[monsterNumber] = new MonsterOverlay
+            {
+                Priority = priority,
+                Relationship = relationship,
+            };
         }
 
         public void AddMonster(int number, string name, bool killable,
@@ -292,9 +312,13 @@ public sealed class CombatManagerTests
     public void NoWireSender_LogsButDoesNotThrow()
     {
         Harness h = new();
-        // Don't bind the sender — set the field manually to null path.
-        CombatManager combat = new(h.Classifier, h.Monsters,
-            readSettings: () => h.Settings, log: h.Log);
+        // Don't bind the sender — verify the null-path no-throw shape.
+        CombatManager combat = new(h.Router, h.Classifier, h.Monsters,
+            resolveOverlay: _ => new MonsterOverlay(),
+            party: h.Party,
+            readSettings: () => h.Settings,
+            readOwnGivenName: () => h.OwnName,
+            log: h.Log);
 
         h.AddMonster(1, "giant rat", killable: true);
         h.Feed("Also here: giant rat.");
@@ -304,5 +328,234 @@ public sealed class CombatManagerTests
         Assert.Equal("giant rat", combat.CurrentTarget);
         combat.Dispose();
         h.Dispose();
+    }
+
+    // ----- MonsterOverlay priority sort --------------------------------
+
+    [Fact]
+    public void HigherPriorityMonster_PickedBeforeLower()
+    {
+        // First (=0 in enum) beats Normal (=2) → goblin gets picked
+        // even though it appears second in the Also-Here line.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin",    killable: true);
+        h.SetOverlay(2, priority: MonsterAttackPriority.First);
+
+        h.Feed("Also here: giant rat, goblin.");
+
+        Assert.Equal("a goblin", h.LastSent);
+    }
+
+    [Fact]
+    public void EqualPriority_TiebreakOnAppearanceOrder()
+    {
+        // Both Normal → first in Also-Here wins under TargetOrder.Normal.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin",    killable: true);
+
+        h.Feed("Also here: giant rat, goblin.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void TargetOrderReverse_PicksLowestPriority()
+    {
+        // First > Normal > Last (enum value 0 / 2 / 4). Reverse mode
+        // picks the LAST sorted entry — the lowest-priority mob.
+        using Harness h = new();
+        h.Settings.TargetOrder = TargetOrder.Reverse;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin",    killable: true);
+        h.AddMonster(3, "rat king",  killable: true);
+        h.SetOverlay(1, priority: MonsterAttackPriority.First);
+        h.SetOverlay(3, priority: MonsterAttackPriority.Last);
+
+        h.Feed("Also here: giant rat, goblin, rat king.");
+
+        Assert.Equal("a rat king", h.LastSent);
+    }
+
+    // ----- MonsterOverlay relationship filter --------------------------
+
+    [Fact]
+    public void RelationshipFriend_SkippedEvenIfKillable()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "guardian", killable: true);
+        h.SetOverlay(1, relationship: MonsterRelationship.Friend);
+
+        h.Feed("Also here: guardian.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RelationshipNeutral_SkippedByDefault()
+    {
+        // Neutral defaults to "don't attack unless attacked first".
+        // First-cut treats Neutral the same as Friend (skip); a future
+        // PR can wire "attack all monsters" to bypass this.
+        using Harness h = new();
+        h.AddMonster(1, "merchant", killable: true);
+        h.SetOverlay(1, relationship: MonsterRelationship.Neutral);
+
+        h.Feed("Also here: merchant.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RelationshipEnemy_Engaged()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.SetOverlay(1, relationship: MonsterRelationship.Enemy);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void RelationshipNull_DefaultsToEnemy()
+    {
+        // No overlay entry at all → null Relationship → engineering
+        // default is Enemy (skip is too aggressive; everything in the
+        // game-data monster table is fightable unless tagged otherwise).
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    // ----- AttackTiming re-fire ---------------------------------------
+
+    [Fact]
+    public void AttackTimingDefault_DoesNotRefire()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");       // initial swing
+        Assert.Single(h.Sent);
+
+        h.Feed("Bob moves to attack giant rat.");
+        Assert.Single(h.Sent);                  // no re-fire
+    }
+
+    [Fact]
+    public void AttackTimingLastRoom_RefiresOnAnyone()
+    {
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Bob moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void AttackTimingLastParty_RefiresOnPartyMemberOnly()
+    {
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Bob" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        // Party member — re-fire.
+        h.Feed("Bob moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+
+        // Non-party stranger — no re-fire.
+        h.Feed("Stranger moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+    }
+
+    [Fact]
+    public void AttackTimingAfter_RefiresOnNamedPlayerOnly()
+    {
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackAfter;
+        h.Settings.AttackAfterPlayerName = "Tank";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        // Wrong player — no re-fire.
+        h.Feed("Bob moves to attack giant rat.");
+        Assert.Single(h.Sent);
+
+        // Named player — re-fire.
+        h.Feed("Tank moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+    }
+
+    [Fact]
+    public void OwnAnnounce_NeverRefires()
+    {
+        // Critical: if our own "Fujin moves to attack giant rat" line
+        // came through and we re-fired, we'd swing twice per round.
+        using Harness h = new() { OwnName = "Fujin" };
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Fujin moves to attack giant rat.");
+        Assert.Single(h.Sent);                  // no re-fire
+    }
+
+    [Fact]
+    public void Announce_NoCurrentTarget_NoRefire()
+    {
+        // Re-fire requires a target to re-issue against. Announce
+        // before we've engaged → no-op.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+
+        h.Feed("Bob moves to attack giant rat.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Announce_MasterOff_NoRefire()
+    {
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Settings.MasterAutoAttackEnabled = false;
+        h.Feed("Bob moves to attack giant rat.");
+        Assert.Single(h.Sent);                  // no re-fire when master off
+    }
+
+    [Fact]
+    public void AnnounceWithBracketedPromptPrefix_StillMatched()
+    {
+        // Real wire form: "[HP=100/MA=50]:Bob moves to attack giant rat."
+        // — the regex tolerates the prompt prefix.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("[HP=100/MA=50]:Bob moves to attack giant rat.");
+
+        Assert.Equal(2, h.Sent.Count);
     }
 }

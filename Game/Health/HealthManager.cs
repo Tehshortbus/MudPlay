@@ -76,6 +76,7 @@ public sealed class HealthManager : IDisposable
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
     private bool _restInFlight;          // sent rest, awaiting recovery
+    private bool _fledThisCombat;        // sent flee, awaiting combat to end
     private bool _disposed;
 
     public HealthManager(
@@ -112,6 +113,12 @@ public sealed class HealthManager : IDisposable
     /// <summary>True between the <c>rest</c> emit and the corresponding
     /// <c>stand</c> emit.</summary>
     public bool RestInFlight => _restInFlight;
+
+    /// <summary>True between the <c>flee</c> emit and the next time
+    /// <see cref="PlayerState.InCombat"/> goes false. Single-shot per
+    /// combat so a low-HP fight can't burn a flee command on every
+    /// HP-changed event.</summary>
+    public bool FledThisCombat => _fledThisCombat;
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -183,6 +190,34 @@ public sealed class HealthManager : IDisposable
             _coordinator.ClearGate(MovementCoordinator.ManaRecoveryGate,
                 AsserterName,
                 $"MA {_state.Ma}/{_state.MaxMa} >= rest-target={maRestTarget}");
+        }
+
+        // ----- flee on critical HP/MA mid-combat -------------------
+        // Single-shot per combat so a low-HP fight doesn't burn `flee`
+        // on every HP-changed event. Server-side `flee` picks a random
+        // direction + moves us one room. The user's RunDistance
+        // setting (rooms to flee before re-evaluating) is a future
+        // walker-driven follow-up — first cut just gets us out of the
+        // room.
+        if (!_state.InCombat)
+        {
+            _fledThisCombat = false;
+        }
+        else if (!_fledThisCombat)
+        {
+            int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
+            int maRunTrigger = ResolveThreshold(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
+            bool hpRun = _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
+            bool maRun = _state.MaxMa > 0 && _state.Ma <= maRunTrigger;
+            if (hpRun || maRun)
+            {
+                string reason = hpRun
+                    ? $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}"
+                    : $"MA {_state.Ma}/{_state.MaxMa} <= run-trigger={maRunTrigger}";
+                SendCommand("flee");
+                _log?.Info(LogCategory, $"flee {reason}");
+                _fledThisCombat = true;
+            }
         }
 
         // ----- rest / stand pacing ---------------------------------

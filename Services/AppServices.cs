@@ -1290,9 +1290,18 @@ public sealed class AppServices
         // TargetOrder / etc. mid-session takes effect on the next
         // Also-Here line.
         Combat = new Game.Combat.CombatManager(
-            RoomClassifier, MonsterMessages,
+            Router, RoomClassifier, MonsterMessages,
+            // Resolve per-monster overlay: seed-store value forms the
+            // Defaults tier, SettingsResolver overlays Global / BBS /
+            // Char-tier user overrides on top.
+            resolveOverlay: n => Resolver.ResolveGameData<Models.GameData.MonsterOverlay>(
+                "Monsters",
+                n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                MonsterOverlaySeed.GetOverlay(n)),
+            party: PartyState,
             readSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log);
 
         // Phase 9 PR 9.B — HealthManager. Reads HealthSettings live
