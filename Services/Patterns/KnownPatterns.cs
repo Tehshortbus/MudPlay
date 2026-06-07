@@ -43,6 +43,14 @@ public static class KnownPatterns
     public const string MobHits              = "combat.mob-hits";
     public const string UserGainExperience   = "combat.user-gain-experience";
 
+    /// <summary>
+    /// Local-player death — "You have been slain by &lt;killer&gt;." per
+    /// MajorMUD's canonical wording. <see cref="Game.Combat.DeathLineWatcher"/>
+    /// subscribes here and emits the PlayerDied event that
+    /// DeathRecoveryManager (PR 9.I) consumes for corpse-recovery.
+    /// </summary>
+    public const string UserSlain            = "combat.user-slain";
+
     // ----- Conversation --------------------------------------------------
     public const string ConversationGossip      = "conversation.gossip";
     public const string ConversationBroadcast   = "conversation.broadcast";

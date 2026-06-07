@@ -552,6 +552,14 @@ public sealed class AppServices
     public Game.Combat.RoundDamageTracker RoundDamage { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.0d — observes the "You have been slain by..."
+    /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
+    /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
+    /// engines subscribe for their own death-clean-up paths.
+    /// </summary>
+    public Game.Combat.DeathLineWatcher DeathWatcher { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -1247,6 +1255,14 @@ public sealed class AppServices
         // doesn't ship CombatSessionTracker — Phase 11 does — but the
         // reset hook lives here on the data producer).
         Profile.ProfileLoaded += _ => RoundDamage.Reset();
+
+        // Phase 9 PR 9.0d — local-death observation. Pure subscriber;
+        // DeathRecoveryManager (PR 9.I) consumes the PlayerDied event
+        // for its corpse-recovery flow. Reset the in-flight round
+        // accumulator on death so a partial round doesn't get
+        // attributed to the next combat.
+        DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
+        DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,

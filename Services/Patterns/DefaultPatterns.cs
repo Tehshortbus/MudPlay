@@ -102,6 +102,16 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
 
+        // Phase 9 PR 9.0d — local-player death. MajorMUD's canonical
+        // wording is "You have been slain by <killer>." — the killer
+        // is whatever last hit landed (monster name OR another player
+        // for PvP, even though FujinTerm scopes engines to PvE; we
+        // still observe the line so DeathRecoveryManager can fire).
+        // The trailing "." is captured tolerantly: some realms include
+        // a trailing "!" instead.
+        yield return new RegexPattern(KnownPatterns.UserSlain,
+            @"^You have been slain by (?<killer>[\w '-]+?)[.!]\s*$");
+
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the
         // user wants them filtered under the same Gossip toggle in the
