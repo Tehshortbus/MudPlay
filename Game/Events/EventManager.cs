@@ -65,6 +65,20 @@ public sealed class EventManager
     /// </summary>
     private readonly HashSet<ScheduledEvent> _autoDisabled = new();
 
+    /// <summary>
+    /// Snapshot of "what was happening" when an event-walk took over.
+    /// Set in <see cref="ExecuteWalkTo"/>, consumed in
+    /// <see cref="OnResumeWalkEvent"/> when the walker reaches the
+    /// event's target. Null when no resume is queued.
+    /// </summary>
+    private EventResumePlan? _pendingResume;
+
+    /// <summary>
+    /// Live delegate reference so we can unsubscribe symmetrically.
+    /// Null when no resume watcher is attached.
+    /// </summary>
+    private Action<WalkEvent>? _resumeWatcher;
+
     /// <summary>The loaded character's events — empty when no profile is active.</summary>
     public ObservableCollection<ScheduledEvent> Events { get; } = new();
 
@@ -226,12 +240,46 @@ public sealed class EventManager
             _log?.Warn("Events", $"Event '{Label(e)}' has no walk-to target; skipping.");
             return;
         }
+
+        // Snapshot the current activity BEFORE stopping engines so the
+        // resume hook can pick up where we left off when the walk
+        // completes. If there's already a pending plan (i.e. a prior
+        // event-walk is in flight when this one fires), keep the
+        // ORIGINAL plan — we want to resume the user's actual activity,
+        // not the previous event-walk's destination.
+        EventResumePlan? plan = _pendingResume ?? SnapshotCurrentActivity();
+
         // Supersede any running engine so the walk owns the wire.
-        if (_loopRunner?.State is not LoopState.Idle) _loopRunner?.Stop("event supersede");
-        if (_autoLair?.IsActive == true) _autoLair?.Stop("event supersede");
+        if (_loopRunner?.State is not LoopState.Idle) _loopRunner?.Stop("event walk-to");
+        if (_autoLair?.IsActive == true) _autoLair?.Stop("event walk-to");
+
+        // Detach any prior watcher first — the cascade case means the
+        // previous walk-to is being replaced by this one. The plan
+        // we just snapshotted (which is the previous walk's plan in
+        // the cascade case) gets re-attached below.
+        DetachResumeWatcher();
+
         RoomKey key = new(target.Map, target.Room);
         if (!_walker.WalkTo(key))
+        {
             _log?.Warn("Events", $"Event '{Label(e)}' walk-to {key.Map}/{key.Room} failed.");
+            return;
+        }
+
+        // Walk to event-target unlike @goto's monster-room special case:
+        // events specify the destination as a RoomRef coord, no neighbour
+        // wait-room logic. Walker drops us at the exact room.
+
+        // Attach the resume watcher AFTER WalkTo returns so the
+        // Started / Stopped events that WalkTo itself raises (for
+        // any walk it superseded) don't reach our handler.
+        if (plan is not null)
+        {
+            _pendingResume = plan;
+            AttachResumeWatcher();
+            _log?.Info("Events",
+                $"Event '{Label(e)}' walking to {key.Map}/{key.Room}; will resume {plan.Describe()} on arrival.");
+        }
     }
 
     private void ExecuteLoop(ScheduledEvent e)
@@ -412,5 +460,131 @@ public sealed class EventManager
     private void SnapshotForSave(CharacterProfile p)
     {
         p.Events = Events.Count == 0 ? null : Events.ToList();
+    }
+
+    // ----- Walk-to auto-resume ---------------------------------------
+
+    /// <summary>
+    /// Snapshot the engine that was actively driving movement before an
+    /// event-walk takes over. Precedence — AutoLair beats LoopRunner
+    /// beats the one-shot walker, because the higher engines drive the
+    /// lower ones (a Loop's approach walk is "really" the loop). Returns
+    /// null when nothing was running, in which case the event-walk
+    /// just runs and ends — no resume.
+    /// </summary>
+    private EventResumePlan? SnapshotCurrentActivity()
+    {
+        if (_autoLair is { IsActive: true } al && al.Marked.Count > 0)
+        {
+            Dictionary<RoomKey, int?> snap = new();
+            foreach (RoomKey k in al.Marked)
+                snap[k] = al.Overrides.TryGetValue(k, out int? v) ? v : null;
+            return new EventResumePlan.AutoLair(snap);
+        }
+        if (_loopRunner is not null
+            && _loopRunner.State is not LoopState.Idle
+            && _loopRunner.CurrentLoop is { } loop)
+        {
+            return new EventResumePlan.Loop(loop);
+        }
+        if (_walker is { State: WalkState.Walking } && _walker.Destination is { } dest)
+        {
+            return new EventResumePlan.Walker(dest);
+        }
+        return null;
+    }
+
+    private void AttachResumeWatcher()
+    {
+        if (_walker is null || _resumeWatcher is not null) return;
+        _resumeWatcher = OnResumeWalkEvent;
+        _walker.Event += _resumeWatcher;
+    }
+
+    private void DetachResumeWatcher()
+    {
+        if (_walker is null || _resumeWatcher is null) return;
+        _walker.Event -= _resumeWatcher;
+        _resumeWatcher = null;
+    }
+
+    /// <summary>
+    /// Watch the walker for the outcome of an in-flight event-walk.
+    /// Finished → execute the resume plan. Failed / Stopped → drop
+    /// the plan (user can intervene). Pause / Resume / Started are
+    /// not interesting — the walk is still in progress.
+    /// </summary>
+    private void OnResumeWalkEvent(WalkEvent e)
+    {
+        switch (e.Kind)
+        {
+            case WalkEventKind.Finished:
+                EventResumePlan? plan = _pendingResume;
+                _pendingResume = null;
+                DetachResumeWatcher();
+                if (plan is not null) ExecuteResume(plan);
+                break;
+            case WalkEventKind.Failed:
+            case WalkEventKind.Stopped:
+                _log?.Info("Events",
+                    $"Event walk-to interrupted ({e.Kind}); dropping resume plan.");
+                _pendingResume = null;
+                DetachResumeWatcher();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Re-dispatch the activity that was running before the event-walk
+    /// took over. Stops nothing first — the walker is Idle by now (we
+    /// just hit Finished), and the other engines were stopped at the
+    /// start of the event-walk so they're already inactive.
+    /// </summary>
+    private void ExecuteResume(EventResumePlan plan)
+    {
+        switch (plan)
+        {
+            case EventResumePlan.Loop l:
+                if (_loopRunner is null) return;
+                _log?.Info("Events", $"Resuming loop '{l.SavedLoop.Name}' after event-walk.");
+                _loopRunner.Start(l.SavedLoop);
+                break;
+            case EventResumePlan.AutoLair al:
+                if (_autoLair is null) return;
+                _log?.Info("Events", $"Resuming auto-lair ({al.Markers.Count} markers) after event-walk.");
+                _autoLair.Clear();
+                foreach (KeyValuePair<RoomKey, int?> kv in al.Markers)
+                    _autoLair.Mark(kv.Key, kv.Value);
+                _autoLair.Start();
+                break;
+            case EventResumePlan.Walker w:
+                if (_walker is null) return;
+                _log?.Info("Events", $"Resuming walk to {w.Destination.Map}/{w.Destination.Room} after event-walk.");
+                _walker.WalkTo(w.Destination);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// What to do after the event-walk reaches its target. Discriminated
+    /// across the three engine types <see cref="SnapshotCurrentActivity"/>
+    /// distinguishes.
+    /// </summary>
+    private abstract record EventResumePlan
+    {
+        public abstract string Describe();
+
+        public sealed record Loop(Game.Map.Loop SavedLoop) : EventResumePlan
+        {
+            public override string Describe() => $"loop '{SavedLoop.Name}'";
+        }
+        public sealed record AutoLair(Dictionary<RoomKey, int?> Markers) : EventResumePlan
+        {
+            public override string Describe() => $"auto-lair ({Markers.Count} markers)";
+        }
+        public sealed record Walker(RoomKey Destination) : EventResumePlan
+        {
+            public override string Describe() => $"walk to {Destination.Map}/{Destination.Room}";
+        }
     }
 }
