@@ -745,15 +745,16 @@ public sealed class CombatManagerTests
         Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
     }
 
-    // ----- safety net: combat line + empty room → send `l` ------------
+    // ----- safety net: combat line + empty room → send bare CR --------
 
     [Fact]
-    public void CombatLine_WithNoEngageable_SendsLookToRefreshRoom()
+    public void CombatLine_WithNoEngageable_SendsCarriageReturnToRefreshRoom()
     {
         // Real-world bug: monster swings at us but our classifier shows
         // no engageable. Without the safety net we sit dumbstruck. With
-        // it, we send `l` so the server re-displays Also Here and the
-        // next observation rebuilds the picture.
+        // it, we send a bare CR (^M) — the server's compact re-display
+        // includes Also Here + prompt without the full room dump, so
+        // the classifier rebuilds the picture cheaply.
         using Harness h = new();
         h.AddMonster(1, "kobold thief", killable: true);
 
@@ -761,7 +762,8 @@ public sealed class CombatManagerTests
         h.Feed("The kobold thief swings at you but misses!");
 
         Assert.Single(h.Sent);
-        Assert.Equal("l", h.LastSent);
+        // Bare CR — LastSent strips trailing \r so the body is empty.
+        Assert.Equal("\r", Encoding.Latin1.GetString(h.Sent[^1]));
     }
 
     [Fact]
@@ -778,13 +780,13 @@ public sealed class CombatManagerTests
 
         h.Feed("The giant rat swings at you but misses!");
 
-        Assert.Single(h.Sent);                  // no `l` — engageable still here
+        Assert.Single(h.Sent);                  // no CR — engageable still here
     }
 
     [Fact]
     public void CombatLine_Debounced_NoSecondRefreshWithinCooldown()
     {
-        // Burst of miss lines must not flood the wire with `l`.
+        // Burst of miss lines must not flood the wire with bare CRs.
         using Harness h = new();
 
         h.Feed("The kobold thief swings at you but misses!");
@@ -792,7 +794,7 @@ public sealed class CombatManagerTests
         h.Feed("The kobold thief swings at you but misses!");
 
         Assert.Single(h.Sent);
-        Assert.Equal("l", h.LastSent);
+        Assert.Equal("\r", Encoding.Latin1.GetString(h.Sent[^1]));
     }
 
     // ----- target-not-here: server says we whiffed against a phantom -
@@ -813,13 +815,13 @@ public sealed class CombatManagerTests
         h.Feed("You don't see giant rat here!");
 
         Assert.Null(h.Combat.CurrentTarget);
-        Assert.Equal("l", h.LastSent);
+        Assert.Equal("\r", Encoding.Latin1.GetString(h.Sent[^1]));
     }
 
     [Fact]
     public void TargetNotHere_WithoutCurrentTarget_NoOp()
     {
-        // No target → nothing to drop. Don't send `l` either; some
+        // No target → nothing to drop. Don't send CR either; some
         // other system can react to the target-gone signal if needed.
         using Harness h = new();
         h.Feed("You don't see giant rat here!");

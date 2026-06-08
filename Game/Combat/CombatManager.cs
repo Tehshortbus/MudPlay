@@ -522,12 +522,18 @@ public sealed class CombatManager : IDisposable
     /// something is swinging at us — but if the classifier shows no
     /// engageable monster and we have no current target, our view of
     /// the room is stale (entity dropped after a death, arrival line
-    /// lost, prefix not resolved against the overlay, etc.). Send
-    /// <c>l</c> so the server re-displays the Also Here line; the
-    /// classifier will repopulate, OnEntitiesObserved picks a target,
+    /// lost, prefix not resolved against the overlay, etc.). Send a
+    /// bare CR (<c>^M</c>) so the server re-emits a short room view;
+    /// the classifier repopulates, OnEntitiesObserved picks a target,
     /// and the next round we swing back. Debounced so a burst of
     /// combat lines doesn't flood the wire.
     /// </summary>
+    /// <remarks>
+    /// Bare CR is preferred over <c>l</c> because the server's CR
+    /// response is the compact "where am I" payload — the Also Here
+    /// list plus prompt without the room description, exits block,
+    /// and ground-item enumeration that <c>l</c> dumps.
+    /// </remarks>
     private void OnCombatLine(MatchResult _)
     {
         if (!_isEnabled()) return;
@@ -541,8 +547,8 @@ public sealed class CombatManager : IDisposable
         _lastRoomRefreshAt = now;
 
         _log?.Info(LogCategory,
-            "combat-line while room appears empty — sending `l` to re-display");
-        _wireSender(Encoding.Latin1.GetBytes("l\r"));
+            "combat-line while room appears empty — sending CR for short re-display");
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
     /// <summary>
@@ -565,10 +571,11 @@ public sealed class CombatManager : IDisposable
 
         // Force a refresh (debounce shared with OnCombatLine so a
         // simultaneous miss-line + target-not-here doesn't double-send).
+        // Bare CR — same rationale as OnCombatLine.
         DateTimeOffset now = DateTimeOffset.Now;
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
         _lastRoomRefreshAt = now;
-        _wireSender(Encoding.Latin1.GetBytes("l\r"));
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
     private bool HasEngageable(RoomEntitiesObservation obs)
