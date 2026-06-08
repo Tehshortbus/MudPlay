@@ -395,6 +395,64 @@ public sealed class CashManagerTests
         Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 10);
     }
 
+    // ----- Corpse loot (monster kill drops) ---------------------------
+
+    [Fact]
+    public void CorpseDrop_CollectsViaSameDispatch()
+    {
+        // Per the user's screenshot — after a kill the server emits
+        // "N <currency> drop to the ground." lines, distinct shape
+        // from the room-display CashOnGround. Should funnel into the
+        // same policy decision as room-display cash.
+        using Harness h = new();
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+
+        h.Feed("7 silver drop to the ground.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("get 7 silver", h.LastSent);
+        Assert.Single(h.Dispatches);
+        Assert.Equal(("silver", 7, CashPolicy.Collect), h.Dispatches[0]);
+    }
+
+    [Fact]
+    public void CorpseDrop_HonoursIgnorePolicy()
+    {
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Ignore;
+
+        h.Feed("11 copper drop to the ground.");
+
+        Assert.Empty(h.Sent);
+        Assert.Single(h.Dispatches);
+        Assert.Equal(CashPolicy.Ignore, h.Dispatches[0].Policy);
+    }
+
+    [Fact]
+    public void CorpseDrop_AutoGetCashOff_NoDispatch()
+    {
+        using Harness h = new() { AutoGetCashEnabled = false };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+
+        h.Feed("25 gold drop to the ground.");
+
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Dispatches);
+    }
+
+    [Fact]
+    public void CorpseDrop_UnknownCurrency_NoOp()
+    {
+        // Realm-specific name not in our denomination table — silent
+        // skip (no Ignore dispatch either; we don't recognise it as
+        // cash at all).
+        using Harness h = new();
+        h.Feed("50 zorkmid drop to the ground.");
+
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Dispatches);
+    }
+
     private static void FeedLine(Terminal.LineExtractor lines, string text)
     {
         System.Reflection.FieldInfo? field = typeof(Terminal.LineExtractor)

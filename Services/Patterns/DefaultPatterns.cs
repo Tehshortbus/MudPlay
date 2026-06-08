@@ -152,6 +152,15 @@ public static class DefaultPatterns
             @"^You drop(?:ped)? (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
         yield return new RegexPattern(KnownPatterns.CashHidden,
             @"^You hid (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        // Corpse loot — "N <currency> drop to the ground." emitted
+        // after the kill announce. Verb agreement is `drop` for plural
+        // counts; tolerating `drops?` covers any singular-1 variant
+        // the server might emit. CashFromKill is a separate pattern
+        // (vs reusing CashOnGround) so each line shape stays
+        // observable / documented; the CashManager handler funnels
+        // both into the same policy dispatch.
+        yield return new RegexPattern(KnownPatterns.CashFromKill,
+            @"^(?<count>\d+) (?<currency>\w+) drops? to the ground\.");
 
         // Realm-specific room survey — "You notice <list> here." with
         // cash entries (always first) + items. The single-line case

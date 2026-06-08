@@ -128,6 +128,17 @@ public static class KnownPatterns
     /// Lifted from MudProxy <c>CombatSessionTracker.cs:503-505</c>.</summary>
     public const string CashHidden          = "cash.hidden";
 
+    /// <summary>
+    /// "N &lt;coin&gt; drop to the ground." — corpse-spawned cash
+    /// after a monster kill (combat-log shape, distinct from the
+    /// room-display <see cref="CashOnGround"/>). Currency word is the
+    /// short form ("silver", "gold", …) without the "pieces" suffix.
+    /// CashManager dispatches through the same per-currency policy as
+    /// CashOnGround so kill-loot follows the user's Collect / Discard
+    /// / Ignore choices.
+    /// </summary>
+    public const string CashFromKill        = "cash.from-kill";
+
     /// <summary>"You notice &lt;list&gt; here." — the realm-specific
     /// room-survey line. Cash entries appear FIRST (server orders
     /// runic → platinum → gold → copper → silver), followed by items.

@@ -8,10 +8,11 @@ namespace FujinTerm.Game.Cash;
 /// <summary>
 /// Phase 9 PR 9.E — per-currency cash pickup / discard engine.
 /// Subscribes to <see cref="KnownPatterns.CashOnGround"/>,
-/// <see cref="KnownPatterns.CashPickedUp"/>, and
-/// <see cref="KnownPatterns.CashDropped"/>. Dispatches based on
-/// <see cref="CashSettings"/> per-currency
-/// <see cref="CashPolicy"/>.
+/// <see cref="KnownPatterns.CashPickedUp"/>,
+/// <see cref="KnownPatterns.CashDropped"/>, and
+/// <see cref="KnownPatterns.CashFromKill"/> (corpse loot after a
+/// monster dies). Dispatches based on <see cref="CashSettings"/>
+/// per-currency <see cref="CashPolicy"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -82,6 +83,7 @@ public sealed class CashManager : IDisposable
     private readonly IDisposable _droppedSub;
     private readonly IDisposable _hiddenSub;
     private readonly IDisposable _noticeSub;
+    private readonly IDisposable _killDropSub;
     private Terminal.LineExtractor? _lines;
     private string? _noticeBuffer;       // multi-line continuation
     private string? _noticeRawFirst;     // raw first row that started the buffer
@@ -137,6 +139,7 @@ public sealed class CashManager : IDisposable
         // don't double-decrement here vs. there.
         _hiddenSub   = router.Subscribe(KnownPatterns.CashHidden,    OnCashHidden);
         _noticeSub   = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
+        _killDropSub = router.Subscribe(KnownPatterns.CashFromKill,  OnCashFromKill);
     }
 
     /// <summary>Bind the wire sender — typically the gate-wrapped
@@ -249,6 +252,38 @@ public sealed class CashManager : IDisposable
             case CashPolicy.Ignore:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Corpse-loot handler — "N &lt;currency&gt; drop to the ground."
+    /// fires from <see cref="KnownPatterns.CashFromKill"/> after a
+    /// monster dies. Funnels into the same per-currency policy
+    /// dispatch as room-display cash so kill-loot honours the user's
+    /// Collect / Discard / Ignore choices.
+    /// </summary>
+    private void OnCashFromKill(MatchResult m)
+    {
+        if (!_isEnabled()) return;
+
+        // CashFromKill pattern uses 2 groups (count, currency) — the
+        // shared ParseCashLine helper handles 3 groups (singular /
+        // plural branch), so we parse inline here.
+        if (m.Groups.Count < 2) return;
+        if (!int.TryParse(m.Groups[0], out int count)) return;
+        string currency = m.Groups[1].Trim();
+        if (currency.Length == 0) return;
+        if (!CashDenominations.Contains(currency)) return;
+        currency = currency.ToLowerInvariant();
+
+        CashSettings settings = _readSettings();
+        CashPolicy policy = ResolvePolicy(settings, currency);
+
+        _log?.Info(LogCategory,
+            $"corpse-drop currency={currency} count={count} policy={policy}");
+        CashDispatched?.Invoke(currency, count, policy);
+
+        if (policy == CashPolicy.Collect)
+            Send($"get {count} {currency}");
     }
 
     private void OnCashPickedUp(MatchResult m)
@@ -508,6 +543,7 @@ public sealed class CashManager : IDisposable
         _droppedSub.Dispose();
         _hiddenSub.Dispose();
         _noticeSub.Dispose();
+        _killDropSub.Dispose();
         if (_lines is not null) _lines.LineEmitted -= OnLine;
         _lines = null;
     }
