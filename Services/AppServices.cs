@@ -1462,6 +1462,7 @@ public sealed class AppServices
             readSettings: () =>
                 ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            readHangupCommand: () => GameCommands.ExitCommand,
             log: Log);
 
         // Server-side resting state clears on move; drop our latch

@@ -63,7 +63,7 @@ public sealed class CashManagerTests
         h.Feed("There are 50 gold pieces here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get all gold", h.LastSent);
+        Assert.Equal("get gold", h.LastSent);
         Assert.Single(h.Dispatches);
         Assert.Equal(("gold", 50, CashPolicy.Collect), h.Dispatches[0]);
     }
@@ -77,7 +77,7 @@ public sealed class CashManagerTests
         h.Feed("There is a gold piece here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get all gold", h.LastSent);
+        Assert.Equal("get gold", h.LastSent);
         Assert.Equal(1, h.Dispatches[0].Count);
     }
 
@@ -272,35 +272,34 @@ public sealed class CashManagerTests
     // ----- Discard auto-drop -----------------------------------------
 
     [Fact]
-    public void Discard_PickedUpFlaggedCurrency_DropsImmediately()
+    public void Discard_PickedUpFlaggedCurrency_LogsButDoesNotSend()
     {
+        // MajorMUD's specific-amount currency-drop syntax hasn't been
+        // confirmed by the user, so the engine logs the discard
+        // intent + doesn't send a (potentially-wrong) command.
+        // Settings persist so the wire emit can land once the syntax
+        // is verified.
         using Harness h = new();
         h.Settings.CopperPolicy = CashPolicy.Discard;
 
         h.Feed("You picked up 50 copper pieces.");
 
-        // get-all logic doesn't fire because it's OnGround; PickedUp
-        // is the trigger. We should see a `drop all copper` after.
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("drop all copper", lines);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
-    public void Discard_OnSettingsChange_DropsHeld()
+    public void Discard_OnSettingsChange_LogsButDoesNotSend()
     {
         using Harness h = new();
-        // Initially collect — pick up some gold.
         h.Settings.GoldPolicy = CashPolicy.Collect;
         h.Feed("You picked up 100 gold pieces.");
         Assert.Equal(100, h.Cash.HeldCoin("gold"));
         h.Sent.Clear();
 
-        // User flips policy to Discard.
         h.Settings.GoldPolicy = CashPolicy.Discard;
         h.Cash.OnSettingsChanged();
 
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("drop all gold", lines);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
@@ -360,10 +359,10 @@ public sealed class CashManagerTests
         Assert.Equal(2, h.Dispatches.Count);
         Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 56);
         Assert.Contains(h.Dispatches, d => d.Currency == "copper" && d.Count == 198);
-        // Silver is Collect → `get all silver`. Copper is Ignore.
+        // Silver is Collect → `get silver`. Copper is Ignore.
         List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("get all silver", lines);
-        Assert.DoesNotContain("get all copper", lines);
+        Assert.Contains("get silver", lines);
+        Assert.DoesNotContain("get copper", lines);
     }
 
     [Fact]

@@ -71,6 +71,7 @@ public sealed class HealthManager : IDisposable
     private readonly MovementCoordinator _coordinator;
     private readonly Func<HealthSettings> _readSettings;
     private readonly Func<bool> _isEnabled;
+    private readonly Func<string>? _readHangupCommand;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -88,6 +89,23 @@ public sealed class HealthManager : IDisposable
         Func<HealthSettings> readSettings,
         Func<bool> isEnabled,
         LogService? log = null)
+        : this(state, coordinator, readSettings, isEnabled, readHangupCommand: null, log) { }
+
+    /// <summary>
+    /// Constructor with a <c>readHangupCommand</c> selector so the
+    /// hangup-on-emergency path uses the user's configured exit
+    /// command (typically <c>=x</c> or <c>;o</c>, set in Settings →
+    /// Other → Game Exit). Without it, the hangup path no-ops with a
+    /// log warning. AppServices wires
+    /// <c>() =&gt; GameCommands.ExitCommand</c>.
+    /// </summary>
+    public HealthManager(
+        PlayerState state,
+        MovementCoordinator coordinator,
+        Func<HealthSettings> readSettings,
+        Func<bool> isEnabled,
+        Func<string>? readHangupCommand,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -97,6 +115,7 @@ public sealed class HealthManager : IDisposable
         _coordinator = coordinator;
         _readSettings = readSettings;
         _isEnabled = isEnabled;
+        _readHangupCommand = readHangupCommand;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -255,12 +274,14 @@ public sealed class HealthManager : IDisposable
         }
 
         // ----- flee on critical HP/MA mid-combat -------------------
-        // Single-shot per combat so a low-HP fight doesn't burn `flee`
-        // on every HP-changed event. Server-side `flee` picks a random
-        // direction + moves us one room. The user's RunDistance
-        // setting (rooms to flee before re-evaluating) is a future
-        // walker-driven follow-up — first cut just gets us out of the
-        // room.
+        // Run-if-below path stays as a detection-only signal — the
+        // engine logs the threshold crossing so the user (or a
+        // future walker integration) can react. The original `flee`
+        // wire emit was wrong; MajorMUD has no `flee` command, and
+        // the right replacement (direction-aware `run <dir>` /
+        // walker-driven retreat) needs the walker integration that
+        // ships in Cluster 5b's comeback flow. Until then, the
+        // engine just observes.
         if (!_state.InCombat)
         {
             _fledThisCombat = false;
@@ -276,8 +297,8 @@ public sealed class HealthManager : IDisposable
                 string reason = hpRun
                     ? $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}"
                     : $"MA {_state.Ma}/{_state.MaxMa} <= run-trigger={maRunTrigger}";
-                SendCommand("flee");
-                _log?.Info(LogCategory, $"flee {reason}");
+                _log?.Warn(LogCategory,
+                    $"run-threshold crossed but auto-retreat unwired ({reason})");
                 _fledThisCombat = true;
             }
         }
@@ -332,9 +353,19 @@ public sealed class HealthManager : IDisposable
             if (_state.Hp > 0 && _state.Hp <= hangTrigger)
             {
                 _hangFired = true;
-                _log?.Warn(LogCategory,
-                    $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger}");
-                SendCommand("/q");
+                string? hangCmd = _readHangupCommand?.Invoke();
+                if (string.IsNullOrWhiteSpace(hangCmd))
+                {
+                    _log?.Warn(LogCategory,
+                        $"HANGUP threshold crossed (HP {_state.Hp}/{_state.MaxHp} <= {hangTrigger}) " +
+                        $"but no hangup command configured — set Settings → Other → Game Exit.");
+                }
+                else
+                {
+                    _log?.Warn(LogCategory,
+                        $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
+                    SendCommand(hangCmd);
+                }
             }
         }
     }

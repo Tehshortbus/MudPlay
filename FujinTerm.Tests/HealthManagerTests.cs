@@ -25,6 +25,12 @@ public sealed class HealthManagerTests
         public HealthSettings Settings { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
 
+        /// <summary>User-configured hangup command (Settings → Other →
+        /// Game Exit). Default <c>=x</c> matches the default value
+        /// shipped on <c>OtherSettings.GameExitCommand</c>. Set to
+        /// null to test the "not configured" branch.</summary>
+        public string? HangupCommand { get; set; } = "=x";
+
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
@@ -32,6 +38,7 @@ public sealed class HealthManagerTests
             Health = new HealthManager(State, Coordinator,
                 readSettings: () => Settings,
                 isEnabled: () => AutoHealRestEnabled,
+                readHangupCommand: () => HangupCommand ?? string.Empty,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
         }
@@ -436,26 +443,29 @@ public sealed class HealthManagerTests
     public void HpBelowRunTrigger_InCombat_SendsFleeOnce()
     {
         // Default RunIfBelowHp=20% — set HP to 30 against MaxHp=200
-        // (15%) while in combat.
+        // (15%) while in combat. Run-threshold detection latches
+        // _fledThisCombat=true; the wire emit is currently log-only
+        // because MajorMUD has no `flee` command and the right
+        // replacement (walker-driven retreat) ships with Cluster 5b.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
         h.State.Hp = 30;
 
-        Assert.Contains("flee", h.SentLines);
+        Assert.DoesNotContain("flee", h.SentLines);   // engine never sent the bogus command
         Assert.True(h.Health.FledThisCombat);
 
-        // Drop further → no spam.
+        // Drop further → still no spam.
         h.State.Hp = 25;
-        Assert.Equal(1, h.SentLines.Count(l => l == "flee"));
+        Assert.DoesNotContain("flee", h.SentLines);
     }
 
     [Fact]
-    public void HpBelowRunTrigger_OutOfCombat_DoesNotFlee()
+    public void HpBelowRunTrigger_OutOfCombat_DoesNotLatchFlee()
     {
         // Out of combat, low HP just enters the normal rest cycle.
-        // `flee` is combat-specific.
+        // Run-threshold detection is combat-specific.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
@@ -480,42 +490,48 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void FledThisCombat_AllowsFleeOnNextCombat()
+    public void FledThisCombat_ReArmsOnNextCombat()
     {
-        // Flee in fight #1, combat ends, flee should re-arm for #2.
+        // Latch flips in fight #1, clears when combat ends, re-arms
+        // for fight #2.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
         h.State.Hp = 30;
-        Assert.Equal(1, h.SentLines.Count(l => l == "flee"));
+        Assert.True(h.Health.FledThisCombat);
 
         h.State.InCombat = false;
-        h.State.Hp = 100;            // recovered enough to be ~50%
-        h.State.InCombat = true;     // fight #2 begins
-        h.State.Hp = 25;             // low again
-        Assert.Equal(2, h.SentLines.Count(l => l == "flee"));
+        h.State.Hp = 100;
+        Assert.False(h.Health.FledThisCombat);
+
+        h.State.InCombat = true;
+        h.State.Hp = 25;
+        Assert.True(h.Health.FledThisCombat);
     }
 
     [Fact]
-    public void MaBelowRunTrigger_InCombat_SendsFlee()
+    public void MaBelowRunTrigger_InCombat_LatchesFled()
     {
-        // Caster low on MA mid-combat — flee too.
+        // Caster low on MA mid-combat — run-threshold detection
+        // still latches FledThisCombat even though wire emit is
+        // currently log-only.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.MaxMa = 100;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
-        h.State.Hp = 150;            // healthy HP
-        h.State.Ma = 5;              // below default MA run-trigger (10%)
+        h.State.Hp = 150;
+        h.State.Ma = 5;
 
-        Assert.Contains("flee", h.SentLines);
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("flee", h.SentLines);
     }
 
     [Fact]
-    public void NonCasterMaxMaZero_NoFleeFromMa()
+    public void NonCasterMaxMaZero_NoFledFromMa()
     {
-        // Non-caster — MA is 0/0 forever; must not flee from MA path.
+        // Non-caster — MA is 0/0 forever; must not latch from MA path.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.MaxMa = 0;
@@ -524,22 +540,19 @@ public sealed class HealthManagerTests
         h.State.Hp = 150;
         h.State.Ma = 0;
 
-        Assert.DoesNotContain("flee", h.SentLines);
+        Assert.False(h.Health.FledThisCombat);
     }
 
     [Fact]
-    public void FleeAndRest_BothHappen_SamePass()
+    public void RunLatchAndRest_BothHappen_AfterCombatEnds()
     {
-        // HP crosses run-trigger and rest-trigger together (e.g. 30/200
-        // = 15% < both). We flee in combat; once combat ends, the rest
-        // cycle takes over.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
         h.State.Hp = 30;
-        Assert.Contains("flee", h.SentLines);
-        Assert.DoesNotContain("rest", h.SentLines);   // still in combat — no rest
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("rest", h.SentLines);
 
         h.State.InCombat = false;
         Assert.Contains("rest", h.SentLines);
@@ -712,7 +725,7 @@ public sealed class HealthManagerTests
         h.State.HasPromptData = true;
         h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
 
-        Assert.Contains("/q", h.SentLines);
+        Assert.Contains("=x", h.SentLines);
     }
 
     [Fact]
@@ -724,7 +737,7 @@ public sealed class HealthManagerTests
         h.State.HasPromptData = true;
         h.State.Hp = 1;        // would normally trigger
 
-        Assert.DoesNotContain("/q", h.SentLines);
+        Assert.DoesNotContain("=x", h.SentLines);
     }
 
     [Fact]
@@ -735,7 +748,7 @@ public sealed class HealthManagerTests
         h.State.HasPromptData = true;
         h.State.Hp = 50;        // 25% — above 5% hang threshold
 
-        Assert.DoesNotContain("/q", h.SentLines);
+        Assert.DoesNotContain("=x", h.SentLines);
     }
 
     [Fact]
@@ -747,11 +760,11 @@ public sealed class HealthManagerTests
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 5;
-        int hangCount = h.SentLines.Count(l => l == "/q");
+        int hangCount = h.SentLines.Count(l => l == "=x");
         Assert.Equal(1, hangCount);
 
         h.State.Hp = 3;        // even lower — still no second hang
-        Assert.Equal(1, h.SentLines.Count(l => l == "/q"));
+        Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
     }
 
     // ----- gate-history captures asserter --------------------------

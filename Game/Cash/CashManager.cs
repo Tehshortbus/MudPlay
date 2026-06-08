@@ -196,10 +196,12 @@ public sealed class CashManager : IDisposable
 
     /// <summary>
     /// Walk held tallies; for any currency whose policy is Discard
-    /// AND we hold > 0, emit a <c>drop all &lt;coin&gt;</c>. Fires on
-    /// settings change (user just flipped a policy to Discard) and
-    /// on every CashPickedUp (in case we got a Discard-flagged
-    /// currency via inventory transfer / chest loot).
+    /// AND we hold > 0, log the situation. The actual drop command
+    /// is currently unwired — MajorMUD's syntax for dropping a
+    /// specific amount of currency hasn't been confirmed by the
+    /// user yet, and the wrong syntax silently no-ops in-game.
+    /// Settings persist; the engine fires the drop command once
+    /// the syntax lands.
     /// </summary>
     private void AuditHeldForDiscard()
     {
@@ -209,13 +211,9 @@ public sealed class CashManager : IDisposable
         {
             if (count <= 0) continue;
             if (ResolvePolicy(settings, currency) != CashPolicy.Discard) continue;
-            _log?.Info(LogCategory, $"discard audit drop currency={currency} count={count}");
-            Send($"drop all {currency}");
-            // Note: the CashDropped subscription decrements _held
-            // when the server confirms; we don't optimistically
-            // decrement here. If the drop fails for some reason
-            // (cursed coin? unheard of in MajorMUD but possible in
-            // mods), the next audit will re-attempt.
+            _log?.Warn(LogCategory,
+                $"discard policy fired for {currency}={count} but drop command unwired — " +
+                "awaiting confirmation of MajorMUD currency-drop syntax.");
         }
     }
 
@@ -238,7 +236,7 @@ public sealed class CashManager : IDisposable
         switch (policy)
         {
             case CashPolicy.Collect:
-                Send($"get all {currency}");
+                Send($"get {currency}");
                 break;
             case CashPolicy.Discard:
                 // Don't pick up; don't react. The drop-held-discard
@@ -384,7 +382,7 @@ public sealed class CashManager : IDisposable
             CashDispatched?.Invoke(currency!, count, policy);
 
             if (policy == CashPolicy.Collect)
-                Send($"get all {currency}");
+                Send($"get {currency}");
         }
     }
 
