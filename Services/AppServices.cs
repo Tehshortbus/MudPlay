@@ -51,6 +51,16 @@ public sealed class AppServices
     /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
     public LogService Log { get; }
 
+    /// <summary>
+    /// Session-only diagnostic switches surfaced in the Log pane menu
+    /// (Phase 9 — combat-verbose / round-trace umbrella). Consumers
+    /// (e.g. <see cref="Game.Combat.RoundDamageTracker"/>) read this
+    /// instead of per-character settings because verbose tracing isn't
+    /// a per-character affordance — it's a "while I'm debugging right
+    /// now" knob that resets on app launch.
+    /// </summary>
+    public LogDiagnosticState LogDiagnostics { get; } = new();
+
     /// <summary>Docking / floating panel framework (single-UserControl reparented).</summary>
     public FloatingPanelHost Panels { get; }
 
@@ -1370,14 +1380,12 @@ public sealed class AppServices
             log: Log);
 
         // Phase 9 PR 9.0c — RoundDamageTracker. shouldWriteTrace
-        // delegate reads Settings.Other.WriteCombatRoundTrace from
-        // the live profile, so the user can toggle the opt-in trace
-        // file mid-session.
+        // delegate reads the Log pane's combat-diagnostics umbrella
+        // (session-only, no per-profile persistence) so the user can
+        // toggle the per-round trace from the Log menu mid-session.
         RoundDamage = new Game.Combat.RoundDamageTracker(
             Router, PlayerState, Log,
-            shouldWriteTrace: () =>
-                ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other")
-                    .WriteCombatRoundTrace);
+            shouldWriteTrace: () => LogDiagnostics.CombatDiagnostics);
         // Reset round counter + ring on BBS connect to match
         // CombatSessionTracker's session-boundary convention (PR 9.0c
         // doesn't ship CombatSessionTracker — Phase 11 does — but the

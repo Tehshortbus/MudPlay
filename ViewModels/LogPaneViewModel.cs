@@ -23,7 +23,9 @@ namespace FujinTerm.ViewModels;
 public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 {
     private readonly LogService _log;
+    private readonly LogDiagnosticState? _diagnostics;
     private readonly Dictionary<LogSeverity, IBrush> _severityBrushes;
+    private bool _suppressDiagnosticEcho;
     private bool _disposed;
 
     public ObservableCollection<LogPaneRowViewModel> Rows { get; } = new();
@@ -69,6 +71,16 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private bool _autoScroll = true;
 
+    /// <summary>
+    /// Mirror of <see cref="LogDiagnosticState.CombatDiagnostics"/> —
+    /// session-only umbrella that gates the per-round combat trace
+    /// file + (future) verbose Debug emission from the combat-engine
+    /// categories. Lives on the Log pane menu rather than per-character
+    /// settings because verbose tracing is a transient debugging
+    /// affordance, not a per-character preference. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _combatDiagnostics;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private int _matchCount;
@@ -76,12 +88,55 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     public string StatusText => $"{MatchCount:N0} / {_log.Snapshot().Length:N0} entries";
 
     public LogPaneViewModel(LogService log, Application app)
+        : this(log, app, diagnostics: null) { }
+
+    /// <summary>
+    /// Overload that binds the pane to a session-shared
+    /// <see cref="LogDiagnosticState"/> so the
+    /// <see cref="CombatDiagnostics"/> toggle is the live umbrella for
+    /// combat-related verbose tracing (consumed by
+    /// <see cref="Game.Combat.RoundDamageTracker"/>). Without the
+    /// binding, the pane is purely a viewer and the toggle is local
+    /// to this window — fine for tests, but the running app should
+    /// always pass <see cref="AppServices.LogDiagnostics"/>.
+    /// </summary>
+    public LogPaneViewModel(LogService log, Application app, LogDiagnosticState? diagnostics)
     {
         _log = log;
+        _diagnostics = diagnostics;
         _severityBrushes = BuildSeverityBrushMap(app);
+
+        if (_diagnostics is not null)
+        {
+            _suppressDiagnosticEcho = true;
+            _combatDiagnostics = _diagnostics.CombatDiagnostics;
+            _suppressDiagnosticEcho = false;
+            _diagnostics.Changed += OnDiagnosticsChanged;
+        }
 
         Rebuild();
         _log.EntryAdded += OnEntryAdded;
+    }
+
+    private void OnDiagnosticsChanged()
+    {
+        // Another window flipped the umbrella — mirror it here without
+        // echoing back into _diagnostics (avoid a feedback loop).
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_diagnostics is null) return;
+            if (CombatDiagnostics == _diagnostics.CombatDiagnostics) return;
+            _suppressDiagnosticEcho = true;
+            CombatDiagnostics = _diagnostics.CombatDiagnostics;
+            _suppressDiagnosticEcho = false;
+        });
+    }
+
+    partial void OnCombatDiagnosticsChanged(bool value)
+    {
+        if (_suppressDiagnosticEcho) return;
+        if (_diagnostics is null) return;
+        _diagnostics.CombatDiagnostics = value;
     }
 
     private void OnEntryAdded(LogEntry entry)
@@ -176,5 +231,6 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         _log.EntryAdded -= OnEntryAdded;
+        if (_diagnostics is not null) _diagnostics.Changed -= OnDiagnosticsChanged;
     }
 }

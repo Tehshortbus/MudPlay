@@ -2099,7 +2099,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         LogPaneWindow window = new()
         {
-            DataContext = new LogPaneViewModel(AppServices.Current.Log, Application.Current),
+            DataContext = new LogPaneViewModel(
+                AppServices.Current.Log,
+                Application.Current,
+                AppServices.Current.LogDiagnostics),
         };
         window.Closed += (_, _) => _logPane = null;
         _logPane = window;

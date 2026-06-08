@@ -147,48 +147,15 @@ public sealed class OtherSettings
     /// </summary>
     public bool LogMovementHopTiming { get; set; }
 
-    // ----- Phase 9 verbose diagnostic toggles -----------------------
-    // Per docs/10-phase-9-automation-engines.md § Cross-cut 3.
-    // Each toggle gates whether its category's Debug-severity log lines
-    // reach the LogPane. Info+ severity for the same category is always
-    // on; these only control the verbose Debug rows. Off by default —
-    // verbose channels are loud and only useful when troubleshooting a
-    // specific subsystem.
-
-    /// <summary>Enable Debug-severity logs from <c>Combat</c> category
-    /// (CombatManager swing decisions + target picks + weapon swaps).
-    /// Off by default.</summary>
-    public bool VerboseCombat { get; set; }
-
-    /// <summary>Enable Debug-severity logs from <c>RoomClassifier</c>
-    /// category (Player / Monster / Unknown decisions per Also-Here
-    /// entry, including the prefix-strip trail). Off by default.</summary>
-    public bool VerboseRoomClassifier { get; set; }
-
-    /// <summary>Enable Debug-severity logs from <c>Casting</c> category
-    /// (CastingDirector tier evaluation + candidate scoring +
-    /// per-tier-1/2/3 trace). Off by default.</summary>
-    public bool VerboseCasting { get; set; }
-
-    /// <summary>Enable Debug-severity logs from <c>Cash</c> category
-    /// (CashManager pick / drop decisions + in-flight deltas +
-    /// encumbrance gates). Off by default.</summary>
-    public bool VerboseCash { get; set; }
-
-    /// <summary>Enable Debug-severity logs from <c>Stealth</c> category
-    /// (StealthManager FSM transitions + silent-loss detection).
-    /// Off by default.</summary>
-    public bool VerboseStealth { get; set; }
-
-    /// <summary>
-    /// When <c>true</c>, <see cref="Game.Combat.RoundDamageTracker"/>
-    /// writes one row per combat round to
-    /// <c>Data/Logs/combat-{sessionStart}.log</c> with the full round
-    /// detail (observed lines + pre/post HP/MA snapshots + gate states +
-    /// decisions taken). Off by default — independent of the LogPane
-    /// Verbose toggles above.
-    /// </summary>
-    public bool WriteCombatRoundTrace { get; set; }
+    // Note: the former Phase 9 per-character verbose toggles
+    // (VerboseCombat / VerboseRoomClassifier / VerboseCasting /
+    // VerboseCash / VerboseStealth) + WriteCombatRoundTrace lived
+    // here briefly. They moved to the Log pane menu as a single
+    // "Combat diagnostics" umbrella switch (session-only, not
+    // persisted) — see Services/LogDiagnosticState.cs. Verbose tracing
+    // is a "while I'm debugging right now" affordance, not a per-
+    // character preference, and keeping it off the profile saves it
+    // from leaking on between sessions.
 
     // ----- Run-away behavior (HealthManager + walker integration) ---
     // Triggered by HealthSettings.RunIfBelowHp crossing. Flee

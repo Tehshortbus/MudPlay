@@ -53,6 +53,17 @@
                               Content="Auto-scroll"
                               Foreground="{StaticResource ChromeFgSecBrush}"
                               FontSize="11"/>
+
+                    <!-- Session-only umbrella for combat-related verbose
+                         tracing + the per-round combat trace file.
+                         Replaces the old per-character toggles that
+                         lived under Settings → Other. Off by default —
+                         only flip on while troubleshooting. -->
+                    <CheckBox IsChecked="{Binding CombatDiagnostics}"
+                              Content="Combat diagnostics"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"
+                              ToolTip.Tip="Session-only umbrella: enables verbose Debug emission from combat-engine categories AND writes the per-round trace file at Data/Logs/combat-{sessionStart}.log. Off by default; resets on app launch."/>
                 </StackPanel>
 
                 <TextBox Grid.Column="3" MinWidth="220"
