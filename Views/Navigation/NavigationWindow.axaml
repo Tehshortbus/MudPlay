@@ -565,6 +565,25 @@
                         </Grid>
                         <TextBlock Text="Teleport (CMD)" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
+                    <!-- Edge colours. Trap-red and action-magenta both
+                         tint the corridor line between rooms (not the
+                         room cells). Action edges = exits requiring
+                         one or more in-room actions to traverse —
+                         e.g. lever pulls, button presses. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Line StartPoint="0,7" EndPoint="14,7" Stroke="#DC3C3C" StrokeThickness="2"/>
+                        </Grid>
+                        <TextBlock Text="Trapped exit" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Line StartPoint="0,7" EndPoint="14,7" Stroke="#8B008B" StrokeThickness="2"/>
+                        </Grid>
+                        <TextBlock Text="Action required" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
