@@ -154,6 +154,23 @@ public sealed class RoomEntryWatcherTests
     }
 
     [Fact]
+    public void KnownMonster_LocativePreposition_In_AlsoParses()
+    {
+        // Verified live: "A carrion beast creeps in the room from
+        // nowhere." Slow-creep verbs ("creeps", "slithers", etc.)
+        // use locative `in` rather than directional `into`.
+        using Harness h = new();
+        h.AddMonster(1, "carrion beast");
+
+        h.Feed("A carrion beast creeps in the room from nowhere.");
+
+        Assert.Single(h.Arrivals);
+        Assert.Equal(EntityKind.Monster, h.Arrivals[0].Kind);
+        Assert.Equal("carrion beast", h.Arrivals[0].Name);
+        Assert.Equal("nowhere", h.Arrivals[0].Direction);
+    }
+
+    [Fact]
     public void KnownPlayer_AddedAsPlayer()
     {
         using Harness h = new();

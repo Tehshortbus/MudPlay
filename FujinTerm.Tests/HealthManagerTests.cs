@@ -31,6 +31,12 @@ public sealed class HealthManagerTests
         /// null to test the "not configured" branch.</summary>
         public string? HangupCommand { get; set; } = "=x";
 
+        /// <summary>When true, HealthManager's rest-out branch skips —
+        /// mirrors CombatStateTracker.HasEngageableHostiles in app code.
+        /// Defaults false (room clear) so existing tests don't need to
+        /// touch it.</summary>
+        public bool HostilesPresent { get; set; }
+
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
@@ -39,6 +45,11 @@ public sealed class HealthManagerTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoHealRestEnabled,
                 readHangupCommand: () => HangupCommand ?? string.Empty,
+                getActiveMovementEngine: null,
+                getLastSentDirection: null,
+                readOtherSettings: null,
+                readCombatSettings: null,
+                hasEngageableHostiles: () => HostilesPresent,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
         }
@@ -198,6 +209,72 @@ public sealed class HealthManagerTests
         h.State.InCombat = false;    // combat just ended
         Assert.True(h.Health.RestInFlight);
         Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void GateAsserted_HostilesInRoom_DoesNotRest()
+    {
+        // User direction: "if a room has hostiles it will break resting
+        // every combat round preventing you from resting, so you need
+        // to clear the room and then rest". Block the rest-out branch
+        // while CombatStateTracker says a hostile is here.
+        using Harness h = new() { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void GateAsserted_RoomCleared_ThenRest()
+    {
+        // We took damage while a hostile is alive — gate held but rest
+        // blocked. When CombatManager kills it (HasEngageableHostiles
+        // flips false), the next Evaluate tick fires rest.
+        using Harness h = new() { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+        Assert.False(h.Health.RestInFlight);
+
+        h.HostilesPresent = false;   // mob died → room cleared
+        h.Health.Evaluate();          // CombatStateTracker would call this via the
+                                       // standard property-changed plumbing; tests
+                                       // drive it explicitly.
+
+        Assert.True(h.Health.RestInFlight);
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void RestingAndHostileArrives_DoesNotReSpamRest()
+    {
+        // While resting, a new hostile walks in. The rest gets broken
+        // server-side; our latch drops via room-change or InCombat flip.
+        // Until CombatManager clears the new mob, we must NOT spam
+        // another rest.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Contains("rest", h.SentLines);
+        int firstRestCount = h.SentLines.Count(l => l == "rest");
+
+        // Mob arrived → CombatStateTracker flips HasEngageableHostiles
+        // true; our latch is still _restInFlight=true until rest breaks.
+        h.HostilesPresent = true;
+        // Server breaks rest because we took damage / position changed —
+        // simulate the position flip + Evaluate tick.
+        h.State.Position = PlayerPosition.Standing;
+        h.Health.Evaluate();
+
+        // No second rest while hostile is here.
+        int afterHostileRestCount = h.SentLines.Count(l => l == "rest");
+        Assert.Equal(firstRestCount, afterHostileRestCount);
     }
 
     [Fact]
@@ -587,6 +664,7 @@ public sealed class HealthManagerTests
         public Models.Profile.CombatSettings Combat { get; set; } = new();
         public FakeFleeEngine? Engine { get; set; } = new();
         public Game.Map.Direction? LastSent { get; set; } = Game.Map.Direction.N;
+        public bool HostilesPresent { get; set; }
 
         public FleeHarness()
         {
@@ -599,6 +677,7 @@ public sealed class HealthManagerTests
                 getLastSentDirection: () => LastSent,
                 readOtherSettings: () => Other,
                 readCombatSettings: () => Combat,
+                hasEngageableHostiles: () => HostilesPresent,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
         }

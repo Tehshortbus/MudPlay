@@ -76,6 +76,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Map.Direction?>? _getLastSentDirection;
     private readonly Func<Models.Profile.OtherSettings>? _readOtherSettings;
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
+    private readonly Func<bool>? _hasEngageableHostiles;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -120,6 +121,7 @@ public sealed class HealthManager : IDisposable
                getLastSentDirection: null,
                readOtherSettings: null,
                readCombatSettings: null,
+               hasEngageableHostiles: null,
                log) { }
 
     /// <summary>
@@ -138,6 +140,13 @@ public sealed class HealthManager : IDisposable
     /// <item><c>readOtherSettings</c> — for
     /// <see cref="Models.Profile.OtherSettings.RunDirection"/> and
     /// <see cref="Models.Profile.OtherSettings.BreakBeforeFleeing"/>.</item>
+    /// <item><c>hasEngageableHostiles</c> — returns true while the room
+    /// contains at least one engageable monster. Gates the rest-out
+    /// branch so we don't spam <c>rest</c> every tick while a hostile
+    /// keeps breaking it (per user direction: "if a room has hostiles
+    /// it will break resting every combat round preventing you from
+    /// resting, so you need to clear the room and then rest"). Typically
+    /// wired to <see cref="CombatStateTracker.HasEngageableHostiles"/>.</item>
     /// </list>
     /// </summary>
     public HealthManager(
@@ -150,6 +159,7 @@ public sealed class HealthManager : IDisposable
         Func<Map.Direction?>? getLastSentDirection,
         Func<Models.Profile.OtherSettings>? readOtherSettings,
         Func<Models.Profile.CombatSettings>? readCombatSettings,
+        Func<bool>? hasEngageableHostiles,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -165,6 +175,7 @@ public sealed class HealthManager : IDisposable
         _getLastSentDirection = getLastSentDirection;
         _readOtherSettings = readOtherSettings;
         _readCombatSettings = readCombatSettings;
+        _hasEngageableHostiles = hasEngageableHostiles;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -374,7 +385,19 @@ public sealed class HealthManager : IDisposable
         // is what actually exits the (resting) state.
         bool anyGate = _hpGateAsserted || _maGateAsserted;
 
-        if (anyGate && !_state.InCombat && !_restInFlight)
+        // Don't even try to rest while the room contains an engageable
+        // hostile — every combat round breaks rest, so spamming `rest`
+        // burns a wire round-trip per swing and we still don't recover.
+        // Wait for CombatManager to clear the room (CombatStateTracker
+        // flips HasEngageableHostiles false on the next Also-Here),
+        // then this same Evaluate tick re-enters here with a clean
+        // gate and the rest goes out. If a fresh mob arrives during
+        // rest, NoteRoomChanged + a new EntitiesObserved will set
+        // HasEngageableHostiles true again and the next breach repeats
+        // the cycle (kill → rest → kill → rest), as per user direction.
+        bool hostilesPresent = _hasEngageableHostiles?.Invoke() ?? false;
+
+        if (anyGate && !_state.InCombat && !_restInFlight && !hostilesPresent)
         {
             // Pick rest vs meditate based on user settings + which
             // pool is the proximate trigger.

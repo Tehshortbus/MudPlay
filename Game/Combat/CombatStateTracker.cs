@@ -70,6 +70,17 @@ public sealed class CombatStateTracker : IDisposable
     private bool _gateAsserted;
     private bool _disposed;
 
+    /// <summary>
+    /// True while the room currently contains at least one engageable
+    /// (Enemy-relationship, killable) monster. Drives the
+    /// <see cref="MovementCoordinator.CombatGate"/> + lets HealthManager
+    /// gate the rest decision so we don't try to rest while a mob is
+    /// here — every combat round would otherwise break rest and we'd
+    /// never actually recover. Clears authoritatively when an Also-Here
+    /// observation shows no engageable monsters (room cleared).
+    /// </summary>
+    public bool HasEngageableHostiles => _gateAsserted;
+
     public CombatStateTracker(
         MessageRouter router,
         MovementCoordinator coordinator,

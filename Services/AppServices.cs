@@ -1472,6 +1472,12 @@ public sealed class AppServices
                 ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
             readCombatSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            // Don't try to rest while engageable hostiles are in the
+            // room — every combat round would otherwise break rest.
+            // CombatStateTracker owns the same boolean it uses to
+            // assert the CombatGate, so we stay in sync with the
+            // movement gate logic.
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);
 
         // Server-side resting state clears on move; drop our latch

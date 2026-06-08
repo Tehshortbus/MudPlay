@@ -183,8 +183,12 @@ public static class DefaultPatterns
         // single \w+ capture. Direction tolerates hyphens for
         // potential "north-east" variants alongside the canonical
         // cardinals + "nowhere" (script spawn).
+        // Preposition tolerates `in` and `into` — verified server output
+        // for slow-creep verbs ("A carrion beast creeps in the room from
+        // nowhere.") which use the locative `in` rather than the
+        // directional `into` most other entry verbs do.
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
-            @"^(?<name>.+?) \w+ into the room from (?<direction>[\w-]+)\.\s*$");
+            @"^(?<name>.+?) \w+ in(?:to)? the room from (?<direction>[\w-]+)\.\s*$");
 
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the
