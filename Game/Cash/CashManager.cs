@@ -196,12 +196,11 @@ public sealed class CashManager : IDisposable
 
     /// <summary>
     /// Walk held tallies; for any currency whose policy is Discard
-    /// AND we hold > 0, log the situation. The actual drop command
-    /// is currently unwired — MajorMUD's syntax for dropping a
-    /// specific amount of currency hasn't been confirmed by the
-    /// user yet, and the wrong syntax silently no-ops in-game.
-    /// Settings persist; the engine fires the drop command once
-    /// the syntax lands.
+    /// AND we hold &gt; 0, emit <c>drop &lt;amount&gt; &lt;type&gt;</c>
+    /// (the confirmed MajorMUD syntax for currency drops). The
+    /// CashDropped subscription decrements <c>_held</c> when the
+    /// server confirms; we don't optimistically decrement so the
+    /// audit retries on the next firing if the drop fails.
     /// </summary>
     private void AuditHeldForDiscard()
     {
@@ -211,9 +210,8 @@ public sealed class CashManager : IDisposable
         {
             if (count <= 0) continue;
             if (ResolvePolicy(settings, currency) != CashPolicy.Discard) continue;
-            _log?.Warn(LogCategory,
-                $"discard policy fired for {currency}={count} but drop command unwired — " +
-                "awaiting confirmation of MajorMUD currency-drop syntax.");
+            _log?.Info(LogCategory, $"discard drop currency={currency} count={count}");
+            Send($"drop {count} {currency}");
         }
     }
 

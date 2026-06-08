@@ -272,23 +272,19 @@ public sealed class CashManagerTests
     // ----- Discard auto-drop -----------------------------------------
 
     [Fact]
-    public void Discard_PickedUpFlaggedCurrency_LogsButDoesNotSend()
+    public void Discard_PickedUpFlaggedCurrency_DropsImmediately()
     {
-        // MajorMUD's specific-amount currency-drop syntax hasn't been
-        // confirmed by the user, so the engine logs the discard
-        // intent + doesn't send a (potentially-wrong) command.
-        // Settings persist so the wire emit can land once the syntax
-        // is verified.
         using Harness h = new();
         h.Settings.CopperPolicy = CashPolicy.Discard;
 
         h.Feed("You picked up 50 copper pieces.");
 
-        Assert.Empty(h.Sent);
+        List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("drop 50 copper", lines);
     }
 
     [Fact]
-    public void Discard_OnSettingsChange_LogsButDoesNotSend()
+    public void Discard_OnSettingsChange_DropsHeld()
     {
         using Harness h = new();
         h.Settings.GoldPolicy = CashPolicy.Collect;
@@ -299,7 +295,8 @@ public sealed class CashManagerTests
         h.Settings.GoldPolicy = CashPolicy.Discard;
         h.Cash.OnSettingsChanged();
 
-        Assert.Empty(h.Sent);
+        List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Contains("drop 100 gold", lines);
     }
 
     [Fact]

@@ -189,4 +189,34 @@ public sealed class OtherSettings
     /// Verbose toggles above.
     /// </summary>
     public bool WriteCombatRoundTrace { get; set; }
+
+    // ----- Run-away behavior (HealthManager + walker integration) ---
+    // Triggered by HealthSettings.RunIfBelowHp crossing. Flee
+    // distance is CombatSettings.RunDistance (rooms to move before
+    // re-evaluating). These two knobs shape HOW the retreat moves.
+
+    /// <summary>Direction strategy when fleeing. Forward continues
+    /// along the active walker path (away from where we entered);
+    /// Backward retraces the steps we just came from.</summary>
+    public RunDirection RunDirection { get; set; } = RunDirection.Backward;
+
+    /// <summary>When true, HealthManager sends <c>break</c> before
+    /// the first flee move so the auto-attack disengages and the
+    /// move can land cleanly. When false the flee starts mid-fight
+    /// and the server may reject the first move because we're still
+    /// engaged — fast option for users who'd rather take the chance
+    /// than waste a round on <c>break</c>.</summary>
+    public bool BreakBeforeFleeing { get; set; } = true;
+}
+
+/// <summary>Direction strategy for the auto-flee path.</summary>
+public enum RunDirection
+{
+    /// <summary>Retrace the path we just walked in on. Default —
+    /// safer because we know what rooms we passed through.</summary>
+    Backward,
+
+    /// <summary>Continue along the active walker path away from
+    /// where we came in. Faster but moves into unscouted rooms.</summary>
+    Forward,
 }
