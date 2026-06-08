@@ -194,8 +194,58 @@ public static class RoomTooltipBuilder
 
             string hintRender = FormatExitHint(exit, data);
             if (hintRender.Length > 0) sb.Append(" (").Append(hintRender).Append(')');
+
+            // Multi-line per-step breakdown for action-required exits.
+            // The inline hint above carries the summary ("Needs N
+            // actions"); this block names the trigger room + commands
+            // for each step so a glance at the tooltip is enough to
+            // know where to go (e.g. "go to room 9/870 and pull lever"
+            // for map 9 room 1012's east exit on v1.11p).
+            if (exit.Hint == RoomExitHint.MultiActionHidden
+                && exit.MultiAction is { Actions.Count: > 0 } maDetail)
+            {
+                AppendMultiActionDetail(sb, room.Key, maDetail, graph);
+            }
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Per-step breakdown rendered beneath a MultiActionHidden exit:
+    /// one indented line per <see cref="ExitAction"/> with the trigger
+    /// room (when the action lives in another room) plus its
+    /// alternative commands. Mirrors the format the walker actually
+    /// executes — the user sees the same routing the path expander
+    /// would do.
+    /// </summary>
+    private static void AppendMultiActionDetail(
+        StringBuilder sb, RoomKey hostRoom, MultiActionExitData ma, RoomGraphManager graph)
+    {
+        for (int i = 0; i < ma.Actions.Count; i++)
+        {
+            ExitAction step = ma.Actions[i];
+            sb.Append('\n').Append("    ");
+            // Step number — match the parser's #N for the user, so it
+            // lines up with the raw MDB cell if they ever look.
+            sb.Append(step.StepNumber).Append(". ");
+
+            // Trigger location: same room if RemoteSourceRoom is null
+            // (action runs from the exit's host room), or the named
+            // remote room otherwise. The remote-room name comes from
+            // the graph when available; fall back to the bare RoomKey
+            // when the room sits outside the active set.
+            if (step.RemoteSourceRoom is { } remote)
+            {
+                Room? at = graph.GetRoom(remote);
+                string name = at is not null ? at.DisplayName : remote.ToString();
+                sb.Append("at ").Append(name).Append(' ').Append('(').Append(remote).Append("): ");
+            }
+            else
+            {
+                sb.Append("here: ");
+            }
+            sb.Append(string.Join(" / ", step.Commands));
+        }
     }
 
     /// <summary>

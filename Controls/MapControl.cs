@@ -401,6 +401,11 @@ public sealed class MapControl : Control
     // a lever pull elsewhere before the walker can step E. Distinct
     // from trap red (more dangerous, takes precedence at render time).
     private static readonly IPen   ActionPen     = new Pen(new SolidColorBrush(Color.Parse("#8B008B")), 2.0);
+    // Dark cyan for plain hidden exits revealed via `sea <dir>`
+    // (RoomExitHint.SearchableHidden) — e.g. map 9 / room 1031 on
+    // v1.11p. Distinct from action-magenta (no prerequisite action,
+    // just a search) and from trap-red.
+    private static readonly IPen   HiddenPen     = new Pen(new SolidColorBrush(Color.Parse("#008B8B")), 2.0);
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
@@ -1024,15 +1029,21 @@ public sealed class MapControl : Control
 
                 bool isTrap = IsTrapEdge(source, dir)
                            || IsTrapEdge(target, Opposite(dir));
-                // Trap rendering wins over action-required colouring —
-                // a trap is critical info ("don't walk here unless
-                // disarmed"); action requirements are routing info.
-                // We don't bother computing the action flag when the
-                // trap one is already set.
+                // Priority at render time: trap > action > hidden >
+                // plain. Trap-red is critical safety info ("don't
+                // walk here unless disarmed"); action-magenta is
+                // routing info ("needs a lever pulled first");
+                // hidden-cyan is reveal info ("needs sea <dir>").
                 bool isAction = !isTrap
                     && (IsActionRequiredEdge(source, dir)
                      || IsActionRequiredEdge(target, Opposite(dir)));
-                IPen pen = isTrap ? TrapPen : (isAction ? ActionPen : ExitPen);
+                bool isHidden = !isTrap && !isAction
+                    && (IsHiddenEdge(source, dir)
+                     || IsHiddenEdge(target, Opposite(dir)));
+                IPen pen = isTrap   ? TrapPen
+                         : isAction ? ActionPen
+                         : isHidden ? HiddenPen
+                         : ExitPen;
 
                 if (Layout.CoordToRoom.ContainsKey(target))
                 {
@@ -1076,6 +1087,22 @@ public sealed class MapControl : Control
         if (Graph.GetRoom(key) is not { } room) return false;
         if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return false;
         return exit.Hint == RoomExitHint.MultiActionHidden;
+    }
+
+    /// <summary>
+    /// True when the exit at <paramref name="coord"/> heading
+    /// <paramref name="dir"/> is a <see cref="RoomExitHint.SearchableHidden"/>
+    /// — present but masked from "Obvious exits:" until the player
+    /// runs <c>sea &lt;dir&gt;</c>. Same lookup pattern as
+    /// <see cref="IsActionRequiredEdge"/>.
+    /// </summary>
+    private bool IsHiddenEdge((int X, int Y) coord, Direction dir)
+    {
+        if (Graph is null || Layout is null) return false;
+        if (!Layout.CoordToRoom.TryGetValue(coord, out RoomKey key)) return false;
+        if (Graph.GetRoom(key) is not { } room) return false;
+        if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return false;
+        return exit.Hint == RoomExitHint.SearchableHidden;
     }
 
     private static ((int X, int Y) A, (int X, int Y) B) SortPair((int X, int Y) a, (int X, int Y) b)

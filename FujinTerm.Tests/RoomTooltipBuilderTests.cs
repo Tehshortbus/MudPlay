@@ -337,6 +337,55 @@ public sealed class RoomTooltipBuilderTests : IDisposable
 
         Assert.Contains("Needs 1 action: say 'Temar Eldanti' / say Temar Eldanti / speak Temar Eldanti", text);
         Assert.DoesNotContain("(MultiActionHidden)", text);
+        // Per-step breakdown beneath the exit line — names the trigger
+        // location (same room) + the alternative commands. Separate
+        // surface from the inline summary so a glance at the tooltip
+        // tells the user where to go without re-parsing the parens.
+        Assert.Contains("1. here: say 'Temar Eldanti' / say Temar Eldanti / speak Temar Eldanti", text);
+    }
+
+    [Fact]
+    public void Build_MultiActionHiddenExit_RemoteTrigger_NamesSourceRoom()
+    {
+        // When the action data lives in a DIFFERENT room than the
+        // exit it unlocks, the per-step breakdown should call that
+        // out so the user knows where to go and execute the command.
+        // E.g. a "pull lever" in room 9/870 unlocking 9/1012's east
+        // exit. The breakdown reads "at {dest name} ({key}): pull lever"
+        // rather than the same-room "here:" prefix.
+        const string remoteActionRooms = """
+            [
+              { "Map Number": 9, "Room Number": 1012, "Name": "Vault Door",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "0",
+                "E": "9/1013 (Hidden/Needs 1 Actions, any order)",
+                "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 870, "Name": "Lever Room",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "Action [on the E exit of room 9/1012]: pull lever",
+                "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1013, "Name": "Treasure Vault",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "9/1012",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), remoteActionRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(9, 1012))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        // Inline summary still names the action; remote breakdown lands
+        // on its own line with the source-room name + key.
+        Assert.Contains("Needs 1 action: pull lever", text);
+        Assert.Contains("1. at Lever Room (9/870): pull lever", text);
     }
 
     [Fact]
