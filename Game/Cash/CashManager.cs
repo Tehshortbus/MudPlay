@@ -19,7 +19,9 @@ namespace FujinTerm.Game.Cash;
 /// </para>
 /// <list type="bullet">
 /// <item><b>CashOnGround → policy dispatch</b>. Collect →
-/// <c>get all &lt;coin&gt;</c>. Discard / Ignore → no action.</item>
+/// <c>get &lt;count&gt; &lt;coin&gt;</c> with the exact observed
+/// count (specific amounts keep encumbrance / weight tracking
+/// deterministic). Discard / Ignore → no action.</item>
 /// <item><b>CashPickedUp / CashDropped → tally update</b>. Held
 /// counts exposed via <see cref="HeldCoin"/> for the wealth-
 /// threshold check.</item>
@@ -234,7 +236,11 @@ public sealed class CashManager : IDisposable
         switch (policy)
         {
             case CashPolicy.Collect:
-                Send($"get {currency}");
+                // Specific amount (not bare `get <currency>` which
+                // would grab all available) so encumbrance / weight
+                // tracking can do exact arithmetic instead of waiting
+                // for the wealth display to refresh.
+                Send($"get {count} {currency}");
                 break;
             case CashPolicy.Discard:
                 // Don't pick up; don't react. The drop-held-discard
@@ -380,7 +386,7 @@ public sealed class CashManager : IDisposable
             CashDispatched?.Invoke(currency!, count, policy);
 
             if (policy == CashPolicy.Collect)
-                Send($"get {currency}");
+                Send($"get {count} {currency}");
         }
     }
 

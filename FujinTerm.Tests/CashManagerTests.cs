@@ -55,7 +55,7 @@ public sealed class CashManagerTests
     // ----- per-currency policy dispatch -------------------------------
 
     [Fact]
-    public void OnGround_Plural_CollectsViaGetAll()
+    public void OnGround_Plural_CollectsWithExactCount()
     {
         using Harness h = new();
         h.Settings.GoldPolicy = CashPolicy.Collect;
@@ -63,7 +63,7 @@ public sealed class CashManagerTests
         h.Feed("There are 50 gold pieces here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get gold", h.LastSent);
+        Assert.Equal("get 50 gold", h.LastSent);
         Assert.Single(h.Dispatches);
         Assert.Equal(("gold", 50, CashPolicy.Collect), h.Dispatches[0]);
     }
@@ -77,7 +77,7 @@ public sealed class CashManagerTests
         h.Feed("There is a gold piece here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get gold", h.LastSent);
+        Assert.Equal("get 1 gold", h.LastSent);
         Assert.Equal(1, h.Dispatches[0].Count);
     }
 
@@ -356,10 +356,10 @@ public sealed class CashManagerTests
         Assert.Equal(2, h.Dispatches.Count);
         Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 56);
         Assert.Contains(h.Dispatches, d => d.Currency == "copper" && d.Count == 198);
-        // Silver is Collect → `get silver`. Copper is Ignore.
+        // Silver is Collect → `get 56 silver`. Copper is Ignore.
         List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("get silver", lines);
-        Assert.DoesNotContain("get copper", lines);
+        Assert.Contains("get 56 silver", lines);
+        Assert.DoesNotContain(lines, l => l.StartsWith("get") && l.Contains("copper"));
     }
 
     [Fact]
