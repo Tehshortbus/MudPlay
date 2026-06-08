@@ -75,6 +75,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Map.IRecoverableEngine?>? _getActiveMovementEngine;
     private readonly Func<Map.Direction?>? _getLastSentDirection;
     private readonly Func<Models.Profile.OtherSettings>? _readOtherSettings;
+    private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -84,6 +85,10 @@ public sealed class HealthManager : IDisposable
     private bool _restConfirmedByPrompt; // observed (Resting) since the last rest emit
     private bool _fledThisCombat;        // sent flee, awaiting combat to end
     private bool _hangFired;             // disconnect-on-emergency single-shot per session
+    private Map.IRecoverableEngine? _fleeEngine;     // engine we paused mid-flee
+    private Map.Direction _fleeDirection;             // sustained direction for multi-step flee
+    private int _fleeStepsRemaining;                 // moves left before flee completes
+    private Map.RoomKey? _lastKnownRoom;             // updated on every NoteRoomChanged
     private bool _disposed;
 
     public HealthManager(
@@ -114,6 +119,7 @@ public sealed class HealthManager : IDisposable
                getActiveMovementEngine: null,
                getLastSentDirection: null,
                readOtherSettings: null,
+               readCombatSettings: null,
                log) { }
 
     /// <summary>
@@ -143,6 +149,7 @@ public sealed class HealthManager : IDisposable
         Func<Map.IRecoverableEngine?>? getActiveMovementEngine,
         Func<Map.Direction?>? getLastSentDirection,
         Func<Models.Profile.OtherSettings>? readOtherSettings,
+        Func<Models.Profile.CombatSettings>? readCombatSettings,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -157,6 +164,7 @@ public sealed class HealthManager : IDisposable
         _getActiveMovementEngine = getActiveMovementEngine;
         _getLastSentDirection = getLastSentDirection;
         _readOtherSettings = readOtherSettings;
+        _readCombatSettings = readCombatSettings;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -339,6 +347,24 @@ public sealed class HealthManager : IDisposable
             }
         }
 
+        // Auto-resume — when a fled engine is paused AND HP has
+        // climbed back above the run-trigger AND no more flee steps
+        // are queued, hand control back to the engine. Backward
+        // mode retraces its path from the current room; Forward
+        // continues toward the original destination.
+        if (_fleeEngine is not null && _fleeStepsRemaining <= 0 && _state.MaxHp > 0)
+        {
+            int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
+            if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
+            {
+                _log?.Info(LogCategory,
+                    $"flee complete — resuming engine={_fleeEngine.Name} at {room} " +
+                    $"(HP {_state.Hp}/{_state.MaxHp} > run-trigger={hpRunTrigger})");
+                _fleeEngine.ResumeAfterRecovery(room);
+                _fleeEngine = null;
+            }
+        }
+
         // ----- rest pacing ------------------------------------------
         // On recovery we send the user's configured post-rest chain
         // (if any) and clear _restInFlight. No "stand" — that's not a
@@ -439,17 +465,30 @@ public sealed class HealthManager : IDisposable
         }
 
         // Pause the engine first so it doesn't queue planned steps
-        // on top of our flee move. Engine resumes when HP recovers
-        // (follow-up wiring), or when the user manually toggles the
-        // engine via the Navigation window.
+        // on top of our flee moves. Engine resumes via
+        // ResumeAfterRecovery when HP climbs back above the
+        // run-trigger (handled in Evaluate's recovery branch).
         engine.PauseForRecovery($"flee — {reason}");
+
+        int distance = _readCombatSettings?.Invoke().RunDistance ?? 1;
+        if (distance < 1) distance = 1;
+
+        // Capture sustained flee state — same direction across all
+        // remaining steps. The walker's corridor + room layout will
+        // tell us if a turn is required (path-aware multi-direction
+        // flee is a follow-up).
+        _fleeEngine = engine;
+        _fleeDirection = direction;
+        _fleeStepsRemaining = distance;
 
         if (other.BreakBeforeFleeing)
             SendCommand("break");
 
         _log?.Info(LogCategory,
-            $"flee step engine={engine.Name} mode={other.RunDirection} dir={direction} ({reason})");
+            $"flee start engine={engine.Name} mode={other.RunDirection} dir={direction} " +
+            $"distance={distance} ({reason})");
         engine.SendBacktrackMove(direction);
+        _fleeStepsRemaining--;
     }
 
     private static Map.Direction? Reverse(Map.Direction? d) => d switch
@@ -491,8 +530,30 @@ public sealed class HealthManager : IDisposable
     /// skip the <c>rest</c> emit because we'd still think we were
     /// sitting.
     /// </summary>
-    public void NoteRoomChanged()
+    public void NoteRoomChanged() => NoteRoomChanged(newRoom: null);
+
+    /// <summary>
+    /// Overload that captures the new room key so the flee path can
+    /// (a) step its multi-move queue on every arrival and (b) call
+    /// <see cref="Map.IRecoverableEngine.ResumeAfterRecovery"/> with
+    /// the correct anchor once HP recovers.
+    /// </summary>
+    public void NoteRoomChanged(Map.RoomKey? newRoom)
     {
+        if (newRoom is { } r) _lastKnownRoom = r;
+
+        // Flee step continuation — fire BEFORE the rest-latch reset
+        // so the engine's pause flag doesn't get cleared by a
+        // racing post-flee rest cycle.
+        if (_fleeEngine is not null && _fleeStepsRemaining > 0)
+        {
+            _fleeEngine.SendBacktrackMove(_fleeDirection);
+            _fleeStepsRemaining--;
+            _log?.Info(LogCategory,
+                $"flee step engine={_fleeEngine.Name} dir={_fleeDirection} " +
+                $"remaining={_fleeStepsRemaining}");
+        }
+
         if (!_restInFlight) return;
         _restInFlight = false;
         _restConfirmedByPrompt = false;

@@ -1470,6 +1470,8 @@ public sealed class AppServices
                     : (Game.Map.Direction?)null,
             readOtherSettings: () =>
                 ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
+            readCombatSettings: () =>
+                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
             log: Log);
 
         // Server-side resting state clears on move; drop our latch
@@ -1480,7 +1482,7 @@ public sealed class AppServices
             if (t.PreviousRoom is null || t.NewRoom is null) return;
             if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
             if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
-            Health.NoteRoomChanged();
+            Health.NoteRoomChanged(t.NewRoom.Key);
         };
 
         // Phase 9 PR 9.C — CastCoordinator. Subscribes to spell-failure

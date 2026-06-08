@@ -556,6 +556,160 @@ public sealed class HealthManagerTests
         Assert.Contains("rest", h.SentLines);
     }
 
+    // ----- Multi-step flee + auto-resume (Cluster 5b foundation) ----
+
+    /// <summary>Fake engine for testing the flee dispatch — captures
+    /// every call instead of touching real walker plumbing.</summary>
+    private sealed class FakeFleeEngine : Game.Map.IRecoverableEngine
+    {
+        public string Name => "FakeWalker";
+        public List<Game.Map.Direction> SentBacktrackMoves { get; } = new();
+        public string? PausedReason { get; private set; }
+        public Game.Map.RoomKey? ResumedAtRoom { get; private set; }
+        public Game.Map.Direction? NextPlanned { get; set; }
+
+        public Game.Map.Direction? PeekNextPlannedDirection() => NextPlanned;
+        public void SendBacktrackMove(Game.Map.Direction d) => SentBacktrackMoves.Add(d);
+        public void PauseForRecovery(string reason) => PausedReason = reason;
+        public void ResumeAfterRecovery(Game.Map.RoomKey k) => ResumedAtRoom = k;
+        public void AbortFromRecoveryFailure(string _) { }
+    }
+
+    private sealed class FleeHarness : IDisposable
+    {
+        public PlayerState State { get; } = new();
+        public LogService Log { get; } = new();
+        public MovementCoordinator Coordinator { get; }
+        public HealthManager Health { get; }
+        public List<byte[]> Sent { get; } = new();
+        public HealthSettings HealthSettings { get; set; } = new();
+        public Models.Profile.OtherSettings Other { get; set; } = new();
+        public Models.Profile.CombatSettings Combat { get; set; } = new();
+        public FakeFleeEngine? Engine { get; set; } = new();
+        public Game.Map.Direction? LastSent { get; set; } = Game.Map.Direction.N;
+
+        public FleeHarness()
+        {
+            Coordinator = new MovementCoordinator(Log);
+            Health = new HealthManager(State, Coordinator,
+                readSettings: () => HealthSettings,
+                isEnabled: () => true,
+                readHangupCommand: () => string.Empty,
+                getActiveMovementEngine: () => Engine,
+                getLastSentDirection: () => LastSent,
+                readOtherSettings: () => Other,
+                readCombatSettings: () => Combat,
+                log: Log);
+            Health.SetWireSender(b => Sent.Add(b));
+        }
+
+        public List<string> SentLines =>
+            Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+
+        public void Dispose() => Health.Dispose();
+    }
+
+    [Fact]
+    public void Flee_NoActiveEngine_NoBacktrack()
+    {
+        // Per user direction: "if you aren't running a movement
+        // engine, the flee-if-below wouldn't fire".
+        using FleeHarness h = new() { Engine = null };
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_BackwardMode_InvertsLastSentDirection()
+    {
+        using FleeHarness h = new();
+        h.Other.RunDirection = Models.Profile.RunDirection.Backward;
+        h.Other.BreakBeforeFleeing = true;
+        h.Combat.RunDistance = 1;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Single(h.Engine!.SentBacktrackMoves);
+        Assert.Equal(Game.Map.Direction.S, h.Engine.SentBacktrackMoves[0]);
+        Assert.Contains("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_ForwardMode_UsesEnginePlannedDirection()
+    {
+        using FleeHarness h = new();
+        h.Other.RunDirection = Models.Profile.RunDirection.Forward;
+        h.Other.BreakBeforeFleeing = false;
+        h.Combat.RunDistance = 1;
+        h.Engine!.NextPlanned = Game.Map.Direction.E;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Single(h.Engine.SentBacktrackMoves);
+        Assert.Equal(Game.Map.Direction.E, h.Engine.SentBacktrackMoves[0]);
+        Assert.DoesNotContain("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_MultiStep_SendsOnePerRoomChange()
+    {
+        // RunDistance=3 → first step on trigger; two more steps on
+        // subsequent NoteRoomChanged calls.
+        using FleeHarness h = new();
+        h.Other.BreakBeforeFleeing = false;
+        h.Combat.RunDistance = 3;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.Single(h.Engine!.SentBacktrackMoves);
+
+        // Each room arrival advances one more step.
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));
+        Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
+
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 101));
+        Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);
+
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 102));
+        Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);    // stopped
+    }
+
+    [Fact]
+    public void Flee_AutoResume_OnHpRecovery()
+    {
+        using FleeHarness h = new();
+        h.Combat.RunDistance = 1;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));   // record room
+        Assert.NotNull(h.Engine!.PausedReason);
+
+        // HP climbs back above 20% (default RunIfBelowHp).
+        h.State.Hp = 150;
+
+        Assert.NotNull(h.Engine.ResumedAtRoom);
+        Assert.Equal(new Game.Map.RoomKey(1, 100), h.Engine.ResumedAtRoom);
+    }
+
     // ----- rest-interruption recovery (server breaks our rest) ----
 
     [Fact]
