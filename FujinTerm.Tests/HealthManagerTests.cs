@@ -511,11 +511,10 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void MaBelowRunTrigger_InCombat_LatchesFled()
+    public void MaBelowRunTrigger_NoLatch_HpOnlyTrigger()
     {
-        // Caster low on MA mid-combat — run-threshold detection
-        // still latches FledThisCombat even though wire emit is
-        // currently log-only.
+        // Per user direction: run-if-below is HP-only. Low MA with
+        // healthy HP must not latch the flee detection.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.MaxMa = 100;
@@ -524,8 +523,7 @@ public sealed class HealthManagerTests
         h.State.Hp = 150;
         h.State.Ma = 5;
 
-        Assert.True(h.Health.FledThisCombat);
-        Assert.DoesNotContain("flee", h.SentLines);
+        Assert.False(h.Health.FledThisCombat);
     }
 
     [Fact]

@@ -1463,6 +1463,13 @@ public sealed class AppServices
                 ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
             readHangupCommand: () => GameCommands.ExitCommand,
+            getActiveMovementEngine: ResolveActiveMovementEngine,
+            getLastSentDirection: () =>
+                Recovery.ExecutedSinceAnchor.Count > 0
+                    ? Recovery.ExecutedSinceAnchor[^1]
+                    : (Game.Map.Direction?)null,
+            readOtherSettings: () =>
+                ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
             log: Log);
 
         // Server-side resting state clears on move; drop our latch
@@ -1716,6 +1723,23 @@ public sealed class AppServices
     /// is missing the named entry, or the JSON is malformed — the
     /// callers all want a non-null DTO they can apply unconditionally.
     /// </summary>
+    /// <summary>
+    /// Returns whichever of Walker / LoopRunner / AutoLair is currently
+    /// not Idle. Per design they're mutually exclusive (entering one
+    /// cleanly exits the other) so a simple first-non-idle scan is
+    /// sufficient. Returns <c>null</c> when the player is idle —
+    /// HealthManager treats that as "don't flee".
+    /// </summary>
+    private Game.Map.IRecoverableEngine? ResolveActiveMovementEngine()
+    {
+        if (Walker.State != Game.Map.WalkState.Idle) return Walker;
+        if (LoopRunner.State != Game.Map.LoopState.Idle) return LoopRunner;
+        // AutoLair routes through the walker when stepping; its own
+        // state machine reflects scheduling. If the walker is idle
+        // the AutoLair has nothing to flee from either.
+        return null;
+    }
+
     private static T ReadSection<T>(Models.Profile.CharacterProfile? profile, string key)
         where T : new()
     {

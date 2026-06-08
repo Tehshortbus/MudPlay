@@ -72,6 +72,9 @@ public sealed class HealthManager : IDisposable
     private readonly Func<HealthSettings> _readSettings;
     private readonly Func<bool> _isEnabled;
     private readonly Func<string>? _readHangupCommand;
+    private readonly Func<Map.IRecoverableEngine?>? _getActiveMovementEngine;
+    private readonly Func<Map.Direction?>? _getLastSentDirection;
+    private readonly Func<Models.Profile.OtherSettings>? _readOtherSettings;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -106,6 +109,41 @@ public sealed class HealthManager : IDisposable
         Func<bool> isEnabled,
         Func<string>? readHangupCommand,
         LogService? log = null)
+        : this(state, coordinator, readSettings, isEnabled,
+               readHangupCommand,
+               getActiveMovementEngine: null,
+               getLastSentDirection: null,
+               readOtherSettings: null,
+               log) { }
+
+    /// <summary>
+    /// Full constructor. The three additional selectors wire the
+    /// flee path:
+    /// <list type="bullet">
+    /// <item><c>getActiveMovementEngine</c> — returns the
+    /// <see cref="Map.IRecoverableEngine"/> that's currently running
+    /// (Walker / Loop / AutoLair are exclusive). Returns <c>null</c>
+    /// when no engine is active — flee then no-ops since "if you
+    /// aren't running a movement engine, the flee-if-below wouldn't
+    /// fire" per user direction.</item>
+    /// <item><c>getLastSentDirection</c> — most recent outbound
+    /// direction, inverted for the Backward flee mode. Typically wired
+    /// to the last entry on <c>EngineRecoveryGate.ExecutedSinceAnchor</c>.</item>
+    /// <item><c>readOtherSettings</c> — for
+    /// <see cref="Models.Profile.OtherSettings.RunDirection"/> and
+    /// <see cref="Models.Profile.OtherSettings.BreakBeforeFleeing"/>.</item>
+    /// </list>
+    /// </summary>
+    public HealthManager(
+        PlayerState state,
+        MovementCoordinator coordinator,
+        Func<HealthSettings> readSettings,
+        Func<bool> isEnabled,
+        Func<string>? readHangupCommand,
+        Func<Map.IRecoverableEngine?>? getActiveMovementEngine,
+        Func<Map.Direction?>? getLastSentDirection,
+        Func<Models.Profile.OtherSettings>? readOtherSettings,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -116,6 +154,9 @@ public sealed class HealthManager : IDisposable
         _readSettings = readSettings;
         _isEnabled = isEnabled;
         _readHangupCommand = readHangupCommand;
+        _getActiveMovementEngine = getActiveMovementEngine;
+        _getLastSentDirection = getLastSentDirection;
+        _readOtherSettings = readOtherSettings;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -274,14 +315,15 @@ public sealed class HealthManager : IDisposable
         }
 
         // ----- flee on critical HP/MA mid-combat -------------------
-        // Run-if-below path stays as a detection-only signal — the
-        // engine logs the threshold crossing so the user (or a
-        // future walker integration) can react. The original `flee`
-        // wire emit was wrong; MajorMUD has no `flee` command, and
-        // the right replacement (direction-aware `run <dir>` /
-        // walker-driven retreat) needs the walker integration that
-        // ships in Cluster 5b's comeback flow. Until then, the
-        // engine just observes.
+        // Run-if-below: HP-only per user direction. Fires only when a
+        // movement engine is active — "if you aren't running a
+        // movement engine, the flee-if-below wouldn't fire". On
+        // trigger: optionally send `break` to disengage combat,
+        // then send one directional move (Backward = inverse of
+        // last sent direction; Forward = engine's next planned).
+        // Multi-step over CombatSettings.RunDistance + auto-resume
+        // on HP recovery defer to a follow-up — v1 ships the
+        // one-step + pause foundation.
         if (!_state.InCombat)
         {
             _fledThisCombat = false;
@@ -289,17 +331,11 @@ public sealed class HealthManager : IDisposable
         else if (!_fledThisCombat)
         {
             int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
-            int maRunTrigger = ResolveThreshold(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
             bool hpRun = _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
-            bool maRun = _state.MaxMa > 0 && _state.Ma <= maRunTrigger;
-            if (hpRun || maRun)
+            if (hpRun)
             {
-                string reason = hpRun
-                    ? $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}"
-                    : $"MA {_state.Ma}/{_state.MaxMa} <= run-trigger={maRunTrigger}";
-                _log?.Warn(LogCategory,
-                    $"run-threshold crossed but auto-retreat unwired ({reason})");
                 _fledThisCombat = true;
+                TryFlee($"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}");
             }
         }
 
@@ -369,6 +405,67 @@ public sealed class HealthManager : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Try to dispatch a single flee step. No-ops (with a log line)
+    /// when no movement engine is active, when the configured
+    /// direction can't be resolved, or when the flee selectors
+    /// weren't wired by the consumer.
+    /// </summary>
+    private void TryFlee(string reason)
+    {
+        Map.IRecoverableEngine? engine = _getActiveMovementEngine?.Invoke();
+        if (engine is null)
+        {
+            _log?.Info(LogCategory,
+                $"flee skipped (no active movement engine) — {reason}");
+            return;
+        }
+
+        Models.Profile.OtherSettings other = _readOtherSettings?.Invoke()
+            ?? new Models.Profile.OtherSettings();
+
+        Map.Direction? step = other.RunDirection switch
+        {
+            Models.Profile.RunDirection.Forward  => engine.PeekNextPlannedDirection(),
+            Models.Profile.RunDirection.Backward => Reverse(_getLastSentDirection?.Invoke()),
+            _ => null,
+        };
+        if (step is not { } direction)
+        {
+            _log?.Warn(LogCategory,
+                $"flee skipped (couldn't resolve {other.RunDirection} direction) — {reason}");
+            return;
+        }
+
+        // Pause the engine first so it doesn't queue planned steps
+        // on top of our flee move. Engine resumes when HP recovers
+        // (follow-up wiring), or when the user manually toggles the
+        // engine via the Navigation window.
+        engine.PauseForRecovery($"flee — {reason}");
+
+        if (other.BreakBeforeFleeing)
+            SendCommand("break");
+
+        _log?.Info(LogCategory,
+            $"flee step engine={engine.Name} mode={other.RunDirection} dir={direction} ({reason})");
+        engine.SendBacktrackMove(direction);
+    }
+
+    private static Map.Direction? Reverse(Map.Direction? d) => d switch
+    {
+        Map.Direction.N  => Map.Direction.S,
+        Map.Direction.S  => Map.Direction.N,
+        Map.Direction.E  => Map.Direction.W,
+        Map.Direction.W  => Map.Direction.E,
+        Map.Direction.NE => Map.Direction.SW,
+        Map.Direction.SW => Map.Direction.NE,
+        Map.Direction.NW => Map.Direction.SE,
+        Map.Direction.SE => Map.Direction.NW,
+        Map.Direction.U  => Map.Direction.D,
+        Map.Direction.D  => Map.Direction.U,
+        _ => null,
+    };
 
     private string ChooseRestCommand(HealthSettings s)
     {
