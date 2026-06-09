@@ -503,16 +503,22 @@ public sealed class MapControl : Control
     // at 1.0 px was nearly invisible on lair pink and shop blue.
     private static readonly IPen TeleportHashPen
         = new Pen(new SolidColorBrush(Color.Parse("#FF50E6FF")), 1.5);
-    private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
+    // Brighter punch-red so the avoid markers read at a glance on
+    // dark + medium-fill room glyphs alike — the prior #FF6464 sat
+    // too close to the cell muted-red trap line and washed out on
+    // the darker palettes. Stroke bumped to 2.5 px so the cross
+    // strokes don't get lost on aliased small cells.
+    private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF2020")), 2.5)
     {
         LineCap = PenLineCap.Round,
     };
 
-    /// <summary>Gold outline for stash rooms — distinct enough from
-    /// the amber current-room ring + the white selection ring that
-    /// the user can scan for stashes at a glance.</summary>
-    private static readonly IBrush StashRingFill  = new SolidColorBrush(Color.Parse("#22FFD24E"));
-    private static readonly IPen   StashRingPen   = new Pen(new SolidColorBrush(Color.Parse("#FFFFD24E")), 3.0)
+    /// <summary>Golden X for stash rooms — matches the shape of the
+    /// avoid-X so the two map markers read as a pair ("flagged room")
+    /// with colour carrying the action: red = avoid, gold = stash.
+    /// Distinct from the amber current-room ring + the white selection
+    /// ring so the user can scan for stashes at a glance.</summary>
+    private static readonly IPen   StashXPen      = new Pen(new SolidColorBrush(Color.Parse("#FFFFD24E")), 2.5)
     {
         LineCap = PenLineCap.Round,
     };
@@ -931,14 +937,7 @@ public sealed class MapControl : Control
                 DrawAvoidX(context, cell);
 
             if (StashRooms is not null && StashRooms.Contains(kvp.Value))
-            {
-                // Inset slightly so the outline doesn't overlap with
-                // the cell border / selection ring. Soft gold fill +
-                // bright gold outline so the stash markers pop against
-                // both light and dark room glyphs.
-                Rect ring = cell.Deflate(1);
-                context.DrawRectangle(StashRingFill, StashRingPen, ring);
-            }
+                DrawStashX(context, cell);
 
             if (LoopSequenceNumbers is not null
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
@@ -1157,14 +1156,24 @@ public sealed class MapControl : Control
     }
 
     private static void DrawAvoidX(DrawingContext ctx, Rect cell)
+        => DrawCellX(ctx, cell, AvoidXPen);
+
+    /// <summary>Golden cross-strokes for stash rooms. Same geometry
+    /// as the avoid X — the two markers share a shape so the user
+    /// recognises them as "flagged rooms" and the colour carries the
+    /// action (red = avoid, gold = stash).</summary>
+    private static void DrawStashX(DrawingContext ctx, Rect cell)
+        => DrawCellX(ctx, cell, StashXPen);
+
+    private static void DrawCellX(DrawingContext ctx, Rect cell, IPen pen)
     {
         double inset = cell.Width * 0.25;
         Point topLeft     = new(cell.X + inset, cell.Y + inset);
         Point topRight    = new(cell.Right - inset, cell.Y + inset);
         Point bottomLeft  = new(cell.X + inset, cell.Bottom - inset);
         Point bottomRight = new(cell.Right - inset, cell.Bottom - inset);
-        ctx.DrawLine(AvoidXPen, topLeft, bottomRight);
-        ctx.DrawLine(AvoidXPen, topRight, bottomLeft);
+        ctx.DrawLine(pen, topLeft, bottomRight);
+        ctx.DrawLine(pen, topRight, bottomLeft);
     }
 
     private void DrawSequenceNumber(DrawingContext ctx, Rect cell, int seq)
