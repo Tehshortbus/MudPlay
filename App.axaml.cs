@@ -254,6 +254,10 @@ public partial class App : Application
                             }
                             break;
 
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddAsMonster:
+                            AddPlaceholderMonster(result.EntityName);
+                            break;
+
                         case FujinTerm.ViewModels.UnknownEntityFixAction.AddFlavorPrefix:
                             // Future PR: open a monster picker, then attach
                             // the prefix to the selected MonsterMessageRecord.
@@ -282,5 +286,77 @@ public partial class App : Application
         int close = message.IndexOf('\'', open + 1);
         if (close <= open) return string.Empty;
         return message.Substring(open + 1, close - open - 1);
+    }
+
+    /// <summary>
+    /// Insert a placeholder <see cref="FujinTerm.Models.GameData.MonsterMessageRecord"/>
+    /// for an unknown name into the active <see cref="MonsterMessageStore"/>.
+    /// AllowNoPrefix is true (the name alone is the matchable form);
+    /// every line list is empty (the user fills them in later via the
+    /// Monsters tab editor); Links is null (no MDB row to bind yet).
+    /// Skips when a record with the same case-insensitive name already
+    /// exists — that's the case the user just hit when cave bear was
+    /// already in the catalogue but unreachable, fixed at the
+    /// classifier layer in the same change set.
+    /// </summary>
+    private static void AddPlaceholderMonster(string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0) return;
+
+        FujinTerm.Services.MonsterMessageStore store = AppServices.Current.MonsterMessages;
+        foreach (FujinTerm.Models.GameData.MonsterMessageRecord existing in store.Messages)
+        {
+            if (string.Equals(existing.Name, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                AppServices.Current.Log.Warn("RoomClassifier",
+                    $"Monster record for '{trimmed}' already exists — not adding a duplicate.");
+                return;
+            }
+        }
+
+        // Id derivation matches the Monsters-tab editor's ComputeId
+        // scheme (SHA1 of name + canonical content blob, first 8 bytes
+        // hex). Empty list-content + AllowNoPrefix=true still produces
+        // a stable id so the record round-trips through Save / Load
+        // without churning the on-disk file.
+        string id = ComputeMonsterMessageId(trimmed);
+        FujinTerm.Models.GameData.MonsterMessageRecord placeholder = new(
+            Id:               id,
+            Name:             trimmed,
+            HitYou:           Array.Empty<string>(),
+            HitOther:         Array.Empty<string>(),
+            DeathLine:        Array.Empty<string>(),
+            ArmorBlockYou:    Array.Empty<string>(),
+            ArmorBlockOther:  Array.Empty<string>(),
+            DodgeYou:         Array.Empty<string>(),
+            DodgeOther:       Array.Empty<string>(),
+            MissYou:          Array.Empty<string>(),
+            MissOther:        Array.Empty<string>(),
+            FlavorPrefixes:   Array.Empty<string>(),
+            AllowNoPrefix:    true,
+            Links:            null);
+
+        store.Upsert(placeholder);
+        AppServices.Current.Log.Info("RoomClassifier",
+            $"Added placeholder monster record: '{trimmed}'. " +
+            "Open Game Data → Monsters to fill in hit / death / dodge lines.");
+    }
+
+    /// <summary>
+    /// Mirror of <c>MonsterEditDialogViewModel.ComputeId</c> for the
+    /// minimum case (empty content + AllowNoPrefix=true). Kept inline
+    /// rather than calling the VM method to avoid coupling App startup
+    /// to the Game Data editor namespace.
+    /// </summary>
+    private static string ComputeMonsterMessageId(string name)
+    {
+        string blob = name + "||1";
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(blob));
+        System.Text.StringBuilder sb = new(16);
+        for (int i = 0; i < 8; i++)
+            sb.Append(hash[i].ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        return sb.ToString();
     }
 }

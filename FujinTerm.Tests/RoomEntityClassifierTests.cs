@@ -131,6 +131,30 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
     }
 
+    [Fact]
+    public void DirectMonsterMatch_EmptyFlavorPrefixes_ImpliesNoPrefix()
+    {
+        // Live repro: 535 of 1100 v1.11p seed records (cave bear,
+        // shade, Colin, Lady Sentara, …) carry AllowNoPrefix=false
+        // AND FlavorPrefixes=[]. Without the empty-prefix fallback
+        // they're unreachable: direct match rejects (AllowNoPrefix
+        // false) and prefix-stripped match skips empty lists. So the
+        // entire record sits in the catalogue and the classifier still
+        // emits "unknown entity 'cave bear'". The fallback treats
+        // "no prefixes defined" as "bare name is the only form" and
+        // matches directly.
+        using Harness h = new();
+        h.AddMonster(80, "cave bear", allowNoPrefix: false);   // no flavor prefixes
+
+        h.Feed("Also here: cave bear.");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal(EntityKind.Monster, ent.Kind);
+        Assert.Equal("cave bear", ent.ResolvedName);
+        Assert.Equal(80, ent.MonsterNumber);
+    }
+
     // ----- prefix-stripped monster match -----------------------------
 
     [Fact]

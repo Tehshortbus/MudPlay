@@ -57,10 +57,13 @@
 
             <StackPanel Orientation="Horizontal" Spacing="8"
                         HorizontalAlignment="Center" Margin="0,10,0,0">
-                <Button Content="Add as flavor prefix…" Width="180"
+                <Button Content="Add as monster" Width="150"
+                        Command="{Binding AddAsMonsterCommand}"
+                        ToolTip.Tip="Insert a new MonsterMessageRecord with this name (AllowNoPrefix=true, all line lists empty). The classifier recognises the name on the next Also-Here parse; fill in hit / death / dodge lines later via the Monsters tab editor."/>
+                <Button Content="Add as flavor prefix…" Width="160"
                         Command="{Binding AddFlavorPrefixCommand}"
-                        ToolTip.Tip="Attach this name as a flavor prefix on an existing monster. PR 9.0b's RoomEntityClassifier wires the actual write to MonsterMessageStore at the active 4-tier scope."/>
-                <Button Content="Add player observation" Width="180"
+                        ToolTip.Tip="Attach this name as a flavor prefix on an existing monster."/>
+                <Button Content="Add player observation" Width="170"
                         Command="{Binding AddPlayerObservationCommand}"
                         ToolTip.Tip="Add a placeholder PlayerRecord to the per-BBS database. The next `who` enriches the row with class / race / alignment."/>
                 <Button Content="Cancel" Width="80"

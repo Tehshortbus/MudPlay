@@ -58,10 +58,18 @@ public sealed partial class UnknownEntityFixDialogViewModel : ObservableObject,
     /// sees both options before picking.
     /// </summary>
     public string GuidanceText =>
-        "If the name is a monster the classifier hasn't seen yet, add it as a flavor " +
-        "prefix to an existing monster (e.g. \"stinking\" → giant rat). If it's a player " +
-        "the database hasn't observed via `who`, add a placeholder observation now and " +
-        "let the next `who` enrich it. Cancel leaves nothing changed.";
+        "If this is a new monster species the database doesn't have yet, add it as a " +
+        "monster — a placeholder record lands in the catalogue immediately so the " +
+        "classifier recognises it next time, and the Monsters tab editor can fill in the " +
+        "hit / death lines later. If it's a flavor variant of an existing species (e.g. " +
+        "\"stinking\" → giant rat), attach it as a flavor prefix. If it's a player the " +
+        "database hasn't observed via `who`, add a placeholder observation now and let " +
+        "the next `who` enrich it. Cancel leaves nothing changed.";
+
+    [RelayCommand]
+    private void AddAsMonster() =>
+        CloseRequested?.Invoke(new UnknownEntityFixResult(
+            UnknownEntityFixAction.AddAsMonster, UnknownEntity));
 
     [RelayCommand]
     private void AddFlavorPrefix() =>
@@ -81,6 +89,13 @@ public sealed partial class UnknownEntityFixDialogViewModel : ObservableObject,
 /// <see cref="UnknownEntityFixDialogViewModel"/>.</summary>
 public enum UnknownEntityFixAction
 {
+    /// <summary>Add the unknown name as a new bare-name
+    /// <see cref="Models.GameData.MonsterMessageRecord"/> (AllowNoPrefix
+    /// true, all line lists empty). Classifier recognises the name on
+    /// the next observation; the user can fill in death / hit / etc.
+    /// lines later through the Monsters tab editor.</summary>
+    AddAsMonster,
+
     /// <summary>Treat the unknown name as a flavor prefix to attach to an
     /// existing monster. The caller picks which monster.</summary>
     AddFlavorPrefix,

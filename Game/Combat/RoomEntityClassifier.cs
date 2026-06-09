@@ -273,9 +273,16 @@ public sealed class RoomEntityClassifier : IDisposable
     private bool TryMatchMonster(string entry, out MonsterMessageRecord? hit)
     {
         // Direct match: AllowNoPrefix records whose Name == entry.
+        // Records with no flavor prefixes are implicitly bare-name-only
+        // — without this fallback, a record carrying AllowNoPrefix=false
+        // AND FlavorPrefixes=[] is unreachable: the prefix-stripped
+        // path below skips empty-list records, and the direct path
+        // here would reject it. 535 of 1100 v1.11p seed entries
+        // (cave bear, shade, Colin, Lady Sentara, …) were silently
+        // unmatchable before this guard.
         foreach (MonsterMessageRecord m in _monsters.Messages)
         {
-            if (m.AllowNoPrefix &&
+            if ((m.AllowNoPrefix || m.FlavorPrefixes.Count == 0) &&
                 string.Equals(m.Name, entry, StringComparison.OrdinalIgnoreCase))
             {
                 hit = m;

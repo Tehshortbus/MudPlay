@@ -34,6 +34,25 @@ public sealed class UnknownEntityFixDialogViewModelTests
     }
 
     [Fact]
+    public void AddAsMonster_FiresCloseRequested_WithEntityNameAndMonsterAction()
+    {
+        // The Cave-Bear path — user sees an unknown name that's a
+        // legitimately new species, not a flavor variant of anything
+        // and not a player. The new third button maps to AddAsMonster
+        // so the App-level handler can drop a placeholder
+        // MonsterMessageRecord into the catalogue.
+        UnknownEntityFixDialogViewModel vm = new("Also here: cave bear", "cave bear");
+        UnknownEntityFixResult? observed = null;
+        vm.CloseRequested += r => observed = r;
+
+        vm.AddAsMonsterCommand.Execute(null);
+
+        Assert.NotNull(observed);
+        Assert.Equal(UnknownEntityFixAction.AddAsMonster, observed!.Action);
+        Assert.Equal("cave bear", observed.EntityName);
+    }
+
+    [Fact]
     public void AddFlavorPrefix_FiresCloseRequested_WithEntityNameAndFlavorAction()
     {
         UnknownEntityFixDialogViewModel vm = new("Also here: foozle", "foozle");
