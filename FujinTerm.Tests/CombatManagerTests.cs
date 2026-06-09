@@ -192,6 +192,39 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void TwoSameNameMonsters_FirstDies_ReSwingsAtRemaining()
+    {
+        // Live repro: Newhaven Arena had two "giant rat" entries with
+        // no flavor prefix to distinguish them. After we killed one,
+        // the other was still in the Also-Here list under the same
+        // RawName. The pre-fix CombatManager hit the "server still
+        // swinging at current" short-circuit (RawName matched) and
+        // went silent while the surviving rat (and lashworm) kept
+        // biting. NoteMonsterDied must clear _currentTarget so the
+        // next observation re-issues `pu giant rat`.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true, allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, giant rat, lashworm.");
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+        int initialSent = h.Sent.Count;
+
+        // One giant rat dies — simulate the MonsterDeath path that
+        // AppServices wires (NoteMonsterDied THEN remove).
+        h.Combat.NoteMonsterDied("giant rat");
+        Assert.Null(h.Combat.CurrentTarget);
+
+        // The classifier's next Also-Here observation now shows the
+        // surviving rat + lashworm; CombatManager must re-issue.
+        h.Feed("Also here: giant rat, lashworm.");
+        Assert.True(h.Sent.Count > initialSent,
+            "expected a fresh `pu giant rat` after the same-name kill");
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void CustomAttackCommand_UsedVerbatim()
     {
         using Harness h = new();

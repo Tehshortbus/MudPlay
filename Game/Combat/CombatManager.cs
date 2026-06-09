@@ -176,6 +176,61 @@ public sealed class CombatManager : IDisposable
     /// or <c>null</c> when no fight is in flight.</summary>
     public string? CurrentTarget => _currentTarget;
 
+    /// <summary>
+    /// Called by the MonsterDeath subscriber when a death-line match
+    /// resolves to a monster whose name might be ours. Clears
+    /// <see cref="_currentTarget"/> when the dead monster shares a
+    /// name with our current target (either the raw / unflavored
+    /// case where two same-name mobs occupy the room, or the flavored
+    /// case where the resolved species matches). Without this, the
+    /// next <see cref="OnEntitiesObserved"/> sees another live entity
+    /// with the same <c>RawName</c> still in the engageable list and
+    /// short-circuits ("server still swinging") — so we'd never
+    /// re-issue <c>attack</c> against the surviving instance, and
+    /// CombatManager goes silent while the other rats keep biting.
+    /// </summary>
+    /// <param name="deadMonsterName">Base / display name of the dead
+    /// monster, lifted from the matched death-line's
+    /// <see cref="MonsterDeathIdentity.Name"/>.</param>
+    public void NoteMonsterDied(string deadMonsterName)
+    {
+        if (string.IsNullOrEmpty(deadMonsterName)) return;
+        if (_currentTarget is not { } current) return;
+
+        // Direct RawName match — the unflavored case. Two "giant rat"
+        // entries: `_currentTarget == "giant rat"` and the dead-line
+        // gave us "giant rat". Whichever instance the server was
+        // swinging at is the dead one; the other doesn't auto-engage.
+        if (string.Equals(current, deadMonsterName, StringComparison.OrdinalIgnoreCase))
+        {
+            _log?.Info(LogCategory,
+                $"target died — clearing _currentTarget='{current}' (raw-name match)");
+            _currentTarget = null;
+            return;
+        }
+
+        // Resolved-name match — the flavored case. _currentTarget is
+        // "angry kobold thief" (RawName); the dead-line resolves to
+        // "kobold thief" (ResolvedName). The classifier's current
+        // observation is the source of truth for the raw → resolved
+        // mapping. Look up the entity matching our RawName and
+        // compare its ResolvedName.
+        if (_classifier.Current is { } obs)
+        {
+            for (int i = 0; i < obs.Entities.Count; i++)
+            {
+                RoomEntity e = obs.Entities[i];
+                if (e.Kind != EntityKind.Monster) continue;
+                if (!string.Equals(e.RawName, current, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(e.ResolvedName, deadMonsterName, StringComparison.OrdinalIgnoreCase)) continue;
+                _log?.Info(LogCategory,
+                    $"target died — clearing _currentTarget='{current}' (resolved-name match)");
+                _currentTarget = null;
+                return;
+            }
+        }
+    }
+
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
         if (!_isEnabled())

@@ -1436,6 +1436,19 @@ public sealed class AppServices
             }
             foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
             {
+                // Order matters: drop CombatManager's _currentTarget
+                // BEFORE removing the entity from the observation.
+                // NoteMonsterDied's resolved-name lookup needs the
+                // entity still present so the raw/resolved mapping
+                // is intact; RemoveDeadEntity then fires
+                // EntitiesObserved, which re-picks from the surviving
+                // engageables and re-issues `attack`. Without this
+                // ordering, a same-name kill (two "giant rat"s in a
+                // room, one dies) leaves CombatManager silent — the
+                // surviving rat shared RawName with our just-dead
+                // target and tripped the "server still swinging"
+                // short-circuit. See CombatManager.NoteMonsterDied.
+                Combat.NoteMonsterDied(id.Name);
                 if (RoomClassifier.RemoveDeadEntity(id.Name))
                 {
                     Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
