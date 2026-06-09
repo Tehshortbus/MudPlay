@@ -115,6 +115,15 @@ public sealed class LogService
     /// <summary>Maximum number of entries retained.</summary>
     public int Capacity { get; }
 
+    /// <summary>Live entries currently in the ring. Cheap (single
+    /// integer read under the gate) — readers that need the count
+    /// shouldn't call <see cref="Snapshot"/>, which allocates an
+    /// entire ring-sized array per call.</summary>
+    public int Count
+    {
+        get { lock (_gate) { return _count; } }
+    }
+
     /// <summary>Most recently appended entry, or <c>null</c> if nothing has been logged yet.</summary>
     public LogEntry? Latest
     {

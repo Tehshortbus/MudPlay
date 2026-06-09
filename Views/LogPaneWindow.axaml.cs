@@ -42,6 +42,11 @@ public partial class LogPaneWindow : Window
         if (DataContext is LogPaneViewModel vm)
         {
             vm.Rows.CollectionChanged += OnRowsChanged;
+            // BulkUpdateCompleted fires once at the end of each Rebuild.
+            // We use it to do a single ScrollIntoView on the newest row
+            // instead of the per-Add cascade — that cascade was the UI
+            // lockup on Combat-filter toggles.
+            vm.BulkUpdateCompleted += OnBulkUpdateCompleted;
 
             // Show the newest entries first — the log accumulates while
             // the window's closed, so opening it scrolled-to-top would
@@ -62,8 +67,21 @@ public partial class LogPaneWindow : Window
         if (DataContext is LogPaneViewModel vm)
         {
             vm.Rows.CollectionChanged -= OnRowsChanged;
+            vm.BulkUpdateCompleted    -= OnBulkUpdateCompleted;
             vm.Dispose();
         }
+    }
+
+    private void OnBulkUpdateCompleted()
+    {
+        if (DataContext is not LogPaneViewModel { AutoScroll: true } vm) return;
+        if (_rowsList is null) return;
+        if (vm.Rows.Count == 0) return;
+        object newest = vm.Rows[vm.Rows.Count - 1];
+        // Defer so the ListBox has materialised the new containers
+        // before we ask it to scroll one into view.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => _rowsList?.ScrollIntoView(newest));
     }
 
     /// <summary>
@@ -146,7 +164,12 @@ public partial class LogPaneWindow : Window
     private void OnRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action != NotifyCollectionChangedAction.Add) return;
-        if (DataContext is not LogPaneViewModel { AutoScroll: true }) return;
+        if (DataContext is not LogPaneViewModel { AutoScroll: true } vm) return;
+        // Skip the per-row scroll while a Rebuild is in flight — one
+        // final scroll after the rebuild is enough, and the cascade
+        // (1000s of ScrollIntoView calls in a tight loop) is what
+        // locked the UI thread on Combat-filter toggles.
+        if (vm.IsBulkUpdating) return;
         if (_rowsList is null) return;
         if (e.NewItems is null || e.NewItems.Count == 0) return;
         object newest = e.NewItems[^1]!;

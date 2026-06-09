@@ -148,7 +148,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // Phase 9 per-category Verbose toggles + WriteCombatRoundTrace
     // moved out of per-character settings into a session-only umbrella
     // switch in the Log pane menu — see Services/LogDiagnosticState
-    // + LogPaneViewModel.CombatDiagnostics. Verbose tracing isn't a
+    // + LogPaneViewModel.CombatFilter. Verbose tracing isn't a
     // per-character preference; it's "I'm debugging right now",
     // and a session toggle in the LogPane is the right home.
 
