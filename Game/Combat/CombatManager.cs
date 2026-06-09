@@ -278,7 +278,35 @@ public sealed class CombatManager : IDisposable
         if (engageable.Count == 0)
         {
             if (_currentTarget is not null)
-                _log?.Info(LogCategory, $"room cleared — was=target={_currentTarget}");
+            {
+                // Dump the observation's entity breakdown so the user
+                // can see WHY we think the room is empty — Unknown
+                // (classifier doesn't recognise the name), MonsterNumber
+                // null (record has no Monsters-table link), Relationship
+                // not-Enemy (friendly NPC), or genuinely an empty list.
+                // The "wasted re-attack mid-combat" symptom usually
+                // means one of the first three caused a spurious empty
+                // observation that null-ed the target between rounds.
+                int total = obs.Entities.Count;
+                int unknownCount = 0;
+                int noNumberCount = 0;
+                int friendlyCount = 0;
+                foreach (RoomEntity e in obs.Entities)
+                {
+                    if (e.Kind != EntityKind.Monster) unknownCount++;
+                    else if (e.MonsterNumber is null) noNumberCount++;
+                    else
+                    {
+                        MonsterOverlay ov = ResolveOverlay(e.MonsterNumber.Value);
+                        if ((ov.Relationship ?? MonsterRelationship.Enemy) != MonsterRelationship.Enemy)
+                            friendlyCount++;
+                    }
+                }
+                _log?.Info(LogCategory,
+                    $"room cleared — was=target={_currentTarget} " +
+                    $"obs-entities={total} (unknown={unknownCount} " +
+                    $"no-monster-number={noNumberCount} friendly={friendlyCount})");
+            }
             _currentTarget = null;
             OnRoomCleared(settings);
             return;
@@ -331,6 +359,27 @@ public sealed class CombatManager : IDisposable
                                               StringComparison.OrdinalIgnoreCase)))
         {
             return;
+        }
+
+        // Log the re-pick decision so the user can audit why a fresh
+        // attack went out — was it the first attack ever (current
+        // null), did the target leave / die (current non-null,
+        // engageable list shown), or did we get a "room cleared"
+        // earlier that null-ed the target. Distinguishes the
+        // "wasted-swing on re-display" symptom from a genuine
+        // re-pick.
+        if (_currentTarget is null)
+        {
+            _log?.Info(LogCategory,
+                $"re-pick: no current target — picking {picked.RawName} from " +
+                $"[{string.Join(",", engageable.Select(e => e.RawName))}]");
+        }
+        else
+        {
+            _log?.Info(LogCategory,
+                $"re-pick: target '{_currentTarget}' not in engageable — " +
+                $"switching to {picked.RawName} (engageable=[" +
+                $"{string.Join(",", engageable.Select(e => e.RawName))}])");
         }
 
         // Per-target dedup — if the picked species is in this room's
