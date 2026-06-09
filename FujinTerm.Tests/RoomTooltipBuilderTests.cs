@@ -389,6 +389,62 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_MultiActionHiddenExit_TbInfoFallback_SurfacesKeywords()
+    {
+        // v1.11p map 9 / room 1012's north exit is "(Hidden/Needs 1
+        // Actions, any order)" but no Action#N cell pairs with it —
+        // the unlock keywords live in TBInfo CMD 1422 as a stack of
+        // `<keyword>:testskill ...:remoteaction ...` lines. The
+        // tooltip must fall back to those keywords so the user
+        // doesn't see a bare "(MultiActionHidden)".
+        const string fallbackRooms = """
+            [
+              { "Map Number": 9, "Room Number": 1012, "Name": "Crumbling Ruin, Entrance",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 1422,
+                "N": "9/1013 (Hidden/Needs 1 Actions, any order)",
+                "S": "9/1011", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1011, "Name": "Dirt Path",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "9/1012", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1013, "Name": "Crumbling Ruin",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "9/1012", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbInfoRows = """
+            [
+              { "Number": 1422,
+                "Action": "clear rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0\nmove rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0\npush rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0",
+                "Called From": "Room 9/1012" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  fallbackRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), tbInfoRows);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(9, 1012))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo: tbinfo);
+
+        // Inline summary should be "Needs 1 action" reparsed from the
+        // raw modifier, not the bare enum name.
+        Assert.Contains("Needs 1 action", text);
+        Assert.DoesNotContain("(MultiActionHidden)", text);
+        // TBInfo keyword fallback rendered as one indented line under
+        // the exit.
+        Assert.Contains("Try: clear rubble / move rubble / push rubble", text);
+    }
+
+    [Fact]
     public void Build_RoomCmdTeleport_SurfacesKeywordsGroupedByDestination()
     {
         // Live repro: room 1/1182 has CMD 4087 whose TBInfo Action chain

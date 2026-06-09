@@ -71,7 +71,7 @@ public static class RoomTooltipBuilder
         }
 
         // 8. Exits — blank line above, per-direction with destination.
-        string exitsBlock = BuildExitsBlock(room, graph, data);
+        string exitsBlock = BuildExitsBlock(room, graph, data, tbinfo);
         if (exitsBlock.Length > 0)
         {
             sb.Append('\n').Append('\n').Append(exitsBlock);
@@ -176,7 +176,7 @@ public static class RoomTooltipBuilder
         Direction.U, Direction.D,
     };
 
-    private static string BuildExitsBlock(Room room, RoomGraphManager graph, GameDataCache? data)
+    private static string BuildExitsBlock(Room room, RoomGraphManager graph, GameDataCache? data, TBInfoStore? tbinfo)
     {
         if (room.Exits.Count == 0) return string.Empty;
 
@@ -201,10 +201,24 @@ public static class RoomTooltipBuilder
             // for each step so a glance at the tooltip is enough to
             // know where to go (e.g. "go to room 9/870 and pull lever"
             // for map 9 room 1012's east exit on v1.11p).
-            if (exit.Hint == RoomExitHint.MultiActionHidden
-                && exit.MultiAction is { Actions.Count: > 0 } maDetail)
+            if (exit.Hint == RoomExitHint.MultiActionHidden)
             {
-                AppendMultiActionDetail(sb, room.Key, maDetail, graph);
+                if (exit.MultiAction is { Actions.Count: > 0 } maDetail)
+                {
+                    AppendMultiActionDetail(sb, room.Key, maDetail, graph);
+                }
+                else if (room.Cmd > 0 && tbinfo is not null)
+                {
+                    // No Action#N exit cells were attached, but the
+                    // room runs a TBInfo CMD chain. v1.11p encodes
+                    // many lever-style unlocks this way (e.g. map
+                    // 9 / room 1012 CMD 1422 — "clear rubble" /
+                    // "push mound" / etc., all firing the same
+                    // remoteaction). Surface those keywords as a
+                    // fallback so the tooltip still tells the user
+                    // what to type.
+                    AppendTbInfoActionFallback(sb, room.Cmd, tbinfo);
+                }
             }
         }
         return sb.ToString();
@@ -246,6 +260,32 @@ public static class RoomTooltipBuilder
             }
             sb.Append(string.Join(" / ", step.Commands));
         }
+    }
+
+    /// <summary>
+    /// TBInfo fallback for MultiActionHidden exits whose unlock lives
+    /// in a CMD chain rather than Action#N exit cells. Walks the
+    /// chain via <see cref="TBInfoActionResolver"/> and renders the
+    /// gathered keywords as a single indented "Try: kw1 / kw2 / …"
+    /// line. The keywords all run in the room being hovered (TBInfo
+    /// CMDs are local to their owning room), so no "here:" / "at X:"
+    /// prefix is needed.
+    /// </summary>
+    private static void AppendTbInfoActionFallback(
+        StringBuilder sb, int roomCmd, TBInfoStore tbinfo)
+    {
+        List<string> keywords = new();
+        foreach (string kw in TBInfoActionResolver.EnumerateRemoteActionKeywords(tbinfo, roomCmd))
+        {
+            // Preserve order but dedup — the same keyword appearing
+            // twice in a CMD chain (rare but possible) shouldn't
+            // bloat the tooltip.
+            if (!keywords.Contains(kw, StringComparer.OrdinalIgnoreCase))
+                keywords.Add(kw);
+        }
+        if (keywords.Count == 0) return;
+
+        sb.Append('\n').Append("    Try: ").Append(string.Join(" / ", keywords));
     }
 
     /// <summary>
@@ -296,6 +336,22 @@ public static class RoomTooltipBuilder
                 string steps = string.Join("; ",
                     ma.Actions.Select(a => string.Join(" / ", a.Commands)));
                 return $"Needs {ma.RequiredActionCount} {countLabel}{order}: {steps}";
+            }
+
+            case RoomExitHint.MultiActionHidden:
+            {
+                // MultiAction data didn't attach to this exit (no
+                // Action#N exit cells — the unlock lives in a TBInfo
+                // CMD chain instead, see TBInfoActionResolver). Still
+                // synthesise the "Needs N actions" summary from the
+                // raw modifier so the inline hint is informative
+                // instead of just "(MultiActionHidden)". The per-step
+                // breakdown beneath the exit line carries the actual
+                // keyword candidates.
+                (int count, bool specific) = MultiActionExitData.ParseModifier(exit.RawHint ?? string.Empty);
+                string label = count == 1 ? "action" : "actions";
+                string order = specific ? " specific order" : "";
+                return $"Needs {count} {label}{order}";
             }
 
             case RoomExitHint.None:
