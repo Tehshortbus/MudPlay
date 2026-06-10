@@ -173,6 +173,13 @@ public partial class LogPaneWindow : Window
         if (_rowsList is null) return;
         if (e.NewItems is null || e.NewItems.Count == 0) return;
         object newest = e.NewItems[^1]!;
-        _rowsList.ScrollIntoView(newest);
+        // Defer the scroll out of the CollectionChanged callback. Calling
+        // ScrollIntoView synchronously here re-enters the layout pass while
+        // the virtualizing panel is mid-update (the new container isn't
+        // measured yet), which throws "Invalid Arrange rectangle" — it
+        // crashed the app whenever a log line streamed in right as the pane
+        // opened. Posting lets the panel finish its layout first.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => _rowsList?.ScrollIntoView(newest));
     }
 }
