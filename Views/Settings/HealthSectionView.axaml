@@ -42,11 +42,14 @@
 
             <StackPanel IsVisible="{Binding HasProfile}"
                         Margin="22" Spacing="4"
-                        MaxWidth="720" HorizontalAlignment="Left">
+                        MaxWidth="860" HorizontalAlignment="Left">
 
 
-                <!-- Two columns: HP left, Mana / Kai right. -->
-                <Grid ColumnDefinitions="*,56,*">
+                <!-- Two columns: HP left, Mana / Kai right. Columns size
+                     to content (Auto) so the converted-value labels —
+                     up to "= 9999/9999" for 4-digit HP / 3-digit MA —
+                     are never clipped. -->
+                <Grid ColumnDefinitions="Auto,72,Auto">
 
                     <!-- ============ Health (HP) ============ -->
                     <StackPanel Grid.Column="0" Spacing="4">
@@ -62,7 +65,7 @@
                                          ToolTip.Tip="Thresholds below are read as absolute HP."/>
                         </StackPanel>
 
-                        <Grid ColumnDefinitions="160,140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="160,140,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                             <NumericUpDown Grid.Row="0" Grid.Column="1"
                                            Value="{Binding RestMaxHp, Mode=TwoWay}"
@@ -142,7 +145,7 @@
                                          ToolTip.Tip="Thresholds below are read as absolute MA / KAI."/>
                         </StackPanel>
 
-                        <Grid ColumnDefinitions="160,140,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="160,140,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                             <NumericUpDown Grid.Row="0" Grid.Column="1"
                                            Value="{Binding RestMaxMa, Mode=TwoWay}"
