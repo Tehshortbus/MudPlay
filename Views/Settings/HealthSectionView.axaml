@@ -21,7 +21,7 @@
         </Style>
     </UserControl.Styles>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer HorizontalScrollBarVisibility="Auto"
                   VerticalScrollBarVisibility="Auto">
 
         <Grid>
@@ -42,13 +42,15 @@
 
             <StackPanel IsVisible="{Binding HasProfile}"
                         Margin="22" Spacing="4"
-                        MaxWidth="860" HorizontalAlignment="Left">
+                        MaxWidth="928" HorizontalAlignment="Left">
 
 
-                <!-- Two columns: HP left, Mana / Kai right. Columns size
-                     to content (Auto) so the converted-value labels —
-                     up to "= 9999/9999" for 4-digit HP / 3-digit MA —
-                     are never clipped. -->
+                <!-- Two columns: HP left, Mana / Kai right. The outer
+                     columns are Auto so they fit the fixed-width inner
+                     grids; the inner value column is a fixed 124px so the
+                     converted "= abs/max" readout (up to "= 9999/9999"
+                     for 4-digit HP / 3-digit MA) is never squeezed to
+                     zero. A horizontal scrollbar covers narrow windows. -->
                 <Grid ColumnDefinitions="Auto,72,Auto">
 
                     <!-- ============ Health (HP) ============ -->
@@ -65,7 +67,7 @@
                                          ToolTip.Tip="Thresholds below are read as absolute HP."/>
                         </StackPanel>
 
-                        <Grid ColumnDefinitions="160,140,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="160,140,124" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                             <NumericUpDown Grid.Row="0" Grid.Column="1"
                                            Value="{Binding RestMaxHp, Mode=TwoWay}"
@@ -145,7 +147,7 @@
                                          ToolTip.Tip="Thresholds below are read as absolute MA / KAI."/>
                         </StackPanel>
 
-                        <Grid ColumnDefinitions="160,140,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="160,140,124" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                             <NumericUpDown Grid.Row="0" Grid.Column="1"
                                            Value="{Binding RestMaxMa, Mode=TwoWay}"
