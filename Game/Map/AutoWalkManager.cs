@@ -52,6 +52,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private bool _awaitingHiddenReveal;
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
+    private Action? _preMoveHook;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -139,7 +140,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // tracks its own progress against ExecutedSinceAnchor.
         _tracker.NoteMoveSent(direction);
         byte[] bytes = EncodeMove(direction);
-        WriteBytes(bytes, $"tier3 backtrack {direction}");
+        EmitMoveBytes(bytes, $"tier3 backtrack {direction}");
     }
 
     public void PauseForRecovery(string reason)
@@ -307,6 +308,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(check);
         _isLeaderWithFollowers = check;
+    }
+
+    /// <summary>
+    /// Pre-move stealth hook (PR 4.b) — invoked by the walker
+    /// immediately before each move's bytes go out, AFTER any
+    /// door / trap / hidden / multi-action pre-steps, so <c>sn</c> is
+    /// the last command before the move and the move itself is sneaked.
+    /// MainWindowVM / AppServices binds this to
+    /// <see cref="Game.Stealth.StealthManager.RequestPreMoveStealth"/>.
+    /// Non-blocking: the hook fires and the move bytes follow without
+    /// waiting for the sneak ACK (sneak carries through the move).
+    /// </summary>
+    public void SetPreMoveHook(Action hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        _preMoveHook = hook;
     }
 
     /// <summary>
@@ -512,7 +529,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] preBytes = EncodeMove(step.Direction);
-                WriteBytes(preBytes, $"move {step.Direction} (door pre-open)");
+                EmitMoveBytes(preBytes, $"move {step.Direction} (door pre-open)");
                 return;
             }
             _awaitingDoorOpen = true;
@@ -566,7 +583,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
             byte[] moveBytes = EncodeMove(step.Direction);
-            WriteBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
+            EmitMoveBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
             return;
         }
 
@@ -580,7 +597,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
             _recovery?.NoteEngineStepSent(step.Direction);
             byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
-            WriteBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
+            EmitMoveBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
             return;
         }
 
@@ -614,7 +631,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _tracker.NoteMoveSent(keyword, cardinal: step.Direction);
             _recovery?.NoteEngineStepSent(step.Direction);
             byte[] tpBytes = Encoding.Latin1.GetBytes(keyword + "\r");
-            WriteBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
+            EmitMoveBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
             return;
         }
 
@@ -638,7 +655,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _recovery?.NoteEngineStepSent(step.Direction);
 
         byte[] bytes = EncodeMove(step.Direction);
-        WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
+        EmitMoveBytes(bytes, $"move {step.Direction} → {exit.Target}");
     }
 
     private void OnHiddenRevealReply(HiddenSearchResult result)
@@ -667,7 +684,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
-                WriteBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
+                EmitMoveBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
                 return;
 
             case HiddenSearchResult.Failed failed:
@@ -704,7 +721,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
-                WriteBytes(bytes, $"move {step.Direction} (post-door)");
+                EmitMoveBytes(bytes, $"move {step.Direction} (post-door)");
                 return;
 
             case DoorOpenResult.Failed failed:
@@ -763,7 +780,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
         byte[] bytes = EncodeMove(step.Direction);
-        WriteBytes(bytes, $"move {step.Direction} (post-disarm)");
+        EmitMoveBytes(bytes, $"move {step.Direction} (post-disarm)");
     }
 
     private static string DirectionWord(Direction dir) => dir switch
@@ -788,6 +805,20 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         byte[] bytes = Encoding.Latin1.GetBytes(step.Command + "\r");
         WriteBytes(bytes, $"command '{step.Command}'");
+    }
+
+    /// <summary>
+    /// Emit a move (cardinal direction, text-exit command, or teleport
+    /// keyword) — fires the pre-move stealth hook (so <c>sn</c> is the
+    /// last command before the move) then writes the move bytes. Every
+    /// move-byte send routes through here so the choke point stays
+    /// single; non-move sends (multi-action prerequisites, the teleport
+    /// <c>.@party</c> relay) call <see cref="WriteBytes"/> directly.
+    /// </summary>
+    private void EmitMoveBytes(byte[] bytes, string reasonForLog)
+    {
+        _preMoveHook?.Invoke();
+        WriteBytes(bytes, reasonForLog);
     }
 
     private void WriteBytes(byte[] bytes, string reasonForLog)

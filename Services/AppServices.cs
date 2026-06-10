@@ -1724,6 +1724,12 @@ public sealed class AppServices
         // Phase 7 PR 7.22 — route walker over trapped exits through
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+        // PR 4.b — proactive pre-move sneak: `sn` goes out as the last
+        // command before each walker move so the move itself is sneaked
+        // (the reactive RoomTracker hook above only re-sneaks AFTER
+        // arriving). Non-blocking; the settled-state guard in
+        // StealthManager prevents a double-send when both paths fire.
+        Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
 
         // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
         // BBS-change signals so the catalogue reloads on profile load
@@ -1782,6 +1788,8 @@ public sealed class AppServices
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
             PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
+        // PR 4.b — same proactive pre-move sneak for loop circuits.
+        LoopRunner.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();

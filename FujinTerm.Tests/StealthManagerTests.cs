@@ -303,6 +303,72 @@ public sealed class StealthManagerTests
         Assert.Empty(h.Sent);
     }
 
+    // ----- pre-move stealth hook (PR 4.b) ----------------------------
+
+    [Fact]
+    public void RequestPreMoveStealth_FromIdle_SendsSneak()
+    {
+        // The proactive pre-move path: the walker/loop runner calls this
+        // immediately before a move so `sn` is the last command before
+        // the move bytes — the move itself is sneaked.
+        using AutoHarness h = new() { AutoSneakOn = true };
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Single(h.Sent);
+        Assert.Equal("sn", h.LastSent());
+        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
+    }
+
+    [Fact]
+    public void RequestPreMoveStealth_AlreadySneaking_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "Sneaking...", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RequestPreMoveStealth_MidAttempt_NoDoubleSend()
+    {
+        // Settled-state guard: a pre-move request while already in
+        // AttemptingSneak (e.g. the reactive room-change path already
+        // fired) must not send a second `sn`.
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.Stealth.RequestPreMoveStealth();
+        Assert.Single(h.Sent);
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void RequestPreMoveStealth_InCombat_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.State.InCombat = true;
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RequestPreMoveStealth_Off_NoSend()
+    {
+        using AutoHarness h = new() { AutoSneakOn = false };
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Empty(h.Sent);
+    }
+
     [Fact]
     public void AutoHide_NoteIdle_SendsHide()
     {

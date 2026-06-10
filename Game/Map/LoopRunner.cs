@@ -34,6 +34,7 @@ public sealed class LoopRunner : IRecoverableEngine
     /// </summary>
     private readonly IRoomFilter? _filter;
     private Action<byte[]>? _wireSender;
+    private Action? _preMoveHook;
 
     private Loop? _loop;
     private int _index;
@@ -183,6 +184,7 @@ public sealed class LoopRunner : IRecoverableEngine
         // FSM stays in sync with the observation it'll receive.
         _tracker.NoteMoveSent(direction);
         byte[] bytes = AutoWalkManager.EncodeMove(direction);
+        _preMoveHook?.Invoke();
         Write(bytes, $"tier3 backtrack {direction}");
     }
 
@@ -291,6 +293,19 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
+    }
+
+    /// <summary>
+    /// Pre-move stealth hook (PR 4.b) — invoked immediately before each
+    /// loop move's bytes go out so <c>sn</c> is the last command before
+    /// the move and the circuit is walked under sneak. Mirrors
+    /// <see cref="AutoWalkManager.SetPreMoveHook"/>; AppServices binds
+    /// both to <see cref="Game.Stealth.StealthManager.RequestPreMoveStealth"/>.
+    /// </summary>
+    public void SetPreMoveHook(Action hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        _preMoveHook = hook;
     }
 
     /// <summary>
@@ -656,6 +671,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _recovery?.NoteEngineStepSent(step.Direction);
 
         byte[] bytes = AutoWalkManager.EncodeMove(step.Direction);
+        _preMoveHook?.Invoke();
         Write(bytes, $"move {step.Direction} → {exit.Target}");
     }
 

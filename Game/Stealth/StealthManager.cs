@@ -166,20 +166,54 @@ public sealed class StealthManager : IDisposable
         }
         _sneakConfirmedThisRoom = false;
 
-        // Auto-sneak: enabled + (idle|failed) + not in combat → send `sn`.
-        // Fires after the silent-loss check so a just-lost sneak
-        // immediately re-attempts. `sn` is the live MajorMUD command; the
-        // clean `Attempting to sneak...` ACK then establishes the armed
-        // sneak (OnSneakInitiate) before the next move.
-        if (_isAutoSneakEnabled?.Invoke() == true
-         && (_stateValue == StealthState.Idle || _stateValue == StealthState.Failed)
-         && !_state.InCombat)
-        {
-            _log?.Info(LogCategory, "auto-sneak triggered (room change + idle/failed + !combat)");
-            _sneakRetries = 0;
-            Transition(StealthState.AttemptingSneak);
-            Send("sn");
-        }
+        // Auto-sneak: fires after the silent-loss check so a just-lost
+        // sneak immediately re-attempts. This is the reactive path —
+        // covers room changes from manual movement the user types at the
+        // terminal. Engine-driven moves get the proactive pre-move path
+        // (<see cref="RequestPreMoveStealth"/>) instead, so the move
+        // itself is sneaked rather than the room after it.
+        TryBeginAutoSneak("room change + idle/failed + !combat");
+    }
+
+    /// <summary>
+    /// Movement-engine pre-move hook — called by the walker / loop
+    /// runner immediately before a move's bytes go out (after any
+    /// door / trap / hidden / multi-action pre-steps) so the move
+    /// itself is performed under sneak. Non-blocking: fires <c>sn</c>
+    /// and returns at once; the move is NOT held waiting for the ACK
+    /// (sneak carries through the move and the new room's
+    /// <c>Sneaking...</c> line confirms it). No-op when auto-sneak is
+    /// off, we're already sneaking / hidden or mid-attempt, or we're in
+    /// combat (the walker is gated out of moving while a hostile holds
+    /// the Combat gate anyway).
+    /// </summary>
+    public void RequestPreMoveStealth() => TryBeginAutoSneak("pre-move");
+
+    /// <summary>
+    /// Shared auto-sneak entry point. Sends <c>sn</c> exactly once from
+    /// a settled non-stealth state (<see cref="StealthState.Idle"/> /
+    /// <see cref="StealthState.Failed"/>) when auto-sneak is on and
+    /// we're not in combat, transitioning to
+    /// <see cref="StealthState.AttemptingSneak"/>. No-op when auto-sneak
+    /// is off, a sneak / hide is already established or in flight, or
+    /// we're in combat. The settled-state guard prevents a double-send
+    /// when the reactive room-change path and the pre-move path both
+    /// fire for the same move.
+    /// </summary>
+    private bool TryBeginAutoSneak(string reason)
+    {
+        if (_isAutoSneakEnabled?.Invoke() != true) return false;
+        if (_state.InCombat) return false;
+        if (_stateValue != StealthState.Idle && _stateValue != StealthState.Failed) return false;
+
+        // `sn` is the live MajorMUD command; the clean
+        // `Attempting to sneak...` ACK then establishes the armed sneak
+        // (OnSneakInitiate) and the move's `Sneaking...` confirms it.
+        _log?.Info(LogCategory, $"auto-sneak triggered ({reason})");
+        _sneakRetries = 0;
+        Transition(StealthState.AttemptingSneak);
+        Send("sn");
+        return true;
     }
 
     /// <summary>
