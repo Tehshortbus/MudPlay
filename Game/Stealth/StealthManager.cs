@@ -14,35 +14,44 @@ namespace FujinTerm.Game.Stealth;
 /// </summary>
 /// <remarks>
 /// <para>
-/// FSM transitions are line-driven (no timers). The four observed
-/// signals are:
+/// FSM transitions are line-driven (no timers). The observed signals
+/// and their meanings, per the live MajorMUD sneak sequence:
 /// </para>
 /// <list type="bullet">
 /// <item><see cref="KnownPatterns.UserSneakInitiate"/>
-/// (<c>Attempting to sneak...</c>) → <see cref="StealthState.AttemptingSneak"/>.</item>
+/// (clean <c>Attempting to sneak...</c> with no failure suffix) is the
+/// server ACK that the sneak attempt took — the character is armed and
+/// may now move. Establishes <see cref="StealthState.Sneaking"/> +
+/// <c>IsSneaking=true</c>.</item>
+/// <item><see cref="KnownPatterns.UserSneakFailed"/>
+/// (<c>Attempting to sneak...You don't think you're sneaking.</c>) is a
+/// soft rejection: the attempt didn't take and must be retried by
+/// resending <c>sn</c>. When auto-sneak owns the loop we resend (capped
+/// at <see cref="MaxSneakRetries"/>); otherwise we settle on
+/// <see cref="StealthState.Failed"/> for the caller to retry.</item>
 /// <item><see cref="KnownPatterns.UserSneaking"/>
 /// (<c>Sneaking...</c>, emitted on each room entry while sneak holds)
-/// → <see cref="StealthState.Sneaking"/> + <c>IsSneaking=true</c>.
-/// Confirms the in-flight attempt.</item>
+/// is the post-move confirmation that we entered the new room unseen.
+/// Re-establishes <see cref="StealthState.Sneaking"/> and re-arms the
+/// silent-loss watchdog for the room.</item>
 /// <item><see cref="KnownPatterns.UserNotSneaking"/>
 /// (<c>You make a sound as you enter the room!</c>) →
 /// <see cref="StealthState.Idle"/> + <c>IsSneaking=false</c>. Loud
 /// loss.</item>
-/// <item><see cref="KnownPatterns.UserSneakFailed"/> /
-/// <see cref="KnownPatterns.UserCantSneak"/> →
-/// <see cref="StealthState.Failed"/>.</item>
+/// <item><see cref="KnownPatterns.UserCantSneak"/>
+/// (<c>You may not sneak right now!</c>) →
+/// <see cref="StealthState.Failed"/>. Hard block — no auto-retry.</item>
 /// </list>
 /// <para>
 /// <b>Silent-loss detection</b>: in MajorMUD, sneak silently breaks
-/// when an action removes it (cast, attack, etc.) without emitting
-/// the <c>You make a sound...</c> line. The watchdog flag
-/// <c>_sneakConfirmedThisRoom</c> is set on every <c>Sneaking...</c>
-/// observation and cleared on
-/// <see cref="Game.Map.RoomTracker"/>'s
-/// <see cref="RoomTracker.StateChanged"/> event. If we believed we
-/// were sneaking but the new room never re-confirmed, we treat that
-/// as a silent loss and drop the flag — preventing the engine from
-/// thinking we're still hidden when CombatManager is about to swing.
+/// when a move is observed (or a stealth-breaking action fires) without
+/// the <c>Sneaking...</c> line. The watchdog flag
+/// <c>_sneakConfirmedThisRoom</c> is set on every positive signal
+/// (clean initiate OR <c>Sneaking...</c>) and cleared on
+/// <see cref="NoteRoomChanged"/>. If we believed we were sneaking but
+/// the new room never re-confirmed, we treat that as a silent loss and
+/// drop the flag — preventing the engine from thinking we're still
+/// hidden when CombatManager is about to swing.
 /// </para>
 /// </remarks>
 public sealed class StealthManager : IDisposable
@@ -50,6 +59,12 @@ public sealed class StealthManager : IDisposable
     /// <summary>LogService category — appears as <c>[Stealth]</c> rows
     /// per FSM transition + silent-loss detection.</summary>
     public const string LogCategory = "Stealth";
+
+    /// <summary>Max consecutive <c>sn</c> resends after a soft sneak
+    /// rejection (<c>You don't think you're sneaking.</c>) before the
+    /// auto-sneak loop gives up for this room. Matches MudProxy's retry
+    /// ceiling. Reset on every positive sneak signal + room change.</summary>
+    private const int MaxSneakRetries = 10;
 
     private readonly PlayerState _state;
     private readonly LogService? _log;
@@ -65,6 +80,7 @@ public sealed class StealthManager : IDisposable
 
     private StealthState _stateValue;
     private bool _sneakConfirmedThisRoom;
+    private int _sneakRetries;
     private bool _disposed;
 
     /// <summary>Current FSM state. Backed by
@@ -150,15 +166,19 @@ public sealed class StealthManager : IDisposable
         }
         _sneakConfirmedThisRoom = false;
 
-        // Auto-sneak: enabled + idle + not in combat → send `sneak`.
+        // Auto-sneak: enabled + (idle|failed) + not in combat → send `sn`.
         // Fires after the silent-loss check so a just-lost sneak
-        // immediately re-attempts on the next move.
+        // immediately re-attempts. `sn` is the live MajorMUD command; the
+        // clean `Attempting to sneak...` ACK then establishes the armed
+        // sneak (OnSneakInitiate) before the next move.
         if (_isAutoSneakEnabled?.Invoke() == true
-         && _stateValue == StealthState.Idle
+         && (_stateValue == StealthState.Idle || _stateValue == StealthState.Failed)
          && !_state.InCombat)
         {
-            _log?.Info(LogCategory, "auto-sneak triggered (room change + idle + !combat)");
-            Send("sneak");
+            _log?.Info(LogCategory, "auto-sneak triggered (room change + idle/failed + !combat)");
+            _sneakRetries = 0;
+            Transition(StealthState.AttemptingSneak);
+            Send("sn");
         }
     }
 
@@ -176,7 +196,7 @@ public sealed class StealthManager : IDisposable
         if (_state.InCombat) return;
         if (_stateValue == StealthState.Hidden) return;
         _log?.Info(LogCategory, "auto-hide triggered");
-        Send("hide");
+        Send("hid");
     }
 
     private void Send(string text)
@@ -214,19 +234,29 @@ public sealed class StealthManager : IDisposable
 
     private void OnSneakInitiate(MatchResult _)
     {
-        if (_stateValue == StealthState.Sneaking || _stateValue == StealthState.AttemptingSneak)
-            return;     // already in flight / confirmed
-        Transition(StealthState.AttemptingSneak);
+        // Clean `Attempting to sneak...` (no failure suffix — the
+        // anchored UserSneakInitiate pattern guarantees that) is the
+        // server ACK: the sneak took and we're armed to move.
+        EstablishSneaking();
     }
 
     private void OnSneaking(MatchResult _)
     {
+        // `Sneaking...` on room entry — post-move confirmation we
+        // arrived unseen. Re-arms the silent-loss watchdog.
+        EstablishSneaking();
+    }
+
+    /// <summary>Shared positive-signal handler: marks sneak established
+    /// (clean initiate ACK or post-move <c>Sneaking...</c>), arms the
+    /// per-room watchdog, and clears the resend counter.</summary>
+    private void EstablishSneaking()
+    {
         _sneakConfirmedThisRoom = true;
-        if (_stateValue != StealthState.Sneaking)
-        {
-            Transition(StealthState.Sneaking);
-            _state.IsSneaking = true;
-        }
+        _sneakRetries = 0;
+        if (_stateValue == StealthState.Sneaking) return;
+        Transition(StealthState.Sneaking);
+        _state.IsSneaking = true;
     }
 
     private void OnNotSneaking(MatchResult _)
@@ -236,7 +266,23 @@ public sealed class StealthManager : IDisposable
         _state.IsSneaking = false;
     }
 
-    private void OnSneakFailed(MatchResult _) => Transition(StealthState.Failed);
+    private void OnSneakFailed(MatchResult _)
+    {
+        // `Attempting to sneak...You don't think you're sneaking.` — the
+        // attempt was rejected. Resend `sn` when auto-sneak owns the loop
+        // (capped at MaxSneakRetries); otherwise settle on Failed and let
+        // the caller decide whether to retry or move without sneaking.
+        Transition(StealthState.Failed);
+        if (_isAutoSneakEnabled?.Invoke() == true
+         && !_state.InCombat
+         && _sneakRetries < MaxSneakRetries)
+        {
+            _sneakRetries++;
+            _log?.Info(LogCategory, $"sneak rejected — resending sn (retry {_sneakRetries}/{MaxSneakRetries})");
+            Transition(StealthState.AttemptingSneak);
+            Send("sn");
+        }
+    }
 
     private void OnCantSneak(MatchResult _) => Transition(StealthState.Failed);
 

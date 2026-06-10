@@ -43,13 +43,16 @@ public sealed class StealthManagerTests
     // ----- sneak FSM happy path ---------------------------------------
 
     [Fact]
-    public void SneakInitiate_TransitionsToAttempting()
+    public void CleanSneakInitiate_EstablishesSneaking()
     {
+        // A clean `Attempting to sneak...` (no failure suffix) is the
+        // server ACK that the sneak took — we're armed to move, so the
+        // FSM establishes Sneaking immediately.
         using Harness h = new();
         h.Feed("Attempting to sneak...");
 
-        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
-        Assert.False(h.State.IsSneaking);     // not confirmed yet
+        Assert.Equal(StealthState.Sneaking, h.Stealth.State);
+        Assert.True(h.State.IsSneaking);
     }
 
     [Fact]
@@ -183,14 +186,13 @@ public sealed class StealthManagerTests
     public void StateChanged_FiresOnEveryTransition()
     {
         using Harness h = new();
-        h.Feed("Attempting to sneak...");
-        h.Feed("Sneaking...");
+        h.Feed("Attempting to sneak...");   // clean ACK → establishes Sneaking
+        h.Feed("Sneaking...");              // post-move reconfirm — idempotent
         h.Feed("You make a sound as you enter the room!");
 
-        Assert.Equal(3, h.Transitions.Count);
-        Assert.Equal((StealthState.Idle, StealthState.AttemptingSneak), h.Transitions[0]);
-        Assert.Equal((StealthState.AttemptingSneak, StealthState.Sneaking), h.Transitions[1]);
-        Assert.Equal((StealthState.Sneaking, StealthState.Idle), h.Transitions[2]);
+        Assert.Equal(2, h.Transitions.Count);
+        Assert.Equal((StealthState.Idle, StealthState.Sneaking), h.Transitions[0]);
+        Assert.Equal((StealthState.Sneaking, StealthState.Idle), h.Transitions[1]);
     }
 
     [Fact]
@@ -243,7 +245,28 @@ public sealed class StealthManagerTests
         h.Stealth.NoteRoomChanged();
 
         Assert.Single(h.Sent);
-        Assert.Equal("sneak", h.LastSent());
+        Assert.Equal("sn", h.LastSent());
+        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
+    }
+
+    [Fact]
+    public void AutoSneak_OnSoftRejection_ResendsSneak()
+    {
+        // `Attempting to sneak...You don't think you're sneaking.` is a
+        // soft rejection — under auto-sneak we resend `sn` and return to
+        // AttemptingSneak to await a clean ACK.
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.Stealth.NoteRoomChanged();        // first `sn`
+        Assert.Single(h.Sent);
+
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "Attempting to sneak...You don't think you're sneaking.",
+            Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("sn", h.LastSent());
+        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
     }
 
     [Fact]
@@ -288,7 +311,7 @@ public sealed class StealthManagerTests
         h.Stealth.NoteIdleOpportunity();
 
         Assert.Single(h.Sent);
-        Assert.Equal("hide", h.LastSent());
+        Assert.Equal("hid", h.LastSent());
     }
 
     [Fact]

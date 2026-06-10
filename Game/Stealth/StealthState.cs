@@ -4,9 +4,9 @@ namespace FujinTerm.Game.Stealth;
 /// Coarse FSM state for <see cref="StealthManager"/>. The granular
 /// in-flight states (<see cref="AttemptingSneak"/> /
 /// <see cref="AttemptingHide"/>) are observable separately from the
-/// confirmed states (<see cref="Sneaking"/> / <see cref="Hidden"/>)
+/// established states (<see cref="Sneaking"/> / <see cref="Hidden"/>)
 /// so CombatManager's backstab-window suppression can wait for the
-/// confirmed transition before opening the backstab attempt.
+/// established transition before opening the backstab attempt.
 /// </summary>
 public enum StealthState
 {
@@ -14,14 +14,19 @@ public enum StealthState
     /// confirmed loss.</summary>
     Idle,
 
-    /// <summary>We sent <c>sneak</c>; the server replied
-    /// <c>Attempting to sneak...</c> but we haven't observed the
-    /// confirming <c>Sneaking...</c> on the next room entry yet.</summary>
+    /// <summary>We sent <c>sn</c> and are waiting for the server echo.
+    /// A clean <c>Attempting to sneak...</c> moves us to
+    /// <see cref="Sneaking"/> (armed); the failure suffix
+    /// <c>You don't think you're sneaking.</c> bounces us to
+    /// <see cref="Failed"/> (and, under auto-sneak, triggers a resend
+    /// that returns here).</summary>
     AttemptingSneak,
 
-    /// <summary>Confirmed sneaking — last room entry carried
-    /// <c>Sneaking...</c>. <see cref="PlayerState.IsSneaking"/> is
-    /// true while in this state.</summary>
+    /// <summary>Sneak established — either the clean
+    /// <c>Attempting to sneak...</c> ACK (armed, ready to move) or a
+    /// post-move <c>Sneaking...</c> confirmation.
+    /// <see cref="PlayerState.IsSneaking"/> is true while in this
+    /// state.</summary>
     Sneaking,
 
     /// <summary>We sent <c>hide</c> but the server's confirmation
