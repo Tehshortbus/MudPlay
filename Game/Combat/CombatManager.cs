@@ -304,6 +304,7 @@ public sealed class CombatManager : IDisposable
                 }
                 _log?.Info(LogCategory,
                     $"room cleared — was=target={_currentTarget} " +
+                    $"source={obs.Source} " +
                     $"obs-entities={total} (unknown={unknownCount} " +
                     $"no-monster-number={noNumberCount} friendly={friendlyCount})");
             }

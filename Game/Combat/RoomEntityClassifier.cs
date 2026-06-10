@@ -243,7 +243,8 @@ public sealed class RoomEntityClassifier : IDisposable
         updated.AddRange(baseEntities);
         updated.Add(entity);
 
-        RoomEntitiesObservation obs = new(rawWireLine, updated, DateTimeOffset.Now);
+        RoomEntitiesObservation obs = new(
+            rawWireLine, updated, DateTimeOffset.Now, RoomObservationSource.Arrival);
         Current = obs;
         EntitiesObserved?.Invoke(obs);
     }
@@ -445,7 +446,8 @@ public sealed class RoomEntityClassifier : IDisposable
         for (int i = 0; i < cur.Entities.Count; i++)
             if (i != removeIndex) updated.Add(cur.Entities[i]);
 
-        RoomEntitiesObservation obs = new(cur.RawAlsoHereLine, updated, DateTimeOffset.Now);
+        RoomEntitiesObservation obs = new(
+            cur.RawAlsoHereLine, updated, DateTimeOffset.Now, RoomObservationSource.Death);
         Current = obs;
         EntitiesObserved?.Invoke(obs);
         return true;
@@ -469,7 +471,8 @@ public sealed class RoomEntityClassifier : IDisposable
         RoomEntitiesObservation wiped = new(
             RawAlsoHereLine: string.Empty,
             Entities: Array.Empty<RoomEntity>(),
-            At: DateTimeOffset.Now);
+            At: DateTimeOffset.Now,
+            Source: RoomObservationSource.RoomChange);
         Current = wiped;
         EntitiesObserved?.Invoke(wiped);
     }

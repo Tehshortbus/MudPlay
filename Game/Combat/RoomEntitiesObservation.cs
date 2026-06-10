@@ -15,7 +15,12 @@ namespace FujinTerm.Game.Combat;
 /// <param name="Entities">Classified occupants, in the order they
 /// appeared in the line (left to right).</param>
 /// <param name="At">Wall-clock timestamp of the observation.</param>
+/// <param name="Source">Which classifier path produced this emit.
+/// Defaults to <see cref="RoomObservationSource.AlsoHere"/> — the
+/// synthetic re-fire paths (arrival / death / room-change) stamp their
+/// own value so the empty-observation diagnosis can name the origin.</param>
 public readonly record struct RoomEntitiesObservation(
     string RawAlsoHereLine,
     IReadOnlyList<RoomEntity> Entities,
-    DateTimeOffset At);
+    DateTimeOffset At,
+    RoomObservationSource Source = RoomObservationSource.AlsoHere);
