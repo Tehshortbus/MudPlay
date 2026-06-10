@@ -678,12 +678,22 @@ public sealed class AppServices
     public Game.Recovery.DeathRecoveryManager DeathRecovery { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 — runtime inventory parser. Folds the full <c>i</c>
+    /// dump into a currency + numeric-encumbrance
+    /// <see cref="Game.Inventory.InventorySnapshot"/> and patches it
+    /// incrementally on coin pickups / drops / bank moves. Feeds
+    /// <see cref="Cash"/>'s encumbrance gate the live carry weight.
+    /// </summary>
+    public Game.Inventory.InventoryManager Inventory { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.E — per-currency cash pickup engine. Dispatches
-    /// <c>get all &lt;coin&gt;</c> commands per
+    /// <c>get &lt;count&gt; &lt;coin&gt;</c> commands per
     /// <see cref="Models.Profile.CashSettings"/> policy when the
     /// room-cash line lands; tracks held tallies for the auto-
-    /// deposit trigger. Walker-driven reroute + encumbrance gates
-    /// + cascade-drop are follow-up work.
+    /// deposit trigger. Encumbrance gates + drop-smaller-for-larger
+    /// cascade run off <see cref="Inventory"/>'s snapshot; walker-
+    /// driven reroute is follow-up work.
     /// </summary>
     public Game.Cash.CashManager Cash { get; private set; } = null!;
 
@@ -1637,6 +1647,14 @@ public sealed class AppServices
         // Cluster 5d — @comeback handler routes to DeathRecovery.
         Comeback = new Game.Remote.ComebackHandler(RemoteCommands, DeathRecovery, Log);
 
+        // Phase 9 — InventoryManager. Parses the full `i` dump into a
+        // currency + numeric-encumbrance snapshot and patches it on
+        // coin pickups / drops. CashManager reads the snapshot for its
+        // encumbrance gate. MarkStale on profile swap so the new
+        // character's first gate evaluation waits for a fresh `i`.
+        Inventory = new Game.Inventory.InventoryManager(Log);
+        Profile.ProfileLoaded += _ => Inventory.MarkStale();
+
         // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
         // per-currency policy. AutoGetCash gates the whole engine
@@ -1644,6 +1662,7 @@ public sealed class AppServices
         Cash = new Game.Cash.CashManager(Router,
             readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            getSnapshot: () => Inventory.Snapshot,
             log: Log);
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.

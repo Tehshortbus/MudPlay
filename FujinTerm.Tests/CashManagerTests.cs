@@ -1,5 +1,7 @@
 using System.Text;
+using FujinTerm.Game;
 using FujinTerm.Game.Cash;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -23,6 +25,10 @@ public sealed class CashManagerTests
         public List<byte[]> Sent { get; } = new();
         public CashSettings Settings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
+        // Default Empty → MaxWeight 0 → encumbrance gate inert, so the
+        // non-gate tests run the v1 full-pickup path unchanged. Gate
+        // tests set a populated snapshot before feeding the cash line.
+        public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<(string Currency, int Count, CashPolicy Policy)> Dispatches { get; } = new();
         public List<long> AutoDeposits { get; } = new();
 
@@ -32,6 +38,7 @@ public sealed class CashManagerTests
             Cash = new CashManager(Router,
                 readSettings: () => Settings,
                 isEnabled: () => AutoGetCashEnabled,
+                getSnapshot: () => Snapshot,
                 log: Log);
             Cash.SetWireSender(b => Sent.Add(b));
             Cash.CashDispatched += (c, n, p) => Dispatches.Add((c, n, p));
@@ -48,6 +55,9 @@ public sealed class CashManagerTests
         public string LastSent => Sent.Count == 0
             ? string.Empty
             : Encoding.Latin1.GetString(Sent[^1]).TrimEnd('\r');
+
+        public IReadOnlyList<string> AllSent =>
+            Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
 
         public void Dispose() => Cash.Dispose();
     }
@@ -451,6 +461,102 @@ public sealed class CashManagerTests
 
         Assert.Empty(h.Sent);
         Assert.Empty(h.Dispatches);
+    }
+
+    // ----- encumbrance gate + cascade --------------------------------
+
+    /// <summary>Build a snapshot with given per-coin counts + a numeric
+    /// encumbrance reading; TotalCopperValue is irrelevant to the gate so
+    /// it's left zero.</summary>
+    private static InventorySnapshot Snap(
+        int copper, int silver, int gold, int platinum, int runic,
+        int currentWeight, int maxWeight)
+    {
+        return new InventorySnapshot(
+            new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
+            new EncumbranceReading(currentWeight, maxWeight, 0, EncumbranceLevel.None),
+            DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public void Gate_NoFlag_CollectsFullEvenWithSnapshot()
+    {
+        // A populated snapshot but no SkipCollectIfMakes* flag → gate
+        // inert, full pickup as v1.
+        using Harness h = new();
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Snapshot = Snap(0, 0, 0, 0, 0, currentWeight: 0, maxWeight: 1000);
+
+        h.Feed("There are 1000 gold pieces here.");
+
+        Assert.Equal("get 1000 gold", h.LastSent);
+    }
+
+    [Fact]
+    public void Gate_Light_ClampsPickupToHeadroom()
+    {
+        // MaxWeight 1000, Light starts at 17%. GateBoundaryCap = 169 weight
+        // units → budget 507 coins (169*3). Collect clamps to 507 copper.
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Collect;
+        h.Settings.SkipCollectIfMakesLight = true;
+        h.Snapshot = Snap(0, 0, 0, 0, 0, currentWeight: 0, maxWeight: 1000);
+
+        h.Feed("There are 1000 copper pieces here.");
+
+        Assert.Equal("get 507 copper", h.LastSent);
+    }
+
+    [Fact]
+    public void Gate_AlreadyOverBracket_SkipsPickup()
+    {
+        // Current weight 20% of max already over the Light gate → zero
+        // budget, no wire send.
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Collect;
+        h.Settings.SkipCollectIfMakesLight = true;
+        h.Snapshot = Snap(0, 0, 0, 0, 0, currentWeight: 200, maxWeight: 1000);
+
+        h.Feed("There are 1000 copper pieces here.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Gate_Cascade_DropsSmallerForLarger()
+    {
+        // Hold 300 copper (100 weight units). MaxWeight 1000, Light gate →
+        // cap 169 → budget 207 gold. Want 300 gold: 207 free, 93 short.
+        // Cascade drops 93 copper (encumbrance-neutral) to pick up the
+        // full 300 gold.
+        using Harness h = new();
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.SkipCollectIfMakesLight = true;
+        h.Settings.DropSmallerForLarger = true;
+        h.Snapshot = Snap(300, 0, 0, 0, 0, currentWeight: 100, maxWeight: 1000);
+
+        h.Feed("There are 300 gold pieces here.");
+
+        Assert.Equal(new[] { "drop 93 copper", "get 300 gold" }, h.AllSent);
+    }
+
+    [Fact]
+    public void Gate_InFlightDelta_ThreadsConsecutiveBatches()
+    {
+        // First collect clamps to 507 copper (Light gate, max 1000). The
+        // in-flight delta now projects 507 held copper; a second identical
+        // ground line (before the pickup confirms) sees no remaining
+        // headroom and skips.
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Collect;
+        h.Settings.SkipCollectIfMakesLight = true;
+        h.Snapshot = Snap(0, 0, 0, 0, 0, currentWeight: 0, maxWeight: 1000);
+
+        h.Feed("There are 1000 copper pieces here.");
+        Assert.Equal("get 507 copper", h.LastSent);
+
+        h.Feed("There are 1000 copper pieces here.");
+        Assert.Single(h.Sent);   // second batch gated out by the in-flight projection
     }
 
     private static void FeedLine(Terminal.LineExtractor lines, string text)
