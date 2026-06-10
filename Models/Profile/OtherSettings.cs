@@ -165,13 +165,12 @@ public sealed class OtherSettings
     /// a movement-blocking condition (prevents-movement gamedata flag or
     /// over-encumbrance) leaves us behind as the party leader walks off,
     /// we automatically telepath <c>@comeback &lt;room&gt;</c> to the
-    /// leader so their recovery flow picks us up. When <c>false</c>, the
-    /// left-behind is detected but no request is sent — the player handles
-    /// it manually. Off-state mirrors the master plan's "auto-comeback off
-    /// by default" only for the leader-side DeathRecovery flow; being
-    /// stranded silently is the worse outcome here, so the follower-side
-    /// request defaults on. Char-tier setting; surfaced in Settings →
-    /// Other.
+    /// leader so their party-recovery walk picks us up. When <c>false</c>,
+    /// the left-behind is still detected but no request is sent — the
+    /// player handles it manually. Defaults on: the request is a single
+    /// telepath that moves nothing on our side, so being stranded silently
+    /// is strictly the worse outcome. Char-tier setting; surfaced in
+    /// Settings → Other.
     /// </summary>
     public bool AutoRequestComebackWhenLeftBehind { get; set; } = true;
 
