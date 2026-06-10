@@ -581,6 +581,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Same shape for "You notice <list> here." — CashManager
         // buffers wrapped rows to parse the full cash + item list.
         AppServices.Current.Cash.AttachLineExtractor(Lines);
+        // Same survey line drives item auto-get — its own buffer
+        // stitches wrapped rows so the multi-line "You notice" parses.
+        AppServices.Current.AutoGetItems.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
@@ -653,6 +656,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
         // ride the gate-wrapped pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);
+        // Phase 9 PR 9.L — AutoGetItemsManager's `get <name>` commands
+        // ride the same gate-wrapped pipeline.
+        AppServices.Current.AutoGetItems.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
         // commands ride the same gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);

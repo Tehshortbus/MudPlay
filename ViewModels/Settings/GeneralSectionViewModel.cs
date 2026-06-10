@@ -133,8 +133,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     public bool IsAutoHealRestWired => true;    // PR 9.B — HealthManager
     public bool IsAutoNukeWired     => false;   // PR 9.D — CastingDirector
     public bool IsAutoBlessWired    => false;   // PR 9.D — CastingDirector
-    public bool IsAutoLightWired    => false;   // PR 9.D — CastingDirector
-    public bool IsAutoGetItemsWired => false;   // PR 9.E — CashManager (items partial)
+    public bool IsAutoLightWired    => true;    // PR 9.K — AutoLightManager
+    public bool IsAutoGetItemsWired => true;    // PR 9.L — AutoGetItemsManager
     public bool IsAutoGetCashWired  => true;    // PR 9.E — CashManager + StashRoomManager (both gate here)
     public bool IsAutoSneakWired    => true;    // PR 9.F Cluster 3 — StealthManager auto-sneak
     public bool IsAutoHideWired     => true;    // PR 9.F Cluster 3 — StealthManager auto-hide

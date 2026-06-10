@@ -61,6 +61,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSneakInitiate, @"^Attempting to sneak\.\.\.$");
         yield return new RegexPattern(KnownPatterns.UserCantSneak,     @"^You may not sneak right now!");
 
+        // ----- Room light ------------------------------------------------ (source: docs/auto-engine-orchestration.md — MMUD Explorer)
+        // Only the two "can't see" lines; prefix-anchored so trailing
+        // punctuation / dash variants don't break the match.
+        yield return new RegexPattern(KnownPatterns.RoomPitchBlack, @"^The room is pitch black");
+        yield return new RegexPattern(KnownPatterns.RoomVeryDark,   @"^The room is very dark");
+
         // ----- Movement -------------------------------------------------- (source: classifier.js movement)
         // Megamind ships two regexes under direction-failed (no-exit + closed door/gate); combined via alternation.
         yield return new RegexPattern(KnownPatterns.DirectionFailed,

@@ -54,6 +54,13 @@ public sealed class MovementCoordinator
     /// clears when MA recovers past the configured target.</summary>
     public const string ManaRecoveryGate = "ManaRecovery";
 
+    /// <summary>Phase 9 PR 9.J — asserted by the in-room acquisition
+    /// engine (PR 9.L auto-get) while the <c>loot</c> step runs after a
+    /// fight clears; clears when all flagged ground items + coins are
+    /// resolved. This is the <c>get-clear</c> contributor to the in-room
+    /// loop's movement gate (<c>fight-clear ∧ get-clear ∧ vitals-OK</c>).</summary>
+    public const string AcquisitionGate = "Acquisition";
+
     /// <summary>Phase 9 PR 9.I — asserted by
     /// <c>DeathRecoveryManager</c> while the corpse-recovery loop is
     /// running. Clears when recovery finishes.</summary>

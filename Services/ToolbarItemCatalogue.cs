@@ -118,7 +118,7 @@ public static class ToolbarItemCatalogue
             InDefaultLayout: false),
         new("ToggleAutoLight",    "Auto Light",           "IconAutoLight",
             "ToggleAutoLightCommand",
-            Tooltip: "Auto Light — wired in Phase 13 (dark-room detection + light-source use)",
+            Tooltip: "Auto Light — wired in Phase 9 PR 9.K (AutoLightManager)",
             InDefaultLayout: false),
         new("ToggleAutoGetItems", "Auto Get Items",       "IconAutoGetItems",
             "ToggleAutoGetItemsCommand",

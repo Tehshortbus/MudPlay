@@ -659,6 +659,14 @@ public sealed class AppServices
     public Game.Stealth.StealthManager Stealth { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.K — auto-light need poster. On a "can't see"
+    /// room-light line it posts a <see cref="NeedKind.LightSource"/>
+    /// need to <see cref="Needs"/>; auto-get (PR 9.L) fulfils it.
+    /// Gated by the AutoLight master toggle.
+    /// </summary>
+    public Game.Light.AutoLightManager AutoLight { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.I — death observation aggregator. Mirrors the
     /// most recent death record from the loaded profile into live
     /// observables (LivesRemaining / LastKiller / LastDeathAt /
@@ -678,6 +686,17 @@ public sealed class AppServices
     /// + cascade-drop are follow-up work.
     /// </summary>
     public Game.Cash.CashManager Cash { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.L — auto-get items engine. Parses the room
+    /// "You notice ... here." survey, resolves each entry against the
+    /// active set's items + the per-character
+    /// <see cref="Models.GameData.ItemOverlay.AutoCollect"/> flag, and
+    /// sends <c>get &lt;name&gt;</c> per flagged item. Gated by the
+    /// AutoGetItems master toggle; defer-until-combat-finished honours
+    /// the Settings → Items tab.
+    /// </summary>
+    public Game.Inventory.AutoGetItemsManager AutoGetItems { get; private set; } = null!;
 
     /// <summary>
     /// Phase 9 PR 9.E follow-up — on-entry stash plan for user-
@@ -839,6 +858,14 @@ public sealed class AppServices
     /// source halts whichever engine is active. PR 7.7.
     /// </summary>
     public Game.Map.MovementCoordinator MovementCoordinator { get; private set; } = null!;
+
+    /// <summary>
+    /// Fulfillment half of the Phase 9 auto-engine coordination model —
+    /// requesters post acquisition needs (light source, etc.), fulfilling
+    /// engines claim + resolve them. No engine references another by
+    /// type. PR 9.J.
+    /// </summary>
+    public NeedsRegistry Needs { get; private set; } = null!;
 
     /// <summary>
     /// Walk-to engine — sends one move at a time, waits for the room
@@ -1354,6 +1381,12 @@ public sealed class AppServices
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
 
+        // Phase 9 PR 9.J — needs registry. Cross-engine fulfillment hub;
+        // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on
+        // character swap so pending needs don't leak across profiles.
+        Needs = new NeedsRegistry(Log);
+        Profile.ProfileLoaded += _ => Needs.Clear();
+
         // Phase 9 PR 9.0b — RoomEntityClassifier + CombatStateTracker.
         // Classifier subscribes to RoomAlsoHere; tracker subscribes to
         // classifier output + combat-status / damage patterns to drive
@@ -1501,6 +1534,15 @@ public sealed class AppServices
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);
 
+        // Role-aware recovery: as a party follower we top off only to the
+        // rest floor (not full) and ping the leader via @wait / @ok so we
+        // don't silently hold or release the party. Solo / leader keeps the
+        // full rest-max topoff — PartyRestSync self-gates the telepaths.
+        Health.SetPartyRoleSync(
+            isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
+            requestPartyWait: PartyRest.RequestWait,
+            requestPartyOk: PartyRest.RequestOk);
+
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
         // again instead of skipping it on a stale _restInFlight.
@@ -1560,6 +1602,15 @@ public sealed class AppServices
             Stealth.NoteIdleOpportunity();
         };
 
+        // Phase 9 PR 9.K — AutoLightManager. Posts a LightSource need to
+        // the registry on a "can't see" room-light line; auto-get (9.L)
+        // fulfils it. Gated by the AutoLight master toggle (Settings →
+        // General checkbox + the toolbar Toggle button write the same
+        // flag; the delegate is queried per dark-room line so toggling
+        // takes effect immediately).
+        AutoLight = new Game.Light.AutoLightManager(Router, Needs, Log);
+        AutoLight.SetEnabledToggle(() => ReadAutoModeFlag(d => d.AutoLight));
+
         // Phase 9 PR 9.I — DeathRecoveryManager. Aggregates the
         // DeathLineWatcher.PlayerDied event + the profile's
         // DeathHistory list (written by DeathDetector ->
@@ -1601,6 +1652,35 @@ public sealed class AppServices
             if (t.PreviousRoom is not null
              && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
             Stash.NoteRoomEntered(t.NewRoom.Key);
+        };
+
+        // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
+        // maps a loose "You notice ..." entry back to an item Number
+        // (ItemNames reverse index), reads the verbatim Name to send,
+        // and resolves the per-character AutoCollect override through
+        // the 4-tier hierarchy seeded by ItemOverlaySeed. Constructed
+        // after CombatTracker so its EntitiesObserved handler (wired
+        // below) runs after the gate update and reads a current
+        // HasEngageableHostiles.
+        AutoGetItems = new Game.Inventory.AutoGetItemsManager(Router,
+            resolve: ResolveAutoGetItem,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            collectAfterCombatFinished: () =>
+                ReadSection<Models.Profile.ItemLootSettings>(Profile.Current, "ItemLoot")
+                    .CollectAfterCombatFinished,
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            log: Log);
+        // Combat-finished flush: every room-entity observation re-checks
+        // the deferred queue (CombatStateTracker's handler ran first, so
+        // the hostile flag is current).
+        RoomClassifier.EntitiesObserved += _ => AutoGetItems.OnRoomObserved();
+        // Drop the stale queue when we actually change rooms.
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.NewRoom is null) return;
+            if (t.PreviousRoom is not null
+             && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            AutoGetItems.OnRoomChanged();
         };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
@@ -1797,6 +1877,30 @@ public sealed class AppServices
         Models.Profile.GeneralSettings general =
             ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
         return selector(general.AutoMode);
+    }
+
+    /// <summary>
+    /// Resolve a single room "You notice ..." entry for
+    /// <see cref="AutoGetItems"/>: map the loose wording to an item
+    /// Number, read its verbatim Name, and resolve the per-character
+    /// <see cref="Models.GameData.ItemOverlay.AutoCollect"/> override
+    /// (Defaults seed → Global → BBS → Char). Returns <c>null</c> when
+    /// the entry isn't an item in the active set (cash, scenery), so the
+    /// engine skips it. AutoCollect defaults to <c>false</c> — pickup is
+    /// opt-in per item.
+    /// </summary>
+    private Game.Inventory.AutoGetItemsManager.ResolvedItem? ResolveAutoGetItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
+            "Items",
+            number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ItemOverlaySeed.GetOverlay(number));
+
+        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
     }
 
     /// <summary>

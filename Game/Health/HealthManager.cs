@@ -80,6 +80,10 @@ public sealed class HealthManager : IDisposable
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
+    private Func<bool>? _isPartyFollower;       // in a party AND not the leader
+    private Action? _requestPartyWait;          // ping leader to halt (PartyRestSync)
+    private Action? _requestPartyOk;            // release leader
+    private bool _partyWaitSignaled;            // @wait sent, awaiting @ok
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
     private bool _restInFlight;          // sent rest, awaiting recovery
@@ -189,6 +193,40 @@ public sealed class HealthManager : IDisposable
         _wireSender = sender;
     }
 
+    /// <summary>
+    /// Wire party-role-aware recovery. <paramref name="isPartyFollower"/>
+    /// returns true when the local character is following a party leader
+    /// (in a party AND not the leader). While following:
+    /// <list type="bullet">
+    /// <item>The recovery gates clear as soon as a pool climbs just past
+    /// the rest-trigger floor (target = trigger + 1) rather than the full
+    /// rest-max — a follower tops off to safety, not to full, so it
+    /// doesn't hold the party for a routine heal. The party healer / leader
+    /// owns full topoff.</item>
+    /// <item><paramref name="requestPartyWait"/> fires when a recovery gate
+    /// first asserts (dropped below the floor → ping the leader to halt);
+    /// <paramref name="requestPartyOk"/> fires when the last gate clears
+    /// (back above the floor → release the leader).</item>
+    /// </list>
+    /// Until wired — or when not following — recovery targets rest-max and
+    /// no party signals are emitted (solo / leader behavior). The callbacks
+    /// (typically <see cref="PartyRestSync.RequestWait"/> /
+    /// <see cref="PartyRestSync.RequestOk"/>) self-gate on party membership,
+    /// so invoking them solo is a safe no-op.
+    /// </summary>
+    public void SetPartyRoleSync(
+        Func<bool> isPartyFollower,
+        Action requestPartyWait,
+        Action requestPartyOk)
+    {
+        ArgumentNullException.ThrowIfNull(isPartyFollower);
+        ArgumentNullException.ThrowIfNull(requestPartyWait);
+        ArgumentNullException.ThrowIfNull(requestPartyOk);
+        _isPartyFollower = isPartyFollower;
+        _requestPartyWait = requestPartyWait;
+        _requestPartyOk = requestPartyOk;
+    }
+
     /// <summary>True while the HP gate is held.</summary>
     public bool HpGateAsserted => _hpGateAsserted;
 
@@ -245,6 +283,13 @@ public sealed class HealthManager : IDisposable
                 _coordinator.ClearGate(MovementCoordinator.ManaRecoveryGate,
                     AsserterName, "auto-heal disabled");
             }
+            // Don't leave a follower's leader hanging on a stale @wait when
+            // the engine toggles off mid-recovery.
+            if (_partyWaitSignaled)
+            {
+                _partyWaitSignaled = false;
+                _requestPartyOk?.Invoke();
+            }
             _restInFlight = false;
             _restConfirmedByPrompt = false;
             _fledThisCombat = false;
@@ -295,9 +340,17 @@ public sealed class HealthManager : IDisposable
                 $"inCombat={_state.InCombat})");
         }
 
+        // Role-aware recovery target: a follower clears the gate just
+        // above the rest floor (target = trigger + 1) so it doesn't make
+        // the party wait for a full topoff; solo / leader recover to
+        // rest-max. Defaults to leader/solo when no role selector is wired.
+        bool follower = _isPartyFollower?.Invoke() ?? false;
+
         // ----- HP gate transitions ---------------------------------
         int hpRestTrigger = ResolveThreshold(s.HpThresholdMode, s.RestIfBelowHp, _state.MaxHp);
-        int hpRestTarget  = ResolveThreshold(s.HpThresholdMode, s.RestMaxHp,    _state.MaxHp);
+        int hpRestTarget  = follower
+            ? Math.Min(hpRestTrigger + 1, _state.MaxHp)
+            : ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
 
         if (!_hpGateAsserted && _state.MaxHp > 0 && _state.Hp <= hpRestTrigger)
         {
@@ -316,7 +369,9 @@ public sealed class HealthManager : IDisposable
 
         // ----- MA gate transitions ---------------------------------
         int maRestTrigger = ResolveThreshold(s.MaThresholdMode, s.RestIfBelowMa, _state.MaxMa);
-        int maRestTarget  = ResolveThreshold(s.MaThresholdMode, s.RestMaxMa,    _state.MaxMa);
+        int maRestTarget  = follower
+            ? Math.Min(maRestTrigger + 1, _state.MaxMa)
+            : ResolveThreshold(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
 
         if (!_maGateAsserted && _state.Ma <= maRestTrigger && _state.MaxMa > 0)
         {
@@ -331,6 +386,23 @@ public sealed class HealthManager : IDisposable
             _coordinator.ClearGate(MovementCoordinator.ManaRecoveryGate,
                 AsserterName,
                 $"MA {_state.Ma}/{_state.MaxMa} >= rest-target={maRestTarget}");
+        }
+
+        // ----- party-follower @wait / @ok --------------------------
+        // While a recovery gate is held we're below a floor — ping the
+        // leader to halt; release once both clear. PartyRestSync self-
+        // gates on membership, so these are no-ops solo or as leader;
+        // the latch just avoids redundant telepaths.
+        bool recovering = _hpGateAsserted || _maGateAsserted;
+        if (recovering && !_partyWaitSignaled)
+        {
+            _partyWaitSignaled = true;
+            _requestPartyWait?.Invoke();
+        }
+        else if (!recovering && _partyWaitSignaled)
+        {
+            _partyWaitSignaled = false;
+            _requestPartyOk?.Invoke();
         }
 
         // ----- flee on critical HP/MA mid-combat -------------------

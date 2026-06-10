@@ -998,6 +998,145 @@ public sealed class HealthManagerTests
         Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
     }
 
+    // ----- party-role-aware recovery (PR 9.B role fix) ---------------
+
+    [Fact]
+    public void Follower_RecoversToFloorPlusOne_NotRestMax()
+    {
+        // Default trigger 60% of 200 = 120; default rest-max 95% = 190.
+        // As a follower the gate clears the moment HP climbs one past the
+        // floor (121), well before rest-max.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 121;            // one past the 120 floor
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Follower_AtFloor_GateStillHeld()
+    {
+        // Exactly at the floor is still "below or equal" — gate holds
+        // until strictly above.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 120;            // at floor, not past it
+        Assert.True(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Leader_RecoversToRestMax_NotFloor()
+    {
+        // Same wiring but role selector says leader → full topoff target.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 121;            // above floor but below 190 target
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 190;            // rest-max
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Follower_GateAssert_RequestsWait_GateClear_RequestsOk()
+    {
+        int waits = 0, oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+
+        h.State.Hp = 50;             // below floor → @wait
+        Assert.Equal(1, waits);
+        Assert.Equal(0, oks);
+
+        h.State.Hp = 121;            // above floor → @ok
+        Assert.Equal(1, waits);
+        Assert.Equal(1, oks);
+    }
+
+    [Fact]
+    public void Follower_WaitOk_FireOncePerCycle_NoSpam()
+    {
+        int waits = 0, oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+
+        h.State.Hp = 50;             // @wait
+        h.State.Hp = 40;             // still below — no second @wait
+        h.State.Hp = 30;
+        Assert.Equal(1, waits);
+
+        h.State.Hp = 121;            // @ok
+        h.State.Hp = 130;            // still above — no second @ok
+        Assert.Equal(1, oks);
+    }
+
+    [Fact]
+    public void Follower_DisabledMidRecovery_ReleasesOk()
+    {
+        int oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;             // @wait sent
+        Assert.Equal(0, oks);
+
+        h.AutoHealRestEnabled = false;
+        h.Health.Evaluate();         // engine toggled off mid-recovery
+        Assert.Equal(1, oks);        // leader released, not left hanging
+    }
+
+    [Fact]
+    public void NoRoleSync_RecoversToRestMax_NoSignals()
+    {
+        // Backward-compat: without SetPartyRoleSync the engine behaves as
+        // solo/leader — rest-max target, no party signals.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Hp = 121;            // above floor but below rest-max
+        Assert.True(h.HealthGateHeld);
+        h.State.Hp = 190;
+        Assert.False(h.HealthGateHeld);
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]

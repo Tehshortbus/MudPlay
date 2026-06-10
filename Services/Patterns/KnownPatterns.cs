@@ -184,6 +184,16 @@ public static class KnownPatterns
     public const string ShopListHeader    = "item.shop-list-header";
     public const string UserBuys          = "item.user-buys";
 
+    // ----- Room light ----------------------------------------------------
+    // The two "can't see" room-light lines drive auto-light (PR 9.K) to
+    // post a LightSource need. The penalized lines (barely visible / dimly
+    // lit) still render room contents and have no auto-action, so they're
+    // not seeded. Wording per docs/auto-engine-orchestration.md (MMUD
+    // Explorer reproduction); confirm against a live capture before
+    // relying on the exact phrasing.
+    public const string RoomPitchBlack   = "light.room-pitch-black";   // "The room is pitch black"
+    public const string RoomVeryDark     = "light.room-very-dark";     // "The room is very dark - you can't see anything"
+
     // ----- Room & status -------------------------------------------------
     public const string RoomExits        = "room.exits";
     public const string StatusLine       = "status.line";
