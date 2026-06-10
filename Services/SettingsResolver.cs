@@ -305,6 +305,37 @@ public sealed class SettingsResolver
         ?? throw new InvalidOperationException(
             "Cannot write game-data override: no active game-data set.");
 
+    /// <summary>
+    /// Whether an override can currently be written at <paramref name="tier"/>
+    /// without throwing. <see cref="SettingsTier.Defaults"/> is always
+    /// read-only (the MDB / seed is the source); <see cref="SettingsTier.Global"/>
+    /// is always writable; <see cref="SettingsTier.Bbs"/> needs an active BBS
+    /// profile; <see cref="SettingsTier.Character"/> needs a named loaded
+    /// profile. Lets game-data edit dialogs offer only valid tiers instead of
+    /// letting <see cref="WriteGameDataAt"/> throw from the Save handler.
+    /// </summary>
+    public bool CanWriteAt(SettingsTier tier) => tier switch
+    {
+        SettingsTier.Global    => true,
+        SettingsTier.Bbs       => _activeBbs is not null,
+        SettingsTier.Character => _profile.CurrentProfileName is not null,
+        _                      => false,
+    };
+
+    /// <summary>
+    /// The tiers an override can currently be written at, most-specific first
+    /// (Character → BBS → Global). Excludes read-only Defaults and any tier
+    /// whose scope isn't active. Always contains at least Global.
+    /// </summary>
+    public IReadOnlyList<SettingsTier> WritableTiers()
+    {
+        List<SettingsTier> tiers = new(3);
+        if (CanWriteAt(SettingsTier.Character)) tiers.Add(SettingsTier.Character);
+        if (CanWriteAt(SettingsTier.Bbs))       tiers.Add(SettingsTier.Bbs);
+        tiers.Add(SettingsTier.Global);
+        return tiers;
+    }
+
     private string ResolveScopeName(SettingsTier tier) => tier switch
     {
         SettingsTier.Defaults  => throw new InvalidOperationException("Defaults tier is read-only."),

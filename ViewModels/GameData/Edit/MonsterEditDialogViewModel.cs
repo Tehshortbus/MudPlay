@@ -79,8 +79,14 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     public IReadOnlyList<MonsterAttackPriority> AvailablePriorities { get; } =
         Enum.GetValues<MonsterAttackPriority>().ToArray();
 
-    public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
-        Enum.GetValues<SettingsTier>().ToArray();
+    /// <summary>
+    /// Tiers the picker offers. Restricted to tiers the resolver can actually
+    /// write to in the current session (Global always; BBS only with an active
+    /// BBS; Character only with a loaded profile) so Save can't land on a tier
+    /// whose scope is unresolvable. Read-only Defaults is excluded — the MDB is
+    /// its source.
+    /// </summary>
+    public IReadOnlyList<SettingsTier> AvailableTiers { get; }
 
     public string Title => $"Monster — {(Name.Length > 0 ? Name : $"#{WccNoStr}")}";
 
@@ -90,12 +96,20 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         MonsterOverlay? existing,
         SettingsTier currentTier,
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
-        MonsterMessageRecord? messages = null)
+        MonsterMessageRecord? messages = null,
+        IReadOnlyList<SettingsTier>? writableTiers = null)
     {
         WccNoStr      = wccNoStr;
         MonsterNumber = int.TryParse(wccNoStr, out int n) ? n : 0;
         Name          = existing?.Name ?? mdbName;
-        UseTier       = currentTier;
+        AvailableTiers = writableTiers is { Count: > 0 }
+            ? writableTiers
+            : Enum.GetValues<SettingsTier>().ToArray();
+        // Default to the tier the existing override lives at when it's writable;
+        // otherwise the most-specific writable tier (first in the list). Stops
+        // the picker defaulting to read-only Defaults or an unloaded Character,
+        // which made Save throw "no named profile loaded" and crash the app.
+        UseTier       = AvailableTiers.Contains(currentTier) ? currentTier : AvailableTiers[0];
         MdbInfo       = mdbInfo;
         _originalMessages = messages;
 
