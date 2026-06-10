@@ -64,6 +64,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Pick locks instead of bashing";
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
+            yield return "Max comeback backtrack rooms";
+            yield return "@comeback";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -144,6 +146,17 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// normal play.
     /// </summary>
     [ObservableProperty] private bool _logMovementHopTiming;
+
+    /// <summary>
+    /// Leader-side <c>@comeback</c> backtrack budget — how many rooms the
+    /// leader walks backwards along the path just taken when a stranded
+    /// follower sends a bare <c>@comeback</c> (no target room) before
+    /// giving up and going idle. Range 1..50, default 10. Ignored when
+    /// the follower supplies an explicit room. Pushed into the live
+    /// <see cref="Game.Remote.PartyComebackManager"/> on Apply +
+    /// profile load.
+    /// </summary>
+    [ObservableProperty] private int _maxComebackBacktrackRooms = 10;
 
     // Phase 9 per-category Verbose toggles + WriteCombatRoundTrace
     // moved out of per-character settings into a session-only umbrella
@@ -252,6 +265,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             LogMovementHopTiming  = LogMovementHopTiming,
+            MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
         };
 
         profile.Settings ??= new();
@@ -308,6 +322,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
+        MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -348,6 +363,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // Calibrator toggle — live-mirror so the user can flip it from
         // the Settings dialog without an Apply + profile reload cycle.
         svcs.HopCalibrator.Enabled = dto.LogMovementHopTiming;
+        // @comeback backtrack budget — live-mirror so the next stranded-
+        // follower pickup honours the edit without a profile reload.
+        svcs.PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
     }
 
     // ----- IsDirty plumbing -----
@@ -372,6 +390,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
+    partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
 
     private void MarkDirty()
     {

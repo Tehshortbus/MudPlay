@@ -142,6 +142,22 @@
                           ToolTip.Tip="When checked, the walker prefers `pick &lt;dir&gt;` over `bash &lt;dir&gt;` on doors where both verbs are viable. Bash is louder and breaks stealth; thieves typically flip this on."/>
             </Grid>
 
+            <!-- Leader-side @comeback backtrack budget. When a stranded
+                 follower sends a bare @comeback (no room), the leader
+                 pauses its engine and walks backwards along the path
+                 just taken up to this many rooms looking for them, then
+                 goes idle if not found. Ignored when the follower
+                 supplies an explicit room. -->
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,12,0,0" VerticalAlignment="Center">
+                <TextBlock Classes="FieldLabel" Text="@comeback backtrack up to"/>
+                <NumericUpDown Value="{Binding MaxComebackBacktrackRooms, Mode=TwoWay}"
+                               Minimum="1" Maximum="50" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="When a left-behind party follower sends a bare @comeback (no room), the leader pauses its active movement engine and walks backwards along the path just taken, room by room, up to this many rooms looking for them. If not recovered within the budget the leader goes idle and lets the player handle it. Ignored when the follower supplies an explicit room (@comeback 9/1012). Default 10."/>
+                <TextBlock Classes="FieldLabel" Text="rooms."/>
+            </StackPanel>
+
             <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
                  Database after [spinner] days." — spinner widened from
                  90→120 so 4-digit values (e.g. 3650-day max) render

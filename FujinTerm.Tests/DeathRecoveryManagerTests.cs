@@ -10,7 +10,10 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// PR 9.I — <see cref="DeathRecoveryManager"/> observable mirror of
-/// the loaded profile's death history + comeback hook.
+/// the loaded profile's death history. (The <c>@comeback</c> party-
+/// pickup flow is a separate concern owned by
+/// <see cref="FujinTerm.Game.Remote.PartyComebackManager"/> — see
+/// <c>PartyComebackManagerTests</c>.)
 /// </summary>
 public sealed class DeathRecoveryManagerTests
 {
@@ -21,14 +24,12 @@ public sealed class DeathRecoveryManagerTests
         public ProfileService Profile { get; } = new();
         public DeathLineWatcher Watcher { get; }
         public DeathRecoveryManager Recovery { get; }
-        public List<string?> ComebackRequests { get; } = new();
 
         public Harness()
         {
             DefaultPatterns.Seed(Router);
             Watcher = new DeathLineWatcher(Router, Log);
             Recovery = new DeathRecoveryManager(Watcher, Profile, Log);
-            Recovery.ComebackRequested += r => ComebackRequests.Add(r);
         }
 
         public void FeedSlain(string killer)
@@ -134,27 +135,5 @@ public sealed class DeathRecoveryManagerTests
 
         Assert.Equal(2, h.Recovery.LivesRemaining);
         Assert.Equal(2, h.Recovery.DeathCount);
-    }
-
-    // ----- Comeback hook ----------------------------------------------
-
-    [Fact]
-    public void RequestComeback_FiresEvent_WithRequester()
-    {
-        using Harness h = new();
-        h.Recovery.RequestComeback("Tank");
-
-        Assert.Single(h.ComebackRequests);
-        Assert.Equal("Tank", h.ComebackRequests[0]);
-    }
-
-    [Fact]
-    public void RequestComeback_NullRequester_FiresWithNull()
-    {
-        using Harness h = new();
-        h.Recovery.RequestComeback();
-
-        Assert.Single(h.ComebackRequests);
-        Assert.Null(h.ComebackRequests[0]);
     }
 }

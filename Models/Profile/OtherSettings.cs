@@ -147,6 +147,19 @@ public sealed class OtherSettings
     /// </summary>
     public bool LogMovementHopTiming { get; set; }
 
+    /// <summary>
+    /// Leader-side <c>@comeback</c> backtrack budget — when a stranded
+    /// follower sends a bare <c>@comeback</c> (no target room), the
+    /// leader pauses its active movement engine and walks backwards
+    /// along the path just taken, room by room, up to this many rooms
+    /// looking for the follower. If not recovered within the budget the
+    /// leader gives up and goes idle to let the player handle it.
+    /// Default 10, range 1..50. Ignored when the follower supplies an
+    /// explicit room (<c>@comeback 9/1012</c>) — that path walks
+    /// straight to the named room instead. Surfaced in Settings → Other.
+    /// </summary>
+    public int MaxComebackBacktrackRooms { get; set; } = 10;
+
     // Note: the former Phase 9 per-character verbose toggles
     // (VerboseCombat / VerboseRoomClassifier / VerboseCasting /
     // VerboseCash / VerboseStealth) + WriteCombatRoundTrace lived

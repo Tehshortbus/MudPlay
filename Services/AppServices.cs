@@ -256,10 +256,14 @@ public sealed class AppServices
     public Game.Remote.AutoModeRemoteHandler AutoMode { get; private set; } = null!;
 
     /// <summary>
-    /// Phase 9 Cluster 5d — <c>@comeback</c> remote command. Forwards
-    /// to <see cref="DeathRecovery"/>'s comeback hook.
+    /// Leader-side <c>@comeback</c> party-pickup flow — pauses the
+    /// running movement engine, walks to recover a stranded follower
+    /// (explicit room or backtrack along the just-walked path), re-
+    /// invites + awaits follow, then resumes the captured engine. The
+    /// <see cref="Game.Remote.PartyComebackManager.MaxBacktrackRooms"/>
+    /// budget is pushed from Settings → Other.
     /// </summary>
-    public Game.Remote.ComebackHandler Comeback { get; private set; } = null!;
+    public Game.Remote.PartyComebackManager PartyComeback { get; private set; } = null!;
 
     /// <summary>
     /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
@@ -1153,9 +1157,10 @@ public sealed class AppServices
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
         Do = new Game.Remote.DoHandler(RemoteCommands, Log);
-        // Cluster 5d — @auto-* family + @comeback. AutoMode handler
-        // mutates the loaded profile's General section + persists.
-        // ComebackHandler forwards to DeathRecoveryManager.
+        // Cluster 5d — @auto-* family. AutoMode handler mutates the
+        // loaded profile's General section + persists. (@comeback is
+        // wired in the Navigation block below as PartyComebackManager,
+        // which needs the movement engines.)
         AutoMode = new Game.Remote.AutoModeRemoteHandler(RemoteCommands, Profile, Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
@@ -1670,13 +1675,10 @@ public sealed class AppServices
         // DeathLineWatcher.PlayerDied event + the profile's
         // DeathHistory list (written by DeathDetector ->
         // RoomTracker.NoteDeath) into observables the Workshop
-        // DEATH section will bind to. Comeback flow stub fires
-        // ComebackRequested; full walker-driven flow lands in a
-        // follow-up.
+        // DEATH section binds to. (@comeback is a separate party-pickup
+        // flow owned by PartyComebackManager, wired after the engines.)
         DeathRecovery = new Game.Recovery.DeathRecoveryManager(
             DeathWatcher, Profile, Log);
-        // Cluster 5d — @comeback handler routes to DeathRecovery.
-        Comeback = new Game.Remote.ComebackHandler(RemoteCommands, DeathRecovery, Log);
 
         // Phase 9 — InventoryManager. Parses the full `i` dump into a
         // currency + numeric-encumbrance snapshot and patches it on
@@ -1847,6 +1849,16 @@ public sealed class AppServices
         MoveRemote = new Game.Remote.MovePlayerHandler(
             RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
             Lairs, AutoLair, MovementCoordinator);
+
+        // PR 6.1 — leader-side @comeback. Snapshots the running movement
+        // engine, stops it (stop-and-restart, NOT a coordinator gate —
+        // a gate would block the recovery walk itself), walks to recover
+        // the stranded follower (explicit room or backtrack along the
+        // just-walked RoomTracker trail), re-invites + awaits follow,
+        // then resumes the captured engine. MaxBacktrackRooms is pushed
+        // from Settings → Other by ApplyOtherFromActiveProfile on load.
+        PartyComeback = new Game.Remote.PartyComebackManager(
+            RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Log);
 
         // Phase 8 PR 8.1 — EventManager. Holds the loaded character's
         // scheduled / lifecycle events, dispatches actions into the
@@ -2084,6 +2096,8 @@ public sealed class AppServices
         // @trap auto-disarm attempt caps.
         TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+        // Leader-side @comeback backtrack budget.
+        PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
         // Hop-timing calibration logger — off by default; user flips
         // on for a data-collection session.
         HopCalibrator.Enabled = dto.LogMovementHopTiming;
@@ -2097,6 +2111,7 @@ public sealed class AppServices
         GameCommands.ExitCommand  = defaults.GameExitCommand;
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
+        PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
     }
 
     /// <summary>

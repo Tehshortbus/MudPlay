@@ -110,6 +110,16 @@ public sealed partial class PartyManager : IDisposable
     public string? LocalCharacterName { get; set; }
 
     /// <summary>
+    /// Fires with the joiner's name whenever a member confirms they are
+    /// following us (<c>"X started to follow you."</c>). Distinct from
+    /// the invite echo — this is the actual follow confirmation.
+    /// <c>PartyComebackManager</c> awaits this after re-inviting a
+    /// recovered follower so it knows when the follower is back under
+    /// our lead and the paused movement engine can resume.
+    /// </summary>
+    public event Action<string>? MemberFollowConfirmed;
+
+    /// <summary>
     /// par row regex — anchored on the real MajorMUD format observed on
     /// Playpen BBS:
     /// <code>
@@ -243,6 +253,26 @@ public sealed partial class PartyManager : IDisposable
         string given = GivenNameOf(playerGiven);
         if (string.IsNullOrEmpty(given)) return;
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {given}\r");
+        LastSentForTests.Add(bytes);
+        _wireSender?.Invoke(bytes);
+    }
+
+    /// <summary>
+    /// Re-invite a player to follow (<c>invite X</c>). Used by
+    /// <c>PartyComebackManager</c> to pull a stranded follower back into
+    /// the party after the leader walks back to re-collect them — the
+    /// server removes left-behind members from the party, so recovery
+    /// requires an explicit re-invite before the follower can resume
+    /// following. Addresses by given name only (family suffix stripped).
+    /// The leader-side <c>"You have invited X to follow you."</c> echo
+    /// still flows through <see cref="OnYouInvited"/> as usual.
+    /// </summary>
+    public void Invite(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        string given = GivenNameOf(name);
+        if (string.IsNullOrEmpty(given)) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {given}\r");
         LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
     }
@@ -388,6 +418,7 @@ public sealed partial class PartyManager : IDisposable
         // forces leaders to frontrank, and the server rejects the
         // rerank attempt. The follower path (OnYouFollowing) is the
         // only place LocalRankPreference matters.
+        MemberFollowConfirmed?.Invoke(name);
     }
 
     /// <summary>

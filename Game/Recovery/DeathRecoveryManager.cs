@@ -6,10 +6,10 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Recovery;
 
 /// <summary>
-/// Phase 9 PR 9.I — death observation aggregator + comeback hook.
-/// Composes <see cref="DeathLineWatcher.PlayerDied"/> and the
-/// per-character <see cref="CharacterProfile.DeathHistory"/> into a
-/// live observable shape that the Workshop DEATH section binds to.
+/// Phase 9 PR 9.I — death observation aggregator. Composes
+/// <see cref="DeathLineWatcher.PlayerDied"/> and the per-character
+/// <see cref="CharacterProfile.DeathHistory"/> into a live observable
+/// shape that the Workshop DEATH section binds to.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,19 +30,10 @@ namespace FujinTerm.Game.Recovery;
 /// history.</item>
 /// </list>
 /// <para>
-/// <b>Comeback flow</b> — the comeback path (rejoin → invite → wait
-/// → resume) ships in a follow-up. v1 exposes the hook surface
-/// (<see cref="RequestComeback"/>) so <c>RemoteCommandManager</c>
-/// can wire <c>@comeback</c> dispatch through it without waiting
-/// for the full flow; the v1 implementation logs the request +
-/// fires <see cref="ComebackRequested"/> for any subscriber that
-/// wants to act, but doesn't yet drive the walker.
-/// </para>
-/// <para>
-/// Auto-comeback is off by default per the Phase 9 plan; the
-/// engine doesn't auto-fire on <see cref="DeathLineWatcher.PlayerDied"/>
-/// — the user (or another character via <c>@comeback</c>) must
-/// initiate.
+/// The <c>@comeback</c> remote command is a separate party-pickup
+/// flow (stranded-follower → leader) owned by
+/// <see cref="Remote.PartyComebackManager"/>, not this aggregator —
+/// it has nothing to do with death recovery.
 /// </para>
 /// </remarks>
 public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
@@ -71,13 +62,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     [ObservableProperty]
     [field: Owner(typeof(DeathRecoveryManager))]
     private int _deathCount;
-
-    /// <summary>Fires when an external caller (typically
-    /// <c>RemoteCommandManager</c>'s <c>@comeback</c> handler) asks
-    /// us to start the comeback flow. v1 has no built-in driver;
-    /// subscribers wire the walker reroute themselves until the full
-    /// flow ships.</summary>
-    public event Action<string?>? ComebackRequested;
 
     public DeathRecoveryManager(
         DeathLineWatcher deathWatcher,
@@ -127,23 +111,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         DeathCount = p.DeathHistory.Count;
         if (latest.At != default)
             LastDeathAt = latest.At;
-    }
-
-    /// <summary>
-    /// External request to start the comeback flow — typically
-    /// invoked by <c>RemoteCommandManager</c>'s <c>@comeback</c>
-    /// handler. v1 fires <see cref="ComebackRequested"/>; subscribers
-    /// wire the actual walker / invite sequence. The full
-    /// rejoin-invite-wait-resume flow lands in a follow-up.
-    /// </summary>
-    /// <param name="requester">Name of the party member who asked
-    /// for the comeback (for log + event payload). Pass <c>null</c>
-    /// for a user-initiated request.</param>
-    public void RequestComeback(string? requester = null)
-    {
-        _log?.Info(LogCategory,
-            $"comeback requested by={requester ?? "<user>"} — firing ComebackRequested event");
-        ComebackRequested?.Invoke(requester);
     }
 
     /// <summary>

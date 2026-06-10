@@ -135,6 +135,22 @@ public sealed class RoomTracker
     }
 
     /// <summary>
+    /// Snapshot of the rolling confirmed-position history, newest-first.
+    /// <c>[0]</c> is the most recently confirmed room (typically the
+    /// current room); <c>[1]</c> the one before it, and so on, capped at
+    /// the internal history window. Used by <c>PartyComebackManager</c>
+    /// to walk the leader backwards along the path just taken when a
+    /// stranded follower sends <c>@comeback</c> without a target room.
+    /// </summary>
+    public IReadOnlyList<RoomKey> GetHistory()
+    {
+        List<RoomKey> snapshot = new(_history.Count);
+        foreach (HistoryEntry entry in _history)
+            snapshot.Add(entry.Room);
+        return snapshot;
+    }
+
+    /// <summary>
     /// Server reported "There is no exit in that direction!" for the
     /// last attempted move. Strong signal that the tracker's model of
     /// the current room may be wrong — if we were Confirmed, demote
