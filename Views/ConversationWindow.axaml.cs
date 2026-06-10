@@ -50,7 +50,14 @@ public partial class ConversationWindow : Window
     {
         if (_rowsList is null) return;
         if (DataContext is not ConversationViewModel { AutoScroll: true }) return;
-        _rowsList.ScrollIntoView(row);
+        // Defer the scroll. Calling ScrollIntoView synchronously while the
+        // virtualizing panel is mid-update (a chat line arriving as the row is
+        // added, or the panel still materialising on open) re-enters the layout
+        // pass before the new container is measured and throws "Invalid Arrange
+        // rectangle" — the same crash that hit the log pane. Posting lets the
+        // panel finish its layout first.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => _rowsList?.ScrollIntoView(row));
     }
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
