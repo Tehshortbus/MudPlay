@@ -1063,4 +1063,73 @@ public sealed class CombatManagerTests
 
         Assert.Empty(h.Sent);
     }
+
+    // ----- combat-off interrupt resume ---------------------------------
+
+    [Fact]
+    public void CombatOff_ThenMobLine_ResumesAttack()
+    {
+        // Live repro: fighting an acid slime (empty DeathLine, like 152
+        // stock monsters), the user manually casts a buff mid-round.
+        // The cast emits *Combat Off* — the server stops swinging for us
+        // but the slime is still alive and keeps attacking. Without the
+        // resume path, _currentTarget stays set, OnEntitiesObserved
+        // short-circuits ("server still swinging"), and combat goes
+        // silent. The next mob swing after *Combat Off* must re-engage.
+        using Harness h = new();
+        h.AddMonster(1, "acid slime", killable: false);
+
+        h.Feed("Also here: acid slime.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a acid slime", h.LastSent);
+        Assert.Equal("acid slime", h.Combat.CurrentTarget);
+
+        // Manual buff cast turns combat off; no room re-display.
+        h.Feed("*Combat Off*");
+        Assert.Single(h.Sent);     // no swing on the status line itself
+
+        // The slime keeps attacking — first mob line re-engages.
+        h.Feed("The acid slime claws you for 5 damage!");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a acid slime", h.LastSent);
+        Assert.Equal("acid slime", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void NoCombatOff_MobLine_DoesNotReswing()
+    {
+        // Guard: a mob line while combat is live (server still swinging
+        // at our target) must NOT burn an extra swing. Only a preceding
+        // *Combat Off* arms the resume.
+        using Harness h = new();
+        h.AddMonster(1, "acid slime", killable: false);
+
+        h.Feed("Also here: acid slime.");
+        Assert.Single(h.Sent);
+
+        h.Feed("The acid slime claws you for 5 damage!");
+
+        Assert.Single(h.Sent);     // no re-swing — combat wasn't off
+        Assert.Equal("acid slime", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void CombatOff_ThenEngaged_DisarmsResume()
+    {
+        // *Combat Off* then *Combat Engaged* (server resumed swinging on
+        // its own) disarms the resume — a following mob line must not
+        // fire a redundant attack.
+        using Harness h = new();
+        h.AddMonster(1, "acid slime", killable: false);
+
+        h.Feed("Also here: acid slime.");
+        Assert.Single(h.Sent);
+
+        h.Feed("*Combat Off*");
+        h.Feed("*Combat Engaged*");
+        h.Feed("The acid slime claws you for 5 damage!");
+
+        Assert.Single(h.Sent);     // resume disarmed by Engaged
+    }
 }

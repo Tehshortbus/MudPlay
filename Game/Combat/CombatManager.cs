@@ -15,8 +15,11 @@ namespace FujinTerm.Game.Combat;
 /// <see cref="CombatSettings.TargetOrder"/>, filters out anything not
 /// flagged <see cref="MonsterRelationship.Enemy"/>, and sends the
 /// configured attack command. Server auto-repeats swings each
-/// 5-second round; CombatManager re-picks only when the room
-/// re-displays without the current target.
+/// 5-second round; CombatManager re-picks when the room re-displays
+/// without the current target, and resumes (re-engages) when the
+/// server reports <c>*Combat Off*</c> mid-fight — e.g. a manual buff /
+/// heal cast interrupts our round but the mob is still alive and
+/// swinging at us.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -81,6 +84,7 @@ public sealed class CombatManager : IDisposable
     private readonly IDisposable _targetGoneSub;
     private readonly IDisposable _weaponNoEffectSub;
     private readonly IDisposable _fistsNoEffectSub;
+    private readonly IDisposable _combatStatusSub;
 
     /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
     /// a flurry of miss/hit lines from spamming the server.</summary>
@@ -91,6 +95,22 @@ public sealed class CombatManager : IDisposable
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
     private bool _disposed;
+
+    /// <summary>
+    /// Set when the server emits <c>*Combat Off*</c> — our auto-attack
+    /// stopped. The server fires this on a kill AND whenever a round is
+    /// interrupted by a non-attack action (we manually cast a buff /
+    /// heal mid-round, got stunned, etc.). On a kill the room re-display
+    /// / death path clears <see cref="_currentTarget"/> and we re-pick
+    /// normally; on an interrupt the target is still alive in the room
+    /// but the server is no longer swinging for us. This flag lets the
+    /// next incoming mob combat-line (<see cref="OnCombatLine"/>) resume
+    /// the attack instead of short-circuiting on the stale
+    /// <see cref="_currentTarget"/> ("server still swinging"). Cleared
+    /// the moment we send any attack or the server reports
+    /// <c>Engaged</c>.
+    /// </summary>
+    private bool _combatOff;
 
     // ----- Weapon-swap shadow state -----------------------------------
     // No `inv`/`eq` parse — we shadow-track what we last sent to the
@@ -159,6 +179,7 @@ public sealed class CombatManager : IDisposable
         _targetGoneSub = router.Subscribe(KnownPatterns.TargetNotHere, OnTargetNotHere);
         _weaponNoEffectSub = router.Subscribe(KnownPatterns.WeaponNoEffect, OnWeaponNoEffect);
         _fistsNoEffectSub  = router.Subscribe(KnownPatterns.FistsNoEffect,  OnFistsNoEffect);
+        _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
     }
 
     /// <summary>Bind the wire sender — typically the
@@ -642,6 +663,29 @@ public sealed class CombatManager : IDisposable
     private void OnCombatLine(MatchResult _)
     {
         if (!_isEnabled()) return;
+
+        // Resume-after-interrupt: a combat line arrived while our
+        // auto-attack is off (we cast a buff/heal mid-round, got
+        // stunned, etc.) and the room still holds an engageable mob.
+        // The server stopped swinging for us but the fight is clearly
+        // ongoing — the only combat line that can reach here while
+        // _combatOff is a *mob* swing (we're not attacking, so no
+        // user-hit precedes the resume). Re-pick + re-issue the attack.
+        // Gated on _combatOff so a normal in-combat line (server still
+        // swinging) never re-fires. A just-killed mob can't produce a
+        // combat line, so this won't swing at a corpse on a clean kill.
+        if (_combatOff
+            && _classifier.Current is { } live
+            && HasEngageable(live))
+        {
+            _combatOff = false;
+            _log?.Info(LogCategory,
+                "combat resumed after interrupt — re-engaging room");
+            _currentTarget = null;     // force a fresh pick + equip
+            OnEntitiesObserved(live);
+            return;
+        }
+
         if (_currentTarget is not null) return;
         if (_wireSender is null) return;
 
@@ -683,6 +727,22 @@ public sealed class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
+    /// <summary>
+    /// Track <c>*Combat On*/*Combat Off*</c>. <c>Off</c> arms the
+    /// resume-after-interrupt path (see <see cref="_combatOff"/>);
+    /// <c>Engaged</c> means the server is swinging for us again, so we
+    /// disarm it.
+    /// </summary>
+    private void OnCombatStatus(MatchResult match)
+    {
+        if (match.Groups.Count == 0) return;
+        string status = match.Groups[0];
+        if (string.Equals(status, "Off", StringComparison.OrdinalIgnoreCase))
+            _combatOff = true;
+        else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
+            _combatOff = false;
+    }
+
     private bool HasEngageable(RoomEntitiesObservation obs)
     {
         for (int i = 0; i < obs.Entities.Count; i++)
@@ -721,6 +781,9 @@ public sealed class CombatManager : IDisposable
 
     private void SendAttack(string command, string target, MonsterAttackPriority? priority = null)
     {
+        // We're swinging again — disarm the interrupt-resume path so the
+        // next mob line doesn't re-fire on top of this attack.
+        _combatOff = false;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         if (priority is { } prio)
@@ -734,6 +797,7 @@ public sealed class CombatManager : IDisposable
 
     private void SendAttack(string command, string target, bool refire, string refireReason)
     {
+        _combatOff = false;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         _log?.Info(LogCategory,
@@ -755,6 +819,7 @@ public sealed class CombatManager : IDisposable
         _targetGoneSub.Dispose();
         _weaponNoEffectSub.Dispose();
         _fistsNoEffectSub.Dispose();
+        _combatStatusSub.Dispose();
     }
 
     private readonly record struct EngageableCandidate(
