@@ -47,11 +47,21 @@ namespace FujinTerm.Game.Health;
 /// either marker, trim each fragment, send each as its own wire line.
 /// </para>
 /// <para>
-/// Run-if-below and hang-if-below thresholds are <b>deferred</b> from
-/// this first cut — flee behaviour needs walker integration + room-
-/// adjacency picking, and emergency hangup needs the telnet
-/// disconnect path. Both land in a follow-up commit on this branch
-/// before user smoke testing.
+/// Run-if-below: when <see cref="PlayerState.Hp"/> drops to or below
+/// <see cref="HealthSettings.RunIfBelowHp"/> mid-combat AND a movement
+/// engine is active, the active engine is paused and the character
+/// flees <see cref="Models.Profile.CombatSettings.RunDistance"/> rooms
+/// (Backward = inverse of last sent direction; Forward = engine's next
+/// planned), optionally preceded by <c>break</c>. The engine resumes via
+/// <see cref="Map.IRecoverableEngine.ResumeAfterRecovery"/> once HP
+/// climbs back above the run-trigger. Multi-step flee advances one room
+/// per <see cref="NoteRoomChanged(Map.RoomKey?)"/>.
+/// </para>
+/// <para>
+/// Hang-if-below: <see cref="PlayerState.Hp"/> at or below
+/// <see cref="HealthSettings.HangIfBelowHp"/> fires a single-shot hard
+/// disconnect via the configured exit command. Setting the threshold to
+/// 0 disables the check.
 /// </para>
 /// </remarks>
 public sealed class HealthManager : IDisposable
@@ -410,11 +420,11 @@ public sealed class HealthManager : IDisposable
         // movement engine is active — "if you aren't running a
         // movement engine, the flee-if-below wouldn't fire". On
         // trigger: optionally send `break` to disengage combat,
-        // then send one directional move (Backward = inverse of
-        // last sent direction; Forward = engine's next planned).
-        // Multi-step over CombatSettings.RunDistance + auto-resume
-        // on HP recovery defer to a follow-up — v1 ships the
-        // one-step + pause foundation.
+        // then begin a multi-step flee over CombatSettings.RunDistance
+        // (Backward = inverse of last sent direction; Forward = engine's
+        // next planned). Subsequent steps advance one per
+        // NoteRoomChanged; the paused engine auto-resumes once HP climbs
+        // back above the run-trigger (recovery branch below).
         if (!_state.InCombat)
         {
             _fledThisCombat = false;
