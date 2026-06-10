@@ -93,6 +93,7 @@ public sealed class CombatManager : IDisposable
     private Action<byte[]>? _wireSender;
     private Func<bool>? _isSneaking;
     private Func<int, bool>? _hasSeeHidden;
+    private Func<bool>? _seeHiddenClearActive;
     private string? _currentTarget;
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
@@ -217,6 +218,23 @@ public sealed class CombatManager : IDisposable
     }
 
     /// <summary>
+    /// Wire the combat-off "clear hostiles when seen Hidden" override:
+    /// <paramref name="seeHiddenClearActive"/> reports whether
+    /// <see cref="CombatStateTracker"/> has latched a force-clear for the
+    /// current room (stealth runner hit a SeeHidden monster with the
+    /// toggle on). The tracker owns the decision + latch — it fires first
+    /// on the shared observation and also holds the walker gate so we
+    /// actually stop to fight. When it returns true and combat is OFF, the
+    /// engine engages anyway and bypasses the Min/Max gate to clear the
+    /// whole room. Until set, the override never fires.
+    /// </summary>
+    public void SetSeeHiddenClearGate(Func<bool> seeHiddenClearActive)
+    {
+        ArgumentNullException.ThrowIfNull(seeHiddenClearActive);
+        _seeHiddenClearActive = seeHiddenClearActive;
+    }
+
+    /// <summary>
     /// Called by the MonsterDeath subscriber when a death-line match
     /// resolves to a monster whose name might be ours. Clears
     /// <see cref="_currentTarget"/> when the dead monster shares a
@@ -273,12 +291,30 @@ public sealed class CombatManager : IDisposable
 
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
+        CombatSettings settings = _readSettings();
+
+        // Combat-off override for stealth runners. Normally combat-off
+        // means we don't engage at all. But a stealth character sprinting
+        // a walk-to route (AutoSneak on, combat off) that hits a room with
+        // a SeeHidden monster can't re-sneak there — and running onward
+        // would drag/stack monsters across rooms, lethal when solo.
+        // CombatStateTracker owns the decision + latch (and holds the
+        // walker gate so we actually stop); when it has force-clear
+        // latched, we engage anyway and bypass the Min/Max gate to clear
+        // EVERYTHING so the route can resume sneaking.
+        bool seeHiddenOverride = false;
         if (!_isEnabled())
         {
-            _currentTarget = null;
-            return;
+            if (_seeHiddenClearActive?.Invoke() == true)
+            {
+                seeHiddenOverride = true;
+            }
+            else
+            {
+                _currentTarget = null;
+                return;
+            }
         }
-        CombatSettings settings = _readSettings();
 
         // Score every Monster entity once. We need BOTH names:
         //   RawName       — full prefixed form ("angry kobold thief"),
@@ -358,23 +394,28 @@ public sealed class CombatManager : IDisposable
         // (Min=0, Max=20) are effectively no-op. The user opts in by
         // tightening either bound. Inverted config (Min > Max) is
         // treated as "no gate" with a single log-once warning rather
-        // than silently never engaging.
-        int min = Math.Max(0, settings.MinMonstersInRoom);
-        int max = settings.MaxMonstersInRoom > 0 ? settings.MaxMonstersInRoom : int.MaxValue;
-        if (min > max)
+        // than silently never engaging. The SeeHidden clear-override
+        // bypasses the gate entirely — its whole point is clearing the
+        // WHOLE room regardless of count so re-sneak is possible.
+        if (!seeHiddenOverride)
         {
-            // Misconfig — treat as off and warn once per room observation.
-            _log?.Warn(LogCategory,
-                $"MinMonsters={min} > MaxMonsters={max} — gate disabled for this observation");
-        }
-        else if (engageable.Count < min || engageable.Count > max)
-        {
-            _log?.Info(LogCategory,
-                $"min/max gate skip — count={engageable.Count} window=[{min}..{max}]");
-            // Clear target so we don't keep swinging at an old pick
-            // that's now out-of-window after a kill.
-            _currentTarget = null;
-            return;
+            int min = Math.Max(0, settings.MinMonstersInRoom);
+            int max = settings.MaxMonstersInRoom > 0 ? settings.MaxMonstersInRoom : int.MaxValue;
+            if (min > max)
+            {
+                // Misconfig — treat as off and warn once per room observation.
+                _log?.Warn(LogCategory,
+                    $"MinMonsters={min} > MaxMonsters={max} — gate disabled for this observation");
+            }
+            else if (engageable.Count < min || engageable.Count > max)
+            {
+                _log?.Info(LogCategory,
+                    $"min/max gate skip — count={engageable.Count} window=[{min}..{max}]");
+                // Clear target so we don't keep swinging at an old pick
+                // that's now out-of-window after a kill.
+                _currentTarget = null;
+                return;
+            }
         }
 
         // Sort by Priority asc (First=0 highest, Last=4 lowest), then

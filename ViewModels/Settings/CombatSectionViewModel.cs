@@ -44,6 +44,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "BS weapon", "BS weapon off-hand", "Off-hand",
         "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
+        "Clear hostiles when seen hidden",
         "Target order", "Normal", "Reverse",
         "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
         "Polite mode", "Skip room", "Attack different",
@@ -73,6 +74,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _doBackstab;
     [ObservableProperty] private bool _skipBackstabIfMultiAttack = true;
     [ObservableProperty] private bool _runIfBackstabFails;
+    [ObservableProperty] private bool _clearHostilesWhenSeenHidden;
 
     // ----- Targeting ------------------------------------------------
 
@@ -185,9 +187,10 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             BackstabWeapon     = NullIfBlank(BackstabWeapon),
             BackstabOffHand    = NullIfBlank(BackstabOffHand),
 
-            DoBackstab                = DoBackstab,
-            SkipBackstabIfMultiAttack = SkipBackstabIfMultiAttack,
-            RunIfBackstabFails        = RunIfBackstabFails,
+            DoBackstab                   = DoBackstab,
+            SkipBackstabIfMultiAttack    = SkipBackstabIfMultiAttack,
+            RunIfBackstabFails           = RunIfBackstabFails,
+            ClearHostilesWhenSeenHidden  = ClearHostilesWhenSeenHidden,
 
             TargetOrder            = TargetOrderReverse ? TargetOrder.Reverse : TargetOrder.Normal,
             AttackTiming           = AttackTiming,
@@ -293,9 +296,10 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         BackstabWeapon     = dto.BackstabWeapon;
         BackstabOffHand    = dto.BackstabOffHand;
 
-        DoBackstab                = dto.DoBackstab;
-        SkipBackstabIfMultiAttack = dto.SkipBackstabIfMultiAttack;
-        RunIfBackstabFails        = dto.RunIfBackstabFails;
+        DoBackstab                  = dto.DoBackstab;
+        SkipBackstabIfMultiAttack   = dto.SkipBackstabIfMultiAttack;
+        RunIfBackstabFails          = dto.RunIfBackstabFails;
+        ClearHostilesWhenSeenHidden = dto.ClearHostilesWhenSeenHidden;
 
         TargetOrderNormal  = dto.TargetOrder == TargetOrder.Normal;
         TargetOrderReverse = dto.TargetOrder == TargetOrder.Reverse;
@@ -382,9 +386,10 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnBackstabOffHandChanged(string? value)         => MarkDirty();
 
     // BS options
-    partial void OnDoBackstabChanged(bool value)                 => MarkDirty();
-    partial void OnSkipBackstabIfMultiAttackChanged(bool value)  => MarkDirty();
-    partial void OnRunIfBackstabFailsChanged(bool value)         => MarkDirty();
+    partial void OnDoBackstabChanged(bool value)                    => MarkDirty();
+    partial void OnSkipBackstabIfMultiAttackChanged(bool value)     => MarkDirty();
+    partial void OnRunIfBackstabFailsChanged(bool value)            => MarkDirty();
+    partial void OnClearHostilesWhenSeenHiddenChanged(bool value)   => MarkDirty();
 
     // Targeting
     partial void OnTargetOrderNormalChanged(bool value)

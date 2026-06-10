@@ -71,6 +71,11 @@ public sealed class CombatStateTracker : IDisposable
     private bool _anyNpcPresent;
     private bool _disposed;
 
+    private Func<bool>? _clearWhenSeenHidden;
+    private Func<bool>? _isAutoSneakEnabled;
+    private Func<int, bool>? _hasSeeHidden;
+    private bool _seeHiddenClearLatch;
+
     /// <summary>
     /// True while the room currently contains at least one engageable
     /// (Enemy-relationship, killable) monster. Drives the
@@ -92,6 +97,19 @@ public sealed class CombatStateTracker : IDisposable
     /// reacts to <em>engageable</em> hostiles).
     /// </summary>
     public bool HasRoomNpc => _anyNpcPresent;
+
+    /// <summary>
+    /// True while a combat-off "clear hostiles when seen Hidden" force-clear
+    /// is latched for the current room. A stealth runner (AutoSneak on)
+    /// sprinting a route with combat OFF that hits a room holding a
+    /// <c>SeeHidden</c> monster can't re-sneak there; running onward would
+    /// drag and stack monsters across rooms, lethal when solo. When
+    /// <see cref="CombatSettings.ClearHostilesWhenSeenHidden"/> is on, this
+    /// latches on entry to such a room — holding the Combat gate (so the
+    /// walker actually stops) until every engageable hostile is gone.
+    /// <see cref="CombatManager"/> reads this to engage despite combat-off.
+    /// </summary>
+    public bool SeeHiddenClearActive => _seeHiddenClearLatch;
 
     public CombatStateTracker(
         MessageRouter router,
@@ -145,36 +163,86 @@ public sealed class CombatStateTracker : IDisposable
         _combatStatusSub  = router.Subscribe(KnownPatterns.CombatStatus, OnCombatStatus);
     }
 
+    /// <summary>
+    /// Wire the combat-off "clear hostiles when seen Hidden" override:
+    /// <paramref name="clearWhenSeenHidden"/> reads
+    /// <see cref="CombatSettings.ClearHostilesWhenSeenHidden"/>,
+    /// <paramref name="isAutoSneakEnabled"/> reports whether the character
+    /// is stealthing its route (AutoSneak auto-mode on), and
+    /// <paramref name="hasSeeHidden"/> reports whether a monster Number
+    /// carries SeeHidden (<see cref="SeeHiddenIndex"/>). With all wired,
+    /// entering a room that breaks a stealth runner's sneak latches a
+    /// force-clear (see <see cref="SeeHiddenClearActive"/>). Until set, the
+    /// override stays dormant and the gate behaves exactly as before.
+    /// </summary>
+    public void SetSeeHiddenClearGate(
+        Func<bool> clearWhenSeenHidden,
+        Func<bool> isAutoSneakEnabled,
+        Func<int, bool> hasSeeHidden)
+    {
+        ArgumentNullException.ThrowIfNull(clearWhenSeenHidden);
+        ArgumentNullException.ThrowIfNull(isAutoSneakEnabled);
+        ArgumentNullException.ThrowIfNull(hasSeeHidden);
+        _clearWhenSeenHidden = clearWhenSeenHidden;
+        _isAutoSneakEnabled = isAutoSneakEnabled;
+        _hasSeeHidden = hasSeeHidden;
+    }
+
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
-        // NPC-presence tracking is independent of the auto-attack gate:
-        // ANY monster (friendly or hostile) blocks sneak, and the
-        // StealthManager needs the signal even when auto-attack is off.
+        // Single pass over the room: ANY monster (friendly or hostile)
+        // blocks sneak (NPC-presence signal, independent of the gate);
+        // engageable hostiles drive the gate; a SeeHidden occupant arms
+        // the combat-off clear override.
         _anyNpcPresent = false;
+        int targetable = 0;
+        string? first = null;
+        bool roomHasSeeHidden = false;
         foreach (RoomEntity e in obs.Entities)
         {
             if (e.Kind != EntityKind.Monster) continue;
             _anyNpcPresent = true;
-            break;
+            if (IsEngageable(e))
+            {
+                targetable++;
+                first ??= e.ResolvedName;
+            }
+            if (!roomHasSeeHidden && e.MonsterNumber is int n
+                && _hasSeeHidden?.Invoke(n) == true)
+            {
+                roomHasSeeHidden = true;
+            }
         }
 
         if (!_isAutoAttackEnabled())
         {
-            // Auto-attack off → never hold the gate. Defensive clear
-            // in case it was asserted just before the user toggled off.
+            // Combat-off override for stealth runners. Arm on entry to a
+            // room that breaks sneak (SeeHidden present, AutoSneak on,
+            // toggle on); once latched, HOLD the walker gate until every
+            // engageable hostile is gone so the room is fully cleared —
+            // even after the SeeHidden monster itself dies. Then release.
+            bool armNow = _clearWhenSeenHidden?.Invoke() == true
+                          && _isAutoSneakEnabled?.Invoke() == true
+                          && roomHasSeeHidden;
+            if (_seeHiddenClearLatch || armNow)
+            {
+                if (targetable > 0)
+                {
+                    _seeHiddenClearLatch = true;
+                    AssertGate("seehidden clear (combat-off override)");
+                    return;
+                }
+                _seeHiddenClearLatch = false;   // room cleared — release.
+            }
+            // Auto-attack off and no override → never hold the gate.
+            // Defensive clear in case it was asserted just before toggle.
             ClearGate("auto-attack disabled");
             return;
         }
 
-        int targetable = 0;
-        string? first = null;
-        foreach (RoomEntity e in obs.Entities)
-        {
-            if (e.Kind != EntityKind.Monster) continue;
-            if (!IsEngageable(e)) continue;
-            targetable++;
-            first ??= e.ResolvedName;
-        }
+        // Auto-attack on — the normal gate owns pausing; the override
+        // latch is a combat-off concept, so drop it.
+        _seeHiddenClearLatch = false;
 
         if (targetable > 0)
         {

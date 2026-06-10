@@ -1633,6 +1633,19 @@ public sealed class AppServices
         Combat.SetBackstabHooks(
             isSneaking:   () => Stealth.IsSneaking,
             hasSeeHidden: n => SeeHidden.Has(n));
+
+        // PR 4.c-b combat-off "clear hostiles when seen Hidden" override —
+        // a stealth runner (AutoSneak on) sprinting a route with combat
+        // OFF that hits a SeeHidden room must stop and clear it rather than
+        // drag/stack monsters onward. CombatStateTracker owns the latch +
+        // holds the walker gate; CombatManager reads the latch to engage
+        // despite combat-off.
+        CombatTracker.SetSeeHiddenClearGate(
+            clearWhenSeenHidden: () => ReadSection<Models.Profile.CombatSettings>(
+                Profile.Current, "Combat").ClearHostilesWhenSeenHidden,
+            isAutoSneakEnabled:  () => ReadAutoModeFlag(d => d.AutoSneak),
+            hasSeeHidden:        n => SeeHidden.Has(n));
+        Combat.SetSeeHiddenClearGate(() => CombatTracker.SeeHiddenClearActive);
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;

@@ -29,6 +29,17 @@ public sealed class CombatStateTrackerTests
         public bool AutoAttackEnabled { get; set; } = true;
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
 
+        // ----- seehidden clear override (PR 4.c-b) -------------------
+        public bool ClearWhenSeenHidden { get; set; }
+        public bool AutoSneakEnabled { get; set; }
+        public HashSet<int> SeeHidden { get; } = new();
+
+        public void WireSeeHiddenGate() =>
+            Tracker.SetSeeHiddenClearGate(
+                clearWhenSeenHidden: () => ClearWhenSeenHidden,
+                isAutoSneakEnabled:  () => AutoSneakEnabled,
+                hasSeeHidden:        n => SeeHidden.Contains(n));
+
         public Harness()
         {
             Router = new MessageRouter();
@@ -280,6 +291,144 @@ public sealed class CombatStateTrackerTests
         h.AutoAttackEnabled = false;
         h.Feed("Also here: giant rat.");
         Assert.False(h.CombatGateHeld);
+    }
+
+    // ----- seehidden clear override (PR 4.c-b) -----------------------
+
+    [Fact]
+    public void SeeHiddenOverride_CombatOff_AssertsGateAndLatches()
+    {
+        // Stealth runner: combat OFF, AutoSneak ON, toggle ON, the room
+        // holds a SeeHidden monster → force-clear engages, holding the
+        // walker gate so the runner stops instead of dragging mobs.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = true;
+        h.AutoSneakEnabled = true;
+        h.SeeHidden.Add(1);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.Tracker.SeeHiddenClearActive);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_HoldsUntilRoomCleared_ThenReleases()
+    {
+        // Latch must hold through the kill of the SeeHidden monster and
+        // keep clearing any other hostiles, releasing only when the room
+        // is empty of engageables.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = true;
+        h.AutoSneakEnabled = true;
+        h.SeeHidden.Add(1);
+        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(2, "giant rat", killable: true);
+
+        h.Feed("Also here: crystal golem, giant rat.");
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.Tracker.SeeHiddenClearActive);
+
+        // SeeHidden monster dead; a non-seehidden hostile remains. Latch
+        // must STILL hold (room not empty) even though no seehidden mob
+        // is present this observation.
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.Tracker.SeeHiddenClearActive);
+
+        // Room cleared → latch releases, gate clears.
+        h.Feed("Also here: Bob.");
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.Tracker.SeeHiddenClearActive);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_Dormant_WhenToggleOff()
+    {
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = false;        // user opted out
+        h.AutoSneakEnabled = true;
+        h.SeeHidden.Add(1);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.Tracker.SeeHiddenClearActive);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_Dormant_WhenAutoSneakOff()
+    {
+        // Not stealthing the route → no override (a non-stealth runner
+        // wouldn't be re-sneaking anyway).
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = true;
+        h.AutoSneakEnabled = false;
+        h.SeeHidden.Add(1);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.Tracker.SeeHiddenClearActive);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_Dormant_WhenNoSeeHiddenMonster()
+    {
+        // Room has hostiles but none see hidden → sneak still works, no
+        // override needed.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = true;
+        h.AutoSneakEnabled = true;
+        // SeeHidden set empty.
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.Tracker.SeeHiddenClearActive);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_DropsLatch_WhenAutoAttackTurnedOn()
+    {
+        // Latched in combat-off, then user flips master auto-attack on:
+        // normal gate logic owns pausing, the override latch drops.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.WireSeeHiddenGate();
+        h.ClearWhenSeenHidden = true;
+        h.AutoSneakEnabled = true;
+        h.SeeHidden.Add(1);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+        Assert.True(h.Tracker.SeeHiddenClearActive);
+
+        h.AutoAttackEnabled = true;
+        h.Feed("Also here: crystal golem.");
+        Assert.False(h.Tracker.SeeHiddenClearActive);
+        Assert.True(h.CombatGateHeld);        // normal gate now holds it
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_NotWired_BehavesAsBefore()
+    {
+        // Without SetSeeHiddenClearGate, combat-off never holds the gate.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.Tracker.SeeHiddenClearActive);
     }
 
     // ----- gate-history Asserter is set ------------------------------

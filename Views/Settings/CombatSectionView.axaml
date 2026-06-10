@@ -152,6 +152,9 @@
                     <CheckBox Content="Run if BS fails"
                               IsChecked="{Binding RunIfBackstabFails, Mode=TwoWay}"
                               ToolTip.Tip="Trigger flee behaviour on a failed BS roll."/>
+                    <CheckBox Content="Clear hostiles when sneak broken by see-hidden monster"
+                              IsChecked="{Binding ClearHostilesWhenSeenHidden, Mode=TwoWay}"
+                              ToolTip.Tip="Combat-off override for stealth runners. When sprinting a walk-to route with combat OFF and auto-sneak ON, a room holding a see-hidden monster breaks sneak. With this on, the engine force-clears every hostile in that room (bypassing the Min/Max gate) so the route can resume sneaking — preventing monsters from dragging and stacking across rooms. Off by default."/>
                 </StackPanel>
 
                 <!-- ============ Room-skip + failure ============ -->

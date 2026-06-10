@@ -1039,6 +1039,59 @@ public sealed class CombatManagerTests
         Assert.Equal("a giant rat", h.LastSent);
     }
 
+    // ----- seehidden clear override (PR 4.c-b) -----------------------
+
+    [Fact]
+    public void SeeHiddenOverride_EngagesDespiteCombatOff()
+    {
+        // Combat OFF normally means no swing. When CombatStateTracker has
+        // the force-clear latched (SeeHiddenClearActive=true), CombatManager
+        // engages anyway so the stealth runner clears the room.
+        using Harness h = new();
+        h.AutoCombatEnabled = false;
+        h.Combat.SetSeeHiddenClearGate(() => true);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.Equal("a crystal golem", h.LastSent);
+        Assert.Equal("crystal golem", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_CombatOff_NoLatch_DoesNotEngage()
+    {
+        // Gate wired but not latched → combat-off still means no swing.
+        using Harness h = new();
+        h.AutoCombatEnabled = false;
+        h.Combat.SetSeeHiddenClearGate(() => false);
+        h.AddMonster(1, "crystal golem", killable: true);
+
+        h.Feed("Also here: crystal golem.");
+
+        Assert.Empty(h.Sent);
+        Assert.Null(h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void SeeHiddenOverride_BypassesMaxMonstersGate()
+    {
+        // The whole point of the override is to clear the WHOLE room so
+        // re-sneak is possible — the Min/Max gate must not skip it even
+        // when the count is way past Max.
+        using Harness h = new();
+        h.AutoCombatEnabled = false;
+        h.Settings.MaxMonstersInRoom = 1;     // would normally skip a 2-mob room
+        h.Combat.SetSeeHiddenClearGate(() => true);
+        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(2, "giant rat", killable: true);
+
+        h.Feed("Also here: crystal golem, giant rat.");
+
+        Assert.NotEmpty(h.Sent);
+        Assert.NotNull(h.Combat.CurrentTarget);
+    }
+
     [Fact]
     public void FistsNoEffect_ClearsShadowState_AndReEquipsOnNextRoom()
     {

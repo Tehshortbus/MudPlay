@@ -77,6 +77,18 @@ public sealed class CombatSettings
     /// <summary>Trigger flee behavior on a failed BS roll. Default false.</summary>
     public bool RunIfBackstabFails { get; set; }
 
+    /// <summary>
+    /// Combat-off override for stealth runners. When sprinting a walk-to
+    /// route with combat OFF and AutoSneak ON (stealthing as much of the
+    /// route as possible), a room holding a <c>SeeHidden</c> monster
+    /// breaks sneak — running onward would drag and stack monsters across
+    /// rooms, a lethal mess when solo. With this on, the engine force-clears
+    /// every hostile in such a room (bypassing the Min/Max gate) so the
+    /// route can resume sneaking. Default false — combat-off means
+    /// combat-off unless the user opts in.
+    /// </summary>
+    public bool ClearHostilesWhenSeenHidden { get; set; }
+
     // ----- Targeting ------------------------------------------------
 
     /// <summary>Which monster in the priority-ranked list to swing at.</summary>
