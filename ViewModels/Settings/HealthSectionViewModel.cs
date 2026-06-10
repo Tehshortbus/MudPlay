@@ -152,10 +152,10 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         if (isPercentageMode)
         {
             int abs = (int)Math.Round(max * value / 100.0);
-            return $"= {abs}/{max}";
+            return $"{abs}/{max}";
         }
         int pct = (int)Math.Round(value * 100.0 / max);
-        return $"= {pct}%";
+        return $"{pct}%";
     }
 
     // ----- HP conversion strings -----
