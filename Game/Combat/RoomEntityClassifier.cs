@@ -401,6 +401,25 @@ public sealed class RoomEntityClassifier : IDisposable
         if (transition.NewRoom is null) return;
         if (ReferenceEquals(transition.PreviousRoom, transition.NewRoom)) return;
         if (transition.PreviousRoom.Key.Equals(transition.NewRoom.Key)) return;
+
+        // Wire order within a room display is name → "Also here:" →
+        // "Obvious exits:", and RoomTracker only CONFIRMS the move on the
+        // exits line. So by the time this confirmed transition fires, the
+        // new room's occupants have ALREADY been parsed into Current. A
+        // blind wipe here nulls CombatManager's just-picked target and
+        // burns a second attack when the room re-displays. Only wipe when
+        // Current is genuinely STALE — observed before the move that
+        // produced this transition. A post-move observation is the new
+        // room's own data; keep it. (DateTimeOffset comparison is
+        // offset-aware, so the classifier's local .Now timestamps and the
+        // tracker's UTC move time compare on the same absolute instant.)
+        if (_roomTracker is { LastMoveSentAt: { } moveAt }
+            && Current is { Entities.Count: > 0 } cur
+            && cur.At >= moveAt)
+        {
+            return;
+        }
+
         NoteRoomChanged();
     }
 

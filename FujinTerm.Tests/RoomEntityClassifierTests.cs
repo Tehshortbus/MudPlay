@@ -1,5 +1,7 @@
+using System.IO;
 using System.Text;
 using FujinTerm.Game.Combat;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -561,6 +563,133 @@ public sealed class RoomEntityClassifierTests
 
         Assert.Single(h.Observations);
         Assert.Equal(3, h.Observations[0].Entities.Count);
+    }
+
+    // ----- RoomTracker-coupled move-confirm freshness guard ----------
+    //
+    // Mid-combat re-attack regression. Wire order in a room display is
+    // name → "Also here:" → "Obvious exits:", and RoomTracker only
+    // CONFIRMS a move on the exits line. So the new room's occupants are
+    // already parsed into Current by the time the move-confirming
+    // StateChanged fires. The classifier must NOT wipe a post-move
+    // observation — wiping nulls CombatManager's just-picked target and
+    // burns a second attack. It must STILL wipe a genuinely stale
+    // pre-move observation (monster from the prior room that didn't
+    // follow us in).
+
+    private sealed class TrackerHarness : IDisposable
+    {
+        private readonly string _root;
+        public MessageRouter Router { get; }
+        public MonsterMessageStore Monsters { get; } = new();
+        public PlayerDatabase Players { get; } = new();
+        public RoomTracker Tracker { get; }
+        public RoomEntityClassifier Classifier { get; }
+        public List<RoomEntitiesObservation> Observations { get; } = new();
+
+        public TrackerHarness()
+        {
+            _root = Path.Combine(
+                Path.GetTempPath(),
+                "fujinterm-classifier-tracker-tests-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+            File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+
+            GameDataCache cache = new(_root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+            Tracker = new RoomTracker(graph);
+
+            Router = new MessageRouter();
+            DefaultPatterns.Seed(Router);
+            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Tracker);
+            Classifier.EntitiesObserved += Observations.Add;
+        }
+
+        public void AddMonster(int number, string name)
+            => Monsters.Messages.Add(new MonsterMessageRecord(
+                Id: $"M{number}", Name: name,
+                HitYou: Array.Empty<string>(), HitOther: Array.Empty<string>(),
+                DeathLine: Array.Empty<string>(),
+                ArmorBlockYou: Array.Empty<string>(), ArmorBlockOther: Array.Empty<string>(),
+                DodgeYou: Array.Empty<string>(), DodgeOther: Array.Empty<string>(),
+                MissYou: Array.Empty<string>(), MissOther: Array.Empty<string>(),
+                FlavorPrefixes: Array.Empty<string>(), AllowNoPrefix: true,
+                Links: new[] { new GameDataLink("Monsters", number) }));
+
+        public void FeedAlsoHere(string line)
+            => Router.Dispatch(new LineExtractor.EmittedLine(
+                line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        public void Dispose()
+        {
+            Classifier.Dispose();
+            try { Directory.Delete(_root, recursive: true); }
+            catch (IOException) { /* best-effort temp cleanup */ }
+        }
+
+        private const string GraphJson = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Town Gates",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/3", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "North Square",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+    }
+
+    [Fact]
+    public void MoveConfirm_FreshNewRoomOccupants_NotWiped()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        // Located at Town Gates (exits N).
+        h.Tracker.NoteRoomObserved(new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        // Move sent (in the past), then the NEW room's occupants parse
+        // BEFORE the exits line confirms the move.
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Single(h.Observations);
+
+        // Exits line lands → tracker confirms Town Gates → North Square.
+        h.Tracker.NoteRoomObserved(new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // No wipe: the fresh post-move occupant survives.
+        Assert.Single(h.Observations);
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Single(h.Classifier.Current!.Value.Entities);
+        Assert.Equal("giant rat", h.Classifier.Current.Value.Entities[0].ResolvedName);
+    }
+
+    [Fact]
+    public void MoveConfirm_StalePreMoveOccupants_Wiped()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        // A monster observed in the PREVIOUS room, before we moved.
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Single(h.Observations);
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        // Move sent AFTER that observation → the observation is stale.
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+        h.Tracker.NoteRoomObserved(new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // Wipe fires: stale occupant cleared so combat drops the target.
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
     }
 
     private static void FeedLine(Terminal.LineExtractor lines, string text)

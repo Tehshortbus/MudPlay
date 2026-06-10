@@ -92,6 +92,18 @@ public sealed class RoomTracker
     private DateTimeOffset? _suppressObservationUntil;
     private const int LookSuppressWindowMs = 3000;
 
+    /// <summary>
+    /// Wall-clock time the most recent move command was enqueued, or
+    /// <c>null</c> before the first move this session. Lets observers
+    /// tell a post-move room display ("the room we just walked into")
+    /// apart from a pre-move stale observation — the
+    /// <see cref="RoomEntityClassifier"/> uses it to avoid wiping the
+    /// new room's freshly-parsed occupants on the move-confirming
+    /// transition (the occupants line arrives before the exits line
+    /// that confirms the move).
+    /// </summary>
+    public DateTimeOffset? LastMoveSentAt { get; private set; }
+
     /// <summary>The state class itself — bound by the UI, mutated only by this tracker.</summary>
     public RoomState State { get; } = new();
 
@@ -829,6 +841,7 @@ public sealed class RoomTracker
 
     private void EnqueuePending(PendingMove move)
     {
+        LastMoveSentAt = move.SentAt;
         _pending.Enqueue(move);
         // Bounded queue — drain oldest entries past the cap.
         while (_pending.Count > PendingQueueCap && _pending.TryDequeue(out _)) { /* drop */ }
