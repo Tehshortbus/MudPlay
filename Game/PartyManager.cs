@@ -738,6 +738,43 @@ public sealed partial class PartyManager : IDisposable
     internal IReadOnlyDictionary<string, DateTimeOffset> RecentlyDisconnected => _recentlyDisconnected;
 
     /// <summary>
+    /// Was <paramref name="sender"/> a party member of ours who departed
+    /// (got left behind / dropped / disconnected) inside the
+    /// <see cref="DisconnectGraceWindow"/> — and NOT one we deliberately
+    /// uninvited? Backs the leader-side authorisation of a stranded
+    /// follower's <c>@comeback</c>: a left-behind follower is dropped from
+    /// the party server-side (so <see cref="IsActivePartyMember"/> is
+    /// false), but they're still recoverable, so we honour their request.
+    /// </summary>
+    /// <remarks>
+    /// Self-departures ("X stops following you") and disconnects stamp the
+    /// grace window (<see cref="OnStopsFollowing"/>, the dissolution /
+    /// par-reconcile snapshots); deliberate uninvites
+    /// (<see cref="OnFollowerRemoved"/>) do NOT — so a player we kicked is
+    /// absent from the map and correctly rejected. Matches on the given
+    /// name so a <c>"Buddy"</c> telepath pairs with a stamped
+    /// <c>"Buddy Lastname"</c> entry. Stale entries past the window are a
+    /// non-match (read-only — expiry/removal stays with the auto-invite
+    /// path so this can be called from the auth hot-path without mutating).
+    /// </remarks>
+    public bool WasRecentlyPartied(string sender)
+    {
+        if (string.IsNullOrEmpty(sender)) return false;
+        string senderGiven = GivenNameOf(sender);
+        DateTimeOffset now = NowProvider();
+        foreach (KeyValuePair<string, DateTimeOffset> kv in _recentlyDisconnected)
+        {
+            if (now - kv.Value > DisconnectGraceWindow) continue;
+            if (kv.Key.Equals(sender, StringComparison.OrdinalIgnoreCase)
+                || GivenNameOf(kv.Key).Equals(senderGiven, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
     /// End-of-par-block reconciliation — when we're leader, any member
     /// the par output omitted is a "lost" member. Stamp them into the
     /// grace window and drop the roster row so the

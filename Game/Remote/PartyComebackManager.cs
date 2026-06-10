@@ -115,6 +115,13 @@ public sealed class PartyComebackManager : IDisposable
         if (!RemoteCommandCatalog.TryGetCategory("@comeback", out Models.GameData.PlayerRemoteControls category))
             throw new InvalidOperationException("RemoteCommandCatalog missing entry for '@comeback'.");
         _engine.RegisterHandler("@comeback", category, OnComeback);
+
+        // A left-behind follower is dropped from the party server-side, so
+        // the engine's party-whitelist gate (IsActivePartyMember) can't
+        // authorise their @comeback. Bridge the leader-side grace-window
+        // eligibility (recently departed, NOT uninvited by us) into the
+        // engine so the request is honoured for genuine strandings only.
+        _engine.ComebackEligibility = _party.WasRecentlyPartied;
     }
 
     public void Dispose()
@@ -122,6 +129,8 @@ public sealed class PartyComebackManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         _engine.UnregisterHandler("@comeback");
+        if (_engine.ComebackEligibility == _party.WasRecentlyPartied)
+            _engine.ComebackEligibility = null;
         _walker.Event -= OnWalkEvent;
         _party.MemberFollowConfirmed -= OnMemberFollowConfirmed;
         _followTimer.Stop();

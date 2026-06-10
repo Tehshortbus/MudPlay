@@ -55,7 +55,7 @@ public sealed class CastCoordinatorTests
         bool ok = h.Cast.TryCast("heal");
 
         Assert.True(ok);
-        Assert.Equal("c heal", h.LastSent);
+        Assert.Equal("heal", h.LastSent);
         Assert.Single(h.Casts);
         Assert.Empty(h.Failures);
     }
@@ -67,7 +67,7 @@ public sealed class CastCoordinatorTests
         bool ok = h.Cast.TryCast("heal", "Fujin");
 
         Assert.True(ok);
-        Assert.Equal("c heal Fujin", h.LastSent);
+        Assert.Equal("heal Fujin", h.LastSent);
     }
 
     [Fact]

@@ -191,6 +191,63 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.Contains("already in progress", h.LastReply);
     }
 
+    // ----- left-behind eligibility (leader-side authorisation) -------
+
+    [Fact]
+    public void LeftBehindFollower_NotActiveMember_StillAuthorised()
+    {
+        using Harness h = NewHarness();
+
+        // Tank joins then gets left behind (self-departs / disconnects).
+        // The server drops them from our party, so they're NOT an active
+        // member — but the grace-window stamp makes them recoverable.
+        h.Router.Dispatch(Line("Tank started to follow you."));
+        h.Router.Dispatch(Line("Tank stops following you."));
+        Assert.DoesNotContain(h.PartyState.Members,
+            m => m.Name.Equals("Tank", StringComparison.OrdinalIgnoreCase));
+
+        StartLair(h);
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
+
+        // Authorised via WasRecentlyPartied → recovery walk begins.
+        Assert.Contains("coming back to 1/3", h.LastReply);
+        Assert.False(h.Lair.IsActive);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
+    [Fact]
+    public void DeliberatelyUninvited_Comeback_IsDenied()
+    {
+        using Harness h = NewHarness();
+
+        // WE uninvited Tank — "removed from your followers" does NOT stamp
+        // the grace window, so the @comeback is rejected: recovery never
+        // runs and the engine keeps looping.
+        h.Router.Dispatch(Line("Tank started to follow you."));
+        h.Router.Dispatch(Line("Tank has been removed from your followers."));
+
+        StartLair(h);
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
+
+        // Denial signal is the engine staying alive — the walker is already
+        // Walking from AutoLair's own move, independent of @comeback, so
+        // Lair.IsActive (not WalkState) is what distinguishes deny from allow.
+        Assert.True(h.Lair.IsActive);
+    }
+
+    [Fact]
+    public void Stranger_NeverPartied_Comeback_IsDenied()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+
+        h.Engine.DispatchForTests(Telepath("Stranger", "@comeback 1/3"));
+
+        // See DeliberatelyUninvited_Comeback_IsDenied — Lair.IsActive is the
+        // denial signal; the walker is Walking from AutoLair regardless.
+        Assert.True(h.Lair.IsActive);
+    }
+
     // ----- explicit-room recovery ------------------------------------
 
     [Fact]

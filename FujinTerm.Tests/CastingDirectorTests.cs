@@ -75,7 +75,7 @@ public sealed class CastingDirectorTests
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);    // 30% < 40%
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c fullheal", h.CastsSent[0]);
+        Assert.Equal("fullheal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public sealed class CastingDirectorTests
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal", h.CastsSent[0]);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class CastingDirectorTests
         h.SetPrompt(hp: 65, maxHp: 100, inCombat: true);    // 65% < 70%
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal", h.CastsSent[0]);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public sealed class CastingDirectorTests
         h.Director.OnCombatTick();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal", h.CastsSent[0]);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -260,7 +260,7 @@ public sealed class CastingDirectorTests
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal", h.CastsSent[0]);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -279,7 +279,7 @@ public sealed class CastingDirectorTests
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c fullheal", h.CastsSent[0]);
+        Assert.Equal("fullheal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -382,7 +382,7 @@ public sealed class CastingDirectorTests
         h.FeedLine("You have been poisoned!");
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c neutralize", h.CastsSent[0]);
+        Assert.Equal("neutralize", h.CastsSent[0]);
     }
 
     [Fact]
@@ -395,7 +395,7 @@ public sealed class CastingDirectorTests
         h.FeedLine("You have been paralyzed!");
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c freedom", h.CastsSent[0]);
+        Assert.Equal("freedom", h.CastsSent[0]);
     }
 
     [Fact]
@@ -438,7 +438,7 @@ public sealed class CastingDirectorTests
         h.Director.OnCombatTick();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c freedom", h.CastsSent[0]);
+        Assert.Equal("freedom", h.CastsSent[0]);
     }
 
     // ----- Buffing (Bless1–10 slot walk) -----------------------------
@@ -458,7 +458,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c bless", h.CastsSent[0]);
+        Assert.Equal("bless", h.CastsSent[0]);
     }
 
     [Fact]
@@ -482,7 +482,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c haste", h.CastsSent[0]);
+        Assert.Equal("haste", h.CastsSent[0]);
     }
 
     [Fact]
@@ -574,7 +574,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c trollskin", h.CastsSent[0]);
+        Assert.Equal("trollskin", h.CastsSent[0]);
     }
 
     [Fact]
@@ -599,7 +599,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c trollskin", h.CastsSent[0]);
+        Assert.Equal("trollskin", h.CastsSent[0]);
     }
 
     [Fact]
@@ -619,7 +619,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c detect", h.CastsSent[0]);
+        Assert.Equal("detect", h.CastsSent[0]);
     }
 
     [Fact]
@@ -745,7 +745,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal Tank", h.CastsSent[0]);
+        Assert.Equal("heal Tank", h.CastsSent[0]);
     }
 
     [Fact]
@@ -762,7 +762,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c groupheal", h.CastsSent[0]);
+        Assert.Equal("groupheal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -790,7 +790,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal Mage", h.CastsSent[0]);
+        Assert.Equal("heal Mage", h.CastsSent[0]);
     }
 
     [Fact]
@@ -809,7 +809,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c majorgroupheal", h.CastsSent[0]);
+        Assert.Equal("majorgroupheal", h.CastsSent[0]);
     }
 
     [Fact]
@@ -838,7 +838,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c heal Tank", h.CastsSent[0]);
+        Assert.Equal("heal Tank", h.CastsSent[0]);
     }
 
     [Fact]
@@ -860,6 +860,6 @@ public sealed class CastingDirectorTests
         h.State.Hp = 30;
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("c fullheal", h.CastsSent[0]);
+        Assert.Equal("fullheal", h.CastsSent[0]);
     }
 }

@@ -6,7 +6,8 @@ namespace FujinTerm.Game.Spells;
 
 /// <summary>
 /// Phase 9 PR 9.C — low-level spell-send layer. Builds the
-/// <c>c &lt;spell&gt; [target]</c> wire command, gates on a recent-
+/// <c>&lt;cast-code&gt; [target]</c> wire command (the 4-letter cast-code
+/// is typed directly — NOT prefixed with the <c>c</c> cast verb), gates on a recent-
 /// cast cooldown + a "block until next combat tick" latch (set by
 /// server failure messages), and emits
 /// <see cref="CastSent"/> / <see cref="CastFailed"/> events so
@@ -130,8 +131,9 @@ public sealed class CastCoordinator : IDisposable
     public DateTimeOffset LastCastSentAt => _lastCastSentAt;
 
     /// <summary>
-    /// Attempt to send <c>c &lt;spell&gt; [target]</c>. Returns
-    /// <c>true</c> only if the command actually went to the wire.
+    /// Attempt to send <c>&lt;cast-code&gt; [target]</c> (the configured
+    /// 4-letter cast-code typed directly — not prefixed with <c>c</c>).
+    /// Returns <c>true</c> only if the command actually went to the wire.
     /// Burst-absorbs back-to-back attempts via
     /// <see cref="MinRecastInterval"/> + checks
     /// <see cref="IsCastBlocked"/>.
@@ -159,10 +161,15 @@ public sealed class CastCoordinator : IDisposable
             return false;
         }
 
+        // The configured spell value is already MajorMUD's cast-code (the
+        // 4-letter abbreviation from game data), which is typed directly to
+        // cast — NOT a spell name fed to the "c" (cast) command. Prefixing
+        // "c " would make the server look up a spell literally named e.g.
+        // "shce". Send the code as-is; append the target when given.
         string spell = spellName.Trim();
         string line = string.IsNullOrWhiteSpace(target)
-            ? $"c {spell}"
-            : $"c {spell} {target.Trim()}";
+            ? spell
+            : $"{spell} {target.Trim()}";
         _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
         _lastCastSentAt = now;
         _log?.Info(LogCategory, $"cast spell={spell} target={target ?? "<self>"}");

@@ -219,8 +219,14 @@ public static class DefaultPatterns
         // Yell: combined own + others into one regex; player group empty for "You yell".
         yield return new RegexPattern(KnownPatterns.ConversationYell,
             @"^(?:(?<player>\w+) yells|You yell) ""(?<message>.+)""");
+        // Combined own + others, mirroring Yell: a third party emits
+        // "X says ""…""" (player captured); the local character's own echo
+        // is "You say ""…""" (player group empty → self). Splitting the
+        // verb forms keeps "You" out of the player group so downstream
+        // consumers (notably RemoteCommandManager) never treat the local
+        // character's own speech as an inbound @-command.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
-            @"^(?<player>\w+) says? ""(?<message>.+)""");
+            @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
         // user-emote (Megamind's regex keys off ANSI bytes the LineExtractor
         // strips). Omitted until attribute-aware matching ships — see remarks
         // on this class.

@@ -119,6 +119,19 @@ public sealed class RemoteCommandManager : IDisposable
     /// </summary>
     public bool DisablePartyWhitelist { get; set; }
 
+    /// <summary>
+    /// Leader-side eligibility hook for a stranded follower's
+    /// <c>@comeback</c>. A left-behind follower is dropped from the party
+    /// server-side, so <see cref="IsActivePartyMember"/> can't authorise
+    /// them — yet they're still recoverable. <see cref="PartyComebackManager"/>
+    /// wires this to <see cref="PartyManager.WasRecentlyPartied"/>, which
+    /// returns true only for senders who departed inside the grace window
+    /// and were NOT deliberately uninvited. Consulted ONLY for
+    /// <c>@comeback</c> (see <see cref="IsAuthorised"/>); null = no extra
+    /// allowance, so the plain party-whitelist gate stands.
+    /// </summary>
+    public Func<string, bool>? ComebackEligibility { get; set; }
+
     /// <summary>Drop @-commands arriving on the Telepath channel.</summary>
     public bool DisableTelepathChannel { get; set; }
 
@@ -231,6 +244,13 @@ public sealed class RemoteCommandManager : IDisposable
         if (IsChannelDisabled(channel.Value)) return;
 
         if (string.IsNullOrEmpty(entry.Speaker)) return; // Self-echo / unknown sender.
+        // Defence-in-depth: a self-echo whose verb form leaks the literal
+        // "You" as the speaker (e.g. a classifier regex that captured it)
+        // must never be treated as an inbound command — the local
+        // character can't issue remote commands to itself. "You" is never a
+        // real player name, so this is a safe hard guard on top of the
+        // classifier emitting a null speaker for own-speech.
+        if (entry.Speaker.Equals("You", StringComparison.OrdinalIgnoreCase)) return;
         if (string.IsNullOrEmpty(entry.Message)) return;
         if (entry.Message[0] != '@') return;             // Not an @-command.
 
@@ -482,7 +502,17 @@ public sealed class RemoteCommandManager : IDisposable
         // @kill / @comeback / etc. Settings.Talk → Disallow @party
         // commands flips this off even for active members.
         if (requiredCategory == PlayerRemoteControls.None)
-            return !DisablePartyWhitelist && IsActivePartyMember(sender);
+        {
+            if (DisablePartyWhitelist) return false;
+            if (IsActivePartyMember(sender)) return true;
+            // @comeback is the one whitelist command a left-behind follower
+            // can't satisfy via IsActivePartyMember — the server already
+            // dropped them from the party. Honour it only if they departed
+            // recently and we didn't uninvite them.
+            if (command.Equals("@comeback", StringComparison.OrdinalIgnoreCase))
+                return ComebackEligibility?.Invoke(sender) ?? false;
+            return false;
+        }
 
         // Per-player flag check. Look up the merged record (BBS observation
         // + Char customisation) and bitmask-test the required category.
