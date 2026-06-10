@@ -26,6 +26,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Combat";
 
     private readonly ProfileService _profile;
+    private readonly ItemNameStore _items;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -37,6 +38,16 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
+
+    /// <summary>Weapon-name suggestions (<c>ItemType == 1</c>) for the
+    /// weapon typeahead boxes — sourced from the active game-data set's
+    /// <c>Items.json</c>. Refreshes when the active set changes.</summary>
+    public IReadOnlyList<string> WeaponSuggestions => _items.WeaponNames;
+
+    /// <summary>Off-hand-name suggestions (<c>Worn == 12</c>) for the
+    /// off-hand typeahead boxes — shields, tomes, instruments. Refreshes
+    /// when the active set changes.</summary>
+    public IReadOnlyList<string> OffHandSuggestions => _items.OffHandNames;
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
@@ -159,17 +170,27 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private bool _showCombatRoundTotals;
 
-    public CombatSectionViewModel() : this(AppServices.Current.Profile) { }
+    public CombatSectionViewModel()
+        : this(AppServices.Current.Profile, AppServices.Current.ItemNames) { }
 
-    public CombatSectionViewModel(ProfileService profile)
+    public CombatSectionViewModel(ProfileService profile, ItemNameStore items)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(items);
         _profile = profile;
+        _items = items;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        _items.StoreReloaded += OnItemStoreReloaded;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
+    }
+
+    private void OnItemStoreReloaded()
+    {
+        OnPropertyChanged(nameof(WeaponSuggestions));
+        OnPropertyChanged(nameof(OffHandSuggestions));
     }
 
     public override void Apply()

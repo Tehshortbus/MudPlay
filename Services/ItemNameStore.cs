@@ -9,20 +9,32 @@ namespace FujinTerm.Services;
 /// <c>Name</c>. Used by walker / handler code that needs to resolve
 /// an item id back to the verbatim name to send to the game (door
 /// keys via <c>use &lt;name&gt; &lt;dir&gt;</c>, tickets via
-/// inventory checks, etc.).
+/// inventory checks, etc.). Also exposes two slot-filtered name lists
+/// (<see cref="WeaponNames"/> / <see cref="OffHandNames"/>) for the
+/// Settings → Combat typeahead boxes.
 /// </summary>
 /// <remarks>
 /// Subscribes to <see cref="GameDataCache.ActiveSetChanged"/>, loads
-/// the raw <c>Items.json</c>, populates the int → string map, and
-/// evicts the raw <see cref="JsonDocument"/>. Only Number + Name are
-/// retained — full item editing is owned by the Game Data browser
-/// and reads its own copy.
+/// the raw <c>Items.json</c>, populates the int → string map plus the
+/// slot-filtered name lists in a single pass, and evicts the raw
+/// <see cref="JsonDocument"/>. Only the fields these indexes need
+/// (Number, Name, ItemType, Worn) are retained — full item editing is
+/// owned by the Game Data browser and reads its own copy.
 /// </remarks>
 public sealed class ItemNameStore
 {
     private readonly GameDataCache _cache;
     private readonly LogService? _log;
     private readonly Dictionary<int, string> _names = new();
+
+    // Slot-filtered, alphabetically-sorted, de-duplicated name lists
+    // for the Combat-tab typeahead boxes. Classification follows MMUD
+    // Explorer parity (frmBSCalc.frm / frmMain.frm): a weapon is
+    // ItemType == 1; an off-hand item is Worn == 12 (shields, tomes,
+    // the bard lute, etc.). No class dual-wields, so one-handed weapons
+    // never appear in the off-hand list.
+    private string[] _weaponNames = Array.Empty<string>();
+    private string[] _offHandNames = Array.Empty<string>();
 
     // Reverse index for resolving a room "You notice ..." entry (e.g.
     // "a long sword") back to its item Number. Keyed by the normalized
@@ -34,6 +46,22 @@ public sealed class ItemNameStore
 
     /// <summary>Active set the store was last loaded from, or <c>null</c> if empty.</summary>
     public string? ActiveSet { get; private set; }
+
+    /// <summary>
+    /// Alphabetically-sorted, distinct names of every weapon
+    /// (<c>ItemType == 1</c>) in the active set. Suggestion source for
+    /// the Combat-tab weapon typeahead boxes. Empty when no set is
+    /// active.
+    /// </summary>
+    public IReadOnlyList<string> WeaponNames => _weaponNames;
+
+    /// <summary>
+    /// Alphabetically-sorted, distinct names of every off-hand item
+    /// (<c>Worn == 12</c> — shields, tomes, instruments) in the active
+    /// set. Suggestion source for the Combat-tab off-hand typeahead
+    /// boxes. Empty when no set is active.
+    /// </summary>
+    public IReadOnlyList<string> OffHandNames => _offHandNames;
 
     /// <summary>Number of entries in the active store.</summary>
     public int EntryCount => _names.Count;
@@ -122,6 +150,15 @@ public sealed class ItemNameStore
         return s.Trim();
     }
 
+    /// <summary>Read an integer field from a JSON row, or <c>0</c> when
+    /// the property is missing / non-numeric. Used for the slot-classifier
+    /// reads (ItemType / Worn) where absent means "not that slot".</summary>
+    private static int ReadInt(JsonElement row, string property)
+        => row.TryGetProperty(property, out JsonElement el)
+           && el.ValueKind == JsonValueKind.Number
+           && el.TryGetInt32(out int v)
+            ? v : 0;
+
     private static readonly string[] _articles = { "the ", "an ", "a ", "some " };
 
     private static bool IsCountToken(string token)
@@ -145,6 +182,8 @@ public sealed class ItemNameStore
     {
         _names.Clear();
         _byNormalizedName.Clear();
+        _weaponNames = Array.Empty<string>();
+        _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
 
         if (string.IsNullOrWhiteSpace(setName))
@@ -164,6 +203,8 @@ public sealed class ItemNameStore
         }
 
         int parsed = 0;
+        SortedSet<string> weapons = new(StringComparer.OrdinalIgnoreCase);
+        SortedSet<string> offHands = new(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement row in doc.RootElement.EnumerateArray())
         {
             if (row.ValueKind != JsonValueKind.Object) continue;
@@ -181,13 +222,23 @@ public sealed class ItemNameStore
             string key = Normalize(name);
             if (key.Length > 0)
                 _byNormalizedName.TryAdd(key, number);
+
+            if (ReadInt(row, "ItemType") == 1) weapons.Add(name);
+            if (ReadInt(row, "Worn") == 12) offHands.Add(name);
+
             parsed++;
         }
+
+        _weaponNames = new string[weapons.Count];
+        weapons.CopyTo(_weaponNames);
+        _offHandNames = new string[offHands.Count];
+        offHands.CopyTo(_offHandNames);
 
         _cache.EvictTable("Items");
 
         _log?.Log(LogSeverity.Info, "ItemNameStore",
-            $"Loaded {parsed} item name(s) from '{setName}'.");
+            $"Loaded {parsed} item name(s) from '{setName}' "
+            + $"({_weaponNames.Length} weapon, {_offHandNames.Length} off-hand).");
 
         StoreReloaded?.Invoke();
     }
