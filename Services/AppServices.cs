@@ -1615,6 +1615,9 @@ public sealed class AppServices
         Stealth.SetAutoToggles(
             isAutoSneakEnabled: () => ReadAutoModeFlag(d => d.AutoSneak),
             isAutoHideEnabled:  () => ReadAutoModeFlag(d => d.AutoHide));
+        // PR 4.b decision #1 — any NPC in the room prevents sneak, so
+        // suppress the doomed `sn` instead of firing it into a rejection.
+        Stealth.SetSneakBlockCheck(() => CombatTracker.HasRoomNpc);
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;

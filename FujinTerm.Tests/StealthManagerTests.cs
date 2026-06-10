@@ -349,6 +349,37 @@ public sealed class StealthManagerTests
     }
 
     [Fact]
+    public void RequestPreMoveStealth_NpcPresent_NoSend()
+    {
+        // Decision #1: any NPC in the room blocks sneak, so the engine
+        // suppresses the doomed `sn` rather than firing it.
+        using AutoHarness h = new() { AutoSneakOn = true };
+        h.Stealth.SetSneakBlockCheck(() => true);
+
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(StealthState.Idle, h.Stealth.State);
+    }
+
+    [Fact]
+    public void RequestPreMoveStealth_NpcClears_Sends()
+    {
+        // Predicate flips to false (NPC left / room clear) → sneak fires.
+        using AutoHarness h = new() { AutoSneakOn = true };
+        bool blocked = true;
+        h.Stealth.SetSneakBlockCheck(() => blocked);
+        h.Stealth.RequestPreMoveStealth();
+        Assert.Empty(h.Sent);
+
+        blocked = false;
+        h.Stealth.RequestPreMoveStealth();
+
+        Assert.Single(h.Sent);
+        Assert.Equal("sn", h.LastSent());
+    }
+
+    [Fact]
     public void RequestPreMoveStealth_InCombat_NoSend()
     {
         using AutoHarness h = new() { AutoSneakOn = true };

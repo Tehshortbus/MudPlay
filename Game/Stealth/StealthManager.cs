@@ -77,6 +77,7 @@ public sealed class StealthManager : IDisposable
     private Action<byte[]>? _wireSender;
     private Func<bool>? _isAutoSneakEnabled;
     private Func<bool>? _isAutoHideEnabled;
+    private Func<bool>? _isSneakBlockedByRoom;
 
     private StealthState _stateValue;
     private bool _sneakConfirmedThisRoom;
@@ -133,6 +134,21 @@ public sealed class StealthManager : IDisposable
     {
         _isAutoSneakEnabled = isAutoSneakEnabled;
         _isAutoHideEnabled = isAutoHideEnabled;
+    }
+
+    /// <summary>
+    /// Wire the "sneak blocked by a room occupant" predicate — true when
+    /// any NPC is in the current room (any NPC at all prevents sneak in
+    /// MajorMUD). AppServices binds this to
+    /// <c>CombatStateTracker.HasRoomNpc</c>. When the predicate returns
+    /// true, auto-sneak suppresses the doomed <c>sn</c> rather than
+    /// firing it into a guaranteed server rejection. When null, no
+    /// suppression occurs (sneak is attempted unconditionally).
+    /// </summary>
+    public void SetSneakBlockCheck(Func<bool> isSneakBlockedByRoom)
+    {
+        ArgumentNullException.ThrowIfNull(isSneakBlockedByRoom);
+        _isSneakBlockedByRoom = isSneakBlockedByRoom;
     }
 
     /// <summary>
@@ -205,6 +221,15 @@ public sealed class StealthManager : IDisposable
         if (_isAutoSneakEnabled?.Invoke() != true) return false;
         if (_state.InCombat) return false;
         if (_stateValue != StealthState.Idle && _stateValue != StealthState.Failed) return false;
+
+        // Any NPC in the room prevents sneak from taking — don't burn an
+        // `sn` the server will reject. The move (if engine-driven)
+        // proceeds regardless; sneak re-attempts once the room is clear.
+        if (_isSneakBlockedByRoom?.Invoke() == true)
+        {
+            _log?.Info(LogCategory, $"auto-sneak suppressed ({reason}): NPC present");
+            return false;
+        }
 
         // `sn` is the live MajorMUD command; the clean
         // `Attempting to sneak...` ACK then establishes the armed sneak

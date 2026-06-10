@@ -68,6 +68,7 @@ public sealed class CombatStateTracker : IDisposable
     private readonly IDisposable _combatStatusSub;
 
     private bool _gateAsserted;
+    private bool _anyNpcPresent;
     private bool _disposed;
 
     /// <summary>
@@ -80,6 +81,17 @@ public sealed class CombatStateTracker : IDisposable
     /// observation shows no engageable monsters (room cleared).
     /// </summary>
     public bool HasEngageableHostiles => _gateAsserted;
+
+    /// <summary>
+    /// True while the current room contains at least one NPC / monster
+    /// of any relationship (Enemy, Friend, Neutral — shopkeepers and
+    /// quest-givers included). Sneak cannot be established while any NPC
+    /// is present, so the StealthManager pre-move hook consults this to
+    /// suppress a doomed <c>sn</c>. Updated on every Also-Here
+    /// observation, independent of the auto-attack gate (which only
+    /// reacts to <em>engageable</em> hostiles).
+    /// </summary>
+    public bool HasRoomNpc => _anyNpcPresent;
 
     public CombatStateTracker(
         MessageRouter router,
@@ -135,6 +147,17 @@ public sealed class CombatStateTracker : IDisposable
 
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
+        // NPC-presence tracking is independent of the auto-attack gate:
+        // ANY monster (friendly or hostile) blocks sneak, and the
+        // StealthManager needs the signal even when auto-attack is off.
+        _anyNpcPresent = false;
+        foreach (RoomEntity e in obs.Entities)
+        {
+            if (e.Kind != EntityKind.Monster) continue;
+            _anyNpcPresent = true;
+            break;
+        }
+
         if (!_isAutoAttackEnabled())
         {
             // Auto-attack off → never hold the gate. Defensive clear

@@ -189,6 +189,70 @@ public sealed class CombatStateTrackerTests
         Assert.Equal(historyAfterFirst, h.Coordinator.History.Count);
     }
 
+    // ----- HasRoomNpc (PR 4.b decision #1) ---------------------------
+
+    [Fact]
+    public void HasRoomNpc_NoMonsters_False()
+    {
+        using Harness h = new();
+        h.Feed("Also here: Bob.");          // player only
+        Assert.False(h.Tracker.HasRoomNpc);
+    }
+
+    [Fact]
+    public void HasRoomNpc_FriendlyNpc_True()
+    {
+        // Friendly NPC doesn't assert the combat gate, but still blocks
+        // sneak — HasRoomNpc must be true even though HasEngageableHostiles
+        // is false.
+        using Harness h = new();
+        h.AddMonster(7, "shopkeeper", killable: true);
+        h.SetOverlay(7, relationship: MonsterRelationship.Friend);
+
+        h.Feed("Also here: shopkeeper.");
+
+        Assert.True(h.Tracker.HasRoomNpc);
+        Assert.False(h.Tracker.HasEngageableHostiles);
+    }
+
+    [Fact]
+    public void HasRoomNpc_Hostile_True()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.True(h.Tracker.HasRoomNpc);
+    }
+
+    [Fact]
+    public void HasRoomNpc_TracksEvenWhenAutoAttackDisabled()
+    {
+        // The auto-attack gate early-returns, but NPC-presence tracking
+        // runs first so the sneak-block signal stays live.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.True(h.Tracker.HasRoomNpc);
+        Assert.False(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void HasRoomNpc_ClearsWhenRoomEmpties()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.Tracker.HasRoomNpc);
+
+        h.Feed("Also here: Bob.");          // moved on, players only
+        Assert.False(h.Tracker.HasRoomNpc);
+    }
+
     // ----- master switch ---------------------------------------------
 
     [Fact]
