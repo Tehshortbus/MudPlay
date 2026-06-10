@@ -120,9 +120,9 @@
                 <CheckBox Content="Don't collect if it makes you Heavy"
                           IsChecked="{Binding SkipCollectIfMakesHeavy, Mode=TwoWay}"
                           ToolTip.Tip="Skip pickups that would push past Medium → Heavy."/>
-                <CheckBox Content="Collect after combat finished"
+                <CheckBox Content="Collect after combat finished (Cash and Items)"
                           IsChecked="{Binding CollectAfterCombatFinished, Mode=TwoWay}"
-                          ToolTip.Tip="Defer pickups until the round ends so the pre-attack roll isn't lost."/>
+                          ToolTip.Tip="Defer pickups until the room's combat is over before sending get commands. Shared by Cash auto-collect and the Items auto-get engine."/>
                 <CheckBox Content="Drop smaller currency to make room for larger Collect-flagged coin"
                           IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
                           ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>

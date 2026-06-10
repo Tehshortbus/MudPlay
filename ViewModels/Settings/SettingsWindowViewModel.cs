@@ -236,7 +236,6 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new CombatSectionViewModel());
         Sections.Add(new PartySectionViewModel());
         Sections.Add(new CashSectionViewModel());
-        Sections.Add(new ItemsSectionViewModel());
         Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));
         Sections.Add(new TalkSectionViewModel());
         Sections.Add(new AutoLairSectionViewModel());

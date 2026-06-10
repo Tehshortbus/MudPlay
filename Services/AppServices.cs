@@ -1666,7 +1666,7 @@ public sealed class AppServices
             resolve: ResolveAutoGetItem,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
             collectAfterCombatFinished: () =>
-                ReadSection<Models.Profile.ItemLootSettings>(Profile.Current, "ItemLoot")
+                ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);

@@ -21,8 +21,9 @@ namespace FujinTerm.Game.Inventory;
 /// </para>
 /// <para>
 /// <b>Collect-after-combat</b>: when
-/// <see cref="Models.Profile.ItemLootSettings.CollectAfterCombatFinished"/>
-/// is set and the room still holds engageable hostiles, the gets are
+/// <see cref="Models.Profile.CashSettings.CollectAfterCombatFinished"/>
+/// is set (the shared Cash + Items timing toggle) and the room still
+/// holds engageable hostiles, the gets are
 /// queued and flushed on <see cref="OnRoomObserved"/> once combat
 /// clears (no engageable hostiles remain). When the toggle is off, or
 /// no hostiles are present, the gets fire immediately. A room change
