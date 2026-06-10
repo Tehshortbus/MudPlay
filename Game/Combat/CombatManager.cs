@@ -91,6 +91,8 @@ public sealed class CombatManager : IDisposable
     private static readonly TimeSpan RoomRefreshCooldown = TimeSpan.FromSeconds(3);
 
     private Action<byte[]>? _wireSender;
+    private Func<bool>? _isSneaking;
+    private Func<int, bool>? _hasSeeHidden;
     private string? _currentTarget;
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
@@ -196,6 +198,23 @@ public sealed class CombatManager : IDisposable
     /// <summary>The monster name we last sent <c>attack</c> against,
     /// or <c>null</c> when no fight is in flight.</summary>
     public string? CurrentTarget => _currentTarget;
+
+    /// <summary>
+    /// Wire the backstab gating delegates:
+    /// <paramref name="isSneaking"/> reports whether the character is in
+    /// the sneaking stealth state (StealthManager.IsSneaking) and
+    /// <paramref name="hasSeeHidden"/> reports whether a given monster
+    /// Number carries the SeeHidden ability (<see cref="SeeHiddenIndex"/>).
+    /// Until set, backstab never fires — the engine sends the normal
+    /// attack regardless of <see cref="CombatSettings.DoBackstab"/>.
+    /// </summary>
+    public void SetBackstabHooks(Func<bool> isSneaking, Func<int, bool> hasSeeHidden)
+    {
+        ArgumentNullException.ThrowIfNull(isSneaking);
+        ArgumentNullException.ThrowIfNull(hasSeeHidden);
+        _isSneaking = isSneaking;
+        _hasSeeHidden = hasSeeHidden;
+    }
 
     /// <summary>
     /// Called by the MonsterDeath subscriber when a death-line match
@@ -404,6 +423,24 @@ public sealed class CombatManager : IDisposable
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
         }
 
+        // Backstab window — the opening swing into a room while sneaking
+        // can be a `bs`, but only when no occupant has SeeHidden (a
+        // single seehidden monster reveals us to the whole room, ruining
+        // the BS). Attacking breaks sneak, so this naturally fires only
+        // on the first swing; every follow-on re-pick is no longer
+        // sneaking and falls through to the normal path below. We do NOT
+        // equip here — the BS weapon was pre-equipped at room-clear
+        // (OnRoomCleared); when none is configured we backstab with
+        // whatever is already equipped.
+        if (settings.DoBackstab
+            && _isSneaking?.Invoke() == true
+            && !RoomHasSeeHidden(obs))
+        {
+            SendAttack("bs", picked.RawName, picked.Priority);
+            _currentTarget = picked.RawName;
+            return;
+        }
+
         // Per-target dedup — if the picked species is in this room's
         // failed-vs-normal set, pre-emptively swap to the alternate
         // weapon + use AlternateAttackCommand. Saves a wasted swing.
@@ -414,6 +451,24 @@ public sealed class CombatManager : IDisposable
             : settings.NormalAttackCommand;
         SendAttack(verb, picked.RawName, picked.Priority);
         _currentTarget = picked.RawName;
+    }
+
+    /// <summary>
+    /// True when any monster currently in the room carries SeeHidden —
+    /// which defeats the sneaking character's backstab for the whole
+    /// room. No-op (false) until the backstab hooks are wired.
+    /// </summary>
+    private bool RoomHasSeeHidden(RoomEntitiesObservation obs)
+    {
+        if (_hasSeeHidden is null) return false;
+        for (int i = 0; i < obs.Entities.Count; i++)
+        {
+            RoomEntity e = obs.Entities[i];
+            if (e.Kind != EntityKind.Monster) continue;
+            if (e.MonsterNumber is not int n) continue;
+            if (_hasSeeHidden(n)) return true;
+        }
+        return false;
     }
 
     // ----- Weapon-swap mechanics --------------------------------------

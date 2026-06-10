@@ -161,6 +161,15 @@ public sealed class StealthManager : IDisposable
         _stateValue == StealthState.Sneaking || _stateValue == StealthState.Hidden;
 
     /// <summary>
+    /// True only while actively <see cref="StealthState.Sneaking"/>
+    /// (not Hidden). Backstab requires the sneaking state specifically —
+    /// you approach an unseen target while moving silently — so
+    /// <c>CombatManager</c> gates its opening <c>bs</c> on this rather
+    /// than <see cref="IsStealthed"/>.
+    /// </summary>
+    public bool IsSneaking => _stateValue == StealthState.Sneaking;
+
+    /// <summary>
     /// Called by an external observer (RoomTracker via AppServices)
     /// when the player's room changes. If we believed we were
     /// sneaking but didn't observe the <c>Sneaking...</c> line in

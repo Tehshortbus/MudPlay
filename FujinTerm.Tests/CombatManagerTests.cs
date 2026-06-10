@@ -960,6 +960,85 @@ public sealed class CombatManagerTests
         Assert.Contains("eq dagger", lines);
     }
 
+    // ----- Backstab window (PR 4.c) ----------------------------------
+
+    [Fact]
+    public void Backstab_SendsBs_WhenSneaking_NoSeeHidden()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+
+        h.Feed("Also here: giant rat.");
+
+        // Opening swing into the room is `bs`, and the BS path must NOT
+        // re-equip — the BS weapon is pre-equipped at room-clear.
+        Assert.Equal("bs giant rat", h.LastSent);
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.DoesNotContain(lines, l => l.StartsWith("eq ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Backstab_FallsBackToNormal_WhenSeeHiddenPresent()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "crystal golem", killable: true);
+        // The golem (monster #2) carries SeeHidden — its presence reveals
+        // the sneaker to the whole room, so the opening swing is a normal
+        // attack, not a backstab.
+        HashSet<int> seeHidden = new() { 2 };
+        h.Combat.SetBackstabHooks(
+            isSneaking: () => true,
+            hasSeeHidden: n => seeHidden.Contains(n));
+
+        h.Feed("Also here: giant rat, crystal golem.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void Backstab_Off_NormalAttack_EvenWhenSneaking()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = false;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void Backstab_NotSneaking_NormalAttack()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => false, hasSeeHidden: _ => false);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void Backstab_HooksUnset_NormalAttack()
+    {
+        // No SetBackstabHooks call — the BS branch is a safe no-op and
+        // the engine falls through to a normal attack.
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
     [Fact]
     public void FistsNoEffect_ClearsShadowState_AndReEquipsOnNextRoom()
     {

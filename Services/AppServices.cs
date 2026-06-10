@@ -593,6 +593,13 @@ public sealed class AppServices
     public Game.Combat.CombatManager Combat { get; private set; } = null!;
 
     /// <summary>
+    /// Lookup of monster Numbers carrying the SeeHidden ability (code
+    /// 57) in the active game-data set. Drives CombatManager's
+    /// backstab-skip — a seehidden room occupant ruins the opening BS.
+    /// </summary>
+    public Game.Combat.SeeHiddenIndex SeeHidden { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.A — observes mid-room arrival lines
     /// ("&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;.")
     /// and appends the new entity to
@@ -1618,6 +1625,14 @@ public sealed class AppServices
         // PR 4.b decision #1 — any NPC in the room prevents sneak, so
         // suppress the doomed `sn` instead of firing it into a rejection.
         Stealth.SetSneakBlockCheck(() => CombatTracker.HasRoomNpc);
+
+        // PR 4.c backstab window — CombatManager opens with `bs` on the
+        // first swing into a room while sneaking, unless a seehidden
+        // monster is present (which reveals us to the whole room).
+        SeeHidden = new Game.Combat.SeeHiddenIndex(GameData);
+        Combat.SetBackstabHooks(
+            isSneaking:   () => Stealth.IsSneaking,
+            hasSeeHidden: n => SeeHidden.Has(n));
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;
