@@ -699,6 +699,15 @@ public sealed class AppServices
     public Game.Inventory.AutoGetItemsManager AutoGetItems { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
+    /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
+    /// the single assert/clear of
+    /// <see cref="Game.Map.MovementCoordinator.AcquisitionGate"/> so the
+    /// walker resumes only once both engines finish looting.
+    /// </summary>
+    public Game.Inventory.AcquisitionGate Acquisition { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.E follow-up — on-entry stash plan for user-
     /// marked stash rooms. Dispatches <c>hide N &lt;coin&gt;</c>
     /// commands per <see cref="Models.Profile.StashCurrencyRule"/>
@@ -1387,6 +1396,11 @@ public sealed class AppServices
         Needs = new NeedsRegistry(Log);
         Profile.ProfileLoaded += _ => Needs.Clear();
 
+        // Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
+        // AutoGetItems and Cash feed this one instance (bound after they're
+        // constructed below) so the walker holds until BOTH finish looting.
+        Acquisition = new Game.Inventory.AcquisitionGate(MovementCoordinator, Log);
+
         // Phase 9 PR 9.0b — RoomEntityClassifier + CombatStateTracker.
         // Classifier subscribes to RoomAlsoHere; tracker subscribes to
         // classifier output + combat-status / damage patterns to drive
@@ -1634,6 +1648,7 @@ public sealed class AppServices
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
+        Cash.SetAcquisitionGate(Acquisition);
 
         // Phase 9 PR 9.E follow-up — StashRoomManager. Driven by
         // RoomTracker.StateChanged; looks up the entered room in
@@ -1670,6 +1685,7 @@ public sealed class AppServices
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);
+        AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks
         // the deferred queue (CombatStateTracker's handler ran first, so
         // the hostile flag is current).

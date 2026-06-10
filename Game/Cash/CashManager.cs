@@ -99,6 +99,7 @@ public sealed class CashManager : IDisposable
         };
 
     private Action<byte[]>? _wireSender;
+    private Game.Inventory.AcquisitionGate? _gate;
     private readonly Dictionary<string, long> _held = new(StringComparer.OrdinalIgnoreCase);
     private bool _autoDepositFiredThisCrossing;
     private bool _disposed;
@@ -148,6 +149,17 @@ public sealed class CashManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
+    }
+
+    /// <summary>Bind the shared <see cref="Game.Inventory.AcquisitionGate"/>
+    /// so collecting cash holds the walker until get-clear (the same gate
+    /// the item engine feeds). Optional — when unbound the engine behaves
+    /// exactly as v1 (no movement gate). Only the Collect path asserts;
+    /// Discard/Ignore don't gate movement.</summary>
+    public void SetAcquisitionGate(Game.Inventory.AcquisitionGate gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _gate = gate;
     }
 
     /// <summary>Current held count of <paramref name="currency"/> as
@@ -243,7 +255,7 @@ public sealed class CashManager : IDisposable
                 // would grab all available) so encumbrance / weight
                 // tracking can do exact arithmetic instead of waiting
                 // for the wealth display to refresh.
-                Send($"get {count} {currency}");
+                CollectCoins(count, currency);
                 break;
             case CashPolicy.Discard:
                 // Don't pick up; don't react. The drop-held-discard
@@ -283,7 +295,7 @@ public sealed class CashManager : IDisposable
         CashDispatched?.Invoke(currency, count, policy);
 
         if (policy == CashPolicy.Collect)
-            Send($"get {count} {currency}");
+            CollectCoins(count, currency);
     }
 
     private void OnCashPickedUp(MatchResult m)
@@ -421,8 +433,18 @@ public sealed class CashManager : IDisposable
             CashDispatched?.Invoke(currency!, count, policy);
 
             if (policy == CashPolicy.Collect)
-                Send($"get {count} {currency}");
+                CollectCoins(count, currency!);
         }
+    }
+
+    /// <summary>Dispatch a Collect <c>get</c> and hold the walker via the
+    /// shared <see cref="Game.Inventory.AcquisitionGate"/> until get-clear.
+    /// Single funnel for all three collect sites (room display, corpse
+    /// drop, "You notice" list) so the gate note can't be missed.</summary>
+    private void CollectCoins(int count, string currency)
+    {
+        _gate?.NoteGetSent();
+        Send($"get {count} {currency}");
     }
 
     /// <summary>Recognise <c>"N {denomination} ..."</c> as cash —

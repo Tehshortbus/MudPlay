@@ -31,15 +31,23 @@ namespace FujinTerm.Game.Inventory;
 /// items belong to a room we've left.
 /// </para>
 /// <para>
+/// <b>Movement gate</b>: collecting (or deferring) items asserts the
+/// shared <see cref="AcquisitionGate"/> so the walker holds until
+/// get-clear — deferred items hold the gate before
+/// <c>CombatStateTracker</c> clears the Combat gate, defeating the
+/// synchronous walker-resume race; immediate gets hold it through a
+/// settle window. Bound via <see cref="SetAcquisitionGate"/> (optional —
+/// unbound, the engine doesn't gate movement).
+/// </para>
+/// <para>
 /// Master switch: <see cref="Models.Profile.AutoActionDefaults.AutoGetItems"/>
 /// (shared with the Settings → General toggle and the toolbar Toggle
 /// command).
 /// </para>
 /// <para>
 /// <b>Deferred to follow-ups</b>: needs-fulfillment (grabbing a torch
-/// to satisfy a LightSource need), encumbrance gating, batching, an
-/// Acquisition movement gate (v1 mirrors <c>CashManager</c> and does
-/// not pause the walker), and party provisioning.
+/// to satisfy a LightSource need), encumbrance gating, batching, and
+/// party provisioning.
 /// </para>
 /// </remarks>
 public sealed class AutoGetItemsManager : IDisposable
@@ -67,6 +75,7 @@ public sealed class AutoGetItemsManager : IDisposable
     private readonly List<string> _deferred = new();
 
     private Action<byte[]>? _wireSender;
+    private AcquisitionGate? _gate;
     private bool _disposed;
 
     public AutoGetItemsManager(
@@ -97,6 +106,16 @@ public sealed class AutoGetItemsManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
+    }
+
+    /// <summary>Bind the shared <see cref="AcquisitionGate"/> so collecting
+    /// (or deferring) items holds the walker until get-clear. Optional —
+    /// when unbound the engine behaves exactly as v1 (no movement
+    /// gate).</summary>
+    public void SetAcquisitionGate(AcquisitionGate gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _gate = gate;
     }
 
     /// <summary>
@@ -135,6 +154,7 @@ public sealed class AutoGetItemsManager : IDisposable
         if (_deferred.Count == 0) return;
         _log?.Debug(LogCategory, $"room changed — dropping {_deferred.Count} deferred get(s)");
         _deferred.Clear();
+        _gate?.NoteDeferredCleared();
     }
 
     // ----- notice parsing ----------------------------------------------
@@ -221,9 +241,16 @@ public sealed class AutoGetItemsManager : IDisposable
             else
             {
                 _log?.Info(LogCategory, $"collect item={item.Name}");
+                _gate?.NoteGetSent();
                 Send($"get {item.Name}");
             }
         }
+
+        // Hold the walker while the queued gets wait for combat to finish.
+        // Asserted now, before CombatStateTracker clears the Combat gate on
+        // the same EntitiesObserved pass, so the walker can't slip out
+        // between fight-clear and the loot flush.
+        if (deferMode) _gate?.NoteDeferredPending(_deferred.Count);
     }
 
     private void FlushDeferred()
@@ -231,9 +258,11 @@ public sealed class AutoGetItemsManager : IDisposable
         foreach (string name in _deferred)
         {
             _log?.Info(LogCategory, $"collect (post-combat) item={name}");
+            _gate?.NoteGetSent();
             Send($"get {name}");
         }
         _deferred.Clear();
+        _gate?.NoteDeferredCleared();
     }
 
     /// <summary>
