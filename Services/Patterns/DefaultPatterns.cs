@@ -75,6 +75,16 @@ public static class DefaultPatterns
             @"^Your attempts to bash through fail!$");
         yield return new RegexPattern(KnownPatterns.HeardMovement,
             @"^You hear movement to the (?<direction>\w+)\.");
+        // Left-behind disambiguators (Phase 6 PR 6.2). "You can't seem to
+        // move anywhere!" fires when a prevents-movement gamedata flag
+        // blocks us; "...too heavy to move" fires when over-encumbered.
+        // The heavy form is anchored ^[^"]* so a quoted chat line (all
+        // MajorMUD player chat is quoted) carrying the phrase can never
+        // match — only the unquoted system line does.
+        yield return new RegexPattern(KnownPatterns.MovementFailedStuck,
+            @"^You can't seem to move anywhere!");
+        yield return new RegexPattern(KnownPatterns.MovementFailedHeavy,
+            @"^[^""]*too heavy to move");
 
         // ----- Failures -------------------------------------------------- (source: classifier.js failures)
         yield return new RegexPattern(KnownPatterns.CommandNoEffect, @"^Your command had no effect\.$");

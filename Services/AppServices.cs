@@ -266,6 +266,15 @@ public sealed class AppServices
     public Game.Remote.PartyComebackManager PartyComeback { get; private set; } = null!;
 
     /// <summary>
+    /// PR 6.2 — follower-side <c>@comeback</c> sender. Detects being left
+    /// behind (a movement-failure line just before "You are no longer
+    /// following X.") and telepaths <c>@comeback</c> to the leader.
+    /// <see cref="Game.Remote.ComebackRequester.Enabled"/> is pushed from
+    /// Settings → Other.
+    /// </summary>
+    public Game.Remote.ComebackRequester ComebackRequest { get; private set; } = null!;
+
+    /// <summary>
     /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
     /// search → disarm state machine + FIFO request queue + Stats-
     /// skill gate. Bound by <see cref="TrapRemote"/>'s handler at
@@ -1860,6 +1869,13 @@ public sealed class AppServices
         PartyComeback = new Game.Remote.PartyComebackManager(
             RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Log);
 
+        // PR 6.2 — follower-side @comeback. Watches for a movement-failure
+        // line (prevents-movement flag / over-encumbered) immediately
+        // before "You are no longer following X." — the signature of being
+        // left behind — and telepaths @comeback to the leader. Enabled is
+        // pushed from Settings → Other by ApplyOtherFromActiveProfile.
+        ComebackRequest = new Game.Remote.ComebackRequester(Router, RoomTracker, Log);
+
         // Phase 8 PR 8.1 — EventManager. Holds the loaded character's
         // scheduled / lifecycle events, dispatches actions into the
         // existing movement / command stack, and reconciles saved Loop /
@@ -2098,6 +2114,8 @@ public sealed class AppServices
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
         // Leader-side @comeback backtrack budget.
         PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
+        // Follower-side auto-@comeback toggle.
+        ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
         // Hop-timing calibration logger — off by default; user flips
         // on for a data-collection session.
         HopCalibrator.Enabled = dto.LogMovementHopTiming;
@@ -2112,6 +2130,7 @@ public sealed class AppServices
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
+        ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
     }
 
     /// <summary>

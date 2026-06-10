@@ -26,6 +26,12 @@ public static class KnownPatterns
     public const string DirectionFailed   = "movement.direction-failed";
     public const string BashFailed        = "movement.bash-failed";
     public const string HeardMovement     = "movement.heard-movement";
+    // Left-behind disambiguators (Phase 6 PR 6.2). When a party leader
+    // moves and we can't follow, the game prints one of these the instant
+    // before "You are no longer following X." — distinguishing a genuine
+    // left-behind (auto-`@comeback`) from a deliberate uninvite/unfollow.
+    public const string MovementFailedStuck = "movement.failed-stuck";   // "You can't seem to move anywhere!" — a prevents-movement gamedata flag blocked us
+    public const string MovementFailedHeavy = "movement.failed-heavy";   // "...too heavy to move" — over-encumbered (system line; never inside a chat channel)
 
     // ----- Failure -------------------------------------------------------
     public const string CommandNoEffect   = "failure.command-no-effect";

@@ -158,6 +158,15 @@
                 <TextBlock Classes="FieldLabel" Text="rooms."/>
             </StackPanel>
 
+            <!-- Follower-side auto-@comeback. When checked (default), being
+                 left behind by the leader (a movement-failure line right
+                 before "You are no longer following X.") telepaths
+                 @comeback to the leader automatically. Char-tier setting. -->
+            <CheckBox Content="Auto-request @comeback when left behind"
+                      IsChecked="{Binding AutoRequestComebackWhenLeftBehind, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: if a movement-blocking condition (a prevents-movement gamedata flag or over-encumbrance) strands you as your party leader walks off, FujinTerm telepaths @comeback &lt;your room&gt; to the leader so their recovery flow picks you back up. When unchecked, the strand is detected but no request is sent — you handle it manually. Applies only for this character."/>
+
             <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
                  Database after [spinner] days." — spinner widened from
                  90→120 so 4-digit values (e.g. 3650-day max) render

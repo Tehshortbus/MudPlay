@@ -158,6 +158,16 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty] private int _maxComebackBacktrackRooms = 10;
 
+    /// <summary>
+    /// Follower-side auto-<c>@comeback</c>. When on (default), being left
+    /// behind by the party leader (a movement-failure line just before
+    /// "You are no longer following X.") telepaths <c>@comeback</c> to the
+    /// leader automatically. When off, the strand is detected but no
+    /// request is sent. Pushed into the live
+    /// <see cref="Game.Remote.ComebackRequester"/> on Apply + profile load.
+    /// </summary>
+    [ObservableProperty] private bool _autoRequestComebackWhenLeftBehind = true;
+
     // Phase 9 per-category Verbose toggles + WriteCombatRoundTrace
     // moved out of per-character settings into a session-only umbrella
     // switch in the Log pane menu — see Services/LogDiagnosticState
@@ -266,6 +276,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             PicklocksOverBash     = PicklocksOverBash,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
+            AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
         };
 
         profile.Settings ??= new();
@@ -323,6 +334,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         PicklocksOverBash     = dto.PicklocksOverBash;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
+        AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -366,6 +378,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // @comeback backtrack budget — live-mirror so the next stranded-
         // follower pickup honours the edit without a profile reload.
         svcs.PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
+        // Follower-side auto-@comeback toggle — live-mirror so the next
+        // left-behind honours the edit without a profile reload.
+        svcs.ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
     }
 
     // ----- IsDirty plumbing -----
@@ -391,6 +406,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
+    partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {

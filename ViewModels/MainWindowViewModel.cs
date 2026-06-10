@@ -645,6 +645,10 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // PR 6.2 — follower-side @comeback. Telepaths @comeback to the
+        // leader when a movement-failure line strands us as the party
+        // walks off; rides the same gate-wrapped pipeline.
+        AppServices.Current.ComebackRequest.SetWireSender(engineSend);
         // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
         // target pick via the same engine-send pipeline; the gate-
         // wrapped sender prevents the swing command from landing
