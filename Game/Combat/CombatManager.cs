@@ -62,7 +62,7 @@ namespace FujinTerm.Game.Combat;
 /// against a target we already chose.
 /// </para>
 /// </remarks>
-public sealed class CombatManager : IDisposable
+public sealed partial class CombatManager : IDisposable
 {
     /// <summary>LogService category — appears as <c>[Combat]</c> rows
     /// per swing decision + target swap + re-fire.</summary>
@@ -95,6 +95,21 @@ public sealed class CombatManager : IDisposable
     private Func<int, bool>? _hasSeeHidden;
     private Func<bool>? _seeHiddenClearActive;
     private string? _currentTarget;
+
+    /// <summary>
+    /// Spell-vs-weapon mode bridge (combat-spell economy, opt-in via
+    /// <see cref="SetCombatSpellCaster"/>). Non-null = the current round's
+    /// action is a combat spell against this RawName, so the tick
+    /// heartbeat (<see cref="OnCombatTick"/>) must re-issue the cast each
+    /// round (casts don't auto-repeat server-side the way weapon swings
+    /// do). <c>null</c> = weapon mode (server auto-repeats) or idle. Every
+    /// weapon <see cref="SendAttack"/> clears it — any swing exits spell
+    /// mode. Lives in the main file because <see cref="SendAttack"/>
+    /// touches it; the rest of the spell machinery is in
+    /// <c>CombatManager.Spells.cs</c>.
+    /// </summary>
+    private string? _castingSpellTarget;
+
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
     private bool _disposed;
@@ -464,6 +479,20 @@ public sealed class CombatManager : IDisposable
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
         }
 
+        // Combat-spell round economy (opt-in via SetCombatSpellCaster).
+        // The chooser owns the full per-round ordering — backstab gate,
+        // pre-attack debuff, then attack-spell sequencing. When it returns
+        // a spell we cast it; that IS this round's action (a spell does
+        // not stack with a swing), so we suppress the weapon path and let
+        // the tick heartbeat drive subsequent rounds. When it returns
+        // WeaponAttack (incl. backstab-pending) we fall through to the
+        // existing backstab / weapon path below.
+        if (TryCastCombatSpell(settings, picked, engageable.Count, obs))
+        {
+            _currentTarget = picked.RawName;
+            return;
+        }
+
         // Backstab window — the opening swing into a room while sneaking
         // can be a `bs`, but only when no occupant has SeeHidden (a
         // single seehidden monster reveals us to the whole room, ruining
@@ -473,9 +502,7 @@ public sealed class CombatManager : IDisposable
         // equip here — the BS weapon was pre-equipped at room-clear
         // (OnRoomCleared); when none is configured we backstab with
         // whatever is already equipped.
-        if (settings.DoBackstab
-            && _isSneaking?.Invoke() == true
-            && !RoomHasSeeHidden(obs))
+        if (BackstabPending(settings, obs))
         {
             SendAttack("bs", picked.RawName, picked.Priority);
             _currentTarget = picked.RawName;
@@ -486,12 +513,39 @@ public sealed class CombatManager : IDisposable
         // failed-vs-normal set, pre-emptively swap to the alternate
         // weapon + use AlternateAttackCommand. Saves a wasted swing.
         bool useAlt = _normalWeaponFailedMonsters.Contains(picked.ResolvedName);
+        SendWeaponAttack(settings, picked.RawName, useAlt, picked.Priority);
+    }
+
+    /// <summary>
+    /// True when a backstab is still owed for this room — sneaking, with
+    /// <see cref="CombatSettings.DoBackstab"/> on, and no occupant carries
+    /// SeeHidden. The BS round must fire before any spell or normal swing
+    /// or it's a guaranteed fail. Shared by the backstab gate in
+    /// <see cref="OnEntitiesObserved"/> and the combat-spell chooser
+    /// context so both agree on the gate.
+    /// </summary>
+    private bool BackstabPending(CombatSettings settings, RoomEntitiesObservation obs) =>
+        settings.DoBackstab && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
+
+    /// <summary>
+    /// Equip the normal/alternate weapon and send the weapon attack
+    /// command against <paramref name="targetRaw"/>. Sets
+    /// <see cref="CurrentTarget"/>; <see cref="SendAttack"/> clears the
+    /// spell-mode bridge so the server's auto-repeat owns subsequent
+    /// rounds. Shared by the initial weapon path in
+    /// <see cref="OnEntitiesObserved"/> and the heartbeat's
+    /// spell-conditions-lapsed fallback.
+    /// </summary>
+    private void SendWeaponAttack(
+        CombatSettings settings, string targetRaw, bool useAlt,
+        MonsterAttackPriority? priority = null)
+    {
         EquipForAttack(settings, useAlt);
         string verb = useAlt
             ? settings.AlternateAttackCommand
             : settings.NormalAttackCommand;
-        SendAttack(verb, picked.RawName, picked.Priority);
-        _currentTarget = picked.RawName;
+        SendAttack(verb, targetRaw, priority);
+        _currentTarget = targetRaw;
     }
 
     /// <summary>
@@ -524,6 +578,11 @@ public sealed class CombatManager : IDisposable
     {
         _normalWeaponFailedMonsters.Clear();
         _noEffectCounts.Clear();
+
+        // Reset the combat-spell room economy — per-room debuff-once /
+        // cast-cap / multi-attack counters all start fresh next room.
+        _castingSpellTarget = null;
+        _spellChooser.ResetForNewRoom();
 
         // BS weapon takes precedence — re-equip after every fight so
         // the next room can backstab. If no BS configured but we
@@ -880,6 +939,9 @@ public sealed class CombatManager : IDisposable
         // We're swinging again — disarm the interrupt-resume path so the
         // next mob line doesn't re-fire on top of this attack.
         _combatOff = false;
+        // Any weapon swing exits spell mode — the server auto-repeats the
+        // swing, so the tick heartbeat must stop re-casting for this target.
+        _castingSpellTarget = null;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         if (priority is { } prio)
@@ -894,6 +956,7 @@ public sealed class CombatManager : IDisposable
     private void SendAttack(string command, string target, bool refire, string refireReason)
     {
         _combatOff = false;
+        _castingSpellTarget = null;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         _log?.Info(LogCategory,

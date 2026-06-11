@@ -1692,6 +1692,16 @@ public sealed class AppServices
         CastDirector.SetStealthGate(() => Stealth.IsStealthed);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
+        // Phase 9 PR 9.A (spell extension) — opt the combat engine into the
+        // per-round combat-spell economy (pre-attack debuff + multi/normal/
+        // alternate attack spells) atop the shared CastCoordinator so the
+        // one-cast-per-round cooldown is honoured. The heartbeat subscribes
+        // AFTER Cast.OnCombatTick (clears the cooldown) and
+        // CastDirector.OnCombatTick (survival heal/cure/buff) so offensive
+        // combat casts yield this round when survival already spent it.
+        Combat.SetCombatSpellCaster(Cast, () => (PlayerState.Ma, PlayerState.MaxMa));
+        Tick.CombatTickElapsed += Combat.OnCombatTick;
+
         // Phase 9 PR 9.F — StealthManager state tracker + auto-sneak /
         // auto-hide engines. Owns PlayerState.IsSneaking/IsHidden,
         // detects silent loss on room change, and sends `sneak` /
