@@ -1,0 +1,119 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.SpellBookWindow"
+        x:DataType="vm:SpellBookViewModel"
+        Title="Spell Book"
+        Width="640" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Control strip ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding HeaderText}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="13"
+                           VerticalAlignment="Center"/>
+                <CheckBox Grid.Column="1"
+                          IsChecked="{Binding ShowObtainedOnly}"
+                          Content="Known only"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"
+                          Margin="0,0,10,0"
+                          VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2" MinWidth="180"
+                         PlaceholderText="Search code / name…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Column header ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,4">
+            <Grid ColumnDefinitions="24,72,*,52,52,160">
+                <TextBlock Grid.Column="0" Text=""    Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="1" Text="Code" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="2" Text="Name" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="3" Text="Lv"   Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="4" Text="Mana" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="5" Text="Effect" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Status footer ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,3">
+            <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- ============ Spell rows ============ -->
+        <ListBox ItemsSource="{Binding Rows}"
+                 Background="{StaticResource ChromeBgSunkenBrush}"
+                 BorderThickness="0"
+                 SelectionMode="Single">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:SpellBookRowViewModel">
+                    <Grid ColumnDefinitions="24,72,*,52,52,160" Margin="4,2">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding ObtainedGlyph}"
+                                   Foreground="{StaticResource SeverityInfoBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Short}"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding Name}"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3"
+                                   Text="{Binding ReqLevelText}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="4"
+                                   Text="{Binding ManaText}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="5"
+                                   Text="{Binding EffectText}"
+                                   ToolTip.Tip="{Binding FormulaText}"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>

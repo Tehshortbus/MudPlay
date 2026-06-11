@@ -2786,18 +2786,27 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Singleton handle for the live SpellBookWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private SpellBookWindow? _spellBook;
+
     [RelayCommand]
     private void OpenSpellBook()
-        => OpenPlaceholder(
-            id: "spell-book",
-            panelName: "Spell Book",
-            phaseTag: "Phase 9",
-            headline: "Click-to-cast spell list",
-            description:
-                "MegaMUD-parity columns: level / mana / code / name / abilities. " +
-                "Re-Check button to re-fetch from the server. Filterable. Driven by " +
-                "the active game-data set's Spells table merged with character " +
-                "overrides.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_spellBook is { } existing) { existing.Close(); return; }
+
+        SpellBookWindow window = new()
+        {
+            DataContext = new SpellBookViewModel(
+                AppServices.Current.Spellbook,
+                () => AppServices.Current.Profile.Current?.LastKnownStats?.Class),
+        };
+        window.Closed += (_, _) => _spellBook = null;
+        _spellBook = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenSessionStats()
