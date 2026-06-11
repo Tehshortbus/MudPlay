@@ -39,6 +39,7 @@ public sealed class CombatManagerSpellsTests
 
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
         public bool AutoCombatEnabled { get; set; } = true;
+        public bool AutoNukeEnabled { get; set; } = true;
         public int Ma { get; set; } = 100;
         public int MaxMa { get; set; } = 100;
         public bool Sneaking { get; set; }
@@ -60,6 +61,7 @@ public sealed class CombatManagerSpellsTests
                 log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.SetBackstabHooks(() => Sneaking, n => SeeHidden.Contains(n));
+            Combat.SetAutoNukeGate(() => AutoNukeEnabled);
             if (wireCaster)
                 Combat.SetCombatSpellCaster(Cast, () => (Ma, MaxMa));
         }
@@ -175,6 +177,53 @@ public sealed class CombatManagerSpellsTests
         h.Feed("Also here: giant rat.");
 
         Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    // ----- Auto-Nuke auto-engine gate ----------------------------------
+
+    [Fact]
+    public void AutoNukeOff_MultiAttackQualifies_FallsToWeapon()
+    {
+        using Harness h = new();
+        h.AutoNukeEnabled = false;            // nukes disabled
+        h.Settings.MultiAttackSpell = new CombatSpellSlot { SpellName = "blast", MinEnemies = 1 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        // Multi-target nuke is suppressed; the single-target weapon swing runs.
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.DoesNotContain("blast giant rat", h.AllSent);
+    }
+
+    [Fact]
+    public void AutoNukeOff_SingleTargetAttackSpell_StillFires()
+    {
+        using Harness h = new();
+        h.AutoNukeEnabled = false;            // nukes disabled
+        // A single-target attack spell is NOT a nuke — it stays available.
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "lightning", MinEnemies = 1 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("lightning giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void AutoNukeOff_AreaDebuff_NotOffered()
+    {
+        using Harness h = new();
+        h.AutoNukeEnabled = false;            // nukes (incl. debuffs) disabled
+        h.Settings.AreaDebuffSpell = new CombatSpellSlot { SpellName = "curse", MinEnemies = 1 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        // No combat spell configured beyond the debuff → weapon swing, and the
+        // in-between debuff window stays empty.
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Null(h.Combat.PickInBetweenDebuff());
     }
 
     // ----- heartbeat keeps the cast going each round -------------------

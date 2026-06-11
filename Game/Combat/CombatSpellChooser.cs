@@ -162,6 +162,10 @@ public sealed class CombatSpellChooser
     private CombatSpellDecision? TryDebuffing(
         CombatSettings settings, in CombatSpellContext ctx, ThresholdMode mode)
     {
+        // Auto-Nuke gate: debuffs are nukes — when the auto-engine is off
+        // we never offer them.
+        if (!ctx.AllowNukes) return null;
+
         CombatSpellSlot area = settings.AreaDebuffSpell;
         if (IsConfigured(area))
         {
@@ -189,8 +193,11 @@ public sealed class CombatSpellChooser
     private CombatSpellDecision? TryAttackSpell(
         CombatSettings settings, in CombatSpellContext ctx, ThresholdMode mode)
     {
+        // Auto-Nuke gate: the multi-target attack spell is a nuke — when the
+        // auto-engine is off we skip it and fall to the single-target spells.
         CombatSpellSlot multi = settings.MultiAttackSpell;
-        if (IsConfigured(multi)
+        if (ctx.AllowNukes
+            && IsConfigured(multi)
             && ctx.EnemyCount >= multi.MinEnemies
             && CastsOk(multi, _multiAttackCasts)
             && ManaOk(multi, ctx, mode))
@@ -388,7 +395,12 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 /// <paramref name="LevelBlockedActions"/> is the set of single-target spell
 /// actions the current target's <c>SpellImmu</c> level deterministically
 /// blocks (their <c>ReqLevel</c> &lt; the monster's immunity), or <c>null</c>
-/// when nothing is level-blocked.</summary>
+/// when nothing is level-blocked;
+/// <paramref name="AllowNukes"/> is the Auto-Nuke auto-engine gate — when
+/// false the chooser never offers the multi-target attack spell or either
+/// debuff (the single-target Normal / Alternate attack spells are NOT nukes
+/// and stay available). Defaults true so unwired callers / tests behave as
+/// before.</summary>
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,
@@ -397,4 +409,5 @@ public readonly record struct CombatSpellContext(
     bool BackstabPending,
     IReadOnlySet<CombatSpellAction>? ImmuneAttackSpells = null,
     bool SpellsAvailable = true,
-    IReadOnlySet<CombatSpellAction>? LevelBlockedActions = null);
+    IReadOnlySet<CombatSpellAction>? LevelBlockedActions = null,
+    bool AllowNukes = true);

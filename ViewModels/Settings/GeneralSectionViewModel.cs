@@ -131,8 +131,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     // the matching constant here.
     public bool IsAutoCombatWired   => true;    // PR 9.A — CombatManager
     public bool IsAutoHealRestWired => true;    // PR 9.B — HealthManager
-    public bool IsAutoNukeWired     => false;   // PR 9.D — CastingDirector
-    public bool IsAutoBlessWired    => false;   // PR 9.D — CastingDirector
+    public bool IsAutoNukeWired     => true;    // CombatSpellChooser multi-attack + debuff gate
+    public bool IsAutoBlessWired    => true;    // CastingDirector Buffing-category gate
     public bool IsAutoLightWired    => true;    // PR 9.K — AutoLightManager
     public bool IsAutoGetItemsWired => true;    // PR 9.L — AutoGetItemsManager
     public bool IsAutoGetCashWired  => true;    // PR 9.E — CashManager + StashRoomManager (both gate here)

@@ -1740,6 +1740,9 @@ public sealed class AppServices
         // via the live spellbook. Combat-tab spells keep their own
         // MinManaPerCast threshold and aren't gated here.
         CastDirector.SetManaCostLookup(Spellbook.ManaCostOf);
+        // Auto-Bless auto-engine gate — when off, the Buffing category is
+        // suppressed (no Bless / regen / when-full buff fires).
+        CastDirector.SetAutoBlessGate(() => ReadAutoModeFlag(d => d.AutoBless));
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Phase 9 PR 9.A (spell extension) — opt the combat engine into the
@@ -1750,6 +1753,10 @@ public sealed class AppServices
         // CastDirector.OnCombatTick (survival heal/cure/buff) so offensive
         // combat casts yield this round when survival already spent it.
         Combat.SetCombatSpellCaster(Cast, () => (PlayerState.Ma, PlayerState.MaxMa));
+        // Auto-Nuke auto-engine gate — when off, the chooser never offers the
+        // multi-target attack spell or either debuff (single-target attack
+        // spells are not nukes and stay available).
+        Combat.SetAutoNukeGate(() => ReadAutoModeFlag(d => d.AutoNuke));
         // Debuffs are in-between actions, not combat actions — the combat
         // engine owns the decision but CastDirector casts them through the
         // shared in-between window (at PriorityDebuffing, so survival heals

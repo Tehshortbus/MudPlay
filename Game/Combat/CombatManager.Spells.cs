@@ -35,6 +35,7 @@ public sealed partial class CombatManager
     private readonly CombatSpellChooser _spellChooser = new();
     private CastCoordinator? _cast;
     private Func<(int Ma, int MaxMa)>? _readMana;
+    private Func<bool>? _autoNukeGate;
 
     // ----- In-between debuff bridge (CastingDirector-driven) -----------
     // A debuff is an in-between action, not a combat action, so it casts
@@ -118,6 +119,19 @@ public sealed partial class CombatManager
         ArgumentNullException.ThrowIfNull(readMana);
         _cast = cast;
         _readMana = readMana;
+    }
+
+    /// <summary>
+    /// Wire the Auto-Nuke auto-engine gate. When the predicate returns false,
+    /// the chooser never offers the multi-target attack spell or either debuff
+    /// (the single-target Normal / Alternate attack spells stay available — they
+    /// aren't nukes). Until called, nukes fail open (always allowed) so
+    /// pre-wiring callers / tests behave as before.
+    /// </summary>
+    public void SetAutoNukeGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _autoNukeGate = gate;
     }
 
     /// <summary>True once <see cref="SetCombatSpellCaster"/> has wired both
@@ -361,7 +375,8 @@ public sealed partial class CombatManager
             BackstabPending:     BackstabPending(settings, obs),
             ImmuneAttackSpells:  ImmuneActionsFor(target),
             SpellsAvailable:     true,
-            LevelBlockedActions: LevelBlockedFor(settings, monsterNumber));
+            LevelBlockedActions: LevelBlockedFor(settings, monsterNumber),
+            AllowNukes:          _autoNukeGate?.Invoke() ?? true);
     }
 
     /// <summary>

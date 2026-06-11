@@ -27,6 +27,7 @@ public sealed class CastingDirectorTests
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
+        public bool AutoBlessEnabled { get; set; } = true;
 
         /// <summary>Cast-code → required mana. Empty by default, so the lookup
         /// returns null (unknown ⇒ no affordability block) and the legacy tests
@@ -47,6 +48,7 @@ public sealed class CastingDirectorTests
                 log: Log);
             Director.SetManaCostLookup(
                 code => ManaCosts.TryGetValue(code, out int c) ? c : null);
+            Director.SetAutoBlessGate(() => AutoBlessEnabled);
         }
 
         /// <summary>Mirror PromptParser's write order so HasPromptData
@@ -393,6 +395,7 @@ public sealed class CastingDirectorTests
         public List<string> CastsSent { get; } = new();
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
+        public bool AutoBlessEnabled { get; set; } = true;
 
         public CureHarness()
         {
@@ -406,6 +409,7 @@ public sealed class CastingDirectorTests
                 readHealth: () => Health,
                 isEnabled: () => true,
                 log: Log);
+            Director.SetAutoBlessGate(() => AutoBlessEnabled);
             // Healthy baseline so Tier-1 doesn't fire over the cure path.
             State.MaxHp = 200;
             State.Hp = 200;
@@ -536,6 +540,23 @@ public sealed class CastingDirectorTests
 
         Assert.Single(h.CastsSent);
         Assert.Equal("bless", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Buff_AutoBlessOff_NoCast()
+    {
+        using CureHarness h = new();
+        h.AutoBlessEnabled = false;          // Auto-Bless engine disabled
+        h.Spells.Bless1Spell = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
     }
 
     [Fact]

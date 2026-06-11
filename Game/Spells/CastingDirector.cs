@@ -83,6 +83,7 @@ public sealed class CastingDirector : IDisposable
     private Func<(string Spell, string? Target)?>? _combatDebuffSource;
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
+    private Func<bool>? _autoBlessEnabled;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -207,6 +208,20 @@ public sealed class CastingDirector : IDisposable
         _manaCostLookup = lookup;
     }
 
+    /// <summary>
+    /// Wire the Auto-Bless auto-engine gate. When the predicate returns false,
+    /// the Buffing category is suppressed entirely (no Bless / regen / when-full
+    /// buff fires). Until called, buffs fail open (always allowed) so
+    /// pre-wiring callers / tests behave as before. (Party-bless is not yet a
+    /// category here — it lands with the deferred party-buff pickers and will be
+    /// gated by the same flag at that time.)
+    /// </summary>
+    public void SetAutoBlessGate(Func<bool> isEnabled)
+    {
+        ArgumentNullException.ThrowIfNull(isEnabled);
+        _autoBlessEnabled = isEnabled;
+    }
+
     private void OnConditionApplied(Models.GameData.MessageRecord _) => Evaluate();
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -252,7 +267,9 @@ public sealed class CastingDirector : IDisposable
                 SpellCategory.MinorSelfHeal   => Wrap(PickMinorSelfHeal(spells, health)),
                 SpellCategory.MajorSelfHeal   => Wrap(PickMajorSelfHeal(spells, health)),
                 SpellCategory.Curing          => Wrap(PickCure(spells)),
-                SpellCategory.Buffing         => Wrap(PickBuff(spells, health)),
+                SpellCategory.Buffing         => (_autoBlessEnabled?.Invoke() ?? true)
+                                                     ? Wrap(PickBuff(spells, health))
+                                                     : null,
                 SpellCategory.Debuffing       => PickDebuff(),
                 _                              => null,
             };
