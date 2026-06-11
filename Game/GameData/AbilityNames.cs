@@ -206,13 +206,42 @@ public static class AbilityNames
 
             string? name = GetName(code);
             if (name is null) continue;
-            if (val == 0)
-                parts.Add(name);
-            else if (val > 0)
-                parts.Add($"{name} +{val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-            else
-                parts.Add($"{name} {val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            parts.Add(FormatPart(name, val));
         }
         return string.Join(", ", parts);
     }
+
+    /// <summary>
+    /// Comma-joined summary of a sequence of <c>(ability code, value)</c>
+    /// pairs — the in-memory counterpart to the <c>JsonElement</c> overload,
+    /// for callers that already hold decoded ability slots (e.g. the Spell
+    /// Book's per-spell effect rollup). Same formatting: signed magnitude when
+    /// non-zero, name-only for flag-style abilities; zero codes and any
+    /// <paramref name="skipCodes"/> are omitted.
+    /// </summary>
+    public static string SummarizeAbilities(
+        IEnumerable<(int Code, int Value)> abilities,
+        IReadOnlyCollection<int>? skipCodes = null)
+    {
+        ArgumentNullException.ThrowIfNull(abilities);
+        List<string> parts = new();
+        foreach ((int code, int value) in abilities)
+        {
+            if (code == 0) continue;
+            if (skipCodes is not null && skipCodes.Contains(code)) continue;
+            string? name = GetName(code);
+            if (name is null) continue;
+            parts.Add(FormatPart(name, value));
+        }
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>Render one decoded ability slot — <c>"AC +10"</c>,
+    /// <c>"Slowness -5"</c>, or <c>"RaceStealth"</c> (name only, value 0).</summary>
+    private static string FormatPart(string name, int value)
+        => value == 0
+            ? name
+            : value > 0
+                ? $"{name} +{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : $"{name} {value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 }

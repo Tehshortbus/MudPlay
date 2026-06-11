@@ -94,6 +94,56 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void StatAffect_RendersDecodedAbility()
+    {
+        // Pure buff: AC +10 (code 2). No damage / heal / duration figure, so
+        // the decoded affect is the only thing the Effect column shows.
+        SpellFormulaInput f = new()
+        {
+            Number = 5,
+            Abilities = [new SpellAbility(2, 10)],
+        };
+        KnownSpell s = Spell("shld", "shield", 4, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 6, NoChain);
+
+        Assert.Equal("AC +10", row.EffectText);
+    }
+
+    [Fact]
+    public void DurationPlusAffect_RendersBoth()
+    {
+        // Timed buff that grants Strength +3 (code 46) for 8 rounds.
+        SpellFormulaInput f = new()
+        {
+            Number = 6,
+            Dur = 8,
+            Abilities = [new SpellAbility(46, 3)],
+        };
+        KnownSpell s = Spell("migt", "might", 5, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 10, NoChain);
+
+        Assert.Equal("Dur 8 · Strength +3", row.EffectText);
+    }
+
+    [Fact]
+    public void DamageAbility_NotDoublePrintedAsAffect()
+    {
+        // Code 1 (Damage) is folded into the Dmg figure; an accompanying
+        // Slowness -5 (code 68) debuff still surfaces as an affect.
+        SpellFormulaInput f = new()
+        {
+            Number = 7,
+            MinBase = 6,
+            MaxBase = 10,
+            Abilities = [new SpellAbility(1, 0), new SpellAbility(68, -5)],
+        };
+        KnownSpell s = Spell("frst", "frost", 3, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 5, NoChain);
+
+        Assert.Equal("Dmg 6–10 · Slowness -5", row.EffectText);
+    }
+
+    [Fact]
     public void Formula_ShowsBaseAndSlope()
     {
         SpellFormulaInput f = new()

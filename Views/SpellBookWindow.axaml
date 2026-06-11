@@ -38,22 +38,6 @@
             </Grid>
         </Border>
 
-        <!-- ============ Column header ============ -->
-        <Border DockPanel.Dock="Top"
-                Background="{StaticResource ChromeBgBrush}"
-                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="10,4">
-            <Grid ColumnDefinitions="24,72,*,52,52,160">
-                <TextBlock Grid.Column="0" Text=""    Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="1" Text="Code" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="2" Text="Name" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="3" Text="Lv"   Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="4" Text="Mana" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="5" Text="Effect" Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-            </Grid>
-        </Border>
-
         <!-- ============ Status footer ============ -->
         <Border DockPanel.Dock="Bottom"
                 Background="{StaticResource ChromeBgBrush}"
@@ -66,54 +50,47 @@
         </Border>
 
         <!-- ============ Spell rows ============ -->
-        <ListBox ItemsSource="{Binding Rows}"
-                 Background="{StaticResource ChromeBgSunkenBrush}"
-                 BorderThickness="0"
-                 SelectionMode="Single">
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="vm:SpellBookRowViewModel">
-                    <Grid ColumnDefinitions="24,72,*,52,52,160" Margin="4,2">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding ObtainedGlyph}"
-                                   Foreground="{StaticResource SeverityInfoBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding Short}"
-                                   Foreground="{StaticResource ChromeFgSecBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2"
-                                   Text="{Binding Name}"
-                                   Foreground="{StaticResource ChromeFgBrush}"
-                                   FontSize="12"
-                                   TextTrimming="CharacterEllipsis"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="3"
-                                   Text="{Binding ReqLevelText}"
-                                   Foreground="{StaticResource ChromeFgMutedBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="11"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="4"
-                                   Text="{Binding ManaText}"
-                                   Foreground="{StaticResource ChromeFgMutedBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="11"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="5"
-                                   Text="{Binding EffectText}"
-                                   ToolTip.Tip="{Binding FormulaText}"
-                                   Foreground="{StaticResource ChromeFgSecBrush}"
-                                   FontFamily="{StaticResource FontMono}"
-                                   FontSize="11"
-                                   VerticalAlignment="Center"/>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <!-- DataGrid for user-adjustable columns (resize / reorder / sort).
+             ReflectionBinding: column bindings resolve against the row item
+             (SpellBookRowViewModel); the DataGrid's auto-wrapped collection
+             view defeats compiled-binding item-type inference, matching the
+             SpellCoverageReportWindow pattern. -->
+        <DataGrid ItemsSource="{Binding Rows}"
+                  Background="{StaticResource ChromeBgSunkenBrush}"
+                  BorderThickness="0"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="True"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="True"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header=""     Binding="{ReflectionBinding ObtainedGlyph}" SortMemberPath="IsObtained"
+                                    Width="34" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource SeverityInfoBrush}"/>
+                <DataGridTextColumn Header="Code" Binding="{ReflectionBinding Short}"        SortMemberPath="Short"
+                                    Width="72" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTextColumn Header="Name" Binding="{ReflectionBinding Name}"         SortMemberPath="Name"
+                                    Width="*" Foreground="{StaticResource ChromeFgBrush}"/>
+                <DataGridTextColumn Header="Lv"   Binding="{ReflectionBinding ReqLevelText}" SortMemberPath="ReqLevel"
+                                    Width="56" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <DataGridTextColumn Header="Mana" Binding="{ReflectionBinding ManaText}"     SortMemberPath="Mana"
+                                    Width="56" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <DataGridTemplateColumn Header="Effect" SortMemberPath="EffectText" Width="220">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding EffectText}"
+                                       ToolTip.Tip="{Binding FormulaText}"
+                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       Margin="8,0"
+                                       VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
 
     </DockPanel>
 </Window>

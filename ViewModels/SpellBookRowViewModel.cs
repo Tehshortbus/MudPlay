@@ -1,3 +1,4 @@
+using FujinTerm.Game.GameData;
 using FujinTerm.Game.Spells;
 
 namespace FujinTerm.ViewModels;
@@ -23,7 +24,8 @@ public sealed class SpellBookRowViewModel
         ReqLevel = spell.ReqLevel;
         IsObtained = isObtained;
 
-        ManaText = SpellCalculator.ManaCost(spell.Formula).ToString();
+        Mana = SpellCalculator.ManaCost(spell.Formula);
+        ManaText = Mana.ToString();
         EffectText = BuildEffect(spell.Formula, level, resolveChain);
         FormulaText = BuildFormula(spell.Formula);
     }
@@ -46,15 +48,28 @@ public sealed class SpellBookRowViewModel
     /// <summary>"Lv {ReqLevel}" — the unlock-level cell.</summary>
     public string ReqLevelText => $"Lv {ReqLevel}";
 
+    /// <summary>Per-round mana cost — numeric, for column sorting.</summary>
+    public long Mana { get; }
+
     /// <summary>Per-round mana cost at the spell's energy multiplier.</summary>
     public string ManaText { get; }
 
     /// <summary>
     /// Level-scaled effect at the book's current level: "Dmg 14–22",
-    /// "Heal 30–45", "Dur 8", or a combination, joined by " · ". "—" when
-    /// the spell produces no damage / heal / duration figure.
+    /// "Heal 30–45", "Dur 8", plus any decoded stat-affect abilities the
+    /// spell grants ("AC +10", "Strength +3"), joined by " · ". "—" when
+    /// the spell produces no figure at all.
     /// </summary>
     public string EffectText { get; }
+
+    /// <summary>
+    /// Ability codes whose magnitude is already surfaced by the level-scaled
+    /// Dmg / Heal figures — Damage (1), DrainLife (8), Damage(-MR) (17),
+    /// Heal (18) — plus EndCast (151), which is a cast-chaining marker, not a
+    /// player-visible affect. Skipped from the stat-affect rollup to avoid
+    /// double-printing the damage/heal the row already shows.
+    /// </summary>
+    private static readonly int[] _affectSkip = { 1, 8, 17, 18, 151 };
 
     /// <summary>
     /// The raw scaling formula (base value + per-level slope) shown as a
@@ -77,6 +92,10 @@ public sealed class SpellBookRowViewModel
 
         long dur = SpellCalculator.Duration(formula, level);
         if (dur > 0) parts.Add($"Dur {dur}");
+
+        string affects = AbilityNames.SummarizeAbilities(
+            formula.Abilities.Select(a => (a.Code, a.Value)), _affectSkip);
+        if (affects.Length > 0) parts.Add(affects);
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
     }
