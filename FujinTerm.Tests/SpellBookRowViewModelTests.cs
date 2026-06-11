@@ -206,6 +206,57 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void DispellMagic_RendersTargetAbilityNameInParens()
+    {
+        // Abil 73 (DispellMagic): AbilVal is an ability-code pointer naming
+        // what's dispelled, not a magnitude. MME renders "DispellMagic (Poison)"
+        // — never "DispellMagic +19". Pairs with a CurePoison gain (20) so the
+        // render order (gains, then the dispel) is also exercised.
+        SpellFormulaInput f = new()
+        {
+            Number = 50,
+            Abilities = [new SpellAbility(20, 8), new SpellAbility(73, 19)], // CurePoison +8 + DispellMagic(Poison)
+        };
+        KnownSpell s = Spell("cpoi", "cure poison", 6, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 10, NoChain);
+
+        Assert.Equal("CurePoison +8, DispellMagic (Poison)", row.EffectText);
+    }
+
+    [Fact]
+    public void DispellMagic_RendersBareName_WhenAbilValIsZero()
+    {
+        // Abil 73 with AbilVal 0 (e.g. "dispel magic"): MME gates the parens
+        // behind If Not nValue = 0, so a zero pointer renders the bare name
+        // with no number and no parens — never inheriting a coexisting range.
+        SpellFormulaInput f = new()
+        {
+            Number = 51,
+            Abilities = [new SpellAbility(73, 0)],
+        };
+        KnownSpell s = Spell("disp", "dispel magic", 6, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 10, NoChain);
+
+        Assert.Equal("DispellMagic", row.EffectText);
+    }
+
+    [Fact]
+    public void NegateAbility_RendersTargetAbilityNameInParens()
+    {
+        // Abil 124 (NegateAbility) shares DispellMagic's ability-pointer
+        // rendering: "NegateAbility (HoldPerson)".
+        SpellFormulaInput f = new()
+        {
+            Number = 52,
+            Abilities = [new SpellAbility(124, 74)], // NegateAbility(HoldPerson)
+        };
+        KnownSpell s = Spell("free", "freedom", 6, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 10, NoChain);
+
+        Assert.Equal("NegateAbility (HoldPerson)", row.EffectText);
+    }
+
+    [Fact]
     public void MessageOnlySlots_AreNotSurfaced()
     {
         // DescMsg (115) / StartMsg (120) / ShockMsg (137) are display-only

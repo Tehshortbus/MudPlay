@@ -94,6 +94,18 @@ public sealed class SpellBookRowViewModel
     /// <summary>RemovesSpell ability code (MME Abil 122).</summary>
     private const int RemovesSpellCode = 122;
 
+    /// <summary>DispellMagic (73) / NegateAbility (124) ability codes. Their
+    /// <c>AbilVal</c> is an ability-code *pointer* naming what the spell
+    /// dispels / negates, not a magnitude — so they render
+    /// "DispellMagic (Poison)" rather than "DispellMagic +19", matching MME's
+    /// <c>GetAbilityStats</c> (<c>Case 73, 124: … &amp; " (" &amp; GetAbilityName(nValue) &amp; ")"</c>,
+    /// gated by <c>If Not nValue = 0</c> so a zero AbilVal renders the bare name).</summary>
+    private const int DispelMagicCode = 73;
+
+    /// <summary>NegateAbility ability code (MME Abil 124) — shares
+    /// <see cref="DispelMagicCode"/>'s ability-pointer rendering.</summary>
+    private const int NegateAbilityCode = 124;
+
     /// <summary>
     /// TextBlock ability code (MME Abil 148). Its <c>AbilVal</c> is a
     /// TextBlock *record number* the spell executes, not a stat magnitude —
@@ -203,6 +215,24 @@ public sealed class SpellBookRowViewModel
                 parts.Add(a.Value != 0
                     ? $"{name} {a.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
                     : $"{name} {Unsigned(affMin, affMax)}");
+                continue;
+            }
+
+            // DispellMagic / NegateAbility carry an ability-code pointer in
+            // AbilVal naming what they strip, not a magnitude. Render the
+            // target ability's name in parens ("DispellMagic (Poison)"); a
+            // zero AbilVal renders the bare name (MME gates the parens behind
+            // If Not nValue = 0).
+            if (a.Code == DispelMagicCode || a.Code == NegateAbilityCode)
+            {
+                if (a.Value == 0) parts.Add(name);
+                else
+                {
+                    string? target = AbilityNames.GetName(a.Value);
+                    parts.Add(string.IsNullOrEmpty(target)
+                        ? $"{name} (#{a.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)})"
+                        : $"{name} ({target})");
+                }
                 continue;
             }
 
