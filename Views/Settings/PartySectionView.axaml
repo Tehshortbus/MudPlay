@@ -1,11 +1,20 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:spells="using:FujinTerm.Game.Spells"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="720"
              x:Class="FujinTerm.Views.Settings.PartySectionView"
              x:DataType="vm:PartySectionViewModel">
+
+    <UserControl.Resources>
+        <!-- Dropdown row: "code — name". The box commits the Short cast-code
+             (ValueMemberBinding); this template only shapes the list display. -->
+        <DataTemplate x:Key="SpellPickItem" x:DataType="spells:SpellPick">
+            <TextBlock Text="{Binding Display}"/>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <UserControl.Styles>
         <Style Selector="TextBlock.SectionHeader">
@@ -29,8 +38,10 @@
 
 
             <!-- ============ Party behavior ============ -->
+            <!-- Target order / attack priority / attack order are owned by the
+                 Combat tab; they're not duplicated here. -->
             <TextBlock Classes="SectionHeader" Text="Party behavior"/>
-            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto" Margin="0,2,0,0">
 
                 <!-- Rank: Front / Mid / Back. Persisted; not yet consumed
                      (Phase 12 CombatManager will read it for target ordering). -->
@@ -46,107 +57,91 @@
                 <RadioButton Grid.Row="0" Grid.Column="3" GroupName="Rank" Content="Back"
                              IsChecked="{Binding RankBack, Mode=TwoWay}"
                              ToolTip.Tip="Back rank — caster / healer position."/>
-
-                <!-- Monster target order: which monster do we swing at first? -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Target order" Margin="0,8,0,0"/>
-                <ComboBox  Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
-                           Margin="0,8,8,0"
-                           ToolTip.Tip="Normal — front-of-room first. Reverse — back-of-room first. Random — pick a hostile at random each engagement.">
-                    <ComboBoxItem Content="Normal"/>
-                    <ComboBoxItem Content="Reverse"/>
-                    <ComboBoxItem Content="Random"/>
-                </ComboBox>
-
-                <!-- Attack priority: who do we target? -->
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Attack priority" Margin="0,8,0,0"/>
-                <ComboBox  Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
-                           Margin="0,8,8,0"
-                           ToolTip.Tip="Default — target what we'd pick on our own. Party leader — mirror the leader's target. Party member — mirror a named member's target.">
-                    <ComboBoxItem Content="Default"/>
-                    <ComboBoxItem Content="Party leader"/>
-                    <ComboBoxItem Content="Party member"/>
-                </ComboBox>
-                <AutoCompleteBox Grid.Row="2" Grid.Column="3" IsEnabled="False" Width="180"
-                                 Margin="0,8,0,0"
-                                 PlaceholderText="Member name" FilterMode="Contains"
-                                 ToolTip.Tip="Active when Attack priority is set to Party member — names autocomplete from PartyState.Members once Phase 6 lands."/>
-
-                <!-- Attack order: when in the round do we swing? -->
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack order" Margin="0,8,0,0"/>
-                <ComboBox  Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" IsEnabled="False" SelectedIndex="0" Width="180"
-                           Margin="0,8,8,0"
-                           ToolTip.Tip="Default — fire in our usual slot. Attack last — be the last attacker in the party, re-announce if needed. Attack after member — re-announce after the named member's attack on the same target. Non-party attack announces are filtered out at the engine level so other groups in the room don't affect ordering.">
-                    <ComboBoxItem Content="Default"/>
-                    <ComboBoxItem Content="Attack last"/>
-                    <ComboBoxItem Content="Attack after member"/>
-                </ComboBox>
-                <AutoCompleteBox Grid.Row="3" Grid.Column="3" IsEnabled="False" Width="180"
-                                 Margin="0,8,0,0"
-                                 PlaceholderText="Member name" FilterMode="Contains"
-                                 ToolTip.Tip="Active when Attack order is set to Attack after member."/>
             </Grid>
 
             <!-- ============ Party heal (inline spell + threshold) ============ -->
+            <!-- Each Minor / Major slot owns BOTH a single-target spell and an
+                 AOE / party spell sharing one threshold; CastingDirector picks
+                 single vs AOE at cast time based on how many members are below
+                 it (see "Use party (AOE) heal when" below). -->
             <TextBlock Classes="SectionHeader" Text="Party heal"/>
 
-            <!-- Minor heal: spell + threshold side-by-side. -->
-            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor heal"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Cheap heal used at the upper threshold."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
-                           HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="89" Minimum="0" Maximum="100" Width="80"
-                               ToolTip.Tip="Cast Minor when any member drops below this percentage of MaxHp."/>
-                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            <!-- Column header. -->
+            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Single-target"
+                           Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Party (AOE)"
+                           Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
             </Grid>
 
-            <!-- Major heal: spell + threshold side-by-side. -->
-            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major heal"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+            <!-- Minor: single + AOE pickers sharing the Minor threshold. -->
+            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor"/>
+                <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Margin="0,0,4,0"
+                                 Text="{Binding MinorPartyHealSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Expensive single-target heal used at the lower threshold (overrides Minor)."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                 PlaceholderText="Type code or name…"
+                                 ToolTip.Tip="Cheap single-target heal cast when one member drops below the Minor threshold."/>
+                <AutoCompleteBox Grid.Column="2" Width="260" HorizontalAlignment="Left"
+                                 Text="{Binding MinorPartyHealAoeSpell, Mode=TwoWay}"
+                                 ItemsSource="{Binding SpellSuggestions}"
+                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                 PlaceholderText="Type code or name…"
+                                 ToolTip.Tip="Cheap AOE party-heal — hits every member at once when enough fall below the Minor threshold."/>
+                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="below"
                            HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="20" Minimum="0" Maximum="100" Width="80"
-                               ToolTip.Tip="Cast Major when any member drops below this percentage of MaxHp."/>
-                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+                <NumericUpDown Grid.Column="4" Width="80" Minimum="0" Maximum="100"
+                               Value="{Binding MinorHealMemberThresholdPercent, Mode=TwoWay}"
+                               ToolTip.Tip="Cast a Minor party heal when any member drops below this percentage of MaxHp."/>
+                <TextBlock Grid.Column="5" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
             </Grid>
 
-            <!-- Minor party heal (AOE): spell + threshold side-by-side. -->
-            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor party heal"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+            <!-- Major: single + AOE pickers sharing the Major threshold. -->
+            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major"/>
+                <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Margin="0,0,4,0"
+                                 Text="{Binding MajorPartyHealSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Cheap AOE party-heal — hits every member at once."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
+                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                 PlaceholderText="Type code or name…"
+                                 ToolTip.Tip="Expensive single-target heal cast when one member drops below the Major threshold (overrides Minor)."/>
+                <AutoCompleteBox Grid.Column="2" Width="260" HorizontalAlignment="Left"
+                                 Text="{Binding MajorPartyHealAoeSpell, Mode=TwoWay}"
+                                 ItemsSource="{Binding SpellSuggestions}"
+                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                 PlaceholderText="Type code or name…"
+                                 ToolTip.Tip="Expensive AOE party-heal — hits every member at once when enough fall below the Major threshold (overrides Minor)."/>
+                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="below"
                            HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="80"
-                               ToolTip.Tip="Cast the AOE Minor when multiple members fall under this threshold."/>
-                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+                <NumericUpDown Grid.Column="4" Width="80" Minimum="0" Maximum="100"
+                               Value="{Binding MajorHealMemberThresholdPercent, Mode=TwoWay}"
+                               ToolTip.Tip="Cast a Major party heal when any member drops below this percentage of MaxHp."/>
+                <TextBlock Grid.Column="5" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
             </Grid>
 
-            <!-- Major party heal (AOE): spell + threshold side-by-side. -->
-            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major party heal"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Expensive AOE party-heal — hits every member at once."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
-                           HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="30" Minimum="0" Maximum="100" Width="80"
-                               ToolTip.Tip="Cast the AOE Major when multiple members fall under this threshold (overrides Minor)."/>
-                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+            <!-- Single vs AOE selector: how many hurt members flip to the AOE pick. -->
+            <Grid ColumnDefinitions="90,Auto,Auto,Auto,*" Margin="0,6,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Use AOE"/>
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="when"
+                           HorizontalAlignment="Center" Margin="0,0,6,0"/>
+                <NumericUpDown Grid.Column="2" Width="80" Minimum="2" Maximum="6"
+                               Value="{Binding AoeMinMembers, Mode=TwoWay}"
+                               ToolTip.Tip="Minimum number of members below threshold for the engine to switch from the single-target heal to the party (AOE) heal. Minimum 2."/>
+                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="+ members are below threshold"
+                           Margin="6,0,0,0"/>
             </Grid>
 
-            <!-- Request healing: just threshold, no spell. -->
-            <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
+            <!-- Request healing: just threshold, no spell. Stub — no DTO field yet. -->
+            <Grid ColumnDefinitions="90,260,40,80,*" Margin="0,6,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Request healing"/>
                 <TextBlock Grid.Column="1" Classes="FieldLabel" Text="(send @heal)"
                            Foreground="{StaticResource ChromeFgMutedBrush}"

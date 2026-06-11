@@ -8,14 +8,14 @@ using FujinTerm.Views.Settings;
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Party" tab — bespoke layout. PR 6.9 wires the three knobs that map
-/// onto live Phase 6 services (par poll cadence, auto-invite reconnecting
-/// member, reset statistics on loop start), persists per character as
-/// the <c>"Party"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// The spell-picker / bless-slot / heal-threshold controls stay
-/// disabled-stubs because their consumer (<c>CastingDirector</c> in
-/// Phase 12) doesn't exist yet — locking the schema before that lands
-/// would force an awkward migration.
+/// "Party" tab — bespoke layout. PR 6.9 wires the knobs that map onto
+/// live Phase 6 services (par poll cadence, auto-invite reconnecting
+/// member, reset statistics on loop start); the party-heal pickers +
+/// thresholds + AOE-member count feed <c>CastingDirector</c>'s party-cast
+/// path. Persists per character as the <c>"Party"</c> entry in
+/// <see cref="CharacterProfile.Settings"/>. The bless-slot controls stay
+/// disabled-stubs because party-buff needs per-member active-buff tracking
+/// that hasn't landed yet (see <see cref="PartySettings"/>).
 /// </summary>
 public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 {
@@ -49,12 +49,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "Party", "Rank", "Front", "Mid", "Back",
-        "Minor heal", "Major heal", "Request healing",
+        "Party heal", "Minor heal", "Major heal", "Single-target", "Party AOE",
+        "Use AOE", "Request healing",
         "Bless", "Auto-share cash", "Help leader bash doors",
         "Auto-invite", "Auto-Exp-Reset", "par frequency",
         "Wait for members", "Max monsters", "Max monster experience",
-        "Attack last in party", "Attack in reverse order",
-        "Attack what other members attack",
         "Ignore party when following", "Auto-collect when following",
         "Say emote", "Go @panic when injured",
     };
@@ -85,6 +84,18 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     //       Single field; UI uses one NumericUpDown with Increment=10
     //       and free-text entry for non-multiples of 10. Default 90.
     [ObservableProperty] private int _ifLeadingWaitTotalSec = 90;
+
+    // ----- Party-cast heal pickers (consumed by CastingDirector) -----
+    // Each Minor / Major slot owns a single-target spell AND an AOE / party
+    // spell sharing one threshold; CastingDirector picks single vs AOE at
+    // cast time based on how many members are below it (AoeMinMembers).
+    [ObservableProperty] private string? _minorPartyHealSpell;
+    [ObservableProperty] private string? _minorPartyHealAoeSpell;
+    [ObservableProperty] private string? _majorPartyHealSpell;
+    [ObservableProperty] private string? _majorPartyHealAoeSpell;
+    [ObservableProperty] private int _minorHealMemberThresholdPercent = 70;
+    [ObservableProperty] private int _majorHealMemberThresholdPercent = 40;
+    [ObservableProperty] private int _aoeMinMembers = 2;
 
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
@@ -119,6 +130,14 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
             JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
             IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
+
+            MinorPartyHealSpell    = NullIfBlank(MinorPartyHealSpell),
+            MinorPartyHealAoeSpell = NullIfBlank(MinorPartyHealAoeSpell),
+            MajorPartyHealSpell    = NullIfBlank(MajorPartyHealSpell),
+            MajorPartyHealAoeSpell = NullIfBlank(MajorPartyHealAoeSpell),
+            MinorHealMemberThresholdPercent = Math.Clamp(MinorHealMemberThresholdPercent, 0, 100),
+            MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
+            AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
         };
 
         profile.Settings ??= new();
@@ -166,11 +185,22 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
         IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
 
+        MinorPartyHealSpell    = dto.MinorPartyHealSpell;
+        MinorPartyHealAoeSpell = dto.MinorPartyHealAoeSpell;
+        MajorPartyHealSpell    = dto.MajorPartyHealSpell;
+        MajorPartyHealAoeSpell = dto.MajorPartyHealAoeSpell;
+        MinorHealMemberThresholdPercent = dto.MinorHealMemberThresholdPercent;
+        MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
+        AoeMinMembers          = dto.AoeMinMembers;
+
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
         // visits this tab and clicks Apply.
         ApplyToServices(dto);
     }
+
+    private static string? NullIfBlank(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     private PartySettings ReadOrDefault()
     {
@@ -219,6 +249,13 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
     partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
     partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
+    partial void OnMinorPartyHealSpellChanged(string? value)    => MarkDirty();
+    partial void OnMinorPartyHealAoeSpellChanged(string? value) => MarkDirty();
+    partial void OnMajorPartyHealSpellChanged(string? value)    => MarkDirty();
+    partial void OnMajorPartyHealAoeSpellChanged(string? value) => MarkDirty();
+    partial void OnMinorHealMemberThresholdPercentChanged(int value) => MarkDirty();
+    partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
+    partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
 
     private void MarkDirty()
     {
