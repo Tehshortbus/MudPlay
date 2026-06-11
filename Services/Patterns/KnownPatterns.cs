@@ -263,6 +263,8 @@ public static class KnownPatterns
     public const string SuicideNotSet            = "suicide.not-set";      // "You do not have a suicide password set."  (response to `pro`)
     public const string SuicidePasswordChanged   = "suicide.changed";      // "Password Changed"             (success commit)
     public const string SuicidePasswordNotChanged = "suicide.not-changed"; // "Password NOT changed"         (empty-CR into new-password prompt)
+    public const string Reroll                   = "reroll";               // "After a LONG thought, you take your own life" (successful suicide → character rerolled)
+    public const string LearnSpell               = "spell.learn";          // "You read <scroll> and learn the spell <name>." (group 1 = spell Name)
 
     // ----- Trap-disarm flow (Phase 6 @trap handler) ----------------------
     // Drives TrapDisarmManager's search → disarm state machine. Failure

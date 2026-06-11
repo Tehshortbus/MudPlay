@@ -51,7 +51,9 @@ namespace FujinTerm.Game;
 /// The <c>pro</c>-command response line
 /// <c>"You do not have a suicide password set."</c> is treated as
 /// authoritative — we wipe the stored password regardless of state,
-/// since the realm's view differs from our cached one.
+/// since the realm's view differs from our cached one. The reroll line
+/// <c>"After a LONG thought, you take your own life"</c> (successful
+/// suicide) wipes it too — the old character is gone.
 /// </para>
 /// </remarks>
 public sealed class SuicidePasswordTracker : IDisposable
@@ -122,6 +124,7 @@ public sealed class SuicidePasswordTracker : IDisposable
         _subs.Add(router.Subscribe(KnownPatterns.SuicidePasswordChanged,    _ => OnPasswordChanged()));
         _subs.Add(router.Subscribe(KnownPatterns.SuicidePasswordNotChanged, _ => OnPasswordNotChanged()));
         _subs.Add(router.Subscribe(KnownPatterns.SuicideNotSet,             _ => OnNotSet()));
+        _subs.Add(router.Subscribe(KnownPatterns.Reroll,                    _ => OnReroll()));
     }
 
     public void Dispose()
@@ -303,6 +306,22 @@ public sealed class SuicidePasswordTracker : IDisposable
             _log?.Log(LogSeverity.Info, "Suicide",
                 "`pro` confirmed no password set — wiped stored encrypted value.");
         }
+    }
+
+    private void OnReroll()
+    {
+        // Successful suicide rerolled the character — the realm's stored
+        // suicide password died with the old character, so wipe our cached
+        // copy. Any in-flight set-flow is abandoned too (Reset).
+        if (_profile.Current is { } profile && profile.EncryptedSuicidePassword is not null)
+        {
+            profile.EncryptedSuicidePassword = null;
+            _profile.Save();
+            _profile.NotifyMutated();
+            _log?.Log(LogSeverity.Info, "Suicide",
+                "Reroll observed — wiped stored encrypted suicide password (fresh character).");
+        }
+        Reset(reason: "Reroll — character rerolled.");
     }
 
     private void Reset(string reason)

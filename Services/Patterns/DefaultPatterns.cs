@@ -451,6 +451,18 @@ public static class DefaultPatterns
         // tweak shouldn't break commit suppression silently.
         yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
             @"(?i)^Password NOT changed\b");
+        // Successful suicide → the character is rerolled (deleted, recreated
+        // fresh at level 1). The realm's own suicide password dies with the
+        // old character, so we wipe our stored copy; the Spell Book's
+        // obtained set is cleared too (a fresh character has learned nothing).
+        yield return new RegexPattern(KnownPatterns.Reroll,
+            @"(?i)^After a LONG thought, you take your own life");
+        // Learn-scroll signal — reading a spell scroll teaches its spell.
+        // Group 1 is the spell's full Name ("harm"), NOT the short cast
+        // code, so it resolves through SpellbookState.MarkObtainedByName.
+        // Lazy capture so the terminating period isn't swallowed.
+        yield return new RegexPattern(KnownPatterns.LearnSpell,
+            @"(?i)^You read .+ and learn the spell (.+?)\.\s*$");
 
         // ----- Trap-disarm flow ------------------------------------------
         // Direction capture is the LONG form (north / northeast / up /

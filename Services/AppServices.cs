@@ -1125,6 +1125,18 @@ public sealed class AppServices
         SpellCatalog = new Game.Spells.KnownSpellCatalog(GameData);
         Spellbook = new Game.Spells.SpellbookState(SpellCatalog);
         SpellList = new Game.Spells.SpellListParser(Spellbook, Log);
+        // Reroll → drop the obtained set. The fresh character has learned
+        // nothing; the next `stat` rebuilds the available list. Done here
+        // rather than waiting for the stat poll so a same-class reroll
+        // doesn't keep spells the new character can't have yet.
+        Router.Subscribe(Services.Patterns.KnownPatterns.Reroll, _ => Spellbook.ClearObtained());
+        // Learn-scroll signal — mark the spell obtained the moment the
+        // "…and learn the spell <name>." line fires, without waiting for
+        // the next `spells` poll. Group 1 carries the full spell Name.
+        Router.Subscribe(Services.Patterns.KnownPatterns.LearnSpell, m =>
+        {
+            if (m.Groups.Count > 0) Spellbook.MarkObtainedByName(m.Groups[0]);
+        });
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
         PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
