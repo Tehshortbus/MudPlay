@@ -206,6 +206,68 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void NegativeDrainRange_RendersAbilityVerbatim()
+    {
+        // sacrifice: DrainLife (8) with a raw negative range (-60..-20) and an
+        // AffectsLivingOnly (108) flag. The negative range must not be folded
+        // into a positive "Dmg" figure (which the maxDmg>0 gate hid entirely) —
+        // MME shows "DrainLife -60 to -20", the signed range verbatim.
+        SpellFormulaInput f = new()
+        {
+            Number = 404,
+            MinBase = -60,
+            MaxBase = -20,
+            Abilities =
+            [
+                new SpellAbility(8, 0),    // DrainLife
+                new SpellAbility(120, 1106), // StartMsg — hidden
+                new SpellAbility(108, 0),  // AffectsLivingOnly — flag
+            ],
+        };
+        KnownSpell s = Spell("sacr", "sacrifice", 18, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 18, NoChain);
+
+        Assert.Equal("DrainLife -60 to -20 · AffectsLivingOnly", row.EffectText);
+    }
+
+    [Fact]
+    public void InvertedDamageRange_RendersAbilityVerbatim()
+    {
+        // dragonfire: Damage(-MR) (17) with an inverted stored range (min 100 >
+        // max -50). MME renders "Damage(-MR) 100 to -50" rather than a "Dmg"
+        // figure that would mis-order or hide it.
+        SpellFormulaInput f = new()
+        {
+            Number = 500,
+            MinBase = 100,
+            MaxBase = -50,
+            Abilities = [new SpellAbility(17, 0)],
+        };
+        KnownSpell s = Spell("dfir", "dragonfire", 20, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 20, NoChain);
+
+        Assert.Equal("Damage(-MR) 100 to -50", row.EffectText);
+    }
+
+    [Fact]
+    public void NonMagicalDamage_RewritesMrSuffixAway()
+    {
+        // A NonMagicalSpell (144) slot alongside Damage(-MR) (17) rewrites the
+        // label back to plain "Damage", matching MME's post-pass Replace.
+        SpellFormulaInput f = new()
+        {
+            Number = 501,
+            MinBase = -15,
+            MaxBase = 20,
+            Abilities = [new SpellAbility(17, 0), new SpellAbility(144, 0)],
+        };
+        KnownSpell s = Spell("nmag", "nonmagic blast", 10, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 10, NoChain);
+
+        Assert.Equal("Damage -15 to 20 · NonMagicalSpell", row.EffectText);
+    }
+
+    [Fact]
     public void DispellMagic_RendersTargetAbilityNameInParens()
     {
         // Abil 73 (DispellMagic): AbilVal is an ability-code pointer naming

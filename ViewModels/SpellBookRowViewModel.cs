@@ -149,7 +149,14 @@ public sealed class SpellBookRowViewModel
 
         long minDmg = SpellCalculator.MinDamage(formula, level, resolveChain);
         long maxDmg = SpellCalculator.MaxDamage(formula, level, resolveChain);
-        if (maxDmg > 0) parts.Add($"Dmg {Range(minDmg, maxDmg)}");
+        if (maxDmg > 0 && minDmg >= 0)
+            parts.Add($"Dmg {Range(minDmg, maxDmg)}");
+        else if (minDmg != 0 || maxDmg != 0)
+            // Raw negative / inverted stored range (sacrifice -60..-20,
+            // dragonfire 100..-50) — MajorMUD's verbatim spell data. MME shows
+            // the specific damage ability with the signed range as-is rather
+            // than folding it into a positive "Dmg" figure.
+            parts.Add(DamageAbilityLabel(formula, minDmg, maxDmg));
 
         long minHeal = SpellCalculator.MinHeal(formula, level, resolveChain);
         long maxHeal = SpellCalculator.MaxHeal(formula, level, resolveChain);
@@ -332,6 +339,36 @@ public sealed class SpellBookRowViewModel
             names.Add(string.IsNullOrWhiteSpace(name) ? $"#{a.Value}" : name.Trim());
         }
         return names.Count == 0 ? string.Empty : $"Removes {string.Join(", ", names)}";
+    }
+
+    /// <summary>Damage-bearing ability codes whose stored Min/MaxBase form the
+    /// spell's damage range — Damage (1), DrainLife (8), Damage(-MR) (17).</summary>
+    private static readonly int[] _damageCodes = { 1, 8, 17 };
+
+    /// <summary>
+    /// Render a damage ability whose stored range is negative or inverted
+    /// (min &gt; max) verbatim — "DrainLife -60 to -20", "Damage 100 to -50".
+    /// Mirrors MME's <c>PullSpellEQ</c>, which prints
+    /// <c>GetAbilityName(code) &amp; " " &amp; min &amp; " to " &amp; max</c> for
+    /// damage slots with no "+" header and no sign normalisation. A
+    /// NonMagicalSpell (144) slot rewrites "Damage(-MR)" back to "Damage",
+    /// matching MME's post-pass <c>Replace</c>.
+    /// </summary>
+    private static string DamageAbilityLabel(in SpellFormulaInput formula, long min, long max)
+    {
+        int code = 0;
+        bool nonMagical = false;
+        foreach (SpellAbility a in formula.Abilities)
+        {
+            if (code == 0 && Array.IndexOf(_damageCodes, a.Code) >= 0) code = a.Code;
+            if (a.Code == 144) nonMagical = true;
+        }
+
+        string name = AbilityNames.GetName(code) ?? "Dmg";
+        if (nonMagical && name == "Damage(-MR)") name = "Damage";
+        return min == max
+            ? $"{name} {min.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"{name} {min.ToString(System.Globalization.CultureInfo.InvariantCulture)} to {max.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
     }
 
     private static string Range(long min, long max)
