@@ -67,17 +67,17 @@
             <TextBlock Classes="SectionHeader" Text="Party heal"/>
 
             <!-- Column header. -->
-            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="120,230,12,230,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Single-target"
                            Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Party (AOE)"
+                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Party (AOE)"
                            Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
             </Grid>
 
             <!-- Minor: single + AOE pickers sharing the Minor threshold. -->
-            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor"/>
-                <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Margin="0,0,4,0"
+            <Grid ColumnDefinitions="120,230,12,230,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Minor"/>
+                <AutoCompleteBox Grid.Row="0" Grid.Column="1" Width="230" HorizontalAlignment="Left"
                                  Text="{Binding MinorPartyHealSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
                                  ValueMemberBinding="{ReflectionBinding Short}"
@@ -85,7 +85,7 @@
                                  ItemTemplate="{StaticResource SpellPickItem}"
                                  PlaceholderText="Type code or name…"
                                  ToolTip.Tip="Cheap single-target heal cast when one member drops below the Minor threshold."/>
-                <AutoCompleteBox Grid.Column="2" Width="260" HorizontalAlignment="Left"
+                <AutoCompleteBox Grid.Row="0" Grid.Column="3" Width="230" HorizontalAlignment="Left"
                                  Text="{Binding MinorPartyHealAoeSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
                                  ValueMemberBinding="{ReflectionBinding Short}"
@@ -93,18 +93,21 @@
                                  ItemTemplate="{StaticResource SpellPickItem}"
                                  PlaceholderText="Type code or name…"
                                  ToolTip.Tip="Cheap AOE party-heal — hits every member at once when enough fall below the Minor threshold."/>
-                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="below"
-                           HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="4" Width="80" Minimum="0" Maximum="100"
-                               Value="{Binding MinorHealMemberThresholdPercent, Mode=TwoWay}"
-                               ToolTip.Tip="Cast a Minor party heal when any member drops below this percentage of MaxHp."/>
-                <TextBlock Grid.Column="5" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+                <!-- Threshold sits under the label, left-aligned, with room to render. -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                            Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                    <TextBlock Classes="FieldLabel" Text="Cast when a member is below"/>
+                    <NumericUpDown Width="120" MinWidth="120" Minimum="0" Maximum="100"
+                                   Value="{Binding MinorHealMemberThresholdPercent, Mode=TwoWay}"
+                                   ToolTip.Tip="Cast a Minor party heal when any member drops below this percentage of MaxHp."/>
+                    <TextBlock Classes="FieldLabel" Text="%"/>
+                </StackPanel>
             </Grid>
 
             <!-- Major: single + AOE pickers sharing the Major threshold. -->
-            <Grid ColumnDefinitions="90,260,260,40,80,*" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major"/>
-                <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Margin="0,0,4,0"
+            <Grid ColumnDefinitions="120,230,12,230,*" RowDefinitions="Auto,Auto" Margin="0,10,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Major"/>
+                <AutoCompleteBox Grid.Row="0" Grid.Column="1" Width="230" HorizontalAlignment="Left"
                                  Text="{Binding MajorPartyHealSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
                                  ValueMemberBinding="{ReflectionBinding Short}"
@@ -112,7 +115,7 @@
                                  ItemTemplate="{StaticResource SpellPickItem}"
                                  PlaceholderText="Type code or name…"
                                  ToolTip.Tip="Expensive single-target heal cast when one member drops below the Major threshold (overrides Minor)."/>
-                <AutoCompleteBox Grid.Column="2" Width="260" HorizontalAlignment="Left"
+                <AutoCompleteBox Grid.Row="0" Grid.Column="3" Width="230" HorizontalAlignment="Left"
                                  Text="{Binding MajorPartyHealAoeSpell, Mode=TwoWay}"
                                  ItemsSource="{Binding SpellSuggestions}"
                                  ValueMemberBinding="{ReflectionBinding Short}"
@@ -120,38 +123,36 @@
                                  ItemTemplate="{StaticResource SpellPickItem}"
                                  PlaceholderText="Type code or name…"
                                  ToolTip.Tip="Expensive AOE party-heal — hits every member at once when enough fall below the Major threshold (overrides Minor)."/>
-                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="below"
-                           HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="4" Width="80" Minimum="0" Maximum="100"
-                               Value="{Binding MajorHealMemberThresholdPercent, Mode=TwoWay}"
-                               ToolTip.Tip="Cast a Major party heal when any member drops below this percentage of MaxHp."/>
-                <TextBlock Grid.Column="5" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
+                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                            Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                    <TextBlock Classes="FieldLabel" Text="Cast when a member is below"/>
+                    <NumericUpDown Width="120" MinWidth="120" Minimum="0" Maximum="100"
+                                   Value="{Binding MajorHealMemberThresholdPercent, Mode=TwoWay}"
+                                   ToolTip.Tip="Cast a Major party heal when any member drops below this percentage of MaxHp."/>
+                    <TextBlock Classes="FieldLabel" Text="%"/>
+                </StackPanel>
             </Grid>
 
             <!-- Single vs AOE selector: how many hurt members flip to the AOE pick. -->
-            <Grid ColumnDefinitions="90,Auto,Auto,Auto,*" Margin="0,6,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Use AOE"/>
-                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="when"
-                           HorizontalAlignment="Center" Margin="0,0,6,0"/>
-                <NumericUpDown Grid.Column="2" Width="80" Minimum="2" Maximum="6"
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
+                <TextBlock Classes="FieldLabel" Text="Switch to party (AOE) heal when"/>
+                <NumericUpDown Width="120" MinWidth="120" Minimum="2" Maximum="6"
                                Value="{Binding AoeMinMembers, Mode=TwoWay}"
                                ToolTip.Tip="Minimum number of members below threshold for the engine to switch from the single-target heal to the party (AOE) heal. Minimum 2."/>
-                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="+ members are below threshold"
-                           Margin="6,0,0,0"/>
-            </Grid>
+                <TextBlock Classes="FieldLabel" Text="+ members are below threshold"/>
+            </StackPanel>
 
             <!-- Request healing: just threshold, no spell. Stub — no DTO field yet. -->
-            <Grid ColumnDefinitions="90,260,40,80,*" Margin="0,6,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Request healing"/>
-                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="(send @heal)"
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
+                <TextBlock Classes="FieldLabel" Text="Request healing"/>
+                <TextBlock Classes="FieldLabel" Text="(send @heal) at"
                            Foreground="{StaticResource ChromeFgMutedBrush}"
                            FontStyle="Italic"/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
-                           HorizontalAlignment="Center"/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="50" Minimum="0" Maximum="100" Width="80"
+                <NumericUpDown IsEnabled="False" Value="50" Minimum="0" Maximum="100"
+                               Width="120" MinWidth="120"
                                ToolTip.Tip="Broadcast @heal at this HP %. (@health is a different command — it requests party-member health status.)"/>
-                <TextBlock Grid.Column="4" Classes="FieldLabel" Text="%" Margin="4,0,0,0"/>
-            </Grid>
+                <TextBlock Classes="FieldLabel" Text="%"/>
+            </StackPanel>
 
             <!-- ============ Party bless (10 slots, no timeouts) ============ -->
             <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)"/>
