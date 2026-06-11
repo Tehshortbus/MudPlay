@@ -22,6 +22,14 @@ public sealed class CombatSettingsTests
 
         // Sensible defaults that mirror MajorMUD conventions.
         Assert.Equal("a", dto.NormalAttackCommand);
+        Assert.Equal("a", dto.AlternateAttackCommand);
+
+        // Priority defaults reproduce the previously hard-coded round order:
+        // Backstab → Preattack → Spells → Physical.
+        Assert.Equal(1, dto.PriorityBackstab);
+        Assert.Equal(2, dto.PriorityPreattack);
+        Assert.Equal(3, dto.PrioritySpells);
+        Assert.Equal(4, dto.PriorityPhysical);
         Assert.Equal(TargetOrder.Normal, dto.TargetOrder);
         Assert.Equal(AttackTiming.Default, dto.AttackTiming);
         Assert.True(dto.SkipBackstabIfMultiAttack);
@@ -73,6 +81,11 @@ public sealed class CombatSettingsTests
         CombatSettings dto = new()
         {
             NormalAttackCommand        = "attack",
+            AlternateAttackCommand     = "swing",
+            PriorityBackstab           = 4,
+            PriorityPreattack          = 3,
+            PrioritySpells             = 2,
+            PriorityPhysical           = 1,
             NormalWeapon               = "long sword",
             NormalOffHand              = "kite shield",
             AlternateWeapon            = "two-handed axe",
@@ -99,6 +112,11 @@ public sealed class CombatSettingsTests
 
         Assert.NotNull(round);
         Assert.Equal(dto.NormalAttackCommand,       round!.NormalAttackCommand);
+        Assert.Equal(dto.AlternateAttackCommand,    round.AlternateAttackCommand);
+        Assert.Equal(dto.PriorityBackstab,          round.PriorityBackstab);
+        Assert.Equal(dto.PriorityPreattack,         round.PriorityPreattack);
+        Assert.Equal(dto.PrioritySpells,            round.PrioritySpells);
+        Assert.Equal(dto.PriorityPhysical,          round.PriorityPhysical);
         Assert.Equal(dto.NormalWeapon,              round.NormalWeapon);
         Assert.Equal(dto.NormalOffHand,             round.NormalOffHand);
         Assert.Equal(dto.AlternateWeapon,           round.AlternateWeapon);

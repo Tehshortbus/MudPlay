@@ -31,7 +31,7 @@ public sealed class CombatSpellChooserTests
     // ----- 1. Backstab gate ---------------------------------------------
 
     [Fact]
-    public void Choose_BackstabPending_AlwaysWeapon_NoSpellPreempts()
+    public void Choose_BackstabPending_FiresBackstab_NoSpellPreempts()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -43,8 +43,49 @@ public sealed class CombatSpellChooserTests
 
         CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 5, backstabPending: true));
 
+        Assert.Equal(CombatSpellAction.Backstab, d.Action);
+        Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_PhysicalPriorityAboveSpells_SuppressesSpell()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            // Physical ahead of Spells — a swing is always possible, so it
+            // owns the round and the attack spell never fires.
+            PriorityPhysical = 1,
+            PrioritySpells = 2,
+            PriorityBackstab = 3,
+            PriorityPreattack = 4,
+        };
+
+        CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1));
+
         Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
         Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_SpellsPriorityAboveBackstab_CastsBeforeBackstab()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            // Spells ahead of Backstab — the attack spell pre-empts the opener.
+            PrioritySpells = 1,
+            PriorityBackstab = 2,
+            PriorityPreattack = 3,
+            PriorityPhysical = 4,
+        };
+
+        CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1, backstabPending: true));
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("harm", d.Spell);
     }
 
     // ----- 2. Pre-attack debuff: area once-per-room, excludes single -----

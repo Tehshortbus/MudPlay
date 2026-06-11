@@ -82,36 +82,59 @@ public sealed partial class CombatManager
     private bool CombatSpellsWired => _cast is not null && _readMana is not null;
 
     /// <summary>
-    /// Run the chooser for the freshly-picked target and, if it selects a
-    /// spell, cast it. Returns <c>true</c> when a combat spell owns this
-    /// round (so the caller suppresses the weapon swing) — including when
-    /// the coordinator was on cooldown (another engine already spent this
-    /// round's action; we retry on the next tick). Returns <c>false</c> for
-    /// <see cref="CombatSpellAction.WeaponAttack"/> (incl. backstab-pending)
-    /// so the caller falls through to the backstab / weapon path.
+    /// Decide and dispatch this round's action for the freshly-picked
+    /// target, honouring the user-configured category order (Backstab /
+    /// Preattack / Spells / Physical). The pure <see cref="CombatSpellChooser"/>
+    /// owns the ordering; this maps its decision onto the wire — a backstab
+    /// verb, a combat-spell cast, or the weapon attack command. Spell
+    /// categories only participate when the caster is wired
+    /// (<see cref="CombatSpellsWired"/>); otherwise the chooser sees them as
+    /// unavailable and the order collapses to Backstab vs Physical, exactly
+    /// the pre-spell weapon engine.
     /// </summary>
-    private bool TryCastCombatSpell(
+    private void DispatchRoundAction(
         CombatSettings settings, EngageableCandidate picked, int enemyCount,
         RoomEntitiesObservation obs)
     {
-        if (!CombatSpellsWired) return false;
+        CombatSpellContext ctx = CombatSpellsWired
+            ? BuildContext(settings, obs, picked.RawName, enemyCount)
+            : BuildWeaponContext(settings, obs, picked.RawName, enemyCount);
 
-        CombatSpellContext ctx = BuildContext(settings, obs, picked.RawName, enemyCount);
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
-        if (decision.Action == CombatSpellAction.WeaponAttack) return false;
 
-        // A combat spell owns this round. Enter spell mode for this target
-        // so the tick heartbeat re-issues each round. Set the bridge even
-        // when the coordinator is on cooldown — we stay in spell mode and
-        // retry next tick rather than swinging the weapon.
-        _castingSpellTarget = picked.RawName;
-        if (_cast!.TryCast(decision.Spell!, picked.RawName))
+        switch (decision.Action)
         {
-            _spellChooser.MarkCast(decision, picked.RawName);
-            _lastCastAction = decision.Action;
-            _combatOff = false;
+            case CombatSpellAction.WeaponAttack:
+                // Per-target dedup — if the picked species is in this room's
+                // failed-vs-normal set, pre-emptively swap to the alternate
+                // weapon. SendWeaponAttack sets CurrentTarget.
+                bool useAlt = _normalWeaponFailedMonsters.Contains(picked.ResolvedName);
+                SendWeaponAttack(settings, picked.RawName, useAlt, picked.Priority);
+                break;
+
+            case CombatSpellAction.Backstab:
+                // The BS weapon was pre-equipped at room-clear (OnRoomCleared);
+                // when none is configured we backstab with whatever is equipped.
+                SendAttack("bs", picked.RawName, picked.Priority);
+                _currentTarget = picked.RawName;
+                break;
+
+            default:
+                // A combat spell owns this round (a spell IS the round's
+                // action — it does not stack with a swing). Enter spell mode
+                // so the tick heartbeat re-issues each round. Set the bridge
+                // even when the coordinator is on cooldown — we stay in spell
+                // mode and retry next tick rather than swinging the weapon.
+                _castingSpellTarget = picked.RawName;
+                if (_cast!.TryCast(decision.Spell!, picked.RawName))
+                {
+                    _spellChooser.MarkCast(decision, picked.RawName);
+                    _lastCastAction = decision.Action;
+                    _combatOff = false;
+                }
+                _currentTarget = picked.RawName;
+                break;
         }
-        return true;
     }
 
     /// <summary>
@@ -162,11 +185,13 @@ public sealed partial class CombatManager
         CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
 
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
-        if (decision.Action == CombatSpellAction.WeaponAttack)
+        if (decision.Action is CombatSpellAction.WeaponAttack or CombatSpellAction.Backstab)
         {
             // Spell conditions lapsed mid-room — fall to the weapon command
             // once. SendWeaponAttack clears the bridge (via SendAttack), so
             // the heartbeat goes quiet and the server's auto-repeat takes over.
+            // (Backstab can't occur mid-combat — sneak is already broken — but
+            // we treat it as the weapon fallback defensively.)
             bool useAlt = _normalWeaponFailedMonsters.Contains(ResolveSpeciesFromCurrentTarget());
             SendWeaponAttack(settings, target, useAlt);
             return;
@@ -236,8 +261,26 @@ public sealed partial class CombatManager
             Mana:               ma,
             MaxMana:            maxMa,
             BackstabPending:    BackstabPending(settings, obs),
-            ImmuneAttackSpells: ImmuneActionsFor(target));
+            ImmuneAttackSpells: ImmuneActionsFor(target),
+            SpellsAvailable:    true);
     }
+
+    /// <summary>
+    /// Build a spell-free chooser context for the weapon engine when no
+    /// combat-spell caster is wired. Reports <see cref="CombatSpellContext.SpellsAvailable"/>
+    /// false so the chooser skips the Preattack / Spells categories and the
+    /// order collapses to Backstab vs Physical — and reads no mana (none is
+    /// available without the wired reader).
+    /// </summary>
+    private CombatSpellContext BuildWeaponContext(
+        CombatSettings settings, RoomEntitiesObservation obs, string target, int enemyCount) =>
+        new(EnemyCount:      enemyCount,
+            TargetRawName:   target,
+            Mana:            0,
+            MaxMana:         0,
+            BackstabPending: BackstabPending(settings, obs),
+            ImmuneAttackSpells: null,
+            SpellsAvailable: false);
 
     /// <summary>The single-target attack-spell actions the species of
     /// <paramref name="target"/> has proven immune to this room, or
@@ -304,7 +347,7 @@ public sealed partial class CombatManager
 
         CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
-        if (decision.Action == CombatSpellAction.WeaponAttack)
+        if (decision.Action is CombatSpellAction.WeaponAttack or CombatSpellAction.Backstab)
         {
             bool useAlt = _normalWeaponFailedMonsters.Contains(ResolveSpeciesByName(target));
             SendWeaponAttack(settings, target, useAlt);

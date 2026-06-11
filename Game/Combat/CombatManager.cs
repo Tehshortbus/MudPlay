@@ -481,41 +481,13 @@ public sealed partial class CombatManager : IDisposable
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
         }
 
-        // Combat-spell round economy (opt-in via SetCombatSpellCaster).
-        // The chooser owns the full per-round ordering — backstab gate,
-        // pre-attack debuff, then attack-spell sequencing. When it returns
-        // a spell we cast it; that IS this round's action (a spell does
-        // not stack with a swing), so we suppress the weapon path and let
-        // the tick heartbeat drive subsequent rounds. When it returns
-        // WeaponAttack (incl. backstab-pending) we fall through to the
-        // existing backstab / weapon path below.
-        if (TryCastCombatSpell(settings, picked, engageable.Count, obs))
-        {
-            _currentTarget = picked.RawName;
-            return;
-        }
-
-        // Backstab window — the opening swing into a room while sneaking
-        // can be a `bs`, but only when no occupant has SeeHidden (a
-        // single seehidden monster reveals us to the whole room, ruining
-        // the BS). Attacking breaks sneak, so this naturally fires only
-        // on the first swing; every follow-on re-pick is no longer
-        // sneaking and falls through to the normal path below. We do NOT
-        // equip here — the BS weapon was pre-equipped at room-clear
-        // (OnRoomCleared); when none is configured we backstab with
-        // whatever is already equipped.
-        if (BackstabPending(settings, obs))
-        {
-            SendAttack("bs", picked.RawName, picked.Priority);
-            _currentTarget = picked.RawName;
-            return;
-        }
-
-        // Per-target dedup — if the picked species is in this room's
-        // failed-vs-normal set, pre-emptively swap to the alternate
-        // weapon + use AlternateAttackCommand. Saves a wasted swing.
-        bool useAlt = _normalWeaponFailedMonsters.Contains(picked.ResolvedName);
-        SendWeaponAttack(settings, picked.RawName, useAlt, picked.Priority);
+        // Decide + dispatch this round's action. The chooser owns the full
+        // per-round category ordering (Backstab / Preattack / Spells /
+        // Physical) in the user-configured priority; DispatchRoundAction
+        // maps its decision onto the wire (backstab verb, combat-spell cast,
+        // or weapon swing). Spell categories only participate when the caster
+        // is wired — otherwise the order is just Backstab vs Physical.
+        DispatchRoundAction(settings, picked, engageable.Count, obs);
     }
 
     /// <summary>

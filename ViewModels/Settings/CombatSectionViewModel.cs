@@ -53,6 +53,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     {
         "Combat", "Weapon", "Normal weapon", "Alternate weapon",
         "BS weapon", "BS weapon off-hand", "Off-hand",
+        "Combat priority", "Priority order", "Backstab priority",
+        "Preattack priority", "Spells priority", "Physical priority",
+        "Normal weapon attack command", "Alternate weapon attack command",
         "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
         "Clear hostiles when seen hidden",
@@ -70,6 +73,14 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // ----- Wire command ---------------------------------------------
 
     [ObservableProperty] private string _normalAttackCommand = "a";
+    [ObservableProperty] private string _alternateAttackCommand = "a";
+
+    // ----- Combat priority order ------------------------------------
+
+    [ObservableProperty] private int _priorityBackstab = 1;
+    [ObservableProperty] private int _priorityPreattack = 2;
+    [ObservableProperty] private int _prioritySpells = 3;
+    [ObservableProperty] private int _priorityPhysical = 4;
 
     // ----- Weapon slots --------------------------------------------
 
@@ -200,6 +211,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         CombatSettings dto = new()
         {
             NormalAttackCommand        = NormalAttackCommand ?? "a",
+            AlternateAttackCommand     = AlternateAttackCommand ?? "a",
+
+            PriorityBackstab  = ClampPriority(PriorityBackstab),
+            PriorityPreattack = ClampPriority(PriorityPreattack),
+            PrioritySpells    = ClampPriority(PrioritySpells),
+            PriorityPhysical  = ClampPriority(PriorityPhysical),
 
             NormalWeapon       = NullIfBlank(NormalWeapon),
             NormalOffHand      = NullIfBlank(NormalOffHand),
@@ -292,6 +309,10 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     /// counts which top out far below.</summary>
     private static int ClampSpell(int value) => Math.Clamp(value, 0, 100_000);
 
+    /// <summary>Combat-priority fields run 1..4 (the four categories). Ties
+    /// are allowed — the chooser tie-breaks on canonical order.</summary>
+    private static int ClampPriority(int value) => Math.Clamp(value, 1, 4);
+
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
 
@@ -309,6 +330,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         CombatSettings dto = ReadOrDefault();
 
         NormalAttackCommand     = dto.NormalAttackCommand ?? "a";
+        AlternateAttackCommand  = dto.AlternateAttackCommand ?? "a";
+
+        PriorityBackstab  = dto.PriorityBackstab;
+        PriorityPreattack = dto.PriorityPreattack;
+        PrioritySpells    = dto.PrioritySpells;
+        PriorityPhysical  = dto.PriorityPhysical;
 
         NormalWeapon       = dto.NormalWeapon;
         NormalOffHand      = dto.NormalOffHand;
@@ -397,6 +424,13 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // Master + attack command
     partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
+    partial void OnAlternateAttackCommandChanged(string value)   => MarkDirty();
+
+    // Combat priority order
+    partial void OnPriorityBackstabChanged(int value)            => MarkDirty();
+    partial void OnPriorityPreattackChanged(int value)           => MarkDirty();
+    partial void OnPrioritySpellsChanged(int value)              => MarkDirty();
+    partial void OnPriorityPhysicalChanged(int value)            => MarkDirty();
 
     // Weapon slots
     partial void OnNormalWeaponChanged(string? value)            => MarkDirty();
