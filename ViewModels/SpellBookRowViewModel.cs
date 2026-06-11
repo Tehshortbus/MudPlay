@@ -147,11 +147,13 @@ public sealed class SpellBookRowViewModel
         long dur = SpellCalculator.Duration(formula, level);
         if (dur > 0) parts.Add($"{dur * SpellRoundSeconds} seconds");
 
-        string removes = BuildRemoves(formula, resolveSpellName);
-        if (removes.Length > 0) parts.Add(removes);
-
         string affects = BuildAffects(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts);
         if (affects.Length > 0) parts.Add(affects);
+
+        // A spell's "Removes …" clause trails its own gain figures — consistent
+        // with multi-cast textblock expansion (gains first, cleanup last).
+        string removes = BuildRemoves(formula, resolveSpellName);
+        if (removes.Length > 0) parts.Add(removes);
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
     }

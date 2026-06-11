@@ -187,6 +187,25 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void RemovesClause_TrailsGainFigures_OnASingleSpell()
+    {
+        // A spell that both buffs and removes another spell shows the gain
+        // figure first, then the "Removes …" clause — same ordering as a
+        // multi-cast textblock expansion.
+        SpellFormulaInput f = new()
+        {
+            Number = 30,
+            Abilities = [new SpellAbility(2, 10), new SpellAbility(122, 42)], // AC +10 + RemovesSpell
+        };
+        KnownSpell s = Spell("ward", "warding", 6, f);
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 10, NoChain,
+            resolveSpellName: n => n == 42 ? "curse" : null);
+
+        Assert.Equal("AC +10 · Removes curse", row.EffectText);
+    }
+
+    [Fact]
     public void MessageOnlySlots_AreNotSurfaced()
     {
         // DescMsg (115) / StartMsg (120) / ShockMsg (137) are display-only
