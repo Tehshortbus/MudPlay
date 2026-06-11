@@ -516,6 +516,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.DoorKeyUnknown,
             @"\b(?:you have no |you don'?t have|nothing happens)\b",
             options: RegexOptions.IgnoreCase);
+
+        // "You see <name> attempt to bash the door to the <dir>." — another
+        // player (possibly our party leader) failing to force a door. Name
+        // is the actor's given name; direction is the full word.
+        yield return new RegexPattern(KnownPatterns.PlayerDoorBashAttempt,
+            @"^You see (?<name>.+?) attempt to bash the door to the (?<dir>north|south|east|west|northeast|northwest|southeast|southwest|up|down)\.");
     }
 
 }

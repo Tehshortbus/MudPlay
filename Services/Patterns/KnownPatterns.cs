@@ -298,4 +298,11 @@ public static class KnownPatterns
     public const string DoorIsLocked          = "door.islocked";           // "is locked" (open hit a keyed door)
     public const string DoorKeyUnlockSuccess  = "door.key.unlocked";       // "successfully unlocked" (after use <key> <dir>)
     public const string DoorKeyUnknown        = "door.key.unknown";        // "have no <item>" / "you don't have" (use <key> failed)
+
+    // ----- Another player forcing a door (LeaderDoorAssistManager) -------
+    // Observer-side line emitted when another in-room player fails to bash
+    // a door: "You see <name> attempt to bash the door to the <dir>."
+    // Captures the actor name + the direction word so we can pitch in on
+    // the same door when the actor is our party leader.
+    public const string PlayerDoorBashAttempt = "door.player.bashattempt";
 }

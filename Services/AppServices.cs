@@ -297,6 +297,14 @@ public sealed class AppServices
     public Game.Map.DoorOpenManager Door { get; }
 
     /// <summary>
+    /// Helps the party leader force a door — when we observe the leader
+    /// fail to bash a door we can see, send the same <c>bash</c> / <c>pick</c>
+    /// verb at the same direction. Gated on
+    /// <see cref="Models.Profile.PartySettings.HelpLeaderOpenDoors"/>.
+    /// </summary>
+    public Game.Map.LeaderDoorAssistManager LeaderDoorAssist { get; }
+
+    /// <summary>
     /// Walker's hidden-exit reveal FSM — fires <c>sea &lt;dir&gt;</c>
     /// in a retry loop until the exit appears on the room display.
     /// Subscribes to <see cref="RoomTracker.StateChanged"/> for the
@@ -1298,6 +1306,14 @@ public sealed class AppServices
             maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
             picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
             itemNameLookup:             id => ItemNames.GetName(id),
+            log: Log);
+        // LeaderDoorAssistManager — observes the leader failing to bash a
+        // door and pitches in. Reads the Party-tab toggle + the Other-tab
+        // pick/bash preference live. Wire-sender bound by MainWindowVM
+        // alongside the door/trap engines (gate-wrapped SendUserInput).
+        LeaderDoorAssist = new Game.Map.LeaderDoorAssistManager(Router, PartyState,
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            readOtherSettings: () => Resolver.Resolve<Models.Profile.OtherSettings>("Other"),
             log: Log);
         // HiddenSearch is constructed later, after RoomTracker exists
         // (it subscribes to RoomTracker.StateChanged for the reveal

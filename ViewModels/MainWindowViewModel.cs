@@ -689,6 +689,9 @@ public partial class MainWindowViewModel : ObservableObject
         // sequence can't land in a password-entry prompt. Walker
         // routes door exits through Door.Enqueue at step-send time.
         AppServices.Current.Door.SetWireSender(engineSend);
+        // LeaderDoorAssistManager — same gate-wrapped sender so helping the
+        // leader force a door can't fire mid-password-prompt.
+        AppServices.Current.LeaderDoorAssist.SetWireSender(engineSend);
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
         AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
         // HiddenExitRevealManager — same gate-wrapped sender so the

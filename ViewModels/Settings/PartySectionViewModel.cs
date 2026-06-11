@@ -107,6 +107,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// leader's automation keeps running.</summary>
     [ObservableProperty] private bool _ignoreWaitWhenLeading;
 
+    /// <summary>Pitch in when the party leader fails to bash a door we can
+    /// see — bashes / picks the same door per the Other-tab preference.
+    /// Consumed by <see cref="Game.Map.LeaderDoorAssistManager"/>.</summary>
+    [ObservableProperty] private bool _helpLeaderOpenDoors;
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -150,6 +155,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
             MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
             IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
+            HelpLeaderOpenDoors    = HelpLeaderOpenDoors,
         };
 
         profile.Settings ??= new();
@@ -206,6 +212,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         AoeMinMembers          = dto.AoeMinMembers;
         MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
         IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
+        HelpLeaderOpenDoors    = dto.HelpLeaderOpenDoors;
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -272,6 +279,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
     partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
     partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();
+    partial void OnHelpLeaderOpenDoorsChanged(bool value)       => MarkDirty();
 
     private void MarkDirty()
     {

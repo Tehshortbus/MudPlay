@@ -58,6 +58,16 @@ public sealed class PartySettings
     public bool IgnoreWaitWhenLeading { get; set; }
 
     /// <summary>
+    /// When the party leader fails to bash a door we can see ("You see
+    /// &lt;leader&gt; attempt to bash the door to the &lt;dir&gt;."), pitch in by
+    /// forcing the same door — <c>bash &lt;dir&gt;</c> or <c>pick &lt;dir&gt;</c>
+    /// depending on <see cref="OtherSettings.PicklocksOverBash"/>. Only
+    /// fires when the actor is our current <see cref="Game.PartyState.LeaderName"/>.
+    /// Off by default. Consumed by <c>LeaderDoorAssistManager</c>.
+    /// </summary>
+    public bool HelpLeaderOpenDoors { get; set; }
+
+    /// <summary>
     /// On loop / Auto-Lair start (Phase 7 trigger), broadcast
     /// <c>@Reset</c> to every party member so their exp / kill counters
     /// zero together. Gated by
