@@ -228,6 +228,58 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void TextBlock_ExpandsToLinkedCastSpellEffects_WhenResolverSupplied()
+    {
+        // Abil 148 carries a TextBlock record number. When the Casted-By
+        // reverse link resolves that textblock to the real spell(s) it casts,
+        // the row surfaces those effects inline (duration + stat bonus) instead
+        // of the opaque "TextBlock N". General — keyed only on the textblock
+        // number, no per-spell special-casing.
+        SpellFormulaInput tb = new()
+        {
+            Number = 20,
+            Abilities = [new SpellAbility(148, 2910)],
+        };
+        KnownSpell s = Spell("dfrm", "form of the dragon", 30, tb);
+
+        // The textblock casts a single buff: Strength +5 for 8 rounds (24s).
+        SpellFormulaInput linked = new()
+        {
+            Number = 858,
+            Dur = 8,
+            Abilities = [new SpellAbility(46, 5)], // 46 = Strength
+        };
+        KnownSpell linkedSpell = new(858, "drgn", "form of the dragon",
+            Magery: 1, MageryLvl: 1, ReqLevel: 30, linked);
+
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 30, NoChain,
+            resolveTextblockCasts: n => n == 2910
+                ? new[] { linkedSpell }
+                : System.Array.Empty<KnownSpell>());
+
+        Assert.Equal("24 seconds · Strength +5", row.EffectText);
+    }
+
+    [Fact]
+    public void TextBlock_FallsBackToRecordNumber_WhenResolverFindsNoCasts()
+    {
+        // Resolver supplied but the textblock links to nothing → keep the
+        // unsigned record number (never silently blank the effect).
+        SpellFormulaInput tb = new()
+        {
+            Number = 21,
+            Abilities = [new SpellAbility(148, 1234)],
+        };
+        KnownSpell s = Spell("misc", "misc", 5, tb);
+        SpellBookRowViewModel row = new(
+            s, isObtained: false, level: 6, NoChain,
+            resolveTextblockCasts: _ => System.Array.Empty<KnownSpell>());
+
+        Assert.Equal("TextBlock 1234", row.EffectText);
+    }
+
+    [Fact]
     public void NonMagicalSpellFlag_DoesNotDuplicateDamageRange()
     {
         // "way of the dragon" (drgn): Damage (1) + NonMagicalSpell (144) flag,

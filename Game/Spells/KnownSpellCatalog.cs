@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Spells;
@@ -216,6 +217,52 @@ public sealed class KnownSpellCatalog
         }
         return null;
     }
+
+    /// <summary>
+    /// Build the reverse index from a <c>TBInfo</c> textblock number to every
+    /// spell that textblock casts, parsed from each spell row's denormalised
+    /// <c>Casted By</c> column (e.g. <c>"Textblock #2910, Textblock #2911"</c>).
+    /// The Spell Book uses it to expand an Abil-148 (TextBlock) reference into
+    /// the real effect(s) the textblock applies — duration + stat bonuses for
+    /// transform spells like <c>form of the dragon</c> — instead of an opaque
+    /// record number. General across data sets: any spell whose <c>Casted By</c>
+    /// names a textblock is linked, with no per-spell special-casing. Empty when
+    /// the active set has no Spells table.
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> BuildCastByTextblockIndex()
+    {
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return EmptyCastIndex;
+
+        Dictionary<int, List<KnownSpell>> map = new();
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            string? castedBy = ReadString(row, "Casted By");
+            if (castedBy is null) continue;
+
+            KnownSpell? projected = null;
+            foreach (Match m in CastedByTextblock.Matches(castedBy))
+            {
+                if (!int.TryParse(m.Groups[1].Value, out int tb) || tb <= 0) continue;
+                projected ??= ToKnownSpell(row);
+                if (!map.TryGetValue(tb, out List<KnownSpell>? list))
+                    map[tb] = list = new List<KnownSpell>();
+                list.Add(projected.Value);
+            }
+        }
+
+        Dictionary<int, IReadOnlyList<KnownSpell>> result = new(map.Count);
+        foreach (KeyValuePair<int, List<KnownSpell>> kv in map) result[kv.Key] = kv.Value;
+        return result;
+    }
+
+    private static readonly IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> EmptyCastIndex
+        = new Dictionary<int, IReadOnlyList<KnownSpell>>();
+
+    // "Casted By" lists each source as "Textblock #<number>" (comma-joined).
+    // \d+ captures the full number so "#291" never partial-matches "#2910".
+    private static readonly Regex CastedByTextblock =
+        new(@"Textblock\s*#(\d+)", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Faithful port of <c>SpellIsUsable(nSpell, nClass, nLevel,

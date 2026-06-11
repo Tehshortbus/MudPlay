@@ -75,6 +75,16 @@ public sealed class SpellbookState
     public string? ResolveSpellName(int spellNumber) => _catalog.GetSpellNameByNumber(spellNumber);
 
     /// <summary>
+    /// Build the textblock → cast-spell reverse index across the whole Spells
+    /// table — delegates to <see cref="KnownSpellCatalog.BuildCastByTextblockIndex"/>.
+    /// The Spell Book's per-spell effect rollup uses it to expand an Abil-148
+    /// (TextBlock) reference into the real effect the textblock casts, which
+    /// can point at any spell rather than only the current class's learnable list.
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> BuildCastByTextblockIndex()
+        => _catalog.BuildCastByTextblockIndex();
+
+    /// <summary>
     /// The per-round mana cost of the spell with this <c>Spells.Short</c>
     /// cast-code, or <c>null</c> when no available spell matches. Computed via
     /// <see cref="SpellCalculator.ManaCost"/> (level-independent — the energy

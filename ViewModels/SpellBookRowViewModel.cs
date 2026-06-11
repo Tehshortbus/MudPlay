@@ -22,7 +22,8 @@ public sealed class SpellBookRowViewModel
         bool isObtained,
         int level,
         Func<int, SpellFormulaInput?> resolveChain,
-        Func<int, string?>? resolveSpellName = null)
+        Func<int, string?>? resolveSpellName = null,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null)
     {
         Short = spell.Short;
         Name = spell.Name;
@@ -31,7 +32,7 @@ public sealed class SpellBookRowViewModel
 
         Mana = SpellCalculator.ManaCost(spell.Formula);
         ManaText = Mana.ToString();
-        EffectText = BuildEffect(spell.Formula, level, resolveChain, resolveSpellName);
+        EffectText = BuildEffect(spell.Formula, level, resolveChain, resolveSpellName, resolveTextblockCasts);
         FormulaText = BuildFormula(spell.Formula);
     }
 
@@ -129,7 +130,8 @@ public sealed class SpellBookRowViewModel
         in SpellFormulaInput formula,
         int level,
         Func<int, SpellFormulaInput?> resolveChain,
-        Func<int, string?>? resolveSpellName)
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null)
     {
         List<string> parts = new();
 
@@ -148,7 +150,7 @@ public sealed class SpellBookRowViewModel
         string removes = BuildRemoves(formula, resolveSpellName);
         if (removes.Length > 0) parts.Add(removes);
 
-        string affects = BuildAffects(formula, level);
+        string affects = BuildAffects(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts);
         if (affects.Length > 0) parts.Add(affects);
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
@@ -165,7 +167,12 @@ public sealed class SpellBookRowViewModel
     /// Damage / heal / message / removed-spell codes are surfaced elsewhere
     /// (see <see cref="_affectSkip"/>).
     /// </summary>
-    private static string BuildAffects(in SpellFormulaInput formula, int level)
+    private static string BuildAffects(
+        in SpellFormulaInput formula,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts)
     {
         (long affMin, long affMax) = SpellCalculator.AffectMagnitude(formula, level);
 
@@ -176,10 +183,21 @@ public sealed class SpellBookRowViewModel
             string? name = AbilityNames.GetName(a.Code);
             if (name is null) continue;
 
-            // TextBlock's value is a record number, not a magnitude — show it
-            // unsigned (MME's NO-HEADER path), never "TextBlock +869".
+            // TextBlock's AbilVal is a record number, not a magnitude. Prefer
+            // the real effect(s) the textblock casts — resolved via the Spells
+            // "Casted By" reverse-link — so a chained transform's duration /
+            // stat bonuses surface inline. Falls back to the unsigned record
+            // number (MME's NO-HEADER path, never "TextBlock +869") when the
+            // textblock links to nothing.
             if (a.Code == TextBlockCode)
             {
+                string expanded = ExpandTextblockCasts(
+                    a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts);
+                if (expanded.Length > 0)
+                {
+                    parts.Add(expanded);
+                    continue;
+                }
                 parts.Add(a.Value != 0
                     ? $"{name} {a.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
                     : $"{name} {Unsigned(affMin, affMax)}");
@@ -200,6 +218,37 @@ public sealed class SpellBookRowViewModel
                 parts.Add($"{name} {SignedRange(affMin, affMax)}");
             else
                 parts.Add(name); // flag-style affect — no magnitude to show
+        }
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Expand an Abil-148 TextBlock reference into the effect(s) of the real
+    /// spells that textblock casts, resolved via the Spells <c>Casted By</c>
+    /// reverse-link. Each linked spell's effect is rendered with
+    /// <see cref="BuildEffect"/> and joined with ", "; spells producing no
+    /// figure ("—") are dropped. <b>One level deep</b> — the recursion passes
+    /// no textblock resolver, so a textblock that casts a spell looping back to
+    /// the same textblock can't recurse infinitely. Empty when no resolver is
+    /// supplied or the textblock links to nothing.
+    /// </summary>
+    private static string ExpandTextblockCasts(
+        int textblock,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts)
+    {
+        if (resolveTextblockCasts is null) return string.Empty;
+        IReadOnlyList<KnownSpell> casts = resolveTextblockCasts(textblock);
+        if (casts.Count == 0) return string.Empty;
+
+        List<string> parts = new();
+        foreach (KnownSpell s in casts)
+        {
+            string effect = BuildEffect(s.Formula, level, resolveChain, resolveSpellName, resolveTextblockCasts: null);
+            if (effect.Length == 0 || effect == "—") continue;
+            parts.Add(effect);
         }
         return string.Join(", ", parts);
     }

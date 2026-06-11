@@ -86,6 +86,18 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         SpellFormulaInput? ResolveChain(int number)
             => byNumber.TryGetValue(number, out SpellFormulaInput f) ? f : null;
 
+        // Textblock → cast-spell reverse index, built lazily on the first
+        // Abil-148 row so a book with no TextBlock spells pays nothing, and a
+        // book with several reuses the single full-table scan.
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? castIndex = null;
+        IReadOnlyList<KnownSpell> ResolveTextblockCasts(int textblock)
+        {
+            castIndex ??= _book.BuildCastByTextblockIndex();
+            return castIndex.TryGetValue(textblock, out IReadOnlyList<KnownSpell>? list)
+                ? list
+                : System.Array.Empty<KnownSpell>();
+        }
+
         string filter = SearchText.Trim();
         Rows.Clear();
         foreach (KnownSpell spell in _book.Available)
@@ -93,7 +105,8 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
             bool obtained = _book.IsObtained(spell.Number);
             if (ShowObtainedOnly && !obtained) continue;
             if (filter.Length > 0 && !Matches(spell, filter)) continue;
-            Rows.Add(new SpellBookRowViewModel(spell, obtained, _book.Level, ResolveChain, _book.ResolveSpellName));
+            Rows.Add(new SpellBookRowViewModel(
+                spell, obtained, _book.Level, ResolveChain, _book.ResolveSpellName, ResolveTextblockCasts));
         }
 
         OnPropertyChanged(nameof(StatusText));
