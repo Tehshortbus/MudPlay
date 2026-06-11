@@ -357,6 +357,16 @@ public sealed class AppServices
     public Game.Spells.SpellListParser SpellList { get; }
 
     /// <summary>
+    /// Marks powers obtained the moment they're learned at training (the
+    /// "You learn the following Kai abilities:" block). Incremental, like the
+    /// learn-scroll line — feeds <see cref="Spellbook"/>'s obtained set
+    /// without snapshotting it. Bound to the per-session
+    /// <see cref="Terminal.LineExtractor"/> by
+    /// <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.Spells.TrainLearnParser TrainLearn { get; }
+
+    /// <summary>
     /// Sends the configured <see cref="GameCommands.EntryCommand"/>
     /// when the MajorMUD main-menu screen is recognised at the tail
     /// end of the automated BBS-login sequence. Latched closed by
@@ -1125,6 +1135,11 @@ public sealed class AppServices
         SpellCatalog = new Game.Spells.KnownSpellCatalog(GameData);
         Spellbook = new Game.Spells.SpellbookState(SpellCatalog);
         SpellList = new Game.Spells.SpellListParser(Spellbook, Log);
+        // Train-time learning — mark a power obtained the moment the
+        // "You learn the following Kai abilities:" block lists it, without
+        // waiting for the next `pow` poll. Incremental, like the learn-scroll
+        // line. Also binds to the per-session LineExtractor in MainWindowVM.
+        TrainLearn = new Game.Spells.TrainLearnParser(Spellbook, Log);
         // Reroll → drop the obtained set. The fresh character has learned
         // nothing; the next `stat` rebuilds the available list. Done here
         // rather than waiting for the stat poll so a same-class reroll

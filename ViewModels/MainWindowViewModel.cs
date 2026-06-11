@@ -561,6 +561,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Book's obtained set. App-level (survives reconnects), bound to
         // the per-session extractor here like Stats above.
         AppServices.Current.SpellList.AttachLineExtractor(Lines);
+        // TrainLearnParser — marks powers obtained the moment training lists
+        // them ("You learn the following Kai abilities:"). Same per-session
+        // binding as SpellList above.
+        AppServices.Current.TrainLearn.AttachLineExtractor(Lines);
         // DeathDetector — watches for the post-death
         // "You now have N lives remaining." line; fires
         // RoomTracker.NoteDeath which appends to
