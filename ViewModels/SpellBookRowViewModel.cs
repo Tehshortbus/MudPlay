@@ -94,6 +94,14 @@ public sealed class SpellBookRowViewModel
     private const int RemovesSpellCode = 122;
 
     /// <summary>
+    /// TextBlock ability code (MME Abil 148). Its <c>AbilVal</c> is a
+    /// TextBlock *record number* the spell executes, not a stat magnitude —
+    /// so it renders unsigned ("TextBlock 869"), matching MME's NO-HEADER
+    /// group in <c>GetAbilityStats</c> (<c>GetAbilityName(148) &amp; " " &amp; nValue</c>).
+    /// </summary>
+    private const int TextBlockCode = 148;
+
+    /// <summary>
     /// The raw scaling formula (base value + per-level slope) shown as a
     /// tooltip so the player can see how the effect grows, independent of
     /// the current level. Empty when the spell has no scaling magnitude.
@@ -151,6 +159,16 @@ public sealed class SpellBookRowViewModel
             string? name = AbilityNames.GetName(a.Code);
             if (name is null) continue;
 
+            // TextBlock's value is a record number, not a magnitude — show it
+            // unsigned (MME's NO-HEADER path), never "TextBlock +869".
+            if (a.Code == TextBlockCode)
+            {
+                parts.Add(a.Value != 0
+                    ? $"{name} {a.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                    : $"{name} {Unsigned(affMin, affMax)}");
+                continue;
+            }
+
             if (a.Value != 0)
                 parts.Add($"{name} {Signed(a.Value)}");
             else if (affMin != 0 || affMax != 0)
@@ -170,6 +188,13 @@ public sealed class SpellBookRowViewModel
 
     private static string SignedRange(long min, long max)
         => min == max ? Signed(min) : $"{Signed(min)} to {Signed(max)}";
+
+    /// <summary>Unsigned magnitude range — for reference values (TextBlock
+    /// record numbers) where a leading <c>+</c> would be misleading.</summary>
+    private static string Unsigned(long min, long max)
+        => min == max
+            ? min.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : $"{min.ToString(System.Globalization.CultureInfo.InvariantCulture)} to {max.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
     /// <summary>
     /// Render any RemovesSpell (Abil 122) slots by the removed spell's name —

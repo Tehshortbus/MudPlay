@@ -211,6 +211,23 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void TextBlock_RendersUnsignedRecordNumber()
+    {
+        // Abil 148 (TextBlock) carries a TextBlock *record number*, not a
+        // magnitude — it must render "TextBlock 869", never "TextBlock +869"
+        // (MME's NO-HEADER group: GetAbilityName(148) & " " & nValue).
+        SpellFormulaInput f = new()
+        {
+            Number = 12,
+            Abilities = [new SpellAbility(148, 869)],
+        };
+        KnownSpell s = Spell("wood", "wooden box gems", 5, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 6, NoChain);
+
+        Assert.Equal("TextBlock 869", row.EffectText);
+    }
+
+    [Fact]
     public void DamageAbility_NotDoublePrintedAsAffect()
     {
         // Code 1 (Damage) is folded into the Dmg figure; an accompanying
