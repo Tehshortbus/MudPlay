@@ -154,79 +154,47 @@
                 <TextBlock Classes="FieldLabel" Text="%"/>
             </StackPanel>
 
-            <!-- ============ Party bless (10 slots, no timeouts) ============ -->
+            <!-- ============ Party bless (10 slots) ============ -->
+            <!-- Each row = a spell short-code picker + a checkbox per loaded
+                 class. A member receives the buff only when their class is
+                 ticked. Row order is priority order. Class checkboxes come
+                 live from the active set's Classes.json (rebuilt on set swap),
+                 so the list grows / shrinks with whatever gamedata is loaded. -->
             <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)"/>
-            <Grid ColumnDefinitions="120,260,*">
-                <!-- 10 rows of label + autocomplete spell picker. -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Bless 1"/>
-                <AutoCompleteBox Grid.Row="0" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #1."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 2"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #2."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 3"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #3."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 4"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #4."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 5"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #5."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 6"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #6."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 7"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #7."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 8"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #8."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 9"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #9."/>
-            </Grid>
-            <Grid ColumnDefinitions="120,260,*">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 10"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 ItemsSource="{Binding SpellSuggestions}"
-                                 PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Party-buff slot #10."/>
-            </Grid>
+            <ItemsControl ItemsSource="{Binding BlessSlots}" Margin="0,2,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PartyBlessSlotViewModel">
+                        <Grid ColumnDefinitions="120,260,*" Margin="0,2,0,6">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel"
+                                       Text="{Binding Label}"/>
+                            <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left"
+                                             Text="{Binding Spell, Mode=TwoWay}"
+                                             ItemsSource="{Binding $parent[ItemsControl].((vm:PartySectionViewModel)DataContext).SpellSuggestions}"
+                                             ValueMemberBinding="{ReflectionBinding Short}"
+                                             ItemFilter="{Binding $parent[ItemsControl].((vm:PartySectionViewModel)DataContext).SpellSuggestionFilter}"
+                                             ItemTemplate="{StaticResource SpellPickItem}"
+                                             PlaceholderText="Type code or name…"
+                                             ToolTip.Tip="Beneficial spell cast on party members whose class is ticked to the right. Cast as `&lt;code&gt; &lt;member-name&gt;`."/>
+                            <ItemsControl Grid.Column="2" ItemsSource="{Binding Classes}"
+                                          VerticalAlignment="Center" Margin="8,0,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PartyBlessClassToggle">
+                                        <CheckBox Content="{Binding Name}"
+                                                  IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                  Margin="0,0,10,0"
+                                                  ToolTip.Tip="Cast this slot's bless on party members of this class."/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
             <!-- ============ Options ============ -->
             <TextBlock Classes="SectionHeader" Text="Options"/>

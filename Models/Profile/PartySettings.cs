@@ -163,10 +163,53 @@ public sealed class PartySettings
     /// </summary>
     public int WaitIfMemberBelowPercent { get; set; }
 
-    // Party-cure + party-buff pickers ship in a follow-up commit —
-    // they need per-member condition tracking + per-member active-
-    // buff tracking, both of which are deferred until the spellbook
+    // ----- Party bless slots ----------------------------------------
+
+    /// <summary>
+    /// Up to 10 beneficial-spell slots cast on OTHER party members.
+    /// Each slot pairs a spell short-code with the set of class numbers
+    /// it applies to — a member receives the buff only when their class
+    /// number is listed. Cast as <c>&lt;short&gt; &lt;given-name&gt;</c>
+    /// (e.g. <c>bles raijin</c>). Row order is priority order; the
+    /// party-bless path in <see cref="Game.Spells.CastingDirector"/>
+    /// walks self buffs first, then these party slots top-to-bottom.
+    /// Slots with no spell short are skipped. Always 10 entries so the
+    /// UI rows bind one-to-one; empty trailing slots persist as blanks.
+    /// </summary>
+    public List<PartyBlessSlot> BlessSlots { get; set; } = NewBlessSlots();
+
+    /// <summary>Builds a fresh list of 10 empty bless slots.</summary>
+    public static List<PartyBlessSlot> NewBlessSlots()
+    {
+        List<PartyBlessSlot> slots = new(PartyBlessSlotCount);
+        for (int i = 0; i < PartyBlessSlotCount; i++)
+            slots.Add(new PartyBlessSlot());
+        return slots;
+    }
+
+    /// <summary>Fixed number of party-bless slots shown in the UI.</summary>
+    public const int PartyBlessSlotCount = 10;
+
+    // Party-cure pickers ship in a follow-up commit — they need
+    // per-member condition tracking, deferred until the spellbook
     // gamedata duration model lands.
+}
+
+/// <summary>
+/// One party-bless slot: a beneficial spell plus the class numbers it
+/// targets. A party member gets the buff only when their class number
+/// is in <see cref="ClassNumbers"/>. Mutable DTO so the Settings → Party
+/// UI can two-way bind each row.
+/// </summary>
+public sealed class PartyBlessSlot
+{
+    /// <summary>4-letter spell short-code (e.g. <c>bles</c>), or
+    /// <c>null</c>/empty for an unused slot.</summary>
+    public string? Spell { get; set; }
+
+    /// <summary>Class numbers (from <c>Classes.json</c>) this buff
+    /// applies to. Empty means the slot targets no one.</summary>
+    public List<int> ClassNumbers { get; set; } = new();
 }
 
 /// <summary>Local character's combat rank within a party.</summary>

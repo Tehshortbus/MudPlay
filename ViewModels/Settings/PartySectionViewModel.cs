@@ -1,5 +1,9 @@
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -23,6 +27,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 
     private readonly ProfileService _profile;
     private readonly Game.Spells.SpellbookState _spellbook;
+    private readonly GameDataCache _gameData;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -117,6 +122,16 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// Consumed by <see cref="Game.Map.LeaderDoorAssistManager"/>.</summary>
     [ObservableProperty] private bool _helpLeaderOpenDoors;
 
+    // ----- Party bless slots (consumed by CastingDirector) -----------
+    // 10 fixed rows; each pairs a spell short-code with the set of class
+    // numbers it targets. Rebuilt from the active set's Classes table on
+    // load + ActiveSetChanged so the per-class checkboxes track whatever
+    // classes the imported gamedata defines.
+
+    /// <summary>The 10 editable party-bless rows. Always 10 entries so
+    /// the UI binds one-to-one with the persisted slots.</summary>
+    public ObservableCollection<PartyBlessSlotViewModel> BlessSlots { get; } = new();
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -124,15 +139,23 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
         _spellbook = AppServices.Current.Spellbook;
+        _gameData = AppServices.Current.GameData;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
+        _gameData.ActiveSetChanged += OnActiveSetChanged;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
     }
 
     private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
+
+    // Class roster changed (game-data set swap) — rebuild the bless rows
+    // preserving the user's current spell + checked-class edits. Marshalled
+    // because the cache fires this from its load path.
+    private void OnActiveSetChanged(string? _) =>
+        Dispatcher.UIThread.Post(() => RebuildBlessSlots(SnapshotBlessSlots()));
 
     public override void Apply()
     {
@@ -162,6 +185,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             WaitIfMemberBelowPercent = Math.Clamp(WaitIfMemberBelowPercent, 0, 100),
             IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
             HelpLeaderOpenDoors    = HelpLeaderOpenDoors,
+            BlessSlots             = SnapshotBlessSlots(),
         };
 
         profile.Settings ??= new();
@@ -220,6 +244,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         WaitIfMemberBelowPercent = dto.WaitIfMemberBelowPercent;
         IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
         HelpLeaderOpenDoors    = dto.HelpLeaderOpenDoors;
+        RebuildBlessSlots(NormalizeSlots(dto.BlessSlots));
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -229,6 +254,71 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 
     private static string? NullIfBlank(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // ----- Bless-slot rebuild / snapshot -----------------------------
+
+    /// <summary>Snapshot the current bless rows to persistable DTOs.
+    /// Always 10 entries — falls back to fresh empties before any row
+    /// VM has been built (e.g. when Apply runs with no profile UI).</summary>
+    private List<PartyBlessSlot> SnapshotBlessSlots() =>
+        BlessSlots.Count == 0
+            ? PartySettings.NewBlessSlots()
+            : BlessSlots.Select(s => s.ToDto()).ToList();
+
+    /// <summary>Pad / trim a deserialized slot list to exactly 10 entries
+    /// so the UI always renders the full set even if an older profile
+    /// stored fewer.</summary>
+    private static List<PartyBlessSlot> NormalizeSlots(List<PartyBlessSlot>? slots)
+    {
+        List<PartyBlessSlot> result = new(PartySettings.PartyBlessSlotCount);
+        for (int i = 0; i < PartySettings.PartyBlessSlotCount; i++)
+            result.Add(slots is not null && i < slots.Count ? slots[i] : new PartyBlessSlot());
+        return result;
+    }
+
+    /// <summary>Rebuild the 10 row VMs against the active set's class
+    /// roster, seeding each from <paramref name="slots"/>. Suppresses
+    /// dirty during the swap so a profile load / set swap doesn't mark
+    /// the tab dirty.</summary>
+    private void RebuildBlessSlots(List<PartyBlessSlot> slots)
+    {
+        bool wasSuppressed = _suppressDirty;
+        _suppressDirty = true;
+        try
+        {
+            IReadOnlyList<(int Number, string Name)> classes = ReadClasses();
+            BlessSlots.Clear();
+            for (int i = 0; i < PartySettings.PartyBlessSlotCount; i++)
+                BlessSlots.Add(new PartyBlessSlotViewModel(i + 1, classes, slots[i], MarkDirty));
+        }
+        finally
+        {
+            _suppressDirty = wasSuppressed;
+        }
+    }
+
+    /// <summary>Read the active set's <c>Classes</c> table as
+    /// (Number, Name) pairs, ordered by Number. Empty when no set is
+    /// loaded — the bless rows then render with no class checkboxes.</summary>
+    private IReadOnlyList<(int Number, string Name)> ReadClasses()
+    {
+        List<(int Number, string Name)> classes = new();
+        JsonDocument? doc = _gameData.GetRawTable("Classes");
+        if (doc is null) return classes;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out JsonElement numEl) ||
+                !numEl.TryGetInt32(out int number))
+                continue;
+            string name = row.TryGetProperty("Name", out JsonElement nameEl)
+                ? nameEl.GetString() ?? $"Class {number}"
+                : $"Class {number}";
+            classes.Add((number, name));
+        }
+        classes.Sort(static (a, b) => a.Number.CompareTo(b.Number));
+        return classes;
+    }
 
     private PartySettings ReadOrDefault()
     {

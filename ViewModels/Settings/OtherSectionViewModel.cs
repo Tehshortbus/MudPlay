@@ -66,6 +66,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Lockpicks";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
+            yield return "Bless while resting";
+            yield return "Bless during combat";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -175,6 +177,19 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // per-character preference; it's "I'm debugging right now",
     // and a session toggle in the LogPane is the right home.
 
+    // ----- Party bless gating (wired data; engine lands in PR 13.D) -----
+    // Both default ON. They persist now so the user can pre-configure
+    // them; the party-bless path in CastingDirector reads them once it
+    // ships. No live service mirror yet — no engine consumes them.
+
+    /// <summary>When on (default), the party-bless engine may cast
+    /// beneficial spells on members while the character is resting.</summary>
+    [ObservableProperty] private bool _blessWhileResting = true;
+
+    /// <summary>When on (default), the party-bless engine may cast
+    /// beneficial spells on members during combat.</summary>
+    [ObservableProperty] private bool _blessDuringCombat = true;
+
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
@@ -220,8 +235,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Enable auto-combat on reconnect", StubFieldKind.Check, "Phase 13 PR 13.A — flips CombatManager on at logon."),
             new StubField("Enable auto-rest on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.B — flips HealthManager rest on at logon."),
             new StubField("Enable auto-heal on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.D — flips CastingDirector self-heal on at logon."),
-            new StubField("Bless while resting",  StubFieldKind.Check, "Phase 13 PR 13.D — CastingDirector recasts party-buffs during downtime."),
-            new StubField("Bless during combat",  StubFieldKind.Check, "Phase 13 PR 13.D — extends bless casting into active rounds."),
+            // "Bless while resting" / "Bless during combat" graduated to
+            // wired toggles (rendered in the wired section above).
         }),
         new StubGroup("Locks & traps", new[]
         {
@@ -277,6 +292,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
+            BlessWhileResting = BlessWhileResting,
+            BlessDuringCombat = BlessDuringCombat,
         };
 
         profile.Settings ??= new();
@@ -335,6 +352,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
+        BlessWhileResting = dto.BlessWhileResting;
+        BlessDuringCombat = dto.BlessDuringCombat;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -407,6 +426,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
+    partial void OnBlessWhileRestingChanged(bool value) => MarkDirty();
+    partial void OnBlessDuringCombatChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {

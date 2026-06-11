@@ -26,6 +26,8 @@ public sealed class OtherSectionViewModelTests
             GameExitCommand  = "bye",
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
+            BlessWhileResting = false,
+            BlessDuringCombat = false,
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -41,6 +43,8 @@ public sealed class OtherSectionViewModelTests
         Assert.Equal("bye",   back.GameExitCommand);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
+        Assert.False(back.BlessWhileResting);
+        Assert.False(back.BlessDuringCombat);
     }
 
     // Note: the per-character "Phase 9 diagnostic toggle" tests
@@ -75,5 +79,10 @@ public sealed class OtherSectionViewModelTests
         // 20 search retries, 5 disarm retries.
         Assert.Equal(20, dto.MaxTrapSearchAttempts);
         Assert.Equal(5,  dto.MaxTrapDisarmAttempts);
+        // Party-bless gating defaults ON — the bless engine may cast on
+        // party members both while resting and during combat unless the
+        // user opts out.
+        Assert.True(dto.BlessWhileResting);
+        Assert.True(dto.BlessDuringCombat);
     }
 }
