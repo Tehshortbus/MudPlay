@@ -471,6 +471,117 @@ public sealed class CombatSpellChooserTests
             sut.Choose(settings, Ctx(target: "a rat")).Action);
     }
 
+    // ----- Deterministic level-immunity gating (LevelBlockedActions) -----
+
+    private static CombatSpellContext LevelBlockedCtx(
+        params CombatSpellAction[] blocked) =>
+        new(EnemyCount: 3, TargetRawName: "a rat", Mana: 100, MaxMana: 100,
+            BackstabPending: false,
+            LevelBlockedActions: new HashSet<CombatSpellAction>(blocked));
+
+    [Fact]
+    public void Choose_SingleDebuffLevelBlocked_SkipsToAttack()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SingleTargetDebuffSpell = Slot("weaken"),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        // SingleDebuff's ReqLevel < the target's SpellImmu → engine marks it
+        // level-blocked → the debuff is skipped and the round attacks.
+        CombatSpellDecision d = sut.Choose(
+            settings, LevelBlockedCtx(CombatSpellAction.SingleDebuff));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("harm", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_NormalAttackSpellLevelBlocked_FallsToAlternate()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+
+        CombatSpellDecision d = sut.Choose(
+            settings, LevelBlockedCtx(CombatSpellAction.NormalAttackSpell));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, d.Action);
+        Assert.Equal("flame", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_BothAttackSpellsLevelBlocked_FallsToWeapon()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+
+        CombatSpellDecision d = sut.Choose(
+            settings,
+            LevelBlockedCtx(
+                CombatSpellAction.NormalAttackSpell,
+                CombatSpellAction.AlternateAttackSpell));
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+        Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_NotLevelBlocked_FiresNormally()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SingleTargetDebuffSpell = Slot("weaken"),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        // An empty (but non-null) block set leaves every action eligible.
+        CombatSpellDecision d = sut.Choose(settings, LevelBlockedCtx());
+        Assert.Equal(CombatSpellAction.SingleDebuff, d.Action);
+        Assert.Equal("weaken", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_AreaDebuff_NeverLevelBlocked()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            AreaDebuffSpell = Slot("blindall", minEnemies: 2),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        // Even if the set names AreaDebuff (it never does in practice), the
+        // area branch ignores level-block — room spells hit the whole room.
+        CombatSpellDecision d = sut.Choose(
+            settings, LevelBlockedCtx(CombatSpellAction.AreaDebuff));
+        Assert.Equal(CombatSpellAction.AreaDebuff, d.Action);
+        Assert.Equal("blindall", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_MultiAttack_NeverLevelBlocked()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            MultiAttackSpell = Slot("star", minEnemies: 2),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        CombatSpellDecision d = sut.Choose(
+            settings, LevelBlockedCtx(CombatSpellAction.MultiAttack));
+        Assert.Equal(CombatSpellAction.MultiAttack, d.Action);
+        Assert.Equal("star", d.Spell);
+    }
+
     // ----- Full per-room ordering walk-through ---------------------------
 
     [Fact]

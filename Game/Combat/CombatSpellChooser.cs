@@ -154,6 +154,7 @@ public sealed class CombatSpellChooser
 
         CombatSpellSlot single = settings.SingleTargetDebuffSpell;
         if (IsConfigured(single)
+            && !IsLevelBlocked(ctx, CombatSpellAction.SingleDebuff)
             && !_singleDebuffedTargets.Contains(ctx.TargetRawName)
             && CastsOk(single, _singleDebuffCasts)
             && ManaOk(single, ctx, mode))
@@ -178,6 +179,7 @@ public sealed class CombatSpellChooser
         CombatSpellSlot normal = settings.NormalAttackSpell;
         if (IsConfigured(normal)
             && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
+            && !IsLevelBlocked(ctx, CombatSpellAction.NormalAttackSpell)
             && CastsOk(normal, _normalAttackCasts)
             && ManaOk(normal, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, normal.SpellName!);
@@ -185,6 +187,7 @@ public sealed class CombatSpellChooser
         CombatSpellSlot alt = settings.AlternateAttackSpell;
         if (IsConfigured(alt)
             && !IsImmune(ctx, CombatSpellAction.AlternateAttackSpell)
+            && !IsLevelBlocked(ctx, CombatSpellAction.AlternateAttackSpell)
             && CastsOk(alt, _alternateAttackCasts)
             && ManaOk(alt, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.AlternateAttackSpell, alt.SpellName!);
@@ -281,6 +284,18 @@ public sealed class CombatSpellChooser
     private static bool IsImmune(in CombatSpellContext ctx, CombatSpellAction action) =>
         ctx.ImmuneAttackSpells is { } set && set.Contains(action);
 
+    /// <summary>The current target's <c>SpellImmu</c> level deterministically
+    /// blocks this single-target spell (its <c>ReqLevel</c> &lt; the monster's
+    /// immunity), per game data — distinct from the observed "no effect"
+    /// immunity in <see cref="IsImmune"/>. Only the single-target slots
+    /// (<see cref="CombatSpellAction.SingleDebuff"/> /
+    /// <see cref="CombatSpellAction.NormalAttackSpell"/> /
+    /// <see cref="CombatSpellAction.AlternateAttackSpell"/>) are level-gated;
+    /// area / multi room spells hit the whole room, so one immune occupant
+    /// doesn't disqualify them.</summary>
+    private static bool IsLevelBlocked(in CombatSpellContext ctx, CombatSpellAction action) =>
+        ctx.LevelBlockedActions is { } set && set.Contains(action);
+
     /// <summary>Under the per-room cast cap. 0 = unlimited.</summary>
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
         slot.MaxCastsPerRoom <= 0 || castsSoFar < slot.MaxCastsPerRoom;
@@ -349,7 +364,11 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 /// (<c>null</c> when nothing is immune);
 /// <paramref name="SpellsAvailable"/> is false when the engine has no combat
 /// spell caster wired, so the Debuffing / Spells categories are skipped and
-/// the order collapses to Backstab vs Physical.</summary>
+/// the order collapses to Backstab vs Physical;
+/// <paramref name="LevelBlockedActions"/> is the set of single-target spell
+/// actions the current target's <c>SpellImmu</c> level deterministically
+/// blocks (their <c>ReqLevel</c> &lt; the monster's immunity), or <c>null</c>
+/// when nothing is level-blocked.</summary>
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,
@@ -357,4 +376,5 @@ public readonly record struct CombatSpellContext(
     int MaxMana,
     bool BackstabPending,
     IReadOnlySet<CombatSpellAction>? ImmuneAttackSpells = null,
-    bool SpellsAvailable = true);
+    bool SpellsAvailable = true,
+    IReadOnlySet<CombatSpellAction>? LevelBlockedActions = null);

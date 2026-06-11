@@ -654,6 +654,22 @@ public sealed class AppServices
     /// </summary>
     public Game.Combat.SeeHiddenIndex SeeHidden { get; private set; } = null!;
 
+    /// <summary>Lookup of each monster's <c>Magical</c> / <c>SpellImmu</c>
+    /// levels (codes 28 / 139) in the active game-data set. Drives
+    /// CombatManager's deterministic weapon-vs-monster hit eligibility and
+    /// spell-immunity gating.</summary>
+    public Game.Combat.MonsterMagicIndex MonsterMagic { get; private set; } = null!;
+
+    /// <summary>Lookup of each weapon's <c>HitMagic</c> level (code 142) in
+    /// the active game-data set. Paired with <see cref="MonsterMagic"/> for
+    /// the HitMagic ≥ Magical hit check.</summary>
+    public Game.Combat.ItemMagicIndex ItemMagic { get; private set; } = null!;
+
+    /// <summary>Lookup of each spell's <c>ReqLevel</c> by cast-code in the
+    /// active game-data set. Paired with <see cref="MonsterMagic"/> for the
+    /// ReqLevel ≥ SpellImmu eligibility check.</summary>
+    public Game.Combat.SpellReqLevelIndex SpellReqLevel { get; private set; } = null!;
+
     /// <summary>
     /// Phase 9 PR 9.A — observes mid-room arrival lines
     /// ("&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;.")
@@ -1750,6 +1766,15 @@ public sealed class AppServices
         Combat.SetBackstabHooks(
             isSneaking:   () => Stealth.IsSneaking,
             hasSeeHidden: n => SeeHidden.Has(n));
+
+        // Deterministic magic eligibility — weapon HitMagic ≥ monster Magical
+        // picks normal-vs-alternate, and spell ReqLevel ≥ monster SpellImmu
+        // gates single-target debuff / attack spells. Both fail open when game
+        // data is silent.
+        MonsterMagic = new Game.Combat.MonsterMagicIndex(GameData);
+        ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
+        SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
+        Combat.SetMagicEligibility(MonsterMagic, ItemMagic, SpellReqLevel);
 
         // PR 4.c-b combat-off "clear hostiles when seen Hidden" override —
         // a stealth runner (AutoSneak on) sprinting a route with combat

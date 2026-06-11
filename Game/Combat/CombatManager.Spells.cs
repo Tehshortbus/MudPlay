@@ -36,6 +36,37 @@ public sealed partial class CombatManager
     private CastCoordinator? _cast;
     private Func<(int Ma, int MaxMa)>? _readMana;
 
+    // ----- Deterministic magic eligibility (game-data gated) ----------
+    // Optional, like the spell caster. Until SetMagicEligibility runs, the
+    // weapon/spell gating fails open: any weapon hits and no spell is
+    // level-blocked, so the chooser/weapon path behave exactly as before.
+
+    private MonsterMagicIndex? _monsterMagic;
+    private ItemMagicIndex? _itemMagic;
+    private SpellReqLevelIndex? _spellReqLevel;
+
+    /// <summary>
+    /// Opt into deterministic magic-eligibility gating.
+    /// <paramref name="monsterMagic"/> supplies each monster's
+    /// <c>Magical</c> / <c>SpellImmu</c> levels, <paramref name="itemMagic"/>
+    /// supplies each weapon's <c>HitMagic</c> level, and
+    /// <paramref name="spellReqLevel"/> supplies each spell's <c>ReqLevel</c>.
+    /// Once wired, normal-vs-alternate weapon selection prefers whichever
+    /// weapon can actually hit the target (HitMagic ≥ Magical) and the chooser
+    /// skips single-target spells the target is level-immune to (ReqLevel &lt;
+    /// SpellImmu). Until called, both gates fail open.
+    /// </summary>
+    public void SetMagicEligibility(
+        MonsterMagicIndex monsterMagic, ItemMagicIndex itemMagic, SpellReqLevelIndex spellReqLevel)
+    {
+        ArgumentNullException.ThrowIfNull(monsterMagic);
+        ArgumentNullException.ThrowIfNull(itemMagic);
+        ArgumentNullException.ThrowIfNull(spellReqLevel);
+        _monsterMagic = monsterMagic;
+        _itemMagic = itemMagic;
+        _spellReqLevel = spellReqLevel;
+    }
+
     /// <summary>
     /// Room-scoped damage-immunity map (CS-c) — canonical species →
     /// single-target attack-spell actions that produced a
@@ -97,7 +128,7 @@ public sealed partial class CombatManager
         RoomEntitiesObservation obs)
     {
         CombatSpellContext ctx = CombatSpellsWired
-            ? BuildContext(settings, obs, picked.RawName, enemyCount)
+            ? BuildContext(settings, obs, picked.RawName, enemyCount, picked.MonsterNumber)
             : BuildWeaponContext(settings, obs, picked.RawName, enemyCount);
 
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
@@ -105,10 +136,12 @@ public sealed partial class CombatManager
         switch (decision.Action)
         {
             case CombatSpellAction.WeaponAttack:
-                // Per-target dedup — if the picked species is in this room's
-                // failed-vs-normal set, pre-emptively swap to the alternate
-                // weapon. SendWeaponAttack sets CurrentTarget.
-                bool useAlt = _normalWeaponFailedMonsters.Contains(picked.ResolvedName);
+                // Pick the weapon that can actually hit: alternate when this
+                // species already failed vs normal this room, OR when game
+                // data says the normal weapon's HitMagic is below the
+                // monster's Magical level but the alternate clears it.
+                // SendWeaponAttack sets CurrentTarget.
+                bool useAlt = ShouldUseAlternateWeapon(settings, picked.ResolvedName, picked.MonsterNumber);
                 SendWeaponAttack(settings, picked.RawName, useAlt, picked.Priority);
                 break;
 
@@ -182,7 +215,8 @@ public sealed partial class CombatManager
         }
 
         CombatSettings settings = _readSettings();
-        CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
+        CombatSpellContext ctx = BuildContext(
+            settings, obs, target, CountEngageable(obs), ResolveMonsterNumber(obs, target));
 
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
         if (decision.Action is CombatSpellAction.WeaponAttack or CombatSpellAction.Backstab)
@@ -192,7 +226,8 @@ public sealed partial class CombatManager
             // the heartbeat goes quiet and the server's auto-repeat takes over.
             // (Backstab can't occur mid-combat — sneak is already broken — but
             // we treat it as the weapon fallback defensively.)
-            bool useAlt = _normalWeaponFailedMonsters.Contains(ResolveSpeciesFromCurrentTarget());
+            bool useAlt = ShouldUseAlternateWeapon(
+                settings, ResolveSpeciesFromCurrentTarget(), ResolveMonsterNumber(obs, target));
             SendWeaponAttack(settings, target, useAlt);
             return;
         }
@@ -252,17 +287,93 @@ public sealed partial class CombatManager
     /// observation).
     /// </summary>
     private CombatSpellContext BuildContext(
-        CombatSettings settings, RoomEntitiesObservation obs, string target, int enemyCount)
+        CombatSettings settings, RoomEntitiesObservation obs, string target,
+        int enemyCount, int monsterNumber)
     {
         (int ma, int maxMa) = _readMana!();
         return new CombatSpellContext(
-            EnemyCount:         enemyCount,
-            TargetRawName:      target,
-            Mana:               ma,
-            MaxMana:            maxMa,
-            BackstabPending:    BackstabPending(settings, obs),
-            ImmuneAttackSpells: ImmuneActionsFor(target),
-            SpellsAvailable:    true);
+            EnemyCount:          enemyCount,
+            TargetRawName:       target,
+            Mana:                ma,
+            MaxMana:             maxMa,
+            BackstabPending:     BackstabPending(settings, obs),
+            ImmuneAttackSpells:  ImmuneActionsFor(target),
+            SpellsAvailable:     true,
+            LevelBlockedActions: LevelBlockedFor(settings, monsterNumber));
+    }
+
+    /// <summary>
+    /// Choose the alternate weapon when (a) this species already produced a
+    /// "no effect" line vs the normal weapon this room, OR (b) game data says
+    /// the normal weapon can't hit this monster but the alternate can. The
+    /// magic check is deterministic: a weapon hits iff its <c>HitMagic</c> ≥
+    /// the monster's <c>Magical</c> level. Fails open — no swap — when the
+    /// eligibility indexes aren't wired, the monster has no Magical level, the
+    /// normal weapon is unknown, or the alternate can't hit either.
+    /// </summary>
+    private bool ShouldUseAlternateWeapon(
+        CombatSettings settings, string resolvedSpecies, int monsterNumber)
+    {
+        if (_normalWeaponFailedMonsters.Contains(resolvedSpecies)) return true;
+        if (_monsterMagic is null || _itemMagic is null) return false;
+
+        int magical = _monsterMagic.MagicalLevel(monsterNumber);
+        if (magical <= 0) return false;                 // any weapon hits
+
+        int normalHit = _itemMagic.HitMagic(settings.NormalWeapon);
+        if (normalHit < 0) return false;                // unknown normal → don't second-guess
+        if (normalHit >= magical) return false;         // normal already hits → keep it
+
+        // Normal can't hit. Swap only if the alternate actually clears the bar.
+        return _itemMagic.HitMagic(settings.AlternateWeapon) >= magical;
+    }
+
+    /// <summary>
+    /// The single-target spell actions the monster's <c>SpellImmu</c> level
+    /// deterministically blocks: any configured single-target debuff / attack
+    /// spell whose <c>ReqLevel</c> is below the immunity is unusable on this
+    /// target. Area / multi room spells are never level-blocked here — they
+    /// hit the whole room, so one immune occupant doesn't disqualify them
+    /// (mirrors the observed-immunity carve-out for multi-attack). Returns
+    /// <c>null</c> (nothing blocked) when the indexes aren't wired or the
+    /// monster has no immunity.
+    /// </summary>
+    private IReadOnlySet<CombatSpellAction>? LevelBlockedFor(
+        CombatSettings settings, int monsterNumber)
+    {
+        if (_monsterMagic is null || _spellReqLevel is null) return null;
+        int immu = _monsterMagic.SpellImmunity(monsterNumber);
+        if (immu <= 0) return null;                     // any spell allowed
+
+        HashSet<CombatSpellAction>? blocked = null;
+        void Check(CombatSpellSlot slot, CombatSpellAction action)
+        {
+            if (string.IsNullOrWhiteSpace(slot.SpellName)) return;
+            int req = _spellReqLevel.ReqLevel(slot.SpellName);
+            if (req < 0) return;                        // unknown spell → fail open
+            if (req >= immu) return;                    // eligible
+            (blocked ??= new HashSet<CombatSpellAction>()).Add(action);
+        }
+        Check(settings.SingleTargetDebuffSpell, CombatSpellAction.SingleDebuff);
+        Check(settings.NormalAttackSpell, CombatSpellAction.NormalAttackSpell);
+        Check(settings.AlternateAttackSpell, CombatSpellAction.AlternateAttackSpell);
+        return blocked;
+    }
+
+    /// <summary>Resolve the <c>MonsterNumber</c> of the entity matching
+    /// <paramref name="rawName"/> in <paramref name="obs"/>, or <c>-1</c> when
+    /// no match carries a number — which the eligibility helpers treat as
+    /// "no data, fail open".</summary>
+    private static int ResolveMonsterNumber(RoomEntitiesObservation obs, string rawName)
+    {
+        for (int i = 0; i < obs.Entities.Count; i++)
+        {
+            RoomEntity e = obs.Entities[i];
+            if (e.Kind != EntityKind.Monster) continue;
+            if (!string.Equals(e.RawName, rawName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (e.MonsterNumber is int n) return n;
+        }
+        return -1;
     }
 
     /// <summary>
@@ -345,11 +456,13 @@ public sealed partial class CombatManager
         if (_classifier.Current is not { } obs) return;
         if (!TargetPresent(obs, target)) return;
 
-        CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
+        CombatSpellContext ctx = BuildContext(
+            settings, obs, target, CountEngageable(obs), ResolveMonsterNumber(obs, target));
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
         if (decision.Action is CombatSpellAction.WeaponAttack or CombatSpellAction.Backstab)
         {
-            bool useAlt = _normalWeaponFailedMonsters.Contains(ResolveSpeciesByName(target));
+            bool useAlt = ShouldUseAlternateWeapon(
+                settings, ResolveSpeciesByName(target), ResolveMonsterNumber(obs, target));
             SendWeaponAttack(settings, target, useAlt);
             return;
         }
