@@ -102,6 +102,23 @@ public sealed class SpellBookRowViewModel
     private const int TextBlockCode = 148;
 
     /// <summary>
+    /// Pure-flag ability codes — MME's <c>PullSpellEQ</c> flag group
+    /// (<c>Case 23, 51, 52, 80, 97, 98, 100, 108 To 113, 119, 138, 144, 178</c>).
+    /// They carry no magnitude; MME renders them name-only via
+    /// <c>GetAbilityStats</c> with no value. Without this guard a flag that
+    /// coexists with a damage / heal spell (so the level-scaled Min/Max is
+    /// non-zero) wrongly inherits that spell's range — e.g. NonMagicalSpell
+    /// (144) on "way of the dragon" printing "NonMagicalSpell +13 to +22",
+    /// duplicating the "Dmg 13–22" figure.
+    /// </summary>
+    private static readonly int[] _flagOnly =
+    {
+        23, 51, 52, 80, 97, 98, 100,
+        108, 109, 110, 111, 112, 113,
+        119, 138, 144, 178,
+    };
+
+    /// <summary>
     /// The raw scaling formula (base value + per-level slope) shown as a
     /// tooltip so the player can see how the effect grows, independent of
     /// the current level. Empty when the spell has no scaling magnitude.
@@ -166,6 +183,14 @@ public sealed class SpellBookRowViewModel
                 parts.Add(a.Value != 0
                     ? $"{name} {a.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
                     : $"{name} {Unsigned(affMin, affMax)}");
+                continue;
+            }
+
+            // Pure flags carry no magnitude — never attach the coexisting
+            // damage / heal range (MME's flag group renders name-only).
+            if (a.Value == 0 && Array.IndexOf(_flagOnly, a.Code) >= 0)
+            {
+                parts.Add(name);
                 continue;
             }
 

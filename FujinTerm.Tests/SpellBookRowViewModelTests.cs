@@ -228,6 +228,27 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void NonMagicalSpellFlag_DoesNotDuplicateDamageRange()
+    {
+        // "way of the dragon" (drgn): Damage (1) + NonMagicalSpell (144) flag,
+        // MinBase 13 / MaxBase 14. Code 144 is a pure flag — it must render
+        // name-only, NOT inherit the level-scaled damage range (which would
+        // print the bogus "NonMagicalSpell +13 to +22" beside "Dmg 13–…").
+        SpellFormulaInput f = new()
+        {
+            Number = 13,
+            MinBase = 13,
+            MaxBase = 14,
+            ReqLevel = 8,
+            Abilities = [new SpellAbility(1, 0), new SpellAbility(144, 0)],
+        };
+        KnownSpell s = Spell("drgn", "way of the dragon", 8, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 8, NoChain);
+
+        Assert.Equal("Dmg 13–14 · NonMagicalSpell", row.EffectText);
+    }
+
+    [Fact]
     public void DamageAbility_NotDoublePrintedAsAffect()
     {
         // Code 1 (Damage) is folded into the Dmg figure; an accompanying
