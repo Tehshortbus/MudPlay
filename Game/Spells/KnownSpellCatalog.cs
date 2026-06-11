@@ -150,6 +150,33 @@ public sealed class KnownSpellCatalog
     }
 
     /// <summary>
+    /// Look up a single learnable spell by its full <c>Name</c> for the
+    /// given class. The <c>spells</c> / <c>pow</c> list rows and the
+    /// learn-scroll line ("…learn the spell <i>harm</i>.") both report the
+    /// spell's Name rather than its Short code, so the obtained-signal path
+    /// resolves through here. Returns <c>null</c> when no usable spell
+    /// matches. <paramref name="level"/> <c>0</c> ignores the level gate.
+    /// </summary>
+    public KnownSpell? GetByName(string name, int classNumber, int level = 0, int charAlign = 0)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return null;
+
+        string target = name.Trim();
+        int classMagery = ResolveClassMagery(classNumber, out int classMageryLvl);
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            string? n = ReadString(row, "Name");
+            if (n is null || !string.Equals(n.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!IsUsable(row, classNumber, classMagery, classMageryLvl, level, charAlign, andLearnable: true))
+                continue;
+            return ToKnownSpell(row);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Faithful port of <c>SpellIsUsable(nSpell, nClass, nLevel,
     /// nCharAlign, bAndLearnable)</c>. <paramref name="classMagery"/> /
     /// <paramref name="classMageryLvl"/> are the pre-resolved
