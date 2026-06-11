@@ -557,6 +557,10 @@ public partial class MainWindowViewModel : ObservableObject
         // field onto AppServices.Current.PlayerStats; feeds
         // RemoteCommandManager.LivesProvider for the @suicide gate.
         AppServices.Current.Stats.AttachLineExtractor(Lines);
+        // SpellListParser — reads `spells` / `pow` output into the Spell
+        // Book's obtained set. App-level (survives reconnects), bound to
+        // the per-session extractor here like Stats above.
+        AppServices.Current.SpellList.AttachLineExtractor(Lines);
         // DeathDetector — watches for the post-death
         // "You now have N lives remaining." line; fires
         // RoomTracker.NoteDeath which appends to

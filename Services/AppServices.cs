@@ -334,6 +334,29 @@ public sealed class AppServices
     public Game.StatParser Stats { get; private set; } = null!;
 
     /// <summary>
+    /// Per-class learnable-spell catalogue built from the active game-data
+    /// set (faithful port of MMUD Explorer's <c>SpellIsUsable</c>). Backs
+    /// both the Spell Book window and the Settings spell pickers.
+    /// </summary>
+    public Game.Spells.KnownSpellCatalog SpellCatalog { get; }
+
+    /// <summary>
+    /// The local character's spell book — the class's full learnable list
+    /// paired with the obtained set. Refreshed from <see cref="Stats"/>'
+    /// class+level on every stat poll; obtained set fed by
+    /// <see cref="SpellList"/>.
+    /// </summary>
+    public Game.Spells.SpellbookState Spellbook { get; }
+
+    /// <summary>
+    /// Parses <c>spells</c> / <c>pow</c> output into
+    /// <see cref="Spellbook"/>'s obtained set. App-level; bound to the
+    /// per-session <see cref="Terminal.LineExtractor"/> by
+    /// <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.Spells.SpellListParser SpellList { get; }
+
+    /// <summary>
     /// Sends the configured <see cref="GameCommands.EntryCommand"/>
     /// when the MajorMUD main-menu screen is recognised at the tail
     /// end of the automated BBS-login sequence. Latched closed by
@@ -1094,6 +1117,14 @@ public sealed class AppServices
         // both the engine's @suicide hard-block and the @lives reply
         // path share the same "unknown until first stat poll" source.
         Stats = new Game.StatParser(PlayerStats, Log);
+        // Spell Book — the class's full learnable list (SpellCatalog) paired
+        // with the obtained set (Spellbook), fed by the spells/pow parser
+        // (SpellList). SpellList binds to the per-session LineExtractor in
+        // MainWindowViewModel; the Refresh coordinator lives in the
+        // Stats.ScreenParsed handler below.
+        SpellCatalog = new Game.Spells.KnownSpellCatalog(GameData);
+        Spellbook = new Game.Spells.SpellbookState(SpellCatalog);
+        SpellList = new Game.Spells.SpellListParser(Spellbook, Log);
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
         PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
@@ -1146,6 +1177,10 @@ public sealed class AppServices
         Stats.ScreenParsed += snapshot =>
         {
             if (Profile.Current is { } p) p.LastKnownStats = snapshot;
+            // Rebuild the Spell Book's available list from the just-observed
+            // class+level. Unknown class names resolve to 0 (no class), which
+            // yields an empty book — correct for non-magery classes too.
+            Spellbook.Refresh(SpellCatalog.ResolveClassNumber(snapshot.Class) ?? 0, snapshot.Level);
         };
         // Restore the snapshot back into live PlayerStats whenever a
         // profile loads. StatParser owns the PlayerStats fields, so
