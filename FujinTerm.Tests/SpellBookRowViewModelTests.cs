@@ -111,6 +111,48 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void ZeroValueAffect_RendersLevelScaledMinMax()
+    {
+        // Stealth (code 27) with AbilVal 0 — the magnitude lives in the
+        // spell's Min/Max base (MME PullSpellEQ appends sMin/sMax). Equal
+        // min/max collapse to a single signed value.
+        SpellFormulaInput f = new()
+        {
+            Number = 10,
+            MinBase = 10,
+            MaxBase = 10,
+            ReqLevel = 4,
+            Abilities = [new SpellAbility(27, 0)],
+        };
+        KnownSpell s = Spell("hide", "shadow cloak", 4, f);
+        SpellBookRowViewModel row = new(s, isObtained: true, level: 6, NoChain);
+
+        Assert.Equal("Stealth +10", row.EffectText);
+    }
+
+    [Fact]
+    public void ZeroValueAffect_BelowReqLevel_ClampsToObtainLevel()
+    {
+        // MaxDamage (code 4) gains +1 every level past base 0. Required at
+        // level 6; evaluated at level 1 it must clamp UP to level 6 (→ +6),
+        // never the out-of-range level-1 figure.
+        SpellFormulaInput f = new()
+        {
+            Number = 11,
+            MaxBase = 0,
+            MaxInc = 1,
+            MaxIncLVLs = 1,
+            ReqLevel = 6,
+            Abilities = [new SpellAbility(4, 0)],
+        };
+        KnownSpell s = Spell("edge", "keen edge", 6, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 1, NoChain);
+
+        // Min base 0/no slope → 0; Max → 6. Range shows "0 to +6".
+        Assert.Equal("MaxDamage 0 to +6", row.EffectText);
+    }
+
+    [Fact]
     public void DurationPlusAffect_RendersBoth()
     {
         // Timed buff that grants Strength +3 (code 46) for 8 rounds.

@@ -123,12 +123,53 @@ public sealed class SpellBookRowViewModel
         string removes = BuildRemoves(formula, resolveSpellName);
         if (removes.Length > 0) parts.Add(removes);
 
-        string affects = AbilityNames.SummarizeAbilities(
-            formula.Abilities.Select(a => (a.Code, a.Value)), _affectSkip);
+        string affects = BuildAffects(formula, level);
         if (affects.Length > 0) parts.Add(affects);
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// Decode the stat-affect abilities the spell grants ("AC +10",
+    /// "M.R. +5", "MaxDamage +4 to +8") for the Effect column. Mirrors MMUD
+    /// Explorer's <c>PullSpellEQ</c> generic-affect path: a slot carrying a
+    /// stored <c>AbilVal</c> shows that signed value; a slot with
+    /// <c>AbilVal == 0</c> shows the spell's level-scaled Min/Max range
+    /// instead (clamped to the obtain level, so MR / Stealth / backstab /
+    /// MaxDamage figures surface their magnitude rather than name-only).
+    /// Damage / heal / message / removed-spell codes are surfaced elsewhere
+    /// (see <see cref="_affectSkip"/>).
+    /// </summary>
+    private static string BuildAffects(in SpellFormulaInput formula, int level)
+    {
+        (long affMin, long affMax) = SpellCalculator.AffectMagnitude(formula, level);
+
+        List<string> parts = new();
+        foreach (SpellAbility a in formula.Abilities)
+        {
+            if (a.Code == 0 || Array.IndexOf(_affectSkip, a.Code) >= 0) continue;
+            string? name = AbilityNames.GetName(a.Code);
+            if (name is null) continue;
+
+            if (a.Value != 0)
+                parts.Add($"{name} {Signed(a.Value)}");
+            else if (affMin != 0 || affMax != 0)
+                parts.Add($"{name} {SignedRange(affMin, affMax)}");
+            else
+                parts.Add(name); // flag-style affect — no magnitude to show
+        }
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>Signed magnitude — <c>"+10"</c> / <c>"-5"</c> (negatives carry
+    /// their own minus sign, matching MME's affect headers).</summary>
+    private static string Signed(long value)
+        => value > 0
+            ? $"+{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string SignedRange(long min, long max)
+        => min == max ? Signed(min) : $"{Signed(min)} to {Signed(max)}";
 
     /// <summary>
     /// Render any RemovesSpell (Abil 122) slots by the removed spell's name —

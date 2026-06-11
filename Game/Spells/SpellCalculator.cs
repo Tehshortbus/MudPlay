@@ -47,9 +47,27 @@ public static class SpellCalculator
     public static long Duration(in SpellFormulaInput spell, int level)
     {
         int clamped = ClampLevel(level, spell.Cap, spell.ReqLevel);
-        if (spell.DurIncLVLs == 0 || clamped < 1)
-            return spell.Dur;
-        return spell.Dur + Fix((double)spell.DurInc / spell.DurIncLVLs * clamped);
+        return ScaleBase(spell.Dur, spell.DurInc, spell.DurIncLVLs, clamped);
+    }
+
+    /// <summary>
+    /// Level-scaled affect magnitude range — the spell's Min/Max base value
+    /// plus per-level slope, clamped to the spell's obtain level
+    /// (<see cref="SpellFormulaInput.ReqLevel"/>) and cap. No energy
+    /// multiplier: stat affects (AC, M.R., Stealth, MaxDamage, backstab
+    /// bonuses…) don't multiply per round the way damage does. MMUD
+    /// Explorer's <c>PullSpellEQ</c> appends exactly this range to a generic
+    /// affect whose stored <c>AbilVal</c> is 0. Clamping to <c>ReqLevel</c>
+    /// is what keeps a spell evaluated below its unlock level from showing a
+    /// magnitude outside its real range — it always renders the value the
+    /// formula yields at the level the spell is obtained.
+    /// </summary>
+    public static (long Min, long Max) AffectMagnitude(in SpellFormulaInput spell, int level)
+    {
+        int clamped = ClampLevel(level, spell.Cap, spell.ReqLevel);
+        return (
+            ScaleBase(spell.MinBase, spell.MinInc, spell.MinIncLVLs, clamped),
+            ScaleBase(spell.MaxBase, spell.MaxInc, spell.MaxIncLVLs, clamped));
     }
 
     /// <summary>Per-round mana cost. The energy multiplier here uses a
@@ -117,12 +135,9 @@ public static class SpellCalculator
             // Override path skips this clamp; base/slope path clamps and then
             // passes the clamped level into any chain recursion.
             int level = ClampLevel(castLevel, spell.Cap, spell.ReqLevel);
-            int baseVal = useMax ? spell.MaxBase : spell.MinBase;
-            int inc = useMax ? spell.MaxInc : spell.MinInc;
-            int incLvls = useMax ? spell.MaxIncLVLs : spell.MinIncLVLs;
-            result = (incLvls == 0 || level < 1)
-                ? baseVal
-                : baseVal + Fix((double)inc / incLvls * level);
+            result = useMax
+                ? ScaleBase(spell.MaxBase, spell.MaxInc, spell.MaxIncLVLs, level)
+                : ScaleBase(spell.MinBase, spell.MinInc, spell.MinIncLVLs, level);
             castLevel = level;
         }
 
@@ -148,6 +163,12 @@ public static class SpellCalculator
 
         return result;
     }
+
+    /// <summary>Base value plus per-level slope, truncated VB6-style. The
+    /// slope is skipped when no per-level denominator is set or the clamped
+    /// level is below 1.</summary>
+    private static long ScaleBase(int baseVal, int inc, int incLvls, int level)
+        => (incLvls == 0 || level < 1) ? baseVal : baseVal + Fix((double)inc / incLvls * level);
 
     private static int ClampLevel(int level, int cap, int reqLevel)
     {
