@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Models.GameData;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
@@ -46,6 +47,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly RemoteCommandManager _engine;
     private readonly PlayerState _player;
     private readonly PartyState _party;
+    private readonly Func<PartySettings>? _readPartySettings;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -75,7 +77,8 @@ public sealed class PartyEssentialHandlers : IDisposable
     public PartyEssentialHandlers(
         RemoteCommandManager engine,
         PlayerState player,
-        PartyState party)
+        PartyState party,
+        Func<PartySettings>? readPartySettings = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -83,6 +86,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _engine = engine;
         _player = player;
         _party  = party;
+        _readPartySettings = readPartySettings;
 
         // Categories sourced from RemoteCommandCatalog — single source
         // of truth for every documented @-command's required permission
@@ -413,6 +417,11 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     private void OnWait(RemoteCommandContext ctx)
     {
+        // Leader-side opt-out: when we're leading and the user has set
+        // "ignore @wait when leading", a follower's @wait must not pause
+        // the leader's automation. Drop it before it reaches the gate.
+        if (_party.SelfIsLeader && _readPartySettings?.Invoke() is { IgnoreWaitWhenLeading: true })
+            return;
         bool wasPaused = IsPaused;
         WaitingMembers.Add(ctx.Sender);
         SetMemberWaitFlag(ctx.Sender, true);

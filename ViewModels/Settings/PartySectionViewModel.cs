@@ -102,6 +102,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// upper bound while in an active party. 1..20.</summary>
     [ObservableProperty] private int _maxMonstersWhenPartying = 20;
 
+    // ----- Leader behaviour (consumed by PartyEssentialHandlers) -----
+    /// <summary>When leading, drop incoming <c>@wait</c> broadcasts so the
+    /// leader's automation keeps running.</summary>
+    [ObservableProperty] private bool _ignoreWaitWhenLeading;
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -144,6 +149,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
             AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
             MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
+            IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
         };
 
         profile.Settings ??= new();
@@ -199,6 +205,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
         AoeMinMembers          = dto.AoeMinMembers;
         MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
+        IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -264,6 +271,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
     partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
     partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
+    partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();
 
     private void MarkDirty()
     {

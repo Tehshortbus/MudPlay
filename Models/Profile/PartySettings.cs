@@ -50,6 +50,14 @@ public sealed class PartySettings
     public int IfLeadingWaitTotalSec { get; set; } = 90;
 
     /// <summary>
+    /// When leading a party, drop incoming <c>@wait</c> broadcasts so the
+    /// leader's automation keeps running instead of pausing on a
+    /// follower's request. Off (default) honours <c>@wait</c> regardless
+    /// of leadership. Consumed by <see cref="Game.Remote.PartyEssentialHandlers"/>.
+    /// </summary>
+    public bool IgnoreWaitWhenLeading { get; set; }
+
+    /// <summary>
     /// On loop / Auto-Lair start (Phase 7 trigger), broadcast
     /// <c>@Reset</c> to every party member so their exp / kill counters
     /// zero together. Gated by

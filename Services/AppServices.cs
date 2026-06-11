@@ -1179,7 +1179,9 @@ public sealed class AppServices
         });
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
-        PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
+        PartyEssentials = new Game.Remote.PartyEssentialHandlers(
+            RemoteCommands, PlayerState, PartyState,
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
         // Phase 6 PR 6.4 — drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel / PR 6.9.

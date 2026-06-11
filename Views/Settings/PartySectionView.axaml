@@ -233,7 +233,8 @@
             <StackPanel Spacing="2">
                 <CheckBox Content="Help leader open doors" IsEnabled="False"
                           ToolTip.Tip="Pitch in when the leader is forcing a door — bashes or picks the lock depending on the Other → 'Pick locks instead of bashing' toggle."/>
-                <CheckBox Content="Ignore @wait when leading" IsEnabled="False"
+                <CheckBox Content="Ignore @wait when leading"
+                          IsChecked="{Binding IgnoreWaitWhenLeading, Mode=TwoWay}"
                           ToolTip.Tip="When leading, drop incoming @wait broadcasts from party members — use this character's own Wait-if-members-below threshold instead of pausing on every member's personal wait setting."/>
                 <CheckBox Content="Reset statistics on loop start"
                           IsChecked="{Binding ResetStatisticsOnLoopStart, Mode=TwoWay}"
