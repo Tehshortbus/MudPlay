@@ -74,6 +74,24 @@ public sealed class SpellbookState
     /// </summary>
     public string? ResolveSpellName(int spellNumber) => _catalog.GetSpellNameByNumber(spellNumber);
 
+    /// <summary>
+    /// The per-round mana cost of the spell with this <c>Spells.Short</c>
+    /// cast-code, or <c>null</c> when no available spell matches. Computed via
+    /// <see cref="SpellCalculator.ManaCost"/> (level-independent — the energy
+    /// multiplier folds in, the player level does not). The casting engine uses
+    /// it to skip a survival cast we can't actually pay for. Case-insensitive on
+    /// the trimmed cast-code; first match wins (duplicate Shorts share a cost).
+    /// </summary>
+    public int? ManaCostOf(string castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return null;
+        string target = castCode.Trim();
+        foreach (KnownSpell s in _available)
+            if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return (int)SpellCalculator.ManaCost(s.Formula);
+        return null;
+    }
+
     /// <summary>True when the character has learned the spell with this <c>Spells.Number</c>.</summary>
     public bool IsObtained(int spellNumber) => _obtained.Contains(spellNumber);
 

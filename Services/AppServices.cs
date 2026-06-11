@@ -1735,6 +1735,11 @@ public sealed class AppServices
         // Cluster 3 stealth gate — buff casts suppressed while
         // sneaking or hidden so we don't break the backstab window.
         CastDirector.SetStealthGate(() => Stealth.IsStealthed);
+        // Survival casts (heal / cure / buff / party heal) skip any spell the
+        // player can't afford — the cost comes from the game-data Spells table
+        // via the live spellbook. Combat-tab spells keep their own
+        // MinManaPerCast threshold and aren't gated here.
+        CastDirector.SetManaCostLookup(Spellbook.ManaCostOf);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Phase 9 PR 9.A (spell extension) — opt the combat engine into the

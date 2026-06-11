@@ -82,6 +82,7 @@ public sealed class CastingDirector : IDisposable
     private Func<bool>? _isStealthedFunc;
     private Func<(string Spell, string? Target)?>? _combatDebuffSource;
     private Action? _combatDebuffCommit;
+    private Func<string, int?>? _manaCostLookup;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -189,6 +190,23 @@ public sealed class CastingDirector : IDisposable
         _combatDebuffCommit = commit;
     }
 
+    /// <summary>
+    /// Wire a cast-code → required-mana resolver (typically
+    /// <see cref="SpellbookState.ManaCostOf"/>) so the survival categories
+    /// (heals / cures / buffs / party heals) skip any cast the player can't pay
+    /// for. Returns the spell's per-round mana cost, or <c>null</c> when unknown
+    /// (no spellbook / unrecognised code) — an unknown cost never blocks, so the
+    /// engine behaves exactly as before until a real cost is resolvable. Combat
+    /// (offensive / debuff) casts are NOT gated here: the Combat settings tab
+    /// owns their mana threshold via <c>CombatSpellSlot.MinManaPerCast</c>.
+    /// Optional — until wired, no affordability check runs.
+    /// </summary>
+    public void SetManaCostLookup(Func<string, int?> lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        _manaCostLookup = lookup;
+    }
+
     private void OnConditionApplied(Models.GameData.MessageRecord _) => Evaluate();
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -241,6 +259,22 @@ public sealed class CastingDirector : IDisposable
 
             if (pick is not { } cand) continue;
             if (string.IsNullOrWhiteSpace(cand.Spell)) continue;
+
+            // Don't attempt a cast we can't pay for. Combat (offensive /
+            // debuff) casts are gated by the Combat tab's MinManaPerCast
+            // threshold, so the game-data affordability check applies only to
+            // the survival categories owned here; an unknown cost never blocks.
+            // Skip-and-continue so a cheaper lower-priority cast can still fire.
+            if (category != SpellCategory.Debuffing
+                && _manaCostLookup?.Invoke(cand.Spell) is { } cost
+                && _state.Ma < cost)
+            {
+                _log?.Info(LogCategory,
+                    $"{category} skip spell={cand.Spell} cost={cost} ma={_state.Ma} " +
+                    "(insufficient mana)");
+                continue;
+            }
+
             if (!_cast.TryCast(cand.Spell, cand.Target)) return null;
 
             // Combat-sourced debuff landed — advance the combat engine's

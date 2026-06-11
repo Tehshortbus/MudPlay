@@ -28,6 +28,12 @@ public sealed class CastingDirectorTests
         public HealthSettings Health { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
 
+        /// <summary>Cast-code → required mana. Empty by default, so the lookup
+        /// returns null (unknown ⇒ no affordability block) and the legacy tests
+        /// behave exactly as before. Populate to exercise the mana gate.</summary>
+        public Dictionary<string, int> ManaCosts { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public Harness()
         {
             DefaultPatterns.Seed(Router);
@@ -39,6 +45,8 @@ public sealed class CastingDirectorTests
                 readHealth: () => Health,
                 isEnabled: () => AutoHealRestEnabled,
                 log: Log);
+            Director.SetManaCostLookup(
+                code => ManaCosts.TryGetValue(code, out int c) ? c : null);
         }
 
         /// <summary>Mirror PromptParser's write order so HasPromptData
@@ -277,6 +285,75 @@ public sealed class CastingDirectorTests
         h.Health.MinorHealCombatTrigger = 70;
 
         h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("fullheal", h.CastsSent[0]);
+    }
+
+    // ----- mana affordability gate ------------------------------------
+
+    [Fact]
+    public void InsufficientMana_SkipsHeal_NoCast()
+    {
+        // Major heal would fire (HP 30% < 40% threshold) but costs 50 mana
+        // and we only have 10 — don't even attempt it.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Health.MajorHealCombatTrigger = 40;
+        h.ManaCosts["fullheal"] = 50;
+
+        h.SetPrompt(hp: 30, maxHp: 100, ma: 10, maxMa: 100, inCombat: true);
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void SufficientMana_CastsHeal()
+    {
+        // Same heal, enough mana to pay for it → fires.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Health.MajorHealCombatTrigger = 40;
+        h.ManaCosts["fullheal"] = 50;
+
+        h.SetPrompt(hp: 30, maxHp: 100, ma: 60, maxMa: 100, inCombat: true);
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("fullheal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void UnaffordableHigherPriority_FallsToCheaperLowerPriority()
+    {
+        // User ranks Major above Minor. At 30% HP both qualify, but Major
+        // ("fullheal", 50) is unaffordable with 20 mana — skip-and-continue
+        // lets the cheaper Minor ("heal", 10) fire instead.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.PriorityMajorSelfHeal = 3;
+        h.Spells.PriorityMinorSelfHeal = 4;
+        h.Health.MajorHealCombatTrigger = 40;
+        h.Health.MinorHealCombatTrigger = 70;
+        h.ManaCosts["fullheal"] = 50;
+        h.ManaCosts["heal"] = 10;
+
+        h.SetPrompt(hp: 30, maxHp: 100, ma: 20, maxMa: 100, inCombat: true);
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void UnknownCost_DoesNotBlockCast()
+    {
+        // No cost registered for the spell → lookup returns null → the gate
+        // never blocks, preserving pre-mana-gate behaviour.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 30, maxHp: 100, ma: 0, maxMa: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
         Assert.Equal("fullheal", h.CastsSent[0]);
