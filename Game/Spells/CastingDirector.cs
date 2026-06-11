@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
+using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Spells;
 
@@ -75,6 +77,13 @@ public sealed class CastingDirector : IDisposable
     /// rows per evaluation + decision.</summary>
     public const string LogCategory = "CastDirector";
 
+    /// <summary>
+    /// Re-cast a buff once it's within this many seconds of expiry (or
+    /// already expired / never confirmed). Matches the user's
+    /// "15→0s-of-expiry recast window".
+    /// </summary>
+    private const int RecastMarginSec = 15;
+
     private readonly PlayerState _state;
     private readonly CastCoordinator _cast;
     private readonly Conditions.ConditionTracker? _conditions;
@@ -89,6 +98,20 @@ public sealed class CastingDirector : IDisposable
     private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
+
+    // ----- Buff-duration tracking (self + party) ----------------------
+    // Per (targetKey, spellShort) → UTC instant the buff wears off.
+    // targetKey "" = self; otherwise the member's given name lower-cased.
+    private readonly Dictionary<(string Target, string Short), DateTime> _activeUntil = new();
+    // The one outstanding party-buff cast awaiting CasterMessage
+    // confirmation. CastCoordinator's cooldown guarantees ≤1 in flight.
+    private (string Short, string Target, long DurationSec, CasterMessageMatcher Matcher)? _pendingPartyCast;
+    private Func<string, (string Caster, long DurationSec)?>? _buffInfoByShort;
+    private Func<MessageRecord, string?>? _shortFromAppliedRecord;
+    private Func<int, string?>? _classNameByNumber;
+    private Func<OtherSettings>? _readOther;
+    private Func<DateTime> _now = () => DateTime.UtcNow;
+    private LineExtractor? _lines;
 
     private bool _disposed;
 
@@ -138,7 +161,10 @@ public sealed class CastingDirector : IDisposable
 
         _state.PropertyChanged += OnStateChanged;
         if (_conditions is not null)
+        {
             _conditions.ConditionApplied += OnConditionApplied;
+            _conditions.ConditionEnded += OnConditionEnded;
+        }
     }
 
     // Old 3-arg + 4-arg ctors kept as a convenience overload so the
@@ -222,7 +248,140 @@ public sealed class CastingDirector : IDisposable
         _autoBlessEnabled = isEnabled;
     }
 
-    private void OnConditionApplied(Models.GameData.MessageRecord _) => Evaluate();
+    /// <summary>
+    /// Wire the buff-duration sources used by the recast-window logic.
+    /// <paramref name="buffInfoByShort"/> maps a buff's 4-letter cast code to
+    /// its caster-confirmation template (the game-data
+    /// <see cref="MessageRecord.CasterMessage"/>, e.g. <c>You cast {s} on
+    /// {s}!</c>) plus its computed effect duration in seconds
+    /// (<see cref="SpellCalculator.Duration"/> at the live character level);
+    /// returns <c>null</c> for an unknown / message-less code.
+    /// <paramref name="shortFromAppliedRecord"/> maps a fired
+    /// <see cref="MessageRecord"/> (from
+    /// <see cref="Conditions.ConditionTracker.ConditionApplied"/> /
+    /// <see cref="Conditions.ConditionTracker.ConditionEnded"/>) back to the
+    /// buff cast code it represents, so a self-cast confirmed via its
+    /// AppliedMessage starts / clears its duration timer. Optional — until
+    /// wired, no duration tracking runs and the buff pickers fall back to the
+    /// always-eligible path.
+    /// </summary>
+    public void SetBuffDurationSources(
+        Func<string, (string Caster, long DurationSec)?> buffInfoByShort,
+        Func<MessageRecord, string?> shortFromAppliedRecord)
+    {
+        ArgumentNullException.ThrowIfNull(buffInfoByShort);
+        ArgumentNullException.ThrowIfNull(shortFromAppliedRecord);
+        _buffInfoByShort = buffInfoByShort;
+        _shortFromAppliedRecord = shortFromAppliedRecord;
+    }
+
+    /// <summary>
+    /// Wire a class-number → class-name resolver (typically backed by
+    /// Classes.json) so party-bless slots — which store the set of class
+    /// numbers a buff applies to — can be matched against each
+    /// <see cref="PartyMember.Class"/> (a class name). Optional — until wired,
+    /// party-bless slots never match a member and the party-buff picker
+    /// no-ops.
+    /// </summary>
+    public void SetClassResolver(Func<int, string?> classNameByNumber)
+    {
+        ArgumentNullException.ThrowIfNull(classNameByNumber);
+        _classNameByNumber = classNameByNumber;
+    }
+
+    /// <summary>
+    /// Wire the <see cref="OtherSettings"/> reader that gates party-bless by
+    /// the user's "bless party while resting" /
+    /// "bless party during combat" toggles. Optional — until wired, both gates
+    /// default open (party-bless allowed in either state).
+    /// </summary>
+    public void SetPartyBlessGate(Func<OtherSettings> readOther)
+    {
+        ArgumentNullException.ThrowIfNull(readOther);
+        _readOther = readOther;
+    }
+
+    /// <summary>
+    /// Override the clock used for buff-expiry math. Test seam — production
+    /// uses <see cref="DateTime.UtcNow"/>.
+    /// </summary>
+    public void SetClock(Func<DateTime> now)
+    {
+        ArgumentNullException.ThrowIfNull(now);
+        _now = now;
+    }
+
+    /// <summary>
+    /// Subscribe to server lines so OUR party-buff casts can be confirmed
+    /// against the buff's <see cref="MessageRecord.CasterMessage"/> template
+    /// (capturing the target name) before the duration timer starts. Self-cast
+    /// confirmation goes through the ConditionTracker AppliedMessage path
+    /// instead, so this is only consulted while a party cast is pending.
+    /// </summary>
+    public void AttachLineExtractor(LineExtractor lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = lines;
+        _lines.LineEmitted += OnLine;
+    }
+
+    /// <summary>
+    /// Clear all buff-duration state (active timers + any pending party-cast
+    /// confirmation). Call alongside
+    /// <see cref="Conditions.ConditionTracker.ClearAll"/> on disconnect / death
+    /// so stale durations don't suppress a fresh-session recast.
+    /// </summary>
+    public void ResetBuffTracking()
+    {
+        _activeUntil.Clear();
+        _pendingPartyCast = null;
+    }
+
+    /// <summary>
+    /// True when a buff on <paramref name="targetKey"/> (<c>""</c> = self) is
+    /// due to be (re)cast: either never confirmed-active, or within
+    /// <see cref="RecastMarginSec"/> seconds of expiry.
+    /// </summary>
+    private bool IsRecastDue(string targetKey, string spellShort)
+    {
+        if (!_activeUntil.TryGetValue((targetKey, spellShort), out DateTime until))
+            return true;
+        return (until - _now()).TotalSeconds <= RecastMarginSec;
+    }
+
+    private void OnConditionApplied(MessageRecord r)
+    {
+        // A self-cast buff confirmed via its AppliedMessage — start (or
+        // refresh) its duration timer keyed to self so the recast window
+        // is honoured. Party-cast confirmation rides OnLine instead.
+        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode
+            && _buffInfoByShort?.Invoke(shortCode) is { } info)
+            _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+        Evaluate();
+    }
+
+    private void OnConditionEnded(MessageRecord r)
+    {
+        // Server-confirmed early wear-off — drop the self timer so the next
+        // pass re-attempts immediately rather than waiting out a stale clock.
+        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode)
+            _activeUntil.Remove(("", shortCode));
+        Evaluate();
+    }
+
+    private void OnLine(LineExtractor.EmittedLine line)
+    {
+        if (_pendingPartyCast is not { } p) return;
+        if (!p.Matcher.ConfirmsTarget(line.Text, p.Target)) return;
+
+        string key = p.Target.Trim().ToLowerInvariant();
+        _activeUntil[(key, p.Short)] = _now().AddSeconds(p.DurationSec);
+        _log?.Info(LogCategory,
+            $"party-buff confirmed spell={p.Short} target={p.Target} " +
+            $"duration={p.DurationSec}s");
+        _pendingPartyCast = null;
+    }
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -268,7 +427,7 @@ public sealed class CastingDirector : IDisposable
                 SpellCategory.MajorSelfHeal   => Wrap(PickMajorSelfHeal(spells, health)),
                 SpellCategory.Curing          => Wrap(PickCure(spells)),
                 SpellCategory.Buffing         => (_autoBlessEnabled?.Invoke() ?? true)
-                                                     ? Wrap(PickBuff(spells, health))
+                                                     ? PickBuff(spells, health, partySettings)
                                                      : null,
                 SpellCategory.Debuffing       => PickDebuff(),
                 _                              => null,
@@ -297,6 +456,12 @@ public sealed class CastingDirector : IDisposable
             // Combat-sourced debuff landed — advance the combat engine's
             // once-per-room / once-per-target bookkeeping so it won't re-fire.
             if (category == SpellCategory.Debuffing) _combatDebuffCommit?.Invoke();
+
+            // Party-buff cast sent — arm CasterMessage confirmation so the
+            // duration timer only starts once we observe it land. Self buffs
+            // (null target) confirm via the ConditionTracker AppliedMessage.
+            if (category == SpellCategory.Buffing && cand.Target is { } tgt)
+                ArmPartyBuffConfirm(cand.Spell, tgt);
 
             _log?.Info(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
@@ -469,55 +634,54 @@ public sealed class CastingDirector : IDisposable
     // ----- Buffing ----------------------------------------------------
 
     /// <summary>
-    /// Walk the user's Bless1–10 slots in order; return the first one
-    /// that's configured AND not currently active on us.
+    /// Pick the next buff to (re)cast. Self buffs (Bless1–10 + regen +
+    /// when-full slots) take precedence over party buffs; within each scope
+    /// the slot order is the priority order. Returns the first slot whose
+    /// buff is due to recast — never confirmed-active, or within the
+    /// <see cref="RecastMarginSec"/> expiry window.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// "Active" is a Messages-tab signal in v1: each buff's
-    /// MessageRecord has AppliedMessage (the cast / refresh line)
-    /// and AppliedEndsWith (the wear-off line);
-    /// <see cref="Conditions.ConditionTracker.IsActiveByName"/>
-    /// answers from the live set.
-    /// </para>
-    /// <para>
-    /// <b>Intended canonical path (deferred until Spells gamedata
-    /// lands)</b>: any player-castable buff has a duration in the
-    /// game-data Spells table. The engine should record cast time
-    /// at TryCast and compute <c>active until = cast_time +
-    /// spell.Duration</c>. The Messages path stays as a fallback
-    /// for server-confirmed early wear-off (dispels, area-clears),
-    /// but duration is the authoritative answer. Until the Spells
-    /// model + spell-name → record lookup ship, we rely on the
-    /// Messages path alone.
+    /// "Active" is duration-based: a buff's timer starts only when we observe
+    /// OUR successful cast (self via the ConditionTracker AppliedMessage,
+    /// party via the <see cref="MessageRecord.CasterMessage"/> matcher) and
+    /// runs for <see cref="SpellCalculator.Duration"/> seconds. No
+    /// confirmation ⇒ no timer ⇒ the next eligible pass re-attempts (the
+    /// <see cref="CastCoordinator"/> cooldown prevents spam). The
+    /// ConditionEnded wear-off line clears the timer early for dispels /
+    /// area-clears.
     /// </para>
     /// <para>
     /// MA-floor gate: only consider buffs when MA is at or above
     /// <see cref="HealthSettings.BlessIfAboveMa"/>. Mirrors MegaMUD's
-    /// "don't burn buff mana when we'll need it for heals soon"
-    /// behaviour.
+    /// "don't burn buff mana when we'll need it for heals soon" behaviour.
     /// </para>
     /// </remarks>
-    private string? PickBuff(SpellsSettings spells, HealthSettings health)
+    private CastCandidate? PickBuff(SpellsSettings spells, HealthSettings health, PartySettings? party)
     {
         if (_state.MaxMa <= 0) return null;
         int maPct = (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa);
         if (maPct < health.BlessIfAboveMa) return null;
 
-        // Buffs are expensive; never burn a round on them mid-combat
-        // unless the user explicitly opts in. v1 hard-gates on
-        // out-of-combat — refine later if buff-during-combat
-        // toggles get added.
-        if (_state.InCombat) return null;
-
-        // Stealth gate: any cast breaks sneak / hide; suppress buffs
-        // entirely while stealthed so a backstab window stays open.
+        // Stealth gate: any cast breaks sneak / hide; suppress buffs entirely
+        // while stealthed so a backstab window stays open.
         if (_isStealthedFunc?.Invoke() == true) return null;
 
-        // All 14 buff slots walk together: 10 explicit Bless picks +
-        // HpRegen + MaRegen + WhenHpFull + WhenMaFull. Each has its
-        // own eligibility predicate. First eligible AND not-active
-        // slot fires.
+        // Self buffs first (rows 1–10 + regen + when-full), then party buffs.
+        if (PickSelfBuff(spells) is { } self) return self;
+        return PickPartyBuff(party);
+    }
+
+    /// <summary>
+    /// Walk the 14 self-buff slots (10 Bless + HpRegen + MaRegen +
+    /// WhenHpFull + WhenMaFull) and return the first configured slot due to
+    /// recast on us. Hard-gated to out-of-combat — self buffs are expensive
+    /// and shouldn't burn a combat round.
+    /// </summary>
+    private CastCandidate? PickSelfBuff(SpellsSettings spells)
+    {
+        if (_state.InCombat) return null;
+
         (string? Spell, bool Eligible)[] slots =
         {
             (spells.Bless1Spell,      true),
@@ -532,9 +696,8 @@ public sealed class CastingDirector : IDisposable
             (spells.Bless10Spell,     true),
             (spells.HpRegenSpell,     true),
             (spells.MaRegenSpell,     true),
-            // WhenHp/MaFull additionally require the matching pool
-            // to be at max — they're "downtime, ready for next
-            // fight" buffs.
+            // WhenHp/MaFull additionally require the matching pool to be at
+            // max — they're "downtime, ready for next fight" buffs.
             (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
             (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
         };
@@ -543,10 +706,82 @@ public sealed class CastingDirector : IDisposable
         {
             if (!eligible) continue;
             if (string.IsNullOrWhiteSpace(slot)) continue;
-            if (_conditions?.IsActiveByName(slot) == true) continue;
-            return slot;
+            if (!IsRecastDue("", slot)) continue;
+            return new CastCandidate(slot, Target: null);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Walk the party-bless slots in priority order; for each slot cast the
+    /// buff on the first class-matched member due to recast. A member matches
+    /// when their <see cref="PartyMember.Class"/> is in the slot's checked
+    /// class set. Gated by the Other-tab "bless party while resting" /
+    /// "bless party during combat" toggles (default open until wired).
+    /// </summary>
+    private CastCandidate? PickPartyBuff(PartySettings? party)
+    {
+        if (_party is null) return null;
+        if (party is null) return null;
+        if (_party.Members.Count == 0) return null;
+
+        OtherSettings? other = _readOther?.Invoke();
+        bool whileResting  = other?.BlessWhileResting ?? true;
+        bool duringCombat  = other?.BlessDuringCombat ?? true;
+        if (_state.InCombat && !duringCombat) return null;
+        if (_state.Position == PlayerPosition.Resting && !whileResting) return null;
+
+        foreach (PartyBlessSlot slot in party.BlessSlots)
+        {
+            if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
+            if (slot.ClassNumbers.Count == 0) continue;
+
+            foreach (PartyMember m in _party.Members)
+            {
+                if (m.IsSelf) continue;
+                if (!MemberMatchesClasses(m, slot.ClassNumbers)) continue;
+                string key = m.Name.Trim().ToLowerInvariant();
+                if (!IsRecastDue(key, slot.Spell)) continue;
+                return new CastCandidate(slot.Spell, m.Name);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="m"/>'s class name resolves to any of the
+    /// slot's checked class numbers (case-insensitive). Requires the
+    /// class-number → name resolver to be wired; no resolver ⇒ no match.
+    /// </summary>
+    private bool MemberMatchesClasses(PartyMember m, IReadOnlyList<int> classNumbers)
+    {
+        if (_classNameByNumber is null) return false;
+        if (string.IsNullOrWhiteSpace(m.Class)) return false;
+        foreach (int n in classNumbers)
+        {
+            string? name = _classNameByNumber(n);
+            if (!string.IsNullOrWhiteSpace(name)
+                && string.Equals(name.Trim(), m.Class.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Arm the pending party-buff confirmation: resolve the buff's
+    /// CasterMessage template + duration and stash it so the next matching
+    /// server line starts the duration timer keyed to <paramref name="target"/>.
+    /// Clears any prior pending cast (CastCoordinator's cooldown guarantees
+    /// ≤1 in flight). No-op (clears pending) when the buff has no resolvable
+    /// caster template.
+    /// </summary>
+    private void ArmPartyBuffConfirm(string shortCode, string target)
+    {
+        _pendingPartyCast = null;
+        if (_buffInfoByShort?.Invoke(shortCode) is not { } info) return;
+        if (CasterMessageMatcher.TryCreate(info.Caster) is not { } matcher) return;
+        _pendingPartyCast = (shortCode, target, info.DurationSec, matcher);
     }
 
     // ----- Debuffing — sourced from the combat engine -----------------
@@ -568,7 +803,12 @@ public sealed class CastingDirector : IDisposable
         _disposed = true;
         _state.PropertyChanged -= OnStateChanged;
         if (_conditions is not null)
+        {
             _conditions.ConditionApplied -= OnConditionApplied;
+            _conditions.ConditionEnded -= OnConditionEnded;
+        }
+        if (_lines is not null)
+            _lines.LineEmitted -= OnLine;
     }
 }
 
