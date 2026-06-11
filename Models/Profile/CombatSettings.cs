@@ -45,18 +45,21 @@ public sealed class CombatSettings
     /// categories in ascending priority value — lowest number fires first;
     /// the first applicable category owns the round (one action per round).
     /// <see cref="Game.Combat.CombatSpellChooser"/> resolves the order;
-    /// ties keep the canonical Backstab → Preattack → Spells → Physical
+    /// ties keep the canonical Backstab → Debuffing → Spells → Physical
     /// fallback so duplicate numbers stay deterministic. Defaults
     /// (1/2/3/4) reproduce the previously hard-coded order. Physical is the
     /// terminal fallback (the weapon swing always applies), so placing it
     /// above another category suppresses that category whenever a swing is
-    /// possible.
+    /// possible. Backstab only fires when ranked at priority 1 (and
+    /// <see cref="DoBackstab"/> is set + the opener is still eligible); at
+    /// any other rank it is ignored entirely.
     /// </summary>
     public int PriorityBackstab { get; set; } = 1;
 
-    /// <summary>Priority of the pre-attack debuff category (area / single
-    /// debuff). See <see cref="PriorityBackstab"/>.</summary>
-    public int PriorityPreattack { get; set; } = 2;
+    /// <summary>Priority of the debuffing category (area / single-target
+    /// debuff). Labelled "Debuffing" in the UI to match the Spells tab's
+    /// spell-priority list. See <see cref="PriorityBackstab"/>.</summary>
+    public int PriorityDebuffing { get; set; } = 2;
 
     /// <summary>Priority of the attack-spell category (multi / normal /
     /// alternate). See <see cref="PriorityBackstab"/>.</summary>

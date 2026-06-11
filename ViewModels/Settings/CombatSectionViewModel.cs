@@ -54,7 +54,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "Combat", "Weapon", "Normal weapon", "Alternate weapon",
         "BS weapon", "BS weapon off-hand", "Off-hand",
         "Combat priority", "Priority order", "Backstab priority",
-        "Preattack priority", "Spells priority", "Physical priority",
+        "Debuffing priority", "Spells priority", "Physical priority",
         "Normal weapon attack command", "Alternate weapon attack command",
         "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
@@ -78,7 +78,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // ----- Combat priority order ------------------------------------
 
     [ObservableProperty] private int _priorityBackstab = 1;
-    [ObservableProperty] private int _priorityPreattack = 2;
+    [ObservableProperty] private int _priorityDebuffing = 2;
     [ObservableProperty] private int _prioritySpells = 3;
     [ObservableProperty] private int _priorityPhysical = 4;
 
@@ -214,7 +214,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             AlternateAttackCommand     = AlternateAttackCommand ?? "a",
 
             PriorityBackstab  = ClampPriority(PriorityBackstab),
-            PriorityPreattack = ClampPriority(PriorityPreattack),
+            PriorityDebuffing = ClampPriority(PriorityDebuffing),
             PrioritySpells    = ClampPriority(PrioritySpells),
             PriorityPhysical  = ClampPriority(PriorityPhysical),
 
@@ -333,7 +333,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         AlternateAttackCommand  = dto.AlternateAttackCommand ?? "a";
 
         PriorityBackstab  = dto.PriorityBackstab;
-        PriorityPreattack = dto.PriorityPreattack;
+        PriorityDebuffing = dto.PriorityDebuffing;
         PrioritySpells    = dto.PrioritySpells;
         PriorityPhysical  = dto.PriorityPhysical;
 
@@ -428,7 +428,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // Combat priority order
     partial void OnPriorityBackstabChanged(int value)            => MarkDirty();
-    partial void OnPriorityPreattackChanged(int value)           => MarkDirty();
+    partial void OnPriorityDebuffingChanged(int value)           => MarkDirty();
     partial void OnPrioritySpellsChanged(int value)              => MarkDirty();
     partial void OnPriorityPhysicalChanged(int value)            => MarkDirty();
 

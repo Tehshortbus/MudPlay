@@ -7,7 +7,7 @@ namespace FujinTerm.Tests;
 /// <summary>
 /// Pins <see cref="CombatSpellChooser"/> — the per-round combat-spell decision
 /// unit — against the realm's one-action-per-round ordering: backstab gate →
-/// pre-attack debuff (area once-per-room XOR single once-per-target) → attack
+/// debuffing (area once-per-room XOR single once-per-target) → attack
 /// (multi-attack while qualified → normal → alternate → weapon). Mana gating
 /// (<see cref="ThresholdMode.Percentage"/> vs <see cref="ThresholdMode.Absolute"/>)
 /// and per-room cast caps are exercised per branch.
@@ -59,7 +59,7 @@ public sealed class CombatSpellChooserTests
             PriorityPhysical = 1,
             PrioritySpells = 2,
             PriorityBackstab = 3,
-            PriorityPreattack = 4,
+            PriorityDebuffing = 4,
         };
 
         CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1));
@@ -78,7 +78,7 @@ public sealed class CombatSpellChooserTests
             // Spells ahead of Backstab — the attack spell pre-empts the opener.
             PrioritySpells = 1,
             PriorityBackstab = 2,
-            PriorityPreattack = 3,
+            PriorityDebuffing = 3,
             PriorityPhysical = 4,
         };
 
@@ -86,6 +86,26 @@ public sealed class CombatSpellChooserTests
 
         Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
         Assert.Equal("harm", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_BackstabPending_ButNotPriorityOne_DoesNotBackstab()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            // Backstab ranked 2 (not 1) → ignored even while pending. Spells
+            // has no slot configured, so the round falls to the weapon swing.
+            PriorityPhysical = 3,
+            PriorityBackstab = 2,
+            PrioritySpells = 1,
+            PriorityDebuffing = 4,
+        };
+
+        CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1, backstabPending: true));
+
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+        Assert.Null(d.Spell);
     }
 
     // ----- 2. Pre-attack debuff: area once-per-room, excludes single -----

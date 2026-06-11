@@ -25,9 +25,9 @@ public sealed class CombatSettingsTests
         Assert.Equal("a", dto.AlternateAttackCommand);
 
         // Priority defaults reproduce the previously hard-coded round order:
-        // Backstab → Preattack → Spells → Physical.
+        // Backstab → Debuffing → Spells → Physical.
         Assert.Equal(1, dto.PriorityBackstab);
-        Assert.Equal(2, dto.PriorityPreattack);
+        Assert.Equal(2, dto.PriorityDebuffing);
         Assert.Equal(3, dto.PrioritySpells);
         Assert.Equal(4, dto.PriorityPhysical);
         Assert.Equal(TargetOrder.Normal, dto.TargetOrder);
@@ -83,7 +83,7 @@ public sealed class CombatSettingsTests
             NormalAttackCommand        = "attack",
             AlternateAttackCommand     = "swing",
             PriorityBackstab           = 4,
-            PriorityPreattack          = 3,
+            PriorityDebuffing          = 3,
             PrioritySpells             = 2,
             PriorityPhysical           = 1,
             NormalWeapon               = "long sword",
@@ -114,7 +114,7 @@ public sealed class CombatSettingsTests
         Assert.Equal(dto.NormalAttackCommand,       round!.NormalAttackCommand);
         Assert.Equal(dto.AlternateAttackCommand,    round.AlternateAttackCommand);
         Assert.Equal(dto.PriorityBackstab,          round.PriorityBackstab);
-        Assert.Equal(dto.PriorityPreattack,         round.PriorityPreattack);
+        Assert.Equal(dto.PriorityDebuffing,         round.PriorityDebuffing);
         Assert.Equal(dto.PrioritySpells,            round.PrioritySpells);
         Assert.Equal(dto.PriorityPhysical,          round.PriorityPhysical);
         Assert.Equal(dto.NormalWeapon,              round.NormalWeapon);

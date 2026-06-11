@@ -19,12 +19,14 @@ namespace FujinTerm.Game.Combat;
 /// IS the round's action, it does not stack with a swing):
 /// </para>
 /// <list type="number">
-/// <item><b>Backstab gate</b> — when a backstab is still pending
-/// (sneaking + <see cref="CombatSettings.DoBackstab"/>), the BS round
-/// must fire first or it's a guaranteed fail; the chooser returns
-/// <see cref="CombatSpellAction.WeaponAttack"/> so the engine's BS path
-/// owns the swing and no spell goes out.</item>
-/// <item><b>Pre-attack debuff</b> — if
+/// <item><b>Backstab gate</b> — only when ranked at
+/// <see cref="CombatSettings.PriorityBackstab"/> 1 AND a backstab is still
+/// pending (sneaking + <see cref="CombatSettings.DoBackstab"/>). The opener
+/// is the round's action or nothing — a mid-round BS attempt is a guaranteed
+/// fail, so at any other rank the category is ignored entirely. When it
+/// fires the chooser returns <see cref="CombatSpellAction.Backstab"/> so the
+/// engine's BS path owns the swing and no spell goes out.</item>
+/// <item><b>Debuffing</b> — if
 /// <see cref="CombatSettings.AreaDebuffSpell"/> is configured, cast it
 /// once per room (honours its <see cref="CombatSpellSlot.MinEnemies"/>)
 /// and never use the single-target debuff. Otherwise, if
@@ -79,12 +81,12 @@ public sealed class CombatSpellChooser
 
     /// <summary>The four combat categories in canonical order. Used as the
     /// tie-break when two categories share a priority value, so duplicate
-    /// numbers resolve to the historical Backstab → Preattack → Spells →
+    /// numbers resolve to the historical Backstab → Debuffing → Spells →
     /// Physical fallback.</summary>
     private static readonly CombatCategory[] Canonical =
     {
         CombatCategory.Backstab,
-        CombatCategory.Preattack,
+        CombatCategory.Debuffing,
         CombatCategory.Spells,
         CombatCategory.Physical,
     };
@@ -115,10 +117,14 @@ public sealed class CombatSpellChooser
         {
             CombatSpellDecision? decision = cat switch
             {
+                // Backstab is the round's opener or nothing: it only fires when
+                // the user ranks it at priority 1. At any other rank we ignore
+                // it entirely (a mid-round BS attempt is a guaranteed fail).
                 CombatCategory.Backstab =>
-                    ctx.BackstabPending ? CombatSpellDecision.Backstab : null,
-                CombatCategory.Preattack =>
-                    ctx.SpellsAvailable ? TryPreattack(settings, ctx, mode) : null,
+                    (settings.PriorityBackstab == 1 && ctx.BackstabPending)
+                        ? CombatSpellDecision.Backstab : null,
+                CombatCategory.Debuffing =>
+                    ctx.SpellsAvailable ? TryDebuffing(settings, ctx, mode) : null,
                 CombatCategory.Spells =>
                     ctx.SpellsAvailable ? TryAttackSpell(settings, ctx, mode) : null,
                 CombatCategory.Physical => CombatSpellDecision.Weapon,
@@ -130,10 +136,10 @@ public sealed class CombatSpellChooser
         return CombatSpellDecision.Weapon;
     }
 
-    /// <summary>Pre-attack debuff phase. Area takes precedence and excludes
+    /// <summary>Debuffing phase. Area takes precedence and excludes
     /// single (matches the historical behaviour). Returns <c>null</c> when
     /// nothing in the category can fire this round.</summary>
-    private CombatSpellDecision? TryPreattack(
+    private CombatSpellDecision? TryDebuffing(
         CombatSettings settings, in CombatSpellContext ctx, ThresholdMode mode)
     {
         CombatSpellSlot area = settings.AreaDebuffSpell;
@@ -214,7 +220,7 @@ public sealed class CombatSpellChooser
     private static int PriorityOf(CombatSettings s, CombatCategory cat) => cat switch
     {
         CombatCategory.Backstab  => s.PriorityBackstab,
-        CombatCategory.Preattack => s.PriorityPreattack,
+        CombatCategory.Debuffing => s.PriorityDebuffing,
         CombatCategory.Spells    => s.PrioritySpells,
         CombatCategory.Physical  => s.PriorityPhysical,
         _ => int.MaxValue,
@@ -223,7 +229,7 @@ public sealed class CombatSpellChooser
     private static int CanonicalIndex(CombatCategory cat) => cat switch
     {
         CombatCategory.Backstab  => 0,
-        CombatCategory.Preattack => 1,
+        CombatCategory.Debuffing => 1,
         CombatCategory.Spells    => 2,
         CombatCategory.Physical  => 3,
         _ => int.MaxValue,
@@ -312,7 +318,7 @@ public enum CombatSpellAction
 internal enum CombatCategory
 {
     Backstab,
-    Preattack,
+    Debuffing,
     Spells,
     Physical,
 }
@@ -342,7 +348,7 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 /// actions the current target's species has proven immune to this room
 /// (<c>null</c> when nothing is immune);
 /// <paramref name="SpellsAvailable"/> is false when the engine has no combat
-/// spell caster wired, so the Preattack / Spells categories are skipped and
+/// spell caster wired, so the Debuffing / Spells categories are skipped and
 /// the order collapses to Backstab vs Physical.</summary>
 public readonly record struct CombatSpellContext(
     int EnemyCount,

@@ -482,7 +482,7 @@ public sealed partial class CombatManager : IDisposable
         }
 
         // Decide + dispatch this round's action. The chooser owns the full
-        // per-round category ordering (Backstab / Preattack / Spells /
+        // per-round category ordering (Backstab / Debuffing / Spells /
         // Physical) in the user-configured priority; DispatchRoundAction
         // maps its decision onto the wire (backstab verb, combat-spell cast,
         // or weapon swing). Spell categories only participate when the caster

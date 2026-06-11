@@ -84,7 +84,7 @@ public sealed partial class CombatManager
     /// <summary>
     /// Decide and dispatch this round's action for the freshly-picked
     /// target, honouring the user-configured category order (Backstab /
-    /// Preattack / Spells / Physical). The pure <see cref="CombatSpellChooser"/>
+    /// Debuffing / Spells / Physical). The pure <see cref="CombatSpellChooser"/>
     /// owns the ordering; this maps its decision onto the wire — a backstab
     /// verb, a combat-spell cast, or the weapon attack command. Spell
     /// categories only participate when the caster is wired
@@ -268,7 +268,7 @@ public sealed partial class CombatManager
     /// <summary>
     /// Build a spell-free chooser context for the weapon engine when no
     /// combat-spell caster is wired. Reports <see cref="CombatSpellContext.SpellsAvailable"/>
-    /// false so the chooser skips the Preattack / Spells categories and the
+    /// false so the chooser skips the Debuffing / Spells categories and the
     /// order collapses to Backstab vs Physical — and reads no mana (none is
     /// available without the wired reader).
     /// </summary>
