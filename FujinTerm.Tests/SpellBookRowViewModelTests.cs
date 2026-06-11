@@ -262,6 +262,36 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void TextBlock_PlacesRemovesAfterGainFigures_RegardlessOfCastOrder()
+    {
+        // A form textblock casts both the buff and a pure "remove forms"
+        // cleanup spell. The cleanup's "Removes …" clause must trail the gain
+        // figures even when the reverse-link returns the cleanup first.
+        SpellFormulaInput tb = new()
+        {
+            Number = 22,
+            Abilities = [new SpellAbility(148, 2910)],
+        };
+        KnownSpell s = Spell("dfrm", "form of the dragon", 30, tb);
+
+        KnownSpell buff = new(858, "drgn", "form of the dragon",
+            Magery: 1, MageryLvl: 1, ReqLevel: 30,
+            new SpellFormulaInput { Number = 858, Dur = 8, Abilities = [new SpellAbility(46, 5)] });
+        KnownSpell cleanup = new(878, "rfrm", "remove forms",
+            Magery: 1, MageryLvl: 1, ReqLevel: 30,
+            new SpellFormulaInput { Number = 878, Abilities = [new SpellAbility(122, 858)] });
+
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 30, NoChain,
+            resolveSpellName: n => n == 858 ? "form of the dragon" : null,
+            resolveTextblockCasts: n => n == 2910
+                ? new[] { cleanup, buff } // cleanup deliberately first
+                : System.Array.Empty<KnownSpell>());
+
+        Assert.Equal("24 seconds · Strength +5, Removes form of the dragon", row.EffectText);
+    }
+
+    [Fact]
     public void TextBlock_FallsBackToRecordNumber_WhenResolverFindsNoCasts()
     {
         // Resolver supplied but the textblock links to nothing → keep the

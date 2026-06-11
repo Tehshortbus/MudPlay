@@ -243,15 +243,28 @@ public sealed class SpellBookRowViewModel
         IReadOnlyList<KnownSpell> casts = resolveTextblockCasts(textblock);
         if (casts.Count == 0) return string.Empty;
 
-        List<string> parts = new();
+        // A textblock that grants a buff often also casts a pure cleanup spell
+        // (e.g. the Style forms cast "remove forms" alongside the form buff).
+        // Keep the gain figures first and let the "Removes …" clause trail —
+        // independent of the order the reverse-link happens to return.
+        List<string> gains = new();
+        List<string> removes = new();
         foreach (KnownSpell s in casts)
         {
             string effect = BuildEffect(s.Formula, level, resolveChain, resolveSpellName, resolveTextblockCasts: null);
             if (effect.Length == 0 || effect == "—") continue;
-            parts.Add(effect);
+            (IsRemovesOnlyEffect(effect) ? removes : gains).Add(effect);
         }
-        return string.Join(", ", parts);
+        gains.AddRange(removes);
+        return string.Join(", ", gains);
     }
+
+    /// <summary>True when a rendered effect string is nothing but a
+    /// <c>"Removes …"</c> clause (a pure-cleanup spell), so it can be sorted
+    /// after the gain figures in a multi-cast textblock expansion.</summary>
+    private static bool IsRemovesOnlyEffect(string effect)
+        => effect.StartsWith("Removes ", StringComparison.Ordinal)
+        && !effect.Contains(" · ", StringComparison.Ordinal);
 
     /// <summary>Signed magnitude — <c>"+10"</c> / <c>"-5"</c> (negatives carry
     /// their own minus sign, matching MME's affect headers).</summary>
