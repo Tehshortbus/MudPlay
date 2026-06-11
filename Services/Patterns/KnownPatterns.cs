@@ -110,6 +110,15 @@ public static class KnownPatterns
     /// interrupt (took damage during prep, broke stealth, etc.).</summary>
     public const string CastInterrupted      = "spell.cast-interrupted";
 
+    /// <summary>"Your spell has no effect on &lt;monster&gt;." — the
+    /// target is immune to the attack spell we just cast (priest
+    /// <c>harm</c> vs an acid slime, etc.). Group 0 captures the
+    /// monster name. CombatManager canonicalizes it to base species and
+    /// marks that species attack-spell-immune so the chooser skips the
+    /// primary attack spell to the alternate (then the weapon command)
+    /// for the rest of the room.</summary>
+    public const string SpellNoEffect        = "spell.no-effect";
+
     // ----- Cash --------------------------------------------------------
     /// <summary>"There are N &lt;coin&gt; pieces here." / singular
     /// variant. Fired on room display when cash is on the ground.

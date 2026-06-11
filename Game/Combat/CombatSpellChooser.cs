@@ -121,12 +121,14 @@ public sealed class CombatSpellChooser
 
         CombatSpellSlot normal = settings.NormalAttackSpell;
         if (IsConfigured(normal)
+            && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
             && CastsOk(normal, _normalAttackCasts)
             && ManaOk(normal, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, normal.SpellName!);
 
         CombatSpellSlot alt = settings.AlternateAttackSpell;
         if (IsConfigured(alt)
+            && !IsImmune(ctx, CombatSpellAction.AlternateAttackSpell)
             && CastsOk(alt, _alternateAttackCasts)
             && ManaOk(alt, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.AlternateAttackSpell, alt.SpellName!);
@@ -172,6 +174,14 @@ public sealed class CombatSpellChooser
     private static bool IsConfigured(CombatSpellSlot slot) =>
         !string.IsNullOrWhiteSpace(slot.SpellName);
 
+    /// <summary>The current target's species is immune to this single-target
+    /// attack spell (a prior "Your spell has no effect on X." landed). Only
+    /// the single-target attack slots are gated — multi-attack room spells
+    /// are never marked immune (one immune mob doesn't mean the spell isn't
+    /// damaging the rest of the room).</summary>
+    private static bool IsImmune(in CombatSpellContext ctx, CombatSpellAction action) =>
+        ctx.ImmuneAttackSpells is { } set && set.Contains(action);
+
     /// <summary>Under the per-room cast cap. 0 = unlimited.</summary>
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
         slot.MaxCastsPerRoom <= 0 || castsSoFar < slot.MaxCastsPerRoom;
@@ -216,10 +226,14 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 /// per-instance name (keys the once-per-target single-debuff set);
 /// <paramref name="Mana"/>/<paramref name="MaxMana"/> drive the
 /// per-cast mana gate; <paramref name="BackstabPending"/> is true while a
-/// sneak backstab still owes its opening round.</summary>
+/// sneak backstab still owes its opening round;
+/// <paramref name="ImmuneAttackSpells"/> is the set of single-target attack
+/// actions the current target's species has proven immune to this room
+/// (<c>null</c> when nothing is immune).</summary>
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,
     int Mana,
     int MaxMana,
-    bool BackstabPending);
+    bool BackstabPending,
+    IReadOnlySet<CombatSpellAction>? ImmuneAttackSpells = null);

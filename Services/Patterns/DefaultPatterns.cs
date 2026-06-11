@@ -154,6 +154,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.CastInterrupted,
             @"^You lost your concentration on the spell!");
 
+        // Attack-spell immunity. MudProxy CombatManager:408. Non-greedy
+        // capture stops at the first period (no `$` — Multiline `$` won't
+        // match before `\r`). CombatManager marks the species attack-
+        // spell-immune so the chooser skips the primary attack spell.
+        yield return new RegexPattern(KnownPatterns.SpellNoEffect,
+            @"^Your spell has no effect on (?<target>.+?)\.");
+
         // ----- Cash ----------------------------------------------------
         // Stock MajorMUD wording for cash on the ground. Singular form
         // (1 coin) drops the count entirely ("There is a gold piece

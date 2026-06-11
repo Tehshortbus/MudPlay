@@ -289,4 +289,43 @@ public sealed class CombatManagerSpellsTests
 
         Assert.Equal(2, h.AllSent.Count(s => s == "blast giant rat"));
     }
+
+    // ----- damage-immunity fallback (CS-c) -----------------------------
+
+    [Fact]
+    public void SpellNoEffect_CascadesPrimaryToAlternateToWeapon()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "firebolt" };
+        h.Settings.AlternateAttackSpell = new CombatSpellSlot { SpellName = "icebolt" };
+        h.AddMonster(1, "acid slime");
+
+        h.Feed("Also here: acid slime.");                 // primary attack spell
+        Assert.Equal("firebolt acid slime", h.LastSent);
+
+        h.Feed("Your spell has no effect on acid slime."); // firebolt immune
+        h.Tick();                                          // heartbeat → alternate
+        Assert.Equal("icebolt acid slime", h.LastSent);
+
+        h.Feed("Your spell has no effect on acid slime."); // icebolt immune → weapon now
+        Assert.Equal("a acid slime", h.LastSent);
+    }
+
+    [Fact]
+    public void SpellNoEffect_MultiAttack_NotGated_KeepsCasting()
+    {
+        using Harness h = new();
+        h.Settings.MultiAttackSpell = new CombatSpellSlot { SpellName = "blast", MinEnemies = 1 };
+        h.AddMonster(1, "acid slime");
+
+        h.Feed("Also here: acid slime.");                 // multi-attack room spell
+        Assert.Equal("blast acid slime", h.LastSent);
+
+        // One immune mob doesn't mean the room spell isn't damaging the
+        // rest — multi-attack is never marked immune.
+        h.Feed("Your spell has no effect on acid slime.");
+        h.Tick();
+        Assert.Equal("blast acid slime", h.LastSent);
+        Assert.DoesNotContain("a acid slime", h.AllSent);
+    }
 }

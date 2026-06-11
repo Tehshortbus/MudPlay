@@ -84,6 +84,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _targetGoneSub;
     private readonly IDisposable _weaponNoEffectSub;
     private readonly IDisposable _fistsNoEffectSub;
+    private readonly IDisposable _spellNoEffectSub;
     private readonly IDisposable _combatStatusSub;
 
     /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
@@ -197,6 +198,7 @@ public sealed partial class CombatManager : IDisposable
         _targetGoneSub = router.Subscribe(KnownPatterns.TargetNotHere, OnTargetNotHere);
         _weaponNoEffectSub = router.Subscribe(KnownPatterns.WeaponNoEffect, OnWeaponNoEffect);
         _fistsNoEffectSub  = router.Subscribe(KnownPatterns.FistsNoEffect,  OnFistsNoEffect);
+        _spellNoEffectSub  = router.Subscribe(KnownPatterns.SpellNoEffect,  OnSpellNoEffect);
         _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
     }
 
@@ -580,8 +582,11 @@ public sealed partial class CombatManager : IDisposable
         _noEffectCounts.Clear();
 
         // Reset the combat-spell room economy — per-room debuff-once /
-        // cast-cap / multi-attack counters all start fresh next room.
+        // cast-cap / multi-attack counters + the damage-immunity map all
+        // start fresh next room.
         _castingSpellTarget = null;
+        _lastCastAction = null;
+        _attackSpellImmuneSpecies.Clear();
         _spellChooser.ResetForNewRoom();
 
         // BS weapon takes precedence — re-equip after every fight so
@@ -721,19 +726,25 @@ public sealed partial class CombatManager : IDisposable
     /// <summary>Map current target's RawName back to its base species
     /// via the live observation. Falls back to <c>_currentTarget</c>
     /// when no match is found (orphaned target).</summary>
-    private string ResolveSpeciesFromCurrentTarget()
+    private string ResolveSpeciesFromCurrentTarget() =>
+        _currentTarget is { } tgt ? ResolveSpeciesByName(tgt) : string.Empty;
+
+    /// <summary>Map a monster RawName back to its base species via the live
+    /// observation (strips any flavor prefix). Falls back to the raw name
+    /// itself when no match is found.</summary>
+    private string ResolveSpeciesByName(string rawName)
     {
-        if (_currentTarget is not { } tgt) return string.Empty;
+        if (string.IsNullOrWhiteSpace(rawName)) return string.Empty;
         if (_classifier.Current is { } obs)
         {
             foreach (RoomEntity e in obs.Entities)
             {
                 if (e.Kind != EntityKind.Monster) continue;
-                if (string.Equals(e.RawName, tgt, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(e.RawName, rawName, StringComparison.OrdinalIgnoreCase))
                     return e.ResolvedName;
             }
         }
-        return tgt;
+        return rawName;
     }
 
     /// <summary>
@@ -942,6 +953,7 @@ public sealed partial class CombatManager : IDisposable
         // Any weapon swing exits spell mode — the server auto-repeats the
         // swing, so the tick heartbeat must stop re-casting for this target.
         _castingSpellTarget = null;
+        _lastCastAction = null;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         if (priority is { } prio)
@@ -957,6 +969,7 @@ public sealed partial class CombatManager : IDisposable
     {
         _combatOff = false;
         _castingSpellTarget = null;
+        _lastCastAction = null;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         _log?.Info(LogCategory,
@@ -978,6 +991,7 @@ public sealed partial class CombatManager : IDisposable
         _targetGoneSub.Dispose();
         _weaponNoEffectSub.Dispose();
         _fistsNoEffectSub.Dispose();
+        _spellNoEffectSub.Dispose();
         _combatStatusSub.Dispose();
     }
 

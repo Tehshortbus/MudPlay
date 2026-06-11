@@ -1,6 +1,7 @@
 using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
+using FujinTerm.Services;
 
 namespace FujinTerm.Game.Combat;
 
@@ -36,6 +37,32 @@ public sealed partial class CombatManager
     private Func<(int Ma, int MaxMa)>? _readMana;
 
     /// <summary>
+    /// Room-scoped damage-immunity map (CS-c) — canonical species →
+    /// single-target attack-spell actions that produced a
+    /// "Your spell has no effect on X." line this room. The chooser reads
+    /// it (via <see cref="CombatSpellContext.ImmuneAttackSpells"/>) and
+    /// skips the immune slot down the attack cascade. Only
+    /// <see cref="CombatSpellAction.NormalAttackSpell"/> /
+    /// <see cref="CombatSpellAction.AlternateAttackSpell"/> are ever
+    /// recorded — multi-attack room spells are never gated (one immune
+    /// mob doesn't mean the spell isn't damaging the rest of the room) and
+    /// debuffs aren't attack spells. Cleared on room-cleared. MudProxy
+    /// <c>CombatManager</c> immune-set design.
+    /// </summary>
+    private readonly Dictionary<string, HashSet<CombatSpellAction>> _attackSpellImmuneSpecies =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The action of the last successful cast this round. The
+    /// "no effect" line doesn't name which spell failed, so we attribute
+    /// it to whatever we last cast — but only mark it immune when it's a
+    /// single-target attack spell (see <see cref="OnSpellNoEffect"/>).
+    /// Cleared by every weapon swing (via <see cref="SendAttack"/>) and on
+    /// room-cleared.
+    /// </summary>
+    private CombatSpellAction? _lastCastAction;
+
+    /// <summary>
     /// Opt into combat-spell casting. <paramref name="cast"/> is the shared
     /// <see cref="CastCoordinator"/> (so the per-round cooldown is shared
     /// with every other caster); <paramref name="readMana"/> reports live
@@ -69,14 +96,7 @@ public sealed partial class CombatManager
     {
         if (!CombatSpellsWired) return false;
 
-        (int ma, int maxMa) = _readMana!();
-        var ctx = new CombatSpellContext(
-            EnemyCount:      enemyCount,
-            TargetRawName:   picked.RawName,
-            Mana:            ma,
-            MaxMana:         maxMa,
-            BackstabPending: BackstabPending(settings, obs));
-
+        CombatSpellContext ctx = BuildContext(settings, obs, picked.RawName, enemyCount);
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
         if (decision.Action == CombatSpellAction.WeaponAttack) return false;
 
@@ -88,6 +108,7 @@ public sealed partial class CombatManager
         if (_cast!.TryCast(decision.Spell!, picked.RawName))
         {
             _spellChooser.MarkCast(decision, picked.RawName);
+            _lastCastAction = decision.Action;
             _combatOff = false;
         }
         return true;
@@ -138,13 +159,7 @@ public sealed partial class CombatManager
         }
 
         CombatSettings settings = _readSettings();
-        (int ma, int maxMa) = _readMana!();
-        var ctx = new CombatSpellContext(
-            EnemyCount:      CountEngageable(obs),
-            TargetRawName:   target,
-            Mana:            ma,
-            MaxMana:         maxMa,
-            BackstabPending: BackstabPending(settings, obs));
+        CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
 
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
         if (decision.Action == CombatSpellAction.WeaponAttack)
@@ -160,6 +175,7 @@ public sealed partial class CombatManager
         if (_cast!.TryCast(decision.Spell!, target))
         {
             _spellChooser.MarkCast(decision, target);
+            _lastCastAction = decision.Action;
             _combatOff = false;
         }
         // Blocked (CastDirector spent this round) → stay in spell mode and
@@ -199,5 +215,101 @@ public sealed partial class CombatManager
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Build the per-round chooser context for <paramref name="target"/>,
+    /// reading live mana and folding in any room-scoped attack-spell
+    /// immunity (CS-c) for that target's species. Shared by the initial
+    /// cast decision (<see cref="TryCastCombatSpell"/>, passed
+    /// <paramref name="enemyCount"/> from the candidate build) and the
+    /// per-round heartbeat (<see cref="OnCombatTick"/>, counting the live
+    /// observation).
+    /// </summary>
+    private CombatSpellContext BuildContext(
+        CombatSettings settings, RoomEntitiesObservation obs, string target, int enemyCount)
+    {
+        (int ma, int maxMa) = _readMana!();
+        return new CombatSpellContext(
+            EnemyCount:         enemyCount,
+            TargetRawName:      target,
+            Mana:               ma,
+            MaxMana:            maxMa,
+            BackstabPending:    BackstabPending(settings, obs),
+            ImmuneAttackSpells: ImmuneActionsFor(target));
+    }
+
+    /// <summary>The single-target attack-spell actions the species of
+    /// <paramref name="target"/> has proven immune to this room, or
+    /// <c>null</c> when nothing is immune (the common case).</summary>
+    private IReadOnlySet<CombatSpellAction>? ImmuneActionsFor(string target)
+    {
+        string species = ResolveSpeciesByName(target);
+        if (string.IsNullOrEmpty(species)) return null;
+        return _attackSpellImmuneSpecies.TryGetValue(species, out HashSet<CombatSpellAction>? set)
+            ? set
+            : null;
+    }
+
+    /// <summary>
+    /// "Your spell has no effect on X." — the attack spell we just cast
+    /// can't hurt that species (priest <c>harm</c> vs an acid slime, etc.).
+    /// Mark the last-cast action immune for the species so the chooser
+    /// skips it down the attack cascade (primary → alternate → weapon) for
+    /// the rest of the room, then re-decide this round. Only single-target
+    /// attack spells fall back: multi-attack room spells are never gated
+    /// (one immune mob doesn't mean the spell isn't damaging the rest of
+    /// the room) and debuffs aren't attack spells, so a no-effect line that
+    /// follows one of those is ignored here.
+    /// </summary>
+    private void OnSpellNoEffect(MatchResult match)
+    {
+        if (!CombatSpellsWired || !_isEnabled()) return;
+        if (_lastCastAction is not (CombatSpellAction.NormalAttackSpell
+                                  or CombatSpellAction.AlternateAttackSpell))
+            return;
+
+        string species = match.Groups.Count > 0
+            ? ResolveSpeciesByName(match.Groups[0].Trim())
+            : ResolveSpeciesFromCurrentTarget();
+        if (string.IsNullOrEmpty(species)) return;
+
+        if (!_attackSpellImmuneSpecies.TryGetValue(species, out HashSet<CombatSpellAction>? set))
+        {
+            set = new HashSet<CombatSpellAction>();
+            _attackSpellImmuneSpecies[species] = set;
+        }
+        if (set.Add(_lastCastAction.Value))
+            _log?.Info(LogCategory,
+                $"spell-no-effect species={species} action={_lastCastAction.Value} — marking immune");
+
+        ReDecideAfterImmunity(_readSettings());
+    }
+
+    /// <summary>
+    /// After recording an immunity, re-run the chooser against the live
+    /// room for the current spell target. If the cascade has reached the
+    /// weapon command, swing immediately (MudProxy's immediate-melee
+    /// fallback) so the round isn't burned idle. If it still resolves to a
+    /// spell (primary immune → alternate), stay in spell mode and let the
+    /// heartbeat issue it next tick — the cast cooldown blocks an immediate
+    /// re-cast this round. Clears <see cref="_lastCastAction"/> so a second
+    /// no-effect line this round can't double-mark.
+    /// </summary>
+    private void ReDecideAfterImmunity(CombatSettings settings)
+    {
+        if (_castingSpellTarget is not { } target) return;
+        if (_classifier.Current is not { } obs) return;
+        if (!TargetPresent(obs, target)) return;
+
+        CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs));
+        CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
+        if (decision.Action == CombatSpellAction.WeaponAttack)
+        {
+            bool useAlt = _normalWeaponFailedMonsters.Contains(ResolveSpeciesByName(target));
+            SendWeaponAttack(settings, target, useAlt);
+            return;
+        }
+        _lastCastAction = null;
     }
 }
