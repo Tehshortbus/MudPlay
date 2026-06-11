@@ -74,6 +74,25 @@ public sealed class KnownSpellCatalog
     }
 
     /// <summary>
+    /// Reverse of <see cref="ResolveClassNumber"/>: resolve a
+    /// <c>Classes.Number</c> to its display <c>Name</c>. Returns <c>null</c>
+    /// when the active set has no class with that number. Used by the
+    /// party-bless picker to compare a slot's stored class numbers against a
+    /// <c>PartyMember.Class</c> name.
+    /// </summary>
+    public string? ResolveClassName(int classNumber)
+    {
+        if (classNumber < 1) return null;
+        JsonDocument? doc = _cache.GetRawTable("Classes");
+        if (doc is null) return null;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            if (ReadInt(row, "Number") == classNumber)
+                return ReadString(row, "Name");
+        return null;
+    }
+
+    /// <summary>
     /// Mirror of <c>GetClassMagery</c> / <c>GetClassMageryLVL</c>: returns
     /// the class's magery type (enmMagicEnum value) and emits its magery
     /// level. A class number with no matching row resolves to

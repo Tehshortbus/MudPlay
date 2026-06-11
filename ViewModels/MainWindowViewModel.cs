@@ -581,6 +581,12 @@ public partial class MainWindowViewModel : ObservableObject
         // against every game-data Messages record's AppliedMessage /
         // AppliedEndsWith pair to surface live ActiveFlags.
         AppServices.Current.Conditions.AttachLineExtractor(Lines);
+        // Party-buff confirmation — CastingDirector watches inbound lines
+        // for OUR caster echo ("You cast bless on Raijin!") to confirm a
+        // pending party-bless cast landed before it starts the buff's
+        // duration timer. Self-buff confirmation goes through the
+        // ConditionTracker AppliedMessage path instead.
+        AppServices.Current.CastDirector.AttachLineExtractor(Lines);
         // Multi-line "Also here:" wrap stitching — the server wraps
         // long occupant lists at the 80-col boundary, so the regex
         // pattern only sees the first row. AttachLineExtractor
@@ -1875,6 +1881,14 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+
+                // Drop per-session condition + buff-duration state so a
+                // fresh login starts clean: any non-auto-clearing
+                // condition (no AppliedEndsWith) and any live buff timer
+                // must not survive the disconnect and suppress a recast
+                // on the next session.
+                AppServices.Current.Conditions.ClearAll();
+                AppServices.Current.CastDirector.ResetBuffTracking();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a

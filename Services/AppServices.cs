@@ -1777,6 +1777,20 @@ public sealed class AppServices
         // Auto-Bless auto-engine gate — when off, the Buffing category is
         // suppressed (no Bless / regen / when-full buff fires).
         CastDirector.SetAutoBlessGate(() => ReadAutoModeFlag(d => d.AutoBless));
+        // Feature 5 — buff-duration recast model. A buff cast (self or
+        // party) is confirmed, then suppressed until it's within the
+        // pre-expiry recast window. BuffInfoByShort maps a 4-letter cast
+        // code to its CasterMessage confirmation template + computed
+        // duration (SpellCalculator.Duration at the live level);
+        // ShortFromAppliedRecord maps a fired AppliedMessage record back
+        // to the cast code so a confirmed self-buff starts its timer.
+        CastDirector.SetBuffDurationSources(BuffInfoByShort, ShortFromAppliedRecord);
+        // Party-bless slots store class numbers; PartyMember.Class is a
+        // class name — resolve via the active set's Classes table.
+        CastDirector.SetClassResolver(SpellCatalog.ResolveClassName);
+        // Settings → Other "bless party while resting / during combat"
+        // toggles gate the party-buff picker.
+        CastDirector.SetPartyBlessGate(() => Resolver.Resolve<Models.Profile.OtherSettings>("Other"));
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Phase 9 PR 9.A (spell extension) — opt the combat engine into the
@@ -2167,6 +2181,75 @@ public sealed class AppServices
         Models.Profile.GeneralSettings general =
             ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
         return selector(general.AutoMode);
+    }
+
+    /// <summary>
+    /// Feature 5 buff-duration source: map a 4-letter cast code to the
+    /// buff's <see cref="Models.GameData.MessageRecord.CasterMessage"/>
+    /// confirmation template plus its computed effect duration in
+    /// seconds (<see cref="Game.Spells.SpellCalculator.Duration"/> at the
+    /// live <see cref="Game.Spells.SpellbookState.Level"/>). Returns
+    /// <c>null</c> for an unknown code, a code with no game-data message
+    /// record, or a record with no caster line.
+    /// </summary>
+    private (string Caster, long DurationSec)? BuffInfoByShort(string castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return null;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            if (rec is null || string.IsNullOrWhiteSpace(rec.CasterMessage)) return null;
+            return (rec.CasterMessage, Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Feature 5 buff-duration source: map a fired AppliedMessage
+    /// <see cref="Models.GameData.MessageRecord"/> back to the buff's
+    /// 4-letter cast code so a confirmed self-buff starts / clears its
+    /// duration timer. Resolves via the record's <c>Spells#N</c> link
+    /// first, then falls back to a name match against the live spellbook.
+    /// </summary>
+    private string? ShortFromAppliedRecord(Models.GameData.MessageRecord record)
+    {
+        if (record.Links is not null)
+            foreach (Models.GameData.GameDataLink link in record.Links)
+            {
+                if (!string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+                    if (s.Number == link.Number) return s.Short;
+            }
+
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+            if (string.Equals(s.Name.Trim(), record.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                return s.Short;
+        return null;
+    }
+
+    /// <summary>
+    /// Find the active set's <see cref="Models.GameData.MessageRecord"/>
+    /// for a spell — by <c>Spells#N</c> link first, then by name. Returns
+    /// <c>null</c> when the catalogue has no record for the spell.
+    /// </summary>
+    private Models.GameData.MessageRecord? FindSpellMessage(int spellNumber, string spellName)
+    {
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+        {
+            if (m.Links is null) continue;
+            foreach (Models.GameData.GameDataLink link in m.Links)
+                if (string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)
+                    && link.Number == spellNumber)
+                    return m;
+        }
+
+        string target = spellName.Trim();
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+            if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return m;
+        return null;
     }
 
     /// <summary>
