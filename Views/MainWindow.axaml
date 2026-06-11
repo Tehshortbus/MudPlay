@@ -126,13 +126,13 @@
 
             <MenuItem Header="_View">
                 <MenuItem Header="Settings…"     InputGesture="{Binding SettingsGesture}" Command="{Binding OpenSettingsCommand}"/>
+                <MenuItem Header="Backscroll"    InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
                 <Separator/>
                 <MenuItem Header="Conversation"  InputGesture="{Binding ConversationGesture}"  Command="{Binding OpenConversationCommand}"/>
                 <MenuItem Header="Party"         InputGesture="{Binding PartyGesture}"  Command="{Binding OpenPartyCommand}"/>
                 <MenuItem Header="Player Workshop" InputGesture="{Binding WorkshopGesture}" Command="{Binding OpenWorkshopCommand}"/>
                 <MenuItem Header="Navigation"      InputGesture="{Binding NavigationGesture}" Command="{Binding OpenNavigationCommand}"/>
                 <MenuItem Header="Spell Book"    InputGesture="{Binding SpellBookGesture}"  Command="{Binding OpenSpellBookCommand}"/>
-                <MenuItem Header="Backscroll"    InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
                 <MenuItem Header="Session Stats" InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
                 <Separator/>
                 <MenuItem Header="Players"  Command="{Binding OpenGameDataPlayersCommand}"/>
