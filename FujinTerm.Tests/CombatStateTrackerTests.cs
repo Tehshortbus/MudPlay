@@ -40,6 +40,15 @@ public sealed class CombatStateTrackerTests
                 isAutoSneakEnabled:  () => AutoSneakEnabled,
                 hasSeeHidden:        n => SeeHidden.Contains(n));
 
+        // ----- actionability gate (PR-iii) ---------------------------
+        // Monster Numbers we declare un-actionable (no weapon hits, every
+        // attack spell level-blocked). The gate holds only while at least
+        // one engageable hostile is NOT in this set.
+        public HashSet<int> Unactionable { get; } = new();
+
+        public void WireActionabilityGate() =>
+            Tracker.SetActionabilityGate(n => !Unactionable.Contains(n));
+
         public Harness()
         {
             Router = new MessageRouter();
@@ -446,8 +455,52 @@ public sealed class CombatStateTrackerTests
         Assert.NotNull(last);
         Assert.True(last!.Value.Asserted);
         Assert.Equal(CombatStateTracker.AsserterName, last.Value.Asserter);
-        Assert.Contains("targetable=1", last.Value.Reason);
+        Assert.Contains("actionable=1/1", last.Value.Reason);
         Assert.Contains("first=giant rat", last.Value.Reason);
+    }
+
+    // ----- actionability gate (PR-iii) -------------------------------
+
+    [Fact]
+    public void SoleHostileUnactionable_ReleasesGate()
+    {
+        using Harness h = new();
+        h.WireActionabilityGate();
+        h.AddMonster(1, "stone golem", killable: true);
+        h.Unactionable.Add(1);              // can't hit, no eligible spell
+
+        h.Feed("Also here: stone golem.");
+
+        // Engageable but un-actionable → walker moves past, gate not held.
+        Assert.False(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void ActionablePlusUnactionable_HoldsGate()
+    {
+        using Harness h = new();
+        h.WireActionabilityGate();
+        h.AddMonster(1, "stone golem", killable: true);
+        h.AddMonster(2, "giant rat", killable: true);
+        h.Unactionable.Add(1);              // golem un-actionable; rat is fine
+
+        h.Feed("Also here: stone golem, giant rat.");
+
+        // One killable hostile remains → gate holds so we stop to fight it.
+        Assert.True(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void Unwired_AllHostilesActionable_HoldsGate()
+    {
+        using Harness h = new();
+        // No WireActionabilityGate — fail-open: every engageable hostile
+        // counts as actionable, exactly the pre-PR-iii behavior.
+        h.AddMonster(1, "stone golem", killable: true);
+
+        h.Feed("Also here: stone golem.");
+
+        Assert.True(h.CombatGateHeld);
     }
 
     // ----- PlayerState.InCombat drive --------------------------------

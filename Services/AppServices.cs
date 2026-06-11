@@ -1776,6 +1776,13 @@ public sealed class AppServices
         SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
         Combat.SetMagicEligibility(MonsterMagic, ItemMagic, SpellReqLevel);
 
+        // Actionability gate — the walker-gate owner releases when a room's
+        // remaining hostiles are all un-actionable (no weapon hits, every
+        // attack spell level-blocked) so the walker moves past instead of
+        // standing in an unwinnable fight. Reuses CombatManager's deterministic
+        // CanEngageMonster so the gate and the swing decision can't diverge.
+        CombatTracker.SetActionabilityGate(n => Combat.CanEngageMonster(n));
+
         // PR 4.c-b combat-off "clear hostiles when seen Hidden" override —
         // a stealth runner (AutoSneak on) sprinting a route with combat
         // OFF that hits a SeeHidden room must stop and clear it rather than

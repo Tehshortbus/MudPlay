@@ -74,6 +74,7 @@ public sealed class CombatStateTracker : IDisposable
     private Func<bool>? _clearWhenSeenHidden;
     private Func<bool>? _isAutoSneakEnabled;
     private Func<int, bool>? _hasSeeHidden;
+    private Func<int, bool>? _canEngage;
     private bool _seeHiddenClearLatch;
 
     /// <summary>
@@ -188,6 +189,23 @@ public sealed class CombatStateTracker : IDisposable
         _hasSeeHidden = hasSeeHidden;
     }
 
+    /// <summary>
+    /// Wire the actionability gate: <paramref name="canEngage"/> reports
+    /// whether a monster Number is one we can actually kill (a weapon can hit
+    /// it OR an eligible attack spell can land — see
+    /// <see cref="CombatManager.CanEngageMonster"/>). With it wired, the
+    /// walker gate is held only while at least one engageable hostile is
+    /// <em>actionable</em>; a room whose remaining hostiles are all
+    /// un-actionable releases the gate so the walker moves past instead of
+    /// standing there unable to win. Until set, every engageable hostile
+    /// counts as actionable (fail-open — the gate behaves exactly as before).
+    /// </summary>
+    public void SetActionabilityGate(Func<int, bool> canEngage)
+    {
+        ArgumentNullException.ThrowIfNull(canEngage);
+        _canEngage = canEngage;
+    }
+
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
         // Single pass over the room: ANY monster (friendly or hostile)
@@ -196,6 +214,7 @@ public sealed class CombatStateTracker : IDisposable
         // the combat-off clear override.
         _anyNpcPresent = false;
         int targetable = 0;
+        int actionable = 0;
         string? first = null;
         bool roomHasSeeHidden = false;
         foreach (RoomEntity e in obs.Entities)
@@ -205,7 +224,11 @@ public sealed class CombatStateTracker : IDisposable
             if (IsEngageable(e))
             {
                 targetable++;
-                first ??= e.ResolvedName;
+                if (IsActionable(e))
+                {
+                    actionable++;
+                    first ??= e.ResolvedName;
+                }
             }
             if (!roomHasSeeHidden && e.MonsterNumber is int n
                 && _hasSeeHidden?.Invoke(n) == true)
@@ -226,13 +249,18 @@ public sealed class CombatStateTracker : IDisposable
                           && roomHasSeeHidden;
             if (_seeHiddenClearLatch || armNow)
             {
-                if (targetable > 0)
+                // Hold only while something here is actually killable. If the
+                // remaining hostiles are all un-actionable, standing to clear
+                // a room we can't clear would deadlock the runner — release
+                // and let the walker move past (the move-past rule wins even
+                // over the re-sneak concern: a fight we can't win is worse).
+                if (actionable > 0)
                 {
                     _seeHiddenClearLatch = true;
                     AssertGate("seehidden clear (combat-off override)");
                     return;
                 }
-                _seeHiddenClearLatch = false;   // room cleared — release.
+                _seeHiddenClearLatch = false;   // room cleared / un-actionable — release.
             }
             // Auto-attack off and no override → never hold the gate.
             // Defensive clear in case it was asserted just before toggle.
@@ -244,16 +272,21 @@ public sealed class CombatStateTracker : IDisposable
         // latch is a combat-off concept, so drop it.
         _seeHiddenClearLatch = false;
 
-        if (targetable > 0)
+        if (actionable > 0)
         {
             string reason = first is null
-                ? $"room-entry targetable={targetable}"
-                : $"room-entry targetable={targetable} first={first}";
+                ? $"room-entry actionable={actionable}/{targetable}"
+                : $"room-entry actionable={actionable}/{targetable} first={first}";
             AssertGate(reason);
         }
         else
         {
-            ClearGate("room cleared");
+            // targetable>0 here means hostiles remain but none are killable —
+            // release the gate and move past (per the move-past rule). The
+            // "room cleared" wording stays for the genuine empty-room case.
+            ClearGate(targetable > 0
+                ? $"room un-actionable: {targetable} hostile(s), none hittable — moving on"
+                : "room cleared");
             // Room is now clear of engageable monsters → combat truly
             // ended. This is the authoritative "we're out of combat"
             // signal; CombatStatus=Off is unreliable (server emits it
@@ -283,6 +316,22 @@ public sealed class CombatStateTracker : IDisposable
         try { overlay = _resolveOverlay(n) ?? new MonsterOverlay(); }
         catch { return true; }
         return (overlay.Relationship ?? MonsterRelationship.Enemy) == MonsterRelationship.Enemy;
+    }
+
+    /// <summary>
+    /// Actionable = we can actually kill it (a weapon can hit it OR an
+    /// eligible attack spell can land). Fail-open: an unwired gate, an
+    /// unknown monster Number, or a resolver exception all count as
+    /// actionable so a thin data set never strands the walker. The caller
+    /// only invokes this for entities that already passed
+    /// <see cref="IsEngageable"/>.
+    /// </summary>
+    private bool IsActionable(RoomEntity e)
+    {
+        if (_canEngage is null) return true;             // unwired → fail open
+        if (e.MonsterNumber is not int n) return true;   // unknown number → fail open
+        try { return _canEngage(n); }
+        catch { return true; }
     }
 
     private void AssertGate(string reason)

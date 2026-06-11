@@ -360,6 +360,76 @@ public sealed partial class CombatManager
         return blocked;
     }
 
+    /// <summary>
+    /// Deterministic actionability gate: can we kill this monster at all?
+    /// True (engageable) unless game data <em>proves</em> we can neither hit
+    /// it physically nor land an attack spell on it — i.e. both weapons'
+    /// <c>HitMagic</c> are below the monster's <c>Magical</c> level AND every
+    /// configured attack spell is level-blocked by its <c>SpellImmu</c>.
+    /// Fail-open at every unknown (indexes unwired, monster has no Magical
+    /// level, a weapon or spell is unknown) so a thin data set never makes us
+    /// skip a monster we could actually fight. Consumed by
+    /// <see cref="OnEntitiesObserved"/> (retarget / move-past) and, via the
+    /// delegate <c>AppServices</c> injects, by
+    /// <see cref="CombatStateTracker"/> (walker-gate release).
+    /// </summary>
+    public bool CanEngageMonster(int monsterNumber) =>
+        UnengageableReason(_readSettings(), monsterNumber) is null;
+
+    /// <summary>
+    /// The reason we can't kill <paramref name="monsterNumber"/>, or
+    /// <c>null</c> when it's actionable. Physical eligibility is checked first
+    /// (deterministic, fails open); only when both weapons are proven unable
+    /// to hit do we consult the attack-spell slots. An attack spell counts as
+    /// a kill means when it's configured and either the monster has no spell
+    /// immunity or the spell's <c>ReqLevel</c> clears it. Area / single-target
+    /// debuffs are NOT kill means and never count here.
+    /// </summary>
+    private string? UnengageableReason(CombatSettings settings, int monsterNumber)
+    {
+        if (_monsterMagic is null || _itemMagic is null) return null;   // unwired → fail open
+        if (monsterNumber < 0) return null;                             // unknown monster → fail open
+
+        int magical = _monsterMagic.MagicalLevel(monsterNumber);
+        if (magical <= 0) return null;                                  // any weapon hits
+
+        int normalHit = _itemMagic.HitMagic(settings.NormalWeapon);
+        if (normalHit < 0) return null;                                 // unknown normal weapon → fail open
+        if (normalHit >= magical) return null;                          // normal hits
+
+        int altHit = _itemMagic.HitMagic(settings.AlternateWeapon);
+        if (altHit < 0) return null;                                    // unknown alt weapon → fail open
+        if (altHit >= magical) return null;                             // alt hits
+
+        // Neither weapon can hit. The monster is actionable only if some
+        // configured attack spell can still land on it.
+        if (_spellReqLevel is null) return null;                        // can't prove spell-blocked → fail open
+        int immu = _monsterMagic.SpellImmunity(monsterNumber);
+        if (AttackSpellCanLand(settings.NormalAttackSpell, immu)) return null;
+        if (AttackSpellCanLand(settings.AlternateAttackSpell, immu)) return null;
+        if (AttackSpellCanLand(settings.MultiAttackSpell, immu)) return null;
+
+        return $"weapons HitMagic<{magical} (normal={normalHit} alt={altHit}) " +
+               $"and no eligible attack spell (SpellImmu={immu})";
+    }
+
+    /// <summary>
+    /// True when <paramref name="slot"/> holds a configured attack spell that
+    /// can land on a monster with spell-immunity <paramref name="immu"/>:
+    /// unconfigured slots are not a kill means; an unknown spell fails open
+    /// (assume it works); otherwise the spell lands iff its <c>ReqLevel</c> is
+    /// ≥ the immunity. Assumes <see cref="_spellReqLevel"/> is wired (the only
+    /// caller checks first).
+    /// </summary>
+    private bool AttackSpellCanLand(CombatSpellSlot slot, int immu)
+    {
+        if (string.IsNullOrWhiteSpace(slot.SpellName)) return false;    // unconfigured → not a kill means
+        int req = _spellReqLevel!.ReqLevel(slot.SpellName);
+        if (req < 0) return true;                                       // unknown spell → fail open
+        if (immu <= 0) return true;                                     // no immunity → any spell lands
+        return req >= immu;                                             // eligible iff ReqLevel ≥ SpellImmu
+    }
+
     /// <summary>Resolve the <c>MonsterNumber</c> of the entity matching
     /// <paramref name="rawName"/> in <paramref name="obs"/>, or <c>-1</c> when
     /// no match carries a number — which the eligibility helpers treat as

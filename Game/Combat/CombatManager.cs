@@ -443,12 +443,6 @@ public sealed partial class CombatManager : IDisposable
             return p != 0 ? p : a.AppearanceIndex.CompareTo(b.AppearanceIndex);
         });
 
-        // TargetOrder.Normal → highest-priority first (sorted[0]);
-        // Reverse → lowest-priority first (sorted[^1]).
-        EngageableCandidate picked = settings.TargetOrder == TargetOrder.Reverse
-            ? engageable[^1]
-            : engageable[0];
-
         // Server auto-attacks the specific named target each round;
         // re-sending the same command mid-fight would burn a swing.
         // If the exact RawName we last sent is still in the engageable
@@ -457,6 +451,46 @@ public sealed partial class CombatManager : IDisposable
             engageable.Any(e => string.Equals(e.RawName, current,
                                               StringComparison.OrdinalIgnoreCase)))
         {
+            return;
+        }
+
+        // Walk the engageable list in TargetOrder and pick the first
+        // monster we can actually engage. A monster the game data proves
+        // un-actionable (no weapon hits its Magical level AND every attack
+        // spell is level-blocked by its SpellImmu) is skipped — logged with
+        // the reason — and we try the next. TargetOrder.Normal walks
+        // highest-priority first (sorted ascending); Reverse walks
+        // lowest-priority first.
+        IReadOnlyList<EngageableCandidate> ordered =
+            settings.TargetOrder == TargetOrder.Reverse
+                ? Enumerable.Reverse(engageable).ToList()
+                : engageable;
+
+        EngageableCandidate? choice = null;
+        foreach (EngageableCandidate cand in ordered)
+        {
+            if (UnengageableReason(settings, cand.MonsterNumber) is { } reason)
+            {
+                _log?.Info(LogCategory,
+                    $"skip un-actionable {cand.RawName} (#{cand.MonsterNumber}) — {reason}");
+                continue;
+            }
+            choice = cand;
+            break;
+        }
+
+        // No engageable hostile is actionable — we can neither hit nor spell
+        // anything left in the room. Move past: clear the target and dispatch
+        // nothing. CombatStateTracker releases the walker gate on this same
+        // observation (it consults the same CanEngageMonster delegate), so the
+        // walker steps to the next room.
+        if (choice is not { } picked)
+        {
+            _log?.Info(LogCategory,
+                $"room un-actionable: {engageable.Count} hostile(s), none hittable — " +
+                $"moving on (engageable=[" +
+                $"{string.Join(",", engageable.Select(e => e.RawName))}])");
+            _currentTarget = null;
             return;
         }
 
@@ -762,6 +796,25 @@ public sealed partial class CombatManager : IDisposable
         string target;
         if (mirror)
         {
+            // Option (a): only follow the announcer onto their target if WE
+            // can actually engage it. If game data proves it un-actionable
+            // for us (no weapon hits, every attack spell level-blocked),
+            // don't mirror into a fight we can't contribute to — fall through
+            // to our own next actionable target via a fresh room pick.
+            if (_classifier.Current is { } liveObs)
+            {
+                int annNumber = ResolveMonsterNumber(liveObs, announcedTarget);
+                if (UnengageableReason(settings, annNumber) is { } annReason)
+                {
+                    _log?.Info(LogCategory,
+                        $"announce mirror skipped — {announcedTarget} un-actionable " +
+                        $"for us ({annReason}); re-picking our own target");
+                    _currentTarget = null;
+                    OnEntitiesObserved(liveObs);
+                    return;
+                }
+            }
+
             // Switch to the announcer's specific instance. Server
             // resolves `attack large kobold thief` against the right
             // entity even when "angry kobold thief" is also present.
