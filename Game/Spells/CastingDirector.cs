@@ -41,11 +41,16 @@ namespace FujinTerm.Game.Spells;
 /// poison → disease → blindness.</item>
 /// <item><b>Buffing</b> — recast player buffs (Bless1–10 slots).
 /// v1 unwired.</item>
-/// <item><b>Debuffing</b> — reserved for future non-combat debuffs.
-/// Combat pre-attack debuffs + attack spells are owned by
-/// <see cref="Combat.CombatManager"/> (they're round-coupled to the
-/// attack chain via <see cref="Combat.CombatSpellChooser"/>), so this
-/// category is a deliberate no-op here.</item>
+/// <item><b>Debuffing</b> — an in-between action sourced from the
+/// combat engine. The DECISION (config + once-per-room /
+/// once-per-target gating) is owned by
+/// <see cref="Combat.CombatManager"/> /
+/// <see cref="Combat.CombatSpellChooser"/>; this director only casts
+/// the debuff through the shared in-between window (wired via
+/// <see cref="SetCombatDebuffSource"/>) so it competes against the
+/// survival casts above by the user's
+/// <see cref="SpellsSettings.PriorityDebuffing"/> rank. No-op until
+/// wired.</item>
 /// </list>
 /// <para>
 /// Every evaluation walks the priority list and picks the first
@@ -75,6 +80,8 @@ public sealed class CastingDirector : IDisposable
     private readonly Conditions.ConditionTracker? _conditions;
     private readonly PartyState? _party;
     private Func<bool>? _isStealthedFunc;
+    private Func<(string Spell, string? Target)?>? _combatDebuffSource;
+    private Action? _combatDebuffCommit;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -161,6 +168,27 @@ public sealed class CastingDirector : IDisposable
     public void SetStealthGate(Func<bool> isStealthed) =>
         _isStealthedFunc = isStealthed;
 
+    /// <summary>
+    /// Wire the combat engine's in-between debuff bridge. A debuff is an
+    /// in-between action (≤1/round) in the realm's round model, but the
+    /// DECISION — config + once-per-room / once-per-target gating — lives in
+    /// <see cref="Combat.CombatManager"/>. This director just rides the shared
+    /// in-between window so the debuff competes against survival casts by the
+    /// user's <see cref="SpellsSettings.PriorityDebuffing"/> rank (default
+    /// lowest, so heals win). <paramref name="source"/> answers "is there a
+    /// debuff to fire?" (spell code + target; null target ⇒ area/multi);
+    /// <paramref name="commit"/> is invoked only after the coordinator confirms
+    /// the cast, advancing the combat engine's per-room bookkeeping. Optional —
+    /// until wired the Debuffing slot is a no-op.
+    /// </summary>
+    public void SetCombatDebuffSource(Func<(string Spell, string? Target)?> source, Action commit)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(commit);
+        _combatDebuffSource = source;
+        _combatDebuffCommit = commit;
+    }
+
     private void OnConditionApplied(Models.GameData.MessageRecord _) => Evaluate();
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -207,13 +235,17 @@ public sealed class CastingDirector : IDisposable
                 SpellCategory.MajorSelfHeal   => Wrap(PickMajorSelfHeal(spells, health)),
                 SpellCategory.Curing          => Wrap(PickCure(spells)),
                 SpellCategory.Buffing         => Wrap(PickBuff(spells, health)),
-                SpellCategory.Debuffing       => Wrap(PickDebuff(spells, health)),
+                SpellCategory.Debuffing       => PickDebuff(),
                 _                              => null,
             };
 
             if (pick is not { } cand) continue;
             if (string.IsNullOrWhiteSpace(cand.Spell)) continue;
             if (!_cast.TryCast(cand.Spell, cand.Target)) return null;
+
+            // Combat-sourced debuff landed — advance the combat engine's
+            // once-per-room / once-per-target bookkeeping so it won't re-fire.
+            if (category == SpellCategory.Debuffing) _combatDebuffCommit?.Invoke();
 
             _log?.Info(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
@@ -466,11 +498,18 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    // ----- Debuffing — no-op: combat debuffs live in CombatManager ----
-    // Combat pre-attack debuffs + attack spells are round-coupled to the
-    // attack chain, so CombatManager/CombatSpellChooser own them. This
-    // category stays reserved for any future out-of-combat debuff.
-    private string? PickDebuff(SpellsSettings _, HealthSettings __) => null;
+    // ----- Debuffing — sourced from the combat engine -----------------
+    // The combat engine owns the debuff DECISION (config + once-per-room /
+    // once-per-target gating in CombatSpellChooser); we just cast it through
+    // the shared in-between window at the user's PriorityDebuffing rank so it
+    // competes with survival casts. The bridge is wired by
+    // SetCombatDebuffSource; until then this is a no-op.
+    private CastCandidate? PickDebuff()
+    {
+        if (_combatDebuffSource?.Invoke() is not { } debuff) return null;
+        if (string.IsNullOrWhiteSpace(debuff.Spell)) return null;
+        return new CastCandidate(debuff.Spell, debuff.Target);
+    }
 
     public void Dispose()
     {

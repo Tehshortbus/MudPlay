@@ -15,8 +15,12 @@ namespace FujinTerm.Game.Combat;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Round ordering (per the realm's one-action-per-round model — a spell
-/// IS the round's action, it does not stack with a swing):
+/// <see cref="Choose"/> resolves the round's <b>combat action</b> (the
+/// 1/round physical swing XOR attack spell — a spell IS the round's action,
+/// it does not stack with a swing). Debuffing is an <b>in-between action</b>
+/// (≤1/round), resolved separately by <see cref="ChooseDebuff"/> and cast
+/// through the shared in-between window, so it never appears in the
+/// combat-action walk below.
 /// </para>
 /// <list type="number">
 /// <item><b>Backstab gate</b> — only when ranked at
@@ -26,12 +30,6 @@ namespace FujinTerm.Game.Combat;
 /// fail, so at any other rank the category is ignored entirely. When it
 /// fires the chooser returns <see cref="CombatSpellAction.Backstab"/> so the
 /// engine's BS path owns the swing and no spell goes out.</item>
-/// <item><b>Debuffing</b> — if
-/// <see cref="CombatSettings.AreaDebuffSpell"/> is configured, cast it
-/// once per room (honours its <see cref="CombatSpellSlot.MinEnemies"/>)
-/// and never use the single-target debuff. Otherwise, if
-/// <see cref="CombatSettings.SingleTargetDebuffSpell"/> is configured,
-/// cast it once on every target before attacking that target.</item>
 /// <item><b>Attack</b> — <see cref="CombatSettings.MultiAttackSpell"/>
 /// while its conditions hold (room count ≥ MinEnemies, mana, cast cap);
 /// it stays selected round after round until a condition fails (mana
@@ -123,8 +121,12 @@ public sealed class CombatSpellChooser
                 CombatCategory.Backstab =>
                     (settings.PriorityBackstab == 1 && ctx.BackstabPending)
                         ? CombatSpellDecision.Backstab : null,
-                CombatCategory.Debuffing =>
-                    ctx.SpellsAvailable ? TryDebuffing(settings, ctx, mode) : null,
+                // Debuffing is an in-between action, NOT a combat action —
+                // it's resolved by ChooseDebuff and cast through the shared
+                // in-between window (CastingDirector), so the combat-action
+                // walk skips it. The category stays in the sort only to keep
+                // the other three priorities ordering deterministically.
+                CombatCategory.Debuffing => null,
                 CombatCategory.Spells =>
                     ctx.SpellsAvailable ? TryAttackSpell(settings, ctx, mode) : null,
                 CombatCategory.Physical => CombatSpellDecision.Weapon,
@@ -134,6 +136,24 @@ public sealed class CombatSpellChooser
         }
 
         return CombatSpellDecision.Weapon;
+    }
+
+    /// <summary>
+    /// Pick the in-between debuff for the current round, or <c>null</c> when
+    /// no debuff applies. Debuffing is an in-between action (≤1/round) in the
+    /// realm's round model — NOT a combat action — so it's resolved here,
+    /// separately from <see cref="Choose"/>, and cast through the shared
+    /// in-between window (<c>CastingDirector</c>) rather than the combat-action
+    /// path. Area debuff takes precedence and excludes single (once per room
+    /// when <see cref="CombatSpellSlot.MinEnemies"/> is met); otherwise the
+    /// single-target debuff fires once on every new target. Pure — the caller
+    /// commits via <see cref="MarkCast"/> only when the cast reaches the wire.
+    /// </summary>
+    public CombatSpellDecision? ChooseDebuff(CombatSettings settings, in CombatSpellContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!ctx.SpellsAvailable) return null;
+        return TryDebuffing(settings, ctx, settings.SpellManaThresholdMode);
     }
 
     /// <summary>Debuffing phase. Area takes precedence and excludes

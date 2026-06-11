@@ -232,25 +232,31 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("a giant rat", h.LastSent);
     }
 
-    // ----- pre-attack debuff sequencing --------------------------------
+    // ----- in-between debuff bridge ------------------------------------
 
     [Fact]
-    public void AreaDebuff_CastsOncePerRoom_ThenAttackSpell()
+    public void AreaDebuff_OfferedAsInBetween_OncePerRoom_CombatActionAttacks()
     {
         using Harness h = new();
         h.Settings.AreaDebuffSpell = new CombatSpellSlot { SpellName = "curse", MinEnemies = 1 };
         h.Settings.MultiAttackSpell = new CombatSpellSlot { SpellName = "blast", MinEnemies = 1 };
         h.AddMonster(1, "giant rat");
 
-        h.Feed("Also here: giant rat.");      // debuff first
-        Assert.Equal("curse giant rat", h.LastSent);
-
-        h.Tick();                             // debuff already cast → attack spell
+        // The combat action is the attack spell; the debuff is an in-between
+        // action that CastingDirector pulls from the engine (not under test
+        // here — we drive the bridge directly).
+        h.Feed("Also here: giant rat.");
         Assert.Equal("blast giant rat", h.LastSent);
 
-        h.Tick();                             // stays on attack spell
+        (string Spell, string? Target)? debuff = h.Combat.PickInBetweenDebuff();
+        Assert.Equal("curse", debuff?.Spell);
+        Assert.Equal("giant rat", debuff?.Target);
+        h.Combat.CommitInBetweenDebuff();
+
+        Assert.Null(h.Combat.PickInBetweenDebuff());   // once per room
+
+        h.Tick();                                       // combat action unchanged
         Assert.Equal("blast giant rat", h.LastSent);
-        Assert.Single(h.AllSent, s => s == "curse giant rat");
     }
 
     // ----- backstab gate -----------------------------------------------

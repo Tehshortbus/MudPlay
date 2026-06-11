@@ -6,9 +6,12 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// Pins <see cref="CombatSpellChooser"/> — the per-round combat-spell decision
-/// unit — against the realm's one-action-per-round ordering: backstab gate →
-/// debuffing (area once-per-room XOR single once-per-target) → attack
-/// (multi-attack while qualified → normal → alternate → weapon). Mana gating
+/// unit. <see cref="CombatSpellChooser.Choose"/> resolves the round's <b>combat
+/// action</b>: backstab gate → attack (multi-attack while qualified → normal →
+/// alternate → weapon). Debuffing is an <b>in-between action</b> resolved
+/// separately by <see cref="CombatSpellChooser.ChooseDebuff"/> (area
+/// once-per-room XOR single once-per-target), so the two are pinned
+/// independently. Mana gating
 /// (<see cref="ThresholdMode.Percentage"/> vs <see cref="ThresholdMode.Absolute"/>)
 /// and per-room cast caps are exercised per branch.
 /// </summary>
@@ -108,10 +111,13 @@ public sealed class CombatSpellChooserTests
         Assert.Null(d.Spell);
     }
 
-    // ----- 2. Pre-attack debuff: area once-per-room, excludes single -----
+    // ----- 2. In-between debuff: area once-per-room, excludes single -----
+    // Debuffs are in-between actions resolved by ChooseDebuff, NOT combat
+    // actions — Choose never returns a debuff. Each case pins ChooseDebuff
+    // for the debuff decision and Choose for the round's combat action.
 
     [Fact]
-    public void Choose_AreaDebuff_FiresOncePerRoom_AndExcludesSingle()
+    public void ChooseDebuff_Area_FiresOncePerRoom_AndExcludesSingle()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -121,21 +127,23 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        // First round: area debuff wins.
-        CombatSpellDecision first = sut.Choose(settings, Ctx(enemies: 3));
-        Assert.Equal(CombatSpellAction.AreaDebuff, first.Action);
-        Assert.Equal("blindall", first.Spell);
-        sut.MarkCast(first, "a rat");
+        // First round: area debuff is due.
+        CombatSpellDecision? first = sut.ChooseDebuff(settings, Ctx(enemies: 3));
+        Assert.Equal(CombatSpellAction.AreaDebuff, first?.Action);
+        Assert.Equal("blindall", first?.Spell);
+        sut.MarkCast(first!.Value, "a rat");
 
-        // Next round: area already cast → never falls to the single-target
-        // debuff (area excludes single) → goes straight to the attack phase.
-        CombatSpellDecision second = sut.Choose(settings, Ctx(enemies: 3));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, second.Action);
-        Assert.Equal("harm", second.Spell);
+        // Next round: area already cast → no debuff (area excludes single).
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(enemies: 3)));
+
+        // The combat action (Choose) never returns a debuff — it attacks.
+        CombatSpellDecision attack = sut.Choose(settings, Ctx(enemies: 3));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, attack.Action);
+        Assert.Equal("harm", attack.Spell);
     }
 
     [Fact]
-    public void Choose_AreaDebuff_BelowMinEnemies_Skipped()
+    public void ChooseDebuff_Area_BelowMinEnemies_Skipped()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -144,16 +152,17 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        // Only 2 enemies, area needs 4 → skip straight to attack. Area never
-        // falls through to single (none configured here anyway).
-        CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 2));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        // Only 2 enemies, area needs 4 → no debuff (area never falls to single).
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(enemies: 2)));
+        // Combat action falls straight to the attack spell.
+        Assert.Equal(CombatSpellAction.NormalAttackSpell,
+            sut.Choose(settings, Ctx(enemies: 2)).Action);
     }
 
     // ----- 2b. Single-target debuff: once per target --------------------
 
     [Fact]
-    public void Choose_SingleDebuff_FiresOncePerTarget()
+    public void ChooseDebuff_Single_FiresOncePerTarget()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -162,26 +171,24 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        // Target A: debuff first.
-        CombatSpellDecision a1 = sut.Choose(settings, Ctx(target: "a rat"));
-        Assert.Equal(CombatSpellAction.SingleDebuff, a1.Action);
-        sut.MarkCast(a1, "a rat");
+        // Target A: debuff due first.
+        CombatSpellDecision? a1 = sut.ChooseDebuff(settings, Ctx(target: "a rat"));
+        Assert.Equal(CombatSpellAction.SingleDebuff, a1?.Action);
+        sut.MarkCast(a1!.Value, "a rat");
 
-        // Same target again: already debuffed → attack.
-        CombatSpellDecision a2 = sut.Choose(settings, Ctx(target: "a rat"));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, a2.Action);
+        // Same target again: already debuffed → no debuff.
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a rat")));
 
-        // New target: debuff again.
-        CombatSpellDecision b1 = sut.Choose(settings, Ctx(target: "a kobold"));
-        Assert.Equal(CombatSpellAction.SingleDebuff, b1.Action);
-        sut.MarkCast(b1, "a kobold");
+        // New target: debuff due again.
+        CombatSpellDecision? b1 = sut.ChooseDebuff(settings, Ctx(target: "a kobold"));
+        Assert.Equal(CombatSpellAction.SingleDebuff, b1?.Action);
+        sut.MarkCast(b1!.Value, "a kobold");
 
-        CombatSpellDecision b2 = sut.Choose(settings, Ctx(target: "a kobold"));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, b2.Action);
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a kobold")));
     }
 
     [Fact]
-    public void Choose_SingleDebuff_TargetMatchIsCaseInsensitive()
+    public void ChooseDebuff_Single_TargetMatchIsCaseInsensitive()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -190,15 +197,15 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        CombatSpellDecision first = sut.Choose(settings, Ctx(target: "A Rat"));
-        sut.MarkCast(first, "A Rat");
+        CombatSpellDecision? first = sut.ChooseDebuff(settings, Ctx(target: "A Rat"));
+        Assert.Equal(CombatSpellAction.SingleDebuff, first?.Action);
+        sut.MarkCast(first!.Value, "A Rat");
 
-        CombatSpellDecision second = sut.Choose(settings, Ctx(target: "a rat"));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, second.Action);
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a rat")));
     }
 
     [Fact]
-    public void Choose_SingleDebuff_HonoursMaxCastsPerRoom()
+    public void ChooseDebuff_Single_HonoursMaxCastsPerRoom()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -207,14 +214,13 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        CombatSpellDecision a = sut.Choose(settings, Ctx(target: "a rat"));
-        Assert.Equal(CombatSpellAction.SingleDebuff, a.Action);
-        sut.MarkCast(a, "a rat");
+        CombatSpellDecision? a = sut.ChooseDebuff(settings, Ctx(target: "a rat"));
+        Assert.Equal(CombatSpellAction.SingleDebuff, a?.Action);
+        sut.MarkCast(a!.Value, "a rat");
 
         // New target, but the room-wide single-debuff cap (1) is reached →
-        // no more debuffs, straight to attack.
-        CombatSpellDecision b = sut.Choose(settings, Ctx(target: "a kobold"));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, b.Action);
+        // no more debuffs.
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a kobold")));
     }
 
     // ----- 3. Attack phase: multi-attack while qualified ----------------
@@ -430,10 +436,10 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm", maxCasts: 1),
         };
 
-        // Exhaust area + multi + normal in the first room.
-        CombatSpellDecision area = sut.Choose(settings, Ctx(enemies: 3));
-        Assert.Equal(CombatSpellAction.AreaDebuff, area.Action);
-        sut.MarkCast(area, "a rat");
+        // Exhaust the area debuff (in-between) + multi + normal (combat action).
+        CombatSpellDecision? area = sut.ChooseDebuff(settings, Ctx(enemies: 3));
+        Assert.Equal(CombatSpellAction.AreaDebuff, area?.Action);
+        sut.MarkCast(area!.Value, "a rat");
         CombatSpellDecision multi = sut.Choose(settings, Ctx(enemies: 3));
         Assert.Equal(CombatSpellAction.MultiAttack, multi.Action);
         sut.MarkCast(multi, "a rat");
@@ -441,13 +447,14 @@ public sealed class CombatSpellChooserTests
         Assert.Equal(CombatSpellAction.NormalAttackSpell, normal.Action);
         sut.MarkCast(normal, "a rat");
 
-        // Now weapon (everything spent).
+        // Debuff spent (area excludes single) + attack spells spent → weapon.
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(enemies: 3)));
         Assert.Equal(CombatSpellAction.WeaponAttack, sut.Choose(settings, Ctx(enemies: 3)).Action);
 
         // New room: bookkeeping wiped → area debuff available again.
         sut.ResetForNewRoom();
-        CombatSpellDecision afterReset = sut.Choose(settings, Ctx(enemies: 3));
-        Assert.Equal(CombatSpellAction.AreaDebuff, afterReset.Action);
+        CombatSpellDecision? afterReset = sut.ChooseDebuff(settings, Ctx(enemies: 3));
+        Assert.Equal(CombatSpellAction.AreaDebuff, afterReset?.Action);
     }
 
     [Fact]
@@ -460,15 +467,15 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        CombatSpellDecision r1 = sut.Choose(settings, Ctx(target: "a rat"));
-        sut.MarkCast(r1, "a rat");
-        Assert.Equal(CombatSpellAction.NormalAttackSpell,
-            sut.Choose(settings, Ctx(target: "a rat")).Action);
+        CombatSpellDecision? r1 = sut.ChooseDebuff(settings, Ctx(target: "a rat"));
+        Assert.Equal(CombatSpellAction.SingleDebuff, r1?.Action);
+        sut.MarkCast(r1!.Value, "a rat");
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a rat")));
 
         // Same instance name in a fresh room must be debuffable again.
         sut.ResetForNewRoom();
         Assert.Equal(CombatSpellAction.SingleDebuff,
-            sut.Choose(settings, Ctx(target: "a rat")).Action);
+            sut.ChooseDebuff(settings, Ctx(target: "a rat"))?.Action);
     }
 
     // ----- Deterministic level-immunity gating (LevelBlockedActions) -----
@@ -480,7 +487,7 @@ public sealed class CombatSpellChooserTests
             LevelBlockedActions: new HashSet<CombatSpellAction>(blocked));
 
     [Fact]
-    public void Choose_SingleDebuffLevelBlocked_SkipsToAttack()
+    public void ChooseDebuff_SingleLevelBlocked_NoDebuff_RoundAttacks()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -490,7 +497,9 @@ public sealed class CombatSpellChooserTests
         };
 
         // SingleDebuff's ReqLevel < the target's SpellImmu → engine marks it
-        // level-blocked → the debuff is skipped and the round attacks.
+        // level-blocked → no debuff is offered and the combat action attacks.
+        Assert.Null(sut.ChooseDebuff(
+            settings, LevelBlockedCtx(CombatSpellAction.SingleDebuff)));
         CombatSpellDecision d = sut.Choose(
             settings, LevelBlockedCtx(CombatSpellAction.SingleDebuff));
         Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
@@ -533,7 +542,7 @@ public sealed class CombatSpellChooserTests
     }
 
     [Fact]
-    public void Choose_NotLevelBlocked_FiresNormally()
+    public void ChooseDebuff_NotLevelBlocked_FiresNormally()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -542,14 +551,14 @@ public sealed class CombatSpellChooserTests
             NormalAttackSpell = Slot("harm"),
         };
 
-        // An empty (but non-null) block set leaves every action eligible.
-        CombatSpellDecision d = sut.Choose(settings, LevelBlockedCtx());
-        Assert.Equal(CombatSpellAction.SingleDebuff, d.Action);
-        Assert.Equal("weaken", d.Spell);
+        // An empty (but non-null) block set leaves the debuff eligible.
+        CombatSpellDecision? d = sut.ChooseDebuff(settings, LevelBlockedCtx());
+        Assert.Equal(CombatSpellAction.SingleDebuff, d?.Action);
+        Assert.Equal("weaken", d?.Spell);
     }
 
     [Fact]
-    public void Choose_AreaDebuff_NeverLevelBlocked()
+    public void ChooseDebuff_Area_NeverLevelBlocked()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -560,10 +569,10 @@ public sealed class CombatSpellChooserTests
 
         // Even if the set names AreaDebuff (it never does in practice), the
         // area branch ignores level-block — room spells hit the whole room.
-        CombatSpellDecision d = sut.Choose(
+        CombatSpellDecision? d = sut.ChooseDebuff(
             settings, LevelBlockedCtx(CombatSpellAction.AreaDebuff));
-        Assert.Equal(CombatSpellAction.AreaDebuff, d.Action);
-        Assert.Equal("blindall", d.Spell);
+        Assert.Equal(CombatSpellAction.AreaDebuff, d?.Action);
+        Assert.Equal("blindall", d?.Spell);
     }
 
     [Fact]
@@ -585,7 +594,7 @@ public sealed class CombatSpellChooserTests
     // ----- Full per-room ordering walk-through ---------------------------
 
     [Fact]
-    public void Choose_FullRoomSequence_AreaThenMultiThenNormalThenWeapon()
+    public void FullRoomSequence_DebuffOnce_ThenMultiNormalAltWeapon()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
@@ -597,28 +606,29 @@ public sealed class CombatSpellChooserTests
             AlternateAttackSpell = Slot("flame", maxCasts: 1),
         };
 
-        // Round 1 — area debuff (once per room).
+        // In-between debuff (once per room) — resolved by ChooseDebuff.
+        CombatSpellDecision? debuff = sut.ChooseDebuff(settings, Ctx(enemies: 4));
+        Assert.Equal(CombatSpellAction.AreaDebuff, debuff?.Action);
+        sut.MarkCast(debuff!.Value, "a rat");
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(enemies: 4)));
+
+        // Combat-action round 1 — multi-attack (qualified, under cap).
         CombatSpellDecision r1 = sut.Choose(settings, Ctx(enemies: 4));
-        Assert.Equal(CombatSpellAction.AreaDebuff, r1.Action);
+        Assert.Equal(CombatSpellAction.MultiAttack, r1.Action);
         sut.MarkCast(r1, "a rat");
 
-        // Round 2 — multi-attack (qualified, under cap).
+        // Round 2 — multi cap reached → normal.
         CombatSpellDecision r2 = sut.Choose(settings, Ctx(enemies: 4));
-        Assert.Equal(CombatSpellAction.MultiAttack, r2.Action);
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r2.Action);
         sut.MarkCast(r2, "a rat");
 
-        // Round 3 — multi cap reached → normal.
+        // Round 3 — normal cap reached → alternate.
         CombatSpellDecision r3 = sut.Choose(settings, Ctx(enemies: 4));
-        Assert.Equal(CombatSpellAction.NormalAttackSpell, r3.Action);
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r3.Action);
         sut.MarkCast(r3, "a rat");
 
-        // Round 4 — normal cap reached → alternate.
+        // Round 4 — everything spent → weapon.
         CombatSpellDecision r4 = sut.Choose(settings, Ctx(enemies: 4));
-        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r4.Action);
-        sut.MarkCast(r4, "a rat");
-
-        // Round 5 — everything spent → weapon.
-        CombatSpellDecision r5 = sut.Choose(settings, Ctx(enemies: 4));
-        Assert.Equal(CombatSpellAction.WeaponAttack, r5.Action);
+        Assert.Equal(CombatSpellAction.WeaponAttack, r4.Action);
     }
 }

@@ -36,6 +36,18 @@ public sealed partial class CombatManager
     private CastCoordinator? _cast;
     private Func<(int Ma, int MaxMa)>? _readMana;
 
+    // ----- In-between debuff bridge (CastingDirector-driven) -----------
+    // A debuff is an in-between action, not a combat action, so it casts
+    // through the shared in-between window owned by CastingDirector rather
+    // than the per-round combat-action path. The combat engine still owns
+    // the DECISION (config + once-per-room / once-per-target bookkeeping);
+    // it just answers "is there a debuff to fire?" when the director asks.
+    // The pending stash defers the once-per-room/target MarkCast until the
+    // coordinator confirms the cast actually went out (CommitInBetweenDebuff).
+
+    private CombatSpellDecision? _pendingDebuff;
+    private string? _pendingDebuffTarget;
+
     // ----- Deterministic magic eligibility (game-data gated) ----------
     // Optional, like the spell caster. Until SetMagicEligibility runs, the
     // weapon/spell gating fails open: any weapon hits and no spell is
@@ -240,6 +252,56 @@ public sealed partial class CombatManager
         }
         // Blocked (CastDirector spent this round) → stay in spell mode and
         // retry next tick. No weapon fallback — the round's action is taken.
+    }
+
+    /// <summary>
+    /// Answer the <c>CastingDirector</c>'s "is there a debuff to fire this
+    /// in-between window?" query. The combat engine owns the decision — the
+    /// chooser's <see cref="CombatSpellChooser.ChooseDebuff"/> applies the
+    /// Combat-tab config and the once-per-room / once-per-target gating — but
+    /// the cast itself rides the shared in-between window so it competes with
+    /// (and loses to) survival heals by the director's priority order. Returns
+    /// the cast code + target (null target ⇒ area/multi debuff) when a debuff
+    /// is due, else <c>null</c>. Stashes the decision so
+    /// <see cref="CommitInBetweenDebuff"/> can mark it cast only after the
+    /// coordinator confirms it went out. No-ops (returns null) until the
+    /// caster is wired, the engine is enabled, and a live target is present.
+    /// </summary>
+    public (string Spell, string? Target)? PickInBetweenDebuff()
+    {
+        if (_disposed) return null;
+        if (!CombatSpellsWired || !_isEnabled()) return null;
+        if (_currentTarget is not { } target) return null;
+        if (_classifier.Current is not { } obs) return null;
+        if (!TargetPresent(obs, target)) return null;
+
+        CombatSettings settings = _readSettings();
+        CombatSpellContext ctx = BuildContext(
+            settings, obs, target, CountEngageable(obs), ResolveMonsterNumber(obs, target));
+        if (_spellChooser.ChooseDebuff(settings, ctx) is not { } decision) return null;
+
+        // The target name is appended to every combat-spell cast — matching
+        // the weapon engine's historical convention (area/multi room spells
+        // included). The combat action verb is re-sent after the in-between
+        // cast by the existing combat-off resume path.
+        _pendingDebuff = decision;
+        _pendingDebuffTarget = target;
+        return (decision.Spell!, target);
+    }
+
+    /// <summary>
+    /// Confirm the in-between debuff the director just sent. Marks the stashed
+    /// decision cast (advancing the once-per-room / once-per-target bookkeeping
+    /// so it won't re-fire) and clears the stash. Called only on a successful
+    /// coordinator cast — a blocked cast leaves the stash so the next window
+    /// retries. No-ops when nothing is pending.
+    /// </summary>
+    public void CommitInBetweenDebuff()
+    {
+        if (_pendingDebuff is not { } decision) return;
+        _spellChooser.MarkCast(decision, _pendingDebuffTarget ?? string.Empty);
+        _pendingDebuff = null;
+        _pendingDebuffTarget = null;
     }
 
     /// <summary>

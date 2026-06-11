@@ -1745,6 +1745,13 @@ public sealed class AppServices
         // CastDirector.OnCombatTick (survival heal/cure/buff) so offensive
         // combat casts yield this round when survival already spent it.
         Combat.SetCombatSpellCaster(Cast, () => (PlayerState.Ma, PlayerState.MaxMa));
+        // Debuffs are in-between actions, not combat actions — the combat
+        // engine owns the decision but CastDirector casts them through the
+        // shared in-between window (at PriorityDebuffing, so survival heals
+        // win). CastDirector.OnCombatTick (subscribed above) runs before
+        // Combat.OnCombatTick, so the debuff is offered before the combat
+        // heartbeat re-issues the round's combat action.
+        CastDirector.SetCombatDebuffSource(Combat.PickInBetweenDebuff, Combat.CommitInBetweenDebuff);
         Tick.CombatTickElapsed += Combat.OnCombatTick;
 
         // Phase 9 PR 9.F — StealthManager state tracker + auto-sneak /
