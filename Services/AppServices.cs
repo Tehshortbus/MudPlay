@@ -1659,7 +1659,9 @@ public sealed class AppServices
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             readOwnGivenName: () => Profile.CurrentProfileName,
-            log: Log);
+            log: Log,
+            readPartySettings: () =>
+                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
 
         // Phase 9 PR 9.B — HealthManager. Master on/off is
         // GeneralSettings.AutoMode.AutoHealRest (shared with the

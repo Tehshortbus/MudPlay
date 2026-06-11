@@ -73,6 +73,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly Func<int, MonsterOverlay> _resolveOverlay;
     private readonly PartyState _party;
     private readonly Func<CombatSettings> _readSettings;
+    private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<bool> _isEnabled;
     private readonly Func<string?> _readOwnGivenName;
     private readonly LogService? _log;
@@ -171,7 +172,8 @@ public sealed partial class CombatManager : IDisposable
         Func<CombatSettings> readSettings,
         Func<bool> isEnabled,
         Func<string?> readOwnGivenName,
-        LogService? log = null)
+        LogService? log = null,
+        Func<PartySettings>? readPartySettings = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -188,6 +190,7 @@ public sealed partial class CombatManager : IDisposable
         _readSettings = readSettings;
         _isEnabled    = isEnabled;
         _readOwnGivenName = readOwnGivenName;
+        _readPartySettings = readPartySettings;
         _log = log;
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
@@ -418,6 +421,10 @@ public sealed partial class CombatManager : IDisposable
         {
             int min = Math.Max(0, settings.MinMonstersInRoom);
             int max = settings.MaxMonstersInRoom > 0 ? settings.MaxMonstersInRoom : int.MaxValue;
+            // In an active party the Party-tab cap overrides the Combat
+            // upper bound (the lower bound stays Combat-owned).
+            if (_party.IsInParty && _readPartySettings?.Invoke() is { MaxMonstersWhenPartying: > 0 } ps)
+                max = ps.MaxMonstersWhenPartying;
             if (min > max)
             {
                 // Misconfig — treat as off and warn once per room observation.

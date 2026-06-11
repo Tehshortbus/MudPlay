@@ -120,6 +120,18 @@ public sealed class PartySettings
     /// fire AOE on a single hurt member.</summary>
     public int AoeMinMembers { get; set; } = 2;
 
+    // ----- Capacity --------------------------------------------------
+
+    /// <summary>
+    /// Cap on engageable hostiles while in an active party — overrides
+    /// the Combat tab's <see cref="CombatSettings.MaxMonstersInRoom"/>
+    /// whenever <see cref="Game.PartyState.IsInParty"/> is true. Range
+    /// 1..20; default 20 (same as the Combat default, so it's a no-op
+    /// until the user tightens it). <see cref="CombatSettings.MinMonstersInRoom"/>
+    /// still applies — only the upper bound is party-scoped.
+    /// </summary>
+    public int MaxMonstersWhenPartying { get; set; } = 20;
+
     // Party-cure + party-buff pickers ship in a follow-up commit —
     // they need per-member condition tracking + per-member active-
     // buff tracking, both of which are deferred until the spellbook

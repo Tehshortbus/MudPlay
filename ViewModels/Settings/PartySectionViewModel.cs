@@ -97,6 +97,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _majorHealMemberThresholdPercent = 40;
     [ObservableProperty] private int _aoeMinMembers = 2;
 
+    // ----- Capacity (consumed by CombatManager) ----------------------
+    /// <summary>Party-scoped max-monsters cap; overrides the Combat-tab
+    /// upper bound while in an active party. 1..20.</summary>
+    [ObservableProperty] private int _maxMonstersWhenPartying = 20;
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
@@ -138,6 +143,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             MinorHealMemberThresholdPercent = Math.Clamp(MinorHealMemberThresholdPercent, 0, 100),
             MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
             AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
+            MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
         };
 
         profile.Settings ??= new();
@@ -192,6 +198,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         MinorHealMemberThresholdPercent = dto.MinorHealMemberThresholdPercent;
         MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
         AoeMinMembers          = dto.AoeMinMembers;
+        MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
 
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
@@ -256,6 +263,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnMinorHealMemberThresholdPercentChanged(int value) => MarkDirty();
     partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
     partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
+    partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
 
     private void MarkDirty()
     {

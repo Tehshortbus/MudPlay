@@ -247,7 +247,9 @@
             <TextBlock Classes="SectionHeader" Text="Capacity + cadence"/>
             <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters when partying"/>
-                <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="20" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                               Value="{Binding MaxMonstersWhenPartying, Mode=TwoWay}"
+                               Minimum="1" Maximum="20" Width="120" MinWidth="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Cap on hostiles to engage as a party (overrides Combat-tab cap)."/>
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
