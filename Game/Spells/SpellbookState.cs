@@ -65,6 +65,15 @@ public sealed class SpellbookState
     /// <summary>Fires when the available list or the obtained set changes.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Resolve a <c>Spells.Number</c> to its full <c>Name</c> across the
+    /// whole table — delegates to <see cref="KnownSpellCatalog.GetSpellNameByNumber"/>.
+    /// The Spell Book's per-spell effect rollup uses this to render a
+    /// <c>RemovesSpell</c> (Abil 122) target, which can point at any spell
+    /// rather than only the current class's learnable list.
+    /// </summary>
+    public string? ResolveSpellName(int spellNumber) => _catalog.GetSpellNameByNumber(spellNumber);
+
     /// <summary>True when the character has learned the spell with this <c>Spells.Number</c>.</summary>
     public bool IsObtained(int spellNumber) => _obtained.Contains(spellNumber);
 

@@ -50,7 +50,7 @@ public sealed class SpellBookRowViewModelTests
         Assert.Equal("Dmg 6–10", row.EffectText);
         Assert.Equal("star", row.Short);
         Assert.Equal("starlight", row.Name);
-        Assert.Equal("Lv 2", row.ReqLevelText);
+        Assert.Equal("2", row.ReqLevelText);
         Assert.Equal("✓", row.ObtainedGlyph);
     }
 
@@ -74,12 +74,13 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
-    public void DurationOnly_RendersAsDur()
+    public void DurationOnly_RendersSeconds()
     {
+        // Durations are stored in 3-second spell-round ticks: 8 × 3 = 24s.
         KnownSpell s = Spell("bless", "bless", 4, Buff(dur: 8));
         SpellBookRowViewModel row = new(s, isObtained: false, level: 10, NoChain);
 
-        Assert.Equal("Dur 8", row.EffectText);
+        Assert.Equal("24 seconds", row.EffectText);
     }
 
     [Fact]
@@ -122,7 +123,49 @@ public sealed class SpellBookRowViewModelTests
         KnownSpell s = Spell("migt", "might", 5, f);
         SpellBookRowViewModel row = new(s, isObtained: false, level: 10, NoChain);
 
-        Assert.Equal("Dur 8 · Strength +3", row.EffectText);
+        Assert.Equal("24 seconds · Strength +3", row.EffectText);
+    }
+
+    [Fact]
+    public void RemovesSpell_RendersTargetByName()
+    {
+        // Abil 122 (RemovesSpell) → resolve the AbilVal to the removed
+        // spell's name via the supplied resolver (MME's GetSpellName path).
+        SpellFormulaInput f = new()
+        {
+            Number = 8,
+            Abilities = [new SpellAbility(122, 42)],
+        };
+        KnownSpell s = Spell("dpel", "dispel", 6, f);
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 10, NoChain,
+            resolveSpellName: n => n == 42 ? "blindness" : null);
+
+        Assert.Equal("Removes blindness", row.EffectText);
+    }
+
+    [Fact]
+    public void MessageOnlySlots_AreNotSurfaced()
+    {
+        // DescMsg (115) / StartMsg (120) / ShockMsg (137) are display-only
+        // message slots MME hides — they must not appear as effect labels.
+        SpellFormulaInput f = new()
+        {
+            Number = 9,
+            MinBase = 6,
+            MaxBase = 10,
+            Abilities =
+            [
+                new SpellAbility(1, 0),
+                new SpellAbility(115, 3),
+                new SpellAbility(120, 4),
+                new SpellAbility(137, 5),
+            ],
+        };
+        KnownSpell s = Spell("bolt", "bolt", 3, f);
+        SpellBookRowViewModel row = new(s, isObtained: false, level: 5, NoChain);
+
+        Assert.Equal("Dmg 6–10", row.EffectText);
     }
 
     [Fact]

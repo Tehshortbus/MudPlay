@@ -93,7 +93,7 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
             bool obtained = _book.IsObtained(spell.Number);
             if (ShowObtainedOnly && !obtained) continue;
             if (filter.Length > 0 && !Matches(spell, filter)) continue;
-            Rows.Add(new SpellBookRowViewModel(spell, obtained, _book.Level, ResolveChain));
+            Rows.Add(new SpellBookRowViewModel(spell, obtained, _book.Level, ResolveChain, _book.ResolveSpellName));
         }
 
         OnPropertyChanged(nameof(StatusText));

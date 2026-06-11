@@ -72,10 +72,28 @@
                                     Width="72" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgSecBrush}"/>
                 <DataGridTextColumn Header="Name" Binding="{ReflectionBinding Name}"         SortMemberPath="Name"
                                     Width="*" Foreground="{StaticResource ChromeFgBrush}"/>
-                <DataGridTextColumn Header="Lv"   Binding="{ReflectionBinding ReqLevelText}" SortMemberPath="ReqLevel"
-                                    Width="56" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <DataGridTextColumn Header="Mana" Binding="{ReflectionBinding ManaText}"     SortMemberPath="Mana"
-                                    Width="56" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <DataGridTemplateColumn Header="Lvl" SortMemberPath="ReqLevel" Width="72">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding ReqLevelText}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Mana" SortMemberPath="Mana" Width="72">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding ManaText}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTemplateColumn Header="Effect" SortMemberPath="EffectText" Width="220">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate DataType="vm:SpellBookRowViewModel">

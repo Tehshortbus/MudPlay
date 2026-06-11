@@ -177,6 +177,28 @@ public sealed class KnownSpellCatalog
     }
 
     /// <summary>
+    /// Resolve a <c>Spells.Number</c> to its full <c>Name</c> across the
+    /// entire Spells table (no class / magery / learnable filter) — the
+    /// catalog equivalent of MMUD Explorer's <c>GetSpellName</c>. Used to
+    /// render the <c>RemovesSpell</c> (Abil 122) target by name, which can
+    /// reference any spell, not just the active class's learnable list.
+    /// Returns <c>null</c> when no row has that number.
+    /// </summary>
+    public string? GetSpellNameByNumber(int spellNumber)
+    {
+        if (spellNumber < 1) return null;
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return null;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (ReadInt(row, "Number") != spellNumber) continue;
+            return ReadString(row, "Name");
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Faithful port of <c>SpellIsUsable(nSpell, nClass, nLevel,
     /// nCharAlign, bAndLearnable)</c>. <paramref name="classMagery"/> /
     /// <paramref name="classMageryLvl"/> are the pre-resolved

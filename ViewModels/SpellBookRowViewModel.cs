@@ -17,7 +17,12 @@ namespace FujinTerm.ViewModels;
 /// </remarks>
 public sealed class SpellBookRowViewModel
 {
-    public SpellBookRowViewModel(KnownSpell spell, bool isObtained, int level, Func<int, SpellFormulaInput?> resolveChain)
+    public SpellBookRowViewModel(
+        KnownSpell spell,
+        bool isObtained,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName = null)
     {
         Short = spell.Short;
         Name = spell.Name;
@@ -26,9 +31,17 @@ public sealed class SpellBookRowViewModel
 
         Mana = SpellCalculator.ManaCost(spell.Formula);
         ManaText = Mana.ToString();
-        EffectText = BuildEffect(spell.Formula, level, resolveChain);
+        EffectText = BuildEffect(spell.Formula, level, resolveChain, resolveSpellName);
         FormulaText = BuildFormula(spell.Formula);
     }
+
+    /// <summary>
+    /// Seconds per spell-duration tick — MMUD Explorer's
+    /// <c>SPELL_ROUND_SECS</c> (<c>modMMudFunc.bas</c>). Spell durations are
+    /// stored in ticks; the display multiplies by this to show seconds.
+    /// Distinct from the 5-second combat round (<c>ROUND_SECS</c>).
+    /// </summary>
+    private const int SpellRoundSeconds = 3;
 
     /// <summary>The verbatim <c>Spells.Short</c> cast-code the player types.</summary>
     public string Short { get; }
@@ -45,8 +58,8 @@ public sealed class SpellBookRowViewModel
     /// <summary>Checkmark glyph for the obtained column ("✓" or empty).</summary>
     public string ObtainedGlyph => IsObtained ? "✓" : string.Empty;
 
-    /// <summary>"Lv {ReqLevel}" — the unlock-level cell.</summary>
-    public string ReqLevelText => $"Lv {ReqLevel}";
+    /// <summary>The unlock level as a bare number — the unlock-level cell.</summary>
+    public string ReqLevelText => ReqLevel.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Per-round mana cost — numeric, for column sorting.</summary>
     public long Mana { get; }
@@ -63,13 +76,22 @@ public sealed class SpellBookRowViewModel
     public string EffectText { get; }
 
     /// <summary>
-    /// Ability codes whose magnitude is already surfaced by the level-scaled
-    /// Dmg / Heal figures — Damage (1), DrainLife (8), Damage(-MR) (17),
-    /// Heal (18) — plus EndCast (151), which is a cast-chaining marker, not a
-    /// player-visible affect. Skipped from the stat-affect rollup to avoid
-    /// double-printing the damage/heal the row already shows.
+    /// Ability codes the stat-affect rollup skips. Two groups, both matching
+    /// MMUD Explorer's <c>PullSpellEQ</c> / <c>GetAbilityName</c> behaviour:
+    /// <list type="bullet">
+    /// <item>Already surfaced elsewhere — Damage (1), DrainLife (8),
+    /// Damage(-MR) (17), Heal (18) fold into the Dmg / Heal figure;
+    /// EndCast (151) is a cast-chaining marker; RemovesSpell (122) is rendered
+    /// by name separately (see <see cref="BuildEffect"/>).</item>
+    /// <item>Display-only message slots MME hides by default (its
+    /// <c>GetAbilityName</c> returns "" without <c>bForceAll</c>) —
+    /// ConfuseMsg (101), DescMsg (115), StartMsg (120), ShockMsg (137).</item>
+    /// </list>
     /// </summary>
-    private static readonly int[] _affectSkip = { 1, 8, 17, 18, 151 };
+    private static readonly int[] _affectSkip = { 1, 8, 17, 18, 151, 122, 101, 115, 120, 137 };
+
+    /// <summary>RemovesSpell ability code (MME Abil 122).</summary>
+    private const int RemovesSpellCode = 122;
 
     /// <summary>
     /// The raw scaling formula (base value + per-level slope) shown as a
@@ -78,7 +100,11 @@ public sealed class SpellBookRowViewModel
     /// </summary>
     public string FormulaText { get; }
 
-    private static string BuildEffect(in SpellFormulaInput formula, int level, Func<int, SpellFormulaInput?> resolveChain)
+    private static string BuildEffect(
+        in SpellFormulaInput formula,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName)
     {
         List<string> parts = new();
 
@@ -90,14 +116,37 @@ public sealed class SpellBookRowViewModel
         long maxHeal = SpellCalculator.MaxHeal(formula, level, resolveChain);
         if (maxHeal > 0) parts.Add($"Heal {Range(minHeal, maxHeal)}");
 
+        // Durations are stored in 3-second spell-round ticks; show seconds.
         long dur = SpellCalculator.Duration(formula, level);
-        if (dur > 0) parts.Add($"Dur {dur}");
+        if (dur > 0) parts.Add($"{dur * SpellRoundSeconds} seconds");
+
+        string removes = BuildRemoves(formula, resolveSpellName);
+        if (removes.Length > 0) parts.Add(removes);
 
         string affects = AbilityNames.SummarizeAbilities(
             formula.Abilities.Select(a => (a.Code, a.Value)), _affectSkip);
         if (affects.Length > 0) parts.Add(affects);
 
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// Render any RemovesSpell (Abil 122) slots by the removed spell's name —
+    /// MME's <c>PullSpellEQ</c> resolves the AbilVal via <c>GetSpellName</c>.
+    /// Empty when the spell removes nothing or no name resolver is supplied.
+    /// </summary>
+    private static string BuildRemoves(in SpellFormulaInput formula, Func<int, string?>? resolveSpellName)
+    {
+        if (resolveSpellName is null) return string.Empty;
+
+        List<string> names = new();
+        foreach (SpellAbility a in formula.Abilities)
+        {
+            if (a.Code != RemovesSpellCode) continue;
+            string? name = resolveSpellName(a.Value);
+            names.Add(string.IsNullOrWhiteSpace(name) ? $"#{a.Value}" : name.Trim());
+        }
+        return names.Count == 0 ? string.Empty : $"Removes {string.Join(", ", names)}";
     }
 
     private static string Range(long min, long max)
