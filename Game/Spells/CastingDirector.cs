@@ -41,8 +41,11 @@ namespace FujinTerm.Game.Spells;
 /// poison → disease → blindness.</item>
 /// <item><b>Buffing</b> — recast player buffs (Bless1–10 slots).
 /// v1 unwired.</item>
-/// <item><b>Debuffing</b> — combat pre-cast spells on enemies /
-/// room (CombatSettings.PreAttack*, MultiAttackSpell). v1 unwired.</item>
+/// <item><b>Debuffing</b> — reserved for future non-combat debuffs.
+/// Combat pre-attack debuffs + attack spells are owned by
+/// <see cref="Combat.CombatManager"/> (they're round-coupled to the
+/// attack chain via <see cref="Combat.CombatSpellChooser"/>), so this
+/// category is a deliberate no-op here.</item>
 /// </list>
 /// <para>
 /// Every evaluation walks the priority list and picks the first
@@ -463,8 +466,10 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    // ----- Debuffing — pending CombatSettings pre-attack chain --------
-
+    // ----- Debuffing — no-op: combat debuffs live in CombatManager ----
+    // Combat pre-attack debuffs + attack spells are round-coupled to the
+    // attack chain, so CombatManager/CombatSpellChooser own them. This
+    // category stays reserved for any future out-of-combat debuff.
     private string? PickDebuff(SpellsSettings _, HealthSettings __) => null;
 
     public void Dispose()
