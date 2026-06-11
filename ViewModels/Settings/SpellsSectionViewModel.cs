@@ -37,11 +37,14 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Known-spell name suggestions for every spell-picker typeahead
-    /// on this tab — the current class's learnable list (level gate ignored),
-    /// alphabetical + distinct, from <see cref="Game.Spells.SpellbookState.AvailableNames"/>.
-    /// Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
-    public IReadOnlyList<string> SpellSuggestions => _spellbook.AvailableNames;
+    /// <summary>Known-spell suggestions for every spell-picker typeahead on
+    /// this tab — the current class's learnable list (level gate ignored),
+    /// ordered by name + distinct by cast-code, from
+    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
+    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code (what
+    /// the game recognises). Refreshes when the spellbook rebuilds
+    /// (class swap / reroll).</summary>
+    public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new SpellsSectionView { DataContext = this };
 

@@ -34,13 +34,15 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Known-spell name suggestions for the party heal / bless
-    /// typeahead boxes — the current class's learnable list (level gate
-    /// ignored), alphabetical + distinct, from
-    /// <see cref="Game.Spells.SpellbookState.AvailableNames"/>. Refreshes when
-    /// the spellbook rebuilds (class swap / reroll). The boxes themselves stay
-    /// disabled until CastingDirector (Phase 9.D) gives them backing fields.</summary>
-    public IReadOnlyList<string> SpellSuggestions => _spellbook.AvailableNames;
+    /// <summary>Known-spell suggestions for the party heal / bless typeahead
+    /// boxes — the current class's learnable list (level gate ignored), ordered
+    /// by name + distinct by cast-code, from
+    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
+    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code.
+    /// Refreshes when the spellbook rebuilds (class swap / reroll). The boxes
+    /// themselves stay disabled until CastingDirector (Phase 9.D) gives them
+    /// backing fields.</summary>
+    public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new PartySectionView { DataContext = this };
 

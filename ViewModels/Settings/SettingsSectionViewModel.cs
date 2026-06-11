@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game.Spells;
 
 namespace FujinTerm.ViewModels.Settings;
 
@@ -44,4 +45,17 @@ public abstract partial class SettingsSectionViewModel : ObservableObject
 
     /// <summary>Drop pending edits and re-read from the underlying store.</summary>
     public virtual void Discard() { }
+
+    /// <summary>
+    /// Shared typeahead filter for the spell-picker boxes: matches the typed
+    /// text against either the 4-letter cast-code or the full spell name, so a
+    /// slot can be found by code or by name even though the box commits the
+    /// code. Bound as <c>ItemFilter</c> on each <c>AutoCompleteBox</c>.
+    /// </summary>
+    public AutoCompleteFilterPredicate<object?> SpellSuggestionFilter { get; } =
+        static (search, item) =>
+            item is SpellPick pick &&
+            (string.IsNullOrEmpty(search)
+             || pick.Short.Contains(search, StringComparison.OrdinalIgnoreCase)
+             || pick.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
 }

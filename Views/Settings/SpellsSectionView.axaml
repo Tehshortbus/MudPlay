@@ -1,11 +1,20 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:spells="using:FujinTerm.Game.Spells"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="680" d:DesignHeight="900"
              x:Class="FujinTerm.Views.Settings.SpellsSectionView"
              x:DataType="vm:SpellsSectionViewModel">
+
+    <UserControl.Resources>
+        <!-- Dropdown row: "code — name". The box commits the Short cast-code
+             (ValueMemberBinding); this template only shapes the list display. -->
+        <DataTemplate x:Key="SpellPickItem" x:DataType="spells:SpellPick">
+            <TextBlock Text="{Binding Display}"/>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <UserControl.Styles>
         <Style Selector="TextBlock.SectionHeader">
@@ -111,7 +120,10 @@
                     <AutoCompleteBox Grid.Row="0" Grid.Column="1"
                                      Text="{Binding MinorHealSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cheap self-heal — fires when Health → Minor heal (combat) threshold trips, or Health → Heal (rest) during rest. Suggestions come from this class's known spells."/>
 
@@ -119,7 +131,10 @@
                     <AutoCompleteBox Grid.Row="1" Grid.Column="1"
                                      Text="{Binding MajorHealSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Expensive self-heal — fires when Health → Major heal (combat) threshold trips."/>
 
@@ -127,7 +142,10 @@
                     <AutoCompleteBox Grid.Row="2" Grid.Column="1"
                                      Text="{Binding HpRegenSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Auto-regen utility (e.g. troll-skin) cast during downtime."/>
 
@@ -135,7 +153,10 @@
                     <AutoCompleteBox Grid.Row="3" Grid.Column="1"
                                      Text="{Binding MaRegenSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Auto-regen utility for the mana pool."/>
 
@@ -143,7 +164,10 @@
                     <AutoCompleteBox Grid.Row="4" Grid.Column="1"
                                      Text="{Binding WhenHpFullSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cast when HP is full and we're between actions (room spell, debuff, etc.)."/>
 
@@ -151,7 +175,10 @@
                     <AutoCompleteBox Grid.Row="5" Grid.Column="1"
                                      Text="{Binding WhenMaFullSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cast when MA is full and we're between actions."/>
                 </Grid>
@@ -163,7 +190,10 @@
                     <AutoCompleteBox Grid.Row="0" Grid.Column="1"
                                      Text="{Binding CureHoldsSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cure-paralyze / cure-hold spell — canonically `freedom` in stock MajorMUD."/>
 
@@ -171,7 +201,10 @@
                     <AutoCompleteBox Grid.Row="1" Grid.Column="1"
                                      Text="{Binding CurePoisonSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cure-poison spell."/>
 
@@ -179,7 +212,10 @@
                     <AutoCompleteBox Grid.Row="2" Grid.Column="1"
                                      Text="{Binding CureDiseaseSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cure-disease spell."/>
 
@@ -187,7 +223,10 @@
                     <AutoCompleteBox Grid.Row="3" Grid.Column="1"
                                      Text="{Binding CureBlindnessSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cure-blindness spell."/>
 
@@ -195,7 +234,10 @@
                     <AutoCompleteBox Grid.Row="4" Grid.Column="1"
                                      Text="{Binding RoomLightSpell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cast when entering a dark room."/>
                 </Grid>
@@ -214,13 +256,19 @@
                     <AutoCompleteBox Grid.Row="0" Grid.Column="1"
                                      Text="{Binding Bless1Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldLabel" Text="Bless 6"/>
                     <AutoCompleteBox Grid.Row="0" Grid.Column="4"
                                      Text="{Binding Bless6Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
 
                     <!-- Row 1 -->
@@ -228,13 +276,19 @@
                     <AutoCompleteBox Grid.Row="1" Grid.Column="1"
                                      Text="{Binding Bless2Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Bless 7"/>
                     <AutoCompleteBox Grid.Row="1" Grid.Column="4"
                                      Text="{Binding Bless7Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
 
                     <!-- Row 2 -->
@@ -242,13 +296,19 @@
                     <AutoCompleteBox Grid.Row="2" Grid.Column="1"
                                      Text="{Binding Bless3Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Bless 8"/>
                     <AutoCompleteBox Grid.Row="2" Grid.Column="4"
                                      Text="{Binding Bless8Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
 
                     <!-- Row 3 -->
@@ -256,13 +316,19 @@
                     <AutoCompleteBox Grid.Row="3" Grid.Column="1"
                                      Text="{Binding Bless4Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldLabel" Text="Bless 9"/>
                     <AutoCompleteBox Grid.Row="3" Grid.Column="4"
                                      Text="{Binding Bless9Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
 
                     <!-- Row 4 -->
@@ -270,13 +336,19 @@
                     <AutoCompleteBox Grid.Row="4" Grid.Column="1"
                                      Text="{Binding Bless5Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Grid.Row="4" Grid.Column="3" Classes="FieldLabel" Text="Bless 10"/>
                     <AutoCompleteBox Grid.Row="4" Grid.Column="4"
                                      Text="{Binding Bless10Spell, Mode=TwoWay}"
                                      ItemsSource="{Binding SpellSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter spells…"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"/>
                 </Grid>
 

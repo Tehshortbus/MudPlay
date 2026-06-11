@@ -31,7 +31,7 @@ public sealed class SpellbookState
     private readonly KnownSpellCatalog _catalog;
     private readonly HashSet<int> _obtained = new();
     private List<KnownSpell> _available = new();
-    private string[] _availableNames = Array.Empty<string>();
+    private SpellPick[] _availablePicks = Array.Empty<SpellPick>();
 
     public SpellbookState(KnownSpellCatalog catalog)
     {
@@ -52,12 +52,15 @@ public sealed class SpellbookState
     public IReadOnlyList<KnownSpell> Available => _available;
 
     /// <summary>
-    /// The <see cref="Available"/> spell names as a distinct, alphabetically
-    /// sorted list — the suggestion source for the Settings spell-picker
-    /// typeahead boxes. Empty for non-magery classes. Rebuilt only when the
-    /// class list rebuilds; a bare level change leaves the names unchanged.
+    /// The <see cref="Available"/> spells as distinct (by cast-code)
+    /// <see cref="SpellPick"/> entries, ordered by name — the suggestion
+    /// source for the Settings spell-picker typeahead boxes. Each carries the
+    /// 4-letter <see cref="SpellPick.Short"/> cast-code (the value the box
+    /// commits) alongside the full name. Empty for non-magery classes. Rebuilt
+    /// only when the class list rebuilds; a bare level change leaves it
+    /// unchanged.
     /// </summary>
-    public IReadOnlyList<string> AvailableNames => _availableNames;
+    public IReadOnlyList<SpellPick> AvailablePicks => _availablePicks;
 
     /// <summary>Fires when the available list or the obtained set changes.</summary>
     public event Action? Changed;
@@ -88,11 +91,11 @@ public sealed class SpellbookState
         {
             _available = new List<KnownSpell>(_catalog.Query(classNumber, level: 0, charAlign));
             _obtained.RemoveWhere(n => !_available.Exists(s => s.Number == n));
-            _availableNames = _available
-                .Select(s => s.Name.Trim())
-                .Where(n => n.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            _availablePicks = _available
+                .Where(s => !string.IsNullOrWhiteSpace(s.Short))
+                .GroupBy(s => s.Short.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new SpellPick(g.Key, g.First().Name.Trim()))
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
 
