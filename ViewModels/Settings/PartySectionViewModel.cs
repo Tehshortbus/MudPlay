@@ -22,6 +22,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Party";
 
     private readonly ProfileService _profile;
+    private readonly Game.Spells.SpellbookState _spellbook;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -32,6 +33,14 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>Known-spell name suggestions for the party heal / bless
+    /// typeahead boxes — the current class's learnable list (level gate
+    /// ignored), alphabetical + distinct, from
+    /// <see cref="Game.Spells.SpellbookState.AvailableNames"/>. Refreshes when
+    /// the spellbook rebuilds (class swap / reroll). The boxes themselves stay
+    /// disabled until CastingDirector (Phase 9.D) gives them backing fields.</summary>
+    public IReadOnlyList<string> SpellSuggestions => _spellbook.AvailableNames;
 
     public override Control View => _view ??= new PartySectionView { DataContext = this };
 
@@ -81,12 +90,16 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
+        _spellbook = AppServices.Current.Spellbook;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        _spellbook.Changed += OnSpellbookChanged;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
     }
+
+    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
 
     public override void Apply()
     {

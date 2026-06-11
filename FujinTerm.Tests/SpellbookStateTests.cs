@@ -126,6 +126,37 @@ public sealed class SpellbookStateTests : IDisposable
         Assert.Equal(0, book.ObtainedCount);
     }
 
+    // ----- AvailableNames (Settings spell-picker suggestion source) -----
+
+    [Fact]
+    public void AvailableNames_DistinctAlphabetical_FromClassList()
+    {
+        SpellbookState book = New().book;
+        book.Refresh(classNumber: 12, level: 1); // Mage
+
+        // Alphabetical, distinct, every Mage spell regardless of level gate.
+        Assert.Equal(new[] { "gated", "high arc", "starlight" }, book.AvailableNames);
+    }
+
+    [Fact]
+    public void AvailableNames_NonMageryClass_Empty()
+    {
+        SpellbookState book = New().book;
+        book.Refresh(classNumber: 1, level: 50); // Warrior
+        Assert.Empty(book.AvailableNames);
+    }
+
+    [Fact]
+    public void AvailableNames_LevelOnlyChange_Unchanged()
+    {
+        SpellbookState book = New().book;
+        book.Refresh(12, 1);
+        IReadOnlyList<string> first = book.AvailableNames;
+
+        book.Refresh(12, 5); // same class, new level → names not rebuilt
+        Assert.Same(first, book.AvailableNames);
+    }
+
     // ----- obtained set -------------------------------------------------
 
     [Fact]

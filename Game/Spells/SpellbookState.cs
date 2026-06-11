@@ -31,6 +31,7 @@ public sealed class SpellbookState
     private readonly KnownSpellCatalog _catalog;
     private readonly HashSet<int> _obtained = new();
     private List<KnownSpell> _available = new();
+    private string[] _availableNames = Array.Empty<string>();
 
     public SpellbookState(KnownSpellCatalog catalog)
     {
@@ -49,6 +50,14 @@ public sealed class SpellbookState
 
     /// <summary>Every spell the current class can learn, sorted by ReqLevel then Name. Empty for non-magery classes.</summary>
     public IReadOnlyList<KnownSpell> Available => _available;
+
+    /// <summary>
+    /// The <see cref="Available"/> spell names as a distinct, alphabetically
+    /// sorted list — the suggestion source for the Settings spell-picker
+    /// typeahead boxes. Empty for non-magery classes. Rebuilt only when the
+    /// class list rebuilds; a bare level change leaves the names unchanged.
+    /// </summary>
+    public IReadOnlyList<string> AvailableNames => _availableNames;
 
     /// <summary>Fires when the available list or the obtained set changes.</summary>
     public event Action? Changed;
@@ -79,6 +88,12 @@ public sealed class SpellbookState
         {
             _available = new List<KnownSpell>(_catalog.Query(classNumber, level: 0, charAlign));
             _obtained.RemoveWhere(n => !_available.Exists(s => s.Number == n));
+            _availableNames = _available
+                .Select(s => s.Name.Trim())
+                .Where(n => n.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         if (classChanged || levelChanged) Changed?.Invoke();

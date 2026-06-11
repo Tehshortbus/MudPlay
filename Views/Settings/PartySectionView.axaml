@@ -93,6 +93,7 @@
             <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor heal"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
                                  ToolTip.Tip="Cheap heal used at the upper threshold."/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
@@ -106,6 +107,7 @@
             <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major heal"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
                                  ToolTip.Tip="Expensive single-target heal used at the lower threshold (overrides Minor)."/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
@@ -119,6 +121,7 @@
             <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Minor party heal"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
                                  ToolTip.Tip="Cheap AOE party-heal — hits every member at once."/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
@@ -132,6 +135,7 @@
             <Grid ColumnDefinitions="120,260,40,80,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Major party heal"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="Type to filter…" FilterMode="Contains"
                                  ToolTip.Tip="Expensive AOE party-heal — hits every member at once."/>
                 <TextBlock Grid.Column="2" Classes="FieldLabel" Text="at"
@@ -160,60 +164,70 @@
                 <!-- 10 rows of label + autocomplete spell picker. -->
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Bless 1"/>
                 <AutoCompleteBox Grid.Row="0" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #1."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 2"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #2."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 3"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #3."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 4"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #4."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 5"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #5."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 6"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #6."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 7"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #7."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 8"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #8."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 9"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #9."/>
             </Grid>
             <Grid ColumnDefinitions="120,260,*">
                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Bless 10"/>
                 <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
+                                 ItemsSource="{Binding SpellSuggestions}"
                                  PlaceholderText="—" FilterMode="Contains"
                                  ToolTip.Tip="Party-buff slot #10."/>
             </Grid>
