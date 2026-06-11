@@ -727,6 +727,22 @@ public partial class MainWindowViewModel : ObservableObject
         // session where the entry command is allowed to auto-fire).
         AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
 
+        // CleanupLogoutOrchestrator — proactive log-off on the nightly
+        // shutdown warning. Safe = room clear of killable NPCs AND not
+        // mid-combat (the two signals CombatStateTracker owns). Gated on
+        // the active BBS's ReconnectAfterCleanup toggle (same switch the
+        // predictive reconnect scheduler reads), and uses the user-
+        // initiated disconnect path so the reconnect still arms afterward.
+        AppServices.Current.CleanupLogout.SetWireSender(engineSend);
+        AppServices.Current.CleanupLogout.SetSafePredicate(
+            () => !AppServices.Current.CombatTracker.HasEngageableHostiles
+                && !AppServices.Current.PlayerState.InCombat);
+        AppServices.Current.CleanupLogout.SetConnectedCheck(() => IsConnected);
+        AppServices.Current.CleanupLogout.SetAutoLogoutEnabledCheck(
+            () => ResolveActiveBbs()?.ReconnectAfterCleanup ?? false);
+        AppServices.Current.CleanupLogout.SetDisconnectCallback(
+            () => _ = DisconnectInternalAsync());
+
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
         // to KeybindingStore.Get(...) so PropertyChanged on all of them
@@ -1331,9 +1347,15 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Dispatcher.UIThread.Post(() =>
         {
-            WriteTerminalStatus(
-                $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]",
-                TerminalStatusKind.Notice);
+            // When ReconnectAfterCleanup is on the CleanupLogoutOrchestrator
+            // takes over: it waits for a safe room, exits to the menu, and
+            // drops the carrier for us — so the banner promises the managed
+            // flow rather than telling the user to quit manually.
+            bool autoLogout = ResolveActiveBbs()?.ReconnectAfterCleanup ?? false;
+            string banner = autoLogout
+                ? $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — WILL AUTO-LOG-OFF AT A SAFE ROOM, THEN RECONNECT.]"
+                : $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]";
+            WriteTerminalStatus(banner, TerminalStatusKind.Notice);
             AppServices.Current.Log.Warn("Cleanup",
                 $"Server announced shutdown in {warning.MinutesRemaining} minute(s) at {warning.ObservedAt.LocalDateTime:HH:mm:ss}.");
         });
@@ -1826,6 +1848,7 @@ public partial class MainWindowViewModel : ObservableObject
                 // (StableConnectionWindowSeconds) that resets the
                 // counter only if the connection lasts that long.
                 AppServices.Current.Cleanup.Reset();
+                AppServices.Current.CleanupLogout.Reset();
                 CancelCleanupReconnect("connected");
                 ArmStableConnectionReset();
                 // Phase 8 PR 8.2 — let the EventScheduler reset its

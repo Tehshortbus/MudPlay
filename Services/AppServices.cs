@@ -417,6 +417,15 @@ public sealed class AppServices
     public CleanupWarningWatcher Cleanup { get; } = new();
 
     /// <summary>
+    /// Proactive log-off engine for the nightly-cleanup cycle: on the
+    /// BBS's shutdown warning it waits for a safe room, exits to the main
+    /// menu, and drops the carrier — handing off to the predictive
+    /// reconnect scheduler in MainWindowViewModel. Opt-in behind the
+    /// active BBS's <see cref="Models.Settings.BbsProfile.ReconnectAfterCleanup"/>.
+    /// </summary>
+    public Game.CleanupLogoutOrchestrator CleanupLogout { get; }
+
+    /// <summary>
     /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
     /// Phase 13 automation engines subscribe to <c>CombatTickElapsed</c> +
     /// the regen ticks.
@@ -1291,6 +1300,11 @@ public sealed class AppServices
         // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
         // read the screen before they decide to act.
         MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, HangupSignal, Log);
+        // Cleanup-driven proactive log-off. Subscribes to the same
+        // CleanupWarningWatcher the reconnect scheduler reads; its safe
+        // predicate + connection check + disconnect callback are wired by
+        // MainWindowViewModel (they depend on VM-level connection state).
+        CleanupLogout = new Game.CleanupLogoutOrchestrator(Cleanup, Router, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
