@@ -256,8 +256,9 @@
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Wait if members are below"/>
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <NumericUpDown IsEnabled="False" Value="80" Minimum="0" Maximum="100" Width="120"
-                                   ToolTip.Tip="Pause the party action loop while any member is below this HP %."/>
+                    <NumericUpDown Value="{Binding WaitIfMemberBelowPercent, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="120"
+                                   ToolTip.Tip="Pause the party action loop while any member is below this HP %. 0 disables."/>
                     <TextBlock Classes="FieldLabel" Text="%"/>
                 </StackPanel>
 

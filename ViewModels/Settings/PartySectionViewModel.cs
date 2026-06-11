@@ -102,6 +102,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// upper bound while in an active party. 1..20.</summary>
     [ObservableProperty] private int _maxMonstersWhenPartying = 20;
 
+    // ----- Vitals gate (consumed by PartyVitalsWatcher) --------------
+    /// <summary>Hold the party action loop while any other member's HP%
+    /// is below this value. 0 disables. 0..100.</summary>
+    [ObservableProperty] private int _waitIfMemberBelowPercent;
+
     // ----- Leader behaviour (consumed by PartyEssentialHandlers) -----
     /// <summary>When leading, drop incoming <c>@wait</c> broadcasts so the
     /// leader's automation keeps running.</summary>
@@ -154,6 +159,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
             AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
             MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
+            WaitIfMemberBelowPercent = Math.Clamp(WaitIfMemberBelowPercent, 0, 100),
             IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
             HelpLeaderOpenDoors    = HelpLeaderOpenDoors,
         };
@@ -211,6 +217,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
         AoeMinMembers          = dto.AoeMinMembers;
         MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
+        WaitIfMemberBelowPercent = dto.WaitIfMemberBelowPercent;
         IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
         HelpLeaderOpenDoors    = dto.HelpLeaderOpenDoors;
 
@@ -278,6 +285,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
     partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
     partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
+    partial void OnWaitIfMemberBelowPercentChanged(int value)   => MarkDirty();
     partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();
     partial void OnHelpLeaderOpenDoorsChanged(bool value)       => MarkDirty();
 

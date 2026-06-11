@@ -52,6 +52,12 @@ public sealed class PartySectionViewModelTests
         // "If leading, wait only" — drives the disconnect grace window
         // used by the Re-invite lost party members flow. Default 90 s.
         Assert.Equal(90,           dto.IfLeadingWaitTotalSec);
+        // Vitals gate disabled by default — 0 means PartyVitalsWatcher
+        // never holds the loop until the user sets a threshold.
+        Assert.Equal(0,            dto.WaitIfMemberBelowPercent);
+        // Party-scoped max-monsters default mirrors the Combat cap (no-op
+        // until tightened).
+        Assert.Equal(20,           dto.MaxMonstersWhenPartying);
     }
 
     [Fact]
@@ -62,5 +68,15 @@ public sealed class PartySectionViewModelTests
         PartySettings? back = JsonSerializer.Deserialize<PartySettings>(json);
         Assert.NotNull(back);
         Assert.Equal(305, back!.IfLeadingWaitTotalSec);
+    }
+
+    [Fact]
+    public void WaitIfMemberBelowPercent_RoundTripsThroughJson()
+    {
+        PartySettings src = new() { WaitIfMemberBelowPercent = 65 };
+        string json = JsonSerializer.Serialize(src);
+        PartySettings? back = JsonSerializer.Deserialize<PartySettings>(json);
+        Assert.NotNull(back);
+        Assert.Equal(65, back!.WaitIfMemberBelowPercent);
     }
 }

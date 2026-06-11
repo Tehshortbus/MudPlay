@@ -965,6 +965,12 @@ public sealed class AppServices
     public Game.Map.MovementCoordinator MovementCoordinator { get; private set; } = null!;
 
     /// <summary>
+    /// Party-vitals pause bridge — holds the active movement engine while
+    /// a party member is below the Party-tab HP% threshold.
+    /// </summary>
+    public Game.PartyVitalsWatcher PartyVitals { get; private set; } = null!;
+
+    /// <summary>
     /// Fulfillment half of the Phase 9 auto-engine coordination model —
     /// requesters post acquisition needs (light source, etc.), fulfilling
     /// engines claim + resolve them. No engine references another by
@@ -1547,6 +1553,14 @@ public sealed class AppServices
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
+
+        // Party-vitals pause bridge — asserts MovementCoordinator's
+        // PartyVitalsGate while any other party member's HP% is below the
+        // Party-tab "wait if members are below" threshold.
+        PartyVitals = new Game.PartyVitalsWatcher(
+            PartyState, MovementCoordinator,
+            readSettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            log: Log);
 
         // Phase 9 PR 9.J — needs registry. Cross-engine fulfillment hub;
         // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on

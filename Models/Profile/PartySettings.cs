@@ -150,6 +150,19 @@ public sealed class PartySettings
     /// </summary>
     public int MaxMonstersWhenPartying { get; set; } = 20;
 
+    // ----- Vitals gate ----------------------------------------------
+
+    /// <summary>
+    /// Pause the party action loop (assert
+    /// <see cref="Game.Map.MovementCoordinator.PartyVitalsGate"/>) while
+    /// any other observed party member's HP% is below this value, so the
+    /// group holds for the hurt member to rest / be healed before moving
+    /// on. <c>0</c> (default) disables the gate. Range 0..100. Members
+    /// whose HP% hasn't been observed yet (HpPercent == 0) don't trip it.
+    /// Consumed by <see cref="Game.PartyVitalsWatcher"/>.
+    /// </summary>
+    public int WaitIfMemberBelowPercent { get; set; }
+
     // Party-cure + party-buff pickers ship in a follow-up commit —
     // they need per-member condition tracking + per-member active-
     // buff tracking, both of which are deferred until the spellbook

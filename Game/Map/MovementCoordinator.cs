@@ -66,6 +66,13 @@ public sealed class MovementCoordinator
     /// running. Clears when recovery finishes.</summary>
     public const string CorpseRecoveryGate = "CorpseRecovery";
 
+    /// <summary>Asserted by <c>PartyVitalsGate</c> while any other party
+    /// member's HP% is below the Party-tab "wait if members are below"
+    /// threshold. Clears when every observed member recovers past it.
+    /// Lets the party loop hold so the hurt member can rest / be healed
+    /// before the group moves on.</summary>
+    public const string PartyVitalsGate = "PartyVitals";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;
