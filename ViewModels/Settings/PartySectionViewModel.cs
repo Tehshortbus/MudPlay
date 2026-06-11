@@ -15,11 +15,9 @@ namespace FujinTerm.ViewModels.Settings;
 /// "Party" tab — bespoke layout. PR 6.9 wires the knobs that map onto
 /// live Phase 6 services (par poll cadence, auto-invite reconnecting
 /// member, reset statistics on loop start); the party-heal pickers +
-/// thresholds + AOE-member count feed <c>CastingDirector</c>'s party-cast
-/// path. Persists per character as the <c>"Party"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>. The bless-slot controls stay
-/// disabled-stubs because party-buff needs per-member active-buff tracking
-/// that hasn't landed yet (see <see cref="PartySettings"/>).
+/// thresholds + AOE-member count, and the 10 party-bless slots, feed
+/// <c>CastingDirector</c>'s party-cast path. Persists per character as the
+/// <c>"Party"</c> entry in <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 {
@@ -44,9 +42,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// by name + distinct by cast-code, from
     /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
     /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code.
-    /// Refreshes when the spellbook rebuilds (class swap / reroll). The boxes
-    /// themselves stay disabled until CastingDirector (Phase 9.D) gives them
-    /// backing fields.</summary>
+    /// Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
     public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new PartySectionView { DataContext = this };
