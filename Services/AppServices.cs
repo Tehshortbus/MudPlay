@@ -1186,21 +1186,38 @@ public sealed class AppServices
         // profile to disk). Drafts (no name) are still snapshotted —
         // ProfileService.Save no-ops on them, so the data just lives
         // for the rest of the session.
+        // Rebuild the Spell Book's available list from a class+level
+        // snapshot. Unknown / null class resolves to 0 (no class), which
+        // yields an empty book — correct for non-magery classes and the
+        // no-profile case alike. The obtained set is NOT seeded here (it
+        // isn't persisted); checkmarks stay empty until a live
+        // `spells`/`pow` snapshot confirms them in-game.
+        void SeedSpellbook(Models.Profile.LastKnownStats? snap) =>
+            Spellbook.Refresh(snap is null ? 0 : SpellCatalog.ResolveClassNumber(snap.Class) ?? 0, snap?.Level ?? 0);
+
         Stats.ScreenParsed += snapshot =>
         {
             if (Profile.Current is { } p) p.LastKnownStats = snapshot;
-            // Rebuild the Spell Book's available list from the just-observed
-            // class+level. Unknown class names resolve to 0 (no class), which
-            // yields an empty book — correct for non-magery classes too.
-            Spellbook.Refresh(SpellCatalog.ResolveClassNumber(snapshot.Class) ?? 0, snapshot.Level);
+            SeedSpellbook(snapshot);
         };
         // Restore the snapshot back into live PlayerStats whenever a
         // profile loads. StatParser owns the PlayerStats fields, so
         // hydration MUST route through Stats.Hydrate; passing null
         // resets every field to default (covers fresh / never-stat'd
-        // profiles cleanly).
-        Profile.ProfileLoaded += p => Stats.Hydrate(p.LastKnownStats);
-        Profile.ProfileClosed += () => Stats.Hydrate(null);
+        // profiles cleanly). Hydrate doesn't fire ScreenParsed, so seed
+        // the Spell Book here too — the persisted class+level gives the
+        // Settings spell pickers their suggestions immediately, before
+        // the first live `stat` reconfirms.
+        Profile.ProfileLoaded += p =>
+        {
+            Stats.Hydrate(p.LastKnownStats);
+            SeedSpellbook(p.LastKnownStats);
+        };
+        Profile.ProfileClosed += () =>
+        {
+            Stats.Hydrate(null);
+            SeedSpellbook(null);
+        };
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup. Also raises the
