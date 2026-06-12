@@ -76,9 +76,9 @@
                  first, but only when a disarm is actually possible (local
                  Traps skill today; party delegation in a follow-up). -->
             <TextBlock Classes="FieldLabel" Text="Traps:" Margin="0,12,0,0"/>
-            <CheckBox Content="Utilize disarm traps if able"
+            <CheckBox Content="Utilize self or party members to disarm traps"
                       IsChecked="{Binding UtilizeDisarmTrapsIfAble, Mode=TwoWay}"
-                      ToolTip.Tip="When checked (default): at a trapped exit the walker tries to disarm before moving — but only if a disarm is possible (you have the Traps skill, or — later — a party member does). When unchecked: the walker walks straight through trapped exits with no disarm attempt."/>
+                      ToolTip.Tip="When checked (default): at a trapped exit the walker tries to disarm before moving — first yourself if you have the Traps skill, otherwise it delegates to a capable party member via @trap on say. When unchecked: the walker walks straight through trapped exits with no disarm attempt."/>
 
             <!-- @trap auto-disarm attempt caps. Search-attempts row sits
                  ABOVE disarm-attempts per user spec — the search runs

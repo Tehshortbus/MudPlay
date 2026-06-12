@@ -56,7 +56,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Lockpicks";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
-            yield return "Utilize disarm traps if able";
+            yield return "Utilize self or party members to disarm traps";
             yield return "Disarm traps";
             yield return "Traps";
             yield return "@trap max searches";
