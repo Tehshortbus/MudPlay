@@ -17,6 +17,10 @@ public sealed partial class PartyBlessSlotViewModel : ObservableObject
     private readonly Action _onChanged;
     private bool _suppress;
 
+    /// <summary>Tracks whether the slot's spell was blank before the latest
+    /// edit, so a blank→filled transition can auto-tick every class.</summary>
+    private bool _spellWasEmpty;
+
     /// <summary>1-based row number, surfaced as the "Bless N" label.</summary>
     public int Index { get; }
 
@@ -43,6 +47,7 @@ public sealed partial class PartyBlessSlotViewModel : ObservableObject
         _suppress = true;
         Spell = dto.Spell;
         _suppress = false;
+        _spellWasEmpty = string.IsNullOrWhiteSpace(Spell);
 
         Classes = classes
             .Select(c => new PartyBlessClassToggle(
@@ -61,6 +66,17 @@ public sealed partial class PartyBlessSlotViewModel : ObservableObject
 
     partial void OnSpellChanged(string? value)
     {
+        bool isEmpty = string.IsNullOrWhiteSpace(value);
+
+        // First time a spell lands in a previously-empty slot, tick every
+        // class by default — the common intent is "bless the whole party",
+        // and unticking a few is far less work than ticking them all.
+        if (!_suppress && _spellWasEmpty && !isEmpty)
+            foreach (PartyBlessClassToggle toggle in Classes)
+                toggle.IsChecked = true;
+
+        _spellWasEmpty = isEmpty;
+
         if (_suppress) return;
         _onChanged();
     }
