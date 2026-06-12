@@ -175,17 +175,6 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked: each observed hop emits one Info log line with the measured wall-clock time + the current encumbrance level. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play."/>
 
-            <!-- Party-bless gating. Both default ON. The party-bless path
-                 in CastingDirector reads these once it ships (PR 13.D);
-                 they persist now so the user can pre-configure them. -->
-            <CheckBox Content="Bless party while resting"
-                      IsChecked="{Binding BlessWhileResting, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked (default): the party-bless engine may cast beneficial spells on party members while you're resting."/>
-            <CheckBox Content="Bless party during combat"
-                      IsChecked="{Binding BlessDuringCombat, Mode=TwoWay}"
-                      ToolTip.Tip="When checked (default): the party-bless engine may cast beneficial spells on party members during combat rounds."/>
-
             <!-- Run-away (flee) behaviour. Both consumed live by
                  HealthManager.TryFlee via OtherSettings.RunDirection /
                  BreakBeforeFleeing — the auto-flee fires when HP crosses

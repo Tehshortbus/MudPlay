@@ -52,7 +52,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         "Party", "Rank", "Front", "Mid", "Back",
         "Party heal", "Minor heal", "Major heal", "Single-target", "Party AOE",
         "Use AOE", "Request healing",
-        "Bless", "Auto-share cash", "Help leader bash doors",
+        "Bless", "Bless while resting", "Bless during combat",
+        "Auto-share cash", "Help leader bash doors",
         "Auto-invite", "Auto-Exp-Reset", "par frequency",
         "Wait for members", "Max monsters", "Max monster experience",
         "Ignore party when following", "Auto-collect when following",
@@ -118,6 +119,12 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// Consumed by <see cref="Game.Map.LeaderDoorAssistManager"/>.</summary>
     [ObservableProperty] private bool _helpLeaderOpenDoors;
 
+    // ----- Party bless gating (consumed by CastingDirector) ----------
+    // Two coarse gates the party-bless path honors before casting a
+    // beneficial spell on a member. Both default ON.
+    [ObservableProperty] private bool _blessWhileResting = true;
+    [ObservableProperty] private bool _blessDuringCombat = true;
+
     // ----- Party bless slots (consumed by CastingDirector) -----------
     // 10 fixed rows; each pairs a spell short-code with the set of class
     // numbers it targets. Rebuilt from the active set's Classes table on
@@ -181,6 +188,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             WaitIfMemberBelowPercent = Math.Clamp(WaitIfMemberBelowPercent, 0, 100),
             IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
             HelpLeaderOpenDoors    = HelpLeaderOpenDoors,
+            BlessWhileResting      = BlessWhileResting,
+            BlessDuringCombat      = BlessDuringCombat,
             BlessSlots             = SnapshotBlessSlots(),
         };
 
@@ -240,6 +249,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         WaitIfMemberBelowPercent = dto.WaitIfMemberBelowPercent;
         IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
         HelpLeaderOpenDoors    = dto.HelpLeaderOpenDoors;
+        BlessWhileResting      = dto.BlessWhileResting;
+        BlessDuringCombat      = dto.BlessDuringCombat;
         RebuildBlessSlots(NormalizeSlots(dto.BlessSlots));
 
         // Mirror loaded settings into the live services so they reflect
@@ -374,6 +385,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnWaitIfMemberBelowPercentChanged(int value)   => MarkDirty();
     partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();
     partial void OnHelpLeaderOpenDoorsChanged(bool value)       => MarkDirty();
+    partial void OnBlessWhileRestingChanged(bool value)         => MarkDirty();
+    partial void OnBlessDuringCombatChanged(bool value)         => MarkDirty();
 
     private void MarkDirty()
     {

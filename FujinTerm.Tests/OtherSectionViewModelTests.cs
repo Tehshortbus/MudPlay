@@ -21,8 +21,6 @@ public sealed class OtherSectionViewModelTests
             UtilizeDisarmTrapsIfAble = false,
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
-            BlessWhileResting = false,
-            BlessDuringCombat = false,
             RunDirection = RunDirection.Forward,
             BreakBeforeFleeing = false,
         };
@@ -35,8 +33,6 @@ public sealed class OtherSectionViewModelTests
         Assert.False(back.UtilizeDisarmTrapsIfAble);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
-        Assert.False(back.BlessWhileResting);
-        Assert.False(back.BlessDuringCombat);
         Assert.Equal(RunDirection.Forward, back.RunDirection);
         Assert.False(back.BreakBeforeFleeing);
     }
@@ -66,11 +62,6 @@ public sealed class OtherSectionViewModelTests
         Assert.True(dto.UtilizeDisarmTrapsIfAble);
         Assert.Equal(20, dto.MaxTrapSearchAttempts);
         Assert.Equal(5,  dto.MaxTrapDisarmAttempts);
-        // Party-bless gating defaults ON — the bless engine may cast on
-        // party members both while resting and during combat unless the
-        // user opts out.
-        Assert.True(dto.BlessWhileResting);
-        Assert.True(dto.BlessDuringCombat);
         // Flee defaults: retrace the way we came (Backward) and break
         // combat before the first flee move — both the safer choice.
         Assert.Equal(RunDirection.Backward, dto.RunDirection);

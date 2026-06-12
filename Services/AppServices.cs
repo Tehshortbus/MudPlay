@@ -1931,9 +1931,6 @@ public sealed class AppServices
         // cast once for the whole party; the picker checks this to skip the
         // per-member loop.
         CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
-        // Settings → Other "bless party while resting / during combat"
-        // toggles gate the party-buff picker.
-        CastDirector.SetPartyBlessGate(() => Resolver.Resolve<Models.Profile.OtherSettings>("Other"));
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Phase 9 PR 9.A (spell extension) — opt the combat engine into the

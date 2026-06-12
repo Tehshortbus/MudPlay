@@ -1156,7 +1156,6 @@ public sealed class CastingDirectorTests
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public PartySettings PartySettings { get; set; } = new();
-        public OtherSettings Other { get; set; } = new();
 
         public DateTime Now { get; set; } =
             new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -1190,7 +1189,6 @@ public sealed class CastingDirectorTests
                 _ => null);
             Director.SetClassResolver(
                 n => Classes.TryGetValue(n, out string? name) ? name : null);
-            Director.SetPartyBlessGate(() => Other);
             // Healthy + full mana so survival categories never pre-empt buffs.
             State.MaxHp = 200; State.Hp = 200;
             State.MaxMa = 100; State.Ma = 100;
@@ -1389,7 +1387,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_DuringCombatOff_NoCast()
     {
         using PartyBlessHarness h = new();
-        h.Other.BlessDuringCombat = false;
+        h.PartySettings.BlessDuringCombat = false;
         h.State.InCombat = true;
         h.Classes[1] = "Mage";
         h.Health.BlessIfAboveMa = 0;
@@ -1406,7 +1404,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_WhileRestingOff_NoCast()
     {
         using PartyBlessHarness h = new();
-        h.Other.BlessWhileResting = false;
+        h.PartySettings.BlessWhileResting = false;
         h.State.Position = PlayerPosition.Resting;
         h.Classes[1] = "Mage";
         h.Health.BlessIfAboveMa = 0;

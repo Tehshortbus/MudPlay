@@ -210,6 +210,17 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <!-- Bless gating: coarse on/off conditions the party-bless path
+                 honors before casting. Both default ON. -->
+            <StackPanel Spacing="2" Margin="0,8,0,0">
+                <CheckBox Content="Bless party while resting"
+                          IsChecked="{Binding BlessWhileResting, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): the party-bless engine may cast beneficial spells on party members while you're resting."/>
+                <CheckBox Content="Bless party during combat"
+                          IsChecked="{Binding BlessDuringCombat, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): the party-bless engine may cast beneficial spells on party members during combat rounds."/>
+            </StackPanel>
+
             <!-- ============ Options ============ -->
             <TextBlock Classes="SectionHeader" Text="Options"/>
             <StackPanel Spacing="2">

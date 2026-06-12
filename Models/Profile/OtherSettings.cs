@@ -167,21 +167,9 @@ public sealed class OtherSettings
     /// than waste a round on <c>break</c>.</summary>
     public bool BreakBeforeFleeing { get; set; } = true;
 
-    // ----- Party bless gating ----------------------------------------
-    // Two coarse gates the party-bless engine honors before it casts a
-    // beneficial spell on a party member. Both default ON: blessing the
-    // party is the normal expectation, and a player who wants to hold
-    // casts under specific conditions opts out explicitly.
-
-    /// <summary>When true (default), allow party-bless casts while the
-    /// character is resting. Consumed by the party-bless path in
-    /// <see cref="Game.Spells.CastingDirector"/>.</summary>
-    public bool BlessWhileResting { get; set; } = true;
-
-    /// <summary>When true (default), allow party-bless casts during
-    /// combat. Consumed by the party-bless path in
-    /// <see cref="Game.Spells.CastingDirector"/>.</summary>
-    public bool BlessDuringCombat { get; set; } = true;
+    // Note: the party-bless gates (BlessWhileResting / BlessDuringCombat)
+    // graduated to PartySettings — they sit on the Party tab next to the
+    // bless slots they gate. CastingDirector reads them from there.
 }
 
 /// <summary>Direction strategy for the auto-flee path.</summary>

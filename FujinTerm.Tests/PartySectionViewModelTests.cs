@@ -58,6 +58,26 @@ public sealed class PartySectionViewModelTests
         // Party-scoped max-monsters default mirrors the Combat cap (no-op
         // until tightened).
         Assert.Equal(20,           dto.MaxMonstersWhenPartying);
+        // Party-bless gating defaults ON — the bless engine may cast on
+        // party members both while resting and during combat unless the
+        // user opts out.
+        Assert.True(dto.BlessWhileResting);
+        Assert.True(dto.BlessDuringCombat);
+    }
+
+    [Fact]
+    public void BlessGates_RoundTripThroughJson()
+    {
+        PartySettings src = new()
+        {
+            BlessWhileResting = false,
+            BlessDuringCombat = false,
+        };
+        string json = JsonSerializer.Serialize(src);
+        PartySettings? back = JsonSerializer.Deserialize<PartySettings>(json);
+        Assert.NotNull(back);
+        Assert.False(back!.BlessWhileResting);
+        Assert.False(back.BlessDuringCombat);
     }
 
     [Fact]

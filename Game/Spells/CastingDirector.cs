@@ -110,7 +110,6 @@ public sealed class CastingDirector : IDisposable
     private Func<MessageRecord, string?>? _shortFromAppliedRecord;
     private Func<int, string?>? _classNameByNumber;
     private Func<string, bool>? _isPartyWideBuff;
-    private Func<OtherSettings>? _readOther;
     private Func<DateTime> _now = () => DateTime.UtcNow;
     private LineExtractor? _lines;
 
@@ -302,18 +301,6 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isPartyWideBuff);
         _isPartyWideBuff = isPartyWideBuff;
-    }
-
-    /// <summary>
-    /// Wire the <see cref="OtherSettings"/> reader that gates party-bless by
-    /// the user's "bless party while resting" /
-    /// "bless party during combat" toggles. Optional — until wired, both gates
-    /// default open (party-bless allowed in either state).
-    /// </summary>
-    public void SetPartyBlessGate(Func<OtherSettings> readOther)
-    {
-        ArgumentNullException.ThrowIfNull(readOther);
-        _readOther = readOther;
     }
 
     /// <summary>
@@ -789,9 +776,8 @@ public sealed class CastingDirector : IDisposable
         if (party is null) return null;
         if (_party.Members.Count == 0) return null;
 
-        OtherSettings? other = _readOther?.Invoke();
-        bool whileResting  = other?.BlessWhileResting ?? true;
-        bool duringCombat  = other?.BlessDuringCombat ?? true;
+        bool whileResting  = party.BlessWhileResting;
+        bool duringCombat  = party.BlessDuringCombat;
         if (_state.InCombat && !duringCombat) return null;
         if (_state.Position == PlayerPosition.Resting && !whileResting) return null;
 

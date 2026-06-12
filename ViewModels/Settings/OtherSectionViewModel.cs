@@ -56,8 +56,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Lockpicks";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
-            yield return "Bless while resting";
-            yield return "Bless during combat";
             yield return "Go backwards if running";
             yield return "Break combat before running";
             yield return "Flee direction";
@@ -163,18 +161,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // per-character preference; it's "I'm debugging right now",
     // and a session toggle in the LogPane is the right home.
 
-    // ----- Party bless gating (wired data; engine lands in PR 13.D) -----
-    // Both default ON. They persist now so the user can pre-configure
-    // them; the party-bless path in CastingDirector reads them once it
-    // ships. No live service mirror yet — no engine consumes them.
-
-    /// <summary>When on (default), the party-bless engine may cast
-    /// beneficial spells on members while the character is resting.</summary>
-    [ObservableProperty] private bool _blessWhileResting = true;
-
-    /// <summary>When on (default), the party-bless engine may cast
-    /// beneficial spells on members during combat.</summary>
-    [ObservableProperty] private bool _blessDuringCombat = true;
+    // Note: the party-bless gates (Bless while resting / Bless during
+    // combat) graduated to the Party tab — they sit next to the bless
+    // slots they gate. CastingDirector reads them from PartySettings now.
 
     // ----- Run-away (flee) behaviour (wired — HealthManager) -----
     // Both map onto existing OtherSettings fields that HealthManager.TryFlee
@@ -292,8 +281,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
-            BlessWhileResting = BlessWhileResting,
-            BlessDuringCombat = BlessDuringCombat,
             RunDirection = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
             BreakBeforeFleeing = BreakBeforeFleeing,
         };
@@ -349,8 +336,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
-        BlessWhileResting = dto.BlessWhileResting;
-        BlessDuringCombat = dto.BlessDuringCombat;
         GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
         BreakBeforeFleeing = dto.BreakBeforeFleeing;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
@@ -410,8 +395,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
-    partial void OnBlessWhileRestingChanged(bool value) => MarkDirty();
-    partial void OnBlessDuringCombatChanged(bool value) => MarkDirty();
     partial void OnGoBackwardsIfRunningChanged(bool value) => MarkDirty();
     partial void OnBreakBeforeFleeingChanged(bool value) => MarkDirty();
 
