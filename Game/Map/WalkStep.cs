@@ -12,10 +12,23 @@ public abstract record WalkStep
     public abstract string Display { get; }
 }
 
-/// <summary>A planar movement — sends the lowercase direction over the wire and waits for the room to change.</summary>
-public sealed record MoveStep(Direction Direction, RoomKey ExpectedTarget) : WalkStep
+/// <summary>
+/// A planar movement. Normally sends the lowercase direction over the
+/// wire and waits for the room to change. When <see cref="CommandLabel"/>
+/// is set the exit is traversed by a fixed game-data command instead of
+/// the cardinal (e.g. a <c>(Text: borrow skiff)</c> exit), and that
+/// command — not the direction — is what the walker sends and what the
+/// step list shows.
+/// </summary>
+/// <param name="CommandLabel">
+/// The exact command the exit requires in place of the cardinal, when
+/// game data statically pins one (Text exits). <c>null</c> for ordinary
+/// passages and for exits whose command is only known at runtime
+/// (teleport keywords, door opens) — those still display the direction.
+/// </param>
+public sealed record MoveStep(Direction Direction, RoomKey ExpectedTarget, string? CommandLabel = null) : WalkStep
 {
-    public override string Display => Direction switch
+    public override string Display => CommandLabel ?? Direction switch
     {
         Map.Direction.N  => "north",
         Map.Direction.S  => "south",

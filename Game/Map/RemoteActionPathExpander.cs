@@ -62,7 +62,18 @@ public static class RemoteActionPathExpander
             // the "Syntax: OPEN {Direction|Item}" failure — the real
             // verb is `open <dir>` (no "door" word).
 
-            result.Add(new MoveStep(dir, exit.Target));
+            // Text exits — `(Text: cmd1, cmd2, ...)` — are traversed by a
+            // fixed command, never the cardinal. Pin the first alternative
+            // as the step's display label so the Navigation step list shows
+            // the command the walker actually sends (e.g. "borrow skiff")
+            // rather than the misleading direction. Mirrors the send-side
+            // choice in AutoWalkManager.SendMoveStep (first TextCommand).
+            string? label = exit.Hint == RoomExitHint.Text
+                            && exit.TextCommands is { Count: > 0 } cmds
+                ? cmds[0]
+                : null;
+
+            result.Add(new MoveStep(dir, exit.Target, label));
             current = exit.Target;
         }
 
