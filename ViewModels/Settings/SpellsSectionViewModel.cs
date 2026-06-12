@@ -63,13 +63,29 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     // ----- Category priority (1-7) ----------------------------------
 
-    [ObservableProperty] private int _priorityMinorPartyHeal = 1;
-    [ObservableProperty] private int _priorityMajorPartyHeal = 2;
-    [ObservableProperty] private int _priorityMinorSelfHeal  = 3;
-    [ObservableProperty] private int _priorityMajorSelfHeal  = 4;
-    [ObservableProperty] private int _priorityCuring         = 5;
-    [ObservableProperty] private int _priorityBuffing        = 6;
-    [ObservableProperty] private int _priorityDebuffing      = 7;
+    /// <summary>The seven between-round casting categories in fixed key
+    /// order; the ranking VM reorders them and reports each one's rank.</summary>
+    private static readonly (string Key, string Label, string? Tip)[] _priorityDefs =
+    {
+        ("MinorPartyHeal", "Minor party heal (single + party)",
+            "Priority slot shared by the Party tab's Minor single-target heal and Minor AOE party heal."),
+        ("MajorPartyHeal", "Major party heal (single + party)",
+            "Priority slot shared by the Party tab's Major single-target heal and Major AOE party heal."),
+        ("MinorSelfHeal", "Minor self heal",
+            "Priority slot for this tab's Minor heal pick."),
+        ("MajorSelfHeal", "Major self heal",
+            "Priority slot for this tab's Major heal pick."),
+        ("Curing", "Curing",
+            "Priority slot for cure spells."),
+        ("Buffing", "Buffing",
+            "Priority slot for buff / bless casts."),
+        ("Debuffing", "Debuffing",
+            "Priority slot for between-round debuffs (CombatSettings' debuff slots)."),
+    };
+
+    /// <summary>Reorderable between-round casting order. Row position is the
+    /// rank, so the seven categories always form a clean 1..7 permutation.</summary>
+    public PriorityRankingViewModel Priority { get; }
 
     // ----- Healing / regen ------------------------------------------
 
@@ -108,6 +124,7 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
         _spellbook = AppServices.Current.Spellbook;
+        Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
@@ -124,13 +141,13 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
         SpellsSettings dto = new()
         {
-            PriorityMinorPartyHeal = Math.Clamp(PriorityMinorPartyHeal, 1, 7),
-            PriorityMajorPartyHeal = Math.Clamp(PriorityMajorPartyHeal, 1, 7),
-            PriorityMinorSelfHeal  = Math.Clamp(PriorityMinorSelfHeal,  1, 7),
-            PriorityMajorSelfHeal  = Math.Clamp(PriorityMajorSelfHeal,  1, 7),
-            PriorityCuring         = Math.Clamp(PriorityCuring,         1, 7),
-            PriorityBuffing        = Math.Clamp(PriorityBuffing,        1, 7),
-            PriorityDebuffing      = Math.Clamp(PriorityDebuffing,      1, 7),
+            PriorityMinorPartyHeal = Priority.RankOf("MinorPartyHeal"),
+            PriorityMajorPartyHeal = Priority.RankOf("MajorPartyHeal"),
+            PriorityMinorSelfHeal  = Priority.RankOf("MinorSelfHeal"),
+            PriorityMajorSelfHeal  = Priority.RankOf("MajorSelfHeal"),
+            PriorityCuring         = Priority.RankOf("Curing"),
+            PriorityBuffing        = Priority.RankOf("Buffing"),
+            PriorityDebuffing      = Priority.RankOf("Debuffing"),
 
             MinorHealSpell    = NullIfBlank(MinorHealSpell),
             MajorHealSpell    = NullIfBlank(MajorHealSpell),
@@ -191,13 +208,17 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     {
         SpellsSettings dto = ReadOrDefault();
 
-        PriorityMinorPartyHeal = dto.PriorityMinorPartyHeal;
-        PriorityMajorPartyHeal = dto.PriorityMajorPartyHeal;
-        PriorityMinorSelfHeal  = dto.PriorityMinorSelfHeal;
-        PriorityMajorSelfHeal  = dto.PriorityMajorSelfHeal;
-        PriorityCuring         = dto.PriorityCuring;
-        PriorityBuffing        = dto.PriorityBuffing;
-        PriorityDebuffing      = dto.PriorityDebuffing;
+        Priority.Load(_priorityDefs, key => key switch
+        {
+            "MinorPartyHeal" => dto.PriorityMinorPartyHeal,
+            "MajorPartyHeal" => dto.PriorityMajorPartyHeal,
+            "MinorSelfHeal"  => dto.PriorityMinorSelfHeal,
+            "MajorSelfHeal"  => dto.PriorityMajorSelfHeal,
+            "Curing"         => dto.PriorityCuring,
+            "Buffing"        => dto.PriorityBuffing,
+            "Debuffing"      => dto.PriorityDebuffing,
+            _                => 99,
+        });
 
         MinorHealSpell  = dto.MinorHealSpell;
         MajorHealSpell  = dto.MajorHealSpell;
@@ -255,14 +276,6 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         _dirty = true;
         OnPropertyChanged(nameof(IsDirty));
     }
-
-    partial void OnPriorityMinorPartyHealChanged(int value)  => MarkDirty();
-    partial void OnPriorityMajorPartyHealChanged(int value)  => MarkDirty();
-    partial void OnPriorityMinorSelfHealChanged(int value)   => MarkDirty();
-    partial void OnPriorityMajorSelfHealChanged(int value)   => MarkDirty();
-    partial void OnPriorityCuringChanged(int value)          => MarkDirty();
-    partial void OnPriorityBuffingChanged(int value)         => MarkDirty();
-    partial void OnPriorityDebuffingChanged(int value)       => MarkDirty();
 
     partial void OnMinorHealSpellChanged(string? value)      => MarkDirty();
     partial void OnMajorHealSpellChanged(string? value)      => MarkDirty();

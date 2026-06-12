@@ -77,10 +77,23 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // ----- Combat priority order ------------------------------------
 
-    [ObservableProperty] private int _priorityBackstab = 1;
-    [ObservableProperty] private int _priorityDebuffing = 2;
-    [ObservableProperty] private int _prioritySpells = 3;
-    [ObservableProperty] private int _priorityPhysical = 4;
+    /// <summary>The four combat categories in their fixed key order; the
+    /// ranking VM reorders them and reports each category's 1-based rank.</summary>
+    private static readonly (string Key, string Label, string? Tip)[] _priorityDefs =
+    {
+        ("Backstab", "Backstab",
+            "Priority of the backstab opener. Backstab only fires when ranked 1 (and Do BS attacks is on, we're sneaking, and the room has no SeeHidden monster); at any other rank it is ignored."),
+        ("Debuffing", "Debuffing",
+            "Priority of the debuffing category (area debuff, else single-target debuff)."),
+        ("Spells", "Spells",
+            "Priority of the attack-spell category (multi → normal → alternate attack spell cascade)."),
+        ("Physical", "Physical",
+            "Priority of the physical weapon swing — the terminal fallback that always applies. Placing it above another category suppresses that category whenever a swing is possible."),
+    };
+
+    /// <summary>Reorderable per-round action order. Row position is the rank,
+    /// so the four categories always form a clean 1..4 permutation.</summary>
+    public PriorityRankingViewModel Priority { get; }
 
     // ----- Weapon slots --------------------------------------------
 
@@ -190,6 +203,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         ArgumentNullException.ThrowIfNull(items);
         _profile = profile;
         _items = items;
+        Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _items.StoreReloaded += OnItemStoreReloaded;
@@ -213,10 +227,10 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             NormalAttackCommand        = NormalAttackCommand ?? "a",
             AlternateAttackCommand     = AlternateAttackCommand ?? "a",
 
-            PriorityBackstab  = ClampPriority(PriorityBackstab),
-            PriorityDebuffing = ClampPriority(PriorityDebuffing),
-            PrioritySpells    = ClampPriority(PrioritySpells),
-            PriorityPhysical  = ClampPriority(PriorityPhysical),
+            PriorityBackstab  = Priority.RankOf("Backstab"),
+            PriorityDebuffing = Priority.RankOf("Debuffing"),
+            PrioritySpells    = Priority.RankOf("Spells"),
+            PriorityPhysical  = Priority.RankOf("Physical"),
 
             NormalWeapon       = NullIfBlank(NormalWeapon),
             NormalOffHand      = NullIfBlank(NormalOffHand),
@@ -309,10 +323,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     /// counts which top out far below.</summary>
     private static int ClampSpell(int value) => Math.Clamp(value, 0, 100_000);
 
-    /// <summary>Combat-priority fields run 1..4 (the four categories). Ties
-    /// are allowed — the chooser tie-breaks on canonical order.</summary>
-    private static int ClampPriority(int value) => Math.Clamp(value, 1, 4);
-
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
 
@@ -332,10 +342,14 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         NormalAttackCommand     = dto.NormalAttackCommand ?? "a";
         AlternateAttackCommand  = dto.AlternateAttackCommand ?? "a";
 
-        PriorityBackstab  = dto.PriorityBackstab;
-        PriorityDebuffing = dto.PriorityDebuffing;
-        PrioritySpells    = dto.PrioritySpells;
-        PriorityPhysical  = dto.PriorityPhysical;
+        Priority.Load(_priorityDefs, key => key switch
+        {
+            "Backstab"  => dto.PriorityBackstab,
+            "Debuffing" => dto.PriorityDebuffing,
+            "Spells"    => dto.PrioritySpells,
+            "Physical"  => dto.PriorityPhysical,
+            _           => 99,
+        });
 
         NormalWeapon       = dto.NormalWeapon;
         NormalOffHand      = dto.NormalOffHand;
@@ -425,12 +439,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // Master + attack command
     partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
     partial void OnAlternateAttackCommandChanged(string value)   => MarkDirty();
-
-    // Combat priority order
-    partial void OnPriorityBackstabChanged(int value)            => MarkDirty();
-    partial void OnPriorityDebuffingChanged(int value)           => MarkDirty();
-    partial void OnPrioritySpellsChanged(int value)              => MarkDirty();
-    partial void OnPriorityPhysicalChanged(int value)            => MarkDirty();
 
     // Weapon slots
     partial void OnNormalWeaponChanged(string? value)            => MarkDirty();

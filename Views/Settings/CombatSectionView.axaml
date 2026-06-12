@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:settings="using:FujinTerm.Views.Settings"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="900"
@@ -58,38 +59,14 @@
 
                 <!-- ============ Combat priority order ============ -->
                 <TextBlock Classes="SectionHeader" Text="Combat priority order (per-round action order)"/>
-                <TextBlock Text="Lower number = acts earlier. The engine evaluates these four categories in this order each round; the first applicable one owns the round. Physical is the terminal fallback (a swing is always possible)."
+                <TextBlock Text="Use the arrows to reorder. Higher in the list = acts earlier. The engine evaluates these four categories top-to-bottom each round; the first applicable one owns the round. Physical is the terminal fallback (a swing is always possible)."
                            Foreground="{StaticResource ChromeFgMutedBrush}"
                            FontSize="{StaticResource FontSizeSm}"
                            FontStyle="Italic"
                            TextWrapping="Wrap"
                            Margin="0,0,0,4"/>
-                <Grid ColumnDefinitions="240,*"
-                      RowDefinitions="Auto,Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Backstab"/>
-                    <NumericUpDown Grid.Row="0" Grid.Column="1"
-                                   Value="{Binding PriorityBackstab, Mode=TwoWay}"
-                                   Minimum="1" Maximum="4" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Priority of the backstab opener. Backstab only fires when ranked 1 (and Do BS attacks is on, we're sneaking, and the room has no SeeHidden monster); at any other rank it is ignored."/>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Debuffing"/>
-                    <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                   Value="{Binding PriorityDebuffing, Mode=TwoWay}"
-                                   Minimum="1" Maximum="4" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Priority of the debuffing category (area debuff, else single-target debuff)."/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Spells"/>
-                    <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                   Value="{Binding PrioritySpells, Mode=TwoWay}"
-                                   Minimum="1" Maximum="4" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Priority of the attack-spell category (multi → normal → alternate attack spell cascade)."/>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Physical"/>
-                    <NumericUpDown Grid.Row="3" Grid.Column="1"
-                                   Value="{Binding PriorityPhysical, Mode=TwoWay}"
-                                   Minimum="1" Maximum="4" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Priority of the physical weapon swing — the terminal fallback that always applies. Placing it above another category suppresses that category whenever a swing is possible."/>
-                </Grid>
+                <settings:PriorityRankingView DataContext="{Binding Priority}"
+                                              HorizontalAlignment="Left"/>
 
                 <Grid ColumnDefinitions="240,*" Margin="0,4,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal weapon attack command"/>
