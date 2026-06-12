@@ -158,14 +158,29 @@
                  ticked. Row order is priority order. Class checkboxes come
                  live from the active set's Classes.json (rebuilt on set swap),
                  so the list grows / shrinks with whatever gamedata is loaded. -->
-            <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)" Margin="0,28,0,6"/>
-            <ItemsControl ItemsSource="{Binding BlessSlots}" Margin="0,2,0,0">
+            <!-- Compact rows: a number badge + spell picker. The class toggles
+                 only appear once a spell is chosen, so empty slots stay a
+                 single tidy line and the "who gets it" choice surfaces exactly
+                 when it becomes relevant. -->
+            <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)" Margin="0,28,0,2"/>
+            <TextBlock Classes="FieldLabel" Text="Pick a spell, then tick the classes that receive it. Row order is cast priority."
+                       Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11" Margin="0,0,0,6"/>
+            <ItemsControl ItemsSource="{Binding BlessSlots}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:PartyBlessSlotViewModel">
-                        <Grid ColumnDefinitions="120,260,*" Margin="0,2,0,6">
-                            <TextBlock Grid.Column="0" Classes="FieldLabel"
-                                       Text="{Binding Label}"/>
-                            <AutoCompleteBox Grid.Column="1" Width="260" HorizontalAlignment="Left"
+                        <Grid ColumnDefinitions="26,220,*" ColumnSpacing="10" Margin="0,0,0,4">
+                            <Border Grid.Column="0" Width="26" Height="26"
+                                    Background="{StaticResource ChromeBgElevBrush}"
+                                    CornerRadius="3" VerticalAlignment="Center"
+                                    ToolTip.Tip="{Binding Label}">
+                                <TextBlock Text="{Binding Index}"
+                                           Foreground="{StaticResource ChromeFgBrush}"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <AutoCompleteBox Grid.Column="1" Width="220" HorizontalAlignment="Left"
+                                             VerticalAlignment="Center"
                                              Text="{Binding Spell, Mode=TwoWay}"
                                              ItemsSource="{Binding $parent[ItemsControl].((vm:PartySectionViewModel)DataContext).SpellSuggestions}"
                                              ValueMemberBinding="{ReflectionBinding Short}"
@@ -174,7 +189,8 @@
                                              PlaceholderText="Type code or name…"
                                              ToolTip.Tip="Beneficial spell cast on party members whose class is ticked to the right. Cast as `&lt;code&gt; &lt;member-name&gt;`."/>
                             <ItemsControl Grid.Column="2" ItemsSource="{Binding Classes}"
-                                          VerticalAlignment="Center" Margin="8,0,0,0">
+                                          VerticalAlignment="Center"
+                                          IsVisible="{Binding Spell, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel Orientation="Horizontal"/>
@@ -184,7 +200,7 @@
                                     <DataTemplate x:DataType="vm:PartyBlessClassToggle">
                                         <CheckBox Content="{Binding Name}"
                                                   IsChecked="{Binding IsChecked, Mode=TwoWay}"
-                                                  Margin="0,0,10,0"
+                                                  MinHeight="0" Margin="0,0,10,2"
                                                   ToolTip.Tip="Cast this slot's bless on party members of this class."/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
