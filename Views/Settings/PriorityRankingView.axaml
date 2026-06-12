@@ -28,10 +28,9 @@
     <ItemsControl ItemsSource="{Binding Items}">
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:PriorityItemViewModel">
-                <Grid ColumnDefinitions="240,34,Auto,Auto" Margin="0,0,0,3"
+                <Grid ColumnDefinitions="28,Auto,Auto,Auto" Margin="0,0,0,3"
                       ToolTip.Tip="{Binding Tip}">
-                    <TextBlock Grid.Column="0" Classes="PriorityLabel" Text="{Binding Label}"/>
-                    <Border Grid.Column="1" Width="28" Height="26"
+                    <Border Grid.Column="0" Width="28" Height="26"
                             Background="{StaticResource ChromeBgElevBrush}"
                             CornerRadius="3" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Rank}"
@@ -40,18 +39,20 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
-                    <Button Grid.Column="2" Classes="PriorityArrow"
+                    <Button Grid.Column="1" Classes="PriorityArrow"
                             Content="&#x25B2;"
                             IsEnabled="{Binding CanMoveUp}"
                             ToolTip.Tip="Move earlier (lower number)"
                             Command="{Binding $parent[ItemsControl].((vm:PriorityRankingViewModel)DataContext).MoveUpCommand}"
                             CommandParameter="{Binding}"/>
-                    <Button Grid.Column="3" Classes="PriorityArrow"
+                    <Button Grid.Column="2" Classes="PriorityArrow"
                             Content="&#x25BC;"
                             IsEnabled="{Binding CanMoveDown}"
                             ToolTip.Tip="Move later (higher number)"
                             Command="{Binding $parent[ItemsControl].((vm:PriorityRankingViewModel)DataContext).MoveDownCommand}"
                             CommandParameter="{Binding}"/>
+                    <TextBlock Grid.Column="3" Classes="PriorityLabel"
+                               Text="{Binding Label}" Margin="10,0,0,0"/>
                 </Grid>
             </DataTemplate>
         </ItemsControl.ItemTemplate>
