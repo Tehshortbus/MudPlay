@@ -81,20 +81,6 @@
             <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
 
-            <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto" Margin="0,8,0,0" ColumnSpacing="8" RowSpacing="4">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Game entry command"/>
-                <TextBox   Grid.Row="0" Grid.Column="1"
-                           Text="{Binding GameEntryCommand, Mode=TwoWay}"
-                           Width="120" FontFamily="{StaticResource FontMono}"
-                           ToolTip.Tip="Sent at the MajorMUD main menu to enter the realm. Default 'E'."/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Game exit command"/>
-                <TextBox   Grid.Row="1" Grid.Column="1"
-                           Text="{Binding GameExitCommand, Mode=TwoWay}"
-                           Width="120" FontFamily="{StaticResource FontMono}"
-                           ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
-            </Grid>
-
             <!-- @trap auto-disarm attempt caps. Search-attempts row sits
                  ABOVE disarm-attempts per user spec — the search runs
                  first, then disarm. -->

@@ -2383,17 +2383,6 @@ public sealed class AppServices
     {
         Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
         RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 9);
-        // Game-menu commands — HangupHandler consumes ExitCommand
-        // synchronously on @hangup; the future cleanup-flow + first-
-        // login automation will consume both. Blank entries fall back
-        // to the DTO defaults (E / =x) so a misconfiguration can't
-        // leave the engine with empty wire-sends.
-        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
-            ? new Models.Profile.OtherSettings().GameEntryCommand
-            : dto.GameEntryCommand;
-        GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
-            ? new Models.Profile.OtherSettings().GameExitCommand
-            : dto.GameExitCommand;
         // @trap auto-disarm attempt caps.
         TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
@@ -2410,8 +2399,6 @@ public sealed class AppServices
     {
         Models.Profile.OtherSettings defaults = new();
         RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
-        GameCommands.EntryCommand = defaults.GameEntryCommand;
-        GameCommands.ExitCommand  = defaults.GameExitCommand;
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
@@ -2533,6 +2520,19 @@ public sealed class AppServices
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;
         Display.TerminalRows = values.TerminalRows;
+
+        // Game-menu commands are BBS-tier too — HangupHandler consumes
+        // ExitCommand synchronously on @hangup; MainMenuEntryAutomation +
+        // the cleanup-logout flow consume both. Blank entries fall back to
+        // the DTO defaults (E / =x) so a misconfiguration can't leave the
+        // engine with empty wire-sends.
+        Models.Settings.BbsProfile defaults = new();
+        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(values.GameEntryCommand)
+            ? defaults.GameEntryCommand
+            : values.GameEntryCommand;
+        GameCommands.ExitCommand = string.IsNullOrWhiteSpace(values.GameExitCommand)
+            ? defaults.GameExitCommand
+            : values.GameExitCommand;
     }
 
     private void ResetDisplayToDefaults()
@@ -2542,6 +2542,8 @@ public sealed class AppServices
         Display.ScrollbackLines = defaults.ScrollbackLines;
         Display.TerminalCols = defaults.TerminalCols;
         Display.TerminalRows = defaults.TerminalRows;
+        GameCommands.EntryCommand = defaults.GameEntryCommand;
+        GameCommands.ExitCommand = defaults.GameExitCommand;
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

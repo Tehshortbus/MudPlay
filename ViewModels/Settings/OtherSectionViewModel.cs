@@ -55,11 +55,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Ignore confusion";
             yield return "Ignore diseased";
             yield return "Ailments";
-            yield return "Game entry command";
-            yield return "Game exit command";
-            yield return "Enter realm";
-            yield return "Logoff";
-            yield return "@hangup";
             yield return "Attempt bash";
             yield return "Pick locks instead of bashing";
             yield return "Attempt pick-lock";
@@ -94,17 +89,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _ignoreBlindness;
     [ObservableProperty] private bool _ignoreConfusion;
     [ObservableProperty] private bool _ignoreDiseased;
-
-    // ----- Game-menu commands (wired) -----
-    // Entry: main-menu key to enter the realm (default "E").
-    // Exit:  main-menu logoff command (default "=x").
-    // HangupHandler consumes ExitCommand immediately on a permitted
-    // @hangup. The cleanup-warning + first-session-load automation
-    // for both commands ships in a follow-up PR once the small
-    // scheduler + main-menu pattern exist.
-
-    [ObservableProperty] private string _gameEntryCommand = "E";
-    [ObservableProperty] private string _gameExitCommand  = "=x";
 
     // ----- @trap auto-disarm attempt caps (wired) -----
     // Both push into TrapDisarmManager on Apply via ApplyToServices,
@@ -282,8 +266,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             IgnoreBlindness = IgnoreBlindness,
             IgnoreConfusion = IgnoreConfusion,
             IgnoreDiseased  = IgnoreDiseased,
-            GameEntryCommand = (GameEntryCommand ?? string.Empty).Trim(),
-            GameExitCommand  = (GameExitCommand  ?? string.Empty).Trim(),
             MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
             MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
@@ -342,8 +324,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         IgnoreBlindness = dto.IgnoreBlindness;
         IgnoreConfusion = dto.IgnoreConfusion;
         IgnoreDiseased  = dto.IgnoreDiseased;
-        GameEntryCommand = dto.GameEntryCommand;
-        GameExitCommand  = dto.GameExitCommand;
         MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
         MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
         MaxBashAttempts       = dto.MaxBashAttempts;
@@ -377,16 +357,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     {
         AppServices svcs = AppServices.Current;
         svcs.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
-        // Live-mirror the entry / exit commands so HangupHandler picks
-        // them up without a profile reload. Blank values fall back to
-        // the DTO defaults — see AppServices.ApplyOtherFromActiveProfile
-        // for the canonical guard.
-        svcs.GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
-            ? new OtherSettings().GameEntryCommand
-            : dto.GameEntryCommand;
-        svcs.GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
-            ? new OtherSettings().GameExitCommand
-            : dto.GameExitCommand;
         // @trap attempt caps — push into the live manager so the next
         // queued @trap honours the edit without a profile reload.
         svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
@@ -415,8 +385,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnIgnoreBlindnessChanged(bool value) => MarkDirty();
     partial void OnIgnoreConfusionChanged(bool value) => MarkDirty();
     partial void OnIgnoreDiseasedChanged(bool value)  => MarkDirty();
-    partial void OnGameEntryCommandChanged(string value) => MarkDirty();
-    partial void OnGameExitCommandChanged(string value)  => MarkDirty();
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
     partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();

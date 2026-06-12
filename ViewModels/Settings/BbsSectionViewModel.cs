@@ -44,6 +44,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         "BBS", "Host", "Port", "Telnet", "Redial", "Cleanup", "Reconnect",
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
+        "Game entry command", "Game exit command", "Enter realm", "Logoff",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
     };
@@ -77,6 +78,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _terminalRows = 25;
     [ObservableProperty] private double _fontSize = 16.0;
     [ObservableProperty] private int _scrollbackLines = 10_000;
+
+    // ----- Game-menu commands (per-BBS) -----
+    // The two main-menu picks for entering / leaving the realm. Stored
+    // per-BBS because the menu key bindings are a property of the realm /
+    // front-end, not the character.
+    [ObservableProperty] private string _gameEntryCommand = "E";
+    [ObservableProperty] private string _gameExitCommand = "=x";
 
     // ----- Per-character credentials (PR 4.5b) -----
     /// <summary>
@@ -464,6 +472,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         TerminalRows = profile.TerminalRows;
         FontSize = profile.FontSize;
         ScrollbackLines = profile.ScrollbackLines;
+        GameEntryCommand = profile.GameEntryCommand;
+        GameExitCommand = profile.GameExitCommand;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -559,6 +569,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         TerminalRows = defaults.TerminalRows;
         FontSize = defaults.FontSize;
         ScrollbackLines = defaults.ScrollbackLines;
+        GameEntryCommand = defaults.GameEntryCommand;
+        GameExitCommand = defaults.GameExitCommand;
     }
 
     private void Dirty()
@@ -598,6 +610,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.TerminalRows = TerminalRows;
         profile.FontSize = FontSize;
         profile.ScrollbackLines = ScrollbackLines;
+        profile.GameEntryCommand = string.IsNullOrWhiteSpace(GameEntryCommand)
+            ? new BbsProfile().GameEntryCommand : GameEntryCommand.Trim();
+        profile.GameExitCommand = string.IsNullOrWhiteSpace(GameExitCommand)
+            ? new BbsProfile().GameExitCommand : GameExitCommand.Trim();
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -658,6 +674,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     partial void OnFontSizeChanged(double value)                { PushToCache(); Dirty(); }
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
+    partial void OnGameEntryCommandChanged(string value)        { PushToCache(); Dirty(); }
+    partial void OnGameExitCommandChanged(string value)         { PushToCache(); Dirty(); }
 
     // Confirm flags are Global-tier, not per-BBS — they don't push into
     // the per-BBS cache, just mark the section dirty so Apply commits

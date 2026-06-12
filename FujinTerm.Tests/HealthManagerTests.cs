@@ -25,9 +25,9 @@ public sealed class HealthManagerTests
         public HealthSettings Settings { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
 
-        /// <summary>User-configured hangup command (Settings → Other →
-        /// Game Exit). Default <c>=x</c> matches the default value
-        /// shipped on <c>OtherSettings.GameExitCommand</c>. Set to
+        /// <summary>User-configured hangup command (Settings → BBS →
+        /// Game-menu commands). Default <c>=x</c> matches the default
+        /// value shipped on <c>BbsProfile.GameExitCommand</c>. Set to
         /// null to test the "not configured" branch.</summary>
         public string? HangupCommand { get; set; } = "=x";
 

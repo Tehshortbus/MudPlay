@@ -22,8 +22,6 @@ public sealed class OtherSectionViewModelTests
             IgnoreBlindness = true,
             IgnoreConfusion = true,
             IgnoreDiseased  = true,
-            GameEntryCommand = "enter",
-            GameExitCommand  = "bye",
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
             BlessWhileResting = false,
@@ -39,8 +37,6 @@ public sealed class OtherSectionViewModelTests
         Assert.True(back.IgnoreBlindness);
         Assert.True(back.IgnoreConfusion);
         Assert.True(back.IgnoreDiseased);
-        Assert.Equal("enter", back.GameEntryCommand);
-        Assert.Equal("bye",   back.GameExitCommand);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
         Assert.False(back.BlessWhileResting);
@@ -71,10 +67,6 @@ public sealed class OtherSectionViewModelTests
         Assert.False(dto.IgnoreBlindness);
         Assert.False(dto.IgnoreConfusion);
         Assert.False(dto.IgnoreDiseased);
-        // Game-menu commands default to MajorMUD's standard picks:
-        // E to enter the realm, =x to log off from the main menu.
-        Assert.Equal("E",  dto.GameEntryCommand);
-        Assert.Equal("=x", dto.GameExitCommand);
         // @trap auto-disarm attempt caps — user-spec defaults:
         // 20 search retries, 5 disarm retries.
         Assert.Equal(20, dto.MaxTrapSearchAttempts);
