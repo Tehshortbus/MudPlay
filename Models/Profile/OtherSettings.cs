@@ -224,6 +224,47 @@ public sealed class OtherSettings
     /// combat. Consumed by the party-bless path in
     /// <see cref="Game.Spells.CastingDirector"/>.</summary>
     public bool BlessDuringCombat { get; set; } = true;
+
+    // ----- Re-enable auto-actions on reconnect -----------------------
+    // One flag per auto-action (1-to-1 with GeneralSettings.AutoMode).
+    // When a reconnect happens (a TCP connect following a prior in-
+    // session disconnect), each auto-action whose flag here is on gets
+    // flipped back ON in AutoMode — covering the common case where the
+    // user manually disabled an engine mid-session, dropped, and wants
+    // it live again on the redial without re-toggling by hand. Default
+    // OFF for every action: re-enabling automatically is an opt-in
+    // convenience, never the surprise. First connect of an app session
+    // is NOT a reconnect and never triggers these.
+
+    /// <summary>Re-enable Auto-Combat on reconnect. Default off.</summary>
+    public bool ReEnableAutoCombatOnReconnect   { get; set; }
+
+    /// <summary>Re-enable Auto-Nuke on reconnect. Default off.</summary>
+    public bool ReEnableAutoNukeOnReconnect     { get; set; }
+
+    /// <summary>Re-enable Auto-Heal/Rest on reconnect. Default off.</summary>
+    public bool ReEnableAutoHealRestOnReconnect { get; set; }
+
+    /// <summary>Re-enable Auto-Bless on reconnect. Default off.</summary>
+    public bool ReEnableAutoBlessOnReconnect    { get; set; }
+
+    /// <summary>Re-enable Auto-Light on reconnect. Default off.</summary>
+    public bool ReEnableAutoLightOnReconnect    { get; set; }
+
+    /// <summary>Re-enable Auto-Get-Items on reconnect. Default off.</summary>
+    public bool ReEnableAutoGetItemsOnReconnect { get; set; }
+
+    /// <summary>Re-enable Auto-Get-Cash on reconnect. Default off.</summary>
+    public bool ReEnableAutoGetCashOnReconnect  { get; set; }
+
+    /// <summary>Re-enable Auto-Sneak on reconnect. Default off.</summary>
+    public bool ReEnableAutoSneakOnReconnect    { get; set; }
+
+    /// <summary>Re-enable Auto-Hide on reconnect. Default off.</summary>
+    public bool ReEnableAutoHideOnReconnect     { get; set; }
+
+    /// <summary>Re-enable Auto-Search on reconnect. Default off.</summary>
+    public bool ReEnableAutoSearchOnReconnect   { get; set; }
 }
 
 /// <summary>Direction strategy for the auto-flee path.</summary>

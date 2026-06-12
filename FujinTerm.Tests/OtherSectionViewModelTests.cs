@@ -33,6 +33,16 @@ public sealed class OtherSectionViewModelTests
             BlessDuringCombat = false,
             RunDirection = RunDirection.Forward,
             BreakBeforeFleeing = false,
+            ReEnableAutoCombatOnReconnect   = true,
+            ReEnableAutoNukeOnReconnect     = true,
+            ReEnableAutoHealRestOnReconnect = true,
+            ReEnableAutoBlessOnReconnect    = true,
+            ReEnableAutoLightOnReconnect    = true,
+            ReEnableAutoGetItemsOnReconnect = true,
+            ReEnableAutoGetCashOnReconnect  = true,
+            ReEnableAutoSneakOnReconnect    = true,
+            ReEnableAutoHideOnReconnect     = true,
+            ReEnableAutoSearchOnReconnect   = true,
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -55,6 +65,16 @@ public sealed class OtherSectionViewModelTests
         Assert.False(back.BlessDuringCombat);
         Assert.Equal(RunDirection.Forward, back.RunDirection);
         Assert.False(back.BreakBeforeFleeing);
+        Assert.True(back.ReEnableAutoCombatOnReconnect);
+        Assert.True(back.ReEnableAutoNukeOnReconnect);
+        Assert.True(back.ReEnableAutoHealRestOnReconnect);
+        Assert.True(back.ReEnableAutoBlessOnReconnect);
+        Assert.True(back.ReEnableAutoLightOnReconnect);
+        Assert.True(back.ReEnableAutoGetItemsOnReconnect);
+        Assert.True(back.ReEnableAutoGetCashOnReconnect);
+        Assert.True(back.ReEnableAutoSneakOnReconnect);
+        Assert.True(back.ReEnableAutoHideOnReconnect);
+        Assert.True(back.ReEnableAutoSearchOnReconnect);
     }
 
     // Note: the per-character "Phase 9 diagnostic toggle" tests
@@ -104,5 +124,18 @@ public sealed class OtherSectionViewModelTests
         // combat before the first flee move — both the safer choice.
         Assert.Equal(RunDirection.Backward, dto.RunDirection);
         Assert.True(dto.BreakBeforeFleeing);
+        // Re-enable-on-reconnect defaults all OFF — reviving an auto-action
+        // automatically is opt-in, never the surprise. One flag per
+        // AutoMode auto-action (1-to-1).
+        Assert.False(dto.ReEnableAutoCombatOnReconnect);
+        Assert.False(dto.ReEnableAutoNukeOnReconnect);
+        Assert.False(dto.ReEnableAutoHealRestOnReconnect);
+        Assert.False(dto.ReEnableAutoBlessOnReconnect);
+        Assert.False(dto.ReEnableAutoLightOnReconnect);
+        Assert.False(dto.ReEnableAutoGetItemsOnReconnect);
+        Assert.False(dto.ReEnableAutoGetCashOnReconnect);
+        Assert.False(dto.ReEnableAutoSneakOnReconnect);
+        Assert.False(dto.ReEnableAutoHideOnReconnect);
+        Assert.False(dto.ReEnableAutoSearchOnReconnect);
     }
 }

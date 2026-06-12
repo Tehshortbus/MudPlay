@@ -1879,6 +1879,12 @@ public partial class MainWindowViewModel : ObservableObject
                 // "are we in-game?" latch. The actual Logon fire
                 // happens on the first PromptObserved, not here.
                 AppServices.Current.EventScheduler.NotifyConnected();
+                // Re-enable any auto-actions the user opted into reviving on
+                // reconnect (Settings → Other). Only on a reconnect — a
+                // connect following a prior in-session disconnect — never on
+                // the first connect of the session.
+                if (_hadDisconnectThisSession)
+                    ReEnableAutoActionsOnReconnect();
             });
         };
         client.Disconnected += () =>
@@ -1889,6 +1895,12 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 bool wasConnected = IsConnected;
                 IsConnected = false;
+                // Mark the session as having dropped at least once so the
+                // next Connected counts as a reconnect (arms the Settings →
+                // Other "re-enable auto-actions on reconnect" flags). A
+                // failed connect attempt fires Disconnected with
+                // wasConnected=false and must NOT arm this.
+                if (wasConnected) _hadDisconnectThisSession = true;
                 // Cancel any pending stable-window reset — this drop
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
@@ -3078,6 +3090,68 @@ public partial class MainWindowViewModel : ObservableObject
     private void ToggleAutoHealRest() => IsAutoHealRestActive = !IsAutoHealRestActive;
 
     private bool _suppressAutoEngineWriteback;
+
+    /// <summary>
+    /// Set true the first time a live connection drops in the current app
+    /// session. Gates <see cref="ReEnableAutoActionsOnReconnect"/> so the
+    /// re-enable only fires on an actual reconnect, never the first dial.
+    /// </summary>
+    private bool _hadDisconnectThisSession;
+
+    /// <summary>
+    /// Re-enable each auto-action whose Settings → Other "re-enable on
+    /// reconnect" flag is ticked, by flipping its
+    /// <see cref="Models.Profile.AutoActionDefaults"/> bit back ON in the
+    /// active profile. Engines read AutoMode live (per-tick), so the
+    /// persisted flip alone revives them; the two surfaced toggles
+    /// (Combat / Heal-Rest) additionally get their observable reseeded so
+    /// the toolbar badge matches. No-op when no profile is loaded or no
+    /// flag is ticked.
+    /// </summary>
+    private void ReEnableAutoActionsOnReconnect()
+    {
+        Models.Profile.OtherSettings other =
+            AppServices.Current.Resolver.Resolve<Models.Profile.OtherSettings>("Other");
+
+        bool any = other.ReEnableAutoCombatOnReconnect
+                || other.ReEnableAutoNukeOnReconnect
+                || other.ReEnableAutoHealRestOnReconnect
+                || other.ReEnableAutoBlessOnReconnect
+                || other.ReEnableAutoLightOnReconnect
+                || other.ReEnableAutoGetItemsOnReconnect
+                || other.ReEnableAutoGetCashOnReconnect
+                || other.ReEnableAutoSneakOnReconnect
+                || other.ReEnableAutoHideOnReconnect
+                || other.ReEnableAutoSearchOnReconnect;
+        if (!any) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        Models.Profile.AutoActionDefaults am = dto.AutoMode;
+        if (other.ReEnableAutoCombatOnReconnect)   am.AutoCombat   = true;
+        if (other.ReEnableAutoNukeOnReconnect)     am.AutoNuke     = true;
+        if (other.ReEnableAutoHealRestOnReconnect) am.AutoHealRest = true;
+        if (other.ReEnableAutoBlessOnReconnect)    am.AutoBless    = true;
+        if (other.ReEnableAutoLightOnReconnect)    am.AutoLight    = true;
+        if (other.ReEnableAutoGetItemsOnReconnect) am.AutoGetItems = true;
+        if (other.ReEnableAutoGetCashOnReconnect)  am.AutoGetCash  = true;
+        if (other.ReEnableAutoSneakOnReconnect)    am.AutoSneak    = true;
+        if (other.ReEnableAutoHideOnReconnect)     am.AutoHide     = true;
+        if (other.ReEnableAutoSearchOnReconnect)   am.AutoSearch   = true;
+
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+
+        // Reseed the surfaced observables (toolbar badges) from the freshly
+        // persisted AutoMode. The other eight auto-actions have no live UI
+        // state — engines pick the flip up on their next tick.
+        SyncAutoEngineTogglesFromProfile();
+
+        AppServices.Current.Log.Info(
+            "Reconnect", "Re-enabled opted-in auto-actions after reconnect");
+    }
 
     partial void OnIsAutoCombatActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoCombat = value);

@@ -222,6 +222,46 @@
                       IsChecked="{Binding BreakBeforeFleeing, Mode=TwoWay}"
                       ToolTip.Tip="When checked (default): `break` is sent before the first flee move so auto-attack disengages and the move lands cleanly. When unchecked, the flee starts mid-fight and the server may reject the first move because you're still engaged — faster, but you may waste a round."/>
 
+            <!-- Re-enable auto-actions on reconnect. One checkbox per
+                 auto-action (1-to-1 with the Action-menu / General-tab
+                 auto-toggles). On a reconnect — a TCP connect that
+                 follows a prior in-session disconnect — each ticked
+                 action is flipped back ON. Default all unchecked: the
+                 redial respects whatever state the engines were left in
+                 unless the user opts a specific action into auto-revival.
+                 First connect of an app session is never a reconnect. -->
+            <TextBlock Classes="FieldLabel" Text="Re-enable on reconnect:" Margin="0,12,0,0"/>
+            <CheckBox Content="Auto-Combat"
+                      IsChecked="{Binding ReEnableAutoCombatOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: if you disabled Auto-Combat during a session and then reconnect, it's flipped back on automatically."/>
+            <CheckBox Content="Auto-Nuke"
+                      IsChecked="{Binding ReEnableAutoNukeOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Nuke is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Heal/Rest"
+                      IsChecked="{Binding ReEnableAutoHealRestOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Heal/Rest is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Bless"
+                      IsChecked="{Binding ReEnableAutoBlessOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Bless is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Light"
+                      IsChecked="{Binding ReEnableAutoLightOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Light is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Get-Items"
+                      IsChecked="{Binding ReEnableAutoGetItemsOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Get-Items is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Get-Cash"
+                      IsChecked="{Binding ReEnableAutoGetCashOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Get-Cash is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Sneak"
+                      IsChecked="{Binding ReEnableAutoSneakOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Sneak is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Hide"
+                      IsChecked="{Binding ReEnableAutoHideOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Hide is re-enabled on reconnect if it was disabled during the session."/>
+            <CheckBox Content="Auto-Search"
+                      IsChecked="{Binding ReEnableAutoSearchOnReconnect, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: Auto-Search is re-enabled on reconnect if it was disabled during the session."/>
+
             <!-- Note: the per-category Verbose toggles + the round-trace
                  toggle moved to the Log pane menu as a single "Combat
                  diagnostics" umbrella switch. They were per-character
