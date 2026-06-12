@@ -25,6 +25,11 @@ public sealed class HealthManagerTests
         public HealthSettings Settings { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
 
+        /// <summary>Char-tier Other settings. Default instance has every
+        /// flag at its DTO default (AllowHangupInAllOffMode=false), so the
+        /// all-off carve-out stays dormant unless a test opts in.</summary>
+        public OtherSettings Other { get; set; } = new();
+
         /// <summary>User-configured hangup command (Settings → BBS →
         /// Game-menu commands). Default <c>=x</c> matches the default
         /// value shipped on <c>BbsProfile.GameExitCommand</c>. Set to
@@ -47,7 +52,7 @@ public sealed class HealthManagerTests
                 readHangupCommand: () => HangupCommand ?? string.Empty,
                 getActiveMovementEngine: null,
                 getLastSentDirection: null,
-                readOtherSettings: null,
+                readOtherSettings: () => Other,
                 readCombatSettings: null,
                 hasEngageableHostiles: () => HostilesPresent,
                 log: Log);
@@ -996,6 +1001,50 @@ public sealed class HealthManagerTests
 
         h.State.Hp = 3;        // even lower — still no second hang
         Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
+    }
+
+    // ----- all-off-mode hangup carve-out ----------------------------
+
+    [Fact]
+    public void AllOff_HangupAllowed_HpBelowTrigger_StillHangs()
+    {
+        // Engine disabled but the opt-in keeps the emergency hangup live.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.Other = new OtherSettings { AllowHangupInAllOffMode = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void AllOff_HangupNotAllowed_HpBelowTrigger_NoHang()
+    {
+        // Engine disabled and carve-out off (default) — fully dormant.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        // h.Other left at default (AllowHangupInAllOffMode = false)
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void AllOff_HangupAllowed_AboveThreshold_NoHang()
+    {
+        // Carve-out on but HP healthy — no spurious hangup.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.Other = new OtherSettings { AllowHangupInAllOffMode = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;       // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("=x", h.SentLines);
     }
 
     // ----- party-role-aware recovery (PR 9.B role fix) ---------------

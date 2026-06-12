@@ -225,6 +225,20 @@ public sealed class OtherSettings
     /// <see cref="Game.Spells.CastingDirector"/>.</summary>
     public bool BlessDuringCombat { get; set; } = true;
 
+    // ----- Emergency hangup carve-out --------------------------------
+
+    /// <summary>
+    /// When <c>true</c>, the <see cref="Game.Health.HealthManager"/>
+    /// emergency-hangup branch (HP below <c>HealthSettings.HangIfBelowHp</c>
+    /// → send the configured Game-Exit command) still fires even when
+    /// Auto-Heal/Rest — and every other auto-engine — is off. The rest of
+    /// the health engine stays disabled; only the kill-the-connection
+    /// safety net runs. Default <c>false</c>: hanging up is a deliberate
+    /// last resort, so an all-engines-off character won't auto-disconnect
+    /// unless the user opts in. Char-tier; surfaced in Settings → Other.
+    /// </summary>
+    public bool AllowHangupInAllOffMode { get; set; }
+
     // ----- Re-enable auto-actions on reconnect -----------------------
     // One flag per auto-action (1-to-1 with GeneralSettings.AutoMode).
     // When a reconnect happens (a TCP connect following a prior in-

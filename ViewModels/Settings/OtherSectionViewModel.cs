@@ -254,6 +254,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _breakBeforeFleeing = true;
 
     /// <summary>
+    /// When checked, the emergency-hangup branch of HealthManager stays
+    /// live even while every Auto-* engine is off — so a character left in
+    /// fully-manual mode still drops the line if HP falls to the hangup
+    /// threshold. Default false (opt-in). Maps onto
+    /// <see cref="OtherSettings.AllowHangupInAllOffMode"/>.
+    /// </summary>
+    [ObservableProperty] private bool _allowHangupInAllOffMode;
+
+    /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
     /// threshold for the whole install) so Apply writes through to
@@ -279,7 +288,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
-            new StubField("Allow hangup in all-off mode",    StubFieldKind.Check, "Phase 13 — when every Auto-* engine is off, still fire a hangup if a hangup condition (trigger message / HP below hangup threshold) is met."),
+            // "Allow hangup in all-off mode" graduated to a wired checkbox
+            // (HealthManager runs only the emergency-hangup branch when every
+            // Auto-* engine is off and OtherSettings.AllowHangupInAllOffMode set).
             // Removed per user direction: "Hangup if naked".
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
             // Removed per user direction: "Backwards if warning" (nonsense),
@@ -358,6 +369,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             BlessDuringCombat = BlessDuringCombat,
             RunDirection = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
             BreakBeforeFleeing = BreakBeforeFleeing,
+            AllowHangupInAllOffMode = AllowHangupInAllOffMode,
             ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
             ReEnableAutoNukeOnReconnect     = ReEnableAutoNukeOnReconnect,
             ReEnableAutoHealRestOnReconnect = ReEnableAutoHealRestOnReconnect,
@@ -433,6 +445,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         BlessDuringCombat = dto.BlessDuringCombat;
         GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
         BreakBeforeFleeing = dto.BreakBeforeFleeing;
+        AllowHangupInAllOffMode = dto.AllowHangupInAllOffMode;
         ReEnableAutoCombatOnReconnect   = dto.ReEnableAutoCombatOnReconnect;
         ReEnableAutoNukeOnReconnect     = dto.ReEnableAutoNukeOnReconnect;
         ReEnableAutoHealRestOnReconnect = dto.ReEnableAutoHealRestOnReconnect;
@@ -512,6 +525,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnBlessDuringCombatChanged(bool value) => MarkDirty();
     partial void OnGoBackwardsIfRunningChanged(bool value) => MarkDirty();
     partial void OnBreakBeforeFleeingChanged(bool value) => MarkDirty();
+    partial void OnAllowHangupInAllOffModeChanged(bool value) => MarkDirty();
     partial void OnReEnableAutoCombatOnReconnectChanged(bool value)   => MarkDirty();
     partial void OnReEnableAutoNukeOnReconnectChanged(bool value)     => MarkDirty();
     partial void OnReEnableAutoHealRestOnReconnectChanged(bool value) => MarkDirty();

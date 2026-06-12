@@ -222,6 +222,17 @@
                       IsChecked="{Binding BreakBeforeFleeing, Mode=TwoWay}"
                       ToolTip.Tip="When checked (default): `break` is sent before the first flee move so auto-attack disengages and the move lands cleanly. When unchecked, the flee starts mid-fight and the server may reject the first move because you're still engaged — faster, but you may waste a round."/>
 
+            <!-- Emergency hangup carve-out for fully-manual mode. When all
+                 Auto-* engines are off, HealthManager normally does nothing;
+                 this opt-in keeps just the HP-below-hangup-threshold hangup
+                 branch live so a manual character still drops the line at the
+                 edge of death. Consumed live via
+                 OtherSettings.AllowHangupInAllOffMode. -->
+            <CheckBox Content="Allow hangup in all-off mode"
+                      IsChecked="{Binding AllowHangupInAllOffMode, Mode=TwoWay}"
+                      Margin="0,12,0,0"
+                      ToolTip.Tip="When checked: even with every Auto-* engine off, FujinTerm still drops the line if your HP falls to the Health → 'hang up if below' threshold. Default off — opt-in safety net for fully-manual play."/>
+
             <!-- Re-enable auto-actions on reconnect. One checkbox per
                  auto-action (1-to-1 with the Action-menu / General-tab
                  auto-toggles). On a reconnect — a TCP connect that

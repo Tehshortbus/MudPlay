@@ -303,6 +303,18 @@ public sealed class HealthManager : IDisposable
             _restInFlight = false;
             _restConfirmedByPrompt = false;
             _fledThisCombat = false;
+
+            // All-off carve-out: even with the engine disabled, honour the
+            // emergency hangup when the user opted in. An AFK character
+            // shouldn't be left dying just because auto-heal is off — but
+            // it stays opt-in (default off) since hanging up is a last
+            // resort. Only the hangup branch runs; everything else above
+            // already cleared.
+            if (_readOtherSettings?.Invoke() is { AllowHangupInAllOffMode: true }
+                && _state.HasPromptData && (_state.Hp > 0 || _state.Ma > 0))
+            {
+                TryEmergencyHangup(_readSettings());
+            }
             return;
         }
         if (!_state.HasPromptData) return;
@@ -509,31 +521,39 @@ public sealed class HealthManager : IDisposable
             _restConfirmedByPrompt = false;
         }
 
-        // Hangup-on-emergency: HP below HangIfBelowHp triggers a hard
-        // disconnect. Single-shot — the disconnect command goes once
-        // per session and the engine_log captures it for postmortem.
-        // Defaults: HangIfBelowHp=5 (%). Setting it to 0 disables the
-        // check entirely (no false positives on dead/respawned chars).
-        if (!_hangFired && s.HangIfBelowHp > 0 && _state.MaxHp > 0)
+        TryEmergencyHangup(s);
+    }
+
+    /// <summary>
+    /// Hangup-on-emergency: HP below <see cref="HealthSettings.HangIfBelowHp"/>
+    /// triggers a hard disconnect via the configured Game-Exit command.
+    /// Single-shot — the disconnect command goes once per session and the
+    /// log captures it for postmortem. Defaults: HangIfBelowHp=5 (%).
+    /// Setting it to 0 disables the check entirely (no false positives on
+    /// dead/respawned chars). Called from the normal evaluate path and —
+    /// when <see cref="Models.Profile.OtherSettings.AllowHangupInAllOffMode"/>
+    /// is set — from the engine-disabled carve-out.
+    /// </summary>
+    private void TryEmergencyHangup(HealthSettings s)
+    {
+        if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return;
+
+        int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
+        if (_state.Hp <= 0 || _state.Hp > hangTrigger) return;
+
+        _hangFired = true;
+        string? hangCmd = _readHangupCommand?.Invoke();
+        if (string.IsNullOrWhiteSpace(hangCmd))
         {
-            int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
-            if (_state.Hp > 0 && _state.Hp <= hangTrigger)
-            {
-                _hangFired = true;
-                string? hangCmd = _readHangupCommand?.Invoke();
-                if (string.IsNullOrWhiteSpace(hangCmd))
-                {
-                    _log?.Warn(LogCategory,
-                        $"HANGUP threshold crossed (HP {_state.Hp}/{_state.MaxHp} <= {hangTrigger}) " +
-                        $"but no hangup command configured — set Settings → Other → Game Exit.");
-                }
-                else
-                {
-                    _log?.Warn(LogCategory,
-                        $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
-                    SendCommand(hangCmd);
-                }
-            }
+            _log?.Warn(LogCategory,
+                $"HANGUP threshold crossed (HP {_state.Hp}/{_state.MaxHp} <= {hangTrigger}) " +
+                $"but no hangup command configured — set Settings → Other → Game Exit.");
+        }
+        else
+        {
+            _log?.Warn(LogCategory,
+                $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
+            SendCommand(hangCmd);
         }
     }
 

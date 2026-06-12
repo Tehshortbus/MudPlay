@@ -33,6 +33,7 @@ public sealed class OtherSectionViewModelTests
             BlessDuringCombat = false,
             RunDirection = RunDirection.Forward,
             BreakBeforeFleeing = false,
+            AllowHangupInAllOffMode = true,
             ReEnableAutoCombatOnReconnect   = true,
             ReEnableAutoNukeOnReconnect     = true,
             ReEnableAutoHealRestOnReconnect = true,
@@ -65,6 +66,7 @@ public sealed class OtherSectionViewModelTests
         Assert.False(back.BlessDuringCombat);
         Assert.Equal(RunDirection.Forward, back.RunDirection);
         Assert.False(back.BreakBeforeFleeing);
+        Assert.True(back.AllowHangupInAllOffMode);
         Assert.True(back.ReEnableAutoCombatOnReconnect);
         Assert.True(back.ReEnableAutoNukeOnReconnect);
         Assert.True(back.ReEnableAutoHealRestOnReconnect);
@@ -124,6 +126,9 @@ public sealed class OtherSectionViewModelTests
         // combat before the first flee move — both the safer choice.
         Assert.Equal(RunDirection.Backward, dto.RunDirection);
         Assert.True(dto.BreakBeforeFleeing);
+        // Emergency-hangup carve-out defaults OFF — fully-manual play still
+        // dropping the line is opt-in, never a surprise.
+        Assert.False(dto.AllowHangupInAllOffMode);
         // Re-enable-on-reconnect defaults all OFF — reviving an auto-action
         // automatically is opt-in, never the surprise. One flag per
         // AutoMode auto-action (1-to-1).
