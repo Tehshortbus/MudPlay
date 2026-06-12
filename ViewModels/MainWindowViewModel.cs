@@ -201,13 +201,23 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isDisconnecting;
 
-    // Phase 9 — auto-engine master toggles. Backed by
-    // GeneralSettings.AutoMode.AutoCombat / AutoHealRest on the active
-    // profile; the toolbar Toggle buttons + the Settings → General
-    // checkbox all write here. The partial OnXxxChanged handlers
-    // persist to the profile and refresh the toolbar IsActive badge.
+    // Phase 9 — live auto-engine toggles. Each mirrors the matching
+    // GeneralSettings.AutoMode flag on the active profile; the toolbar
+    // Toggle buttons, the Action-menu check items, and the Settings →
+    // General checkboxes all write here. The partial OnXxxChanged
+    // handlers persist to the profile and refresh the toolbar IsActive
+    // badge. AutoSearch is intentionally absent — no engine consumes it
+    // yet (IsAutoSearchWired => false), so it stays stubbed until the
+    // hidden-exit walker lands.
     [ObservableProperty] private bool _isAutoCombatActive;
+    [ObservableProperty] private bool _isAutoNukeActive;
     [ObservableProperty] private bool _isAutoHealRestActive;
+    [ObservableProperty] private bool _isAutoBlessActive;
+    [ObservableProperty] private bool _isAutoLightActive;
+    [ObservableProperty] private bool _isAutoGetItemsActive;
+    [ObservableProperty] private bool _isAutoGetCashActive;
+    [ObservableProperty] private bool _isAutoSneakActive;
+    [ObservableProperty] private bool _isAutoHideActive;
 
     public bool IsDisconnected => !IsConnected;
 
@@ -868,7 +878,14 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsConnecting)
          && e.PropertyName != nameof(IsDumping)
          && e.PropertyName != nameof(IsAutoCombatActive)
-         && e.PropertyName != nameof(IsAutoHealRestActive)) return;
+         && e.PropertyName != nameof(IsAutoNukeActive)
+         && e.PropertyName != nameof(IsAutoHealRestActive)
+         && e.PropertyName != nameof(IsAutoBlessActive)
+         && e.PropertyName != nameof(IsAutoLightActive)
+         && e.PropertyName != nameof(IsAutoGetItemsActive)
+         && e.PropertyName != nameof(IsAutoGetCashActive)
+         && e.PropertyName != nameof(IsAutoSneakActive)
+         && e.PropertyName != nameof(IsAutoHideActive)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
         {
@@ -891,8 +908,29 @@ public partial class MainWindowViewModel : ObservableObject
             case "ToggleAutoCombat":
                 row.IsActive = IsAutoCombatActive;
                 break;
+            case "ToggleAutoNuke":
+                row.IsActive = IsAutoNukeActive;
+                break;
             case "ToggleAutoHealRest":
                 row.IsActive = IsAutoHealRestActive;
+                break;
+            case "ToggleAutoBless":
+                row.IsActive = IsAutoBlessActive;
+                break;
+            case "ToggleAutoLight":
+                row.IsActive = IsAutoLightActive;
+                break;
+            case "ToggleAutoGetItems":
+                row.IsActive = IsAutoGetItemsActive;
+                break;
+            case "ToggleAutoGetCash":
+                row.IsActive = IsAutoGetCashActive;
+                break;
+            case "ToggleAutoSneak":
+                row.IsActive = IsAutoSneakActive;
+                break;
+            case "ToggleAutoHide":
+                row.IsActive = IsAutoHideActive;
                 break;
         }
     }
@@ -3085,9 +3123,37 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoCombat() => IsAutoCombatActive = !IsAutoCombatActive;
 
+    /// <summary>Flip the live <see cref="IsAutoNukeActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoNuke() => IsAutoNukeActive = !IsAutoNukeActive;
+
     /// <summary>Flip the live <see cref="IsAutoHealRestActive"/> bit.</summary>
     [RelayCommand]
     private void ToggleAutoHealRest() => IsAutoHealRestActive = !IsAutoHealRestActive;
+
+    /// <summary>Flip the live <see cref="IsAutoBlessActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoBless() => IsAutoBlessActive = !IsAutoBlessActive;
+
+    /// <summary>Flip the live <see cref="IsAutoLightActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoLight() => IsAutoLightActive = !IsAutoLightActive;
+
+    /// <summary>Flip the live <see cref="IsAutoGetItemsActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoGetItems() => IsAutoGetItemsActive = !IsAutoGetItemsActive;
+
+    /// <summary>Flip the live <see cref="IsAutoGetCashActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoGetCash() => IsAutoGetCashActive = !IsAutoGetCashActive;
+
+    /// <summary>Flip the live <see cref="IsAutoSneakActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoSneak() => IsAutoSneakActive = !IsAutoSneakActive;
+
+    /// <summary>Flip the live <see cref="IsAutoHideActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
 
     private bool _suppressAutoEngineWriteback;
 
@@ -3156,8 +3222,29 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsAutoCombatActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoCombat = value);
 
+    partial void OnIsAutoNukeActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoNuke = value);
+
     partial void OnIsAutoHealRestActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoHealRest = value);
+
+    partial void OnIsAutoBlessActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoBless = value);
+
+    partial void OnIsAutoLightActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoLight = value);
+
+    partial void OnIsAutoGetItemsActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoGetItems = value);
+
+    partial void OnIsAutoGetCashActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoGetCash = value);
+
+    partial void OnIsAutoSneakActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoSneak = value);
+
+    partial void OnIsAutoHideActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoHide = value);
 
     private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
     {
@@ -3189,7 +3276,14 @@ public partial class MainWindowViewModel : ObservableObject
                 ? new Models.Profile.AutoActionDefaults()
                 : ReadGeneralFromProfile(profile).AutoMode;
             IsAutoCombatActive   = am.AutoCombat;
+            IsAutoNukeActive     = am.AutoNuke;
             IsAutoHealRestActive = am.AutoHealRest;
+            IsAutoBlessActive    = am.AutoBless;
+            IsAutoLightActive    = am.AutoLight;
+            IsAutoGetItemsActive = am.AutoGetItems;
+            IsAutoGetCashActive  = am.AutoGetCash;
+            IsAutoSneakActive    = am.AutoSneak;
+            IsAutoHideActive     = am.AutoHide;
         }
         finally
         {

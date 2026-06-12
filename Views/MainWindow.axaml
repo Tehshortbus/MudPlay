@@ -162,15 +162,15 @@
                 <!-- Master auto-engine toggles. Per-item / per-spell tuning
                      for these lives in the matching Settings tab; the menu
                      is the on / off surface during play. -->
-                <MenuItem Header="Auto Combat"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.A (CombatManager)"/>
-                <MenuItem Header="Auto Nuke"        ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.A (multi-attack room spells)"/>
-                <MenuItem Header="Auto Rest / Heal" ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PRs 13.B + 13.D"/>
-                <MenuItem Header="Auto Bless"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.D (CastingDirector)"/>
-                <MenuItem Header="Auto Light"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 — dark-room detection + light-source use"/>
-                <MenuItem Header="Auto Get Items"   ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 — uses Phase 5 Items.auto-collect + max-to-get flags"/>
-                <MenuItem Header="Auto Get Cash"    ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
-                <MenuItem Header="Auto Sneak"       ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.F (StealthManager)"/>
-                <MenuItem Header="Auto Hide"        ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.F (StealthManager)"/>
+                <MenuItem Header="Auto Combat"      ToggleType="CheckBox" IsChecked="{Binding IsAutoCombatActive,   Mode=TwoWay}"/>
+                <MenuItem Header="Auto Nuke"        ToggleType="CheckBox" IsChecked="{Binding IsAutoNukeActive,     Mode=TwoWay}"/>
+                <MenuItem Header="Auto Rest / Heal" ToggleType="CheckBox" IsChecked="{Binding IsAutoHealRestActive, Mode=TwoWay}"/>
+                <MenuItem Header="Auto Bless"       ToggleType="CheckBox" IsChecked="{Binding IsAutoBlessActive,    Mode=TwoWay}"/>
+                <MenuItem Header="Auto Light"       ToggleType="CheckBox" IsChecked="{Binding IsAutoLightActive,    Mode=TwoWay}"/>
+                <MenuItem Header="Auto Get Items"   ToggleType="CheckBox" IsChecked="{Binding IsAutoGetItemsActive, Mode=TwoWay}"/>
+                <MenuItem Header="Auto Get Cash"    ToggleType="CheckBox" IsChecked="{Binding IsAutoGetCashActive,  Mode=TwoWay}"/>
+                <MenuItem Header="Auto Sneak"       ToggleType="CheckBox" IsChecked="{Binding IsAutoSneakActive,    Mode=TwoWay}"/>
+                <MenuItem Header="Auto Hide"        ToggleType="CheckBox" IsChecked="{Binding IsAutoHideActive,     Mode=TwoWay}"/>
                 <MenuItem Header="Auto Search"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (AutoWalkManager) — search rooms while running"/>
 
                 <!-- Corpse-recovery actions land here when Phase 9 DEATH ships. -->
