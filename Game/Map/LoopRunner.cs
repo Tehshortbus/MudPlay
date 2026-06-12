@@ -36,6 +36,21 @@ public sealed class LoopRunner : IRecoverableEngine
     private Action<byte[]>? _wireSender;
     private Action? _preMoveHook;
 
+    /// <summary>
+    /// (source, dest) → teleport keyword resolver, mirroring the
+    /// walker's <see cref="AutoWalkManager.SetTeleportResolver"/>. Lets
+    /// the circuit cross a <see cref="RoomExitHint.Teleport"/> exit with
+    /// the same keyword the walker would use. Null until wired.
+    /// </summary>
+    private Func<RoomKey, RoomKey, string?>? _teleportResolver;
+
+    /// <summary>
+    /// True when the local character should relay a teleport keyword to
+    /// party followers (`.@party &lt;kw&gt;`). Mirrors the walker's
+    /// <see cref="AutoWalkManager.SetPartyLeaderCheck"/>. Null until wired.
+    /// </summary>
+    private Func<bool>? _isLeaderWithFollowers;
+
     private Loop? _loop;
     private int _index;
 
@@ -306,6 +321,29 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(hook);
         _preMoveHook = hook;
+    }
+
+    /// <summary>
+    /// Wire the teleport-keyword resolver so circuit steps can cross
+    /// <see cref="RoomExitHint.Teleport"/> exits. Mirrors
+    /// <see cref="AutoWalkManager.SetTeleportResolver"/>; AppServices
+    /// binds both to the same TBInfo-backed resolver.
+    /// </summary>
+    public void SetTeleportResolver(Func<RoomKey, RoomKey, string?> resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        _teleportResolver = resolver;
+    }
+
+    /// <summary>
+    /// Wire the party-leader check so a leading character relays the
+    /// teleport keyword to followers before crossing. Mirrors
+    /// <see cref="AutoWalkManager.SetPartyLeaderCheck"/>.
+    /// </summary>
+    public void SetPartyLeaderCheck(Func<bool> isLeaderWithFollowers)
+    {
+        ArgumentNullException.ThrowIfNull(isLeaderWithFollowers);
+        _isLeaderWithFollowers = isLeaderWithFollowers;
     }
 
     /// <summary>
@@ -665,14 +703,84 @@ public sealed class LoopRunner : IRecoverableEngine
             return;
         }
 
+        // Set the landing prediction first so OnTrackerStateChanged
+        // confirms the step regardless of HOW we cross the exit (plain
+        // cardinal, text command, teleport keyword, or post-action
+        // cardinal). _stepInFlight gates the confirmation handler.
         _expectedMoveTarget = exit.Target;
         _stepInFlight = true;
-        _tracker.NoteMoveSent(step.Direction);
-        _recovery?.NoteEngineStepSent(step.Direction);
 
-        byte[] bytes = AutoWalkManager.EncodeMove(step.Direction);
+        // Door / KeyLocked: a loop circuit has no door-open FSM (that
+        // stays walker-owned). If the latest room observation shows the
+        // door already open, cross with the plain cardinal. Otherwise
+        // fail loudly rather than sending a cardinal into a closed door
+        // and desyncing — the user can re-run once the door is dealt
+        // with, or route the loop through the walker's approach phase.
+        if (exit.Hint is RoomExitHint.Door or RoomExitHint.KeyLocked)
+        {
+            if (_tracker.State.OpenDoorDirections is { } openDoors
+                && openDoors.Contains(step.Direction))
+            {
+                EmitCardinal(step.Direction, exit.Target, "door pre-open");
+                return;
+            }
+            FailStep($"closed door {step.Direction} mid-circuit — loops don't open doors (run a walk-to through it first)");
+            return;
+        }
+
+        // SearchableHidden likewise has no reveal FSM in the circuit.
+        if (exit.Hint == RoomExitHint.SearchableHidden)
+        {
+            FailStep($"hidden exit {step.Direction} mid-circuit — loops don't reveal hidden exits (walk through it first)");
+            return;
+        }
+
+        // Synchronous special exits (Text / Teleport / same-room
+        // MultiActionHidden) share the walker's emission path so both
+        // engines cross them identically — the fix that makes a circuit
+        // send "borrow skiff" for a Text exit instead of the cardinal.
+        SpecialExitSend sync = SpecialExitDispatch.TrySendSynchronous(
+            exit, step.Direction, _tracker.State.CurrentRoom,
+            _tracker, _recovery,
+            emitMove: (b, msg) => { _preMoveHook?.Invoke(); Write(b, msg); },
+            writeAux: Write,
+            _teleportResolver, _isLeaderWithFollowers,
+            out string? syncFail);
+        if (sync == SpecialExitSend.Sent) return;
+        if (sync == SpecialExitSend.Failed)
+        {
+            FailStep(syncFail!);
+            return;
+        }
+
+        // Plain passage — the cardinal.
+        EmitCardinal(step.Direction, exit.Target, null);
+    }
+
+    /// <summary>
+    /// Emit a plain cardinal move for the circuit, notifying the tracker
+    /// + recovery gate and firing the pre-move stealth hook. <paramref name="note"/>
+    /// annotates the wire reason (e.g. "door pre-open"); null for an
+    /// ordinary passage.
+    /// </summary>
+    private void EmitCardinal(Direction direction, RoomKey target, string? note)
+    {
+        _tracker.NoteMoveSent(direction);
+        _recovery?.NoteEngineStepSent(direction);
+        byte[] bytes = AutoWalkManager.EncodeMove(direction);
         _preMoveHook?.Invoke();
-        Write(bytes, $"move {step.Direction} → {exit.Target}");
+        string reason = note is null
+            ? $"move {direction} → {target}"
+            : $"move {direction} ({note})";
+        Write(bytes, reason);
+    }
+
+    /// <summary>Fail the active circuit with <paramref name="reason"/> and reset.</summary>
+    private void FailStep(string reason)
+    {
+        _log?.Warn("LoopRunner", $"SendMove fail at step {_index + 1}/{_expandedSteps.Count}: {reason}");
+        Raise(new LoopEvent(LoopEventKind.Failed, reason));
+        Reset();
     }
 
     private void SendCommand(CommandLoopStep step)

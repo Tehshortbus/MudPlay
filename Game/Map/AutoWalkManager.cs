@@ -630,95 +630,24 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return;
         }
 
-        // MultiActionHidden — `(Hidden, Needs N Actions, ...)`. Execute
-        // the prerequisite commands in StepNumber order, then send the
-        // cardinal move. Same-room actions only for v1; cross-row
-        // remote-action data fails the walk with a clear reason
-        // (cross-room expander is a follow-up — the data parser
-        // already preserves RemoteSourceRoom so the future expander
-        // can route through it).
-        if (exit.Hint == RoomExitHint.MultiActionHidden && exit.MultiAction is { } maData)
+        // Synchronous special exits — MultiActionHidden (same-room),
+        // Text `(Text: ...)`, and Teleport `(Item: N)` — share one
+        // emission path with the loop runner via SpecialExitDispatch so
+        // both engines cross them identically. The async door/hidden
+        // hints are NOT covered here; they fall through to their own
+        // FSMs below.
+        SpecialExitSend sync = SpecialExitDispatch.TrySendSynchronous(
+            exit, step.Direction, _tracker.State.CurrentRoom,
+            _tracker, _recovery,
+            emitMove: EmitMoveBytes,
+            writeAux: WriteBytes,
+            _teleportResolver, _isLeaderWithFollowers,
+            out string? syncFail);
+        if (sync == SpecialExitSend.Sent) return;
+        if (sync == SpecialExitSend.Failed)
         {
-            if (maData.HasRemoteActions)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    "multi-action exit requires actions in a different room — cross-room expander not yet wired",
-                    _destination));
-                Reset();
-                return;
-            }
-            if (maData.Actions.Count < maData.RequiredActionCount)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    $"multi-action exit needs {maData.RequiredActionCount} action(s) but data has {maData.Actions.Count}",
-                    _destination));
-                Reset();
-                return;
-            }
-
-            // Fire each action's first alternative in order, then
-            // send the cardinal move. Each command goes out
-            // immediately; no per-command response wait. The
-            // server's verb-by-verb echo provides the round-robin.
-            foreach (ExitAction action in maData.Actions)
-            {
-                if (action.Commands.Count == 0) continue;
-                string cmd = action.Commands[0];
-                byte[] cmdBytes = Encoding.Latin1.GetBytes(cmd + "\r");
-                WriteBytes(cmdBytes, $"multi-action #{action.StepNumber}: '{cmd}'");
-            }
-            _tracker.NoteMoveSent(step.Direction);
-                _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] moveBytes = EncodeMove(step.Direction);
-            EmitMoveBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
-            return;
-        }
-
-        // Text exits — `(Text: cmd1, cmd2, ...)` modifier. Any one of
-        // the alternatives moves the player (no follow-up cardinal).
-        // We send the first; future PRs may choose smarter (e.g.
-        // shortest, or last-known-good).
-        if (exit.Hint == RoomExitHint.Text && exit.TextCommands is { Count: > 0 } cmds)
-        {
-            string textCmd = cmds[0];
-            _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
-            _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
-            EmitMoveBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
-            return;
-        }
-
-        // Teleport exits — `(Item: N)` modifier on a room whose CMD
-        // is non-zero. The CMD indexes a TBInfo Action chain whose
-        // matching `teleport <room> <map>` directive identifies the
-        // keyword(s) the player types. Party-breaking — leader
-        // broadcasts via `.@party <keyword>` so followers come along
-        // before the leader teleports.
-        if (exit.Hint == RoomExitHint.Teleport)
-        {
-            Room? source = _tracker.State.CurrentRoom;
-            string? keyword = (source is not null && _teleportResolver is not null)
-                ? _teleportResolver(source.Key, exit.Target)
-                : null;
-            if (keyword is null)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    "no teleport keyword resolved (TBInfo entry missing or not for this destination)",
-                    _destination));
-                Reset();
-                return;
-            }
-
-            if (_isLeaderWithFollowers?.Invoke() == true)
-            {
-                byte[] partyBytes = Encoding.Latin1.GetBytes($".@party {keyword}\r");
-                WriteBytes(partyBytes, $"teleport party-relay '.@party {keyword}'");
-            }
-
-            _tracker.NoteMoveSent(keyword, cardinal: step.Direction);
-            _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] tpBytes = Encoding.Latin1.GetBytes(keyword + "\r");
-            EmitMoveBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
+            Raise(new WalkEvent(WalkEventKind.Failed, syncFail!, _destination));
+            Reset();
             return;
         }
 

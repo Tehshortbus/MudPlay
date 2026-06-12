@@ -51,10 +51,10 @@ public sealed class LoopRunnerTests : IDisposable
         public void Dispose() { }
     }
 
-    private Harness NewHarness()
+    private Harness NewHarness(string json = GraphJson)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
-        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), json);
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
         RoomGraphManager graph = new(cache);
@@ -291,5 +291,83 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.NotEmpty(h.Runner.LapHistory);
         h.Runner.Stop();
         Assert.Empty(h.Runner.LapHistory);
+    }
+
+    // ----- circuit-phase special exits (shared with the walker) ------
+
+    // Docks (1/1) → Pier (1/2) via a Text exit ("borrow skiff"); Pier
+    // returns north plainly. A 2-waypoint cycle crosses the Text exit
+    // on its first circuit step.
+    private const string TextExitGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Docks",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2 (Text: borrow skiff, go skiff)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Pier",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/1", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Circuit_TextExit_SendsCommand_NotCardinal()
+    {
+        // The bug this fixes: a loop circuit used to send the bare
+        // cardinal ("s\r") for a Text exit instead of the command the
+        // exit actually requires ("borrow skiff").
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Runner.Start(new Loop("docks", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+
+        Assert.Single(h.Sent);
+        Assert.Equal("borrow skiff\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
+    public void Circuit_TextExit_LandsAtTarget_Advances()
+    {
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(new Loop("docks", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+
+        // Landing at Pier confirms the Text step and pushes the return.
+        h.Tracker.NoteRoomObserved(new RoomObservation("Pier",
+            new HashSet<Direction> { Direction.N }));
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    // Outside (1/1) → Foyer (1/2) behind a closed door; Foyer returns
+    // west. A loop circuit has no door-open FSM, so the door step must
+    // fail loudly rather than send a cardinal into a closed door.
+    private const string DoorGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Outside",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2 (Door)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Foyer",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1 (Door)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Circuit_ClosedDoor_FailsLoud_NoCardinalSent()
+    {
+        Harness h = NewHarness(DoorGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Runner.Start(new Loop("house", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(LoopState.Idle, h.Runner.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == LoopEventKind.Failed && e.Detail.Contains("closed door"));
     }
 }
