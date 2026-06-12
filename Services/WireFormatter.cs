@@ -45,31 +45,21 @@ public static partial class WireFormatter
 
     /// <summary>
     /// Render <paramref name="bytes"/> with ANSI CSI escape sequences removed
-    /// (anything matching <c>ESC '[' params final-byte</c>) and CR markers
-    /// dropped while preserving the line break each carriage return implies:
-    /// a CRLF pair collapses to a single break and a bare CR becomes one.
-    /// Other control characters are kept as caret markers so a stray byte
-    /// doesn't silently hide a problem. Not a full VT100 parser — the
-    /// inspector only needs "readable text" for at-a-glance debugging.
+    /// (anything matching <c>ESC '[' params final-byte</c>). Other control
+    /// characters are kept as caret markers so a stray CR doesn't silently
+    /// hide a problem. Not a full VT100 parser — the inspector only needs
+    /// "readable text" for at-a-glance debugging.
     /// </summary>
     public static string RenderStripped(ReadOnlySpan<byte> bytes)
     {
         string raw = RenderRaw(bytes);
         // The CSI pattern lives in caret form in `raw` ("^[[...m" etc.) because
         // RenderRaw substituted ESC. Strip the caret-form too.
-        string noCsi = CaretCsi().Replace(raw, "");
-        // Drop the "^M" CR marker but keep the break it caused: "^M\n" → "\n"
-        // (CRLF, one break) and a lone "^M" → "\n" (bare CR is a line break).
-        return CaretCr().Replace(noCsi, "\n");
+        return CaretCsi().Replace(raw, "");
     }
 
     // ESC '[' params [intermediates] final.
     // After RenderRaw, ESC has become the two-char sequence "^[" — match that.
     [GeneratedRegex(@"\^\[\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled)]
     private static partial Regex CaretCsi();
-
-    // The "^M" CR marker, optionally swallowing a trailing LF so CRLF yields
-    // a single line break instead of a blank line.
-    [GeneratedRegex(@"\^M\n?", RegexOptions.Compiled)]
-    private static partial Regex CaretCr();
 }
