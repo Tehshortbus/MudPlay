@@ -1833,6 +1833,10 @@ public sealed class AppServices
         // Party-bless slots store class numbers; PartyMember.Class is a
         // class name — resolve via the active set's Classes table.
         CastDirector.SetClassResolver(SpellCatalog.ResolveClassName);
+        // A party-wide buff (Spells.Targets = Full / Divided Party Area) is
+        // cast once for the whole party; the picker checks this to skip the
+        // per-member loop.
+        CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
         // Settings → Other "bless party while resting / during combat"
         // toggles gate the party-buff picker.
         CastDirector.SetPartyBlessGate(() => Resolver.Resolve<Models.Profile.OtherSettings>("Other"));
@@ -2255,6 +2259,25 @@ public sealed class AppServices
             return (rec.CasterMessage, Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level));
         }
         return null;
+    }
+
+    /// <summary>
+    /// True when the buff with cast code <paramref name="castCode"/> targets
+    /// the whole party at once. Resolved from the active set's
+    /// <c>Spells.Targets</c> scope code: 13 = Full Party Area, 10 = Divided
+    /// Party Area — both blanket the party in a single cast (verified against
+    /// 1.11p, where every party-wide buff / heal uses 13; 10 is the divided
+    /// variant). See <see cref="Game.GameData.LookupEnums.FormatSpellTargets"/>
+    /// for the full label table. Unknown / non-party scopes ⇒ single-target.
+    /// </summary>
+    private bool IsPartyWideBuff(string castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return false;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+            if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return s.Targets is 10 or 13;
+        return false;
     }
 
     /// <summary>

@@ -109,6 +109,7 @@ public sealed class CastingDirector : IDisposable
     private Func<string, (string Caster, long DurationSec)?>? _buffInfoByShort;
     private Func<MessageRecord, string?>? _shortFromAppliedRecord;
     private Func<int, string?>? _classNameByNumber;
+    private Func<string, bool>? _isPartyWideBuff;
     private Func<OtherSettings>? _readOther;
     private Func<DateTime> _now = () => DateTime.UtcNow;
     private LineExtractor? _lines;
@@ -287,6 +288,20 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(classNameByNumber);
         _classNameByNumber = classNameByNumber;
+    }
+
+    /// <summary>
+    /// Wire a "is this buff party-wide?" check (typically backed by the
+    /// active set's <c>Spells.Targets</c> scope code). A party-wide buff
+    /// (Full / Divided Party Area) blankets the whole party in a single cast,
+    /// so the party-buff picker sends just the cast code with no target rather
+    /// than looping per member. Optional — until wired, every party-bless slot
+    /// is treated as single-target and cast per class-matched member.
+    /// </summary>
+    public void SetPartyWideBuffCheck(Func<string, bool> isPartyWideBuff)
+    {
+        ArgumentNullException.ThrowIfNull(isPartyWideBuff);
+        _isPartyWideBuff = isPartyWideBuff;
     }
 
     /// <summary>
@@ -757,11 +772,16 @@ public sealed class CastingDirector : IDisposable
     }
 
     /// <summary>
-    /// Walk the party-bless slots in priority order; for each slot cast the
-    /// buff on the first class-matched member due to recast. A member matches
-    /// when their <see cref="PartyMember.Class"/> is in the slot's checked
-    /// class set. Gated by the Other-tab "bless party while resting" /
-    /// "bless party during combat" toggles (default open until wired).
+    /// Walk the party-bless slots in priority order and pick one buff to cast.
+    /// A <b>party-wide</b> buff (its <c>Spells.Targets</c> is Full / Divided
+    /// Party Area — e.g. a mage's shimmering mirage or a chant) blankets the
+    /// whole party in a single cast, so it's sent once with no target and no
+    /// class filter, keyed for recast like a self-buff (it lands on us too).
+    /// A <b>single-target</b> buff (e.g. a priest's bless) is cast on the first
+    /// class-matched member due to recast — a member matches when their
+    /// <see cref="PartyMember.Class"/> is in the slot's checked class set.
+    /// Gated by the Other-tab "bless party while resting" / "bless party during
+    /// combat" toggles (default open until wired).
     /// </summary>
     private CastCandidate? PickPartyBuff(PartySettings? party)
     {
@@ -778,8 +798,18 @@ public sealed class CastingDirector : IDisposable
         foreach (PartyBlessSlot slot in party.BlessSlots)
         {
             if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
-            if (slot.ClassNumbers.Count == 0) continue;
 
+            // Party-wide buff — one cast covers everyone, so class checkboxes
+            // (which member to target) don't apply. Recast keyed to self ("")
+            // since it lands on us and confirms via the AppliedMessage path.
+            if (_isPartyWideBuff?.Invoke(slot.Spell) == true)
+            {
+                if (!IsRecastDue("", slot.Spell)) continue;
+                return new CastCandidate(slot.Spell, Target: null);
+            }
+
+            // Single-target buff — needs at least one class-matched member.
+            if (slot.ClassNumbers.Count == 0) continue;
             foreach (PartyMember m in _party.Members)
             {
                 if (m.IsSelf) continue;

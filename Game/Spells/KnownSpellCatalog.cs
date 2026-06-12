@@ -356,6 +356,7 @@ public sealed class KnownSpellCatalog
             Magery: ReadInt(row, "Magery"),
             MageryLvl: ReadInt(row, "MageryLVL"),
             ReqLevel: ReadInt(row, "ReqLevel"),
+            Targets: ReadInt(row, "Targets"),
             Formula: ToFormula(row));
 
     private static SpellFormulaInput ToFormula(JsonElement row)

@@ -37,7 +37,7 @@ public sealed class SpellBookRowViewModelTests
     };
 
     private static KnownSpell Spell(string shortCode, string name, int reqLevel, SpellFormulaInput formula)
-        => new(formula.Number, shortCode, name, Magery: 1, MageryLvl: 1, reqLevel, formula);
+        => new(formula.Number, shortCode, name, Magery: 1, MageryLvl: 1, reqLevel, Targets: 0, formula);
 
     private static SpellFormulaInput? NoChain(int _) => null;
 
@@ -382,7 +382,7 @@ public sealed class SpellBookRowViewModelTests
             Abilities = [new SpellAbility(46, 5)], // 46 = Strength
         };
         KnownSpell linkedSpell = new(858, "drgn", "form of the dragon",
-            Magery: 1, MageryLvl: 1, ReqLevel: 30, linked);
+            Magery: 1, MageryLvl: 1, ReqLevel: 30, Targets: 0, linked);
 
         SpellBookRowViewModel row = new(
             s, isObtained: true, level: 30, NoChain,
@@ -407,10 +407,10 @@ public sealed class SpellBookRowViewModelTests
         KnownSpell s = Spell("dfrm", "form of the dragon", 30, tb);
 
         KnownSpell buff = new(858, "drgn", "form of the dragon",
-            Magery: 1, MageryLvl: 1, ReqLevel: 30,
+            Magery: 1, MageryLvl: 1, ReqLevel: 30, Targets: 0,
             new SpellFormulaInput { Number = 858, Dur = 8, Abilities = [new SpellAbility(46, 5)] });
         KnownSpell cleanup = new(878, "rfrm", "remove forms",
-            Magery: 1, MageryLvl: 1, ReqLevel: 30,
+            Magery: 1, MageryLvl: 1, ReqLevel: 30, Targets: 0,
             new SpellFormulaInput { Number = 878, Abilities = [new SpellAbility(122, 858)] });
 
         SpellBookRowViewModel row = new(
