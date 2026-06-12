@@ -7,7 +7,7 @@ namespace FujinTerm.Game.Spells;
 /// Compiles a game-data "caster message" template — the line YOU see when
 /// YOU cast a spell, e.g. <c>You cast {s} on {s}!</c> — into a regex and
 /// matches it against an observed server line, returning the ordered
-/// <c>{s}</c> (string) captures.
+/// string captures.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,18 +21,17 @@ namespace FujinTerm.Game.Spells;
 /// <c>{s}</c> is the target.
 /// </para>
 /// <para>
-/// Placeholder vocabulary: a <b>string</b> placeholder captures an arbitrary
-/// run of text, a <b>number</b> placeholder captures a numeric span. Two
-/// spellings coexist so the matcher works against both the legacy
-/// positional seed and the semantic seed:
+/// Placeholder vocabulary (matches the wcc-derived <c>messages.json</c>
+/// templates). A <b>string</b> placeholder captures an arbitrary run of
+/// text, a <b>number</b> placeholder captures a numeric span:
 /// <list type="bullet">
-/// <item><c>{s}</c> (legacy, positional) / <c>{spell}</c> / <c>{target}</c> /
-/// <c>{src}</c> (semantic) all compile to a string capture.</item>
-/// <item><c>{d}</c> (legacy) / <c>{dmg}</c> (semantic) compile to a numeric
-/// capture, consumed but dropped — confirmation never needs the value.</item>
+/// <item><c>{s}</c> (spell or actor name), <c>{target}</c>, <c>{source}</c>
+/// compile to a string capture.</item>
+/// <item><c>{d}</c>, <c>{dmg}</c> compile to a numeric capture, consumed but
+/// dropped — confirmation never needs the value.</item>
 /// </list>
 /// All string captures are surfaced in template order; the matcher does not
-/// assume which slot is the spell vs the target vs the caster. Callers that
+/// assume which slot is the spell vs the target vs the actor. Callers that
 /// know the expected spell name and target use
 /// <see cref="ConfirmsSpellTarget"/>, which requires both to appear as
 /// distinct captures — so an unrelated cast on the same member (e.g. a buff
@@ -44,10 +43,11 @@ namespace FujinTerm.Game.Spells;
 /// </remarks>
 public sealed class CasterMessageMatcher
 {
-    // Both placeholder spellings: legacy positional {s}/{d} and the semantic
-    // {spell}/{target}/{src}/{dmg} the messages seed migrates toward.
+    // The seed's full placeholder set: string slots {s}/{target}/{source} and
+    // numeric slots {d}/{dmg}. The named slots already appear verbatim in the
+    // shipped seed, so they must tokenize — not be matched as literal text.
     private static readonly Regex TokenSplit =
-        new(@"\{(?:spell|target|src|dmg|[sd])\}", RegexOptions.Compiled);
+        new(@"\{(?:target|source|dmg|[sd])\}", RegexOptions.Compiled);
 
     private readonly Regex _regex;
     private readonly int[] _stringGroupIndexes;
