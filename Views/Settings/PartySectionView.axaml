@@ -133,11 +133,11 @@
 
             <!-- Single vs AOE selector: how many hurt members flip to the AOE pick. -->
             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
-                <TextBlock Classes="FieldLabel" Text="Switch to party (AOE) heal when"/>
+                <TextBlock Classes="FieldLabel" Text="Use party healing spells when"/>
                 <NumericUpDown Width="120" MinWidth="120" Minimum="2" Maximum="6"
                                Value="{Binding AoeMinMembers, Mode=TwoWay}"
-                               ToolTip.Tip="Minimum number of members below threshold for the engine to switch from the single-target heal to the party (AOE) heal. Minimum 2."/>
-                <TextBlock Classes="FieldLabel" Text="+ members are below threshold"/>
+                               ToolTip.Tip="Minimum number of members below threshold for the engine to switch from the single-target heal to the party (AOE) heal. Applies to both the Minor and Major tiers. Minimum 2."/>
+                <TextBlock Classes="FieldLabel" Text="or more members meet threshold (Minor + Major)"/>
             </StackPanel>
 
             <!-- Request healing: just threshold, no spell. Stub — no DTO field yet. -->
