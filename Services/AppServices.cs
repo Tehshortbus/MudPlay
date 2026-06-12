@@ -2353,7 +2353,7 @@ public sealed class AppServices
     {
         Models.Profile.TalkSettings dto = ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk");
         RemoteCommands.MasterDisable          = dto.DisallowAllRemoteCommands;
-        RemoteCommands.DisablePartyWhitelist  = dto.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisablePartyWhitelist  = dto.DisallowPartyCommands;
         RemoteCommands.DisableTelepathChannel = dto.DisallowRemoteFromTelepaths;
         RemoteCommands.DisableGangpathChannel = dto.DisallowRemoteFromGangpaths;
         RemoteCommands.DisableLocalChannel    = dto.DisallowRemoteFromLocal;
@@ -2365,7 +2365,7 @@ public sealed class AppServices
     {
         Models.Profile.TalkSettings defaults = new();
         RemoteCommands.MasterDisable          = defaults.DisallowAllRemoteCommands;
-        RemoteCommands.DisablePartyWhitelist  = defaults.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisablePartyWhitelist  = defaults.DisallowPartyCommands;
         RemoteCommands.DisableTelepathChannel = defaults.DisallowRemoteFromTelepaths;
         RemoteCommands.DisableGangpathChannel = defaults.DisallowRemoteFromGangpaths;
         RemoteCommands.DisableLocalChannel    = defaults.DisallowRemoteFromLocal;

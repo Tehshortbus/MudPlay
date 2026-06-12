@@ -25,6 +25,13 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="22,0,0,4"/>
         </Style>
+        <Style Selector="TextBlock.WarningText">
+            <Setter Property="Foreground" Value="{StaticResource AccentRedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="22,0,0,4"/>
+        </Style>
     </UserControl.Styles>
 
     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
@@ -44,12 +51,14 @@
                       ToolTip.Tip="Hard kill-switch. When on, the engine ignores every inbound @-command regardless of channel / sender / handler."/>
             <TextBlock Classes="HelpText"
                        Text="Above every per-channel + per-player permission. No handler fires, no reply is sent."/>
+            <TextBlock Classes="WarningText"
+                       Text="⚠ Warning: this silently blocks ALL inbound @commands — including party heal / cure / coordination requests from your own group."/>
 
-            <CheckBox Content="Disallow @party commands (from leader)"
-                      IsChecked="{Binding DisallowPartyCommandsFromLeader, Mode=TwoWay}"
-                      ToolTip.Tip="Overrides the base @party &lt;sub&gt; whitelist for active party members."/>
+            <CheckBox Content="Disallow @party commands (from any party member)"
+                      IsChecked="{Binding DisallowPartyCommands, Mode=TwoWay}"
+                      ToolTip.Tip="Overrides the base @party &lt;sub&gt; whitelist for every active party member, not just the leader."/>
             <TextBlock Classes="HelpText"
-                       Text="Useful for solo runs inside a party where the leader's @party directives shouldn't steer this character."/>
+                       Text="Makes @party a no-op no matter who in the party sends it — useful for solo runs inside a party where party directives shouldn't steer this character."/>
 
             <!-- ============ Per-channel disable (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Per-channel disable"/>
@@ -57,15 +66,15 @@
                        Margin="0,0,0,4"
                        Text="Only the three channels the engine listens on. Gossip / Auction / Broadcast / Yell are hard-excluded engine-wide and don't need a toggle."/>
 
-            <CheckBox Content="Disallow @-commands from telepaths / pages"
+            <CheckBox Content="Disallow @commands from telepaths / pages"
                       IsChecked="{Binding DisallowRemoteFromTelepaths, Mode=TwoWay}"
-                      ToolTip.Tip="Drop @-commands arriving via /name or `t name`."/>
-            <CheckBox Content="Disallow @-commands from gangpaths"
+                      ToolTip.Tip="Drop @commands arriving via /name or `t name`."/>
+            <CheckBox Content="Disallow @commands from gangpaths"
                       IsChecked="{Binding DisallowRemoteFromGangpaths, Mode=TwoWay}"
-                      ToolTip.Tip="Drop @-commands arriving on the gang / guild channel."/>
-            <CheckBox Content="Disallow @-commands from say (local)"
+                      ToolTip.Tip="Drop @commands arriving on the gang / guild channel."/>
+            <CheckBox Content="Disallow @commands from say (local)"
                       IsChecked="{Binding DisallowRemoteFromLocal, Mode=TwoWay}"
-                      ToolTip.Tip="Drop @-commands arriving via local-room say."/>
+                      ToolTip.Tip="Drop @commands arriving via local-room say."/>
 
             <!-- ============ Denial reply (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Denial reply"/>
@@ -84,7 +93,6 @@
             </Grid>
 
             <!-- ============ Chat etiquette ============ -->
-            <TextBlock Classes="SectionHeader" Text="Chat etiquette"/>
             <CheckBox Content="Greet players when first met"
                       IsChecked="{Binding GreetPlayersWhenFirstMet, Mode=TwoWay}"
                       ToolTip.Tip="The first time each day a non-party player appears (Also here list or live arrival), send greet then look at them. Tracked per-BBS; self and party members are skipped."/>

@@ -53,7 +53,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private bool _disallowAllRemoteCommands;
 
-    [ObservableProperty] private bool _disallowPartyCommandsFromLeader;
+    [ObservableProperty] private bool _disallowPartyCommands;
 
     [ObservableProperty] private bool _disallowRemoteFromTelepaths;
 
@@ -88,7 +88,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         TalkSettings dto = new()
         {
             DisallowAllRemoteCommands        = DisallowAllRemoteCommands,
-            DisallowPartyCommandsFromLeader  = DisallowPartyCommandsFromLeader,
+            DisallowPartyCommands            = DisallowPartyCommands,
             DisallowRemoteFromTelepaths      = DisallowRemoteFromTelepaths,
             DisallowRemoteFromGangpaths      = DisallowRemoteFromGangpaths,
             DisallowRemoteFromLocal          = DisallowRemoteFromLocal,
@@ -129,7 +129,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     {
         TalkSettings dto = ReadOrDefault();
         DisallowAllRemoteCommands       = dto.DisallowAllRemoteCommands;
-        DisallowPartyCommandsFromLeader = dto.DisallowPartyCommandsFromLeader;
+        DisallowPartyCommands           = dto.DisallowPartyCommands;
         DisallowRemoteFromTelepaths     = dto.DisallowRemoteFromTelepaths;
         DisallowRemoteFromGangpaths     = dto.DisallowRemoteFromGangpaths;
         DisallowRemoteFromLocal         = dto.DisallowRemoteFromLocal;
@@ -162,7 +162,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     {
         Game.Remote.RemoteCommandManager engine = AppServices.Current.RemoteCommands;
         engine.MasterDisable           = dto.DisallowAllRemoteCommands;
-        engine.DisablePartyWhitelist   = dto.DisallowPartyCommandsFromLeader;
+        engine.DisablePartyWhitelist   = dto.DisallowPartyCommands;
         engine.DisableTelepathChannel  = dto.DisallowRemoteFromTelepaths;
         engine.DisableGangpathChannel  = dto.DisallowRemoteFromGangpaths;
         engine.DisableLocalChannel     = dto.DisallowRemoteFromLocal;
@@ -181,7 +181,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     }
 
     partial void OnDisallowAllRemoteCommandsChanged(bool value)       => MarkDirty();
-    partial void OnDisallowPartyCommandsFromLeaderChanged(bool value) => MarkDirty();
+    partial void OnDisallowPartyCommandsChanged(bool value)           => MarkDirty();
     partial void OnDisallowRemoteFromTelepathsChanged(bool value)     => MarkDirty();
     partial void OnDisallowRemoteFromGangpathsChanged(bool value)     => MarkDirty();
     partial void OnDisallowRemoteFromLocalChanged(bool value)         => MarkDirty();

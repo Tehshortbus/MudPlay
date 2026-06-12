@@ -23,12 +23,14 @@ public sealed class TalkSettings
     public bool DisallowAllRemoteCommands { get; set; }
 
     /// <summary>
-    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist. Useful when
-    /// solo-questing inside a party where you don't want the leader's
-    /// <c>@party</c> directives steering this character. Default
-    /// <c>false</c> (whitelist active).
+    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist for every
+    /// party member, not just the leader — when <c>true</c> an inbound
+    /// <c>@party</c> is a no-op no matter who in the party sends it.
+    /// Useful when solo-questing inside a party where you don't want
+    /// party directives steering this character. Default <c>false</c>
+    /// (whitelist active).
     /// </summary>
-    public bool DisallowPartyCommandsFromLeader { get; set; }
+    public bool DisallowPartyCommands { get; set; }
 
     /// <summary>Drop @-commands arriving on telepaths / pages.</summary>
     public bool DisallowRemoteFromTelepaths { get; set; }

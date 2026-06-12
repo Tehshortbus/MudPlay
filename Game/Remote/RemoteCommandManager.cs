@@ -115,7 +115,7 @@ public sealed class RemoteCommandManager : IDisposable
     /// <c>true</c>, party-whitelist handlers (registered with
     /// <see cref="PlayerRemoteControls.None"/>) deny even for active party
     /// members. Pushed from
-    /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommandsFromLeader"/>.
+    /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommands"/>.
     /// </summary>
     public bool DisablePartyWhitelist { get; set; }
 
