@@ -79,6 +79,19 @@ public sealed class OtherSettings
     public bool DoNotAnnounceDiseased  { get; set; }
 
     /// <summary>
+    /// Master gate for walker trap-disarming. When <c>true</c> (default)
+    /// the walker routes a trapped exit through the disarm machinery
+    /// before stepping through — but only when a disarm is actually
+    /// possible (the local character has the Traps skill, or — once the
+    /// party-delegation path lands — a party member does). When
+    /// <c>false</c> the walker walks straight through trapped exits with
+    /// no disarm attempt. Labeled "Utilize disarm traps if able" in
+    /// Settings → Other because the "if able" capability check rides on
+    /// top of this on/off switch.
+    /// </summary>
+    public bool UtilizeDisarmTrapsIfAble { get; set; } = true;
+
+    /// <summary>
     /// Caps the search loop in the @trap handler — how many
     /// <c>sea &lt;dir&gt;</c> attempts we'll make before giving up and
     /// telepathing the sender that we couldn't find a trap. Default

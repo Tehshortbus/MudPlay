@@ -2023,6 +2023,14 @@ public sealed class AppServices
         // Phase 7 PR 7.22 — route walker over trapped exits through
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+        // Settings → Other "Utilize disarm traps if able": gate the
+        // walker's trap-disarm on the toggle AND a real local capability
+        // (Traps skill). When the gate is false the walker steps through
+        // trapped exits without a disarm. The party-delegation half of
+        // "if able" lands in a follow-up.
+        Walker.SetTrapDisarmGate(() =>
+            Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
+            && TrapDisarm.CanDisarm);
         // PR 4.b — proactive pre-move sneak: `sn` goes out as the last
         // command before each walker move so the move itself is sneaked
         // (the reactive RoomTracker hook above only re-sneaks AFTER

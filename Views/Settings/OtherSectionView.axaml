@@ -95,6 +95,15 @@
             <CheckBox Content="Don't announce diseased"  IsChecked="{Binding DoNotAnnounceDiseased, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being diseased doesn't send `.@diseased` on say."/>
 
+            <!-- Master gate for walker trap-disarming. Off → the walker
+                 steps straight through trapped exits. On → it disarms
+                 first, but only when a disarm is actually possible (local
+                 Traps skill today; party delegation in a follow-up). -->
+            <TextBlock Classes="FieldLabel" Text="Traps:" Margin="0,12,0,0"/>
+            <CheckBox Content="Utilize disarm traps if able"
+                      IsChecked="{Binding UtilizeDisarmTrapsIfAble, Mode=TwoWay}"
+                      ToolTip.Tip="When checked (default): at a trapped exit the walker tries to disarm before moving — but only if a disarm is possible (you have the Traps skill, or — later — a party member does). When unchecked: the walker walks straight through trapped exits with no disarm attempt."/>
+
             <!-- @trap auto-disarm attempt caps. Search-attempts row sits
                  ABOVE disarm-attempts per user spec — the search runs
                  first, then disarm. -->

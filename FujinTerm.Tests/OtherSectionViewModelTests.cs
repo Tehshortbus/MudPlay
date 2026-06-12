@@ -26,6 +26,7 @@ public sealed class OtherSectionViewModelTests
             DoNotAnnounceBlindness = true,
             DoNotAnnounceConfusion = true,
             DoNotAnnounceDiseased  = true,
+            UtilizeDisarmTrapsIfAble = false,
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
             BlessWhileResting = false,
@@ -47,6 +48,7 @@ public sealed class OtherSectionViewModelTests
         Assert.True(back.DoNotAnnounceBlindness);
         Assert.True(back.DoNotAnnounceConfusion);
         Assert.True(back.DoNotAnnounceDiseased);
+        Assert.False(back.UtilizeDisarmTrapsIfAble);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
         Assert.False(back.BlessWhileResting);
@@ -85,8 +87,12 @@ public sealed class OtherSectionViewModelTests
         Assert.False(dto.DoNotAnnounceBlindness);
         Assert.False(dto.DoNotAnnounceConfusion);
         Assert.False(dto.DoNotAnnounceDiseased);
-        // @trap auto-disarm attempt caps — user-spec defaults:
-        // 20 search retries, 5 disarm retries.
+        // Trap-disarm master gate defaults ON — preserves the
+        // walker's disarm-before-walk behavior out of the box (the
+        // "if able" capability check still gates whether it actually
+        // attempts). @trap auto-disarm attempt caps — user-spec
+        // defaults: 20 search retries, 5 disarm retries.
+        Assert.True(dto.UtilizeDisarmTrapsIfAble);
         Assert.Equal(20, dto.MaxTrapSearchAttempts);
         Assert.Equal(5,  dto.MaxTrapDisarmAttempts);
         // Party-bless gating defaults ON — the bless engine may cast on

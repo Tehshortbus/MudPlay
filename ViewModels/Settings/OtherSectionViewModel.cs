@@ -71,6 +71,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Break combat before running";
             yield return "Flee direction";
             yield return "Run away";
+            yield return "Utilize disarm traps if able";
+            yield return "Disarm traps";
+            yield return "Traps";
+            yield return "@trap max searches";
+            yield return "@trap max disarms";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -116,6 +121,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // and via AppServices.ApplyOtherFromActiveProfile on ProfileLoaded /
     // ProfileMutated. Search row sits above disarm in the rendered
     // panel per user spec.
+
+    // Master gate for walker trap-disarming. Read live by the walker's
+    // trap-disarm gate (AppServices.SetTrapDisarmGate) which also AND-s
+    // in the local Traps-skill capability check.
+    [ObservableProperty] private bool _utilizeDisarmTrapsIfAble = true;
 
     [ObservableProperty] private int _maxTrapSearchAttempts = 20;
     [ObservableProperty] private int _maxTrapDisarmAttempts = 5;
@@ -266,15 +276,12 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             // "Bless while resting" / "Bless during combat" graduated to
             // wired toggles (rendered in the wired section above).
         }),
-        new StubGroup("Locks & traps", new[]
-        {
-            // Attempt-bash / Pick-locks-over-bash / Attempt-pick-lock
-            // graduated to wired fields by commit 2 (DoorOpenManager).
-            // They render in the wired section above; this group keeps
-            // the remaining trap-disarm toggles only.
-            new StubField("Attempt to disarm traps",       StubFieldKind.Check,   "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
-            new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
-        }),
+        // "Locks & traps" group removed: Attempt-bash / Pick-locks-over-bash /
+        // Attempt-pick-lock graduated to wired fields by commit 2
+        // (DoorOpenManager); "Attempt to disarm traps" graduated to the wired
+        // "Utilize disarm traps if able" checkbox; "Attempt disarm" (retry
+        // cap) is the already-wired "@trap max disarms" picker above — no
+        // duplicate needed.
         // Removed per user direction:
         // - "Command splitter character" (^M and ; are hardwired)
         // - "Backscroll buffer size" (lives on BBS + Display)
@@ -314,6 +321,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             DoNotAnnounceBlindness = DoNotAnnounceBlindness,
             DoNotAnnounceConfusion = DoNotAnnounceConfusion,
             DoNotAnnounceDiseased  = DoNotAnnounceDiseased,
+            UtilizeDisarmTrapsIfAble = UtilizeDisarmTrapsIfAble,
             MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
             MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
@@ -378,6 +386,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         DoNotAnnounceBlindness = dto.DoNotAnnounceBlindness;
         DoNotAnnounceConfusion = dto.DoNotAnnounceConfusion;
         DoNotAnnounceDiseased  = dto.DoNotAnnounceDiseased;
+        UtilizeDisarmTrapsIfAble = dto.UtilizeDisarmTrapsIfAble;
         MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
         MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
         MaxBashAttempts       = dto.MaxBashAttempts;
@@ -446,6 +455,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnDoNotAnnounceConfusionChanged(bool value) => MarkDirty();
     partial void OnDoNotAnnounceDiseasedChanged(bool value)  => MarkDirty();
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
+    partial void OnUtilizeDisarmTrapsIfAbleChanged(bool value) => MarkDirty();
     partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();

@@ -44,6 +44,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private readonly EngineRecoveryGate? _recovery;
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
+    private Func<bool>? _shouldDisarmTrap;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
@@ -234,6 +235,21 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _trapEnqueuer = enqueuer;
+    }
+
+    /// <summary>
+    /// Gate for trapped-exit handling. Returns <c>true</c> when the walker
+    /// should route a <see cref="RoomExitHint.Trap"/> exit through the trap
+    /// enqueuer — i.e. Settings → Other "Utilize disarm traps if able" is on
+    /// AND the local character has the Traps skill. Returns <c>false</c> to
+    /// walk straight through the trap without attempting a disarm. When left
+    /// unset the walker defaults to attempting the disarm (preserves the
+    /// pre-toggle behavior for any consumer that never wires a gate).
+    /// </summary>
+    public void SetTrapDisarmGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _shouldDisarmTrap = gate;
     }
 
     /// <summary>
@@ -499,13 +515,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // reply; the actual move bytes are sent from OnTrapReply.
         if (exit.Hint == RoomExitHint.Trap && _trapEnqueuer is not null)
         {
-            _awaitingTrapDisarm = true;
             string dirWord = DirectionWord(step.Direction);
-            Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
-                $"trap on {dirWord}", _destination));
-            _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: disarm trap {dirWord}");
-            _trapEnqueuer(dirWord, "walker", OnTrapReply);
-            return;
+            if (_shouldDisarmTrap?.Invoke() ?? true)
+            {
+                _awaitingTrapDisarm = true;
+                Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
+                    $"trap on {dirWord}", _destination));
+                _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: disarm trap {dirWord}");
+                _trapEnqueuer(dirWord, "walker", OnTrapReply);
+                return;
+            }
+
+            // Disarm gated off (toggle disabled or no Traps skill) — step
+            // through the trapped exit without a disarm attempt. Falls
+            // through to the normal move emit below.
+            _log?.Info("Walker",
+                $"step {_index + 1}/{_path!.Count}: trap on {dirWord} — walking through (disarm disabled or unable)");
         }
 
         // Door / KeyLocked exits — route through DoorOpenManager to
