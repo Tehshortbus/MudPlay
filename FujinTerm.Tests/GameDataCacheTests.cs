@@ -164,6 +164,35 @@ public sealed class GameDataCacheTests : IDisposable
     }
 
     [Fact]
+    public void FindRowByName_ReturnsMatchingRow_CaseInsensitive()
+    {
+        SeedSet("alpha", ("Classes",
+            "[{\"Name\":\"Warrior\",\"Abil-0\":31},{\"Name\":\"Thief\",\"Abil-0\":40}]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+
+        JsonElement? row = cache.FindRowByName("Classes", "thief");
+
+        Assert.NotNull(row);
+        Assert.Equal("Thief", row!.Value.GetProperty("Name").GetString());
+        Assert.Equal(40, row.Value.GetProperty("Abil-0").GetInt32());
+    }
+
+    [Fact]
+    public void FindRowByName_ReturnsNull_WhenNoMatchOrNoSet()
+    {
+        SeedSet("alpha", ("Classes", "[{\"Name\":\"Warrior\"}]"));
+        GameDataCache cache = NewCache();
+
+        // No active set yet.
+        Assert.Null(cache.FindRowByName("Classes", "Warrior"));
+
+        cache.SwitchSet("alpha");
+        Assert.Null(cache.FindRowByName("Classes", "Ninja"));
+        Assert.Null(cache.FindRowByName("MissingTable", "Warrior"));
+    }
+
+    [Fact]
     public void SwitchSet_UnknownSet_StillFlipsActiveSet()
     {
         // A profile may point at a set that hasn't been imported yet —

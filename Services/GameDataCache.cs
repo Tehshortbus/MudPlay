@@ -220,6 +220,31 @@ public sealed class GameDataCache
     }
 
     /// <summary>
+    /// Return the row in <paramref name="tableName"/> whose <c>Name</c>
+    /// field equals <paramref name="name"/> (case-insensitive), or
+    /// <c>null</c> when the table isn't in the active set or no row
+    /// matches. The returned <see cref="JsonElement"/> stays valid for
+    /// the lifetime of the cached <see cref="JsonDocument"/> (until the
+    /// next <see cref="SwitchSet"/> / <see cref="EvictTable"/>). Used by
+    /// the trap-delegation capability lookup to resolve a party member's
+    /// class / race row before scanning its abilities.
+    /// </summary>
+    public JsonElement? FindRowByName(string tableName, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        JsonDocument? doc = GetRawTable(tableName);
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)) continue;
+            if (nameEl.ValueKind != JsonValueKind.String) continue;
+            if (string.Equals(nameEl.GetString(), name, StringComparison.OrdinalIgnoreCase))
+                return row;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Drop the cached <see cref="JsonDocument"/> for one table. Used
     /// by per-tab consumers after they've folded the raw JSON into
     /// typed model collections (the MemoryOptimization pattern).
