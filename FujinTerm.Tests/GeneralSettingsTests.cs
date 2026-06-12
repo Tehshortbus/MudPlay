@@ -17,6 +17,21 @@ public sealed class GeneralSettingsTests
         Assert.False(dto.AutoConnect);
         Assert.False(dto.BackupOnSave);
         AssertDefaultColumn(dto.AutoMode);
+
+        // Emergency-hangup carve-out + every re-enable-on-reconnect flag
+        // default OFF — reviving an auto-action or dropping the line on a
+        // disabled engine is always opt-in, never a surprise.
+        Assert.False(dto.AllowHangupInAllOffMode);
+        Assert.False(dto.ReEnableAutoCombatOnReconnect);
+        Assert.False(dto.ReEnableAutoNukeOnReconnect);
+        Assert.False(dto.ReEnableAutoHealRestOnReconnect);
+        Assert.False(dto.ReEnableAutoBlessOnReconnect);
+        Assert.False(dto.ReEnableAutoLightOnReconnect);
+        Assert.False(dto.ReEnableAutoGetItemsOnReconnect);
+        Assert.False(dto.ReEnableAutoGetCashOnReconnect);
+        Assert.False(dto.ReEnableAutoSneakOnReconnect);
+        Assert.False(dto.ReEnableAutoHideOnReconnect);
+        Assert.False(dto.ReEnableAutoSearchOnReconnect);
     }
 
     [Fact]
@@ -30,6 +45,17 @@ public sealed class GeneralSettingsTests
             AutoConnect = true,
             BackupOnSave = true,
             AutoMode   = AllToggles(false),
+            AllowHangupInAllOffMode = true,
+            ReEnableAutoCombatOnReconnect   = true,
+            ReEnableAutoNukeOnReconnect     = true,
+            ReEnableAutoHealRestOnReconnect = true,
+            ReEnableAutoBlessOnReconnect    = true,
+            ReEnableAutoLightOnReconnect    = true,
+            ReEnableAutoGetItemsOnReconnect = true,
+            ReEnableAutoGetCashOnReconnect  = true,
+            ReEnableAutoSneakOnReconnect    = true,
+            ReEnableAutoHideOnReconnect     = true,
+            ReEnableAutoSearchOnReconnect   = true,
         };
 
         string json = JsonSerializer.Serialize(original);
@@ -42,6 +68,17 @@ public sealed class GeneralSettingsTests
         Assert.Equal(original.AutoConnect,         round.AutoConnect);
         Assert.Equal(original.BackupOnSave,        round.BackupOnSave);
         AssertColumnsEqual(original.AutoMode,   round.AutoMode);
+        Assert.True(round.AllowHangupInAllOffMode);
+        Assert.True(round.ReEnableAutoCombatOnReconnect);
+        Assert.True(round.ReEnableAutoNukeOnReconnect);
+        Assert.True(round.ReEnableAutoHealRestOnReconnect);
+        Assert.True(round.ReEnableAutoBlessOnReconnect);
+        Assert.True(round.ReEnableAutoLightOnReconnect);
+        Assert.True(round.ReEnableAutoGetItemsOnReconnect);
+        Assert.True(round.ReEnableAutoGetCashOnReconnect);
+        Assert.True(round.ReEnableAutoSneakOnReconnect);
+        Assert.True(round.ReEnableAutoHideOnReconnect);
+        Assert.True(round.ReEnableAutoSearchOnReconnect);
     }
 
     [Fact]

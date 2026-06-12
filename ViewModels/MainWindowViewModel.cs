@@ -3282,35 +3282,35 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private void ReEnableAutoActionsOnReconnect()
     {
-        Models.Profile.OtherSettings other =
-            AppServices.Current.Resolver.Resolve<Models.Profile.OtherSettings>("Other");
+        Models.Profile.GeneralSettings general =
+            AppServices.Current.Resolver.Resolve<Models.Profile.GeneralSettings>("General");
 
-        bool any = other.ReEnableAutoCombatOnReconnect
-                || other.ReEnableAutoNukeOnReconnect
-                || other.ReEnableAutoHealRestOnReconnect
-                || other.ReEnableAutoBlessOnReconnect
-                || other.ReEnableAutoLightOnReconnect
-                || other.ReEnableAutoGetItemsOnReconnect
-                || other.ReEnableAutoGetCashOnReconnect
-                || other.ReEnableAutoSneakOnReconnect
-                || other.ReEnableAutoHideOnReconnect
-                || other.ReEnableAutoSearchOnReconnect;
+        bool any = general.ReEnableAutoCombatOnReconnect
+                || general.ReEnableAutoNukeOnReconnect
+                || general.ReEnableAutoHealRestOnReconnect
+                || general.ReEnableAutoBlessOnReconnect
+                || general.ReEnableAutoLightOnReconnect
+                || general.ReEnableAutoGetItemsOnReconnect
+                || general.ReEnableAutoGetCashOnReconnect
+                || general.ReEnableAutoSneakOnReconnect
+                || general.ReEnableAutoHideOnReconnect
+                || general.ReEnableAutoSearchOnReconnect;
         if (!any) return;
         if (AppServices.Current.Profile.Current is not { } profile) return;
 
         profile.Settings ??= new();
         Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
         Models.Profile.AutoActionDefaults am = dto.AutoMode;
-        if (other.ReEnableAutoCombatOnReconnect)   am.AutoCombat   = true;
-        if (other.ReEnableAutoNukeOnReconnect)     am.AutoNuke     = true;
-        if (other.ReEnableAutoHealRestOnReconnect) am.AutoHealRest = true;
-        if (other.ReEnableAutoBlessOnReconnect)    am.AutoBless    = true;
-        if (other.ReEnableAutoLightOnReconnect)    am.AutoLight    = true;
-        if (other.ReEnableAutoGetItemsOnReconnect) am.AutoGetItems = true;
-        if (other.ReEnableAutoGetCashOnReconnect)  am.AutoGetCash  = true;
-        if (other.ReEnableAutoSneakOnReconnect)    am.AutoSneak    = true;
-        if (other.ReEnableAutoHideOnReconnect)     am.AutoHide     = true;
-        if (other.ReEnableAutoSearchOnReconnect)   am.AutoSearch   = true;
+        if (general.ReEnableAutoCombatOnReconnect)   am.AutoCombat   = true;
+        if (general.ReEnableAutoNukeOnReconnect)     am.AutoNuke     = true;
+        if (general.ReEnableAutoHealRestOnReconnect) am.AutoHealRest = true;
+        if (general.ReEnableAutoBlessOnReconnect)    am.AutoBless    = true;
+        if (general.ReEnableAutoLightOnReconnect)    am.AutoLight    = true;
+        if (general.ReEnableAutoGetItemsOnReconnect) am.AutoGetItems = true;
+        if (general.ReEnableAutoGetCashOnReconnect)  am.AutoGetCash  = true;
+        if (general.ReEnableAutoSneakOnReconnect)    am.AutoSneak    = true;
+        if (general.ReEnableAutoHideOnReconnect)     am.AutoHide     = true;
+        if (general.ReEnableAutoSearchOnReconnect)   am.AutoSearch   = true;
 
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);

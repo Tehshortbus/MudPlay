@@ -40,8 +40,14 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
+        "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",
         "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
+        "Allow hangup in all-off mode",
+        "Re-enable on reconnect", "Re-enable Auto-Combat", "Re-enable Auto-Nuke",
+        "Re-enable Auto-Heal/Rest", "Re-enable Auto-Bless", "Re-enable Auto-Light",
+        "Re-enable Auto-Get Items", "Re-enable Auto-Get Cash", "Re-enable Auto-Sneak",
+        "Re-enable Auto-Hide", "Re-enable Auto-Search",
     };
 
     public override Control View => _view ??= new GeneralSectionView { DataContext = this };
@@ -123,6 +129,27 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _amAutoHide;
     [ObservableProperty] private bool _amAutoSearch;
 
+    // ----- Emergency hangup carve-out ---------------------------------
+    // Lets the HealthManager emergency-hangup branch fire even when every
+    // auto-engine is off. Sits next to the auto-engine switches because
+    // it's the one safety net that survives all-off mode.
+    [ObservableProperty] private bool _allowHangupInAllOffMode;
+
+    // ----- Re-enable auto-actions on reconnect ------------------------
+    // One flag per auto-action (1-to-1 with AutoMode above). On a
+    // reconnect, each action whose flag is on gets flipped back ON in
+    // AutoMode. Default off for every action.
+    [ObservableProperty] private bool _reEnableAutoCombatOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoNukeOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoHealRestOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoBlessOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoLightOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoGetItemsOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoGetCashOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoSneakOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoHideOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoSearchOnReconnect;
+
     // ----- Wired-state flags ------------------------------------------
     // Computed (return constants) — true when the matching engine is
     // live, false when its skeleton hasn't landed yet. The view's
@@ -170,6 +197,17 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             AutoConnect = AutoConnect,
             BackupOnSave = BackupOnSave,
             AutoMode   = SnapshotAuto(),
+            AllowHangupInAllOffMode         = AllowHangupInAllOffMode,
+            ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
+            ReEnableAutoNukeOnReconnect     = ReEnableAutoNukeOnReconnect,
+            ReEnableAutoHealRestOnReconnect = ReEnableAutoHealRestOnReconnect,
+            ReEnableAutoBlessOnReconnect    = ReEnableAutoBlessOnReconnect,
+            ReEnableAutoLightOnReconnect    = ReEnableAutoLightOnReconnect,
+            ReEnableAutoGetItemsOnReconnect = ReEnableAutoGetItemsOnReconnect,
+            ReEnableAutoGetCashOnReconnect  = ReEnableAutoGetCashOnReconnect,
+            ReEnableAutoSneakOnReconnect    = ReEnableAutoSneakOnReconnect,
+            ReEnableAutoHideOnReconnect     = ReEnableAutoHideOnReconnect,
+            ReEnableAutoSearchOnReconnect   = ReEnableAutoSearchOnReconnect,
         };
 
         profile.Settings ??= new();
@@ -222,6 +260,18 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         AmAutoSneak    = a.AutoSneak;
         AmAutoHide     = a.AutoHide;
         AmAutoSearch   = a.AutoSearch;
+
+        AllowHangupInAllOffMode         = dto.AllowHangupInAllOffMode;
+        ReEnableAutoCombatOnReconnect   = dto.ReEnableAutoCombatOnReconnect;
+        ReEnableAutoNukeOnReconnect     = dto.ReEnableAutoNukeOnReconnect;
+        ReEnableAutoHealRestOnReconnect = dto.ReEnableAutoHealRestOnReconnect;
+        ReEnableAutoBlessOnReconnect    = dto.ReEnableAutoBlessOnReconnect;
+        ReEnableAutoLightOnReconnect    = dto.ReEnableAutoLightOnReconnect;
+        ReEnableAutoGetItemsOnReconnect = dto.ReEnableAutoGetItemsOnReconnect;
+        ReEnableAutoGetCashOnReconnect  = dto.ReEnableAutoGetCashOnReconnect;
+        ReEnableAutoSneakOnReconnect    = dto.ReEnableAutoSneakOnReconnect;
+        ReEnableAutoHideOnReconnect     = dto.ReEnableAutoHideOnReconnect;
+        ReEnableAutoSearchOnReconnect   = dto.ReEnableAutoSearchOnReconnect;
     }
 
     private GeneralSettings ReadOrDefault()
@@ -281,6 +331,17 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnAmAutoSneakChanged(bool value)            => Dirty();
     partial void OnAmAutoHideChanged(bool value)             => Dirty();
     partial void OnAmAutoSearchChanged(bool value)           => Dirty();
+    partial void OnAllowHangupInAllOffModeChanged(bool value)         => Dirty();
+    partial void OnReEnableAutoCombatOnReconnectChanged(bool value)   => Dirty();
+    partial void OnReEnableAutoNukeOnReconnectChanged(bool value)     => Dirty();
+    partial void OnReEnableAutoHealRestOnReconnectChanged(bool value) => Dirty();
+    partial void OnReEnableAutoBlessOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoLightOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoGetItemsOnReconnectChanged(bool value) => Dirty();
+    partial void OnReEnableAutoGetCashOnReconnectChanged(bool value)  => Dirty();
+    partial void OnReEnableAutoSneakOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoHideOnReconnectChanged(bool value)     => Dirty();
+    partial void OnReEnableAutoSearchOnReconnectChanged(bool value)   => Dirty();
 
     /// <summary>
     /// Belt + braces on top of RadioButton.GroupName — the View's

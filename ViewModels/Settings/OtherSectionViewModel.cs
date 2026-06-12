@@ -76,17 +76,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Traps";
             yield return "@trap max searches";
             yield return "@trap max disarms";
-            yield return "Re-enable auto-actions on reconnect";
-            yield return "Re-enable Auto-Combat on reconnect";
-            yield return "Re-enable Auto-Nuke on reconnect";
-            yield return "Re-enable Auto-Heal/Rest on reconnect";
-            yield return "Re-enable Auto-Bless on reconnect";
-            yield return "Re-enable Auto-Light on reconnect";
-            yield return "Re-enable Auto-Get-Items on reconnect";
-            yield return "Re-enable Auto-Get-Cash on reconnect";
-            yield return "Re-enable Auto-Sneak on reconnect";
-            yield return "Re-enable Auto-Hide on reconnect";
-            yield return "Re-enable Auto-Search on reconnect";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -216,23 +205,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// beneficial spells on members during combat.</summary>
     [ObservableProperty] private bool _blessDuringCombat = true;
 
-    // ----- Re-enable auto-actions on reconnect (wired) -----
-    // One checkbox per auto-action, 1-to-1 with GeneralSettings.AutoMode.
-    // On a reconnect (TCP connect after a prior in-session disconnect),
-    // MainWindowViewModel flips each ticked action back ON in AutoMode.
-    // Default OFF — re-enabling automatically is opt-in.
-
-    [ObservableProperty] private bool _reEnableAutoCombatOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoNukeOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoHealRestOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoBlessOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoLightOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoGetItemsOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoGetCashOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoSneakOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoHideOnReconnect;
-    [ObservableProperty] private bool _reEnableAutoSearchOnReconnect;
-
     // ----- Run-away (flee) behaviour (wired — HealthManager) -----
     // Both map onto existing OtherSettings fields that HealthManager.TryFlee
     // already reads live through the resolver; the VM just round-trips them
@@ -252,15 +224,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// Maps onto <see cref="OtherSettings.BreakBeforeFleeing"/>.
     /// </summary>
     [ObservableProperty] private bool _breakBeforeFleeing = true;
-
-    /// <summary>
-    /// When checked, the emergency-hangup branch of HealthManager stays
-    /// live even while every Auto-* engine is off — so a character left in
-    /// fully-manual mode still drops the line if HP falls to the hangup
-    /// threshold. Default false (opt-in). Maps onto
-    /// <see cref="OtherSettings.AllowHangupInAllOffMode"/>.
-    /// </summary>
-    [ObservableProperty] private bool _allowHangupInAllOffMode;
 
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
@@ -288,9 +251,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
-            // "Allow hangup in all-off mode" graduated to a wired checkbox
-            // (HealthManager runs only the emergency-hangup branch when every
-            // Auto-* engine is off and OtherSettings.AllowHangupInAllOffMode set).
+            // "Allow hangup in all-off mode" graduated to a wired checkbox on
+            // the General tab (HealthManager runs only the emergency-hangup
+            // branch when every Auto-* engine is off and
+            // GeneralSettings.AllowHangupInAllOffMode set).
             // Removed per user direction: "Hangup if naked".
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
             // Removed per user direction: "Backwards if warning" (nonsense),
@@ -369,17 +333,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             BlessDuringCombat = BlessDuringCombat,
             RunDirection = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
             BreakBeforeFleeing = BreakBeforeFleeing,
-            AllowHangupInAllOffMode = AllowHangupInAllOffMode,
-            ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
-            ReEnableAutoNukeOnReconnect     = ReEnableAutoNukeOnReconnect,
-            ReEnableAutoHealRestOnReconnect = ReEnableAutoHealRestOnReconnect,
-            ReEnableAutoBlessOnReconnect    = ReEnableAutoBlessOnReconnect,
-            ReEnableAutoLightOnReconnect    = ReEnableAutoLightOnReconnect,
-            ReEnableAutoGetItemsOnReconnect = ReEnableAutoGetItemsOnReconnect,
-            ReEnableAutoGetCashOnReconnect  = ReEnableAutoGetCashOnReconnect,
-            ReEnableAutoSneakOnReconnect    = ReEnableAutoSneakOnReconnect,
-            ReEnableAutoHideOnReconnect     = ReEnableAutoHideOnReconnect,
-            ReEnableAutoSearchOnReconnect   = ReEnableAutoSearchOnReconnect,
         };
 
         profile.Settings ??= new();
@@ -445,17 +398,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         BlessDuringCombat = dto.BlessDuringCombat;
         GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
         BreakBeforeFleeing = dto.BreakBeforeFleeing;
-        AllowHangupInAllOffMode = dto.AllowHangupInAllOffMode;
-        ReEnableAutoCombatOnReconnect   = dto.ReEnableAutoCombatOnReconnect;
-        ReEnableAutoNukeOnReconnect     = dto.ReEnableAutoNukeOnReconnect;
-        ReEnableAutoHealRestOnReconnect = dto.ReEnableAutoHealRestOnReconnect;
-        ReEnableAutoBlessOnReconnect    = dto.ReEnableAutoBlessOnReconnect;
-        ReEnableAutoLightOnReconnect    = dto.ReEnableAutoLightOnReconnect;
-        ReEnableAutoGetItemsOnReconnect = dto.ReEnableAutoGetItemsOnReconnect;
-        ReEnableAutoGetCashOnReconnect  = dto.ReEnableAutoGetCashOnReconnect;
-        ReEnableAutoSneakOnReconnect    = dto.ReEnableAutoSneakOnReconnect;
-        ReEnableAutoHideOnReconnect     = dto.ReEnableAutoHideOnReconnect;
-        ReEnableAutoSearchOnReconnect   = dto.ReEnableAutoSearchOnReconnect;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -525,17 +467,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnBlessDuringCombatChanged(bool value) => MarkDirty();
     partial void OnGoBackwardsIfRunningChanged(bool value) => MarkDirty();
     partial void OnBreakBeforeFleeingChanged(bool value) => MarkDirty();
-    partial void OnAllowHangupInAllOffModeChanged(bool value) => MarkDirty();
-    partial void OnReEnableAutoCombatOnReconnectChanged(bool value)   => MarkDirty();
-    partial void OnReEnableAutoNukeOnReconnectChanged(bool value)     => MarkDirty();
-    partial void OnReEnableAutoHealRestOnReconnectChanged(bool value) => MarkDirty();
-    partial void OnReEnableAutoBlessOnReconnectChanged(bool value)    => MarkDirty();
-    partial void OnReEnableAutoLightOnReconnectChanged(bool value)    => MarkDirty();
-    partial void OnReEnableAutoGetItemsOnReconnectChanged(bool value) => MarkDirty();
-    partial void OnReEnableAutoGetCashOnReconnectChanged(bool value)  => MarkDirty();
-    partial void OnReEnableAutoSneakOnReconnectChanged(bool value)    => MarkDirty();
-    partial void OnReEnableAutoHideOnReconnectChanged(bool value)     => MarkDirty();
-    partial void OnReEnableAutoSearchOnReconnectChanged(bool value)   => MarkDirty();
 
     private void MarkDirty()
     {

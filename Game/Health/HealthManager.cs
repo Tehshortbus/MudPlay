@@ -86,6 +86,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Map.Direction?>? _getLastSentDirection;
     private readonly Func<Models.Profile.OtherSettings>? _readOtherSettings;
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
+    private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
     private readonly LogService? _log;
 
@@ -135,6 +136,7 @@ public sealed class HealthManager : IDisposable
                getLastSentDirection: null,
                readOtherSettings: null,
                readCombatSettings: null,
+               readGeneralSettings: null,
                hasEngageableHostiles: null,
                log) { }
 
@@ -154,6 +156,9 @@ public sealed class HealthManager : IDisposable
     /// <item><c>readOtherSettings</c> — for
     /// <see cref="Models.Profile.OtherSettings.RunDirection"/> and
     /// <see cref="Models.Profile.OtherSettings.BreakBeforeFleeing"/>.</item>
+    /// <item><c>readGeneralSettings</c> — for
+    /// <see cref="Models.Profile.GeneralSettings.AllowHangupInAllOffMode"/>,
+    /// the emergency-hangup carve-out.</item>
     /// <item><c>hasEngageableHostiles</c> — returns true while the room
     /// contains at least one engageable monster. Gates the rest-out
     /// branch so we don't spam <c>rest</c> every tick while a hostile
@@ -173,6 +178,7 @@ public sealed class HealthManager : IDisposable
         Func<Map.Direction?>? getLastSentDirection,
         Func<Models.Profile.OtherSettings>? readOtherSettings,
         Func<Models.Profile.CombatSettings>? readCombatSettings,
+        Func<Models.Profile.GeneralSettings>? readGeneralSettings,
         Func<bool>? hasEngageableHostiles,
         LogService? log = null)
     {
@@ -189,6 +195,7 @@ public sealed class HealthManager : IDisposable
         _getLastSentDirection = getLastSentDirection;
         _readOtherSettings = readOtherSettings;
         _readCombatSettings = readCombatSettings;
+        _readGeneralSettings = readGeneralSettings;
         _hasEngageableHostiles = hasEngageableHostiles;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
@@ -310,7 +317,7 @@ public sealed class HealthManager : IDisposable
             // it stays opt-in (default off) since hanging up is a last
             // resort. Only the hangup branch runs; everything else above
             // already cleared.
-            if (_readOtherSettings?.Invoke() is { AllowHangupInAllOffMode: true }
+            if (_readGeneralSettings?.Invoke() is { AllowHangupInAllOffMode: true }
                 && _state.HasPromptData && (_state.Hp > 0 || _state.Ma > 0))
             {
                 TryEmergencyHangup(_readSettings());
@@ -531,7 +538,7 @@ public sealed class HealthManager : IDisposable
     /// log captures it for postmortem. Defaults: HangIfBelowHp=5 (%).
     /// Setting it to 0 disables the check entirely (no false positives on
     /// dead/respawned chars). Called from the normal evaluate path and —
-    /// when <see cref="Models.Profile.OtherSettings.AllowHangupInAllOffMode"/>
+    /// when <see cref="Models.Profile.GeneralSettings.AllowHangupInAllOffMode"/>
     /// is set — from the engine-disabled carve-out.
     /// </summary>
     private void TryEmergencyHangup(HealthSettings s)

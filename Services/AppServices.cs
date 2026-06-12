@@ -1823,6 +1823,8 @@ public sealed class AppServices
                 ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
             readCombatSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            readGeneralSettings: () =>
+                ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General"),
             // Don't try to rest while engageable hostiles are in the
             // room — every combat round would otherwise break rest.
             // CombatStateTracker owns the same boolean it uses to

@@ -26,9 +26,14 @@ public sealed class HealthManagerTests
         public bool AutoHealRestEnabled { get; set; } = true;
 
         /// <summary>Char-tier Other settings. Default instance has every
-        /// flag at its DTO default (AllowHangupInAllOffMode=false), so the
-        /// all-off carve-out stays dormant unless a test opts in.</summary>
+        /// flag at its DTO default, so the dependent branches stay dormant
+        /// unless a test opts in.</summary>
         public OtherSettings Other { get; set; } = new();
+
+        /// <summary>Char-tier General settings. Default instance has
+        /// AllowHangupInAllOffMode=false, so the all-off carve-out stays
+        /// dormant unless a test opts in.</summary>
+        public Models.Profile.GeneralSettings General { get; set; } = new();
 
         /// <summary>User-configured hangup command (Settings → BBS →
         /// Game-menu commands). Default <c>=x</c> matches the default
@@ -54,6 +59,7 @@ public sealed class HealthManagerTests
                 getLastSentDirection: null,
                 readOtherSettings: () => Other,
                 readCombatSettings: null,
+                readGeneralSettings: () => General,
                 hasEngageableHostiles: () => HostilesPresent,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
@@ -682,6 +688,7 @@ public sealed class HealthManagerTests
                 getLastSentDirection: () => LastSent,
                 readOtherSettings: () => Other,
                 readCombatSettings: () => Combat,
+                readGeneralSettings: null,
                 hasEngageableHostiles: () => HostilesPresent,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
@@ -1011,7 +1018,7 @@ public sealed class HealthManagerTests
         // Engine disabled but the opt-in keeps the emergency hangup live.
         using Harness h = new();
         h.AutoHealRestEnabled = false;
-        h.Other = new OtherSettings { AllowHangupInAllOffMode = true };
+        h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
@@ -1025,7 +1032,7 @@ public sealed class HealthManagerTests
         // Engine disabled and carve-out off (default) — fully dormant.
         using Harness h = new();
         h.AutoHealRestEnabled = false;
-        // h.Other left at default (AllowHangupInAllOffMode = false)
+        // h.General left at default (AllowHangupInAllOffMode = false)
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 5;
@@ -1039,7 +1046,7 @@ public sealed class HealthManagerTests
         // Carve-out on but HP healthy — no spurious hangup.
         using Harness h = new();
         h.AutoHealRestEnabled = false;
-        h.Other = new OtherSettings { AllowHangupInAllOffMode = true };
+        h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 50;       // 25% — above 5% hang threshold
