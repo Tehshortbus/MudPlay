@@ -45,6 +45,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
     private Func<bool>? _shouldDisarmTrap;
+    private Action<string, Action<string>>? _trapDelegator;
+    private Func<bool>? _canDelegateTrap;
+    private Action? _trapDelegateStopAll;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
@@ -250,6 +253,47 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(gate);
         _shouldDisarmTrap = gate;
+    }
+
+    /// <summary>
+    /// Party-delegation enqueuer — the walker calls this when the local
+    /// character can't disarm a trap but a capable party member can. It
+    /// broadcasts <c>@trap &lt;dir&gt;</c> on say and resumes the walk on
+    /// the member's say reply via the same <see cref="OnTrapReply"/>
+    /// callback the local path uses. Bound to
+    /// <see cref="Game.TrapDelegationManager.Delegate"/>. The two paths
+    /// share the resume callback but keep their signal SOURCES distinct —
+    /// local keys on the game's first-person disarm signals, delegation on
+    /// the member's say reply.
+    /// </summary>
+    public void SetTrapDelegator(Action<string, Action<string>> delegator)
+    {
+        ArgumentNullException.ThrowIfNull(delegator);
+        _trapDelegator = delegator;
+    }
+
+    /// <summary>
+    /// Gate for the party-delegation branch. Returns <c>true</c> when the
+    /// "Utilize disarm traps if able" toggle is on, the LOCAL character
+    /// can't disarm, AND at least one party member can — i.e. the "if
+    /// able" clause is satisfied by party ability rather than our own.
+    /// </summary>
+    public void SetTrapDelegateGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _canDelegateTrap = gate;
+    }
+
+    /// <summary>
+    /// Delegation teardown — bound to
+    /// <see cref="Game.TrapDelegationManager.Cancel"/>. Called from
+    /// <see cref="Reset"/> when a walk is superseded mid-delegation so a
+    /// later stray say reply can't resume a dead walk.
+    /// </summary>
+    public void SetTrapDelegateStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _trapDelegateStopAll = stopAll;
     }
 
     /// <summary>
@@ -518,6 +562,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
             string dirWord = DirectionWord(step.Direction);
             if (_shouldDisarmTrap?.Invoke() ?? true)
             {
+                // Local character has the Traps skill — disarm it ourselves.
+                // The self path keys on the game's first-person disarm
+                // signals (via TrapDisarmManager), never on say replies.
                 _awaitingTrapDisarm = true;
                 Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
                     $"trap on {dirWord}", _destination));
@@ -526,7 +573,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 return;
             }
 
-            // Disarm gated off (toggle disabled or no Traps skill) — step
+            // Local can't disarm — delegate to a capable party member when
+            // one exists (the "if able" clause includes party ability). The
+            // delegator broadcasts @trap on say and resumes us on the
+            // member's say reply.
+            if (_trapDelegator is not null && (_canDelegateTrap?.Invoke() ?? false))
+            {
+                _awaitingTrapDisarm = true;
+                Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
+                    $"delegating trap on {dirWord} to party", _destination));
+                _log?.Info("Walker",
+                    $"step {_index + 1}/{_path!.Count}: delegate trap {dirWord} to party");
+                _trapDelegator(dirWord, OnTrapReply);
+                return;
+            }
+
+            // Disarm gated off (toggle disabled or nobody able) — step
             // through the trapped exit without a disarm attempt. Falls
             // through to the normal move emit below.
             _log?.Info("Walker",
@@ -1106,6 +1168,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // skip the late reply that arrives after StopAll.
         if (_awaitingDoorOpen)      _doorStopAll?.Invoke();
         if (_awaitingHiddenReveal)  _hiddenSearchStopAll?.Invoke();
+        // Drop a pending party-delegation watch so a stray say reply can't
+        // resume a superseded walk. Harmless when the trap was local-only.
+        if (_awaitingTrapDisarm)    _trapDelegateStopAll?.Invoke();
 
         _path = null;
         _index = 0;

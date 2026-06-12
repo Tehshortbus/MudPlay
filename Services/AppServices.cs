@@ -285,6 +285,16 @@ public sealed class AppServices
     public Game.TrapDisarmManager TrapDisarm { get; }
 
     /// <summary>
+    /// Party-member trap delegation — when the local character can't
+    /// disarm a trapped exit but a capable party member can, broadcasts
+    /// <c>@trap &lt;dir&gt;</c> on say and resumes the walk on the
+    /// member's say reply. Capability via class (main gate) + race
+    /// (secondary). Distinct from <see cref="TrapDisarm"/>, which owns the
+    /// LOCAL self-disarm path keyed on the game's first-person signals.
+    /// </summary>
+    public Game.TrapDelegationManager TrapDelegation { get; }
+
+    /// <summary>
     /// Walker's door-handling FSM — bash / pick / open with
     /// configurable attempt caps. Subscribes to <see cref="Router"/>
     /// for the door-message patterns; the walker calls
@@ -1320,6 +1330,7 @@ public sealed class AppServices
         // OtherSettings cadence knobs bind in MainWindowVM /
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
+        TrapDelegation = new Game.TrapDelegationManager(Party, Players, GameData, Router, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
         // Phase 7 PR 7.23 — @goto / @loop / @lair / @stop / @rego land
@@ -2031,6 +2042,17 @@ public sealed class AppServices
         Walker.SetTrapDisarmGate(() =>
             Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
             && TrapDisarm.CanDisarm);
+        // Party-delegation half of "if able": same toggle, but the LOCAL
+        // character can't disarm AND a capable party member can. The
+        // walker tries the local gate first, then this; the delegation
+        // manager broadcasts @trap on say and resumes on the member's
+        // say reply (a signal source kept distinct from the self path).
+        Walker.SetTrapDelegator(TrapDelegation.Delegate);
+        Walker.SetTrapDelegateGate(() =>
+            Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
+            && !TrapDisarm.CanDisarm
+            && TrapDelegation.AnyPartyMemberCanDisarm());
+        Walker.SetTrapDelegateStopper(TrapDelegation.Cancel);
         // PR 4.b — proactive pre-move sneak: `sn` goes out as the last
         // command before each walker move so the move itself is sneaked
         // (the reactive RoomTracker hook above only re-sneaks AFTER
