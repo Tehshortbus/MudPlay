@@ -1,3 +1,4 @@
+using FujinTerm.Game.Remote;
 using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -13,13 +14,15 @@ namespace FujinTerm.Game.Conditions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Set</b> — when a member running FujinTerm catches a curable ailment, the
-/// outbound <see cref="AilmentSyncEngine"/> announces <c>.@poisoned</c> /
-/// <c>.@blind</c> / <c>.@confused</c> / <c>.@diseased</c> on say. The leading
-/// period is the say-shortcut, so other clients observe the bare token
-/// (<c>Forged says "@poisoned"</c>). We match that on the
+/// <b>Set</b> — when a member running FujinTerm catches a curable ailment (or is
+/// held), the outbound <see cref="AilmentSyncEngine"/> announces
+/// <c>.@poisoned</c> / <c>.@blind</c> / <c>.@confused</c> / <c>.@diseased</c> /
+/// <c>.@held</c> on say. The leading period is the say-shortcut, so other clients
+/// observe the bare token (<c>Forged says "@poisoned"</c>). We match that on the
 /// <see cref="ChatChannel.Local"/> channel and set the speaker's chip via
-/// <see cref="PartyManager.SetMemberAilment"/>. Our own announce echoes as
+/// <see cref="PartyManager.SetMemberAilment"/>. <c>@held</c> additionally pauses
+/// the leader through <see cref="PartyEssentialHandlers.NotePause"/> — a held
+/// member can't move, so the party waits for them. Our own announce echoes as
 /// <c>You say "@poisoned"</c> with a null speaker, so it's ignored here (our
 /// state is owned by <see cref="ConditionTracker"/>).
 /// </para>
@@ -48,17 +51,20 @@ public sealed class PartyAilmentTracker : IDisposable
     public const string LogCategory = "PartyAilment";
 
     // Inbound say tokens (period already stripped by the say-shortcut). Mirrors
-    // AilmentSyncEngine's outbound table minus the leading '.'.
+    // AilmentSyncEngine's outbound table minus the leading '.'. Held
+    // (MovementPrevented) additionally pauses the leader — see OnChat.
     private static readonly (string Token, MessageFlags Flag)[] Tokens =
     {
         ("@poisoned", MessageFlags.Poisoned),
         ("@blind",    MessageFlags.Blinded),
         ("@confused", MessageFlags.Confused),
         ("@diseased", MessageFlags.Diseased),
+        ("@held",     MessageFlags.MovementPrevented),
     };
 
     private readonly ChatRouter _chat;
     private readonly PartyManager _party;
+    private readonly PartyEssentialHandlers _essentials;
     private readonly Func<IReadOnlyList<CureCastMatcher>> _readCureMatchers;
     private readonly LogService? _log;
     private LineExtractor? _lines;
@@ -67,14 +73,17 @@ public sealed class PartyAilmentTracker : IDisposable
     public PartyAilmentTracker(
         ChatRouter chat,
         PartyManager party,
+        PartyEssentialHandlers essentials,
         Func<IReadOnlyList<CureCastMatcher>> readCureMatchers,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
         ArgumentNullException.ThrowIfNull(party);
+        ArgumentNullException.ThrowIfNull(essentials);
         ArgumentNullException.ThrowIfNull(readCureMatchers);
         _chat = chat;
         _party = party;
+        _essentials = essentials;
         _readCureMatchers = readCureMatchers;
         _log = log;
         _chat.EntryClassified += OnChat;
@@ -106,6 +115,12 @@ public sealed class PartyAilmentTracker : IDisposable
         {
             if (!msg.Equals(token, StringComparison.OrdinalIgnoreCase)) continue;
             _party.SetMemberAilment(entry.Speaker, flag, true);
+            // Held also pauses the leader: a held member can't move, so the
+            // party must wait for them exactly as an explicit @wait would.
+            // The held member's own @ok (sent on cure / last-clear) releases
+            // it via PartyEssentialHandlers.OnOk.
+            if (flag == MessageFlags.MovementPrevented)
+                _essentials.NotePause(entry.Speaker);
             _log?.Info(LogCategory, $"inbound {token} from {entry.Speaker}");
             return;
         }

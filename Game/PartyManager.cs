@@ -1136,8 +1136,8 @@ public sealed partial class PartyManager : IDisposable
     /// does NOT create a roster row for an unknown speaker, so a non-party
     /// player's <c>.@poisoned</c> say can't conjure a phantom member. No-op
     /// when the named member isn't present or <paramref name="ailment"/> isn't
-    /// one of the four surfaced ailment bits (Poisoned / Blinded / Confused /
-    /// Diseased). Routes the write through the manager so the
+    /// one of the surfaced ailment bits (Poisoned / Blinded / Confused /
+    /// Diseased / MovementPrevented). Routes the write through the manager so the
     /// <see cref="OwnerAttribute"/>-marked <see cref="PartyMember"/> fields keep
     /// a single writer (the Phase 3 PR 3.5 IL scan enforces this).
     /// </summary>
@@ -1154,6 +1154,7 @@ public sealed partial class PartyManager : IDisposable
                 case Models.GameData.MessageFlags.Blinded:  m.Blinded  = active; break;
                 case Models.GameData.MessageFlags.Confused: m.Confused = active; break;
                 case Models.GameData.MessageFlags.Diseased: m.Diseased = active; break;
+                case Models.GameData.MessageFlags.MovementPrevented: m.Held = active; break;
             }
             return;
         }

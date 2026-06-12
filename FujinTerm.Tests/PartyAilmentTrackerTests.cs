@@ -1,5 +1,6 @@
 using FujinTerm.Game;
 using FujinTerm.Game.Conditions;
+using FujinTerm.Game.Remote;
 using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -11,9 +12,11 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// PR B inbound ailment-sync: a party member's <c>.@poisoned</c> /
-/// <c>.@blind</c> / <c>.@confused</c> / <c>.@diseased</c> announce on say sets
-/// their <see cref="PartyMember"/> chip; observing OUR cure spell land on the
-/// member clears it.
+/// <c>.@blind</c> / <c>.@confused</c> / <c>.@diseased</c> / <c>.@held</c>
+/// announce on say sets their <see cref="PartyMember"/> chip; observing OUR
+/// cure spell land on the member clears it. <c>.@held</c> additionally pauses
+/// the leader via <see cref="PartyEssentialHandlers.NotePause"/> (same gate an
+/// explicit <c>@wait</c> uses), released by the held member's own <c>@ok</c>.
 /// </summary>
 public sealed class PartyAilmentTrackerTests
 {
@@ -26,6 +29,10 @@ public sealed class PartyAilmentTrackerTests
         public ChatRouter Chat { get; }
         public PartyState State { get; } = new();
         public PartyManager Party { get; }
+        public PlayerState Player { get; } = new();
+        public PlayerDatabase Players { get; } = new();
+        public RemoteCommandManager Engine { get; }
+        public PartyEssentialHandlers Essentials { get; }
         public LineExtractor Lines { get; }
         public PartyAilmentTracker Tracker { get; }
         public List<CureCastMatcher> Cures { get; } = new();
@@ -35,9 +42,11 @@ public sealed class PartyAilmentTrackerTests
             DefaultPatterns.Seed(Router);
             Chat = new ChatRouter(Router);
             Party = new PartyManager(Router, State);
+            Engine = new RemoteCommandManager(Chat, State, Players);
+            Essentials = new PartyEssentialHandlers(Engine, Player, State);
             Terminal.TerminalEmulator emulator = new(80, 24);
             Lines = new LineExtractor(emulator);
-            Tracker = new PartyAilmentTracker(Chat, Party, () => Cures);
+            Tracker = new PartyAilmentTracker(Chat, Party, Essentials, () => Cures);
             Tracker.AttachLineExtractor(Lines);
         }
 
@@ -62,7 +71,12 @@ public sealed class PartyAilmentTrackerTests
                 handler(Line(text));
         }
 
-        public void Dispose() => Tracker.Dispose();
+        public void Dispose()
+        {
+            Tracker.Dispose();
+            Essentials.Dispose();
+            Engine.Dispose();
+        }
     }
 
     // ----- SET path (inbound say announce → chip) --------------------
@@ -112,6 +126,36 @@ public sealed class PartyAilmentTrackerTests
     }
 
     [Fact]
+    public void InboundHeld_SetsChipAndPausesLeader()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+
+        h.Say(@"Forged says ""@held""");
+
+        // Held sets the chip like any other ailment AND pauses the leader:
+        // a held member can't move, so the party waits for them exactly as an
+        // explicit @wait would. The hold is released by the member's own @ok.
+        Assert.True(forged.Held);
+        Assert.Contains("Forged", h.Essentials.WaitingMembers);
+        Assert.True(h.Essentials.IsPaused);
+    }
+
+    [Fact]
+    public void OwnHeldEcho_DoesNotPauseOrSetChip()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+
+        // Our own .@held echoes as "You say" → null speaker → ignored; our
+        // own movement-prevented state is owned by ConditionTracker, not here.
+        h.Say(@"You say ""@held""");
+
+        Assert.False(forged.Held);
+        Assert.False(h.Essentials.IsPaused);
+    }
+
+    [Fact]
     public void OwnEcho_DoesNotSetAnyChip()
     {
         using Harness h = new();
@@ -155,6 +199,25 @@ public sealed class PartyAilmentTrackerTests
         h.EmitLine("You cast cure-poison on Forged!");
 
         Assert.False(forged.Poisoned);
+    }
+
+    [Fact]
+    public void CureHoldsLanding_ClearsHeldChip()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+        h.Say(@"Forged says ""@held""");
+        Assert.True(forged.Held);
+
+        // Held is curable (e.g. Druid "freedom"); observing the cure-holds
+        // spell land on the member clears the chip like every other ailment.
+        h.Cures.Add(new CureCastMatcher(
+            MessageFlags.MovementPrevented, "freedom",
+            CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!));
+
+        h.EmitLine("You cast freedom on Forged!");
+
+        Assert.False(forged.Held);
     }
 
     [Fact]

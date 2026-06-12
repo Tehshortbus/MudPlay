@@ -13,8 +13,10 @@ namespace FujinTerm.Tests;
 /// Outbound ailment-sync (<see cref="AilmentSyncEngine"/>): on a local
 /// curable ailment, announce <c>.@poisoned</c> etc. on say (so other
 /// FujinTerm clients mirror our state) and <c>@wait</c> the leader; on
-/// clear, <c>@ok</c> the leader. DoNotAnnounce* gates the say,
-/// Ignore* gates the @wait — independently.
+/// clear, <c>@ok</c> the leader. The say only fires when in a party AND no
+/// cure spell is configured for that ailment; DoNotAnnounce* further gates
+/// the say, Ignore* gates the @wait — independently. Held announces
+/// <c>.@held</c> but never telepaths <c>@wait</c> (its pause rides the say).
 /// </summary>
 public sealed class AilmentSyncEngineTests
 {
@@ -27,6 +29,9 @@ public sealed class AilmentSyncEngineTests
         public AilmentSyncEngine Engine { get; }
         public OtherSettings Other { get; set; } = new();
 
+        /// <summary>Ailment flags the player has a cure spell configured for.</summary>
+        public MessageFlags CureConfigured { get; set; } = MessageFlags.None;
+
         /// <summary>Say-channel wire (engine's own sender).</summary>
         public List<string> Say { get; } = new();
 
@@ -38,7 +43,11 @@ public sealed class AilmentSyncEngineTests
             Tracker = new ConditionTracker(Messages, null);
             Rest = new PartyRestSync(Party);
             Rest.SetWireSender(b => Telepath.Add(Encoding.Latin1.GetString(b)));
-            Engine = new AilmentSyncEngine(Tracker, Rest, () => Other, null);
+            Engine = new AilmentSyncEngine(
+                Tracker, Rest, () => Other,
+                isInParty: () => Party.IsInParty,
+                hasCureConfigured: f => (CureConfigured & f) != MessageFlags.None,
+                log: null);
             Engine.SetWireSender(b => Say.Add(Encoding.Latin1.GetString(b)));
 
             // Follower in a party so @wait / @ok can fire.
@@ -86,6 +95,7 @@ public sealed class AilmentSyncEngineTests
         h.Messages.Messages.Add(Ailment("Blind",   MessageFlags.Blinded,  "blinded!",  "vision returns."));
         h.Messages.Messages.Add(Ailment("Confuse", MessageFlags.Confused, "confused!", "head clears."));
         h.Messages.Messages.Add(Ailment("Disease", MessageFlags.Diseased, "diseased!", "disease fades."));
+        h.Messages.Messages.Add(Ailment("Held",    MessageFlags.MovementPrevented, "cannot move!", "can move again."));
     }
 
     [Fact]
@@ -187,6 +197,97 @@ public sealed class AilmentSyncEngineTests
     }
 
     [Fact]
+    public void Held_AnnouncesSay_ButNeverTelepathsWait()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You cannot move!");
+
+        // .@held doubles as the "cure my hold" identifier; the leader-pause
+        // is driven by that say on the receiving side, so NO @wait telepath.
+        Assert.Equal(".@held\r", Assert.Single(h.Say));
+        Assert.Empty(h.Telepath);
+    }
+
+    [Fact]
+    public void Held_Cleared_SendsOk()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You cannot move!");
+        h.Feed("You can move again.");
+
+        // The silent Held reason still balances: @ok releases the say-driven
+        // pause on clear, even though no @wait was ever telepathed.
+        Assert.Equal("/Leader @ok\r", Assert.Single(h.Telepath));
+    }
+
+    [Fact]
+    public void HeldThenPoisoned_OkOnlyWhenBothClear()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You cannot move!");       // silent Held reason, .@held say
+        h.Feed("You have been poisoned!"); // poison: say + (suppressed) @wait — leader already paused via @held
+        Assert.Empty(h.Telepath);          // no @wait telepath yet (Held holds the 0→1 slot silently)
+
+        h.Feed("You can move again.");      // Held clears; poison still holds
+        Assert.Empty(h.Telepath);
+
+        h.Feed("The poison wears off.");    // last reason clears → @ok
+        Assert.Equal("/Leader @ok\r", Assert.Single(h.Telepath));
+    }
+
+    [Fact]
+    public void NotInParty_SuppressesSay()
+    {
+        using Harness h = new();
+        SeedAll(h);
+        h.Party.IsInParty = false;
+
+        h.Feed("You have been poisoned!");
+
+        // Out of a party there's no one to tell — no say, and CanSignal also
+        // blocks the @wait on the wire.
+        Assert.Empty(h.Say);
+        Assert.Empty(h.Telepath);
+    }
+
+    [Fact]
+    public void CureConfigured_SuppressesSay_ButWaitStillFires()
+    {
+        using Harness h = new();
+        SeedAll(h);
+        h.CureConfigured = MessageFlags.Poisoned;   // we self-cure poison
+
+        h.Feed("You have been poisoned!");
+
+        // We can clear it ourselves, so no broadcast — but the @wait still
+        // pauses the leader while we cast (the cure gate is say-only).
+        Assert.Empty(h.Say);
+        Assert.Equal("/Leader @wait\r", Assert.Single(h.Telepath));
+    }
+
+    [Fact]
+    public void CureHoldsConfigured_SuppressesHeldSay_AndNoOk()
+    {
+        using Harness h = new();
+        SeedAll(h);
+        h.CureConfigured = MessageFlags.MovementPrevented;  // we self-cure holds
+
+        h.Feed("You cannot move!");
+        h.Feed("You can move again.");
+
+        // Self-cure: nothing announced, and because the Held reason is only
+        // registered when we announce, there's no @ok either.
+        Assert.Empty(h.Say);
+        Assert.Empty(h.Telepath);
+    }
+
+    [Fact]
     public void NoSayWireSender_DoesNotThrow()
     {
         // Engine with no say sender bound — the announce path must no-op
@@ -195,7 +296,13 @@ public sealed class AilmentSyncEngineTests
         ConditionTracker tracker = new(messages, null);
         PartyState party = new();
         PartyRestSync rest = new(party);
-        using AilmentSyncEngine engine = new(tracker, rest, () => new OtherSettings(), null);
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+        using AilmentSyncEngine engine = new(
+            tracker, rest, () => new OtherSettings(),
+            isInParty: () => party.IsInParty,
+            hasCureConfigured: _ => false,
+            log: null);
         messages.Messages.Add(Ailment("Poison", MessageFlags.Poisoned, "poisoned!", "poison wears off."));
 
         var emitted = new LineExtractor.EmittedLine(

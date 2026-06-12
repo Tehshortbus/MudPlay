@@ -26,4 +26,14 @@ public enum WaitReason
 
     /// <summary>Local character is diseased.</summary>
     Disease,
+
+    /// <summary>
+    /// Local character is held (movement-prevented). Registered silently
+    /// — the held announce travels on say as <c>.@held</c> and the leader
+    /// is paused directly by the inbound say handler, not by an <c>@wait</c>
+    /// telepath. The reason still participates in the balanced
+    /// <c>@ok</c>-on-last-clear so a held player who is also poisoned doesn't
+    /// release the wait prematurely.
+    /// </summary>
+    Held,
 }

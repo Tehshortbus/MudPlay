@@ -1865,25 +1865,32 @@ public sealed class AppServices
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
 
         // AilmentSyncEngine — outbound ailment broadcast. On catching a
-        // curable ailment it announces ".@poisoned" etc. on say (so other
-        // FujinTerm clients mirror our state) and @waits the leader; on
-        // clear it @oks. Gated per-ailment by OtherSettings DoNotAnnounce*
-        // (say) and Ignore* (@wait). Wire-sender for the say bound in
-        // MainWindowViewModel; the @wait routes via PartyRest's own sender.
+        // curable ailment (or being held) it announces ".@poisoned" /
+        // ".@held" etc. on say (so other FujinTerm clients mirror our state
+        // and a cure-holds caster can free us) and, for the curable four,
+        // @waits the leader; on clear it @oks. The say only fires when we're
+        // in a party AND have no cure spell configured for that ailment (we
+        // self-cure silently otherwise); held rides its say-pause with no
+        // @wait. Per-ailment OtherSettings DoNotAnnounce* (say) and Ignore*
+        // (@wait) gate the curable four on top. Wire-sender for the say bound
+        // in MainWindowViewModel; the @wait routes via PartyRest's own sender.
         AilmentSync = new Game.Conditions.AilmentSyncEngine(
             Conditions, PartyRest,
             readOther: () => ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
+            isInParty: () => PartyState.IsInParty,
+            hasCureConfigured: HasCureConfigured,
             log: Log);
 
         // PartyAilmentTracker — inbound counterpart. Mirrors a member's
-        // ".@poisoned" etc. say announce onto their party chip (via
-        // PartyManager, the chip-field owner) and clears the chip when OUR
-        // cure spell is observed landing on them. The cure matchers are read
-        // live each line so re-configuring a cure spell takes effect without
+        // ".@poisoned" / ".@held" etc. say announce onto their party chip (via
+        // PartyManager, the chip-field owner), pauses the leader on ".@held"
+        // (via PartyEssentials.NotePause), and clears the chip when OUR cure
+        // spell is observed landing on them. The cure matchers are read live
+        // each line so re-configuring a cure spell takes effect without
         // rebuilding the tracker. AttachLineExtractor lands in
         // MainWindowViewModel alongside the other line consumers.
         PartyAilment = new Game.Conditions.PartyAilmentTracker(
-            Chat, Party, CureCastMatchers, Log);
+            Chat, Party, PartyEssentials, CureCastMatchers, Log);
 
         // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on
@@ -2388,8 +2395,8 @@ public sealed class AppServices
     /// Build the cure-confirmation matchers
     /// <see cref="Game.Conditions.PartyAilmentTracker"/> uses to clear a
     /// member's ailment chip when OUR cure spell lands on them. Each
-    /// configured cure spell (poison / disease / blindness) is resolved via
-    /// the live spellbook → its game-data
+    /// configured cure spell (poison / disease / blindness / holds) is resolved
+    /// via the live spellbook → its game-data
     /// <see cref="Models.GameData.MessageRecord.CasterMessage"/> →
     /// a <see cref="Game.Spells.CasterMessageMatcher"/>. Confusion has no
     /// cure spell, so it's never listed. Re-read on every call so
@@ -2399,10 +2406,11 @@ public sealed class AppServices
     {
         Models.Profile.SpellsSettings spells =
             ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
-        List<Game.Conditions.CureCastMatcher> list = new(3);
+        List<Game.Conditions.CureCastMatcher> list = new(4);
         Add(spells.CurePoisonSpell,    Models.GameData.MessageFlags.Poisoned);
         Add(spells.CureDiseaseSpell,   Models.GameData.MessageFlags.Diseased);
         Add(spells.CureBlindnessSpell, Models.GameData.MessageFlags.Blinded);
+        Add(spells.CureHoldsSpell,     Models.GameData.MessageFlags.MovementPrevented);
         return list;
 
         void Add(string? castCode, Models.GameData.MessageFlags ailment)
@@ -2411,6 +2419,30 @@ public sealed class AppServices
                 list.Add(new Game.Conditions.CureCastMatcher(
                     ailment, resolved.SpellName, resolved.Caster, resolved.Witness));
         }
+    }
+
+    /// <summary>
+    /// Whether the player has a cure spell configured (a non-blank cast code
+    /// in <see cref="Models.Profile.SpellsSettings"/>) for
+    /// <paramref name="ailment"/>. The <see cref="Game.Conditions.AilmentSyncEngine"/>
+    /// say-announce gate consults this — if we can self-cure an ailment we
+    /// clear it silently rather than broadcasting <c>.@poisoned</c> /
+    /// <c>.@held</c> to the party. Confusion has no cure field, so it always
+    /// reports unconfigured.
+    /// </summary>
+    private bool HasCureConfigured(Models.GameData.MessageFlags ailment)
+    {
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        string? code = ailment switch
+        {
+            Models.GameData.MessageFlags.Poisoned          => spells.CurePoisonSpell,
+            Models.GameData.MessageFlags.Diseased          => spells.CureDiseaseSpell,
+            Models.GameData.MessageFlags.Blinded           => spells.CureBlindnessSpell,
+            Models.GameData.MessageFlags.MovementPrevented  => spells.CureHoldsSpell,
+            _ => null,
+        };
+        return !string.IsNullOrWhiteSpace(code);
     }
 
     /// <summary>

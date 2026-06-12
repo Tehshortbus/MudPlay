@@ -66,11 +66,20 @@ public sealed class PartyRestSync : IDisposable
     /// Idempotent at the protocol level — the receiving leader's
     /// <see cref="Remote.PartyEssentialHandlers.OnWait"/> dedupes via
     /// a HashSet so repeat sends don't double-count.
+    /// <para>
+    /// <paramref name="announce"/> <c>false</c> registers the reason silently
+    /// — no <c>@wait</c> telepath ever fires for it. Used by the held ailment,
+    /// whose pause is driven by the inbound <c>.@held</c> say on the leader's
+    /// side; the reason still participates in the balanced
+    /// <c>@ok</c>-on-last-clear so a held-and-poisoned player doesn't release
+    /// the wait while still poisoned.
+    /// </para>
     /// </summary>
-    public void RequestWait(WaitReason reason)
+    public void RequestWait(WaitReason reason, bool announce = true)
     {
         bool wasEmpty = _waitReasons.Count == 0;
         if (!_waitReasons.Add(reason)) return;
+        if (!announce) return;
         if (!wasEmpty) return;
         if (!CanSignal()) return;
         Telepath(_party.LeaderName!, "@wait");

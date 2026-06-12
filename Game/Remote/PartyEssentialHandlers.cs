@@ -497,7 +497,20 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     // ----- @wait / @ok receive (pause-gate consumes in PR 6.7) ----------
 
-    private void OnWait(RemoteCommandContext ctx)
+    private void OnWait(RemoteCommandContext ctx) => NotePause(ctx.Sender);
+
+    /// <summary>
+    /// Register <paramref name="member"/> as asking the party to pause and
+    /// raise the gate on the 0→1 transition. Shared by the <c>@wait</c>
+    /// telepath handler and the inbound <c>.@held</c> say path
+    /// (<see cref="Conditions.PartyAilmentTracker"/>): a held member's say
+    /// pauses the leader exactly as an explicit <c>@wait</c> would, and the
+    /// member's eventual <c>@ok</c> (sent by their own
+    /// <see cref="AilmentSyncEngine"/> on last-clear) releases it via
+    /// <see cref="OnOk"/>. Honours the leader-side
+    /// <see cref="PartySettings.IgnoreWaitWhenLeading"/> opt-out.
+    /// </summary>
+    public void NotePause(string member)
     {
         // Leader-side opt-out: when we're leading and the user has set
         // "ignore @wait when leading", a follower's @wait must not pause
@@ -505,8 +518,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         if (_party.SelfIsLeader && _readPartySettings?.Invoke() is { IgnoreWaitWhenLeading: true })
             return;
         bool wasPaused = IsPaused;
-        WaitingMembers.Add(ctx.Sender);
-        SetMemberWaitFlag(ctx.Sender, true);
+        WaitingMembers.Add(member);
+        SetMemberWaitFlag(member, true);
         if (!wasPaused && IsPaused) PauseGateChanged?.Invoke(true);
     }
 
