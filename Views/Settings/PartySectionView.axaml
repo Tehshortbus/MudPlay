@@ -40,7 +40,6 @@
             <!-- ============ Party behavior ============ -->
             <!-- Target order / attack priority / attack order are owned by the
                  Combat tab; they're not duplicated here. -->
-            <TextBlock Classes="SectionHeader" Text="Party behavior"/>
             <Grid ColumnDefinitions="140,Auto,Auto,Auto,*" RowDefinitions="Auto" Margin="0,2,0,0">
 
                 <!-- Rank: Front / Mid / Back. Persisted; not yet consumed
@@ -64,10 +63,9 @@
                  AOE / party spell sharing one threshold; CastingDirector picks
                  single vs AOE at cast time based on how many members are below
                  it (see "Use party (AOE) heal when" below). -->
-            <TextBlock Classes="SectionHeader" Text="Party heal"/>
-
-            <!-- Column header. -->
-            <Grid ColumnDefinitions="120,230,12,230,*" Margin="0,2,0,0">
+            <!-- Column header. Extra top margin sets the heal block apart from
+                 the Rank row above now that the "Party heal" label is gone. -->
+            <Grid ColumnDefinitions="120,230,12,230,*" Margin="0,20,0,0">
                 <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Single-target"
                            Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
                 <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Party (AOE)"
@@ -105,7 +103,7 @@
             </Grid>
 
             <!-- Major: single + AOE pickers sharing the Major threshold. -->
-            <Grid ColumnDefinitions="120,230,12,230,*" RowDefinitions="Auto,Auto" Margin="0,10,0,0">
+            <Grid ColumnDefinitions="120,230,12,230,*" RowDefinitions="Auto,Auto" Margin="0,16,0,0">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Major"/>
                 <AutoCompleteBox Grid.Row="0" Grid.Column="1" Width="230" HorizontalAlignment="Left"
                                  Text="{Binding MajorPartyHealSpell, Mode=TwoWay}"
@@ -160,7 +158,7 @@
                  ticked. Row order is priority order. Class checkboxes come
                  live from the active set's Classes.json (rebuilt on set swap),
                  so the list grows / shrinks with whatever gamedata is loaded. -->
-            <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)"/>
+            <TextBlock Classes="SectionHeader" Text="Party bless (10 slots)" Margin="0,28,0,6"/>
             <ItemsControl ItemsSource="{Binding BlessSlots}" Margin="0,2,0,0">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:PartyBlessSlotViewModel">
