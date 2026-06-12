@@ -26,7 +26,7 @@ namespace FujinTerm.Game.GameData;
 /// gap visible.
 /// </para>
 /// </remarks>
-public static class MmudEnums
+public static class LookupEnums
 {
     private static readonly FrozenDictionary<int, string> ItemTypeNames = new Dictionary<int, string>
     {

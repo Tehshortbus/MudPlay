@@ -22,7 +22,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>Encum</c> is encumbrance, <c>Accy</c> is to-hit modifier,
 /// <c>StrReq</c> is strength prerequisite. Numeric enum cells
 /// (<c>ItemType</c>, <c>Worn</c>, <c>WeaponType</c>, <c>ArmourType</c>,
-/// <c>Currency</c>) are formatted via <see cref="MmudEnums"/> so the
+/// <c>Currency</c>) are formatted via <see cref="LookupEnums"/> so the
 /// grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather than the
 /// raw integers.
 /// </remarks>
@@ -69,11 +69,11 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["ItemType"]   = MmudEnums.FormatItemType,
-            ["Worn"]       = MmudEnums.FormatWornSlot,
-            ["WeaponType"] = MmudEnums.FormatWeaponType,
-            ["ArmourType"] = MmudEnums.FormatArmourType,
-            ["Currency"]   = MmudEnums.FormatCurrency,
+            ["ItemType"]   = LookupEnums.FormatItemType,
+            ["Worn"]       = LookupEnums.FormatWornSlot,
+            ["WeaponType"] = LookupEnums.FormatWeaponType,
+            ["ArmourType"] = LookupEnums.FormatArmourType,
+            ["Currency"]   = LookupEnums.FormatCurrency,
         };
 
     public IAsyncRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
@@ -197,8 +197,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             // ----- Details section (left pane) -----
             weight       = ReadString(el, "Encum");
             price        = FormatPrice(el);
-            itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
-            bodyLocation = worn == 0 ? "None" : (MmudEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
+            itemTypeText = LookupEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
+            bodyLocation = worn == 0 ? "None" : (LookupEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
             boughtSold   = ResolveBoughtSold(obtainedFrom);
 
             // ----- Other Info pane (right pane) -----
@@ -347,18 +347,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         1 => "2-Handed Blunt",
         2 => "1-Handed Sharp",
         3 => "2-Handed Sharp",
-        _ => MmudEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
+        _ => LookupEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
     };
 
     /// <summary>
     /// Armour-Type label, or empty when 0. Note the stock data has
-    /// ArmourType=0 mapping to "Natural" in <see cref="MmudEnums"/>; for
+    /// ArmourType=0 mapping to "Natural" in <see cref="LookupEnums"/>; for
     /// the dialog we treat 0 as "no armour type" → suppress the row,
     /// matching the user's preference to hide None-valued requirements.
     /// </summary>
     private static string FormatArmourTypeOrEmpty(int code) => code == 0
         ? string.Empty
-        : MmudEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
+        : LookupEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
 
     /// <summary>"5-12" pair when either is non-zero, or empty when both are zero.</summary>
     private static string FormatRangeOrEmpty(int min, int max) =>
@@ -424,7 +424,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     {
         string price = ReadString(el, "Price");
         if (string.IsNullOrWhiteSpace(price) || price == "0") return "Free";
-        string currency = MmudEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
+        string currency = LookupEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
         return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
     }
 

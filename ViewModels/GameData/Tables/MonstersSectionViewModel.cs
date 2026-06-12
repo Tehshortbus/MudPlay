@@ -23,7 +23,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>MagicRes</c> is the magic-resist score, <c>AvgDmg</c> is the
 /// average per-round outgoing damage, <c>RegenTime</c> is respawn
 /// cadence in ticks. <c>Type</c> and <c>Align</c> render via
-/// <see cref="MmudEnums"/> ("Solo" / "Lawful Good" / etc.) and
+/// <see cref="LookupEnums"/> ("Solo" / "Lawful Good" / etc.) and
 /// <c>Undead</c> is a boolean from the MDB so it already arrives
 /// as <c>"true"</c> / <c>"false"</c>.
 /// </remarks>
@@ -68,8 +68,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Type"]  = MmudEnums.FormatMonType,
-            ["Align"] = MmudEnums.FormatMonAlignment,
+            ["Type"]  = LookupEnums.FormatMonType,
+            ["Align"] = LookupEnums.FormatMonAlignment,
         };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
@@ -228,8 +228,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 AddRow(kv, "Game Limit",
                     regenTime == 0 ? $"{gameLimit} (no respawn)" : gameLimit.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-            AddRowIfPresent(kv, "Type",     MmudEnums.FormatMonType(ReadString(el, "Type")));
-            AddRowIfPresent(kv, "Alignment", MmudEnums.FormatMonAlignment(ReadString(el, "Align")));
+            AddRowIfPresent(kv, "Type",     LookupEnums.FormatMonType(ReadString(el, "Type")));
+            AddRowIfPresent(kv, "Alignment", LookupEnums.FormatMonAlignment(ReadString(el, "Align")));
 
             if (ReadInt(el, "Undead") == 1) AddRow(kv, "Undead", "Yes");
 

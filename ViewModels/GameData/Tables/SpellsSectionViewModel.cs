@@ -22,7 +22,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// is the cast-name shortcode (e.g. <c>"star"</c>), <c>ReqLevel</c> is
 /// the cast prerequisite, <c>Diff</c> is the cast-difficulty score.
 /// <c>Magery</c>, <c>AttType</c>, and <c>Targets</c> render via
-/// <see cref="MmudEnums"/> ("Mage" / "Cold" / "Full Area" / etc.).
+/// <see cref="LookupEnums"/> ("Mage" / "Cold" / "Full Area" / etc.).
 /// </para>
 /// <para>
 /// Double-click a row → opens every <see cref="MessageRecord"/> that
@@ -73,9 +73,9 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Magery"]  = MmudEnums.FormatMagery,
-            ["AttType"] = MmudEnums.FormatSpellAttackType,
-            ["Targets"] = MmudEnums.FormatSpellTargets,
+            ["Magery"]  = LookupEnums.FormatMagery,
+            ["AttType"] = LookupEnums.FormatSpellAttackType,
+            ["Targets"] = LookupEnums.FormatSpellTargets,
         };
 
     /// <summary>Double-click handler — opens every Message linked to this spell.</summary>

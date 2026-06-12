@@ -16,7 +16,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// / <c>MaxHits</c> bracket starting HP roll, <c>ExpTable</c> is the
 /// progression curve, <c>MageryLVL</c> is the cap on castable-spell
 /// level. <c>MageryType</c>, <c>WeaponType</c>, and <c>ArmourType</c>
-/// render via <see cref="MmudEnums"/>.
+/// render via <see cref="LookupEnums"/>.
 /// </remarks>
 public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
 {
@@ -50,9 +50,9 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["MageryType"] = MmudEnums.FormatMagery,
-            ["WeaponType"] = MmudEnums.FormatClassWeaponType,
-            ["ArmourType"] = MmudEnums.FormatArmourType,
+            ["MageryType"] = LookupEnums.FormatMagery,
+            ["WeaponType"] = LookupEnums.FormatClassWeaponType,
+            ["ArmourType"] = LookupEnums.FormatArmourType,
         };
 
     public ClassesSectionViewModel(GameDataCache cache, SettingsResolver? resolver = null) : base(cache, resolver) { }
