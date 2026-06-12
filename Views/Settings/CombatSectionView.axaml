@@ -156,15 +156,15 @@
                               SelectedValueBinding="{Binding Value}"
                               DisplayMemberBinding="{Binding Label}"
                               Width="280" HorizontalAlignment="Left"
-                              ToolTip.Tip="Which monster to target (the 'who'). Default = pick our own target from game data (Target order + per-monster AttackPriority). Attack what party leader attacks = mirror the party leader's announced target. Attack what party member attacks = mirror the named member's announced target. If our weapons/spells can't hit the followed target, combat-fail logic falls back to another monster."/>
+                              ToolTip.Tip="Which monster to target (the 'who'). Default = pick our own target from game data (Target order + per-monster AttackPriority). Attack what party leader attacks = mirror the party leader's announced target. Attack what player attacks = mirror the named player's announced target. If our weapons/spells can't hit the followed target, combat-fail logic falls back to another monster."/>
 
                     <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
-                               Text="Target priority member name"/>
+                               Text="Player name"/>
                     <TextBox Grid.Row="2" Grid.Column="1"
                              Text="{Binding TargetPriorityMemberName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                              IsEnabled="{Binding TargetPriorityMemberEnabled}"
                              Width="220" HorizontalAlignment="Left"
-                             ToolTip.Tip="Only used when Target Priority is 'Attack what party member attacks'. Mirror this party member's announced target."/>
+                             ToolTip.Tip="Only used when Target Priority is 'Attack what player attacks'. Mirror this player's announced target."/>
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack Order"/>
                     <ComboBox Grid.Row="3" Grid.Column="1"

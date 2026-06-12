@@ -665,16 +665,17 @@ public sealed class CombatManagerTests
         Assert.Equal(2, h.Sent.Count);
     }
 
-    // ----- Attack Order is pure re-fire: NEVER switches the monster ----
+    // ----- Attack Order: re-fire OUR target, ONLY on announces against
+    // that same target — never switches the monster -------------------
 
     [Fact]
-    public void AttackLastParty_ReFiresOwnTarget_DoesNotSwitch()
+    public void AttackLastParty_RePositionsOnlyAgainstOurTarget()
     {
-        // Clean split: Attack Order is the "when", not the "who". Two
-        // kobold thiefs; we pick angry by default. Party member Tank
-        // announces against the LARGE one. AttackLastParty re-fires our
-        // OWN target (angry) on the party announce — it never switches
-        // the monster. Switching is Target Priority's job.
+        // Attack Order is the "when", not the "who". Two kobold thiefs;
+        // we pick angry by default. A party announce against the LARGE
+        // one is a different monster — ignored. A party announce against
+        // OUR target (angry) re-fires to reclaim last position; it never
+        // switches the monster (that's Target Priority's job).
         using Harness h = new();
         h.Settings.AttackTiming = AttackTiming.AttackLastParty;
         h.Party.Members.Add(new PartyMember { Name = "Tank" });
@@ -685,19 +686,24 @@ public sealed class CombatManagerTests
         Assert.Equal("a angry kobold thief", h.LastSent);
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
 
+        // Different monster — ignored, never switches.
         h.Feed("Tank moves to attack large kobold thief.");
+        Assert.Single(h.Sent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
 
+        // Our target — re-fire to reclaim last.
+        h.Feed("Tank moves to attack angry kobold thief.");
         Assert.Equal(2, h.Sent.Count);
-        Assert.Equal("a angry kobold thief", h.LastSent);   // re-fire, unchanged
+        Assert.Equal("a angry kobold thief", h.LastSent);
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
     }
 
     [Fact]
-    public void AttackLastRoom_DoesNotSwitch_JustReFiresOwnTarget()
+    public void AttackLastRoom_RePositionsOnlyAgainstOurTarget()
     {
-        // Room-mode is "be last in initiative on MY target", not
-        // "follow whoever shouts". Stranger announcing a different
-        // target shouldn't pull us off ours.
+        // Room-mode is "be last in initiative on MY target" for ANY
+        // player. A stranger on a different monster is ignored; a
+        // stranger on our target re-fires.
         using Harness h = new();
         h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
         h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
@@ -706,10 +712,15 @@ public sealed class CombatManagerTests
         h.Feed("Also here: angry kobold thief, large kobold thief.");
         Assert.Equal("a angry kobold thief", h.LastSent);
 
+        // Different monster — ignored.
         h.Feed("Stranger moves to attack large kobold thief.");
+        Assert.Single(h.Sent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
 
+        // Our target — any player re-fires.
+        h.Feed("Stranger moves to attack angry kobold thief.");
         Assert.Equal(2, h.Sent.Count);
-        Assert.Equal("a angry kobold thief", h.LastSent);   // unchanged target
+        Assert.Equal("a angry kobold thief", h.LastSent);
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
     }
 
@@ -880,11 +891,13 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void AttackAfter_ReFiresOwnTarget_OnNamedAnnounce()
+    public void AttackAfter_RePositionsOnlyAgainstOurTarget()
     {
         // AttackAfter is pure timing: re-fire OUR target when the named
-        // player announces, keeping our swing immediately after theirs.
-        // It does NOT switch to their monster (that's Target Priority).
+        // player announces against THAT target, keeping our swing right
+        // after theirs. A named-player announce on a different monster is
+        // ignored; it never switches to their monster (Target Priority's
+        // job).
         using Harness h = new();
         h.Settings.AttackTiming = AttackTiming.AttackAfter;
         h.Settings.AttackAfterPlayerName = "Tank";
@@ -894,8 +907,13 @@ public sealed class CombatManagerTests
         h.Feed("Also here: angry kobold thief, large kobold thief.");
         Assert.Equal("a angry kobold thief", h.LastSent);    // own pick
 
+        // Named player, different monster — ignored.
         h.Feed("Tank moves to attack large kobold thief.");
+        Assert.Single(h.Sent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
 
+        // Named player, our target — re-fire.
+        h.Feed("Tank moves to attack angry kobold thief.");
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("a angry kobold thief", h.LastSent);    // re-fire, unchanged
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);

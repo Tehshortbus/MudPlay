@@ -820,7 +820,7 @@ public sealed partial class CombatManager : IDisposable
 
         // Attack Order owns WHEN — re-fire our own current target to stay
         // last in initiative; never switches the monster.
-        HandleAttackOrderRefire(settings, announcer);
+        HandleAttackOrderRefire(settings, announcer, announcedTarget);
     }
 
     /// <summary>
@@ -884,13 +884,32 @@ public sealed partial class CombatManager : IDisposable
     }
 
     /// <summary>
-    /// Attack Order (the "when"): re-fire our OWN current target to keep our
-    /// announce last in initiative against <paramref name="announcer"/>.
-    /// Never switches the monster — Target Priority owns "who". No-op without
-    /// an existing target or when the mode doesn't match this announce.
+    /// Attack Order (the "when"): re-fire our OWN current target to reclaim
+    /// last position in initiative when another player announces against that
+    /// same target after us. Never switches the monster — Target Priority owns
+    /// "who". No-op unless we already have a target, the announce is against
+    /// that exact target, and the announcer qualifies for the configured mode:
+    /// <list type="bullet">
+    /// <item>AttackLastParty — any party member.</item>
+    /// <item>AttackLastRoom — any player.</item>
+    /// <item>AttackAfter — the named player only.</item>
+    /// <item>Default — never (own cadence).</item>
+    /// </list>
+    /// The "after us" condition is implicit: we only hold a target once we've
+    /// announced, so an announce arriving while <c>_currentTarget</c> is set
+    /// is by definition after ours; an announce that preceded ours never
+    /// reaches here (no target yet).
     /// </summary>
-    private void HandleAttackOrderRefire(CombatSettings settings, string announcer)
+    private void HandleAttackOrderRefire(
+        CombatSettings settings, string announcer, string announcedTarget)
     {
+        if (_currentTarget is not { } target) return;   // nothing to re-fire at
+
+        // Only reposition against OUR priority target — ignore announces on
+        // any other monster in the room.
+        if (!string.Equals(announcedTarget, target, StringComparison.OrdinalIgnoreCase))
+            return;
+
         bool fire = settings.AttackTiming switch
         {
             AttackTiming.AttackLastParty => IsPartyMember(announcer),
@@ -901,7 +920,6 @@ public sealed partial class CombatManager : IDisposable
             _                            => false,  // Default — own cadence
         };
         if (!fire) return;
-        if (_currentTarget is not { } target) return;   // nothing to re-fire at
 
         SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");

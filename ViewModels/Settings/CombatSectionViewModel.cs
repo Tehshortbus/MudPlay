@@ -61,8 +61,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "Clear hostiles when seen hidden",
         "Target order", "Normal", "Reverse",
         "Attack Order", "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
-        "Target Priority", "Attack what party leader attacks", "Attack what party member attacks",
-        "Follow leader", "Follow member", "Target priority member name",
+        "Target Priority", "Attack what party leader attacks", "Attack what player attacks",
+        "Follow leader", "Follow player", "Player name",
         "Polite mode", "Skip room", "Attack different",
         "Min monsters", "Max monsters", "Run distance",
         "When running away", "Go backwards if running", "Break combat before running",
@@ -145,7 +145,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         {
             new TargetPriorityOption(TargetPriority.Default,      "Default"),
             new TargetPriorityOption(TargetPriority.FollowLeader, "Attack what party leader attacks"),
-            new TargetPriorityOption(TargetPriority.FollowMember, "Attack what party member attacks"),
+            new TargetPriorityOption(TargetPriority.FollowMember, "Attack what player attacks"),
         };
 
     /// <summary>
