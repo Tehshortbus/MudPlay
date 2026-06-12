@@ -87,6 +87,11 @@ public sealed class AutoModeRemoteHandler : IDisposable
         // @auto-all drives the shared master snapshot controller.
         if (RemoteCommandCatalog.TryGetCategory("@auto-all", out PlayerRemoteControls allCat))
             _engine.RegisterHandler("@auto-all", allCat, HandleAll);
+
+        // @settings is the read-only counterpart: a single query that
+        // reports every auto-engine's current state in one reply.
+        if (RemoteCommandCatalog.TryGetCategory("@settings", out PlayerRemoteControls settingsCat))
+            _engine.RegisterHandler("@settings", settingsCat, HandleSettings);
     }
 
     public void Dispose()
@@ -95,6 +100,7 @@ public sealed class AutoModeRemoteHandler : IDisposable
         _disposed = true;
         foreach ((string cmd, _, _) in Mapping) _engine.UnregisterHandler(cmd);
         _engine.UnregisterHandler("@auto-all");
+        _engine.UnregisterHandler("@settings");
     }
 
     private void HandleOne(string cmd, RemoteCommandContext ctx)
@@ -161,6 +167,31 @@ public sealed class AutoModeRemoteHandler : IDisposable
         string state = _controller.AllWiredOff ? "off" : "on";
         _log?.Log(LogSeverity.Info, LogCategory, $"@auto-all from {ctx.Sender}: {state}");
         ctx.Reply($"@auto-all: {state}");
+    }
+
+    private void HandleSettings(RemoteCommandContext ctx)
+    {
+        // A query always answers, even with no profile loaded — defaults
+        // (everything off) are the truthful report in that case.
+        GeneralSettings general = _profile.Current is { } p ? ReadGeneral(p) : new GeneralSettings();
+
+        // One entry per engine, in Mapping order. Skip @auto-rest — it's
+        // an alias for @auto-heal (same AutoHealRest flag), so listing it
+        // would double-report the same engine.
+        IEnumerable<string> parts = Mapping
+            .Where(m => m.Cmd != "@auto-rest")
+            .Select(m => $"{Label(m.Cmd)}: {(m.Get(general.AutoMode) ? "On" : "Off")}");
+        ctx.Reply(string.Join(", ", parts));
+    }
+
+    /// <summary>"@auto-combat" → "Auto-Combat" for the @settings report.</summary>
+    private static string Label(string cmd)
+    {
+        string[] words = cmd.TrimStart('@').Split('-');
+        for (int i = 0; i < words.Length; i++)
+            if (words[i].Length > 0)
+                words[i] = char.ToUpperInvariant(words[i][0]) + words[i][1..];
+        return string.Join('-', words);
     }
 
     private static bool TryParseOnOff(string arg, out bool wanted)

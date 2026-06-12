@@ -175,4 +175,33 @@ public sealed class AutoModeRemoteHandlerTests
         s.Engine.DispatchForTests(Telepath("Tank", "@auto-sneak off"));
         Assert.False(ReadMode(s.Profile.Current!).AutoSneak);
     }
+
+    [Fact]
+    public void Settings_RepliesEachEngineState()
+    {
+        using Setup s = new();
+        SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
+
+        s.Engine.DispatchForTests(Telepath("Tank", "@settings"));
+
+        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        Assert.Contains("Auto-Combat: On", reply);     // default on
+        Assert.Contains("Auto-Sneak: Off", reply);      // default off
+        // @auto-rest aliases @auto-heal — must not double-report.
+        Assert.DoesNotContain("Auto-Rest", reply);
+        Assert.Contains("Auto-Heal: On", reply);
+    }
+
+    [Fact]
+    public void Settings_ReflectsFlippedFlag()
+    {
+        using Setup s = new();
+        SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
+
+        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat off"));
+        s.Engine.DispatchForTests(Telepath("Tank", "@settings"));
+
+        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        Assert.Contains("Auto-Combat: Off", reply);
+    }
 }
