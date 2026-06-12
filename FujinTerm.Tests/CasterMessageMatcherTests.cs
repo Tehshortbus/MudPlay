@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using FujinTerm.Game.Spells;
 using Xunit;
 
@@ -125,6 +126,88 @@ public sealed class CasterMessageMatcherTests
         Assert.False(m.ConfirmsSpellTarget("You cast bless on Forged!", "cure-poison", "forged"));
         // Right spell, wrong member ⇒ must NOT confirm.
         Assert.False(m.ConfirmsSpellTarget("You cast cure-poison on Goblin!", "cure-poison", "forged"));
+    }
+
+    // ----- Semantic placeholders ({spellname}/{target}/{source}/{damage}) -----
+
+    [Fact]
+    public void Damage_NumericSynonym_TokenizesAndDrops()
+    {
+        // {damage} is a numeric synonym of {dmg}/{d} — consumed but not surfaced.
+        CasterMessageMatcher? m = CasterMessageMatcher.TryCreate("{source} blasts {target} for {damage} damage!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatch("Raijin blasts Goblin for 142 damage!",
+            out IReadOnlyList<string> caps));
+        // Two string slots ({source}, {target}); {damage} dropped.
+        Assert.Equal(new[] { "Raijin", "Goblin" }, caps);
+    }
+
+    [Fact]
+    public void Spellname_IsAStringCapture()
+    {
+        CasterMessageMatcher? m = CasterMessageMatcher.TryCreate("You cast {spellname} on {target}!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatch("You cast cure-poison on Forged!",
+            out IReadOnlyList<string> caps));
+        Assert.Equal(new[] { "cure-poison", "Forged" }, caps);
+    }
+
+    [Fact]
+    public void ConfirmsSpellTarget_SemanticTemplate_PinsExactSlots()
+    {
+        // Semantic witness template: source is the caster, target is who it
+        // landed on. The pinned slots must be matched exactly.
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("{source} casts {spellname} on {target}!");
+        Assert.NotNull(m);
+
+        // Mage cures Forged ⇒ spell + target both match the pinned slots.
+        Assert.True(m!.ConfirmsSpellTarget("Mage casts cure-poison on Forged!", "cure-poison", "Forged"));
+    }
+
+    [Fact]
+    public void ConfirmsSpellTarget_SemanticTemplate_SourceCannotBeMistakenForTarget()
+    {
+        // The crux of the semantic roles: the caster's name sits in {source}.
+        // A position-agnostic matcher could mistake it for the target and
+        // false-confirm; pinning {target} prevents that.
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("{source} casts {spellname} on {target}!");
+        Assert.NotNull(m);
+
+        // Spell matches, but the requested target is the CASTER's name, which
+        // lives in the {source} slot ⇒ must NOT confirm.
+        Assert.False(m!.ConfirmsSpellTarget("Mage casts cure-poison on Forged!", "cure-poison", "Mage"));
+    }
+
+    [Fact]
+    public void ConfirmsTarget_SemanticTemplate_MatchesOnlyTheTargetSlot()
+    {
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("{source} casts {spellname} on {target}!");
+        Assert.NotNull(m);
+
+        // The member named in {target} confirms.
+        Assert.True(m!.ConfirmsTarget("Mage casts cure-poison on Forged!", "Forged"));
+        // The caster (in {source}) must NOT satisfy a target check.
+        Assert.False(m.ConfirmsTarget("Mage casts cure-poison on Forged!", "Mage"));
+    }
+
+    [Fact]
+    public void Placeholders_ExposeAuthorableVocabulary()
+    {
+        // The editor legend is sourced from this list — it must carry the
+        // semantic tokens (and their legacy generics) so authors can wire them.
+        IEnumerable<string> tokens =
+            CasterMessageMatcher.Placeholders.Select(p => p.Token);
+        Assert.Contains("{spellname}", tokens);
+        Assert.Contains("{target}", tokens);
+        Assert.Contains("{source}", tokens);
+        Assert.Contains("{damage}", tokens);
+        Assert.Contains("{s}", tokens);
+        Assert.Contains("{d}", tokens);
     }
 
     [Fact]

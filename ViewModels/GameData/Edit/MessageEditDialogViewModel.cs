@@ -143,9 +143,18 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
     /// <summary>
+    /// Placeholder-token legend shown under the Response field so an author
+    /// editing a message line can see which bracket pins which capture slot
+    /// (the meaning surfaces on hover). Sourced from the matcher itself so
+    /// the editor and the runtime interpreter never drift.
+    /// </summary>
+    public IReadOnlyList<Game.Spells.MessagePlaceholder> Placeholders =>
+        Game.Spells.CasterMessageMatcher.Placeholders;
+
+    /// <summary>
     /// The Id the record would have at save time given the current Name +
-    /// all five line slots. Surfaced under the Name field so the user can
-    /// see the identity tuple updating live + spot collisions before Save.
+    /// all five line slots. Used internally for duplicate detection; not
+    /// surfaced in the UI.
     /// </summary>
     public string ProjectedId
         => MessageRecord.ComputeId(
@@ -184,15 +193,12 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public bool HasError => GetValidationError() is not null;
     public bool CanSave  => !HasError;
 
-    public string StatusMessage
-    {
-        get
-        {
-            string? err = GetValidationError();
-            if (err is not null) return err;
-            return $"Id: {ProjectedId}  (identity = Name + all four lines)";
-        }
-    }
+    /// <summary>
+    /// Validation error to surface (red) under the header, or empty when the
+    /// record is valid — in the valid case the placeholder legend takes this
+    /// slot instead. The projected Id is no longer shown here.
+    /// </summary>
+    public string StatusMessage => GetValidationError() ?? string.Empty;
 
     public MessageEditDialogViewModel(
         MessageRecord original,

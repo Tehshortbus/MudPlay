@@ -247,6 +247,33 @@ public sealed class PartyAilmentTrackerTests
     }
 
     [Fact]
+    public void SemanticWitnessTemplate_DoesNotClearTheCastersOwnChip()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        PartyMember forged = h.AddMember("Forged");
+        h.Say(@"Mage says ""@poisoned""");
+        h.Say(@"Forged says ""@poisoned""");
+        Assert.True(mage.Poisoned);
+        Assert.True(forged.Poisoned);
+
+        // Semantic witness template pins {source}/{spellname}/{target}. A
+        // legacy {s}-only template would mistake the caster's name (Mage, in
+        // the source slot) for a second target and false-clear Mage's chip;
+        // the roles prevent that.
+        h.Cures.Add(new CureCastMatcher(
+            MessageFlags.Poisoned, "cure-poison",
+            CasterMessageMatcher.TryCreate("You cast {spellname} on {target}!")!,
+            CasterMessageMatcher.TryCreate("{source} casts {spellname} on {target}!")));
+
+        // Mage (also poisoned) cures Forged — only Forged's chip should clear.
+        h.EmitLine("Mage casts cure-poison on Forged!");
+
+        Assert.False(forged.Poisoned);
+        Assert.True(mage.Poisoned);
+    }
+
+    [Fact]
     public void WitnessedDifferentSpell_LeavesChip()
     {
         using Harness h = new();
