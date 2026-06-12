@@ -643,6 +643,9 @@ public partial class MainWindowViewModel : ObservableObject
         // relay (uses the wire-sender directly, bypassing ctx.Reply).
         AppServices.Current.RemoteCommands.SetWireSender(engineSend);
         AppServices.Current.PartyEssentials.SetWireSender(engineSend);
+        // Settings → Talk auto-greet — needs the wire-sender to emit
+        // greet/look at newly-seen non-party players.
+        AppServices.Current.Greet.SetWireSender(engineSend);
         // Phase 6 PR 6.4 — poller needs the same wire-sender to send
         // @health round-trip requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(engineSend);

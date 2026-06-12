@@ -65,6 +65,9 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private string _remoteCommandFailureMessage = "command invalid or not allowed";
 
+    /// <summary>Settings → Talk "Greet players when first met". Char-tier; default off.</summary>
+    [ObservableProperty] private bool _greetPlayersWhenFirstMet;
+
     public TalkSectionViewModel() : this(AppServices.Current.Profile) { }
 
     public TalkSectionViewModel(ProfileService profile)
@@ -91,6 +94,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
             DisallowRemoteFromLocal          = DisallowRemoteFromLocal,
             WarnOnInvalidRemoteCommand       = WarnOnInvalidRemoteCommand,
             RemoteCommandFailureMessage      = RemoteCommandFailureMessage ?? string.Empty,
+            GreetPlayersWhenFirstMet         = GreetPlayersWhenFirstMet,
         };
 
         profile.Settings ??= new();
@@ -131,6 +135,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         DisallowRemoteFromLocal         = dto.DisallowRemoteFromLocal;
         WarnOnInvalidRemoteCommand      = dto.WarnOnInvalidRemoteCommand;
         RemoteCommandFailureMessage     = dto.RemoteCommandFailureMessage;
+        GreetPlayersWhenFirstMet        = dto.GreetPlayersWhenFirstMet;
 
         // Mirror loaded settings into the live engine so the user's
         // policy applies from first connection, not just after the
@@ -163,6 +168,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         engine.DisableLocalChannel     = dto.DisallowRemoteFromLocal;
         engine.WarnOnDenial            = dto.WarnOnInvalidRemoteCommand;
         engine.FailureMessage          = dto.RemoteCommandFailureMessage ?? string.Empty;
+
+        AppServices.Current.Greet.Enabled = dto.GreetPlayersWhenFirstMet;
     }
 
     // ----- IsDirty plumbing -----
@@ -180,6 +187,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     partial void OnDisallowRemoteFromLocalChanged(bool value)         => MarkDirty();
     partial void OnWarnOnInvalidRemoteCommandChanged(bool value)      => MarkDirty();
     partial void OnRemoteCommandFailureMessageChanged(string value)   => MarkDirty();
+    partial void OnGreetPlayersWhenFirstMetChanged(bool value)        => MarkDirty();
 
     private void MarkDirty()
     {

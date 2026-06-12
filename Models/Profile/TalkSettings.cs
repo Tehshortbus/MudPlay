@@ -60,4 +60,15 @@ public sealed class TalkSettings
     /// here would double them.
     /// </summary>
     public string RemoteCommandFailureMessage { get; set; } = "command invalid or not allowed";
+
+    /// <summary>
+    /// When <c>true</c>, the first time we spot a non-party player in the
+    /// room each local-calendar day — whether from an <c>Also here:</c>
+    /// list or a live arrival line — the client sends <c>greet</c> then
+    /// <c>look</c> at them. Tracked per-BBS on the player observation
+    /// row, so re-meeting the same person later the same day is silent.
+    /// Self and current party members are always skipped. Default
+    /// <c>false</c> (opt-in). Wired to <see cref="Game.GreetManager"/>.
+    /// </summary>
+    public bool GreetPlayersWhenFirstMet { get; set; }
 }

@@ -215,6 +215,63 @@ public sealed class PlayerDatabase
         SaveObservations();
     }
 
+    // ----- Greet tracking (BBS tier) ------------------------------------
+
+    /// <summary>
+    /// When <see cref="Game.GreetManager"/> last auto-greeted this player
+    /// (UTC), or <c>null</c> if never. Keyed on given name like every
+    /// other observation lookup. The manager compares this against the
+    /// local-calendar day to enforce "greet at most once per day".
+    /// </summary>
+    public DateTime? GetLastGreetedUtc(string givenName)
+    {
+        if (string.IsNullOrWhiteSpace(givenName)) return null;
+        (string given, _) = PlayerObservation.SplitName(givenName);
+        if (string.IsNullOrEmpty(given)) return null;
+        return _observations.TryGetValue(given, out PlayerObservation? o) ? o.LastGreetedUtc : null;
+    }
+
+    /// <summary>
+    /// Stamp the auto-greet time for one player. Creates a minimal
+    /// observation row when the player is unknown (we genuinely just saw
+    /// them in the room), otherwise updates the existing row's
+    /// <see cref="PlayerObservation.LastGreetedUtc"/> in place — every
+    /// other field is left untouched (greeting isn't a who/look
+    /// observation, so it must not overwrite class / race / LastSeen).
+    /// Saves the BBS observation file. Called by
+    /// <see cref="Game.GreetManager"/> right after emitting
+    /// <c>greet</c> / <c>look</c>.
+    /// </summary>
+    public void RecordGreeted(string name, DateTime whenUtc)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        (string given, string family) = PlayerObservation.SplitName(name);
+        if (string.IsNullOrEmpty(given)) return;
+
+        if (_observations.TryGetValue(given, out PlayerObservation? existing))
+        {
+            _observations[given] = existing with { LastGreetedUtc = whenUtc };
+        }
+        else
+        {
+            _observations[given] = new PlayerObservation(
+                GivenName:      given,
+                FamilyName:     family,
+                Class:          null,
+                Race:           null,
+                Alignment:      null,
+                Title:          null,
+                Gang:           null,
+                Role:           null,
+                FirstSeenUtc:   whenUtc,
+                LastSeenUtc:    whenUtc,
+                LastGreetedUtc: whenUtc);
+        }
+
+        Rebuild();
+        SaveObservations();
+    }
+
     /// <summary>
     /// Replace the customization slice for one player. Triggered by the
     /// player edit dialog Save path; persists via
@@ -419,7 +476,18 @@ public sealed class PlayerDatabase
             // shouldn't be erased by a later who-observation that didn't
             // carry equipment).
             Equipment    = newer.Equipment ?? older.Equipment,
+            // Greet time isn't ordered by LastSeen — keep the later of
+            // the two so a duplicate-row collapse never re-opens a greet
+            // we already sent today.
+            LastGreetedUtc = LaterGreet(newer.LastGreetedUtc, older.LastGreetedUtc),
         };
+    }
+
+    private static DateTime? LaterGreet(DateTime? a, DateTime? b)
+    {
+        if (a is null) return b;
+        if (b is null) return a;
+        return a.Value >= b.Value ? a : b;
     }
 
     /// <summary>

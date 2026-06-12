@@ -83,10 +83,11 @@
                           ToolTip.Tip="Sent verbatim back to the originator on per-player denial / unknown-command / party-whitelist denial."/>
             </Grid>
 
-            <!-- ============ Chat etiquette (Phase 13 stub) ============ -->
-            <TextBlock Classes="SectionHeader" Text="Chat etiquette  ·  Phase 13 stub"/>
-            <CheckBox Content="Greet players when first met" IsEnabled="False"
-                      ToolTip.Tip="Phase 13 — emit a configured greet on first encounter with a new player."/>
+            <!-- ============ Chat etiquette ============ -->
+            <TextBlock Classes="SectionHeader" Text="Chat etiquette"/>
+            <CheckBox Content="Greet players when first met"
+                      IsChecked="{Binding GreetPlayersWhenFirstMet, Mode=TwoWay}"
+                      ToolTip.Tip="The first time each day a non-party player appears (Also here list or live arrival), send greet then look at them. Tracked per-BBS; self and party members are skipped."/>
 
         </StackPanel>
     </ScrollViewer>

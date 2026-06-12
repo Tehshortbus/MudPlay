@@ -621,6 +621,14 @@ public sealed class AppServices
     public Game.Combat.RoomEntityClassifier RoomClassifier { get; private set; } = null!;
 
     /// <summary>
+    /// Auto-greets newly-seen non-party players (Settings → Talk
+    /// "Greet players when first met"). Subscribes to
+    /// <see cref="RoomClassifier"/>'s observations; once-per-local-day
+    /// dedup on the per-BBS player record. Off by default.
+    /// </summary>
+    public Game.GreetManager Greet { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.0b — owns <see cref="PlayerState.InCombat"/> and
     /// the <see cref="Game.Map.MovementCoordinator.CombatGate"/> hold
     /// state. Cleared automatically when the room is free of
@@ -1953,6 +1961,12 @@ public sealed class AppServices
         // the deferred queue (CombatStateTracker's handler ran first, so
         // the hostile flag is current).
         RoomClassifier.EntitiesObserved += _ => AutoGetItems.OnRoomObserved();
+        // Settings → Talk auto-greet. Self name resolves through the
+        // PartyManager's LocalCharacterName first (set on connect), then
+        // the loaded profile name as a fallback. Wire-sender bound by
+        // MainWindowViewModel after telnet connects.
+        Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
+            selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
         // Drop the stale queue when we actually change rooms.
         RoomTracker.StateChanged += t =>
         {
