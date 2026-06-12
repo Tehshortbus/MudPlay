@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -48,6 +49,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly PlayerState _player;
     private readonly PartyState _party;
     private readonly Func<PartySettings>? _readPartySettings;
+    private readonly Func<Room?>? _readCurrentRoom;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -78,7 +80,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         RemoteCommandManager engine,
         PlayerState player,
         PartyState party,
-        Func<PartySettings>? readPartySettings = null)
+        Func<PartySettings>? readPartySettings = null,
+        Func<Room?>? readCurrentRoom = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -87,6 +90,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _player = player;
         _party  = party;
         _readPartySettings = readPartySettings;
+        _readCurrentRoom = readCurrentRoom;
 
         // Categories sourced from RemoteCommandCatalog — single source
         // of truth for every documented @-command's required permission
@@ -225,13 +229,25 @@ public sealed class PartyEssentialHandlers : IDisposable
             : $"I'm leading: {string.Join(", ", followers)}");
     }
 
+    /// <summary>
+    /// <c>@where</c> — reply with the current room's name, exits, and
+    /// (Map, Room) key. Reads the live <see cref="RoomTracker"/> snapshot
+    /// through the injected <see cref="_readCurrentRoom"/> accessor; a
+    /// <c>null</c> room (tracker Unknown / Lost, or no game data loaded
+    /// yet) yields a "Location unknown" reply rather than an empty body.
+    /// The engine wraps the payload in <c>{ }</c> at SendReply time.
+    /// </summary>
     private void OnWhere(RemoteCommandContext ctx)
     {
-        // Room tracking ships in Phase 7 — emit a placeholder so the
-        // sender at least knows their request was received and the
-        // engine is alive. Phase 7 PR 7.1 (RoomTracker) replaces this
-        // body with a real lookup.
-        ctx.Reply("Location unknown (room tracker pending)");
+        Room? room = _readCurrentRoom?.Invoke();
+        if (room is null) { ctx.Reply("Location unknown"); return; }
+
+        // Stable enum order so a repeated query reads the same and exits
+        // come out N, S, E, W, NE, ... rather than dictionary order.
+        string exits = room.Exits.Count == 0
+            ? "none"
+            : string.Join(", ", room.Exits.Keys.OrderBy(d => (int)d).Select(d => d.ToLongName()));
+        ctx.Reply($"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room}); exits: {exits}");
     }
 
     // ----- @party (channel-aware: status query or sub-command dispatch) --

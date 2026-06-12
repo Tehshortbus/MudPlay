@@ -19,7 +19,8 @@ public sealed class PartyEssentialHandlersTests
     /// replies. <see cref="PartyEssentialHandlers"/>' own wire-sender is
     /// captured separately so we can assert on the @party-relay path.
     /// </summary>
-    private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup()
+    private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup(
+        FujinTerm.Game.Map.Room? currentRoom = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
@@ -28,7 +29,8 @@ public sealed class PartyEssentialHandlersTests
         PlayerDatabase players = new();
         PlayerState player = new();
         RemoteCommandManager engine = new(chat, party, players);
-        PartyEssentialHandlers handlers = new(engine, player, party);
+        PartyEssentialHandlers handlers = new(engine, player, party,
+            readCurrentRoom: () => currentRoom);
         List<byte[]> relayCapture = new();
         handlers.SetWireSender(relayCapture.Add);
         return (engine, handlers, player, party, players, relayCapture);
@@ -309,14 +311,42 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Where_RepliesPlaceholder()
+    public void Where_WithoutRoom_RepliesLocationUnknown()
     {
-        // Phase 7 RoomTracker fills this in. PR 6.3 just acknowledges.
+        // No RoomTracker snapshot (Unknown / Lost, or no game data) → the
+        // accessor returns null and @where degrades to a plain message.
         var (engine, _, _, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
         engine.DispatchForTests(Telepath("Friend", "@where"));
 
         Assert.Contains("Location unknown", LastReply(engine));
+    }
+
+    [Fact]
+    public void Where_RepliesRoomNameExitsAndKey()
+    {
+        FujinTerm.Game.Map.Room room = new()
+        {
+            Key = new FujinTerm.Game.Map.RoomKey(5, 1141),
+            Name = "Town Square",
+            Exits = new Dictionary<FujinTerm.Game.Map.Direction, FujinTerm.Game.Map.RoomExit>
+            {
+                [FujinTerm.Game.Map.Direction.N] =
+                    new(new FujinTerm.Game.Map.RoomKey(5, 1140), FujinTerm.Game.Map.RoomExitHint.None, null),
+                [FujinTerm.Game.Map.Direction.E] =
+                    new(new FujinTerm.Game.Map.RoomKey(5, 1142), FujinTerm.Game.Map.RoomExitHint.None, null),
+            },
+        };
+        var (engine, _, _, _, players, _) = Setup(room);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@where"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Town Square", reply);
+        Assert.Contains("map 5", reply);
+        Assert.Contains("room 1141", reply);
+        Assert.Contains("north", reply);
+        Assert.Contains("east", reply);
     }
 
     // ===== @party <sub> whitelist (Say-channel sub-command dispatch) ====
