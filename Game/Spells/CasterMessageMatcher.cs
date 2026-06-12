@@ -21,20 +21,33 @@ namespace FujinTerm.Game.Spells;
 /// <c>{s}</c> is the target.
 /// </para>
 /// <para>
-/// Placeholder vocabulary (matches the wcc-derived <c>messages.json</c>
-/// templates): <c>{s}</c> = an arbitrary string (spell / target name),
-/// <c>{d}</c> = a number (damage / heal amount). Only <c>{s}</c> captures
-/// are surfaced — <c>{d}</c> spans are consumed but dropped since the buff
-/// confirmation path never needs the numeric value. Literal text between
-/// placeholders is matched verbatim (regex-escaped). The pattern is
+/// Placeholder vocabulary: a <b>string</b> placeholder captures an arbitrary
+/// run of text, a <b>number</b> placeholder captures a numeric span. Two
+/// spellings coexist so the matcher works against both the legacy
+/// positional seed and the semantic seed:
+/// <list type="bullet">
+/// <item><c>{s}</c> (legacy, positional) / <c>{spell}</c> / <c>{target}</c> /
+/// <c>{src}</c> (semantic) all compile to a string capture.</item>
+/// <item><c>{d}</c> (legacy) / <c>{dmg}</c> (semantic) compile to a numeric
+/// capture, consumed but dropped — confirmation never needs the value.</item>
+/// </list>
+/// All string captures are surfaced in template order; the matcher does not
+/// assume which slot is the spell vs the target vs the caster. Callers that
+/// know the expected spell name and target use
+/// <see cref="ConfirmsSpellTarget"/>, which requires both to appear as
+/// distinct captures — so an unrelated cast on the same member (e.g. a buff
+/// landing on a poisoned ally) can't falsely confirm a cure. Literal text
+/// between placeholders is matched verbatim (regex-escaped). The pattern is
 /// unanchored so leading / trailing noise (colour resets, prompt fragments)
 /// on the emitted line doesn't defeat the match.
 /// </para>
 /// </remarks>
 public sealed class CasterMessageMatcher
 {
+    // Both placeholder spellings: legacy positional {s}/{d} and the semantic
+    // {spell}/{target}/{src}/{dmg} the messages seed migrates toward.
     private static readonly Regex TokenSplit =
-        new(@"\{[sd]\}", RegexOptions.Compiled);
+        new(@"\{(?:spell|target|src|dmg|[sd])\}", RegexOptions.Compiled);
 
     private readonly Regex _regex;
     private readonly int[] _stringGroupIndexes;
@@ -69,17 +82,17 @@ public sealed class CasterMessageMatcher
         {
             pattern.Append(Regex.Escape(template.Substring(last, tok.Index - last)));
             group++;
-            if (tok.Value == "{s}")
+            if (tok.Value is "{d}" or "{dmg}")
+            {
+                pattern.Append("(-?\\d[\\d,]*)");
+            }
+            else
             {
                 // Non-greedy so adjacent literals delimit each name; the
                 // trailing literal (e.g. " on " / "!") forces a boundary.
                 pattern.Append("(.+?)");
                 stringGroups.Add(group);
                 sawString = true;
-            }
-            else
-            {
-                pattern.Append("(-?\\d[\\d,]*)");
             }
             last = tok.Index + tok.Length;
         }
@@ -125,6 +138,42 @@ public sealed class CasterMessageMatcher
         if (!TryMatch(line, out IReadOnlyList<string> caps)) return false;
         foreach (string c in caps)
             if (string.Equals(c.Trim(), target.Trim(), System.StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="line"/> matches AND <paramref name="spell"/>
+    /// and <paramref name="target"/> each equal a string capture at a
+    /// <i>distinct</i> position (case-insensitive, trimmed). Requiring the
+    /// spell name to appear — not just the target — is what stops a different
+    /// spell landing on the same member from confirming: casting
+    /// <c>bless</c> on a poisoned ally yields <c>You cast bless on Forged!</c>,
+    /// whose captures are <c>["bless", "Forged"]</c>; matching the cure record
+    /// for <c>cure poison</c> fails because <c>cure poison</c> isn't a
+    /// capture. Position-agnostic so the same call confirms a caster line
+    /// (<c>You cast {spell} on {target}!</c>) and a witness line
+    /// (<c>{src} casts {spell} on {target}!</c>) without knowing which slot is
+    /// which.
+    /// </summary>
+    public bool ConfirmsSpellTarget(string? line, string spell, string target)
+    {
+        if (string.IsNullOrWhiteSpace(spell) || string.IsNullOrWhiteSpace(target))
+            return false;
+        if (!TryMatch(line, out IReadOnlyList<string> caps)) return false;
+
+        int spellIdx = -1;
+        for (int i = 0; i < caps.Count; i++)
+            if (string.Equals(caps[i].Trim(), spell.Trim(), System.StringComparison.OrdinalIgnoreCase))
+            {
+                spellIdx = i;
+                break;
+            }
+        if (spellIdx < 0) return false;
+
+        for (int i = 0; i < caps.Count; i++)
+            if (i != spellIdx
+                && string.Equals(caps[i].Trim(), target.Trim(), System.StringComparison.OrdinalIgnoreCase))
                 return true;
         return false;
     }

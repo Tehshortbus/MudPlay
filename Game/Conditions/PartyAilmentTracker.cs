@@ -28,8 +28,11 @@ namespace FujinTerm.Game.Conditions;
 /// telepaths <c>@ok</c> to the leader). Instead we clear a chip when we observe
 /// OUR cure land on the member: each configured cure spell's
 /// <see cref="MessageRecord.CasterMessage"/> template is compiled to a
-/// <see cref="CasterMessageMatcher"/>; a server line that confirms the cure on a
-/// member (by name) clears that member's chip. This catches both the
+/// <see cref="CasterMessageMatcher"/>; a server line naming BOTH the cure spell
+/// AND the member (<see cref="CasterMessageMatcher.ConfirmsSpellTarget"/>) clears
+/// that member's chip — requiring the spell name too keeps an unrelated cast on
+/// the same member (a buff on a poisoned ally) from clearing the wrong chip. This
+/// catches both the
 /// <see cref="CastingDirector"/> auto-cure and a manual cast. Confusion has no
 /// cure spell in stock / ParaMUD, so a <c>@confused</c> chip has no cure-side
 /// clear path — it lingers until the member leaves the party (documented gap;
@@ -119,8 +122,11 @@ public sealed class PartyAilmentTracker : IDisposable
             string given = GivenName(m.Name);
             foreach (CureCastMatcher cm in matchers)
             {
-                if (!cm.Matcher.ConfirmsTarget(line.Text, m.Name)
-                 && !cm.Matcher.ConfirmsTarget(line.Text, given)) continue;
+                // Require BOTH the cure spell's name and the member's name to
+                // appear — a different spell landing on the same member (a buff
+                // on a poisoned ally) must not clear the wrong chip.
+                if (!cm.Matcher.ConfirmsSpellTarget(line.Text, cm.SpellName, m.Name)
+                 && !cm.Matcher.ConfirmsSpellTarget(line.Text, cm.SpellName, given)) continue;
                 _party.SetMemberAilment(m.Name, cm.Ailment, false);
                 _log?.Info(LogCategory, $"cure confirmed ailment={cm.Ailment} target={m.Name}");
             }
@@ -150,4 +156,5 @@ public sealed class PartyAilmentTracker : IDisposable
 /// Spells settings + spellbook so re-configuring a cure spell takes effect
 /// without rebuilding the tracker.
 /// </summary>
-public readonly record struct CureCastMatcher(MessageFlags Ailment, CasterMessageMatcher Matcher);
+public readonly record struct CureCastMatcher(
+    MessageFlags Ailment, string SpellName, CasterMessageMatcher Matcher);

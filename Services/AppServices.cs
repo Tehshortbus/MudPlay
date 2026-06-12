@@ -2280,20 +2280,22 @@ public sealed class AppServices
 
         void Add(string? castCode, Models.GameData.MessageFlags ailment)
         {
-            if (CureMatcherFor(castCode) is { } matcher)
-                list.Add(new Game.Conditions.CureCastMatcher(ailment, matcher));
+            if (CureMatcherFor(castCode) is { } resolved)
+                list.Add(new Game.Conditions.CureCastMatcher(
+                    ailment, resolved.SpellName, resolved.Matcher));
         }
     }
 
     /// <summary>
-    /// Resolve a cure spell's cast code to a
+    /// Resolve a cure spell's cast code to its game-data name plus a
     /// <see cref="Game.Spells.CasterMessageMatcher"/> built from the spell's
-    /// game-data <see cref="Models.GameData.MessageRecord.CasterMessage"/>.
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>. The name is
+    /// carried so the tracker can confirm the spell slot, not just the target.
     /// Returns <c>null</c> when the code is blank, unknown to the spellbook,
-    /// has no message record, or the message has no <c>{s}</c> target capture
-    /// (a cure with no target placeholder can't confirm a specific member).
+    /// has no message record, or the message has no string capture (a cure
+    /// with no spell / target placeholder can't confirm a specific member).
     /// </summary>
-    private Game.Spells.CasterMessageMatcher? CureMatcherFor(string? castCode)
+    private (string SpellName, Game.Spells.CasterMessageMatcher Matcher)? CureMatcherFor(string? castCode)
     {
         if (string.IsNullOrWhiteSpace(castCode)) return null;
         string target = castCode.Trim();
@@ -2302,7 +2304,9 @@ public sealed class AppServices
             if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
             Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
             if (rec is null) return null;
-            return Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+            return Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage) is { } matcher
+                ? (s.Name, matcher)
+                : null;
         }
         return null;
     }

@@ -149,7 +149,7 @@ public sealed class PartyAilmentTrackerTests
         Assert.True(forged.Poisoned);
 
         h.Cures.Add(new CureCastMatcher(
-            MessageFlags.Poisoned,
+            MessageFlags.Poisoned, "cure-poison",
             CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!));
 
         h.EmitLine("You cast cure-poison on Forged!");
@@ -168,7 +168,7 @@ public sealed class PartyAilmentTrackerTests
         member.Diseased = true;
 
         h.Cures.Add(new CureCastMatcher(
-            MessageFlags.Diseased,
+            MessageFlags.Diseased, "cure-disease",
             CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!));
 
         // Server prints only the given name; tracker confirms against it.
@@ -185,7 +185,7 @@ public sealed class PartyAilmentTrackerTests
         h.Say(@"Forged says ""@poisoned""");
 
         h.Cures.Add(new CureCastMatcher(
-            MessageFlags.Poisoned,
+            MessageFlags.Poisoned, "cure-poison",
             CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!));
 
         // Cure landed on someone else — Forged's chip stays.
@@ -203,6 +203,25 @@ public sealed class PartyAilmentTrackerTests
 
         // No cure matchers → clear path short-circuits.
         h.EmitLine("You cast cure-poison on Forged!");
+
+        Assert.True(forged.Poisoned);
+    }
+
+    [Fact]
+    public void DifferentSpellOnAfflictedMember_DoesNotClearChip()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+        h.Say(@"Forged says ""@poisoned""");
+        Assert.True(forged.Poisoned);
+
+        h.Cures.Add(new CureCastMatcher(
+            MessageFlags.Poisoned, "cure-poison",
+            CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!));
+
+        // Buffing the poisoned member fits the template + names them, but the
+        // spell isn't the cure — the chip must stay set.
+        h.EmitLine("You cast bless on Forged!");
 
         Assert.True(forged.Poisoned);
     }
