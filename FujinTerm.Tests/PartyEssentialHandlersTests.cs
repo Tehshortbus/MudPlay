@@ -20,7 +20,8 @@ public sealed class PartyEssentialHandlersTests
     /// captured separately so we can assert on the @party-relay path.
     /// </summary>
     private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup(
-        FujinTerm.Game.Map.Room? currentRoom = null)
+        FujinTerm.Game.Map.Room? currentRoom = null,
+        IReadOnlyList<FujinTerm.Game.Combat.RoomEntity>? roomEntities = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
@@ -30,7 +31,8 @@ public sealed class PartyEssentialHandlersTests
         PlayerState player = new();
         RemoteCommandManager engine = new(chat, party, players);
         PartyEssentialHandlers handlers = new(engine, player, party,
-            readCurrentRoom: () => currentRoom);
+            readCurrentRoom: () => currentRoom,
+            readRoomEntities: () => roomEntities);
         List<byte[]> relayCapture = new();
         handlers.SetWireSender(relayCapture.Add);
         return (engine, handlers, player, party, players, relayCapture);
@@ -58,12 +60,12 @@ public sealed class PartyEssentialHandlersTests
     // ===== Registration shape =====
 
     [Fact]
-    public void Ctor_RegistersAllTenCommands()
+    public void Ctor_RegistersAllCommands()
     {
         var (engine, _, _, _, _, _) = Setup();
-        // 10 commands: @version @health @status @where @party @wait @ok
-        // @lives @invite @join
-        Assert.Equal(10, engine.HandlerCount);
+        // 11 commands: @version @health @status @where @who @party @wait
+        // @ok @lives @invite @join
+        Assert.Equal(11, engine.HandlerCount);
     }
 
     [Fact]
@@ -347,6 +349,37 @@ public sealed class PartyEssentialHandlersTests
         Assert.Contains("room 1141", reply);
         Assert.Contains("north", reply);
         Assert.Contains("east", reply);
+    }
+
+    [Fact]
+    public void Who_WithNoOccupants_RepliesNoOne()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@who"));
+
+        Assert.Contains("no one", LastReply(engine));
+    }
+
+    [Fact]
+    public void Who_RepliesResolvedOccupantNames()
+    {
+        var entities = new List<FujinTerm.Game.Combat.RoomEntity>
+        {
+            new("Raijin", "Raijin", FujinTerm.Game.Combat.EntityKind.Player, null),
+            new("Susanoo", "Susanoo", FujinTerm.Game.Combat.EntityKind.Player, null),
+            new("nasty giant rat", "giant rat", FujinTerm.Game.Combat.EntityKind.Monster, 42),
+        };
+        var (engine, _, _, _, players, _) = Setup(roomEntities: entities);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@who"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Raijin", reply);
+        Assert.Contains("Susanoo", reply);
+        Assert.Contains("giant rat", reply);
+        // Resolved (canonical) name, not the flavour-prefixed raw form.
+        Assert.DoesNotContain("nasty", reply);
     }
 
     // ===== @party <sub> whitelist (Say-channel sub-command dispatch) ====

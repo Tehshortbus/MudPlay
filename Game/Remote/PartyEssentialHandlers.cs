@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game.Combat;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
@@ -40,7 +41,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// <summary>Commands this consumer registers. Used by <see cref="Dispose"/> to clean up.</summary>
     private static readonly string[] RegisteredCommands =
     {
-        "@version", "@health", "@status", "@where",
+        "@version", "@health", "@status", "@where", "@who",
         "@party", "@wait", "@ok",
         "@lives", "@invite", "@join",
     };
@@ -50,6 +51,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly PartyState _party;
     private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<Room?>? _readCurrentRoom;
+    private readonly Func<IReadOnlyList<RoomEntity>?>? _readRoomEntities;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -81,7 +83,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         PlayerState player,
         PartyState party,
         Func<PartySettings>? readPartySettings = null,
-        Func<Room?>? readCurrentRoom = null)
+        Func<Room?>? readCurrentRoom = null,
+        Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -91,6 +94,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _party  = party;
         _readPartySettings = readPartySettings;
         _readCurrentRoom = readCurrentRoom;
+        _readRoomEntities = readRoomEntities;
 
         // Categories sourced from RemoteCommandCatalog — single source
         // of truth for every documented @-command's required permission
@@ -102,6 +106,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@health",  OnHealth);
         Register("@status",  OnStatus);
         Register("@where",   OnWhere);
+        Register("@who",     OnWho);
         Register("@party",   OnParty);
         Register("@wait",    OnWait);
         Register("@ok",      OnOk);
@@ -248,6 +253,26 @@ public sealed class PartyEssentialHandlers : IDisposable
             ? "none"
             : string.Join(", ", room.Exits.Keys.OrderBy(d => (int)d).Select(d => d.ToLongName()));
         ctx.Reply($"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room}); exits: {exits}");
+    }
+
+    /// <summary>
+    /// <c>@who</c> — reply with the other players and monsters sharing the
+    /// current room. Reads the live <see cref="RoomEntityClassifier"/>
+    /// occupant snapshot through the injected <see cref="_readRoomEntities"/>
+    /// accessor. The classifier's list is built from the wire's
+    /// <c>Also here:</c> line, which by game convention excludes the local
+    /// player — so no self-filtering is needed. An empty or null list
+    /// (room had no occupants, or none observed yet) replies "no one".
+    /// Each entity is named by its resolved (canonical) name: a player's
+    /// given name, a monster's base name without flavour prefix. The
+    /// engine wraps the payload in <c>{ }</c> at SendReply time, yielding
+    /// the spec's <c>{no one}</c> / <c>{Raijin, Susanoo, giant rat}</c>.
+    /// </summary>
+    private void OnWho(RemoteCommandContext ctx)
+    {
+        IReadOnlyList<RoomEntity>? entities = _readRoomEntities?.Invoke();
+        if (entities is null || entities.Count == 0) { ctx.Reply("no one"); return; }
+        ctx.Reply(string.Join(", ", entities.Select(e => e.ResolvedName)));
     }
 
     // ----- @party (channel-aware: status query or sub-command dispatch) --
