@@ -17,6 +17,7 @@ public sealed class RemoteCommandCatalogTests
 
     [Theory]
     [InlineData("@version",     PlayerRemoteControls.QueryVersion)]
+    [InlineData("@help",        PlayerRemoteControls.QueryVersion)]
     [InlineData("@health",      PlayerRemoteControls.QueryHealthStatus)]
     [InlineData("@status",      PlayerRemoteControls.QueryHealthStatus)]
     [InlineData("@lives",       PlayerRemoteControls.QueryHealthStatus)]
@@ -24,7 +25,6 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@level",       PlayerRemoteControls.QueryExperience)]
     [InlineData("@where",       PlayerRemoteControls.QueryLocation)]
     [InlineData("@path",        PlayerRemoteControls.QueryLocation)]
-    [InlineData("@seen",        PlayerRemoteControls.QueryLocation)]
     [InlineData("@who",         PlayerRemoteControls.QueryLocation)]
     [InlineData("@what",        PlayerRemoteControls.QueryInventory)]
     [InlineData("@wealth",      PlayerRemoteControls.QueryInventory)]
@@ -68,13 +68,21 @@ public sealed class RemoteCommandCatalogTests
     [Theory]
     [InlineData("@looponce")]
     [InlineData("@roam")]
+    [InlineData("@seen")]
+    [InlineData("@panic")]
+    [InlineData("@panic!")]
+    [InlineData("@attack-last")]
+    [InlineData("@blind")]
+    [InlineData("@diseased")]
+    [InlineData("@held")]
     public void RemovedFromCatalog(string cmd)
         => Assert.False(RemoteCommandCatalog.TryGetCategory(cmd, out _));
 
-    // ===== Toggle Settings (12 auto-* + @settings + @reset + @attack-last) =====
+    // ===== Toggle Settings (12 auto-* + @settings + @reset + @atkprio + @atkorder) =====
 
     [Theory]
-    [InlineData("@attack-last")]
+    [InlineData("@atkprio")]
+    [InlineData("@atkorder")]
     [InlineData("@auto-all")]
     [InlineData("@auto-combat")]
     [InlineData("@auto-nuke")]
@@ -115,12 +123,8 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@wait")]
     [InlineData("@ok")]
     [InlineData("@comeback")]
-    [InlineData("@blind")]
-    [InlineData("@diseased")]
-    [InlineData("@held")]
     [InlineData("@kill")]
     [InlineData("@share")]
-    [InlineData("@panic")]
     public void PartyWhitelist_NoneCategory(string cmd)
         // None = "any active party member" — engine routes these through
         // the party-whitelist branch instead of the per-player flag.
@@ -146,11 +150,11 @@ public sealed class RemoteCommandCatalogTests
         => Assert.Equal(PlayerRemoteControls.QueryHealthStatus, Lookup("@party"));
 
     [Fact]
-    public void PanicWithBang_AlsoResolves()
-        // Wiki form is `@panic!`; the catalog strips the trailing bang
-        // so both spellings classify under None.
-        => Assert.True(RemoteCommandCatalog.TryGetCategory("@panic!", out PlayerRemoteControls c)
-                       && c == PlayerRemoteControls.None);
+    public void TrailingBang_IsStripped_BeforeLookup()
+        // An emphatic wire form (e.g. "@stop!") strips the trailing bang
+        // so it resolves to the bare command's category.
+        => Assert.True(RemoteCommandCatalog.TryGetCategory("@stop!", out PlayerRemoteControls c)
+                       && c == PlayerRemoteControls.MovePlayer);
 
     // ===== Lookup helpers =====
 
@@ -169,14 +173,16 @@ public sealed class RemoteCommandCatalogTests
     }
 
     [Fact]
-    public void Catalog_IncludesEveryWikiCommand_AtMinimum()
+    public void Catalog_HoldsTheWiredCommandSet_AtMinimum()
     {
-        // Belt-and-braces — every command the existing test suite
-        // references plus a few inline. If the wiki adds commands the
-        // catalog must too; this floor guards against silent drift.
-        // 57 is the bearfather wiki count as of the catalog seed.
-        Assert.True(RemoteCommandCatalog.Count >= 57,
-            $"Catalog should hold at least 57 entries (bearfather wiki baseline); has {RemoteCommandCatalog.Count}.");
+        // Floor guard against silent drift. The catalog started from the
+        // bearfather wiki baseline, then FujinTerm pruned the ailment /
+        // status broadcast tokens (@blind / @diseased / @held — now owned
+        // by AilmentSyncEngine, not the permission grid) and the abandoned
+        // @seen / @panic, and added FujinTerm-specific verbs (@help,
+        // @atkprio, @atkorder, @lair). 56 is the current floor.
+        Assert.True(RemoteCommandCatalog.Count >= 56,
+            $"Catalog should hold at least 56 entries; has {RemoteCommandCatalog.Count}.");
     }
 
     private static PlayerRemoteControls Lookup(string cmd)
