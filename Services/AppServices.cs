@@ -243,6 +243,15 @@ public sealed class AppServices
     public Game.Remote.DivertHandler Divert { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.QueryVersion"/>
+    /// category — <c>@help</c>. Replies with the flat list of remote
+    /// commands the sender's per-player permission grant allows, split
+    /// across telepaths when long.
+    /// </summary>
+    public Game.Remote.HelpHandler Help { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -1370,6 +1379,10 @@ public sealed class AppServices
         // them to a target while diverting. Wire-sender bound in
         // MainWindowVM after the telnet client is up.
         Divert = new Game.Remote.DivertHandler(RemoteCommands, Chat);
+        // @help — replies to the sender with the catalog commands their
+        // per-player permission grant allows. Reply routes through the
+        // engine (ctx.Reply), so no separate wire-sender to bind.
+        Help = new Game.Remote.HelpHandler(RemoteCommands);
         // @do passthrough — wire-sender bound in MainWindowVM after the
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.

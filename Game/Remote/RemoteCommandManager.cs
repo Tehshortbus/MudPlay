@@ -219,6 +219,30 @@ public sealed class RemoteCommandManager : IDisposable
     /// <summary>Test seam — drives the engine without going through ChatRouter.</summary>
     internal void DispatchForTests(ChatLogEntry entry) => OnChatEntry(entry);
 
+    /// <summary>
+    /// Enumerate the catalog commands <paramref name="sender"/> is
+    /// permitted to issue, given their merged per-player permission grant.
+    /// Backs the <c>@help</c> handler's reply. Party-whitelist commands
+    /// (those mapped to <see cref="PlayerRemoteControls.None"/> — @wait /
+    /// @ok / @kill / etc.) are excluded: they're gated by party membership
+    /// alone, not an explicit permission flag, so they don't belong in a
+    /// per-permission command list. Reuses <see cref="IsAuthorised"/> so the
+    /// answer always matches what the engine would actually allow. Result
+    /// follows the catalog's grouped enumeration order.
+    /// </summary>
+    public IReadOnlyList<string> GetPermittedCommands(string sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        List<string> permitted = new();
+        foreach (KeyValuePair<string, PlayerRemoteControls> entry in RemoteCommandCatalog.Map)
+        {
+            if (entry.Value == PlayerRemoteControls.None) continue; // party-whitelist, not flag-gated
+            if (IsAuthorised(sender, entry.Value, entry.Key))
+                permitted.Add(entry.Key);
+        }
+        return permitted;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
