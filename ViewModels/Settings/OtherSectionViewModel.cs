@@ -54,6 +54,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Ignore blindness";
             yield return "Ignore confusion";
             yield return "Ignore diseased";
+            yield return "Do not announce poison";
+            yield return "Do not announce blindness";
+            yield return "Do not announce confusion";
+            yield return "Do not announce diseased";
             yield return "Ailments";
             yield return "Attempt bash";
             yield return "Pick locks instead of bashing";
@@ -89,6 +93,19 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _ignoreBlindness;
     [ObservableProperty] private bool _ignoreConfusion;
     [ObservableProperty] private bool _ignoreDiseased;
+
+    // ----- Ailment say-announce suppression (wired) -----
+    // Independent of the Ignore* flags above. When the local character
+    // catches a curable ailment, AilmentSyncEngine announces it on say
+    // (".@poisoned" etc.) so other FujinTerm clients mirror our state.
+    // These four "do not announce" toggles suppress that say per-ailment.
+    // Default UNCHECKED = announce. The @wait is gated by Ignore*, not
+    // these — the two decisions are separate.
+
+    [ObservableProperty] private bool _doNotAnnouncePoison;
+    [ObservableProperty] private bool _doNotAnnounceBlindness;
+    [ObservableProperty] private bool _doNotAnnounceConfusion;
+    [ObservableProperty] private bool _doNotAnnounceDiseased;
 
     // ----- @trap auto-disarm attempt caps (wired) -----
     // Both push into TrapDisarmManager on Apply via ApplyToServices,
@@ -266,6 +283,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             IgnoreBlindness = IgnoreBlindness,
             IgnoreConfusion = IgnoreConfusion,
             IgnoreDiseased  = IgnoreDiseased,
+            DoNotAnnouncePoison    = DoNotAnnouncePoison,
+            DoNotAnnounceBlindness = DoNotAnnounceBlindness,
+            DoNotAnnounceConfusion = DoNotAnnounceConfusion,
+            DoNotAnnounceDiseased  = DoNotAnnounceDiseased,
             MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
             MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
@@ -324,6 +345,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         IgnoreBlindness = dto.IgnoreBlindness;
         IgnoreConfusion = dto.IgnoreConfusion;
         IgnoreDiseased  = dto.IgnoreDiseased;
+        DoNotAnnouncePoison    = dto.DoNotAnnouncePoison;
+        DoNotAnnounceBlindness = dto.DoNotAnnounceBlindness;
+        DoNotAnnounceConfusion = dto.DoNotAnnounceConfusion;
+        DoNotAnnounceDiseased  = dto.DoNotAnnounceDiseased;
         MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
         MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
         MaxBashAttempts       = dto.MaxBashAttempts;
@@ -385,6 +410,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnIgnoreBlindnessChanged(bool value) => MarkDirty();
     partial void OnIgnoreConfusionChanged(bool value) => MarkDirty();
     partial void OnIgnoreDiseasedChanged(bool value)  => MarkDirty();
+    partial void OnDoNotAnnouncePoisonChanged(bool value)    => MarkDirty();
+    partial void OnDoNotAnnounceBlindnessChanged(bool value) => MarkDirty();
+    partial void OnDoNotAnnounceConfusionChanged(bool value) => MarkDirty();
+    partial void OnDoNotAnnounceDiseasedChanged(bool value)  => MarkDirty();
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
     partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();

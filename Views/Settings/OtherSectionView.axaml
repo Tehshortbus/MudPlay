@@ -81,6 +81,20 @@
             <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
                       ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
 
+            <!-- Say-announce suppression. Independent of the Ignore*
+                 toggles above: Ignore* gates the @wait, these gate the
+                 ".@poisoned" say broadcast that lets other FujinTerm
+                 clients mirror our ailment on their party window. -->
+            <TextBlock Classes="FieldLabel" Text="Don't broadcast on say:" Margin="0,12,0,0"/>
+            <CheckBox Content="Don't announce poison"    IsChecked="{Binding DoNotAnnouncePoison, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: catching poison doesn't send `.@poisoned` on say. The @wait (if any) is unaffected — that's gated by 'Ignore poison'."/>
+            <CheckBox Content="Don't announce blindness" IsChecked="{Binding DoNotAnnounceBlindness, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being blinded doesn't send `.@blind` on say."/>
+            <CheckBox Content="Don't announce confusion" IsChecked="{Binding DoNotAnnounceConfusion, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being confused doesn't send `.@confused` on say."/>
+            <CheckBox Content="Don't announce diseased"  IsChecked="{Binding DoNotAnnounceDiseased, Mode=TwoWay}"
+                      ToolTip.Tip="When checked: being diseased doesn't send `.@diseased` on say."/>
+
             <!-- @trap auto-disarm attempt caps. Search-attempts row sits
                  ABOVE disarm-attempts per user spec — the search runs
                  first, then disarm. -->

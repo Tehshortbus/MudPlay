@@ -22,6 +22,10 @@ public sealed class OtherSectionViewModelTests
             IgnoreBlindness = true,
             IgnoreConfusion = true,
             IgnoreDiseased  = true,
+            DoNotAnnouncePoison    = true,
+            DoNotAnnounceBlindness = true,
+            DoNotAnnounceConfusion = true,
+            DoNotAnnounceDiseased  = true,
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
             BlessWhileResting = false,
@@ -37,6 +41,10 @@ public sealed class OtherSectionViewModelTests
         Assert.True(back.IgnoreBlindness);
         Assert.True(back.IgnoreConfusion);
         Assert.True(back.IgnoreDiseased);
+        Assert.True(back.DoNotAnnouncePoison);
+        Assert.True(back.DoNotAnnounceBlindness);
+        Assert.True(back.DoNotAnnounceConfusion);
+        Assert.True(back.DoNotAnnounceDiseased);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
         Assert.False(back.BlessWhileResting);
@@ -67,6 +75,12 @@ public sealed class OtherSectionViewModelTests
         Assert.False(dto.IgnoreBlindness);
         Assert.False(dto.IgnoreConfusion);
         Assert.False(dto.IgnoreDiseased);
+        // Say-announce defaults ON (do-not-announce UNCHECKED) — catching
+        // a curable ailment broadcasts ".@poisoned" etc. by default.
+        Assert.False(dto.DoNotAnnouncePoison);
+        Assert.False(dto.DoNotAnnounceBlindness);
+        Assert.False(dto.DoNotAnnounceConfusion);
+        Assert.False(dto.DoNotAnnounceDiseased);
         // @trap auto-disarm attempt caps — user-spec defaults:
         // 20 search retries, 5 disarm retries.
         Assert.Equal(20, dto.MaxTrapSearchAttempts);

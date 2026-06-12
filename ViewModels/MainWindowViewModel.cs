@@ -652,6 +652,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
         // when we finish, so the party leader's pause-gate can react.
         AppServices.Current.PartyRest.SetWireSender(engineSend);
+        // Outbound ailment-sync — the say-announce (".@poisoned" etc.)
+        // rides the same engine sender; the @wait/@ok side routes through
+        // PartyRest's sender bound just above.
+        AppServices.Current.AilmentSync.SetWireSender(engineSend);
         // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
         // broadcasts go through PartyBroadcaster.
         AppServices.Current.PartyBroadcaster.SetWireSender(engineSend);

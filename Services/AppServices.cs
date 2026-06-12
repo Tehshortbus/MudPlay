@@ -743,6 +743,13 @@ public sealed class AppServices
     public Game.Conditions.ConditionTracker Conditions { get; private set; } = null!;
 
     /// <summary>
+    /// Outbound ailment-sync engine — on a local curable ailment it
+    /// announces on say (<c>.@poisoned</c> etc.) so other FujinTerm
+    /// clients mirror our state, and @waits the leader; on clear it @oks.
+    /// </summary>
+    public Game.Conditions.AilmentSyncEngine AilmentSync { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.F — stealth state tracker. Owns
     /// <see cref="PlayerState.IsSneaking"/> /
     /// <see cref="PlayerState.IsHidden"/> and emits FSM-state
@@ -1736,8 +1743,8 @@ public sealed class AppServices
         // full rest-max topoff — PartyRestSync self-gates the telepaths.
         Health.SetPartyRoleSync(
             isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
-            requestPartyWait: PartyRest.RequestWait,
-            requestPartyOk: PartyRest.RequestOk);
+            requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
+            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health));
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
@@ -1762,6 +1769,17 @@ public sealed class AppServices
         // lands in MainWindowViewModel alongside the other line
         // consumers.
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
+
+        // AilmentSyncEngine — outbound ailment broadcast. On catching a
+        // curable ailment it announces ".@poisoned" etc. on say (so other
+        // FujinTerm clients mirror our state) and @waits the leader; on
+        // clear it @oks. Gated per-ailment by OtherSettings DoNotAnnounce*
+        // (say) and Ignore* (@wait). Wire-sender for the say bound in
+        // MainWindowViewModel; the @wait routes via PartyRest's own sender.
+        AilmentSync = new Game.Conditions.AilmentSyncEngine(
+            Conditions, PartyRest,
+            readOther: () => ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
+            log: Log);
 
         // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on

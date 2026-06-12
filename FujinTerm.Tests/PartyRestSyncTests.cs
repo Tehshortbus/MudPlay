@@ -35,7 +35,7 @@ public sealed class PartyRestSyncTests
     {
         var (sync, party, wire) = Setup();
         Assert.False(party.IsInParty);
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         Assert.Empty(wire);
     }
 
@@ -47,7 +47,7 @@ public sealed class PartyRestSyncTests
         party.IsInParty = true;
         party.SelfIsLeader = true;
         party.LeaderName = "Forged";
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         Assert.Empty(wire);
     }
 
@@ -58,7 +58,7 @@ public sealed class PartyRestSyncTests
         var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = null;
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         Assert.Empty(wire);
     }
 
@@ -68,18 +68,64 @@ public sealed class PartyRestSyncTests
         var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = "Leader";
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         Assert.Equal("/Leader @wait\r", LastWire(wire));
     }
 
     [Fact]
-    public void RequestOk_AsFollower_TelepathsLeader()
+    public void RequestOk_AfterWait_AsFollower_TelepathsLeader()
     {
         var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = "Leader";
-        sync.RequestOk();
+        sync.RequestWait(WaitReason.Health);
+        sync.RequestOk(WaitReason.Health);
         Assert.Equal("/Leader @ok\r", LastWire(wire));
+    }
+
+    [Fact]
+    public void RequestOk_WithoutPriorWait_SendsNothing()
+    {
+        // @ok only balances a held reason — releasing a reason that was
+        // never placed must not leak a spurious @ok.
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+        sync.RequestOk(WaitReason.Health);
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void TwoReasons_SendOneWait_OkOnlyWhenLastClears()
+    {
+        // Health + Poison both hold the wait. @wait fires once (on the
+        // first reason); @ok fires only when the LAST reason releases.
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+
+        sync.RequestWait(WaitReason.Health);
+        sync.RequestWait(WaitReason.Poison);
+        Assert.Single(wire);                       // only one @wait
+        Assert.Equal("/Leader @wait\r", LastWire(wire));
+
+        sync.RequestOk(WaitReason.Health);
+        Assert.Single(wire);                       // Poison still holds — no @ok yet
+
+        sync.RequestOk(WaitReason.Poison);
+        Assert.Equal(2, wire.Count);
+        Assert.Equal("/Leader @ok\r", LastWire(wire));
+    }
+
+    [Fact]
+    public void DuplicateWaitReason_SendsOneWait()
+    {
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+        sync.RequestWait(WaitReason.Poison);
+        sync.RequestWait(WaitReason.Poison);
+        Assert.Single(wire);
     }
 
     [Fact]
@@ -90,7 +136,7 @@ public sealed class PartyRestSyncTests
         var (sync, party, wire) = Setup();
         party.IsInParty = true;
         party.LeaderName = "Leader Lastname";
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         Assert.Equal("/Leader @wait\r", LastWire(wire));
     }
 
@@ -100,7 +146,7 @@ public sealed class PartyRestSyncTests
         PartyState party = new() { IsInParty = true, LeaderName = "Leader" };
         PartyRestSync sync = new(party);
         // No SetWireSender — call should silently no-op.
-        sync.RequestWait();
+        sync.RequestWait(WaitReason.Health);
         sync.Dispose();
     }
 

@@ -55,6 +55,29 @@ public sealed class OtherSettings
     /// <summary>Don't auto-cure / don't @wait for disease. Default false (pause).</summary>
     public bool IgnoreDiseased  { get; set; }
 
+    // ----- Ailment say-announce suppression -----------------------------
+    // Independent of the Ignore* flags above. When the local character
+    // catches a curable ailment, the AilmentSyncEngine announces it on
+    // the say channel (".@poisoned" etc.) so other FujinTerm clients in
+    // the room can mirror our state on their party window. These four
+    // "do not announce" toggles suppress that say per-ailment. Default
+    // UNCHECKED = announce. The @wait sent to the leader is gated by the
+    // Ignore* flag, NOT by these — the two decisions are separate
+    // (a party may want the leader to pause but not broadcast on say,
+    // or vice-versa).
+
+    /// <summary>Suppress the say-announce when poisoned. Default false (announce).</summary>
+    public bool DoNotAnnouncePoison    { get; set; }
+
+    /// <summary>Suppress the say-announce when blinded. Default false (announce).</summary>
+    public bool DoNotAnnounceBlindness { get; set; }
+
+    /// <summary>Suppress the say-announce when confused. Default false (announce).</summary>
+    public bool DoNotAnnounceConfusion { get; set; }
+
+    /// <summary>Suppress the say-announce when diseased. Default false (announce).</summary>
+    public bool DoNotAnnounceDiseased  { get; set; }
+
     /// <summary>
     /// Caps the search loop in the @trap handler — how many
     /// <c>sea &lt;dir&gt;</c> attempts we'll make before giving up and
