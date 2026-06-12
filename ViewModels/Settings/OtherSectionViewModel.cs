@@ -67,6 +67,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "@comeback";
             yield return "Bless while resting";
             yield return "Bless during combat";
+            yield return "Go backwards if running";
+            yield return "Break combat before running";
+            yield return "Flee direction";
+            yield return "Run away";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -191,6 +195,26 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// beneficial spells on members during combat.</summary>
     [ObservableProperty] private bool _blessDuringCombat = true;
 
+    // ----- Run-away (flee) behaviour (wired — HealthManager) -----
+    // Both map onto existing OtherSettings fields that HealthManager.TryFlee
+    // already reads live through the resolver; the VM just round-trips them
+    // so the user can actually change the flee direction / break behaviour.
+
+    /// <summary>
+    /// When checked (default), an auto-flee retraces the rooms we just
+    /// walked in through; unchecked pushes forward along the active walker
+    /// path into unscouted rooms. Maps onto
+    /// <see cref="OtherSettings.RunDirection"/> (checked = Backward).
+    /// </summary>
+    [ObservableProperty] private bool _goBackwardsIfRunning = true;
+
+    /// <summary>
+    /// When checked (default), HealthManager sends <c>break</c> before the
+    /// first flee move so auto-attack disengages and the move lands cleanly.
+    /// Maps onto <see cref="OtherSettings.BreakBeforeFleeing"/>.
+    /// </summary>
+    [ObservableProperty] private bool _breakBeforeFleeing = true;
+
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
@@ -220,11 +244,14 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Allow hangup in all-off mode",    StubFieldKind.Check, "Phase 13 — gate hangup when every Auto-* toggle is off."),
             new StubField("Hangup if naked",                 StubFieldKind.Check, "Phase 13 — recovery safety, disconnect if equipment got lost."),
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
-            new StubField("Go backwards if running",         StubFieldKind.Check, "Phase 13 — flee direction prefers retracing rather than pushing forward."),
-            new StubField("Break combat before running",     StubFieldKind.Check, "Phase 13 — stop swinging before issuing the flee command."),
-            new StubField("Don't move unless sneaking",      StubFieldKind.Check, "Phase 7 — walker pause-gate when stealth drops."),
             // Removed per user direction: "Backwards if warning" (nonsense),
-            // "Provide light in dimly lit rooms" (handled elsewhere).
+            // "Provide light in dimly lit rooms" (handled elsewhere),
+            // "Don't move unless sneaking" (our movement engine always sneaks
+            // before moving — the toggle was a MegaMUD workaround for a
+            // message-parsing combat bug we don't share).
+            // "Go backwards if running" / "Break combat before running"
+            // graduated to wired checkboxes (HealthManager.TryFlee consumes
+            // them live via OtherSettings.RunDirection / BreakBeforeFleeing).
             // Lock / trap preference toggles moved down next to their
             // matching retry-count pickers (see "Locks & traps" group).
         }),
@@ -297,6 +324,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
             BlessWhileResting = BlessWhileResting,
             BlessDuringCombat = BlessDuringCombat,
+            RunDirection = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
+            BreakBeforeFleeing = BreakBeforeFleeing,
         };
 
         profile.Settings ??= new();
@@ -359,6 +388,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
         BlessWhileResting = dto.BlessWhileResting;
         BlessDuringCombat = dto.BlessDuringCombat;
+        GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
+        BreakBeforeFleeing = dto.BreakBeforeFleeing;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -425,6 +456,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
     partial void OnBlessWhileRestingChanged(bool value) => MarkDirty();
     partial void OnBlessDuringCombatChanged(bool value) => MarkDirty();
+    partial void OnGoBackwardsIfRunningChanged(bool value) => MarkDirty();
+    partial void OnBreakBeforeFleeingChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {
