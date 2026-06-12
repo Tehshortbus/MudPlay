@@ -225,4 +225,42 @@ public sealed class PartyAilmentTrackerTests
 
         Assert.True(forged.Poisoned);
     }
+
+    [Fact]
+    public void WitnessedCure_ByAnotherMember_ClearsChip()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+        h.Say(@"Forged says ""@poisoned""");
+        Assert.True(forged.Poisoned);
+
+        h.Cures.Add(new CureCastMatcher(
+            MessageFlags.Poisoned, "cure-poison",
+            CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!,
+            CasterMessageMatcher.TryCreate("{s} casts {s} on {s}!")));
+
+        // We don't cast it — a different member does, and we see the room's
+        // witness line. The caster (Mage) doesn't matter; the cure + target do.
+        h.EmitLine("Mage casts cure-poison on Forged!");
+
+        Assert.False(forged.Poisoned);
+    }
+
+    [Fact]
+    public void WitnessedDifferentSpell_LeavesChip()
+    {
+        using Harness h = new();
+        PartyMember forged = h.AddMember("Forged");
+        h.Say(@"Forged says ""@poisoned""");
+
+        h.Cures.Add(new CureCastMatcher(
+            MessageFlags.Poisoned, "cure-poison",
+            CasterMessageMatcher.TryCreate("You cast {s} on {s}!")!,
+            CasterMessageMatcher.TryCreate("{s} casts {s} on {s}!")));
+
+        // A witnessed buff on the poisoned member must not clear the chip.
+        h.EmitLine("Mage casts bless on Forged!");
+
+        Assert.True(forged.Poisoned);
+    }
 }

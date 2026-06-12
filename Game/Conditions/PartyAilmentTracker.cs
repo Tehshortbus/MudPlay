@@ -25,14 +25,17 @@ namespace FujinTerm.Game.Conditions;
 /// </para>
 /// <para>
 /// <b>Clear</b> — there is no clear-side say broadcast (the outbound engine only
-/// telepaths <c>@ok</c> to the leader). Instead we clear a chip when we observe
-/// OUR cure land on the member: each configured cure spell's
-/// <see cref="MessageRecord.CasterMessage"/> template is compiled to a
-/// <see cref="CasterMessageMatcher"/>; a server line naming BOTH the cure spell
-/// AND the member (<see cref="CasterMessageMatcher.ConfirmsSpellTarget"/>) clears
-/// that member's chip — requiring the spell name too keeps an unrelated cast on
-/// the same member (a buff on a poisoned ally) from clearing the wrong chip. This
-/// catches both the
+/// telepaths <c>@ok</c> to the leader). Instead we clear a chip when we observe a
+/// cure land on the member: each configured cure spell's
+/// <see cref="MessageRecord.CasterMessage"/> (OUR cast) and
+/// <see cref="MessageRecord.WitnessMessage"/> (a cast by another member, seen in
+/// the room) templates are compiled to <see cref="CasterMessageMatcher"/>s; a
+/// server line naming BOTH the cure spell AND the member
+/// (<see cref="CasterMessageMatcher.ConfirmsSpellTarget"/>) clears that member's
+/// chip — requiring the spell name too keeps an unrelated cast on the same member
+/// (a buff on a poisoned ally) from clearing the wrong chip. The witness path
+/// means a third-party observer clears the chip too, regardless of which member
+/// cast the cure. This catches both the
 /// <see cref="CastingDirector"/> auto-cure and a manual cast. Confusion has no
 /// cure spell in stock / ParaMUD, so a <c>@confused</c> chip has no cure-side
 /// clear path — it lingers until the member leaves the party (documented gap;
@@ -124,9 +127,18 @@ public sealed class PartyAilmentTracker : IDisposable
             {
                 // Require BOTH the cure spell's name and the member's name to
                 // appear — a different spell landing on the same member (a buff
-                // on a poisoned ally) must not clear the wrong chip.
-                if (!cm.Matcher.ConfirmsSpellTarget(line.Text, cm.SpellName, m.Name)
-                 && !cm.Matcher.ConfirmsSpellTarget(line.Text, cm.SpellName, given)) continue;
+                // on a poisoned ally) must not clear the wrong chip. Match OUR
+                // cast ("You cast cure on X!") or a cure another member casts
+                // that we witness in the room ("Y casts cure on X!"); the
+                // caster of a witnessed cure doesn't matter, only the spell and
+                // the target do.
+                bool hit =
+                    cm.Caster.ConfirmsSpellTarget(line.Text, cm.SpellName, m.Name)
+                 || cm.Caster.ConfirmsSpellTarget(line.Text, cm.SpellName, given)
+                 || (cm.Witness is { } w
+                     && (w.ConfirmsSpellTarget(line.Text, cm.SpellName, m.Name)
+                      || w.ConfirmsSpellTarget(line.Text, cm.SpellName, given)));
+                if (!hit) continue;
                 _party.SetMemberAilment(m.Name, cm.Ailment, false);
                 _log?.Info(LogCategory, $"cure confirmed ailment={cm.Ailment} target={m.Name}");
             }
@@ -150,11 +162,15 @@ public sealed class PartyAilmentTracker : IDisposable
 }
 
 /// <summary>
-/// One compiled cure-spell confirmation: the ailment it removes paired with the
-/// matcher built from the spell's <see cref="MessageRecord.CasterMessage"/>
-/// template. Provided by <see cref="Services.AppServices"/> from the live
-/// Spells settings + spellbook so re-configuring a cure spell takes effect
-/// without rebuilding the tracker.
+/// One compiled cure-spell confirmation: the ailment it removes, the spell's
+/// name (so the spell slot is confirmed, not just the target), and matchers
+/// built from the spell's <see cref="MessageRecord.CasterMessage"/> (OUR cast)
+/// and <see cref="MessageRecord.WitnessMessage"/> (a cast by another member we
+/// see in the room — clears the chip for third-party observers). The witness
+/// matcher is <c>null</c> when the record has no witness template. Provided by
+/// <see cref="Services.AppServices"/> from the live Spells settings + spellbook
+/// so re-configuring a cure spell takes effect without rebuilding the tracker.
 /// </summary>
 public readonly record struct CureCastMatcher(
-    MessageFlags Ailment, string SpellName, CasterMessageMatcher Matcher);
+    MessageFlags Ailment, string SpellName,
+    CasterMessageMatcher Caster, CasterMessageMatcher? Witness = null);
