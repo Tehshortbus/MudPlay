@@ -13,15 +13,22 @@ namespace FujinTerm.Game.Remote;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Argument grammar: each <c>@auto-X</c> takes an optional first arg
-/// of <c>on</c> / <c>off</c>. Empty arg → report the current state.
-/// Any other value is rejected with an "?" reply (per the engine's
-/// existing failure-reply policy).
+/// Per-engine grammar: each <c>@auto-X</c> takes an optional first arg of
+/// <c>on</c> / <c>off</c> which sets that state explicitly. With no arg
+/// the flag is toggled. Either way the reply echoes the resulting state.
+/// Any other arg is rejected with a "?" reply (gated on
+/// <see cref="RemoteCommandManager.WarnOnDenial"/>).
 /// </para>
 /// <para>
-/// <c>@auto-all on/off</c> applies the change to every individual flag
-/// at once (matches MudProxy semantics). Useful for bulk-on / bulk-off
-/// before a fight or when going AFK.
+/// <c>@auto-rest</c> is an alias for <c>@auto-heal</c> — both drive
+/// <see cref="AutoActionDefaults.AutoHealRest"/>.
+/// </para>
+/// <para>
+/// <c>@auto-all</c> drives the shared <see cref="AutoModeController"/>
+/// master kill-switch (same session snapshot as the toolbar / Action-menu
+/// "Auto-All" button). No arg toggles (kill → restore); explicit
+/// <c>off</c> ensures every engine is off, <c>on</c> restores the
+/// snapshot. Reply reports whether everything is now off.
 /// </para>
 /// <para>
 /// All commands require <see cref="PlayerRemoteControls.AlterSettings"/>
@@ -40,6 +47,7 @@ public sealed class AutoModeRemoteHandler : IDisposable
         ("@auto-combat", d => d.AutoCombat,   (d, v) => d.AutoCombat   = v),
         ("@auto-nuke",   d => d.AutoNuke,     (d, v) => d.AutoNuke     = v),
         ("@auto-heal",   d => d.AutoHealRest, (d, v) => d.AutoHealRest = v),
+        ("@auto-rest",   d => d.AutoHealRest, (d, v) => d.AutoHealRest = v),
         ("@auto-bless",  d => d.AutoBless,    (d, v) => d.AutoBless    = v),
         ("@auto-light",  d => d.AutoLight,    (d, v) => d.AutoLight    = v),
         ("@auto-cash",   d => d.AutoGetCash,  (d, v) => d.AutoGetCash  = v),
@@ -51,18 +59,22 @@ public sealed class AutoModeRemoteHandler : IDisposable
 
     private readonly RemoteCommandManager _engine;
     private readonly ProfileService _profile;
+    private readonly AutoModeController _controller;
     private readonly LogService? _log;
     private bool _disposed;
 
     public AutoModeRemoteHandler(
         RemoteCommandManager engine,
         ProfileService profile,
+        AutoModeController controller,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(controller);
         _engine = engine;
         _profile = profile;
+        _controller = controller;
         _log = log;
 
         foreach ((string cmd, _, _) in Mapping)
@@ -72,7 +84,7 @@ public sealed class AutoModeRemoteHandler : IDisposable
             _engine.RegisterHandler(cmd, category, ctx => HandleOne(cmd, ctx));
         }
 
-        // @auto-all toggles every flag at once.
+        // @auto-all drives the shared master snapshot controller.
         if (RemoteCommandCatalog.TryGetCategory("@auto-all", out PlayerRemoteControls allCat))
             _engine.RegisterHandler("@auto-all", allCat, HandleAll);
     }
@@ -92,25 +104,25 @@ public sealed class AutoModeRemoteHandler : IDisposable
 
         if (_profile.Current is not { } profile)
         {
-            ctx.Reply("?");
+            if (_engine.WarnOnDenial) ctx.Reply("?");
             return;
         }
 
         GeneralSettings general = ReadGeneral(profile);
+        bool current = get(general.AutoMode);
 
+        bool wanted;
         if (ctx.Args.Count == 0)
         {
-            ctx.Reply($"{cmd}: {(get(general.AutoMode) ? "on" : "off")}");
-            return;
+            // No arg → toggle the current state.
+            wanted = !current;
         }
-
-        if (!TryParseOnOff(ctx.Args[0], out bool wanted))
+        else if (!TryParseOnOff(ctx.Args[0], out wanted))
         {
-            ctx.Reply("?");
+            if (_engine.WarnOnDenial) ctx.Reply("?");
             return;
         }
 
-        bool current = get(general.AutoMode);
         if (current != wanted)
         {
             set(general.AutoMode, wanted);
@@ -123,30 +135,32 @@ public sealed class AutoModeRemoteHandler : IDisposable
 
     private void HandleAll(RemoteCommandContext ctx)
     {
-        if (_profile.Current is not { } profile)
+        if (_profile.Current is null)
         {
-            ctx.Reply("?");
+            if (_engine.WarnOnDenial) ctx.Reply("?");
             return;
         }
+
         if (ctx.Args.Count == 0)
         {
-            ctx.Reply("@auto-all: on or off");
-            return;
+            // No arg → snapshot toggle (same shape as the Auto-All button).
+            _controller.ToggleAll();
         }
-        if (!TryParseOnOff(ctx.Args[0], out bool wanted))
+        else if (TryParseOnOff(ctx.Args[0], out bool wanted))
         {
-            ctx.Reply("?");
+            // Explicit: on = ensure restored, off = ensure killed.
+            if (wanted && _controller.AllWiredOff) _controller.ToggleAll();
+            else if (!wanted && !_controller.AllWiredOff) _controller.ToggleAll();
+        }
+        else
+        {
+            if (_engine.WarnOnDenial) ctx.Reply("?");
             return;
         }
 
-        GeneralSettings general = ReadGeneral(profile);
-        foreach ((_, _, Action<AutoActionDefaults, bool> set) in Mapping)
-            set(general.AutoMode, wanted);
-        WriteGeneral(profile, general);
-
-        _log?.Log(LogSeverity.Info, LogCategory,
-            $"@auto-all from {ctx.Sender}: {(wanted ? "on" : "off")}");
-        ctx.Reply($"@auto-all: {(wanted ? "on" : "off")}");
+        string state = _controller.AllWiredOff ? "off" : "on";
+        _log?.Log(LogSeverity.Info, LogCategory, $"@auto-all from {ctx.Sender}: {state}");
+        ctx.Reply($"@auto-all: {state}");
     }
 
     private static bool TryParseOnOff(string arg, out bool wanted)

@@ -36,7 +36,8 @@ public sealed class AutoModeRemoteHandlerTests
             Engine = new RemoteCommandManager(chat, party, Players);
             Profile = new ProfileService();
             Profile.LoadBlank();
-            Handler = new AutoModeRemoteHandler(Engine, Profile);
+            AutoModeController controller = new(Profile);
+            Handler = new AutoModeRemoteHandler(Engine, Profile, controller);
         }
 
         public void Dispose() => Handler.Dispose();
@@ -77,16 +78,50 @@ public sealed class AutoModeRemoteHandlerTests
     }
 
     [Fact]
-    public void AutoCombat_NoArg_RepliesWithCurrentState()
+    public void AutoCombat_NoArg_TogglesAndRepliesNewState()
     {
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
+        // Default true → no-arg toggles to off and reports the new state.
         s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat"));
 
+        Assert.False(ReadMode(s.Profile.Current!).AutoCombat);
         string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
         Assert.Contains("@auto-combat", reply);
-        Assert.Contains("on", reply);     // default true
+        Assert.Contains("off", reply);    // toggled from default on
+    }
+
+    [Fact]
+    public void AutoRest_AliasesAutoHealRest()
+    {
+        using Setup s = new();
+        SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
+
+        s.Engine.DispatchForTests(Telepath("Tank", "@auto-rest off"));
+        Assert.False(ReadMode(s.Profile.Current!).AutoHealRest);
+
+        s.Engine.DispatchForTests(Telepath("Tank", "@auto-heal on"));
+        Assert.True(ReadMode(s.Profile.Current!).AutoHealRest);
+    }
+
+    [Fact]
+    public void AutoAll_NoArg_TogglesKillThenRestore()
+    {
+        using Setup s = new();
+        SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
+
+        // Defaults have engines on → first no-arg toggle kills everything.
+        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all"));
+        AutoActionDefaults killed = ReadMode(s.Profile.Current!);
+        Assert.False(killed.AutoCombat);
+        Assert.False(killed.AutoGetCash);
+
+        // Second toggle restores the snapshot.
+        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all"));
+        AutoActionDefaults restored = ReadMode(s.Profile.Current!);
+        Assert.True(restored.AutoCombat);
+        Assert.True(restored.AutoGetCash);
     }
 
     [Fact]

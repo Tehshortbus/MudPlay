@@ -209,15 +209,27 @@ public partial class MainWindowViewModel : ObservableObject
     // badge. AutoSearch is intentionally absent — no engine consumes it
     // yet (IsAutoSearchWired => false), so it stays stubbed until the
     // hidden-exit walker lands.
-    [ObservableProperty] private bool _isAutoCombatActive;
-    [ObservableProperty] private bool _isAutoNukeActive;
-    [ObservableProperty] private bool _isAutoHealRestActive;
-    [ObservableProperty] private bool _isAutoBlessActive;
-    [ObservableProperty] private bool _isAutoLightActive;
-    [ObservableProperty] private bool _isAutoGetItemsActive;
-    [ObservableProperty] private bool _isAutoGetCashActive;
-    [ObservableProperty] private bool _isAutoSneakActive;
-    [ObservableProperty] private bool _isAutoHideActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoCombatActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoNukeActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHealRestActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoBlessActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoLightActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetItemsActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetCashActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSneakActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
+
+    /// <summary>
+    /// True when every wired auto-engine is off — drives the "Auto-All"
+    /// master toggle's depressed/checked state. Mirrors
+    /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
+    /// the live observables so the badge updates instantly. AutoSearch is
+    /// excluded (no engine yet), matching the controller's wired set.
+    /// </summary>
+    public bool IsAllAutoOff =>
+        !IsAutoCombatActive && !IsAutoNukeActive && !IsAutoHealRestActive
+        && !IsAutoBlessActive && !IsAutoLightActive && !IsAutoGetItemsActive
+        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive;
 
     public bool IsDisconnected => !IsConnected;
 
@@ -885,7 +897,8 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsAutoGetItemsActive)
          && e.PropertyName != nameof(IsAutoGetCashActive)
          && e.PropertyName != nameof(IsAutoSneakActive)
-         && e.PropertyName != nameof(IsAutoHideActive)) return;
+         && e.PropertyName != nameof(IsAutoHideActive)
+         && e.PropertyName != nameof(IsAllAutoOff)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
         {
@@ -931,6 +944,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleAutoHide":
                 row.IsActive = IsAutoHideActive;
+                break;
+            case "ToggleAllAutoOff":
+                row.IsActive = IsAllAutoOff;
                 break;
         }
     }
@@ -3154,6 +3170,17 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Flip the live <see cref="IsAutoHideActive"/> bit.</summary>
     [RelayCommand]
     private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
+
+    /// <summary>
+    /// Master "Auto-All" kill-switch. Delegates to the shared
+    /// <see cref="Game.AutoModeController"/> so the toolbar button, the
+    /// Action-menu item, and the <c>@auto-all</c> remote command all drive
+    /// one session snapshot. The controller's profile write fires
+    /// ProfileSaving, which reseeds the nine toggle observables (and
+    /// thereby <see cref="IsAllAutoOff"/>).
+    /// </summary>
+    [RelayCommand]
+    private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
 
     private bool _suppressAutoEngineWriteback;
 

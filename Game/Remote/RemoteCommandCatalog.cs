@@ -128,6 +128,7 @@ public static class RemoteCommandCatalog
             ["@auto-combat"]  = PlayerRemoteControls.AlterSettings,
             ["@auto-nuke"]    = PlayerRemoteControls.AlterSettings,
             ["@auto-heal"]    = PlayerRemoteControls.AlterSettings,
+            ["@auto-rest"]    = PlayerRemoteControls.AlterSettings,
             ["@auto-bless"]   = PlayerRemoteControls.AlterSettings,
             ["@auto-light"]   = PlayerRemoteControls.AlterSettings,
             ["@auto-cash"]    = PlayerRemoteControls.AlterSettings,

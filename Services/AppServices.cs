@@ -256,6 +256,13 @@ public sealed class AppServices
     public Game.Remote.AutoModeRemoteHandler AutoMode { get; private set; } = null!;
 
     /// <summary>
+    /// Master "Auto-All" kill-switch shared by the toolbar / Action-menu
+    /// button and the <c>@auto-all</c> remote command. One press snapshots
+    /// + clears every wired auto-engine; the next restores the snapshot.
+    /// </summary>
+    public Game.AutoModeController AutoModeController { get; }
+
+    /// <summary>
     /// Leader-side <c>@comeback</c> party-pickup flow — pauses the
     /// running movement engine, walks to recover a stranded follower
     /// (explicit room or backtrack along the just-walked path), re-
@@ -1324,7 +1331,14 @@ public sealed class AppServices
         // loaded profile's General section + persists. (@comeback is
         // wired in the Navigation block below as PartyComebackManager,
         // which needs the movement engines.)
-        AutoMode = new Game.Remote.AutoModeRemoteHandler(RemoteCommands, Profile, Log);
+        // AutoModeController owns the master "Auto-All" snapshot; the
+        // remote handler reuses it for @auto-all so button + telepath
+        // share one session snapshot. ResetSnapshot on load so a freshly
+        // loaded character doesn't restore the previous one's state.
+        AutoModeController = new Game.AutoModeController(Profile, Log);
+        Profile.ProfileLoaded += _ => AutoModeController.ResetSnapshot();
+        AutoMode = new Game.Remote.AutoModeRemoteHandler(
+            RemoteCommands, Profile, AutoModeController, Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
