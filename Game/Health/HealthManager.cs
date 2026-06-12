@@ -84,7 +84,6 @@ public sealed class HealthManager : IDisposable
     private readonly Func<string>? _readHangupCommand;
     private readonly Func<Map.IRecoverableEngine?>? _getActiveMovementEngine;
     private readonly Func<Map.Direction?>? _getLastSentDirection;
-    private readonly Func<Models.Profile.OtherSettings>? _readOtherSettings;
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
     private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
@@ -134,7 +133,6 @@ public sealed class HealthManager : IDisposable
                readHangupCommand,
                getActiveMovementEngine: null,
                getLastSentDirection: null,
-               readOtherSettings: null,
                readCombatSettings: null,
                readGeneralSettings: null,
                hasEngageableHostiles: null,
@@ -153,9 +151,10 @@ public sealed class HealthManager : IDisposable
     /// <item><c>getLastSentDirection</c> — most recent outbound
     /// direction, inverted for the Backward flee mode. Typically wired
     /// to the last entry on <c>EngineRecoveryGate.ExecutedSinceAnchor</c>.</item>
-    /// <item><c>readOtherSettings</c> — for
-    /// <see cref="Models.Profile.OtherSettings.RunDirection"/> and
-    /// <see cref="Models.Profile.OtherSettings.BreakBeforeFleeing"/>.</item>
+    /// <item><c>readCombatSettings</c> — for the flee knobs
+    /// <see cref="Models.Profile.CombatSettings.RunDirection"/>,
+    /// <see cref="Models.Profile.CombatSettings.BreakBeforeFleeing"/> and
+    /// <see cref="Models.Profile.CombatSettings.RunDistance"/>.</item>
     /// <item><c>readGeneralSettings</c> — for
     /// <see cref="Models.Profile.GeneralSettings.AllowHangupInAllOffMode"/>,
     /// the emergency-hangup carve-out.</item>
@@ -176,7 +175,6 @@ public sealed class HealthManager : IDisposable
         Func<string>? readHangupCommand,
         Func<Map.IRecoverableEngine?>? getActiveMovementEngine,
         Func<Map.Direction?>? getLastSentDirection,
-        Func<Models.Profile.OtherSettings>? readOtherSettings,
         Func<Models.Profile.CombatSettings>? readCombatSettings,
         Func<Models.Profile.GeneralSettings>? readGeneralSettings,
         Func<bool>? hasEngageableHostiles,
@@ -193,7 +191,6 @@ public sealed class HealthManager : IDisposable
         _readHangupCommand = readHangupCommand;
         _getActiveMovementEngine = getActiveMovementEngine;
         _getLastSentDirection = getLastSentDirection;
-        _readOtherSettings = readOtherSettings;
         _readCombatSettings = readCombatSettings;
         _readGeneralSettings = readGeneralSettings;
         _hasEngageableHostiles = hasEngageableHostiles;
@@ -580,10 +577,10 @@ public sealed class HealthManager : IDisposable
             return;
         }
 
-        Models.Profile.OtherSettings other = _readOtherSettings?.Invoke()
-            ?? new Models.Profile.OtherSettings();
+        Models.Profile.CombatSettings combat = _readCombatSettings?.Invoke()
+            ?? new Models.Profile.CombatSettings();
 
-        Map.Direction? step = other.RunDirection switch
+        Map.Direction? step = combat.RunDirection switch
         {
             Models.Profile.RunDirection.Forward  => engine.PeekNextPlannedDirection(),
             Models.Profile.RunDirection.Backward => Reverse(_getLastSentDirection?.Invoke()),
@@ -592,7 +589,7 @@ public sealed class HealthManager : IDisposable
         if (step is not { } direction)
         {
             _log?.Warn(LogCategory,
-                $"flee skipped (couldn't resolve {other.RunDirection} direction) — {reason}");
+                $"flee skipped (couldn't resolve {combat.RunDirection} direction) — {reason}");
             return;
         }
 
@@ -602,7 +599,7 @@ public sealed class HealthManager : IDisposable
         // run-trigger (handled in Evaluate's recovery branch).
         engine.PauseForRecovery($"flee — {reason}");
 
-        int distance = _readCombatSettings?.Invoke().RunDistance ?? 1;
+        int distance = combat.RunDistance;
         if (distance < 1) distance = 1;
 
         // Capture sustained flee state — same direction across all
@@ -613,11 +610,11 @@ public sealed class HealthManager : IDisposable
         _fleeDirection = direction;
         _fleeStepsRemaining = distance;
 
-        if (other.BreakBeforeFleeing)
+        if (combat.BreakBeforeFleeing)
             SendCommand("break");
 
         _log?.Info(LogCategory,
-            $"flee start engine={engine.Name} mode={other.RunDirection} dir={direction} " +
+            $"flee start engine={engine.Name} mode={combat.RunDirection} dir={direction} " +
             $"distance={distance} ({reason})");
         engine.SendBacktrackMove(direction);
         _fleeStepsRemaining--;

@@ -217,6 +217,17 @@
                                    ToolTip.Tip="Consecutive 'no effect' lines that move a target to the room-scoped unhittable set. Canonical-species dedup applies (nasty giant rat and giant rat share)."/>
                 </Grid>
 
+                <!-- Run-away (flee) behaviour — coordinates with Run distance
+                     above. HealthManager.TryFlee reads RunDirection /
+                     BreakBeforeFleeing from CombatSettings. -->
+                <TextBlock Classes="FieldLabel" Text="When running away:" Margin="0,12,0,0"/>
+                <CheckBox Content="Go backwards if running"
+                          IsChecked="{Binding GoBackwardsIfRunning, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): an auto-flee retraces the rooms you just walked in through — safer because you know what's behind you. When unchecked, the flee pushes forward along the active walker path into unscouted rooms."/>
+                <CheckBox Content="Break combat before running"
+                          IsChecked="{Binding BreakBeforeFleeing, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): `break` is sent before the first flee move so auto-attack disengages and the move lands cleanly. When unchecked, the flee starts mid-fight and the server may reject the first move because you're still engaged — faster, but you may waste a round."/>
+
                 <!-- ============ Spell Combat ============ -->
                 <TextBlock Classes="SectionHeader" Text="Spell combat"/>
                 <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">

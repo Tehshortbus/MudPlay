@@ -175,17 +175,11 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked: each observed hop emits one Info log line with the measured wall-clock time + the current encumbrance level. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play."/>
 
-            <!-- Run-away (flee) behaviour. Both consumed live by
-                 HealthManager.TryFlee via OtherSettings.RunDirection /
-                 BreakBeforeFleeing — the auto-flee fires when HP crosses
-                 Health → "run if below". -->
-            <TextBlock Classes="FieldLabel" Text="When running away:" Margin="0,12,0,0"/>
-            <CheckBox Content="Go backwards if running"
-                      IsChecked="{Binding GoBackwardsIfRunning, Mode=TwoWay}"
-                      ToolTip.Tip="When checked (default): an auto-flee retraces the rooms you just walked in through — safer because you know what's behind you. When unchecked, the flee pushes forward along the active walker path into unscouted rooms."/>
-            <CheckBox Content="Break combat before running"
-                      IsChecked="{Binding BreakBeforeFleeing, Mode=TwoWay}"
-                      ToolTip.Tip="When checked (default): `break` is sent before the first flee move so auto-attack disengages and the move lands cleanly. When unchecked, the flee starts mid-fight and the server may reject the first move because you're still engaged — faster, but you may waste a round."/>
+            <!-- Note: the run-away (flee) toggles (Go backwards if running /
+                 Break combat before running) graduated to the Combat tab —
+                 they sit next to the room thresholds + RunDistance they
+                 coordinate with. HealthManager.TryFlee reads RunDirection /
+                 BreakBeforeFleeing from CombatSettings now. -->
 
             <!-- Note: the per-category Verbose toggles + the round-trace
                  toggle moved to the Log pane menu as a single "Combat

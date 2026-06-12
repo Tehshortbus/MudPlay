@@ -63,6 +63,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
         "Polite mode", "Skip room", "Attack different",
         "Min monsters", "Max monsters", "Run distance",
+        "When running away", "Go backwards if running", "Break combat before running",
         "Failure tracking", "No effect threshold",
         "Multi-attack", "Debuff single target", "Debuff AOE",
         "Normal attack spell", "Alternate attack spell",
@@ -161,6 +162,21 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _runDistance = 3;
     [ObservableProperty] private int _noEffectFailureThreshold = 1;
 
+    // ----- Run-away (flee) behaviour --------------------------------
+    // Graduated from the Other tab — they coordinate with RunDistance
+    // above. HealthManager.TryFlee reads RunDirection / BreakBeforeFleeing
+    // from CombatSettings.
+
+    /// <summary>When checked (default) an auto-flee retraces the rooms just
+    /// walked through (<see cref="RunDirection.Backward"/>); when unchecked it
+    /// pushes forward along the active walker path
+    /// (<see cref="RunDirection.Forward"/>).</summary>
+    [ObservableProperty] private bool _goBackwardsIfRunning = true;
+
+    /// <summary>When checked (default) <c>break</c> is sent before the first
+    /// flee move so auto-attack disengages and the move lands cleanly.</summary>
+    [ObservableProperty] private bool _breakBeforeFleeing = true;
+
     // ----- Spell combat ---------------------------------------------
 
     [ObservableProperty] private bool _spellManaModePercentage = true;
@@ -254,6 +270,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             MinMonstersInRoom = Math.Clamp(MinMonstersInRoom, 0, 20),
             MaxMonstersInRoom = Math.Clamp(MaxMonstersInRoom, 1, 20),
             RunDistance       = Math.Clamp(RunDistance, 1, 100),
+            RunDirection      = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
+            BreakBeforeFleeing = BreakBeforeFleeing,
 
             NoEffectFailureThreshold = Math.Clamp(NoEffectFailureThreshold, 1, 20),
 
@@ -373,6 +391,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         MinMonstersInRoom = dto.MinMonstersInRoom;
         MaxMonstersInRoom = dto.MaxMonstersInRoom;
         RunDistance       = dto.RunDistance;
+        GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
+        BreakBeforeFleeing   = dto.BreakBeforeFleeing;
 
         NoEffectFailureThreshold = dto.NoEffectFailureThreshold;
 
@@ -478,6 +498,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnMinMonstersInRoomChanged(int value)           => MarkDirty();
     partial void OnMaxMonstersInRoomChanged(int value)           => MarkDirty();
     partial void OnRunDistanceChanged(int value)                 => MarkDirty();
+    partial void OnGoBackwardsIfRunningChanged(bool value)       => MarkDirty();
+    partial void OnBreakBeforeFleeingChanged(bool value)         => MarkDirty();
     partial void OnNoEffectFailureThresholdChanged(int value)    => MarkDirty();
 
     // Spell mana mode

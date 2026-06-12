@@ -25,11 +25,6 @@ public sealed class HealthManagerTests
         public HealthSettings Settings { get; set; } = new();
         public bool AutoHealRestEnabled { get; set; } = true;
 
-        /// <summary>Char-tier Other settings. Default instance has every
-        /// flag at its DTO default, so the dependent branches stay dormant
-        /// unless a test opts in.</summary>
-        public OtherSettings Other { get; set; } = new();
-
         /// <summary>Char-tier General settings. Default instance has
         /// AllowHangupInAllOffMode=false, so the all-off carve-out stays
         /// dormant unless a test opts in.</summary>
@@ -57,7 +52,6 @@ public sealed class HealthManagerTests
                 readHangupCommand: () => HangupCommand ?? string.Empty,
                 getActiveMovementEngine: null,
                 getLastSentDirection: null,
-                readOtherSettings: () => Other,
                 readCombatSettings: null,
                 readGeneralSettings: () => General,
                 hasEngageableHostiles: () => HostilesPresent,
@@ -671,7 +665,6 @@ public sealed class HealthManagerTests
         public HealthManager Health { get; }
         public List<byte[]> Sent { get; } = new();
         public HealthSettings HealthSettings { get; set; } = new();
-        public Models.Profile.OtherSettings Other { get; set; } = new();
         public Models.Profile.CombatSettings Combat { get; set; } = new();
         public FakeFleeEngine? Engine { get; set; } = new();
         public Game.Map.Direction? LastSent { get; set; } = Game.Map.Direction.N;
@@ -686,7 +679,6 @@ public sealed class HealthManagerTests
                 readHangupCommand: () => string.Empty,
                 getActiveMovementEngine: () => Engine,
                 getLastSentDirection: () => LastSent,
-                readOtherSettings: () => Other,
                 readCombatSettings: () => Combat,
                 readGeneralSettings: null,
                 hasEngageableHostiles: () => HostilesPresent,
@@ -719,8 +711,8 @@ public sealed class HealthManagerTests
     public void Flee_BackwardMode_InvertsLastSentDirection()
     {
         using FleeHarness h = new();
-        h.Other.RunDirection = Models.Profile.RunDirection.Backward;
-        h.Other.BreakBeforeFleeing = true;
+        h.Combat.RunDirection = Models.Profile.RunDirection.Backward;
+        h.Combat.BreakBeforeFleeing = true;
         h.Combat.RunDistance = 1;
         h.LastSent = Game.Map.Direction.N;
 
@@ -738,8 +730,8 @@ public sealed class HealthManagerTests
     public void Flee_ForwardMode_UsesEnginePlannedDirection()
     {
         using FleeHarness h = new();
-        h.Other.RunDirection = Models.Profile.RunDirection.Forward;
-        h.Other.BreakBeforeFleeing = false;
+        h.Combat.RunDirection = Models.Profile.RunDirection.Forward;
+        h.Combat.BreakBeforeFleeing = false;
         h.Combat.RunDistance = 1;
         h.Engine!.NextPlanned = Game.Map.Direction.E;
 
@@ -759,7 +751,7 @@ public sealed class HealthManagerTests
         // RunDistance=3 → first step on trigger; two more steps on
         // subsequent NoteRoomChanged calls.
         using FleeHarness h = new();
-        h.Other.BreakBeforeFleeing = false;
+        h.Combat.BreakBeforeFleeing = false;
         h.Combat.RunDistance = 3;
         h.LastSent = Game.Map.Direction.N;
 

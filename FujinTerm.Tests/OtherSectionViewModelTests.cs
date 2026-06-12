@@ -21,8 +21,6 @@ public sealed class OtherSectionViewModelTests
             UtilizeDisarmTrapsIfAble = false,
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
-            RunDirection = RunDirection.Forward,
-            BreakBeforeFleeing = false,
         };
 
         string json = JsonSerializer.Serialize(src);
@@ -33,8 +31,6 @@ public sealed class OtherSectionViewModelTests
         Assert.False(back.UtilizeDisarmTrapsIfAble);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
-        Assert.Equal(RunDirection.Forward, back.RunDirection);
-        Assert.False(back.BreakBeforeFleeing);
     }
 
     // Note: the per-character "Phase 9 diagnostic toggle" tests
@@ -62,9 +58,5 @@ public sealed class OtherSectionViewModelTests
         Assert.True(dto.UtilizeDisarmTrapsIfAble);
         Assert.Equal(20, dto.MaxTrapSearchAttempts);
         Assert.Equal(5,  dto.MaxTrapDisarmAttempts);
-        // Flee defaults: retrace the way we came (Backward) and break
-        // combat before the first flee move — both the safer choice.
-        Assert.Equal(RunDirection.Backward, dto.RunDirection);
-        Assert.True(dto.BreakBeforeFleeing);
     }
 }

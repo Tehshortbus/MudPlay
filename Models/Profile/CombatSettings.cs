@@ -152,6 +152,21 @@ public sealed class CombatSettings
     /// <summary>Rooms to flee before re-evaluating. Range 1–100. Default 3.</summary>
     public int RunDistance { get; set; } = 3;
 
+    /// <summary>Direction strategy when fleeing. Forward continues along the
+    /// active walker path (away from where we entered); Backward retraces the
+    /// steps we just came from. Default Backward — safer because we know what
+    /// rooms we passed through. Consumed by
+    /// <see cref="Game.Health.HealthManager"/>'s flee path alongside
+    /// <see cref="RunDistance"/>.</summary>
+    public RunDirection RunDirection { get; set; } = RunDirection.Backward;
+
+    /// <summary>When true (default), HealthManager sends <c>break</c> before
+    /// the first flee move so the auto-attack disengages and the move can land
+    /// cleanly. When false the flee starts mid-fight and the server may reject
+    /// the first move because we're still engaged — fast option for users who'd
+    /// rather take the chance than waste a round on <c>break</c>.</summary>
+    public bool BreakBeforeFleeing { get; set; } = true;
+
     // ----- Failure tracking -----------------------------------------
 
     /// <summary>How many consecutive "no effect" lines move a target to the
@@ -213,6 +228,18 @@ public sealed class CombatSpellSlot
     /// <summary>Minimum mana required to cast — interpreted per
     /// <see cref="CombatSettings.SpellManaThresholdMode"/>.</summary>
     public int MinManaPerCast { get; set; }
+}
+
+/// <summary>Direction strategy for the auto-flee path.</summary>
+public enum RunDirection
+{
+    /// <summary>Retrace the path we just walked in on. Default —
+    /// safer because we know what rooms we passed through.</summary>
+    Backward,
+
+    /// <summary>Continue along the active walker path away from
+    /// where we came in. Faster but moves into unscouted rooms.</summary>
+    Forward,
 }
 
 /// <summary>

@@ -1819,8 +1819,6 @@ public sealed class AppServices
                 Recovery.ExecutedSinceAnchor.Count > 0
                     ? Recovery.ExecutedSinceAnchor[^1]
                     : (Game.Map.Direction?)null,
-            readOtherSettings: () =>
-                ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
             readCombatSettings: () =>
                 ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
             readGeneralSettings: () =>

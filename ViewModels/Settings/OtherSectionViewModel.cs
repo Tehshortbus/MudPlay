@@ -56,10 +56,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Lockpicks";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
-            yield return "Go backwards if running";
-            yield return "Break combat before running";
-            yield return "Flee direction";
-            yield return "Run away";
             yield return "Utilize disarm traps if able";
             yield return "Disarm traps";
             yield return "Traps";
@@ -165,25 +161,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // combat) graduated to the Party tab — they sit next to the bless
     // slots they gate. CastingDirector reads them from PartySettings now.
 
-    // ----- Run-away (flee) behaviour (wired — HealthManager) -----
-    // Both map onto existing OtherSettings fields that HealthManager.TryFlee
-    // already reads live through the resolver; the VM just round-trips them
-    // so the user can actually change the flee direction / break behaviour.
-
-    /// <summary>
-    /// When checked (default), an auto-flee retraces the rooms we just
-    /// walked in through; unchecked pushes forward along the active walker
-    /// path into unscouted rooms. Maps onto
-    /// <see cref="OtherSettings.RunDirection"/> (checked = Backward).
-    /// </summary>
-    [ObservableProperty] private bool _goBackwardsIfRunning = true;
-
-    /// <summary>
-    /// When checked (default), HealthManager sends <c>break</c> before the
-    /// first flee move so auto-attack disengages and the move lands cleanly.
-    /// Maps onto <see cref="OtherSettings.BreakBeforeFleeing"/>.
-    /// </summary>
-    [ObservableProperty] private bool _breakBeforeFleeing = true;
+    // Note: the run-away (flee) knobs (Go-backwards-if-running /
+    // Break-combat-before-running) graduated to the Combat tab — they sit
+    // next to the room thresholds + RunDistance they coordinate with.
+    // HealthManager reads RunDirection / BreakBeforeFleeing from CombatSettings.
 
     /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
@@ -223,8 +204,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             // before moving — the toggle was a MegaMUD workaround for a
             // message-parsing combat bug we don't share).
             // "Go backwards if running" / "Break combat before running"
-            // graduated to wired checkboxes (HealthManager.TryFlee consumes
-            // them live via OtherSettings.RunDirection / BreakBeforeFleeing).
+            // graduated to wired checkboxes on the Combat tab (HealthManager
+            // reads CombatSettings.RunDirection / BreakBeforeFleeing).
             // Lock / trap preference toggles moved down next to their
             // matching retry-count pickers (see "Locks & traps" group).
         }),
@@ -281,8 +262,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
-            RunDirection = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
-            BreakBeforeFleeing = BreakBeforeFleeing,
         };
 
         profile.Settings ??= new();
@@ -336,8 +315,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
-        GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
-        BreakBeforeFleeing = dto.BreakBeforeFleeing;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -395,8 +372,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
-    partial void OnGoBackwardsIfRunningChanged(bool value) => MarkDirty();
-    partial void OnBreakBeforeFleeingChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {
