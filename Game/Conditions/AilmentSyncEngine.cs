@@ -33,7 +33,7 @@ namespace FujinTerm.Game.Conditions;
 /// <b>no cure spell configured</b> for that ailment — if we can self-cure
 /// we just clear our own condition silently, and out of a party there's no
 /// one to tell. On top of that the per-ailment <c>DoNotAnnounce&lt;X&gt;</c>
-/// gate (<see cref="OtherSettings"/>, Char tier) suppresses the curable
+/// gate (<see cref="SpellsSettings"/>, Char tier) suppresses the curable
 /// four; the <c>Ignore&lt;X&gt;</c> gate independently suppresses their
 /// <c>@wait</c>. Held has no settings gate — only the in-party / no-cure
 /// rule applies.
@@ -75,7 +75,7 @@ public sealed class AilmentSyncEngine : IDisposable
 
     private readonly ConditionTracker _conditions;
     private readonly PartyRestSync _restSync;
-    private readonly Func<OtherSettings> _readOther;
+    private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<bool> _isInParty;
     private readonly Func<MessageFlags, bool> _hasCureConfigured;
     private readonly LogService? _log;
@@ -87,19 +87,19 @@ public sealed class AilmentSyncEngine : IDisposable
     public AilmentSyncEngine(
         ConditionTracker conditions,
         PartyRestSync restSync,
-        Func<OtherSettings> readOther,
+        Func<SpellsSettings> readSpells,
         Func<bool> isInParty,
         Func<MessageFlags, bool> hasCureConfigured,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(conditions);
         ArgumentNullException.ThrowIfNull(restSync);
-        ArgumentNullException.ThrowIfNull(readOther);
+        ArgumentNullException.ThrowIfNull(readSpells);
         ArgumentNullException.ThrowIfNull(isInParty);
         ArgumentNullException.ThrowIfNull(hasCureConfigured);
         _conditions = conditions;
         _restSync = restSync;
-        _readOther = readOther;
+        _readSpells = readSpells;
         _isInParty = isInParty;
         _hasCureConfigured = hasCureConfigured;
         _log = log;
@@ -130,20 +130,20 @@ public sealed class AilmentSyncEngine : IDisposable
         _lastFlags = now;
         if (added == MessageFlags.None && removed == MessageFlags.None) return;
 
-        OtherSettings other = _readOther();
+        SpellsSettings spells = _readSpells();
         bool inParty = _isInParty();
 
         foreach ((MessageFlags flag, string token, WaitReason reason, bool telepathWait) in Ailments)
         {
             if (added.HasFlag(flag))
             {
-                bool announced = ShouldAnnounce(flag, other, inParty);
+                bool announced = ShouldAnnounce(flag, spells, inParty);
                 if (announced)
                     Say(token);
 
                 if (telepathWait)
                 {
-                    if (!IsWaitSuppressed(flag, other))
+                    if (!IsWaitSuppressed(flag, spells))
                         _restSync.RequestWait(reason);
                 }
                 else if (announced)
@@ -174,28 +174,28 @@ public sealed class AilmentSyncEngine : IDisposable
     /// <c>DoNotAnnounce&lt;X&gt;</c> setting suppresses the curable four on top
     /// of that; held has no such setting.
     /// </summary>
-    private bool ShouldAnnounce(MessageFlags flag, OtherSettings o, bool inParty)
+    private bool ShouldAnnounce(MessageFlags flag, SpellsSettings s, bool inParty)
     {
         if (!inParty) return false;
         if (_hasCureConfigured(flag)) return false;
-        return !IsAnnounceSuppressed(flag, o);
+        return !IsAnnounceSuppressed(flag, s);
     }
 
-    private static bool IsAnnounceSuppressed(MessageFlags flag, OtherSettings o) => flag switch
+    private static bool IsAnnounceSuppressed(MessageFlags flag, SpellsSettings s) => flag switch
     {
-        MessageFlags.Poisoned => o.DoNotAnnouncePoison,
-        MessageFlags.Blinded  => o.DoNotAnnounceBlindness,
-        MessageFlags.Confused => o.DoNotAnnounceConfusion,
-        MessageFlags.Diseased => o.DoNotAnnounceDiseased,
+        MessageFlags.Poisoned => s.DoNotAnnouncePoison,
+        MessageFlags.Blinded  => s.DoNotAnnounceBlindness,
+        MessageFlags.Confused => s.DoNotAnnounceConfusion,
+        MessageFlags.Diseased => s.DoNotAnnounceDiseased,
         _ => false,
     };
 
-    private static bool IsWaitSuppressed(MessageFlags flag, OtherSettings o) => flag switch
+    private static bool IsWaitSuppressed(MessageFlags flag, SpellsSettings s) => flag switch
     {
-        MessageFlags.Poisoned => o.IgnorePoison,
-        MessageFlags.Blinded  => o.IgnoreBlindness,
-        MessageFlags.Confused => o.IgnoreConfusion,
-        MessageFlags.Diseased => o.IgnoreDiseased,
+        MessageFlags.Poisoned => s.IgnorePoison,
+        MessageFlags.Blinded  => s.IgnoreBlindness,
+        MessageFlags.Confused => s.IgnoreConfusion,
+        MessageFlags.Diseased => s.IgnoreDiseased,
         _ => false,
     };
 

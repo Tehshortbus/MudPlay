@@ -117,4 +117,42 @@ public sealed class SpellsSettings
     public string? Bless9Spell { get; set; }
     /// <summary>Self-buff slot #10.</summary>
     public string? Bless10Spell { get; set; }
+
+    // ----- Ailment handling / coordination ------------------------------
+    // The four "Ignore X" gates suppress the automatic @wait that
+    // AilmentSyncEngine telepaths to the party leader when we catch that
+    // ailment. Default UNCHECKED — most parties want to pause on every
+    // ailment; the toggle is for edge cases ("we're at the boss fight,
+    // don't pause for a poison tick"). Always-on triggers (over-encumbered,
+    // MovementPrevented, Stunned) bypass these flags.
+
+    /// <summary>Don't @wait for poison. Default false (pause).</summary>
+    public bool IgnorePoison    { get; set; }
+
+    /// <summary>Don't @wait for blindness. Default false (pause).</summary>
+    public bool IgnoreBlindness { get; set; }
+
+    /// <summary>Don't @wait for confusion. Default false (pause).</summary>
+    public bool IgnoreConfusion { get; set; }
+
+    /// <summary>Don't @wait for disease. Default false (pause).</summary>
+    public bool IgnoreDiseased  { get; set; }
+
+    // The four "do not announce" gates suppress the say-channel broadcast
+    // (".@poisoned" etc.) AilmentSyncEngine emits so other FujinTerm clients
+    // in the room can mirror our state. Independent of the Ignore* flags —
+    // a party may want the leader to pause but not broadcast on say, or
+    // vice-versa. Default UNCHECKED = announce.
+
+    /// <summary>Suppress the say-announce when poisoned. Default false (announce).</summary>
+    public bool DoNotAnnouncePoison    { get; set; }
+
+    /// <summary>Suppress the say-announce when blinded. Default false (announce).</summary>
+    public bool DoNotAnnounceBlindness { get; set; }
+
+    /// <summary>Suppress the say-announce when confused. Default false (announce).</summary>
+    public bool DoNotAnnounceConfusion { get; set; }
+
+    /// <summary>Suppress the say-announce when diseased. Default false (announce).</summary>
+    public bool DoNotAnnounceDiseased  { get; set; }
 }

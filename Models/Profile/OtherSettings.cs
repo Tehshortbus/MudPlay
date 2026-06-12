@@ -31,52 +31,10 @@ public sealed class OtherSettings
     /// </remarks>
     public int MaxSuicideLivesThreshold { get; set; } = 5;
 
-    // ----- Ignored ailments ---------------------------------------------
-    // Per user direction: the four "Ignore X" toggles gate whether
-    // catching that ailment triggers an automatic @wait to the party
-    // leader (or, when we ARE the leader, makes our own engines pause
-    // until the affect is gone). Default UNCHECKED — most parties
-    // want to pause on every ailment by default; the toggle is for
-    // edge cases ("we're at the boss fight, don't pause for a poison
-    // tick"). Once the message-matching engine ships, these flags
-    // become the user-configurable input to WaitTriggerEngine.
-    // Always-on triggers (over-encumbered, MovementPrevented,
-    // Stunned = movement+attack prevented) bypass these flags.
-
-    /// <summary>Don't auto-cure / don't @wait for poison. Default false (pause).</summary>
-    public bool IgnorePoison    { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for blindness. Default false (pause).</summary>
-    public bool IgnoreBlindness { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for confusion. Default false (pause).</summary>
-    public bool IgnoreConfusion { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for disease. Default false (pause).</summary>
-    public bool IgnoreDiseased  { get; set; }
-
-    // ----- Ailment say-announce suppression -----------------------------
-    // Independent of the Ignore* flags above. When the local character
-    // catches a curable ailment, the AilmentSyncEngine announces it on
-    // the say channel (".@poisoned" etc.) so other FujinTerm clients in
-    // the room can mirror our state on their party window. These four
-    // "do not announce" toggles suppress that say per-ailment. Default
-    // UNCHECKED = announce. The @wait sent to the leader is gated by the
-    // Ignore* flag, NOT by these — the two decisions are separate
-    // (a party may want the leader to pause but not broadcast on say,
-    // or vice-versa).
-
-    /// <summary>Suppress the say-announce when poisoned. Default false (announce).</summary>
-    public bool DoNotAnnouncePoison    { get; set; }
-
-    /// <summary>Suppress the say-announce when blinded. Default false (announce).</summary>
-    public bool DoNotAnnounceBlindness { get; set; }
-
-    /// <summary>Suppress the say-announce when confused. Default false (announce).</summary>
-    public bool DoNotAnnounceConfusion { get; set; }
-
-    /// <summary>Suppress the say-announce when diseased. Default false (announce).</summary>
-    public bool DoNotAnnounceDiseased  { get; set; }
+    // Note: the ailment-handling toggles (the four "Ignore X" @wait gates
+    // and the four "do not announce" say-suppression gates) graduated to
+    // SpellsSettings — they sit on the Spells tab next to the cure-spell
+    // picks they coordinate with. AilmentSyncEngine reads them from there.
 
     /// <summary>
     /// Master gate for walker trap-disarming. When <c>true</c> (default)

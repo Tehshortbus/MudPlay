@@ -43,6 +43,17 @@ public sealed class SpellsSettingsTests
         Assert.Null(dto.Bless1Spell);
         Assert.Null(dto.Bless5Spell);
         Assert.Null(dto.Bless10Spell);
+
+        // Ailment-coordination toggles default UNCHECKED — most parties want
+        // to pause (@wait) and broadcast (.@poisoned) on every ailment.
+        Assert.False(dto.IgnorePoison);
+        Assert.False(dto.IgnoreBlindness);
+        Assert.False(dto.IgnoreConfusion);
+        Assert.False(dto.IgnoreDiseased);
+        Assert.False(dto.DoNotAnnouncePoison);
+        Assert.False(dto.DoNotAnnounceBlindness);
+        Assert.False(dto.DoNotAnnounceConfusion);
+        Assert.False(dto.DoNotAnnounceDiseased);
     }
 
     [Fact]
@@ -101,6 +112,15 @@ public sealed class SpellsSettingsTests
             Bless8Spell  = "stoneskin",
             Bless9Spell  = "fly",
             Bless10Spell = "guardian",
+
+            IgnorePoison           = true,
+            IgnoreBlindness        = true,
+            IgnoreConfusion        = true,
+            IgnoreDiseased         = true,
+            DoNotAnnouncePoison    = true,
+            DoNotAnnounceBlindness = true,
+            DoNotAnnounceConfusion = true,
+            DoNotAnnounceDiseased  = true,
         };
 
         string json = JsonSerializer.Serialize(dto);
@@ -139,5 +159,14 @@ public sealed class SpellsSettingsTests
         Assert.Equal(dto.Bless8Spell,  round.Bless8Spell);
         Assert.Equal(dto.Bless9Spell,  round.Bless9Spell);
         Assert.Equal(dto.Bless10Spell, round.Bless10Spell);
+
+        Assert.Equal(dto.IgnorePoison,           round.IgnorePoison);
+        Assert.Equal(dto.IgnoreBlindness,        round.IgnoreBlindness);
+        Assert.Equal(dto.IgnoreConfusion,        round.IgnoreConfusion);
+        Assert.Equal(dto.IgnoreDiseased,         round.IgnoreDiseased);
+        Assert.Equal(dto.DoNotAnnouncePoison,    round.DoNotAnnouncePoison);
+        Assert.Equal(dto.DoNotAnnounceBlindness, round.DoNotAnnounceBlindness);
+        Assert.Equal(dto.DoNotAnnounceConfusion, round.DoNotAnnounceConfusion);
+        Assert.Equal(dto.DoNotAnnounceDiseased,  round.DoNotAnnounceDiseased);
     }
 }

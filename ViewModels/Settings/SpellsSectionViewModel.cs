@@ -59,6 +59,10 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         "Room light", "Light",
         "Bless", "Bless 1", "Bless 2", "Bless 3", "Bless 4", "Bless 5",
         "Bless 6", "Bless 7", "Bless 8", "Bless 9", "Bless 10",
+        "Ailment handling", "Coordination",
+        "Ignore poison", "Ignore blindness", "Ignore confusion", "Ignore disease",
+        "Don't announce poison", "Don't announce blindness",
+        "Don't announce confusion", "Don't announce disease",
     };
 
     // ----- Category priority (1-7) ----------------------------------
@@ -117,6 +121,21 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _bless9Spell;
     [ObservableProperty] private string? _bless10Spell;
 
+    // ----- Ailment handling / coordination --------------------------
+    // The four "Ignore X" gates suppress the @wait sent to the party
+    // leader; the four "do not announce" gates suppress the say-channel
+    // broadcast. Both default off. Consumed by AilmentSyncEngine.
+
+    [ObservableProperty] private bool _ignorePoison;
+    [ObservableProperty] private bool _ignoreBlindness;
+    [ObservableProperty] private bool _ignoreConfusion;
+    [ObservableProperty] private bool _ignoreDiseased;
+
+    [ObservableProperty] private bool _doNotAnnouncePoison;
+    [ObservableProperty] private bool _doNotAnnounceBlindness;
+    [ObservableProperty] private bool _doNotAnnounceConfusion;
+    [ObservableProperty] private bool _doNotAnnounceDiseased;
+
     public SpellsSectionViewModel() : this(AppServices.Current.Profile) { }
 
     public SpellsSectionViewModel(ProfileService profile)
@@ -172,6 +191,16 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
             Bless8Spell  = NullIfBlank(Bless8Spell),
             Bless9Spell  = NullIfBlank(Bless9Spell),
             Bless10Spell = NullIfBlank(Bless10Spell),
+
+            IgnorePoison    = IgnorePoison,
+            IgnoreBlindness = IgnoreBlindness,
+            IgnoreConfusion = IgnoreConfusion,
+            IgnoreDiseased  = IgnoreDiseased,
+
+            DoNotAnnouncePoison    = DoNotAnnouncePoison,
+            DoNotAnnounceBlindness = DoNotAnnounceBlindness,
+            DoNotAnnounceConfusion = DoNotAnnounceConfusion,
+            DoNotAnnounceDiseased  = DoNotAnnounceDiseased,
         };
 
         profile.Settings ??= new();
@@ -243,6 +272,16 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         Bless8Spell  = dto.Bless8Spell;
         Bless9Spell  = dto.Bless9Spell;
         Bless10Spell = dto.Bless10Spell;
+
+        IgnorePoison    = dto.IgnorePoison;
+        IgnoreBlindness = dto.IgnoreBlindness;
+        IgnoreConfusion = dto.IgnoreConfusion;
+        IgnoreDiseased  = dto.IgnoreDiseased;
+
+        DoNotAnnouncePoison    = dto.DoNotAnnouncePoison;
+        DoNotAnnounceBlindness = dto.DoNotAnnounceBlindness;
+        DoNotAnnounceConfusion = dto.DoNotAnnounceConfusion;
+        DoNotAnnounceDiseased  = dto.DoNotAnnounceDiseased;
     }
 
     private SpellsSettings ReadOrDefault()
@@ -300,4 +339,14 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     partial void OnBless8SpellChanged(string? value)         => MarkDirty();
     partial void OnBless9SpellChanged(string? value)         => MarkDirty();
     partial void OnBless10SpellChanged(string? value)        => MarkDirty();
+
+    partial void OnIgnorePoisonChanged(bool value)           => MarkDirty();
+    partial void OnIgnoreBlindnessChanged(bool value)        => MarkDirty();
+    partial void OnIgnoreConfusionChanged(bool value)        => MarkDirty();
+    partial void OnIgnoreDiseasedChanged(bool value)         => MarkDirty();
+
+    partial void OnDoNotAnnouncePoisonChanged(bool value)    => MarkDirty();
+    partial void OnDoNotAnnounceBlindnessChanged(bool value) => MarkDirty();
+    partial void OnDoNotAnnounceConfusionChanged(bool value) => MarkDirty();
+    partial void OnDoNotAnnounceDiseasedChanged(bool value)  => MarkDirty();
 }

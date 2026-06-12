@@ -71,29 +71,6 @@
                            Text="0 = disabled"/>
             </StackPanel>
 
-            <!-- Each ailment pairs its Ignore* (gates the @wait) with the
-                 matching Don't-announce* (gates the ".@poisoned" say
-                 broadcast that lets other FujinTerm clients mirror our
-                 ailment on their party window). The two are independent —
-                 one suppresses the pause, the other the broadcast. -->
-            <TextBlock Classes="FieldLabel" Text="Ailment handling/Coordination:" Margin="0,12,0,0"/>
-            <CheckBox Content="Ignore poison"    IsChecked="{Binding IgnorePoison, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: poison ticks don't trigger @wait. Always-on triggers (over-encumbered, MovementPrevented, Stunned) still pause regardless."/>
-            <CheckBox Content="Don't announce poison"    IsChecked="{Binding DoNotAnnouncePoison, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: catching poison doesn't send `.@poisoned` on say. The @wait (if any) is unaffected — that's gated by 'Ignore poison'."/>
-            <CheckBox Content="Ignore blindness" IsChecked="{Binding IgnoreBlindness, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being blinded doesn't trigger @wait."/>
-            <CheckBox Content="Don't announce blindness" IsChecked="{Binding DoNotAnnounceBlindness, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being blinded doesn't send `.@blind` on say."/>
-            <CheckBox Content="Ignore confusion" IsChecked="{Binding IgnoreConfusion, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being confused doesn't trigger @wait. Caster parties often want to leave this UNCHECKED — confusion makes our cast fail randomly."/>
-            <CheckBox Content="Don't announce confusion" IsChecked="{Binding DoNotAnnounceConfusion, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being confused doesn't send `.@confused` on say."/>
-            <CheckBox Content="Ignore diseased"  IsChecked="{Binding IgnoreDiseased, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being diseased doesn't trigger @wait."/>
-            <CheckBox Content="Don't announce diseased"  IsChecked="{Binding DoNotAnnounceDiseased, Mode=TwoWay}"
-                      ToolTip.Tip="When checked: being diseased doesn't send `.@diseased` on say."/>
-
             <!-- Master gate for walker trap-disarming. Off → the walker
                  steps straight through trapped exits. On → it disarms
                  first, but only when a disarm is actually possible (local

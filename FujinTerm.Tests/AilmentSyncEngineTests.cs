@@ -27,7 +27,7 @@ public sealed class AilmentSyncEngineTests
         public PartyState Party { get; } = new();
         public PartyRestSync Rest { get; }
         public AilmentSyncEngine Engine { get; }
-        public OtherSettings Other { get; set; } = new();
+        public SpellsSettings Spells { get; set; } = new();
 
         /// <summary>Ailment flags the player has a cure spell configured for.</summary>
         public MessageFlags CureConfigured { get; set; } = MessageFlags.None;
@@ -44,7 +44,7 @@ public sealed class AilmentSyncEngineTests
             Rest = new PartyRestSync(Party);
             Rest.SetWireSender(b => Telepath.Add(Encoding.Latin1.GetString(b)));
             Engine = new AilmentSyncEngine(
-                Tracker, Rest, () => Other,
+                Tracker, Rest, () => Spells,
                 isInParty: () => Party.IsInParty,
                 hasCureConfigured: f => (CureConfigured & f) != MessageFlags.None,
                 log: null);
@@ -129,7 +129,7 @@ public sealed class AilmentSyncEngineTests
     {
         using Harness h = new();
         SeedAll(h);
-        h.Other = new OtherSettings { DoNotAnnouncePoison = true };
+        h.Spells = new SpellsSettings { DoNotAnnouncePoison = true };
 
         h.Feed("You have been poisoned!");
 
@@ -142,7 +142,7 @@ public sealed class AilmentSyncEngineTests
     {
         using Harness h = new();
         SeedAll(h);
-        h.Other = new OtherSettings { IgnorePoison = true };
+        h.Spells = new SpellsSettings { IgnorePoison = true };
 
         h.Feed("You have been poisoned!");
 
@@ -169,7 +169,7 @@ public sealed class AilmentSyncEngineTests
     {
         using Harness h = new();
         SeedAll(h);
-        h.Other = new OtherSettings { IgnorePoison = true };
+        h.Spells = new SpellsSettings { IgnorePoison = true };
 
         h.Feed("You have been poisoned!");
         h.Feed("The poison wears off.");
@@ -299,7 +299,7 @@ public sealed class AilmentSyncEngineTests
         party.IsInParty = true;
         party.LeaderName = "Leader";
         using AilmentSyncEngine engine = new(
-            tracker, rest, () => new OtherSettings(),
+            tracker, rest, () => new SpellsSettings(),
             isInParty: () => party.IsInParty,
             hasCureConfigured: _ => false,
             log: null);

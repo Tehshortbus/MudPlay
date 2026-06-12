@@ -1878,7 +1878,7 @@ public sealed class AppServices
         // in MainWindowViewModel; the @wait routes via PartyRest's own sender.
         AilmentSync = new Game.Conditions.AilmentSyncEngine(
             Conditions, PartyRest,
-            readOther: () => ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
+            readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
             isInParty: () => PartyState.IsInParty,
             hasCureConfigured: HasCureConfigured,
             log: Log);

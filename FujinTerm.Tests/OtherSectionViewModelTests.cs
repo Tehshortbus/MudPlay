@@ -18,14 +18,6 @@ public sealed class OtherSectionViewModelTests
         OtherSettings src = new()
         {
             MaxSuicideLivesThreshold = 7,
-            IgnorePoison    = true,
-            IgnoreBlindness = true,
-            IgnoreConfusion = true,
-            IgnoreDiseased  = true,
-            DoNotAnnouncePoison    = true,
-            DoNotAnnounceBlindness = true,
-            DoNotAnnounceConfusion = true,
-            DoNotAnnounceDiseased  = true,
             UtilizeDisarmTrapsIfAble = false,
             MaxTrapSearchAttempts = 30,
             MaxTrapDisarmAttempts = 8,
@@ -40,14 +32,6 @@ public sealed class OtherSectionViewModelTests
 
         Assert.NotNull(back);
         Assert.Equal(7, back!.MaxSuicideLivesThreshold);
-        Assert.True(back.IgnorePoison);
-        Assert.True(back.IgnoreBlindness);
-        Assert.True(back.IgnoreConfusion);
-        Assert.True(back.IgnoreDiseased);
-        Assert.True(back.DoNotAnnouncePoison);
-        Assert.True(back.DoNotAnnounceBlindness);
-        Assert.True(back.DoNotAnnounceConfusion);
-        Assert.True(back.DoNotAnnounceDiseased);
         Assert.False(back.UtilizeDisarmTrapsIfAble);
         Assert.Equal(30, back.MaxTrapSearchAttempts);
         Assert.Equal(8,  back.MaxTrapDisarmAttempts);
@@ -74,19 +58,6 @@ public sealed class OtherSectionViewModelTests
         // block entirely.
         OtherSettings dto = new();
         Assert.Equal(5, dto.MaxSuicideLivesThreshold);
-        // Ignore-ailment toggles default UNCHECKED — most parties want
-        // to pause on every ailment. Toggle ON when the party agrees
-        // to push through a specific tick (e.g. boss runs).
-        Assert.False(dto.IgnorePoison);
-        Assert.False(dto.IgnoreBlindness);
-        Assert.False(dto.IgnoreConfusion);
-        Assert.False(dto.IgnoreDiseased);
-        // Say-announce defaults ON (do-not-announce UNCHECKED) — catching
-        // a curable ailment broadcasts ".@poisoned" etc. by default.
-        Assert.False(dto.DoNotAnnouncePoison);
-        Assert.False(dto.DoNotAnnounceBlindness);
-        Assert.False(dto.DoNotAnnounceConfusion);
-        Assert.False(dto.DoNotAnnounceDiseased);
         // Trap-disarm master gate defaults ON — preserves the
         // walker's disarm-before-walk behavior out of the box (the
         // "if able" capability check still gates whether it actually
