@@ -706,6 +706,9 @@ public partial class MainWindowViewModel : ObservableObject
         // RelogHandler — same exit command, but arms RelogSignal so the
         // Disconnected handler forces a reconnect-and-login cycle.
         AppServices.Current.Relog.SetWireSender(engineSend);
+        // DivertHandler — repeats incoming telepaths to a target while
+        // @divert is active; rides the same gate-wrapped pipeline.
+        AppServices.Current.Divert.SetWireSender(engineSend);
         // PR 6.2 — follower-side @comeback. Telepaths @comeback to the
         // leader when a movement-failure line strands us as the party
         // walks off; rides the same gate-wrapped pipeline.

@@ -233,6 +233,16 @@ public sealed class AppServices
     public Game.Remote.RelogHandler Relog { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.DivertConversations"/>
+    /// category — <c>@divert &lt;player&gt;</c>. While diverting, repeats
+    /// every incoming telepath to the chosen target as
+    /// <c>&lt;sender&gt; telepathed: &lt;message&gt;</c>; bare <c>@divert</c>
+    /// stops.
+    /// </summary>
+    public Game.Remote.DivertHandler Divert { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -1356,6 +1366,10 @@ public sealed class AppServices
         // RelogSignal so MainWindowVM forces an unconditional reconnect
         // and the normal login automation logs the character back in.
         Relog = new Game.Remote.RelogHandler(RemoteCommands, GameCommands, RelogSignal);
+        // @divert handler — subscribes to ChatRouter telepaths and repeats
+        // them to a target while diverting. Wire-sender bound in
+        // MainWindowVM after the telnet client is up.
+        Divert = new Game.Remote.DivertHandler(RemoteCommands, Chat);
         // @do passthrough — wire-sender bound in MainWindowVM after the
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
