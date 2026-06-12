@@ -67,6 +67,7 @@ public sealed class PartyComebackManagerTests : IDisposable
     {
         public required MessageRouter Router { get; init; }
         public required PartyState PartyState { get; init; }
+        public required PlayerDatabase Players { get; init; }
         public required PartyManager Party { get; init; }
         public required RemoteCommandManager Engine { get; init; }
         public required RoomTracker Tracker { get; init; }
@@ -124,6 +125,7 @@ public sealed class PartyComebackManagerTests : IDisposable
         {
             Router = router,
             PartyState = partyState,
+            Players = players,
             Party = party,
             Engine = engine,
             Tracker = tracker,
@@ -148,6 +150,18 @@ public sealed class PartyComebackManagerTests : IDisposable
     {
         h.PartyState.Members.Add(new PartyMember { Name = name });
         h.PartyState.IsInParty = true;
+    }
+
+    /// <summary>Grant <paramref name="name"/> the <c>RequestInvite</c>
+    /// flag so the per-player gate authorises their <c>@forget</c> (it's
+    /// not a party-whitelist command — a left-behind follower needs the
+    /// explicit grant).</summary>
+    private static void GrantForget(Harness h, string name)
+    {
+        h.Players.RecordObservation(name, @class: null, race: null, alignment: null,
+            title: null, gang: null, role: null, nowUtc: Now);
+        h.Players.EditCustomization(name,
+            new Models.GameData.PlayerCustomization(RemoteControls: Models.GameData.PlayerRemoteControls.RequestInvite));
     }
 
     /// <summary>Mark 1/1 + 1/3, locate at 1/1, start Auto-Lair — the
@@ -320,6 +334,82 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.Contains("no path history", h.LastReply);
         Assert.False(h.Lair.IsActive);   // stopped during snapshot, stays stopped
         Assert.Equal(WalkState.Idle, h.Walker.State);
+    }
+
+    // ----- @forget (follower cancels their own pickup) ---------------
+
+    [Fact]
+    public void Forget_FromRecoveringMember_UninvitesAndResumes()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        GrantForget(h, "Tank");
+        StartLair(h);
+
+        // Pickup in flight (walking to 1/3), then Tank calls it off.
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
+
+        Assert.Contains("uninvite Tank\r",
+            Encoding.Latin1.GetString(h.Party.LastSentForTests[^1]));
+        Assert.Contains("forgetting Tank", h.LastReply);
+        Assert.True(h.Lair.IsActive);   // prior engine resumed
+    }
+
+    [Fact]
+    public void Forget_WhileAwaitingFollow_UninvitesAndResumes()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        GrantForget(h, "Tank");
+        StartLair(h);
+
+        // Drive to the AwaitingFollow phase (re-invite sent, waiting).
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/1"));
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.False(h.Lair.IsActive);
+
+        h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
+
+        Assert.Contains("uninvite Tank\r",
+            Encoding.Latin1.GetString(h.Party.LastSentForTests[^1]));
+        Assert.True(h.Lair.IsActive);   // resumed instead of hanging on follow
+    }
+
+    [Fact]
+    public void Forget_WhenNotBusy_RepliesNothingToForget()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        GrantForget(h, "Tank");
+        StartLair(h);
+
+        h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
+
+        Assert.Contains("nothing to forget", h.LastReply);
+        Assert.True(h.Lair.IsActive);   // engine untouched
+    }
+
+    [Fact]
+    public void Forget_FromDifferentMember_RepliesNothingToForget()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        SeatFollower(h, "Mage");
+        GrantForget(h, "Mage");
+        StartLair(h);
+
+        // Recovering Tank; Mage's @forget must not abandon Tank's pickup.
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        h.Engine.DispatchForTests(Telepath("Mage", "@forget"));
+
+        Assert.Contains("nothing to forget", h.LastReply);
+        Assert.False(h.Lair.IsActive);                    // Tank's pickup still in flight
+        Assert.Equal(WalkState.Walking, h.Walker.State);
     }
 
     // ----- registration shape ----------------------------------------

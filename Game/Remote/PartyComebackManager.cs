@@ -116,6 +116,13 @@ public sealed class PartyComebackManager : IDisposable
             throw new InvalidOperationException("RemoteCommandCatalog missing entry for '@comeback'.");
         _engine.RegisterHandler("@comeback", category, OnComeback);
 
+        // @forget is the follower's "stop coming back for me" — the
+        // counterpart to @comeback. It lives here because only this
+        // manager holds the in-flight recovery state it has to abandon.
+        if (!RemoteCommandCatalog.TryGetCategory("@forget", out Models.GameData.PlayerRemoteControls forgetCategory))
+            throw new InvalidOperationException("RemoteCommandCatalog missing entry for '@forget'.");
+        _engine.RegisterHandler("@forget", forgetCategory, OnForget);
+
         // A left-behind follower is dropped from the party server-side, so
         // the engine's party-whitelist gate (IsActivePartyMember) can't
         // authorise their @comeback. Bridge the leader-side grace-window
@@ -129,6 +136,7 @@ public sealed class PartyComebackManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         _engine.UnregisterHandler("@comeback");
+        _engine.UnregisterHandler("@forget");
         if (_engine.ComebackEligibility == _party.WasRecentlyPartied)
             _engine.ComebackEligibility = null;
         _walker.Event -= OnWalkEvent;
@@ -186,6 +194,23 @@ public sealed class PartyComebackManager : IDisposable
         }
         ctx.Reply($"backtracking up to {_backtrack.Count} room(s) to find you");
         StepBacktrack();
+    }
+
+    private void OnForget(RemoteCommandContext ctx)
+    {
+        // Only the member we're actively recovering can call off their own
+        // pickup; a @forget from anyone else (or when nothing is running)
+        // has nothing to abandon.
+        if (!_busy || !string.Equals(GivenName(ctx.Sender), _senderGiven, StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Reply("nothing to forget");
+            return;
+        }
+
+        _log?.Info(LogCategory, $"@forget from {ctx.Sender} — uninviting and resuming");
+        _party.Uninvite(_senderGiven);
+        ctx.Reply($"forgetting {_senderGiven} — resuming");
+        Resume();
     }
 
     // ----- engine snapshot / stop / resume ---------------------------
