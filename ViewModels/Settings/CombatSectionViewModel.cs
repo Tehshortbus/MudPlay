@@ -60,7 +60,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
         "Clear hostiles when seen hidden",
         "Target order", "Normal", "Reverse",
-        "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
+        "Attack Order", "Attack timing", "Default", "Attack Last Party", "Attack Last Room", "Attack After",
+        "Target Priority", "Attack what party leader attacks", "Attack what party member attacks",
+        "Follow leader", "Follow member", "Target priority member name",
         "Polite mode", "Skip room", "Attack different",
         "Min monsters", "Max monsters", "Run distance",
         "When running away", "Go backwards if running", "Break combat before running",
@@ -118,7 +120,36 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _targetOrderReverse;
 
     /// <summary>
-    /// Bound to the AttackTiming ComboBox <c>SelectedItem</c>. Default
+    /// Bound to the Target Priority ComboBox (the "who"). Default
+    /// <see cref="Models.Profile.TargetPriority.Default"/> — pick our own
+    /// target from game data; the follow modes mirror the party leader /
+    /// a named member's announced monster.
+    /// </summary>
+    [ObservableProperty] private TargetPriority _targetPriority = TargetPriority.Default;
+
+    /// <summary>Party member whose target we mirror when
+    /// <see cref="TargetPriority"/> is
+    /// <see cref="Models.Profile.TargetPriority.FollowMember"/>.</summary>
+    [ObservableProperty] private string _targetPriorityMemberName = string.Empty;
+
+    /// <summary>True when the Target-Priority member-name field is enabled —
+    /// only meaningful for
+    /// <see cref="Models.Profile.TargetPriority.FollowMember"/>.</summary>
+    public bool TargetPriorityMemberEnabled =>
+        TargetPriority == TargetPriority.FollowMember;
+
+    /// <summary>Target Priority dropdown rows — friendly labels paired with
+    /// the enum value.</summary>
+    public IReadOnlyList<TargetPriorityOption> TargetPriorityOptions { get; } =
+        new[]
+        {
+            new TargetPriorityOption(TargetPriority.Default,      "Default"),
+            new TargetPriorityOption(TargetPriority.FollowLeader, "Attack what party leader attacks"),
+            new TargetPriorityOption(TargetPriority.FollowMember, "Attack what party member attacks"),
+        };
+
+    /// <summary>
+    /// Bound to the Attack Order ComboBox (the "when"). Default
     /// <see cref="AttackTiming.Default"/> — no party / room re-fire.
     /// </summary>
     [ObservableProperty] private AttackTiming _attackTiming = AttackTiming.Default;
@@ -260,12 +291,16 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             RunIfBackstabFails           = RunIfBackstabFails,
             ClearHostilesWhenSeenHidden  = ClearHostilesWhenSeenHidden,
 
-            TargetOrder            = TargetOrderReverse ? TargetOrder.Reverse : TargetOrder.Normal,
-            AttackTiming           = AttackTiming,
-            AttackAfterPlayerName  = AttackTiming == AttackTiming.AttackAfter
-                                     ? NullIfBlank(AttackAfterPlayerName)
-                                     : null,
-            PoliteMode             = PoliteMode,
+            TargetOrder              = TargetOrderReverse ? TargetOrder.Reverse : TargetOrder.Normal,
+            TargetPriority           = TargetPriority,
+            TargetPriorityMemberName = TargetPriority == TargetPriority.FollowMember
+                                       ? NullIfBlank(TargetPriorityMemberName)
+                                       : null,
+            AttackTiming             = AttackTiming,
+            AttackAfterPlayerName    = AttackTiming == AttackTiming.AttackAfter
+                                       ? NullIfBlank(AttackAfterPlayerName)
+                                       : null,
+            PoliteMode               = PoliteMode,
 
             MinMonstersInRoom = Math.Clamp(MinMonstersInRoom, 0, 20),
             MaxMonstersInRoom = Math.Clamp(MaxMonstersInRoom, 1, 20),
@@ -384,6 +419,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         TargetOrderNormal  = dto.TargetOrder == TargetOrder.Normal;
         TargetOrderReverse = dto.TargetOrder == TargetOrder.Reverse;
 
+        TargetPriority           = dto.TargetPriority;
+        TargetPriorityMemberName = dto.TargetPriorityMemberName ?? string.Empty;
+
         AttackTiming           = dto.AttackTiming;
         AttackAfterPlayerName  = dto.AttackAfterPlayerName ?? string.Empty;
         PoliteMode             = dto.PoliteMode;
@@ -485,6 +523,13 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         if (value) TargetOrderNormal = false;
         MarkDirty();
     }
+    partial void OnTargetPriorityChanged(TargetPriority value)
+    {
+        // Refresh the FollowMember member-name field's enabled state.
+        OnPropertyChanged(nameof(TargetPriorityMemberEnabled));
+        MarkDirty();
+    }
+    partial void OnTargetPriorityMemberNameChanged(string value) => MarkDirty();
     partial void OnAttackTimingChanged(AttackTiming value)
     {
         // Refresh the AttackAfter player-name field's enabled state.
@@ -543,4 +588,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // Display
     partial void OnShowCombatRoundTotalsChanged(bool value)      => MarkDirty();
+
+    /// <summary>One Target Priority dropdown row — pairs the enum value with
+    /// its friendly label.</summary>
+    public sealed record TargetPriorityOption(TargetPriority Value, string Label);
 }

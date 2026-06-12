@@ -31,6 +31,12 @@ public sealed class CombatSettingsTests
         Assert.Equal(3, dto.PrioritySpells);
         Assert.Equal(4, dto.PriorityPhysical);
         Assert.Equal(TargetOrder.Normal, dto.TargetOrder);
+
+        // Target Priority defaults to following our own game data; no party
+        // mirroring and no named member until the user opts in.
+        Assert.Equal(TargetPriority.Default, dto.TargetPriority);
+        Assert.Null(dto.TargetPriorityMemberName);
+
         Assert.Equal(AttackTiming.Default, dto.AttackTiming);
         Assert.True(dto.SkipBackstabIfMultiAttack);
         Assert.False(dto.RunIfBackstabFails);
@@ -72,6 +78,16 @@ public sealed class CombatSettingsTests
     }
 
     [Fact]
+    public void TargetPriority_HasAllThreeModes()
+    {
+        // Locks the enum names + integer order — the engine keys off these
+        // identifiers and the JSON storage serialises them as strings.
+        Assert.Equal(TargetPriority.Default,      (TargetPriority)0);
+        Assert.Equal(TargetPriority.FollowLeader, (TargetPriority)1);
+        Assert.Equal(TargetPriority.FollowMember, (TargetPriority)2);
+    }
+
+    [Fact]
     public void PoliteMode_HasAllFourModes()
     {
         Assert.Equal(PoliteMode.Off,             (PoliteMode)0);
@@ -101,6 +117,8 @@ public sealed class CombatSettingsTests
             SkipBackstabIfMultiAttack  = false,
             RunIfBackstabFails         = true,
             TargetOrder                = TargetOrder.Reverse,
+            TargetPriority             = TargetPriority.FollowMember,
+            TargetPriorityMemberName   = "Healer",
             AttackTiming               = AttackTiming.AttackAfter,
             AttackAfterPlayerName      = "Tank",
             PoliteMode                 = PoliteMode.SkipRoom,
@@ -134,6 +152,8 @@ public sealed class CombatSettingsTests
         Assert.Equal(dto.SkipBackstabIfMultiAttack, round.SkipBackstabIfMultiAttack);
         Assert.Equal(dto.RunIfBackstabFails,        round.RunIfBackstabFails);
         Assert.Equal(dto.TargetOrder,               round.TargetOrder);
+        Assert.Equal(dto.TargetPriority,            round.TargetPriority);
+        Assert.Equal(dto.TargetPriorityMemberName,  round.TargetPriorityMemberName);
         Assert.Equal(dto.AttackTiming,              round.AttackTiming);
         Assert.Equal(dto.AttackAfterPlayerName,     round.AttackAfterPlayerName);
         Assert.Equal(dto.PoliteMode,                round.PoliteMode);

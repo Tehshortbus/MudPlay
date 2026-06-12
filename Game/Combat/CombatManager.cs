@@ -42,24 +42,50 @@ namespace FujinTerm.Game.Combat;
 /// last sorted (lowest prio).</item>
 /// </list>
 /// <para>
-/// AttackTiming re-fire (CombatSettings):
+/// A "moves to attack X" announce drives two independent knobs (the
+/// "who" and the "when" of party combat):
+/// </para>
+/// <para>
+/// Target Priority — WHO (<see cref="CombatSettings.TargetPriority"/>):
+/// </para>
+/// <list type="bullet">
+/// <item><see cref="TargetPriority.Default"/> — pick our own target;
+/// ignore others' announces for target selection.</item>
+/// <item><see cref="TargetPriority.FollowLeader"/> — switch our target
+/// to the party leader's announced monster
+/// (<see cref="PartyState.LeaderName"/>).</item>
+/// <item><see cref="TargetPriority.FollowMember"/> — switch to the
+/// named <see cref="CombatSettings.TargetPriorityMemberName"/>'s
+/// announced monster.</item>
+/// </list>
+/// <para>
+/// Either follow mode applies the standard un-actionable failback: if
+/// game data proves we can't hit the followed monster (no weapon hits,
+/// every attack spell level-blocked) we re-pick our own next actionable
+/// target instead of following into a fight we can't contribute to.
+/// </para>
+/// <para>
+/// Attack Order — WHEN (<see cref="CombatSettings.AttackTiming"/>):
+/// re-fires our OWN current target to control initiative order; never
+/// switches the monster.
 /// </para>
 /// <list type="bullet">
 /// <item><see cref="AttackTiming.Default"/> — never re-fire.</item>
 /// <item><see cref="AttackTiming.AttackLastParty"/> — re-fire on a
-/// party member's "moves to attack" announce. Excludes our own
-/// character (matched against <see cref="ProfileService.CurrentProfileName"/>)
-/// and non-party players.</item>
+/// party member's announce. Excludes non-party players.</item>
 /// <item><see cref="AttackTiming.AttackLastRoom"/> — re-fire on
-/// anyone's announce except our own.</item>
+/// anyone's announce.</item>
 /// <item><see cref="AttackTiming.AttackAfter"/> — re-fire only on
 /// the named <see cref="CombatSettings.AttackAfterPlayerName"/>'s
 /// announce.</item>
 /// </list>
 /// <para>
-/// All re-fire branches require a non-null
-/// <see cref="CurrentTarget"/> — we can only re-issue an attack
-/// against a target we already chose.
+/// Our own announce never drives either knob (we already swung; matched
+/// against the own-name reader). Attack Order re-fire requires a non-null
+/// <see cref="CurrentTarget"/> — we can only re-issue against a target we
+/// already chose. The interim-pick rule: on room entry we dispatch our own
+/// target immediately (<see cref="OnEntitiesObserved"/>), then a follow mode
+/// switches to the leader / member's target the moment they announce.
 /// </para>
 /// </remarks>
 public sealed partial class CombatManager : IDisposable
@@ -761,9 +787,12 @@ public sealed partial class CombatManager : IDisposable
     }
 
     /// <summary>
-    /// Re-fire dispatch for AttackTiming. Matches whatever announces
-    /// against the configured timing mode + our own name + party
-    /// membership.
+    /// "Moves to attack X" announce handler. Drives two independent knobs:
+    /// Target Priority (WHO — switch our target to the followed player's
+    /// monster) and Attack Order (WHEN — re-fire our own target to control
+    /// initiative). Target Priority is consulted first; when it takes the
+    /// round's action (the announce was the leader / followed member's),
+    /// Attack Order is skipped so we don't double-send.
     /// </summary>
     private void OnAttackAnnounce(MatchResult match)
     {
@@ -773,7 +802,7 @@ public sealed partial class CombatManager : IDisposable
         string announcedTarget = match.Groups[1].Trim();
         if (announcer.Length == 0 || announcedTarget.Length == 0) return;
 
-        // Never re-fire on our own announce — we already swung.
+        // Never react to our own announce — we already swung.
         string? ownName = _readOwnGivenName();
         if (ownName is { Length: > 0 } &&
             string.Equals(announcer, ownName, StringComparison.OrdinalIgnoreCase))
@@ -782,63 +811,130 @@ public sealed partial class CombatManager : IDisposable
         if (!_isEnabled()) return;
         CombatSettings settings = _readSettings();
 
-        // Decide whether to fire AND whether to switch our target. The
-        // "mirror" modes follow the announcer's choice (party
-        // coordination + named-player follow); "stay" modes keep
-        // attacking our own target and just re-issue the command to
-        // stay last in initiative.
-        (bool fire, bool mirror) = settings.AttackTiming switch
+        // Target Priority owns WHO. If this announce is from the player we
+        // follow, it switches our target (with the un-actionable failback)
+        // and dispatches this round — returning true so Attack Order doesn't
+        // also fire a redundant swing.
+        if (TryFollowTargetPriority(settings, announcer, announcedTarget))
+            return;
+
+        // Attack Order owns WHEN — re-fire our own current target to stay
+        // last in initiative; never switches the monster.
+        HandleAttackOrderRefire(settings, announcer);
+    }
+
+    /// <summary>
+    /// Target Priority (the "who"): when configured to follow the party
+    /// leader (<see cref="TargetPriority.FollowLeader"/>) or a named member
+    /// (<see cref="TargetPriority.FollowMember"/>), and THIS announce is from
+    /// that player, switch our target to their announced monster and dispatch
+    /// this round against it (through the full per-round chooser so the weapon
+    /// swap / spell selection apply). If game data proves the monster
+    /// un-actionable for us, re-pick our own next actionable target instead.
+    /// Returns true when this announce was the followed player's and we took
+    /// the round's action; false when Target Priority is Default or the
+    /// announcer isn't the one we follow.
+    /// </summary>
+    private bool TryFollowTargetPriority(
+        CombatSettings settings, string announcer, string announcedTarget)
+    {
+        string? followName = settings.TargetPriority switch
         {
-            AttackTiming.Default          => (false, false),
-            AttackTiming.AttackLastParty  => (IsPartyMember(announcer), true),
-            AttackTiming.AttackLastRoom   => (true,                     false),
-            AttackTiming.AttackAfter      => (string.Equals(announcer,
-                                                  settings.AttackAfterPlayerName ?? string.Empty,
-                                                  StringComparison.OrdinalIgnoreCase),  true),
-            _                              => (false, false),
+            TargetPriority.FollowLeader => _party.LeaderName,
+            TargetPriority.FollowMember => settings.TargetPriorityMemberName,
+            _                           => null,
         };
+        if (followName is not { Length: > 0 }) return false;
+        if (!string.Equals(announcer, followName, StringComparison.OrdinalIgnoreCase))
+            return false;
 
-        if (!fire) return;
-
-        string target;
-        if (mirror)
+        if (_classifier.Current is { } liveObs)
         {
-            // Option (a): only follow the announcer onto their target if WE
-            // can actually engage it. If game data proves it un-actionable
-            // for us (no weapon hits, every attack spell level-blocked),
-            // don't mirror into a fight we can't contribute to — fall through
-            // to our own next actionable target via a fresh room pick.
-            if (_classifier.Current is { } liveObs)
+            // Failback: only follow onto their target if WE can engage it.
+            int annNumber = ResolveMonsterNumber(liveObs, announcedTarget);
+            if (UnengageableReason(settings, annNumber) is { } annReason)
             {
-                int annNumber = ResolveMonsterNumber(liveObs, announcedTarget);
-                if (UnengageableReason(settings, annNumber) is { } annReason)
-                {
-                    _log?.Info(LogCategory,
-                        $"announce mirror skipped — {announcedTarget} un-actionable " +
-                        $"for us ({annReason}); re-picking our own target");
-                    _currentTarget = null;
-                    OnEntitiesObserved(liveObs);
-                    return;
-                }
+                _log?.Info(LogCategory,
+                    $"target-priority {settings.TargetPriority} skipped — " +
+                    $"{announcedTarget} un-actionable for us ({annReason}); " +
+                    "re-picking our own target");
+                _currentTarget = null;
+                OnEntitiesObserved(liveObs);
+                return true;
             }
 
-            // Switch to the announcer's specific instance. Server
-            // resolves `attack large kobold thief` against the right
-            // entity even when "angry kobold thief" is also present.
-            target = announcedTarget;
-            _currentTarget = announcedTarget;
+            // The announced monster is in our room view → dispatch through
+            // the per-round chooser against that specific instance.
+            if (TryBuildCandidate(liveObs, announcedTarget) is { } cand)
+            {
+                _log?.Info(LogCategory,
+                    $"target-priority {settings.TargetPriority} follow={announcer} " +
+                    $"→ {cand.RawName}");
+                DispatchRoundAction(settings, cand, CountEngageable(liveObs), liveObs);
+                return true;
+            }
         }
-        else if (_currentTarget is { } cur)
+
+        // No room view (or the announced entity isn't in it) — literal attack
+        // against the announced name; the server resolves the instance.
+        _currentTarget = announcedTarget;
+        SendAttack(settings.NormalAttackCommand, announcedTarget, refire: true,
+                   refireReason: $"target-priority {settings.TargetPriority} follow={announcer}");
+        return true;
+    }
+
+    /// <summary>
+    /// Attack Order (the "when"): re-fire our OWN current target to keep our
+    /// announce last in initiative against <paramref name="announcer"/>.
+    /// Never switches the monster — Target Priority owns "who". No-op without
+    /// an existing target or when the mode doesn't match this announce.
+    /// </summary>
+    private void HandleAttackOrderRefire(CombatSettings settings, string announcer)
+    {
+        bool fire = settings.AttackTiming switch
         {
-            target = cur;
-        }
-        else
-        {
-            return;     // re-fire mode without an existing target → nothing to do
-        }
+            AttackTiming.AttackLastParty => IsPartyMember(announcer),
+            AttackTiming.AttackLastRoom  => true,
+            AttackTiming.AttackAfter     => string.Equals(announcer,
+                                                settings.AttackAfterPlayerName ?? string.Empty,
+                                                StringComparison.OrdinalIgnoreCase),
+            _                            => false,  // Default — own cadence
+        };
+        if (!fire) return;
+        if (_currentTarget is not { } target) return;   // nothing to re-fire at
 
         SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
+    }
+
+    /// <summary>
+    /// Build an <see cref="EngageableCandidate"/> for the monster matching
+    /// <paramref name="name"/> (RawName or ResolvedName, case-insensitive) in
+    /// <paramref name="obs"/>, resolving its overlay priority. Returns null
+    /// when no numbered monster entity matches — the caller falls back to a
+    /// literal attack command. Used by Target Priority to route a followed
+    /// target through the full per-round dispatch (weapon swap / spell pick).
+    /// </summary>
+    private EngageableCandidate? TryBuildCandidate(RoomEntitiesObservation obs, string name)
+    {
+        for (int i = 0; i < obs.Entities.Count; i++)
+        {
+            RoomEntity e = obs.Entities[i];
+            if (e.Kind != EntityKind.Monster) continue;
+            if (e.MonsterNumber is not int n) continue;
+            if (!string.Equals(e.RawName, name, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.ResolvedName, name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            MonsterOverlay overlay = ResolveOverlay(n);
+            return new EngageableCandidate(
+                RawName:         e.RawName,
+                ResolvedName:    e.ResolvedName,
+                MonsterNumber:   n,
+                Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
+                AppearanceIndex: i);
+        }
+        return null;
     }
 
     /// <summary>

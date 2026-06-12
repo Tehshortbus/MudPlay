@@ -665,16 +665,16 @@ public sealed class CombatManagerTests
         Assert.Equal(2, h.Sent.Count);
     }
 
-    // ----- mirror modes: switch our target to follow the announcer ----
+    // ----- Attack Order is pure re-fire: NEVER switches the monster ----
 
     [Fact]
-    public void AttackLastParty_SwitchesTargetToFollowParty()
+    public void AttackLastParty_ReFiresOwnTarget_DoesNotSwitch()
     {
-        // Two kobold thiefs in the room; we pick angry by default.
-        // Party member Tank announces against the LARGE one. Mirror
-        // mode switches our target so we attack the same instance —
-        // critical when the user wants "attack what other party
-        // members attack".
+        // Clean split: Attack Order is the "when", not the "who". Two
+        // kobold thiefs; we pick angry by default. Party member Tank
+        // announces against the LARGE one. AttackLastParty re-fires our
+        // OWN target (angry) on the party announce — it never switches
+        // the monster. Switching is Target Priority's job.
         using Harness h = new();
         h.Settings.AttackTiming = AttackTiming.AttackLastParty;
         h.Party.Members.Add(new PartyMember { Name = "Tank" });
@@ -688,8 +688,8 @@ public sealed class CombatManagerTests
         h.Feed("Tank moves to attack large kobold thief.");
 
         Assert.Equal(2, h.Sent.Count);
-        Assert.Equal("a large kobold thief", h.LastSent);
-        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+        Assert.Equal("a angry kobold thief", h.LastSent);   // re-fire, unchanged
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
     }
 
     [Fact]
@@ -711,6 +711,128 @@ public sealed class CombatManagerTests
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("a angry kobold thief", h.LastSent);   // unchanged target
         Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    // ----- Target Priority: switch our target to follow leader/member -
+
+    [Fact]
+    public void TargetPriorityFollowLeader_SwitchesToLeadersTarget()
+    {
+        // Default pick is angry; party leader announces the LARGE one.
+        // FollowLeader switches our target to match the leader's instance.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Boss moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowLeader_IgnoresNonLeaderAnnounce()
+    {
+        // Only the leader's announce drives the switch. A non-leader
+        // party member shouting a different target is ignored.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Sidekick moves to attack large kobold thief.");
+
+        Assert.Single(h.Sent);                              // no switch, no re-fire
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowMember_SwitchesToNamedMembersTarget()
+    {
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowMember;
+        h.Settings.TargetPriorityMemberName = "Healer";
+        h.Party.Members.Add(new PartyMember { Name = "Healer" });
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Healer moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowMember_IgnoresOtherAnnouncers()
+    {
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowMember;
+        h.Settings.TargetPriorityMemberName = "Healer";
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Tank moves to attack large kobold thief.");
+
+        Assert.Single(h.Sent);                              // wrong member — ignored
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowLeader_NoLeader_DoesNotSwitch()
+    {
+        // FollowLeader with no leader set has nothing to follow.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Boss moves to attack large kobold thief.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowMember_TargetNotInRoomView_LiteralAttack()
+    {
+        // The member announces a monster we don't have in our classifier
+        // view (e.g. abbreviated / unseen). We still follow by sending a
+        // literal attack against the announced name so we don't desync.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowMember;
+        h.Settings.TargetPriorityMemberName = "Healer";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("a giant rat", h.LastSent);
+
+        h.Feed("Healer moves to attack cave bear.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a cave bear", h.LastSent);
+        Assert.Equal("cave bear", h.Combat.CurrentTarget);
     }
 
     // ----- room change drops current target ----------------------------
@@ -758,10 +880,11 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void AttackAfter_MirrorsNamedPlayersTarget()
+    public void AttackAfter_ReFiresOwnTarget_OnNamedAnnounce()
     {
-        // AttackAfter is the named-player-mirror mode. Wait for the
-        // named player to announce; mirror their target.
+        // AttackAfter is pure timing: re-fire OUR target when the named
+        // player announces, keeping our swing immediately after theirs.
+        // It does NOT switch to their monster (that's Target Priority).
         using Harness h = new();
         h.Settings.AttackTiming = AttackTiming.AttackAfter;
         h.Settings.AttackAfterPlayerName = "Tank";
@@ -769,13 +892,13 @@ public sealed class CombatManagerTests
             "angry", "large");
 
         h.Feed("Also here: angry kobold thief, large kobold thief.");
-        Assert.Equal("a angry kobold thief", h.LastSent);    // initial own pick
+        Assert.Equal("a angry kobold thief", h.LastSent);    // own pick
 
         h.Feed("Tank moves to attack large kobold thief.");
 
         Assert.Equal(2, h.Sent.Count);
-        Assert.Equal("a large kobold thief", h.LastSent);
-        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+        Assert.Equal("a angry kobold thief", h.LastSent);    // re-fire, unchanged
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
     }
 
     // ----- safety net: combat line + empty room → send bare CR --------

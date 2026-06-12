@@ -138,34 +138,51 @@
 
                 <!-- ============ Targeting ============ -->
                 <TextBlock Classes="SectionHeader" Text="Targeting"/>
-                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Target order"/>
                     <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="12">
                         <RadioButton GroupName="TargetOrder" Content="Normal"
                                      IsChecked="{Binding TargetOrderNormal, Mode=TwoWay}"
-                                     ToolTip.Tip="Swing at the highest-priority monster first (priority from Monsters.json AttackPriority)."/>
+                                     ToolTip.Tip="Swing at the highest-priority monster first (priority from Monsters.json AttackPriority). Only applies when Target Priority is Default."/>
                         <RadioButton GroupName="TargetOrder" Content="Reverse"
                                      IsChecked="{Binding TargetOrderReverse, Mode=TwoWay}"
-                                     ToolTip.Tip="Swing at the lowest-priority monster first."/>
+                                     ToolTip.Tip="Swing at the lowest-priority monster first. Only applies when Target Priority is Default."/>
                     </StackPanel>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Attack timing"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Target Priority"/>
                     <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding TargetPriorityOptions}"
+                              SelectedValue="{Binding TargetPriority, Mode=TwoWay}"
+                              SelectedValueBinding="{Binding Value}"
+                              DisplayMemberBinding="{Binding Label}"
+                              Width="280" HorizontalAlignment="Left"
+                              ToolTip.Tip="Which monster to target (the 'who'). Default = pick our own target from game data (Target order + per-monster AttackPriority). Attack what party leader attacks = mirror the party leader's announced target. Attack what party member attacks = mirror the named member's announced target. If our weapons/spells can't hit the followed target, combat-fail logic falls back to another monster."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                               Text="Target priority member name"/>
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Text="{Binding TargetPriorityMemberName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             IsEnabled="{Binding TargetPriorityMemberEnabled}"
+                             Width="220" HorizontalAlignment="Left"
+                             ToolTip.Tip="Only used when Target Priority is 'Attack what party member attacks'. Mirror this party member's announced target."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack Order"/>
+                    <ComboBox Grid.Row="3" Grid.Column="1"
                               ItemsSource="{Binding AttackTimingOptions}"
                               SelectedItem="{Binding AttackTiming, Mode=TwoWay}"
                               Width="220" HorizontalAlignment="Left"
-                              ToolTip.Tip="Re-fire mechanism. Default = own cadence. Attack Last Party re-fires after every party member's announce; Attack Last Room drops the party filter (re-fire on anyone's announce); Attack After defers first swing until the named player announces."/>
+                              ToolTip.Tip="When to re-fire (the 'when'). Pure timing — it re-fires our own current target and never switches the monster. Default = own cadence. Attack Last Party re-fires after every party member's announce; Attack Last Room drops the party filter (re-fire on anyone's announce); Attack After re-fires when the named player announces."/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel"
                                Text="Attack-after player name"/>
-                    <TextBox Grid.Row="2" Grid.Column="1"
+                    <TextBox Grid.Row="4" Grid.Column="1"
                              Text="{Binding AttackAfterPlayerName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                              IsEnabled="{Binding AttackAfterEnabled}"
                              Width="220" HorizontalAlignment="Left"
-                             ToolTip.Tip="Only used when Attack Timing is Attack After. Defer first swing until this player announces; mirror their target."/>
+                             ToolTip.Tip="Only used when Attack Order is Attack After. Re-fire our current target when this player announces."/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Polite mode"/>
-                    <ComboBox Grid.Row="3" Grid.Column="1"
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Polite mode"/>
+                    <ComboBox Grid.Row="5" Grid.Column="1"
                               ItemsSource="{Binding PoliteModeOptions}"
                               SelectedItem="{Binding PoliteMode, Mode=TwoWay}"
                               Width="220" HorizontalAlignment="Left"

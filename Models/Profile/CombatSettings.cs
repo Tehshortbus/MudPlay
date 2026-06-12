@@ -122,14 +122,34 @@ public sealed class CombatSettings
 
     // ----- Targeting ------------------------------------------------
 
-    /// <summary>Which monster in the priority-ranked list to swing at.</summary>
+    /// <summary>Which monster in our own priority-ranked list to swing at
+    /// when <see cref="TargetPriority"/> is <see cref="Profile.TargetPriority.Default"/>.</summary>
     public TargetOrder TargetOrder { get; set; } = TargetOrder.Normal;
 
-    /// <summary>Re-fire mechanism for party / room coordination. See
-    /// <see cref="AttackTiming"/> for the four modes.</summary>
+    /// <summary>
+    /// WHO to target in a party — the coordination half of combat (paired
+    /// with <see cref="AttackTiming"/>, which owns WHEN). Default follows our
+    /// own game data (<see cref="TargetOrder"/> + per-monster AttackPriority);
+    /// the follow modes mirror the party leader / a named member's announced
+    /// monster. See <see cref="Profile.TargetPriority"/>.
+    /// </summary>
+    public TargetPriority TargetPriority { get; set; } = TargetPriority.Default;
+
+    /// <summary>Party member whose target we mirror when
+    /// <see cref="TargetPriority"/> is
+    /// <see cref="Profile.TargetPriority.FollowMember"/>. Null otherwise.
+    /// Separate from <see cref="AttackAfterPlayerName"/> so the "who" and
+    /// "when" knobs can name different players.</summary>
+    public string? TargetPriorityMemberName { get; set; }
+
+    /// <summary>Attack Order — WHEN to (re-)announce our swing relative to
+    /// others, to control initiative order. Pure timing: it re-fires our own
+    /// current target and never switches the monster (that's
+    /// <see cref="TargetPriority"/>'s job). See <see cref="AttackTiming"/> for
+    /// the four modes.</summary>
     public AttackTiming AttackTiming { get; set; } = AttackTiming.Default;
 
-    /// <summary>Player name to defer first swing to when
+    /// <summary>Player name whose attack announce triggers our re-fire when
     /// <see cref="AttackTiming"/> is <see cref="AttackTiming.AttackAfter"/>.
     /// Null otherwise.</summary>
     public string? AttackAfterPlayerName { get; set; }
@@ -243,9 +263,11 @@ public enum RunDirection
 }
 
 /// <summary>
-/// Which monster in the priority-ranked target list to swing at.
-/// <see cref="Normal"/> picks the highest-priority entry; <see cref="Reverse"/>
-/// picks the lowest. Independent of <see cref="AttackTiming"/>.
+/// Which monster in our own priority-ranked target list to swing at when
+/// <see cref="CombatSettings.TargetPriority"/> is
+/// <see cref="TargetPriority.Default"/>. <see cref="Normal"/> picks the
+/// highest-priority entry; <see cref="Reverse"/> picks the lowest.
+/// Independent of <see cref="AttackTiming"/>.
 /// </summary>
 public enum TargetOrder
 {
@@ -254,28 +276,56 @@ public enum TargetOrder
 }
 
 /// <summary>
-/// Re-fire mechanism for party / room coordination. Wraps the standard
-/// MudProxy <c>PartyAttackOrder</c> behavior plus a FujinTerm-original
+/// WHO to target in a party — the coordination half of combat. Pairs with
+/// <see cref="AttackTiming"/> (which owns WHEN to announce): together they
+/// decide the who and when of every round. The follow modes are reactive —
+/// they learn the leader / member's target from their "moves to attack X"
+/// announce. If our configured weapons + attack spells can't hit the followed
+/// target (proven un-actionable by game data), we fall back to our own next
+/// actionable target via the standard combat-fail path.
+/// </summary>
+public enum TargetPriority
+{
+    /// <summary>Pick our own target from game data
+    /// (<see cref="CombatSettings.TargetOrder"/> + per-monster
+    /// AttackPriority). No party mirroring.</summary>
+    Default,
+
+    /// <summary>Mirror the party leader's announced target
+    /// (<see cref="Game.PartyState.LeaderName"/>).</summary>
+    FollowLeader,
+
+    /// <summary>Mirror the announced target of the member named in
+    /// <see cref="CombatSettings.TargetPriorityMemberName"/>.</summary>
+    FollowMember,
+}
+
+/// <summary>
+/// Attack Order — WHEN to (re-)announce our swing to control initiative
+/// order. Pure timing: re-fires our own current target on someone else's
+/// announce so our announce lands last; it never switches the monster
+/// (<see cref="TargetPriority"/> owns the "who"). Wraps the standard MudProxy
+/// <c>PartyAttackOrder</c> behavior plus a FujinTerm-original
 /// <see cref="AttackLastRoom"/> mode that drops the party-membership filter.
 /// </summary>
 public enum AttackTiming
 {
-    /// <summary>Own cadence; no party coordination.</summary>
+    /// <summary>Own cadence; no re-fire coordination.</summary>
     Default,
 
-    /// <summary>Re-fire the most recent attack command on every party member's
-    /// "moves to attack X" announcement, ensuring your announce is the most
-    /// recent vs the target. Non-party announcements ignored.</summary>
+    /// <summary>Re-fire our current target on every party member's
+    /// "moves to attack X" announcement, keeping our announce most recent.
+    /// Non-party announcements ignored.</summary>
     AttackLastParty,
 
-    /// <summary>Re-fire on every "moves to attack X" announcement regardless
-    /// of party membership — guarantees your announce is last among
-    /// everyone in the room, party or not.</summary>
+    /// <summary>Re-fire our current target on every "moves to attack X"
+    /// announcement regardless of party membership — our announce stays last
+    /// among everyone in the room, party or not.</summary>
     AttackLastRoom,
 
-    /// <summary>Defer first swing until <see cref="CombatSettings.AttackAfterPlayerName"/>
-    /// announces; mirror their target; re-fire on their subsequent
-    /// announcements against the same target.</summary>
+    /// <summary>Re-fire our current target only when
+    /// <see cref="CombatSettings.AttackAfterPlayerName"/> announces, keeping
+    /// our announce immediately after theirs.</summary>
     AttackAfter,
 }
 
