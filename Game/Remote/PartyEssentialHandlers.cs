@@ -41,7 +41,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// <summary>Commands this consumer registers. Used by <see cref="Dispose"/> to clean up.</summary>
     private static readonly string[] RegisteredCommands =
     {
-        "@version", "@health", "@status", "@where", "@who",
+        "@version", "@health", "@status", "@where", "@who", "@path",
         "@party", "@wait", "@ok",
         "@lives", "@invite", "@join",
     };
@@ -52,6 +52,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<Room?>? _readCurrentRoom;
     private readonly Func<IReadOnlyList<RoomEntity>?>? _readRoomEntities;
+    private readonly Func<MovementStatus>? _readMovement;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -84,7 +85,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         PartyState party,
         Func<PartySettings>? readPartySettings = null,
         Func<Room?>? readCurrentRoom = null,
-        Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null)
+        Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null,
+        Func<MovementStatus>? readMovement = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -95,6 +97,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _readPartySettings = readPartySettings;
         _readCurrentRoom = readCurrentRoom;
         _readRoomEntities = readRoomEntities;
+        _readMovement = readMovement;
 
         // Categories sourced from RemoteCommandCatalog — single source
         // of truth for every documented @-command's required permission
@@ -107,6 +110,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@status",  OnStatus);
         Register("@where",   OnWhere);
         Register("@who",     OnWho);
+        Register("@path",    OnPath);
         Register("@party",   OnParty);
         Register("@wait",    OnWait);
         Register("@ok",      OnOk);
@@ -273,6 +277,43 @@ public sealed class PartyEssentialHandlers : IDisposable
         IReadOnlyList<RoomEntity>? entities = _readRoomEntities?.Invoke();
         if (entities is null || entities.Count == 0) { ctx.Reply("no one"); return; }
         ctx.Reply(string.Join(", ", entities.Select(e => e.ResolvedName)));
+    }
+
+    /// <summary>
+    /// <c>@path</c> — reply with what movement engine is running (loop
+    /// name / auto-lair / walking-to-destination), the current room name +
+    /// (Map, Room) key, and the walker's step progress as <c>step X/Y</c>.
+    /// Reads the live engine snapshot through <see cref="_readMovement"/>
+    /// and the room through <see cref="_readCurrentRoom"/>. When no engine
+    /// is running the reply is "not moving"; the engine wraps it in
+    /// <c>{ }</c> at SendReply time.
+    /// </summary>
+    private void OnPath(RemoteCommandContext ctx)
+    {
+        MovementStatus mv = _readMovement?.Invoke() ?? default;
+        if (mv.Kind == MovementKind.None) { ctx.Reply("not moving"); return; }
+
+        string engine = mv.Kind switch
+        {
+            MovementKind.Loop    => $"running loop '{mv.Label}'",
+            MovementKind.Lair    => "auto-lair",
+            MovementKind.Walking => $"walking to {mv.Label}",
+            _                    => "moving",
+        };
+
+        Room? room = _readCurrentRoom?.Invoke();
+        string where = room is null
+            ? "location unknown"
+            : $"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room})";
+
+        // CurrentStep is the 0-based next-step index; report it 1-based and
+        // clamp to TotalSteps for the tail where every step is sent but the
+        // walker is still awaiting the final arrival confirmation.
+        string step = mv.TotalSteps > 0
+            ? $"; step {Math.Min(mv.CurrentStep + 1, mv.TotalSteps)}/{mv.TotalSteps}"
+            : string.Empty;
+
+        ctx.Reply($"{engine}; {where}{step}");
     }
 
     // ----- @party (channel-aware: status query or sub-command dispatch) --

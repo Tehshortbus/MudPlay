@@ -1242,7 +1242,8 @@ public sealed class AppServices
             RemoteCommands, PlayerState, PartyState,
             readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
             readCurrentRoom: () => RoomTracker?.State.CurrentRoom,
-            readRoomEntities: () => RoomClassifier?.Current?.Entities);
+            readRoomEntities: () => RoomClassifier?.Current?.Entities,
+            readMovement: () => Game.Remote.MovementStatus.Capture(Walker, LoopRunner, AutoLair));
         // Phase 6 PR 6.4 — drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel / PR 6.9.
