@@ -386,6 +386,16 @@ public partial class MainWindowViewModel : ObservableObject
         /// post-entry stat/exp/i refresh doesn't spam the wire.
         /// </summary>
         HangupInitiated,
+        /// <summary>
+        /// Deliberate relog originated client-side — remote
+        /// <c>@relog</c> from a trusted player. The character gracefully
+        /// exits (<see cref="Services.GameCommands.ExitCommand"/>) and we
+        /// force an unconditional dial-back (ignoring the per-BBS
+        /// reconnect toggles), then let the normal login automation log
+        /// back in. Unlike <see cref="HangupInitiated"/> the entry latch
+        /// is NOT suppressed — the whole round-trip is automatic.
+        /// </summary>
+        RelogInitiated,
     }
 
     private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
@@ -693,6 +703,9 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // RelogHandler — same exit command, but arms RelogSignal so the
+        // Disconnected handler forces a reconnect-and-login cycle.
+        AppServices.Current.Relog.SetWireSender(engineSend);
         // PR 6.2 — follower-side @comeback. Telepaths @comeback to the
         // leader when a movement-failure line strands us as the party
         // walks off; rides the same gate-wrapped pipeline.
@@ -1780,6 +1793,48 @@ public partial class MainWindowViewModel : ObservableObject
         }, TaskScheduler.Default);
     }
 
+    /// <summary>
+    /// Force an unconditional dial-back after a remote <c>@relog</c>.
+    /// Unlike <see cref="TryScheduleReactiveReconnect"/> this ignores the
+    /// per-BBS reconnect toggles — the sender explicitly asked to relog,
+    /// so we always complete the cycle. A short <c>RedialPauseSeconds</c>
+    /// delay lets the carrier fully drop before re-dialing; the normal
+    /// login automation runs on the reconnect (relog never suppresses the
+    /// entry latch), so the character ends up back in-game.
+    /// </summary>
+    private void ScheduleRelogReconnect()
+    {
+        BbsProfile? bbs = ResolveActiveBbs();
+        TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs?.RedialPauseSeconds ?? 5));
+
+        _cleanupReconnectCts?.Cancel();
+        _cleanupReconnectCts?.Dispose();
+        _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
+        CancellationToken token = _cleanupReconnectCts.Token;
+
+        WriteTerminalStatus(
+            $"[RELOG REQUESTED — DIALING BACK IN {FormatDelay(delay)}.]",
+            TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Reconnect",
+            $"Remote @relog — reconnecting in {FormatDelay(delay)}.");
+        StartReconnectCountdown(delay);
+
+        _ = Task.Delay(delay, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConnected || IsConnecting) return;
+                _cleanupReconnectCts?.Dispose();
+                _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
+                _ = ConnectWithRetriesAsync();
+            });
+        }, TaskScheduler.Default);
+    }
+
     /// <summary>Human-friendly delay rendering for the auto-reconnect banner / log.</summary>
     private static string FormatDelay(TimeSpan delay)
     {
@@ -1994,16 +2049,31 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     _lastDisconnectCause = DisconnectCause.HangupInitiated;
                 }
+                else if (AppServices.Current.RelogSignal.ConsumeRelogIntent())
+                {
+                    _lastDisconnectCause = DisconnectCause.RelogInitiated;
+                }
                 else if (wasConnected)
                 {
                     _lastDisconnectCause = ClassifyServerSideDrop();
                 }
 
-                // Predictive scheduler first (cleanup warning gives a
-                // deterministic reconnect-at). Reactive only fires if
-                // predictive didn't arm anything.
-                TryScheduleCleanupReconnect();
-                if (_cleanupReconnectCts is null) TryScheduleReactiveReconnect();
+                // A remote @relog forces the dial-back unconditionally —
+                // the sender explicitly asked to relog, so we bypass the
+                // cleanup/reactive scheduling (which gates on per-BBS
+                // toggles) entirely.
+                if (_lastDisconnectCause == DisconnectCause.RelogInitiated)
+                {
+                    ScheduleRelogReconnect();
+                }
+                else
+                {
+                    // Predictive scheduler first (cleanup warning gives a
+                    // deterministic reconnect-at). Reactive only fires if
+                    // predictive didn't arm anything.
+                    TryScheduleCleanupReconnect();
+                    if (_cleanupReconnectCts is null) TryScheduleReactiveReconnect();
+                }
             });
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;

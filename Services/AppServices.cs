@@ -223,6 +223,16 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
+    /// permission category — <c>@relog</c>. Sends the configured
+    /// <see cref="Services.GameCommands.ExitCommand"/> to gracefully log
+    /// out, then arms <see cref="RelogSignal"/> so MainWindowVM forces a
+    /// reconnect-and-login cycle.
+    /// </summary>
+    public Game.Remote.RelogHandler Relog { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -509,6 +519,18 @@ public sealed class AppServices
     /// what's on screen and decide).
     /// </summary>
     public HangupSignal HangupSignal { get; } = new();
+
+    /// <summary>
+    /// One-shot coordinator for "relog" intent — a graceful exit plus a
+    /// forced reconnect-and-login. Set by
+    /// <see cref="Game.Remote.RelogHandler"/> when an authorised sender
+    /// requests <c>@relog</c>; consumed by
+    /// <see cref="ViewModels.MainWindowViewModel"/> to force the
+    /// unconditional dial-back. Inverse of <see cref="HangupSignal"/>:
+    /// relog does NOT suppress the entry automation, so login runs
+    /// normally on the reconnect.
+    /// </summary>
+    public RelogSignal RelogSignal { get; } = new();
 
     /// <summary>
     /// Passive observer for the in-game <c>set suicide</c> /
@@ -1330,6 +1352,10 @@ public sealed class AppServices
         // connect — user manually re-enters the realm after reading
         // what's on the screen.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
+        // @relog handler — graceful exit (GameCommands.ExitCommand) +
+        // RelogSignal so MainWindowVM forces an unconditional reconnect
+        // and the normal login automation logs the character back in.
+        Relog = new Game.Remote.RelogHandler(RemoteCommands, GameCommands, RelogSignal);
         // @do passthrough — wire-sender bound in MainWindowVM after the
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
