@@ -1034,6 +1034,92 @@ public sealed class CastingDirectorTests
         Assert.Equal("heal Tank", h.CastsSent[0]);
     }
 
+    // ----- Party-cure (cure an afflicted member by chip) -------------
+    // The chip is mirrored from the member's inbound ".@poisoned" say by
+    // PartyAilmentTracker; here we set it directly. Same cure-spell config
+    // as self-cure; the target string routes the cast to the member.
+
+    [Fact]
+    public void PartyCure_MemberPoisoned_CastsCureOnMember()
+    {
+        using PartyHarness h = new();
+        h.Spells.CurePoisonSpell = "neutralize";
+        PartyMember tank = h.AddMember("Tank", hpPercent: 100);
+        tank.Poisoned = true;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("neutralize Tank", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyCure_MemberDiseased_CastsCureDisease()
+    {
+        using PartyHarness h = new();
+        h.Spells.CureDiseaseSpell = "cure-disease";
+        PartyMember mage = h.AddMember("Mage", hpPercent: 100);
+        mage.Diseased = true;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("cure-disease Mage", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyCure_MemberBlinded_CastsCureBlindness()
+    {
+        using PartyHarness h = new();
+        h.Spells.CureBlindnessSpell = "cure-blind";
+        PartyMember druid = h.AddMember("Druid", hpPercent: 100);
+        druid.Blinded = true;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("cure-blind Druid", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyCure_NoCureSpellConfigured_NoCast()
+    {
+        using PartyHarness h = new();
+        // CurePoisonSpell unset — chip set but nothing to cast.
+        PartyMember tank = h.AddMember("Tank", hpPercent: 100);
+        tank.Poisoned = true;
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void PartyCure_NoChip_NoCast()
+    {
+        using PartyHarness h = new();
+        h.Spells.CurePoisonSpell = "neutralize";
+        h.AddMember("Tank", hpPercent: 100);   // healthy, no ailment chip
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void PartyCure_SkipsSelf()
+    {
+        // A self chip is the SELF cure path's job (via ConditionTracker),
+        // not the party-cure picker — which skips IsSelf members. With no
+        // ConditionTracker wired here, the self chip yields no cast.
+        using PartyHarness h = new();
+        h.Spells.CurePoisonSpell = "neutralize";
+        PartyMember self = h.AddMember("Forged", hpPercent: 100);
+        self.IsSelf = true;
+        self.Poisoned = true;
+
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+    }
+
     [Fact]
     public void Cure_LifeThreatBeatsCure()
     {

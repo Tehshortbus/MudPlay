@@ -587,6 +587,11 @@ public partial class MainWindowViewModel : ObservableObject
         // duration timer. Self-buff confirmation goes through the
         // ConditionTracker AppliedMessage path instead.
         AppServices.Current.CastDirector.AttachLineExtractor(Lines);
+        // Inbound ailment chip-clear — PartyAilmentTracker watches server
+        // lines for OUR cure spell landing on a party member (matched by the
+        // cure spell's CasterMessage template) and clears that member's
+        // ailment chip. The chip-set side rides ChatRouter, not the line feed.
+        AppServices.Current.PartyAilment.AttachLineExtractor(Lines);
         // Multi-line "Also here:" wrap stitching — the server wraps
         // long occupant lists at the 80-col boundary, so the regex
         // pattern only sees the first row. AttachLineExtractor

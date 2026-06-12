@@ -750,6 +750,15 @@ public sealed class AppServices
     public Game.Conditions.AilmentSyncEngine AilmentSync { get; private set; } = null!;
 
     /// <summary>
+    /// Inbound ailment-sync engine — mirrors a party member's
+    /// <c>.@poisoned</c> / <c>.@blind</c> / <c>.@diseased</c> / <c>.@confused</c>
+    /// say announce onto their party chip, and clears the chip when OUR cure
+    /// spell is observed landing on them. Counterpart to
+    /// <see cref="AilmentSync"/>.
+    /// </summary>
+    public Game.Conditions.PartyAilmentTracker PartyAilment { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.F — stealth state tracker. Owns
     /// <see cref="PlayerState.IsSneaking"/> /
     /// <see cref="PlayerState.IsHidden"/> and emits FSM-state
@@ -1781,6 +1790,16 @@ public sealed class AppServices
             readOther: () => ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other"),
             log: Log);
 
+        // PartyAilmentTracker — inbound counterpart. Mirrors a member's
+        // ".@poisoned" etc. say announce onto their party chip (via
+        // PartyManager, the chip-field owner) and clears the chip when OUR
+        // cure spell is observed landing on them. The cure matchers are read
+        // live each line so re-configuring a cure spell takes effect without
+        // rebuilding the tracker. AttachLineExtractor lands in
+        // MainWindowViewModel alongside the other line consumers.
+        PartyAilment = new Game.Conditions.PartyAilmentTracker(
+            Chat, Party, CureCastMatchers, Log);
+
         // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on
         // PlayerState + Spells/Health settings. AutoHealRest gates
@@ -2234,6 +2253,56 @@ public sealed class AppServices
             Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
             if (rec is null || string.IsNullOrWhiteSpace(rec.CasterMessage)) return null;
             return (rec.CasterMessage, Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Build the cure-confirmation matchers
+    /// <see cref="Game.Conditions.PartyAilmentTracker"/> uses to clear a
+    /// member's ailment chip when OUR cure spell lands on them. Each
+    /// configured cure spell (poison / disease / blindness) is resolved via
+    /// the live spellbook → its game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/> →
+    /// a <see cref="Game.Spells.CasterMessageMatcher"/>. Confusion has no
+    /// cure spell, so it's never listed. Re-read on every call so
+    /// re-configuring a cure spell takes effect immediately.
+    /// </summary>
+    private IReadOnlyList<Game.Conditions.CureCastMatcher> CureCastMatchers()
+    {
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        List<Game.Conditions.CureCastMatcher> list = new(3);
+        Add(spells.CurePoisonSpell,    Models.GameData.MessageFlags.Poisoned);
+        Add(spells.CureDiseaseSpell,   Models.GameData.MessageFlags.Diseased);
+        Add(spells.CureBlindnessSpell, Models.GameData.MessageFlags.Blinded);
+        return list;
+
+        void Add(string? castCode, Models.GameData.MessageFlags ailment)
+        {
+            if (CureMatcherFor(castCode) is { } matcher)
+                list.Add(new Game.Conditions.CureCastMatcher(ailment, matcher));
+        }
+    }
+
+    /// <summary>
+    /// Resolve a cure spell's cast code to a
+    /// <see cref="Game.Spells.CasterMessageMatcher"/> built from the spell's
+    /// game-data <see cref="Models.GameData.MessageRecord.CasterMessage"/>.
+    /// Returns <c>null</c> when the code is blank, unknown to the spellbook,
+    /// has no message record, or the message has no <c>{s}</c> target capture
+    /// (a cure with no target placeholder can't confirm a specific member).
+    /// </summary>
+    private Game.Spells.CasterMessageMatcher? CureMatcherFor(string? castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return null;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            if (rec is null) return null;
+            return Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
         }
         return null;
     }

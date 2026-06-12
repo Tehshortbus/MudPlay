@@ -425,7 +425,7 @@ public sealed class CastingDirector : IDisposable
                 SpellCategory.MajorPartyHeal  => PickMajorPartyHeal(partySettings),
                 SpellCategory.MinorSelfHeal   => Wrap(PickMinorSelfHeal(spells, health)),
                 SpellCategory.MajorSelfHeal   => Wrap(PickMajorSelfHeal(spells, health)),
-                SpellCategory.Curing          => Wrap(PickCure(spells)),
+                SpellCategory.Curing          => PickCure(spells),
                 SpellCategory.Buffing         => (_autoBlessEnabled?.Invoke() ?? true)
                                                      ? PickBuff(spells, health, partySettings)
                                                      : null,
@@ -535,13 +535,28 @@ public sealed class CastingDirector : IDisposable
     // ----- Curing -----------------------------------------------------
 
     /// <summary>
+    /// Pick the next cure to fire: self first (the caster can't help
+    /// anyone while movement-prevented or blind, and a self-cure is the
+    /// cheapest to confirm), then party. Both scopes draw on the same
+    /// <see cref="SpellsSettings"/> cure-spell config — a MajorMUD cure
+    /// spell targets self or another player, so the only difference is the
+    /// target string.
+    /// </summary>
+    private CastCandidate? PickCure(SpellsSettings spells)
+    {
+        if (PickSelfCure(spells) is { } selfSpell)
+            return new CastCandidate(selfSpell, Target: null);
+        return PickPartyCure(spells);
+    }
+
+    /// <summary>
     /// Walk the cure-priority list and return the first configured
-    /// spell whose matching ailment is currently active.
+    /// spell whose matching ailment is currently active on US.
     /// MovementPrevented covers paralyze / hold / sleep — they all
     /// render the same to a player (can't act); the user's
     /// CureHoldsSpell is the catch-all.
     /// </summary>
-    private string? PickCure(SpellsSettings spells)
+    private string? PickSelfCure(SpellsSettings spells)
     {
         if (_conditions is null) return null;
 
@@ -565,6 +580,35 @@ public sealed class CastingDirector : IDisposable
         // and short-lived in stock MajorMUD). When added, slot it
         // last in the priority order. Same shape for any future
         // realm-specific status.
+        return null;
+    }
+
+    /// <summary>
+    /// Walk live party members and cast the configured cure spell on the
+    /// first member whose ailment chip is set. The chip is mirrored from
+    /// the member's inbound <c>.@poisoned</c> / <c>.@diseased</c> /
+    /// <c>.@blind</c> announce by
+    /// <see cref="Conditions.PartyAilmentTracker"/>. Same cure-spell config
+    /// as self-cure; the target string routes the cast to the member.
+    /// Internal order mirrors self-cure (poison → disease → blindness).
+    /// Confusion has no cure spell — a <c>@confused</c> chip is never
+    /// picked up here (documented gap in <c>PartyAilmentTracker</c>).
+    /// </summary>
+    private CastCandidate? PickPartyCure(SpellsSettings spells)
+    {
+        if (_party is null) return null;
+        if (_party.Members.Count == 0) return null;
+
+        foreach (PartyMember m in _party.Members)
+        {
+            if (m.IsSelf) continue;
+            if (m.Poisoned && !string.IsNullOrWhiteSpace(spells.CurePoisonSpell))
+                return new CastCandidate(spells.CurePoisonSpell, m.Name);
+            if (m.Diseased && !string.IsNullOrWhiteSpace(spells.CureDiseaseSpell))
+                return new CastCandidate(spells.CureDiseaseSpell, m.Name);
+            if (m.Blinded && !string.IsNullOrWhiteSpace(spells.CureBlindnessSpell))
+                return new CastCandidate(spells.CureBlindnessSpell, m.Name);
+        }
         return null;
     }
 

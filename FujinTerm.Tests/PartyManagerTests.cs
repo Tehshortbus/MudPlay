@@ -1073,4 +1073,45 @@ public sealed class PartyManagerTests
         Assert.Equal(80, realMember.MpPercent);
         Assert.Equal(Models.Profile.PartyRank.Back, realMember.Rank);
     }
+
+    // ===== SetMemberAilment (inbound chip set, find-only) =====
+
+    [Fact]
+    public void SetMemberAilment_PresentMember_SetsChip()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+
+        p.SetMemberAilment("Helper", Models.GameData.MessageFlags.Poisoned, true);
+
+        PartyMember helper = p.State.Members.Single(m => m.Name == "Helper");
+        Assert.True(helper.Poisoned);
+    }
+
+    [Fact]
+    public void SetMemberAilment_MatchesByGivenName()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+        PartyMember helper = p.State.Members.Single(m => m.Name == "Helper");
+        helper.Name = "Helper Lastname";
+
+        // Inbound say carries only the given name "Helper".
+        p.SetMemberAilment("Helper", Models.GameData.MessageFlags.Blinded, true);
+
+        Assert.True(helper.Blinded);
+    }
+
+    [Fact]
+    public void SetMemberAilment_AbsentMember_IsNoOp()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+
+        // Stranger isn't in the roster → nothing happens, no phantom added.
+        p.SetMemberAilment("Stranger", Models.GameData.MessageFlags.Diseased, true);
+
+        Assert.DoesNotContain(p.State.Members, m => m.Name == "Stranger");
+        Assert.All(p.State.Members, m => Assert.False(m.Diseased));
+    }
 }

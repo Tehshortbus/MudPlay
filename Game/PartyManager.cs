@@ -1131,6 +1131,34 @@ public sealed partial class PartyManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Set or clear a party member's ailment chip by given name. Find-only —
+    /// does NOT create a roster row for an unknown speaker, so a non-party
+    /// player's <c>.@poisoned</c> say can't conjure a phantom member. No-op
+    /// when the named member isn't present or <paramref name="ailment"/> isn't
+    /// one of the four surfaced ailment bits (Poisoned / Blinded / Confused /
+    /// Diseased). Routes the write through the manager so the
+    /// <see cref="OwnerAttribute"/>-marked <see cref="PartyMember"/> fields keep
+    /// a single writer (the Phase 3 PR 3.5 IL scan enforces this).
+    /// </summary>
+    public void SetMemberAilment(string name, Models.GameData.MessageFlags ailment, bool active)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        string given = GivenNameOf(name);
+        foreach (PartyMember m in State.Members)
+        {
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
+            switch (ailment)
+            {
+                case Models.GameData.MessageFlags.Poisoned: m.Poisoned = active; break;
+                case Models.GameData.MessageFlags.Blinded:  m.Blinded  = active; break;
+                case Models.GameData.MessageFlags.Confused: m.Confused = active; break;
+                case Models.GameData.MessageFlags.Diseased: m.Diseased = active; break;
+            }
+            return;
+        }
+    }
+
     private void RemoveMember(string name)
     {
         string given = GivenNameOf(name);
