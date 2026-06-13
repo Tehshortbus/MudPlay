@@ -125,7 +125,11 @@ public sealed partial class CleanupWarningWatcher
             _buffer.Remove(0, _buffer.Length - BufferCap);
     }
 
-    [GeneratedRegex(@"shutting down in (\d+)\s+minute",
+    // Inter-word gaps are \s+ (not literal spaces) because the BBS
+    // hard-wraps the warning line at its column width — the break can
+    // land between any two words (observed: "shutting\r\ndown in 19
+    // minutes"), so a literal space would miss the wrapped phrasing.
+    [GeneratedRegex(@"shutting\s+down\s+in\s+(\d+)\s+minute",
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex WarningRegex();
 

@@ -22,6 +22,25 @@ public sealed class CleanupWarningWatcherTests
     }
 
     [Fact]
+    public void Matches_WhenLineWrappedBetweenShuttingAndDown()
+    {
+        // The BBS hard-wraps the warning at its column width, so the wire
+        // stream splits the phrase: "...will be shutting\r\ndown in 19
+        // minutes...". A literal-space regex misses this.
+        CleanupWarningWatcher w = new();
+        int hits = 0;
+        w.WarningObserved += _ => hits++;
+        w.Append(Ascii(
+            "Sorry to interrupt here, but the server will be shutting\r\n" +
+            "down in 19 minutes for the nightly \"auto-cleanup\"\r\n" +
+            "process.  Please finish up and log off... thank you!"));
+
+        Assert.Equal(1, hits);
+        Assert.NotNull(w.Latest);
+        Assert.Equal(19, w.Latest!.Value.MinutesRemaining);
+    }
+
+    [Fact]
     public void Matches_OneMinuteSingular()
     {
         CleanupWarningWatcher w = new();
