@@ -112,6 +112,28 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // has SOMETHING bound for floor stepping.
         UpStepChord   = FindChordForDirectionCommand("u") ?? new(Avalonia.Input.Key.PageUp);
         DownStepChord = FindChordForDirectionCommand("d") ?? new(Avalonia.Input.Key.PageDown);
+
+        // The 8 compass directions mirror the user's movement macros too:
+        // a macro sending a bare "n" / "se" / etc. binds its key as the
+        // crawler chord for that direction. Directions with no macro are
+        // omitted and fall through to MapControl's numpad / arrow
+        // defaults, so the crawler is never left unbound.
+        Dictionary<Direction, FujinTerm.Models.Profile.KeyChord> compass = new();
+        AddCompassChord(compass, Direction.N,  "n");
+        AddCompassChord(compass, Direction.S,  "s");
+        AddCompassChord(compass, Direction.E,  "e");
+        AddCompassChord(compass, Direction.W,  "w");
+        AddCompassChord(compass, Direction.NE, "ne");
+        AddCompassChord(compass, Direction.NW, "nw");
+        AddCompassChord(compass, Direction.SE, "se");
+        AddCompassChord(compass, Direction.SW, "sw");
+        CompassChords = compass.Count > 0 ? compass : null;
+    }
+
+    private void AddCompassChord(Dictionary<Direction, FujinTerm.Models.Profile.KeyChord> map,
+        Direction dir, string command)
+    {
+        if (FindChordForDirectionCommand(command) is { } chord) map[dir] = chord;
     }
 
     private FujinTerm.Models.Profile.KeyChord? FindChordForDirectionCommand(string direction)
@@ -557,6 +579,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         = new(Avalonia.Input.Key.PageUp);
     [ObservableProperty] private FujinTerm.Models.Profile.KeyChord _downStepChord
         = new(Avalonia.Input.Key.PageDown);
+    [ObservableProperty] private IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>? _compassChords;
 
     // ----- Search ---------------------------------------------------
 

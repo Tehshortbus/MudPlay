@@ -166,6 +166,9 @@ public sealed class MapControl : Control
         AvaloniaProperty.Register<MapControl, FujinTerm.Models.Profile.KeyChord>(nameof(DownStepChord),
             new FujinTerm.Models.Profile.KeyChord(Key.PageDown));
 
+    public static readonly StyledProperty<IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>?> CompassChordsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>?>(nameof(CompassChords));
+
     public RoomLayout? Layout
     {
         get => GetValue(LayoutProperty);
@@ -327,6 +330,21 @@ public sealed class MapControl : Control
     {
         get => GetValue(DownStepChordProperty);
         set => SetValue(DownStepChordProperty, value);
+    }
+
+    /// <summary>
+    /// Per-direction crawler chords derived from the user's N/S/E/W +
+    /// diagonal movement macros (Settings → Macros). When a direction
+    /// has a macro bound, the macro's key steps the crawler that way so
+    /// the same key that sends the direction in-game also drives the
+    /// map. Directions absent here fall through to the hardcoded numpad /
+    /// arrow defaults in <see cref="OnKeyDown"/>, so the crawler is never
+    /// left with no binding.
+    /// </summary>
+    public IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>? CompassChords
+    {
+        get => GetValue(CompassChordsProperty);
+        set => SetValue(CompassChordsProperty, value);
     }
 
     // ----- view-state ------------------------------------------------
@@ -745,6 +763,21 @@ public sealed class MapControl : Control
             }
             e.Handled = true;
             return;
+        }
+
+        // Macro-derived compass chords take precedence: the same key the
+        // user mapped to send a direction in-game steps the crawler that
+        // way. The hardcoded numpad / arrow switch below stays as the
+        // always-available fallback (and covers directions with no macro).
+        if (CompassChords is { } chords)
+        {
+            foreach ((Direction cd, FujinTerm.Models.Profile.KeyChord chord) in chords)
+            {
+                if (!ChordMatches(e, chord)) continue;
+                TryStepSelection(cd);
+                e.Handled = true;
+                return;
+            }
         }
 
         Direction? dir = e.Key switch

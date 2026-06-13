@@ -393,7 +393,8 @@
                                  WalkPathIsAutoLair="{Binding IsAutoLairing}"
                                  SelectedRoomKey="{Binding SelectedRoomKey, Mode=TwoWay}"
                                  UpStepChord="{Binding UpStepChord}"
-                                 DownStepChord="{Binding DownStepChord}">
+                                 DownStepChord="{Binding DownStepChord}"
+                                 CompassChords="{Binding CompassChords}">
                 <controls:MapControl.ContextMenu>
                     <ContextMenu Name="RoomContextMenu">
                         <MenuItem Header="{Binding ContextRoomName, StringFormat='At: {0}'}"
