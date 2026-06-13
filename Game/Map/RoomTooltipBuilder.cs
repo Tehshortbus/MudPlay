@@ -355,6 +355,8 @@ public static class RoomTooltipBuilder
             }
 
             case RoomExitHint.None:
+                if (exit.HasLevelGate)
+                    return RoomExit.FormatLevelGate(exit.MinLevel, exit.MaxLevel);
                 return string.IsNullOrEmpty(exit.RawHint) ? string.Empty : exit.RawHint!;
 
             default:
@@ -387,12 +389,17 @@ public static class RoomTooltipBuilder
         // ("use chime" / "ring chime" both teleporting to 1/65) render
         // as one line instead of cluttering the tooltip.
         Dictionary<RoomKey, List<string>> byDest = new();
-        foreach ((string keyword, RoomKey dest)
+        Dictionary<RoomKey, int> minLevelByDest = new();
+        foreach ((string keyword, RoomKey dest, int minLevel)
                  in TBInfoTeleportResolver.EnumerateTeleports(tbinfo, room.Cmd))
         {
             if (!byDest.TryGetValue(dest, out List<string>? words))
                 byDest[dest] = words = new List<string>();
             if (!words.Contains(keyword)) words.Add(keyword);
+            // A destination reachable by several keywords keeps the
+            // highest level floor seen across them (conservative gate).
+            if (minLevel > minLevelByDest.GetValueOrDefault(dest))
+                minLevelByDest[dest] = minLevel;
         }
         if (byDest.Count == 0) return string.Empty;
 
@@ -407,6 +414,9 @@ public static class RoomTooltipBuilder
             sb.Append('\n').Append("  ")
               .Append(string.Join(" / ", entry.Value))
               .Append(" → ").Append(destName);
+            int ml = minLevelByDest.GetValueOrDefault(entry.Key);
+            if (ml > 0)
+                sb.Append(" (").Append(RoomExit.FormatLevelGate(ml, 0)).Append(')');
         }
         return sb.ToString();
     }

@@ -498,6 +498,77 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_LevelGatedExit_RendersFriendlyLabel()
+    {
+        // Form A — exit-direction gate "(Level: 40 to 0)" means Level 40+.
+        const string lvlRooms = """
+            [
+              { "Map Number": 1, "Room Number": 100, "Name": "Forbidden Stair",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "1/101 (Level: 40 to 0)", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 101, "Name": "Upper Sanctum",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "1/100", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), lvlRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 100))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("north → Upper Sanctum (1/101) (Level 40+)", text);
+    }
+
+    [Fact]
+    public void Build_RoomCmdTeleport_WithMinLevel_RendersGateOnCommandLine()
+    {
+        // Form B — CMD teleport with a "minlevel 20" gate (room 3/613
+        // "go vortex"). The "Room commands:" line surfaces "Level 20+".
+        const string cmdRooms = """
+            [
+              { "Map Number": 1, "Room Number": 613, "Name": "Swirling Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 9001,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 3, "Room Number": 669, "Name": "Vortex Landing",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string cmdTbinfo = """
+            [
+              { "Number": 9001, "LinkTo": 0,
+                "Action": "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 669 3:message 1221\n",
+                "Called From": "Room 1/613" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  cmdRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), cmdTbinfo);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 613))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo);
+
+        Assert.Contains("go vortex → Vortex Landing (3/669) (Level 20+)", text);
+    }
+
+    [Fact]
     public void Build_TextHintExit_RendersCommandAlternatives()
     {
         // Live repro: 1/1824 south "(Text: go crack, enter crack, go path)"

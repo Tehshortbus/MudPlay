@@ -1446,7 +1446,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Array.Clear(_teleportSlots);
         if (value is { } k && Graph?.GetRoom(k) is { Cmd: > 0 } room)
         {
-            foreach ((string _, RoomKey dest) in
+            foreach ((string _, RoomKey dest, int _) in
                      TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd))
             {
                 if (!_contextTeleportDests.Contains(dest)) _contextTeleportDests.Add(dest);
@@ -1962,7 +1962,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         foreach (Room room in Graph.Rooms)
         {
             if (room.Cmd <= 0) continue;
-            using IEnumerator<(string, RoomKey)> e =
+            using IEnumerator<(string, RoomKey, int)> e =
                 TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd).GetEnumerator();
             if (e.MoveNext()) set.Add(room.Key);
         }

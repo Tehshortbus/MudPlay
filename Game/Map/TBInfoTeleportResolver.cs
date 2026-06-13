@@ -41,7 +41,7 @@ public static class TBInfoTeleportResolver
         ArgumentNullException.ThrowIfNull(store);
         if (roomCmd <= 0) return null;
 
-        foreach ((string keyword, RoomKey dest) in EnumerateTeleports(store, roomCmd))
+        foreach ((string keyword, RoomKey dest, int _) in EnumerateTeleports(store, roomCmd))
         {
             if (dest.Equals(destination)) return keyword;
         }
@@ -50,12 +50,19 @@ public static class TBInfoTeleportResolver
 
     /// <summary>
     /// Walk every <c>teleport &lt;room&gt; &lt;map&gt;</c> directive in
-    /// the CMD's Action chain and yield <c>(keyword, destination)</c>
-    /// for each one. Used by the room tooltip to surface "use chime →
-    /// 1/65" style commands so the user can see how to traverse a
-    /// teleport-bypassed door without opening the game data browser.
+    /// the CMD's Action chain and yield <c>(keyword, destination,
+    /// minLevel)</c> for each one. Used by the room tooltip to surface
+    /// "use chime → 1/65" style commands (and any "Level 20+" gate) so
+    /// the user can see how to traverse a teleport-bypassed door
+    /// without opening the game data browser.
     /// </summary>
-    public static IEnumerable<(string Keyword, RoomKey Destination)>
+    /// <remarks>
+    /// A <c>minlevel N [failTB]</c> directive anywhere in the same line
+    /// gates the teleport: the player must be level ≥ N or the game
+    /// jumps to the fail textblock instead of teleporting. We surface
+    /// <c>N</c> (the fail textblock id is irrelevant to the walker).
+    /// </remarks>
+    public static IEnumerable<(string Keyword, RoomKey Destination, int MinLevel)>
         EnumerateTeleports(TBInfoStore store, int roomCmd)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -75,9 +82,21 @@ public static class TBInfoTeleportResolver
             string keyword = parts[0];
             if (string.IsNullOrWhiteSpace(keyword)) continue;
 
+            int minLevel = 0;
+            RoomKey dest = default;
+            bool haveDest = false;
+
             for (int i = 1; i < parts.Length; i++)
             {
-                if (!parts[i].StartsWith("teleport ", StringComparison.OrdinalIgnoreCase)) continue;
+                if (parts[i].StartsWith("minlevel ", StringComparison.OrdinalIgnoreCase))
+                {
+                    // `minlevel <N> [failTB]` — first arg is the level floor.
+                    string[] lvlArgs = parts[i][9..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (lvlArgs.Length >= 1) int.TryParse(lvlArgs[0], out minLevel);
+                    continue;
+                }
+
+                if (haveDest || !parts[i].StartsWith("teleport ", StringComparison.OrdinalIgnoreCase)) continue;
 
                 // `teleport <roomNum> <mapNum>` — note Action field
                 // uses (room, map) order (verified in real Rooms.json
@@ -87,9 +106,13 @@ public static class TBInfoTeleportResolver
                 if (!int.TryParse(args[0], out int room)) continue;
                 if (!int.TryParse(args[1], out int map))  continue;
 
-                yield return (keyword, new RoomKey(map, room));
-                break;  // first teleport in the line is the destination — don't yield duplicates if a chained teleport appears later
+                dest = new RoomKey(map, room);
+                haveDest = true;
+                // Keep scanning the rest of the line: minlevel can appear
+                // before OR after the teleport directive in the chain.
             }
+
+            if (haveDest) yield return (keyword, dest, minLevel);
         }
     }
 }
