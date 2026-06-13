@@ -33,7 +33,7 @@
                                 <TextBlock>
                                     <Run Text="{Binding Name}"/>
                                     <Run Text="  —  " Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                                    <Run Text="{Binding Bbs}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                    <Run Text="{Binding Bbs}" Foreground="{StaticResource ChromeFgBrush}"/>
                                 </TextBlock>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
