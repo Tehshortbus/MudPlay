@@ -364,4 +364,30 @@ public sealed class RoomEntryWatcherTests
         Assert.Equal("giant rat",       appended.ResolvedName);
         Assert.Equal(1,                 appended.MonsterNumber);
     }
+
+    // ----- article-as-name fallback ------------------------------------
+
+    [Fact]
+    public void MonsterNameBeginningWithThe_ResolvesViaArticleFallback()
+    {
+        // Stock has exactly one monster whose name legitimately begins
+        // with "The " (number 251 — never a valid combat target). Its
+        // arrival line "The {name} … into the room from …" would strip
+        // to a bare miss; the with-article retry recovers the record so
+        // the monster number survives for a do-not-attack rule.
+        using Harness h = new();
+        h.AddMonster(251, "The Eternal", allowNoPrefix: true);
+
+        h.Feed("The Eternal floats into the room from nowhere.");
+
+        Assert.Single(h.Arrivals);
+        Assert.Equal(EntityKind.Monster, h.Arrivals[0].Kind);
+        Assert.Equal("The Eternal", h.Arrivals[0].Name);
+
+        // Critical: the monster number is preserved (not dropped to the
+        // colour-hint fallback which would null it out).
+        RoomEntity appended = h.Observations[0].Entities[0];
+        Assert.Equal("The Eternal", appended.ResolvedName);
+        Assert.Equal(251,           appended.MonsterNumber);
+    }
 }

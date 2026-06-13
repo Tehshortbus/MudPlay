@@ -95,7 +95,25 @@ public sealed class RoomEntryWatcher : IDisposable
 
         // Run the classifier's lookup. Monster first (matches the
         // Also-Here precedence), player fallback, Unknown when neither.
+        // Try the article-stripped name first — game-data records store
+        // bare names, so this is the common hit. If stripping turned a
+        // record whose name legitimately *begins* with "The "/"A "/"An "
+        // into a miss (stock monster 251 is the lone "The …"-prefixed
+        // entry), retry with the article intact so we don't drop the
+        // monster number a do-not-attack rule keys on. The retry only
+        // fires when stripping changed the string AND the bare form
+        // missed — negligible cost on the common path.
         RoomEntity classified = _classifier.Classify(name);
+        if (classified.Kind == EntityKind.Unknown &&
+            !string.Equals(name, nameWithArticle, StringComparison.Ordinal))
+        {
+            RoomEntity retained = _classifier.Classify(nameWithArticle);
+            if (retained.Kind != EntityKind.Unknown)
+            {
+                classified = retained;
+                name = nameWithArticle;
+            }
+        }
 
         EntityKind finalKind;
         if (classified.Kind != EntityKind.Unknown)
