@@ -145,11 +145,28 @@ public sealed class AutoDepositManager : IDisposable
             return;
         }
 
+        bool destinationIsStash = IsStashRoom(destination);
+
+        // Stash-on-path skip: when the configured stash room already sits
+        // on the running engine's path (a loop circuit room, or a marked
+        // Auto-Lair room), don't detour — the engine passes through it on
+        // its own and StashRoomManager fires the per-coin `hide` on arrival.
+        // Banks are exempt: the `dep` only goes out on a deliberate detour,
+        // never passively on arrival, so a bank always reroutes even when
+        // it's on-path.
+        if (destinationIsStash && IsDestinationOnEnginePath(destination, resume))
+        {
+            _log?.Info(LogCategory,
+                $"stash {destination} is on the running {resume.Kind} path — " +
+                "skipping detour; StashRoomManager handles the hide on the next pass");
+            return;
+        }
+
         _busy = true;
         _resume = resume;
         _destination = destination;
         _origin = current.Key;
-        _destinationIsStash = IsStashRoom(destination);
+        _destinationIsStash = destinationIsStash;
         _log?.Info(LogCategory,
             $"auto-deposit reroute wealth={wealthValue} dest={destination} " +
             $"kind={(_destinationIsStash ? "stash" : "bank")} resume={resume.Kind} origin={_origin}");
@@ -251,6 +268,37 @@ public sealed class AutoDepositManager : IDisposable
         foreach (RoomRef r in stashes)
             if (r.Map == room.Map && r.Room == room.Room) return true;
         return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="destination"/> is a guaranteed per-pass
+    /// visit on the running engine's path. A <see cref="ResumeKind.Loop"/>
+    /// expands its full BFS circuit (every circuit room is hit each lap);
+    /// a <see cref="ResumeKind.Lair"/> only guarantees its <em>marked</em>
+    /// rooms — the scheduler's transit rooms between lairs are dynamic and
+    /// not reliably revisited, so they don't count as on-path. The
+    /// asymmetry is deliberate: skipping a detour when the engine won't
+    /// actually pass through would strand the coin forever, so we only skip
+    /// on a certain visit.
+    /// </summary>
+    private bool IsDestinationOnEnginePath(RoomKey destination, ResumeTarget resume)
+    {
+        switch (resume.Kind)
+        {
+            case ResumeKind.Loop:
+                RoomKey? source = _loopRunner.CircleStartRoom
+                    ?? _tracker.State.CurrentRoom?.Key;
+                if (source is not { } from) return false;
+                foreach (RoomKey k in _loopRunner.ResolveLoopRoomKeys(from))
+                    if (k.Equals(destination)) return true;
+                return false;
+            case ResumeKind.Lair:
+                foreach (RoomKey k in _autoLair.Marked)
+                    if (k.Equals(destination)) return true;
+                return false;
+            default:
+                return false;
+        }
     }
 
     // ----- engine snapshot / stop / resume ---------------------------

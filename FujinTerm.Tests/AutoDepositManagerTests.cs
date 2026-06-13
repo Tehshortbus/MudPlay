@@ -188,6 +188,16 @@ public sealed class AutoDepositManagerTests : IDisposable
         Assert.True(h.Lair.IsActive);
     }
 
+    /// <summary>Locate at 1/1, start a [1/1, 1/3] loop — the line graph
+    /// expands to the circuit 1/1 → 1/2 → 1/3 → 1/2 → 1/1, so every room
+    /// (1/1, 1/2, 1/3) is a guaranteed per-lap visit.</summary>
+    private static void StartLoop(Harness h)
+    {
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Loop.Start(new Loop("test", new[] { new RoomKey(1, 1), new RoomKey(1, 3) })));
+        Assert.Equal(LoopState.Running, h.Loop.State);
+    }
+
     // Drive a wealth-gate crossing: a bank at 1/3, wealth above the
     // configured ceiling. Returns the harness already at 1/1 with Auto-Lair
     // running so a test can assert the reroute.
@@ -351,5 +361,60 @@ public sealed class AutoDepositManagerTests : IDisposable
 
         Assert.True(h.Lair.IsActive);
         Assert.Empty(h.Deposited);
+    }
+
+    [Fact]
+    public void StashOnLoopCircuit_SkipsDetour()
+    {
+        using Harness h = NewHarness();
+        StartLoop(h);
+        // Stash 1/2 sits on the loop circuit — the loop passes through it
+        // every lap, so don't detour; StashRoomManager fires the `hide` on
+        // the next pass. The loop keeps running, untouched.
+        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
+        h.Settings.BankRoomKey = "1/2";
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        Assert.NotEqual(LoopState.Idle, h.Loop.State);
+        Assert.Empty(h.Deposited);
+    }
+
+    [Fact]
+    public void StashOnLairPath_SkipsDetour()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        // Stash 1/3 is a MARKED Auto-Lair room — a guaranteed per-cycle
+        // visit, so don't detour; the lair keeps running.
+        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 3) };
+        h.Settings.BankRoomKey = "1/3";
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        Assert.True(h.Lair.IsActive);
+        Assert.Empty(h.Deposited);
+    }
+
+    [Fact]
+    public void StashOffLairPath_Detours()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        // Stash 1/2 is NOT a marked lair (markers are 1/1 + 1/3). Transit
+        // rooms between lairs are scheduler-dynamic and not reliably
+        // revisited, so the manager detours to it rather than risk never
+        // stashing.
+        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
+        h.Settings.BankRoomKey = "1/2";
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        Assert.False(h.Lair.IsActive);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
     }
 }
