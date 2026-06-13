@@ -90,8 +90,13 @@ public static class SpellEffectFormatter
         foreach (SpellAbility a in formula.Abilities)
         {
             if (a.Code != EndCastCode) continue;
-            string clause = BuildEndCast(
-                formula, a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
+            // A non-zero AbilVal names one chained spell; a zero AbilVal is
+            // MME's random-cast marker (pool = the MinBase..MaxBase spell range).
+            string clause = a.Value != 0
+                ? BuildEndCast(
+                    formula, a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited)
+                : BuildRandomEndCast(
+                    formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
             if (clause.Length > 0) parts.Add(clause);
         }
 
@@ -292,6 +297,71 @@ public static class SpellEffectFormatter
             : string.Empty;
 
         return effect.Length == 0 || effect == "—" ? prefix : $"{prefix} ({effect})";
+    }
+
+    /// <summary>
+    /// Expand an EndCast (Abil 151) whose AbilVal is 0 — MME's random-cast
+    /// marker. The spell's <c>MinBase</c>..<c>MaxBase</c> fields hold a spell-
+    /// NUMBER range (not a damage range); on cast the game fires one spell
+    /// picked at random from that pool ("random dmg" → rocks shred / ice
+    /// freezes / … each Dmg 5–15). Renders
+    /// "EndCast (random): name1 / name2 / … (effect)" when every pool member
+    /// shares one effect (the common parallel-element case), else pairs each
+    /// name with its own effect. Empty when the spell does direct damage / heal
+    /// (then MinBase/MaxBase are a magnitude range, already surfaced as "Dmg …")
+    /// or the pool resolves to nothing.
+    /// </summary>
+    private static string BuildRandomEndCast(
+        in SpellFormulaInput parent,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        HashSet<int>? visited)
+    {
+        // A direct-damage / heal spell uses MinBase/MaxBase as its magnitude
+        // range, not a spell pool — don't misread those as spell numbers.
+        foreach (SpellAbility a in parent.Abilities)
+            if (Array.IndexOf(_damageCodes, a.Code) >= 0 || a.Code == 18) return string.Empty;
+
+        int lo = parent.MinBase, hi = parent.MaxBase;
+        if (lo < 1 || hi < lo) return string.Empty;
+
+        visited ??= new HashSet<int>();
+        if (parent.Number != 0) visited.Add(parent.Number);
+
+        List<string> names = new();
+        List<string> effects = new();
+        for (int n = lo; n <= hi; n++)
+        {
+            if (resolveChain(n) is not { } target) continue;
+            if (!visited.Add(n)) continue; // pool member already expanded up-chain
+
+            string name = resolveSpellName?.Invoke(n)?.Trim() is { Length: > 0 } resolved
+                ? resolved
+                : $"#{n.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            string effect = FormatCore(
+                target, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
+            names.Add(name);
+            effects.Add(effect == "—" ? string.Empty : effect);
+        }
+
+        if (names.Count == 0) return string.Empty;
+
+        // Pool members are usually parallel elemental variants sharing one
+        // effect — collapse to "names… (effect)". When they diverge, pair each.
+        if (effects.All(e => e == effects[0]))
+        {
+            string joined = string.Join(" / ", names);
+            return effects[0].Length == 0
+                ? $"EndCast (random): {joined}"
+                : $"EndCast (random): {joined} ({effects[0]})";
+        }
+
+        List<string> paired = new();
+        for (int i = 0; i < names.Count; i++)
+            paired.Add(effects[i].Length == 0 ? names[i] : $"{names[i]} ({effects[i]})");
+        return $"EndCast (random): {string.Join(" / ", paired)}";
     }
 
     /// <summary>The sibling EndCast% (Abil 164) chance on the same formula —

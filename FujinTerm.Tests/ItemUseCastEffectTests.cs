@@ -100,6 +100,37 @@ public sealed class ItemUseCastEffectTests : IDisposable
     }
 
     [Fact]
+    public void UseCast_RandomPool_ShowsElementNamesAndSharedDamage()
+    {
+        // Spell #20 "random dmg": MME's random-cast encoding — no direct
+        // damage, a single EndCast (Abil 151) with AbilVal 0, and MinBase /
+        // MaxBase holding a spell-NUMBER range (21–23). On cast the game fires
+        // one of spells 21/22/23 at random; each does Damage 5–15. The Effect
+        // row must surface the pool names + the shared damage, not blank.
+        Seed("Spells",
+            "[{\"Number\":20,\"Name\":\"random dmg\",\"MinBase\":21,\"MaxBase\":23,\"Cap\":32," +
+             "\"Abil-0\":151,\"AbilVal-0\":0}," +
+             "{\"Number\":21,\"Name\":\"rocks\",\"MinBase\":5,\"MaxBase\":15,\"Abil-0\":1,\"AbilVal-0\":0}," +
+             "{\"Number\":22,\"Name\":\"ice\",\"MinBase\":5,\"MaxBase\":15,\"Abil-0\":1,\"AbilVal-0\":0}," +
+             "{\"Number\":23,\"Name\":\"fire\",\"MinBase\":5,\"MaxBase\":15,\"Abil-0\":1,\"AbilVal-0\":0}]");
+
+        // Item #103: a weapon whose required level is 45 (Abil 135), with a
+        // 100%-per-swing proc (Abil 114 = 100) casting spell #20.
+        Seed("Items",
+            "[{\"Number\":103,\"Name\":\"Warhammer\",\"ItemType\":1," +
+             "\"Abil-0\":135,\"AbilVal-0\":45,\"Abil-1\":114,\"AbilVal-1\":100," +
+             "\"Abil-2\":43,\"AbilVal-2\":20}]");
+        _cache.SwitchSet("v1.11p");
+
+        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("103");
+
+        Assert.Contains(info, kv => kv.Key == "Casts (100%/swing)" && kv.Value == "random dmg");
+        KeyValuePair<string, string> effect =
+            info.Single(kv => kv.Key.Trim() == "Effect");
+        Assert.Equal("EndCast (random): rocks / ice / fire (Dmg 5–15)", effect.Value);
+    }
+
+    [Fact]
     public void WeaponUseCast_StillShowsEffectDamage()
     {
         // Same spell, but cast by a weapon (ItemType 1) — the existing weapon
