@@ -222,13 +222,14 @@
                                             <Grid ColumnDefinitions="Auto,*">
                                                 <TextBlock Grid.Column="0"
                                                            Text="📁"
-                                                           FontSize="11"
+                                                           FontSize="13"
                                                            Margin="0,0,4,0"
                                                            VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1"
                                                            Text="{Binding Name}"
-                                                           FontSize="11"
+                                                           FontSize="13"
                                                            FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentVioletBrush}"
                                                            VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
                                             </Grid>
