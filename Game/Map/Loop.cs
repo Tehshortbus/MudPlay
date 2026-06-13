@@ -62,6 +62,17 @@ public sealed class Loop
     public string Notes { get; set; } = string.Empty;
 
     /// <summary>
+    /// Folder this loop lives under inside the BBS Loops directory,
+    /// relative to it, using <c>/</c> separators (e.g.
+    /// <c>"Sewers/Lower"</c>). Empty = the Loops root. Not serialised —
+    /// the on-disk subdirectory is the source of truth;
+    /// <see cref="LoopManager"/> sets this from the file's location on
+    /// load and writes the file into the matching subdirectory on save.
+    /// </summary>
+    [JsonIgnore]
+    public string Folder { get; set; } = string.Empty;
+
+    /// <summary>
     /// Catches old-schema fields on load so
     /// <see cref="LoopManager.LoadAll"/> can run the v1/v2 → v3
     /// migration (UserWaypoints → Waypoints). Cleared after the

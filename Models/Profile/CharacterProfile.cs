@@ -202,6 +202,16 @@ public sealed class CharacterProfile
     public List<FavoriteRoom>? Favorites { get; set; }
 
     /// <summary>
+    /// Folder paths in the GOTO tree that the user created but which
+    /// hold no favourites yet (empty folders the item list alone can't
+    /// reconstruct). Paths use <c>/</c> separators, same vocabulary as
+    /// <see cref="FavoriteRoom.Folder"/>. <c>null</c> or empty = no
+    /// empty folders to remember. Maintained by
+    /// <see cref="Services.FavoritesStore"/>.
+    /// </summary>
+    public List<string>? FavoriteFolders { get; set; }
+
+    /// <summary>
     /// Last room the character was known to be standing in. Hydrated
     /// from <see cref="Game.Map.RoomTracker"/> on a successful manual
     /// or auto locate; saved with the rest of the profile and used as

@@ -92,7 +92,9 @@ public sealed class LoopManager
         int loaded = 0;
         int failed = 0;
         int upgraded = 0;
-        foreach (string path in Directory.EnumerateFiles(folder, "*" + LoopFileSuffix))
+        // Recurse: loops may live in user-created sub-folders under the
+        // Loops root. The relative directory is the loop's Folder.
+        foreach (string path in Directory.EnumerateFiles(folder, "*" + LoopFileSuffix, SearchOption.AllDirectories))
         {
             try
             {
@@ -103,6 +105,7 @@ public sealed class LoopManager
                 // files without us blowing up.
                 if (loop is null || string.IsNullOrWhiteSpace(loop.Name)) { failed++; continue; }
                 if (UpgradeIfNeeded(loop)) upgraded++;
+                loop.Folder = NavFolders.RelativeFolder(folder, path);
                 _loops[loop.Name] = loop;
                 loaded++;
             }
@@ -142,12 +145,34 @@ public sealed class LoopManager
         // Saving normalises to the current schema version so a v2
         // loop edited in the new editor lands on disk as v3 cleanly.
         loop.SchemaVersion = Loop3Schema;
-        string folder = AppPaths.BbsLoopsFolder(_bbsName);
-        Directory.CreateDirectory(folder);
-        string path = Path.Combine(folder, SafeFileName(loop.Name));
+        loop.Folder = NavFolders.Normalize(loop.Folder);
+        string root = AppPaths.BbsLoopsFolder(_bbsName);
+        // A loop name is unique BBS-wide, so a folder change is a move:
+        // delete any stale file for this name (in any folder) first so
+        // we don't leave a duplicate behind.
+        DeleteFileForName(root, loop.Name);
+        string dir = NavFolders.ToDirectory(root, loop.Folder);
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, SafeFileName(loop.Name));
         JsonStore.Save(path, loop);
         _loops[loop.Name] = loop;
         LoopsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Move the loop named <paramref name="name"/> into
+    /// <paramref name="folder"/> (empty = Loops root). No-op when the
+    /// loop isn't in the catalogue or no BBS is bound.
+    /// </summary>
+    public bool Move(string name, string? folder)
+    {
+        if (Get(name) is not { } loop) return false;
+        string target = NavFolders.Normalize(folder);
+        if (string.Equals(NavFolders.Normalize(loop.Folder), target, StringComparison.OrdinalIgnoreCase))
+            return false;
+        loop.Folder = target;
+        Save(loop);
+        return true;
     }
 
     /// <summary>
@@ -159,14 +184,28 @@ public sealed class LoopManager
         if (_bbsName is null) return false;
         if (!_loops.Remove(name)) return false;
 
-        string path = Path.Combine(AppPaths.BbsLoopsFolder(_bbsName), SafeFileName(name));
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch (Exception ex)
-        {
-            _log?.Warn("Loops", $"failed to delete loop file '{path}': {ex.Message}");
-        }
+        DeleteFileForName(AppPaths.BbsLoopsFolder(_bbsName), name);
         LoopsChanged?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// Delete the on-disk <c>.loop</c> file for <paramref name="name"/>
+    /// wherever it lives under <paramref name="root"/> (the name is
+    /// unique BBS-wide). Best-effort — failures are logged.
+    /// </summary>
+    private void DeleteFileForName(string root, string name)
+    {
+        if (!Directory.Exists(root)) return;
+        string fileName = SafeFileName(name);
+        foreach (string path in Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories))
+        {
+            try { File.Delete(path); }
+            catch (Exception ex)
+            {
+                _log?.Warn("Loops", $"failed to delete loop file '{path}': {ex.Message}");
+            }
+        }
     }
 
     // ----- builder helpers -------------------------------------------

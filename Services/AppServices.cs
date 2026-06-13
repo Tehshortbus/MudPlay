@@ -1114,6 +1114,14 @@ public sealed class AppServices
     public Game.Map.LairTimerStore LairTimers { get; private set; } = null!;
 
     /// <summary>
+    /// Folder CRUD over the shared per-BBS Loops directory that holds
+    /// both <see cref="Loops"/> and <see cref="Lairs"/>. Create / rename
+    /// / delete folders; reloads both catalogues after a filesystem
+    /// move so their in-memory <c>Folder</c> values stay in sync.
+    /// </summary>
+    public Game.Map.NavFolderManager NavFolders { get; private set; } = null!;
+
+    /// <summary>
     /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
     /// Subscribes the <c>enc</c> line via MessageRouter.
     /// </summary>
@@ -2194,6 +2202,11 @@ public sealed class AppServices
         Profile.BbsPinApplied += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
         Profile.ProfileClosed += () => Lairs.LoadAll(null);
         LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
+
+        // Shared folder CRUD over the Loops directory (loops + lairs
+        // live in the same on-disk tree). Owns the filesystem move once
+        // and reloads both managers, instead of either racing the dir.
+        NavFolders = new Game.Map.NavFolderManager(Loops, Lairs, Log);
 
         // Phase 7 PR 7.18 — Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
