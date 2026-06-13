@@ -44,7 +44,7 @@ public sealed class MainMenuEntryAutomationTests
 
     /// <summary>
     /// Dispatch an in-game room display's "Obvious exits:" line — the
-    /// signal that releases the post-entry stat/exp/i refresh gate.
+    /// signal that releases the post-entry stat/i refresh gate.
     /// </summary>
     private static void DispatchRoomLine(MessageRouter router)
     {
@@ -256,7 +256,7 @@ public sealed class MainMenuEntryAutomationTests
     [Fact]
     public void EntryAlone_DoesNotFireStartup_UntilRoomSeen()
     {
-        // The entry command goes out, but stat/exp/i must NOT fire
+        // The entry command goes out, but stat/i must NOT fire
         // until the first in-game room display confirms we landed in
         // the realm. Before the room line the startup timer is idle —
         // ticking it is a no-op.
@@ -271,9 +271,9 @@ public sealed class MainMenuEntryAutomationTests
     }
 
     [Fact]
-    public void RoomDisplayAfterEntry_ReleasesStartup_OrderedStatExpI()
+    public void RoomDisplayAfterEntry_ReleasesStartup_OrderedStatI()
     {
-        // Entry → first "Obvious exits:" line → the three-step refresh
+        // Entry → first "Obvious exits:" line → the two-step refresh
         // fires in order, ending with `i`.
         var (engine, router, _, _) = Setup();
         engine.Arm();
@@ -282,12 +282,11 @@ public sealed class MainMenuEntryAutomationTests
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
             engine.TickStartupSequenceForTests();
 
-        // First slot is the entry command, then the 3 startup steps.
-        Assert.Equal(4, engine.LastSentForTests.Count);
+        // First slot is the entry command, then the 2 startup steps.
+        Assert.Equal(3, engine.LastSentForTests.Count);
         Assert.Equal("E\r",    Encoding.Latin1.GetString(engine.LastSentForTests[0]));
         Assert.Equal("stat\r", Encoding.Latin1.GetString(engine.LastSentForTests[1]));
-        Assert.Equal("exp\r",  Encoding.Latin1.GetString(engine.LastSentForTests[2]));
-        Assert.Equal("i\r",    Encoding.Latin1.GetString(engine.LastSentForTests[3]));
+        Assert.Equal("i\r",    Encoding.Latin1.GetString(engine.LastSentForTests[2]));
     }
 
     [Fact]
@@ -306,26 +305,26 @@ public sealed class MainMenuEntryAutomationTests
     public void RoomGate_IsOneShot_OnlyFirstRoomReleasesStartup()
     {
         // Once the first room releases the refresh, subsequent room
-        // displays (normal walking) must NOT re-fire stat/exp/i.
+        // displays (normal walking) must NOT re-fire stat/i.
         var (engine, router, _, _) = Setup();
         engine.Arm();
         DispatchMenuLine(router);
         DispatchRoomLine(router);
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
             engine.TickStartupSequenceForTests();
-        Assert.Equal(4, engine.LastSentForTests.Count);   // E + stat/exp/i
+        Assert.Equal(3, engine.LastSentForTests.Count);   // E + stat/i
 
         // A second room display must not queue another refresh.
         DispatchRoomLine(router);
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
             engine.TickStartupSequenceForTests();
-        Assert.Equal(4, engine.LastSentForTests.Count);
+        Assert.Equal(3, engine.LastSentForTests.Count);
     }
 
     [Fact]
     public void StartupSequence_DoesNotOverrun()
     {
-        // Once the three steps fire, ticking further must NOT send any
+        // Once the two steps fire, ticking further must NOT send any
         // additional commands — the sequence must terminate cleanly.
         var (engine, router, _, _) = Setup();
         engine.Arm();
@@ -334,8 +333,8 @@ public sealed class MainMenuEntryAutomationTests
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count + 5; i++)
             engine.TickStartupSequenceForTests();
 
-        // Entry + 3 startup steps, no more.
-        Assert.Equal(4, engine.LastSentForTests.Count);
+        // Entry + 2 startup steps, no more.
+        Assert.Equal(3, engine.LastSentForTests.Count);
     }
 
     [Fact]
@@ -376,14 +375,14 @@ public sealed class MainMenuEntryAutomationTests
     }
 
     [Fact]
-    public void StartupSequence_PublicListIsStatExpI()
+    public void StartupSequence_PublicListIsStatI()
     {
         // Pins the public read-only list so a future "let me add `who`
         // to the startup" edit can't silently change semantics; the
-        // room-gated "stat, exp, i" stays observable from tests.
+        // room-gated "stat, i" stays observable from tests. `exp` is
+        // intentionally absent — `stat` already carries Level + Exp.
         Assert.Collection(MainMenuEntryAutomation.StartupSequence,
             s => Assert.Equal("stat", s),
-            s => Assert.Equal("exp", s),
             s => Assert.Equal("i", s));
     }
 }

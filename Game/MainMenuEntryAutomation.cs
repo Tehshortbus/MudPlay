@@ -8,11 +8,14 @@ namespace FujinTerm.Game;
 /// (default <c>E</c>) when the MajorMUD main-menu screen is recognised
 /// at the tail of the automated BBS-login sequence, then — ONLY once
 /// the first in-game room display is actually observed — follows it
-/// up with a three-step refresh sequence (<c>stat</c> → <c>exp</c> →
-/// <c>i</c>) so subscribers like <see cref="StatParser"/> /
+/// up with a two-step refresh sequence (<c>stat</c> → <c>i</c>) so
+/// subscribers like <see cref="StatParser"/> /
 /// (future) <see cref="Inventory.InventoryManager"/> seed
 /// <see cref="PlayerStats"/> + inventory state right at the moment
-/// we land in the realm.
+/// we land in the realm. <c>exp</c> isn't sent: <c>stat</c> already
+/// carries Level + current Exp, and the per-level derived fields
+/// (exp-to-next / level span / percent) come from the exp-table calc
+/// — the player can still type <c>exp</c> manually any time.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -59,11 +62,11 @@ namespace FujinTerm.Game;
 /// gate), then fires once and latches closed.
 /// </para>
 /// <para>
-/// Startup sequence cadence: the three lines (<c>stat\r</c>,
-/// <c>exp\r</c>, <c>i\r</c>) are sent with <see cref="StartupStep"/>
+/// Startup sequence cadence: the two lines (<c>stat\r</c>,
+/// <c>i\r</c>) are sent with <see cref="StartupStep"/>
 /// gaps (default 400 ms) so the BBS renders each response cleanly
-/// before the next command lands. <c>stat</c> / <c>exp</c> are parsed
-/// by <see cref="StatParser"/>; <c>i</c> is sent today and parsed by
+/// before the next command lands. <c>stat</c> is parsed by
+/// <see cref="StatParser"/>; <c>i</c> is sent today and parsed by
 /// the Phase 9 inventory work when that lands.
 /// </para>
 /// </remarks>
@@ -84,14 +87,14 @@ public sealed class MainMenuEntryAutomation : IDisposable
 
     /// <summary>
     /// Startup refresh sent once the first in-game room display confirms
-    /// we entered the realm. <c>stat</c> / <c>exp</c> populate
-    /// <see cref="PlayerStats"/>; <c>i</c> emits inventory text the
-    /// Phase 9 InventoryManager parser will consume once it ships.
-    /// Read-only so tests + future settings UI can introspect the
-    /// canonical sequence without rebuilding it.
+    /// we entered the realm. <c>stat</c> populates
+    /// <see cref="PlayerStats"/> (Level + current Exp included);
+    /// <c>i</c> emits inventory text the Phase 9 InventoryManager parser
+    /// will consume once it ships. Read-only so tests + future settings
+    /// UI can introspect the canonical sequence without rebuilding it.
     /// </summary>
     public static readonly IReadOnlyList<string> StartupSequence =
-        new[] { "stat", "exp", "i" };
+        new[] { "stat", "i" };
 
     /// <summary>
     /// How long the latch stays armed after <see cref="Arm"/>. Default
@@ -104,10 +107,10 @@ public sealed class MainMenuEntryAutomation : IDisposable
     /// <summary>
     /// Gap between successive startup-sequence sends after the entry
     /// command lands. Default 400 ms — long enough for a small
-    /// MajorMUD screen (the stat block, exp readout, or inventory
-    /// list) to scroll without the next command queueing into the
-    /// middle of the previous response, short enough that the four
-    /// commands complete within ~1.6 s of entering the realm.
+    /// MajorMUD screen (the stat block or inventory list) to scroll
+    /// without the next command queueing into the middle of the
+    /// previous response, short enough that the commands complete
+    /// within ~1.2 s of entering the realm.
     /// </summary>
     public TimeSpan StartupStep { get; set; } = TimeSpan.FromMilliseconds(400);
 
@@ -225,7 +228,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
         if (!_awaitingFirstRoom) return;
         _awaitingFirstRoom = false;
         _log?.Log(LogSeverity.Info, "MainMenuEntry",
-            "First in-game room observed — sending startup refresh (stat/exp/i).");
+            "First in-game room observed — sending startup refresh (stat/i).");
         StartStartupSequence();
     }
 
