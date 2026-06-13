@@ -7,14 +7,22 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Cash;
 
 /// <summary>
-/// Phase 9 PR 9.E follow-up — on-entry stash plan for user-marked
-/// stash rooms. When <see cref="RoomTracker.StateChanged"/> reports
-/// we've arrived in a room flagged in
-/// <see cref="CharacterProfile.StashRooms"/>, dispatch one
-/// <c>hide N &lt;coin&gt;</c> command per currency whose held amount
-/// exceeds its <see cref="CashSettings"/> <c>KeepXxxOnHand</c> floor.
+/// Phase 9 PR 9.E follow-up — stash dispatch for user-marked stash
+/// rooms. Dispatches one <c>hide N &lt;coin&gt;</c> command per
+/// currency whose held amount exceeds its <see cref="CashSettings"/>
+/// <c>KeepXxxOnHand</c> floor.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Invoked, not autonomous.</b> Stashing only happens as a step of
+/// an auto-deposit reroute: when the wealth / coin gate trips while a
+/// Loop or Auto-Lair is running and the configured destination is a
+/// stash room, <see cref="AutoDepositManager"/> walks the character
+/// there and calls <see cref="ExecuteStash"/> on arrival. This manager
+/// does NOT subscribe to <see cref="RoomTracker.StateChanged"/> — a
+/// manual walk through a stash room must never trigger a hide (per user
+/// direction).
+/// </para>
 /// <para>
 /// Room set lives on <see cref="CharacterProfile.StashRooms"/> — the
 /// same list <see cref="Services.MovementFilter"/> uses, populated
@@ -79,12 +87,14 @@ public sealed class StashRoomManager : IDisposable
     }
 
     /// <summary>
-    /// Called by <c>AppServices</c> when <c>RoomTracker.StateChanged</c>
-    /// reports a room change. Looks up the room in
-    /// <see cref="CharacterProfile.StashRooms"/> and dispatches the
-    /// per-currency hide commands if it's a marked stash room.
+    /// Called by <see cref="AutoDepositManager"/> on arrival at a stash
+    /// destination during an auto-deposit reroute. Dispatches one
+    /// <c>hide N &lt;coin&gt;</c> per currency whose held amount exceeds
+    /// its keep-on-hand floor. Guarded by the cash master toggle and a
+    /// defensive stash-room membership check (the caller only routes here
+    /// for stash destinations, but the guard keeps the contract local).
     /// </summary>
-    public void NoteRoomEntered(RoomKey enteredRoom)
+    public void ExecuteStash(RoomKey enteredRoom)
     {
         if (!_isEnabled()) return;
         if (_profile.Current is not { } profile) return;

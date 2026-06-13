@@ -16,10 +16,12 @@ namespace FujinTerm.Tests;
 /// PR 9.E follow-up — <see cref="AutoDepositManager"/> reroute. A wealth /
 /// coin gate crossing (signalled by <see cref="CashManager.AutoDepositRequested"/>)
 /// while a Loop or Auto-Lair is running detours to the configured bank /
-/// stash room, offloads the excess coin (<c>dep</c> for a bank; nothing
-/// for a stash — <see cref="StashRoomManager"/> owns that), walks back to
-/// where it left off, and restarts the captured engine. A bare walk-to (or
-/// an idle stack) never reroutes.
+/// stash room, offloads the excess coin (<c>dep</c> for a bank;
+/// per-currency <c>hide</c> via <see cref="StashRoomManager.ExecuteStash"/>
+/// for a stash), walks back to where it left off, and restarts the captured
+/// engine. A bare walk-to (or an idle stack) never reroutes. A stash always
+/// detours — there is no on-path skip (the stash only fires on the reroute,
+/// never on a manual walk-through).
 ///
 /// Headless: the gate is driven by mutating the snapshot + settings and
 /// calling <see cref="CashManager.OnInventoryChanged"/>; the walker is
@@ -75,6 +77,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         public required LoopRunner Loop { get; init; }
         public required AutoLairManager Lair { get; init; }
         public required LairTimerStore Timers { get; init; }
+        public required StashRoomManager Stash { get; init; }
         public required AutoDepositManager AutoDeposit { get; init; }
 
         // The shared mutable source of truth: the manager closures read these
@@ -83,9 +86,13 @@ public sealed class AutoDepositManagerTests : IDisposable
         public CashSettings Settings { get; } = new();
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<byte[]> Deposited { get; } = new();
+        public List<byte[]> Stashed { get; } = new();
 
         public IEnumerable<string> DepositLines() =>
             Deposited.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
+
+        public IEnumerable<string> StashLines() =>
+            Stashed.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
 
         /// <summary>Mutate holdings + fire the inventory-changed re-check
         /// that arms the auto-deposit gate.</summary>
@@ -101,6 +108,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         public void Dispose()
         {
             AutoDeposit.Dispose();
+            Stash.Dispose();
             Lair.Dispose();
             Timers.Dispose();
             Cash.Dispose();
@@ -141,6 +149,10 @@ public sealed class AutoDepositManagerTests : IDisposable
             readSettings: () => h.Settings,
             isEnabled: () => true,
             getSnapshot: () => h.Snapshot);
+        StashRoomManager stash = new(profile,
+            readCash: () => h.Settings,
+            getSnapshot: () => h.Snapshot,
+            isEnabled: () => true);
         AutoDepositManager autoDeposit = new(cash,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
@@ -148,7 +160,8 @@ public sealed class AutoDepositManagerTests : IDisposable
             tracker: tracker,
             walker: walker,
             loopRunner: loop,
-            autoLair: lair);
+            autoLair: lair,
+            stash: stash);
 
         h = new Harness
         {
@@ -159,9 +172,11 @@ public sealed class AutoDepositManagerTests : IDisposable
             Loop = loop,
             Lair = lair,
             Timers = timers,
+            Stash = stash,
             AutoDeposit = autoDeposit,
         };
         autoDeposit.SetWireSender(b => h.Deposited.Add(b));
+        stash.SetWireSender(b => h.Stashed.Add(b));
         return h;
     }
 
@@ -326,13 +341,14 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
-    public void StashRoom_SendsNoDepButWalksAndResumes()
+    public void StashRoom_FiresHideThenWalksAndResumes()
     {
         using Harness h = NewHarness();
         StartLair(h);
-        // Mark the destination (1/3) as a stash room on the character — the
-        // detour walks there but the `hide` is StashRoomManager's job (not
-        // wired in this harness), so AutoDepositManager sends no `dep`.
+        // Mark the destination (1/3) as a stash room on the character — on
+        // arrival the manager drives StashRoomManager.ExecuteStash, which
+        // fires one `hide` per held currency above its keep floor. No `dep`
+        // goes out on the bank channel.
         h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 3) };
         ArmBankGate(h);
 
@@ -341,6 +357,8 @@ public sealed class AutoDepositManagerTests : IDisposable
         Arrive(h, new RoomKey(1, 3));
 
         Assert.Empty(h.Deposited);
+        // 50 gold held, keep floors all 0 → a single `hide 50 gold`.
+        Assert.Equal("hide 50 gold", Assert.Single(h.StashLines()));
 
         // Walk back + resume.
         Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
@@ -364,57 +382,41 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
-    public void StashOnLoopCircuit_SkipsDetour()
+    public void StashOnLoopCircuit_StillDetours()
     {
         using Harness h = NewHarness();
         StartLoop(h);
-        // Stash 1/2 sits on the loop circuit — the loop passes through it
-        // every lap, so don't detour; StashRoomManager fires the `hide` on
-        // the next pass. The loop keeps running, untouched.
+        // Stash 1/2 sits on the loop circuit. There is no on-path skip: the
+        // stash only ever fires on a deliberate reroute (never passively on a
+        // walk-through), so the manager detours regardless — the loop stops
+        // and the walker heads for the stash room.
         h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
         h.Settings.BankRoomKey = "1/2";
         h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
 
-        Assert.NotEqual(LoopState.Idle, h.Loop.State);
-        Assert.Empty(h.Deposited);
+        Assert.Equal(LoopState.Idle, h.Loop.State);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
     }
 
     [Fact]
-    public void StashOnLairPath_SkipsDetour()
+    public void StashOnLairPath_StillDetours()
     {
         using Harness h = NewHarness();
         StartLair(h);
-        // Stash 1/3 is a MARKED Auto-Lair room — a guaranteed per-cycle
-        // visit, so don't detour; the lair keeps running.
+        // Stash 1/3 is a MARKED Auto-Lair room. Same rule as the loop case —
+        // no on-path skip, so the manager detours and stashes rather than
+        // waiting to pass through.
         h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 3) };
         h.Settings.BankRoomKey = "1/3";
         h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
 
-        Assert.True(h.Lair.IsActive);
-        Assert.Empty(h.Deposited);
-    }
-
-    [Fact]
-    public void StashOffLairPath_Detours()
-    {
-        using Harness h = NewHarness();
-        StartLair(h);
-        // Stash 1/2 is NOT a marked lair (markers are 1/1 + 1/3). Transit
-        // rooms between lairs are scheduler-dynamic and not reliably
-        // revisited, so the manager detours to it rather than risk never
-        // stashing.
-        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
-        h.Settings.BankRoomKey = "1/2";
-        h.Settings.AutoDepositIfWealthExceeds = 1000;
-
-        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
-
         Assert.False(h.Lair.IsActive);
         Assert.Equal(WalkState.Walking, h.Walker.State);
-        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
+        Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
     }
 }

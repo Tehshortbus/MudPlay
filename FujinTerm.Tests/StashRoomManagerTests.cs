@@ -28,7 +28,7 @@ public sealed class StashRoomManagerTests
         public CashSettings CashSettings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
         // Per-denomination holdings the stash plan reads. Seed before
-        // NoteRoomEntered to model what an `i` parse would have produced.
+        // ExecuteStash to model what an `i` parse would have produced.
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<(RoomKey Room, IReadOnlyList<(string Currency, long Amount)> Dispatch)> Executed { get; } = new();
 
@@ -75,7 +75,7 @@ public sealed class StashRoomManagerTests
         h.MarkRoomAsStash(1, 42);
         h.Snapshot = Coins(gold: 500);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Single(h.Sent);
         Assert.Equal("hide 500 gold", h.SentLines().First());
@@ -89,7 +89,7 @@ public sealed class StashRoomManagerTests
         h.CashSettings.KeepGoldOnHand = 100;
         h.Snapshot = Coins(gold: 500);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Single(h.Sent);
         Assert.Equal("hide 400 gold", h.SentLines().First());
@@ -103,7 +103,7 @@ public sealed class StashRoomManagerTests
         h.CashSettings.KeepGoldOnHand = 100;
         h.Snapshot = Coins(gold: 80);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Empty(h.Sent);
     }
@@ -115,7 +115,7 @@ public sealed class StashRoomManagerTests
         h.MarkRoomAsStash(1, 42);
         h.Snapshot = Coins(gold: 500);
 
-        h.Stash.NoteRoomEntered(new RoomKey(2, 99));
+        h.Stash.ExecuteStash(new RoomKey(2, 99));
 
         Assert.Empty(h.Sent);
     }
@@ -129,7 +129,7 @@ public sealed class StashRoomManagerTests
         h.CashSettings.KeepPlatinumOnHand = 10;
         h.Snapshot = Coins(gold: 300, platinum: 50);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal(2, h.Sent.Count);
         List<string> lines = h.SentLines().ToList();
@@ -145,7 +145,7 @@ public sealed class StashRoomManagerTests
         h.MarkRoomAsStash(1, 42);
         h.Snapshot = Coins(gold: 100);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Empty(h.Sent);
     }
@@ -156,7 +156,7 @@ public sealed class StashRoomManagerTests
         using Harness h = new();
         h.Snapshot = Coins(gold: 100);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Empty(h.Sent);
     }
@@ -169,14 +169,14 @@ public sealed class StashRoomManagerTests
         h.CashSettings.KeepGoldOnHand = 100;
         h.Snapshot = Coins(gold: 500);
 
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
         Assert.Single(h.Sent);
 
         // After the server confirms the hide, the InventoryManager
         // snapshot drops to the kept floor — a re-entry finds nothing
         // above keep and stays quiet.
         h.Snapshot = Coins(gold: 100);
-        h.Stash.NoteRoomEntered(new RoomKey(1, 42));
+        h.Stash.ExecuteStash(new RoomKey(1, 42));
         Assert.Single(h.Sent);
     }
 }

@@ -2107,25 +2107,17 @@ public sealed class AppServices
         // wealth swings (CashManager's own patterns see get / drop only).
         Inventory.Changed += Cash.OnInventoryChanged;
 
-        // Phase 9 PR 9.E follow-up — StashRoomManager. Driven by
-        // RoomTracker.StateChanged; looks up the entered room in
-        // the user's stash list and dispatches per-currency hide
-        // commands. Shares AutoGetCash gating with CashManager
-        // (cash automation is one mental toggle).
+        // Phase 9 PR 9.E follow-up — StashRoomManager. NOT autonomous:
+        // AutoDepositManager (built below) drives ExecuteStash on arrival
+        // at a stash destination during an auto-deposit reroute, so a
+        // manual walk through a stash room never triggers a hide. Shares
+        // AutoGetCash gating with CashManager (cash automation is one
+        // mental toggle).
         Stash = new Game.Cash.StashRoomManager(Profile,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             getSnapshot: () => Inventory.Snapshot,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log);
-        RoomTracker.StateChanged += t =>
-        {
-            if (t.NewRoom is null) return;
-            // Only fire on actual room change (key differs) — same
-            // pattern HealthManager / StealthManager use.
-            if (t.PreviousRoom is not null
-             && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
-            Stash.NoteRoomEntered(t.NewRoom.Key);
-        };
 
         // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -2316,6 +2308,7 @@ public sealed class AppServices
             walker: Walker,
             loopRunner: LoopRunner,
             autoLair: AutoLair,
+            stash: Stash,
             log: Log);
 
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure

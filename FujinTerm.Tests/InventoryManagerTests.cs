@@ -152,6 +152,25 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void HideCurrency_DecrementsHoldingsLikeADrop()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 50 gold crowns, 6 copper farthings.");
+        h.Feed("Wealth:    5006 copper farthings");
+        h.Feed("Encumbrance:    18/2880  -  None  [0%]");
+
+        // Stashing coins removes them from the purse exactly like a drop.
+        // Without this the snapshot stays stale and the next auto-stash
+        // computes its `hide` amounts from pre-stash holdings.
+        h.Feed("You hid 50 gold crowns.");
+
+        CurrencyHoldings c = h.Inv.Snapshot.Currency;
+        Assert.Equal(0, c.Gold);
+        Assert.Equal(6, c.Copper);
+        Assert.Equal(6, c.TotalCopperValue);
+    }
+
+    [Fact]
     public void PickupTwoCoins_NoWeightChangeBelowThreshold()
     {
         using Harness h = new();

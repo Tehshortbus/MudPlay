@@ -33,9 +33,9 @@ namespace FujinTerm.Game.Cash;
 /// <b>Bank vs. stash.</b> The configured
 /// <see cref="CashSettings.BankRoomKey"/> is classified against the
 /// character's <see cref="CharacterProfile.StashRooms"/>: a match is a
-/// stash room (on arrival, <see cref="StashRoomManager.NoteRoomEntered"/>
-/// auto-fires the per-currency <c>hide</c> commands — this manager only
-/// has to walk there), anything else is a bank (this manager sends a
+/// stash room (on arrival, this manager calls
+/// <see cref="StashRoomManager.ExecuteStash"/> to fire the per-currency
+/// <c>hide</c> commands), anything else is a bank (this manager sends a
 /// single <c>dep &lt;value&gt;</c> for the held wealth above the
 /// keep-on-hand floors).
 /// </para>
@@ -60,6 +60,7 @@ public sealed class AutoDepositManager : IDisposable
     private readonly AutoWalkManager _walker;
     private readonly LoopRunner _loopRunner;
     private readonly AutoLairManager _autoLair;
+    private readonly StashRoomManager _stash;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -80,6 +81,7 @@ public sealed class AutoDepositManager : IDisposable
         AutoWalkManager walker,
         LoopRunner loopRunner,
         AutoLairManager autoLair,
+        StashRoomManager stash,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(cash);
@@ -90,6 +92,7 @@ public sealed class AutoDepositManager : IDisposable
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(loopRunner);
         ArgumentNullException.ThrowIfNull(autoLair);
+        ArgumentNullException.ThrowIfNull(stash);
         _cash = cash;
         _readCash = readCash;
         _getSnapshot = getSnapshot;
@@ -98,6 +101,7 @@ public sealed class AutoDepositManager : IDisposable
         _walker = walker;
         _loopRunner = loopRunner;
         _autoLair = autoLair;
+        _stash = stash;
         _log = log;
 
         _cash.AutoDepositRequested += OnAutoDepositRequested;
@@ -146,21 +150,6 @@ public sealed class AutoDepositManager : IDisposable
         }
 
         bool destinationIsStash = IsStashRoom(destination);
-
-        // Stash-on-path skip: when the configured stash room already sits
-        // on the running engine's path (a loop circuit room, or a marked
-        // Auto-Lair room), don't detour — the engine passes through it on
-        // its own and StashRoomManager fires the per-coin `hide` on arrival.
-        // Banks are exempt: the `dep` only goes out on a deliberate detour,
-        // never passively on arrival, so a bank always reroutes even when
-        // it's on-path.
-        if (destinationIsStash && IsDestinationOnEnginePath(destination, resume))
-        {
-            _log?.Info(LogCategory,
-                $"stash {destination} is on the running {resume.Kind} path — " +
-                "skipping detour; StashRoomManager handles the hide on the next pass");
-            return;
-        }
 
         _busy = true;
         _resume = resume;
@@ -214,9 +203,11 @@ public sealed class AutoDepositManager : IDisposable
     {
         if (_destinationIsStash)
         {
-            // StashRoomManager fires `hide N <coin>` off RoomTracker's
-            // arrival StateChanged — nothing to send here, just head back.
-            _log?.Info(LogCategory, "arrived at stash room — StashRoomManager handles the hide");
+            // Drive the per-currency `hide` explicitly — StashRoomManager
+            // is invoked, not autonomous, so it only fires here on an
+            // auto-deposit reroute (never on a manual walk-through).
+            _log?.Info(LogCategory, "arrived at stash room — executing stash");
+            _stash.ExecuteStash(_destination);
         }
         else
         {
@@ -268,37 +259,6 @@ public sealed class AutoDepositManager : IDisposable
         foreach (RoomRef r in stashes)
             if (r.Map == room.Map && r.Room == room.Room) return true;
         return false;
-    }
-
-    /// <summary>
-    /// True when <paramref name="destination"/> is a guaranteed per-pass
-    /// visit on the running engine's path. A <see cref="ResumeKind.Loop"/>
-    /// expands its full BFS circuit (every circuit room is hit each lap);
-    /// a <see cref="ResumeKind.Lair"/> only guarantees its <em>marked</em>
-    /// rooms — the scheduler's transit rooms between lairs are dynamic and
-    /// not reliably revisited, so they don't count as on-path. The
-    /// asymmetry is deliberate: skipping a detour when the engine won't
-    /// actually pass through would strand the coin forever, so we only skip
-    /// on a certain visit.
-    /// </summary>
-    private bool IsDestinationOnEnginePath(RoomKey destination, ResumeTarget resume)
-    {
-        switch (resume.Kind)
-        {
-            case ResumeKind.Loop:
-                RoomKey? source = _loopRunner.CircleStartRoom
-                    ?? _tracker.State.CurrentRoom?.Key;
-                if (source is not { } from) return false;
-                foreach (RoomKey k in _loopRunner.ResolveLoopRoomKeys(from))
-                    if (k.Equals(destination)) return true;
-                return false;
-            case ResumeKind.Lair:
-                foreach (RoomKey k in _autoLair.Marked)
-                    if (k.Equals(destination)) return true;
-                return false;
-            default:
-                return false;
-        }
     }
 
     // ----- engine snapshot / stop / resume ---------------------------

@@ -222,6 +222,22 @@ public sealed partial class InventoryManager : IDisposable
             return;
         }
 
+        // Stash: "You hid 219 copper farthings." — the coins leave the
+        // purse exactly like a drop, so decrement holdings. Without this the
+        // snapshot stays stale after a stash, and the next stash computes its
+        // `hide` amounts from pre-stash holdings — sending amounts the
+        // character no longer has ("You don't have N copper farthings to hide!").
+        Match hidden = HidCurrencyRegex().Match(line);
+        if (hidden.Success)
+        {
+            if (int.TryParse(hidden.Groups[1].Value, out int amount))
+            {
+                lock (_lock) AdjustCurrency(hidden.Groups[2].Value, -amount);
+                Changed?.Invoke();
+            }
+            return;
+        }
+
         Match deposit = DepositCurrencyRegex().Match(line);
         if (deposit.Success)
         {
@@ -585,6 +601,9 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^You dropped (\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
     private static partial Regex DroppedCurrencyRegex();
+
+    [GeneratedRegex(@"^You hid (\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
+    private static partial Regex HidCurrencyRegex();
 
     [GeneratedRegex(@"^You deposit (\d.+)\.$")]
     private static partial Regex DepositCurrencyRegex();
