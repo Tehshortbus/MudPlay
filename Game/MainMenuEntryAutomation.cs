@@ -6,12 +6,13 @@ namespace FujinTerm.Game;
 /// <summary>
 /// Sends the configured <see cref="GameCommands.EntryCommand"/>
 /// (default <c>E</c>) when the MajorMUD main-menu screen is recognised
-/// at the tail of the automated BBS-login sequence, then follows it
-/// up with a four-step refresh sequence (CR → <c>stat</c> → <c>exp</c>
-/// → <c>i</c>) so subscribers like <see cref="StatParser"/> /
+/// at the tail of the automated BBS-login sequence, then — ONLY once
+/// the first in-game room display is actually observed — follows it
+/// up with a three-step refresh sequence (<c>stat</c> → <c>exp</c> →
+/// <c>i</c>) so subscribers like <see cref="StatParser"/> /
 /// (future) <see cref="Inventory.InventoryManager"/> seed
 /// <see cref="PlayerStats"/> + inventory state right at the moment
-/// we enter the realm.
+/// we land in the realm.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,8 +32,9 @@ namespace FujinTerm.Game;
 /// the menu-nav sequence → final step's <c>LoggedIntoGame</c> event
 /// fires → main-window VM calls <see cref="Arm"/> → the next
 /// MainMenuEnterRealm pattern match (the actual menu screen) sends
-/// the entry command + closes the latch + queues the startup
-/// refresh. Mid-session navigation to menu (user types X to exit
+/// the entry command + closes the latch + arms the room-display gate;
+/// the startup refresh fires only when the first in-game room display
+/// appears. Mid-session navigation to menu (user types X to exit
 /// realm) doesn't re-arm — only a fresh login automation completion
 /// does.
 /// </para>
@@ -46,15 +48,23 @@ namespace FujinTerm.Game;
 /// they're in a dangerous spot.
 /// </para>
 /// <para>
-/// Startup sequence cadence: the four lines (<c>\r</c>, <c>stat\r</c>,
+/// Game-entry gate: after the entry command goes out we send NOTHING
+/// else until the first <c>Obvious exits:</c> line proves we actually
+/// landed in the realm (<see cref="Services.Patterns.KnownPatterns.RoomExits"/>).
+/// If the MOTD pauses on a "press any key" pagination, or the
+/// character is bounced / dead / held out-of-realm, no room display
+/// appears and the refresh never fires — the user advances manually
+/// and types their own commands. The wait is open-ended: it holds
+/// until the first room is finally seen (or a fresh login resets the
+/// gate), then fires once and latches closed.
+/// </para>
+/// <para>
+/// Startup sequence cadence: the three lines (<c>stat\r</c>,
 /// <c>exp\r</c>, <c>i\r</c>) are sent with <see cref="StartupStep"/>
 /// gaps (default 400 ms) so the BBS renders each response cleanly
-/// before the next command lands. A bare CR comes first because the
-/// MOTD between Enter and the in-game prompt can pause on a "press
-/// any key" pagination — the CR flushes past it. <c>stat</c> /
-/// <c>exp</c> are parsed by <see cref="StatParser"/>; <c>i</c> is
-/// sent today and parsed by the Phase 9 inventory work when that
-/// lands.
+/// before the next command lands. <c>stat</c> / <c>exp</c> are parsed
+/// by <see cref="StatParser"/>; <c>i</c> is sent today and parsed by
+/// the Phase 9 inventory work when that lands.
 /// </para>
 /// </remarks>
 public sealed class MainMenuEntryAutomation : IDisposable
@@ -64,24 +74,24 @@ public sealed class MainMenuEntryAutomation : IDisposable
     private readonly HangupSignal _hangup;
     private readonly LogService? _log;
     private readonly IDisposable _patternSub;
+    private readonly IDisposable _roomSub;
     private readonly WireSender _wire = new();
     private DateTime _armedUntilUtc = DateTime.MinValue;
     private Avalonia.Threading.DispatcherTimer? _startupTimer;
     private int _startupIndex;
+    private bool _awaitingFirstRoom;
     private bool _disposed;
 
     /// <summary>
-    /// Startup sequence sent after <see cref="GameCommands.EntryCommand"/>.
-    /// First entry is a bare CR (the empty string + the trailing \r the
-    /// wire-sender adds) so any "press any key" pagination on the MOTD
-    /// gets flushed. The remaining three populate
-    /// <see cref="PlayerStats"/> (stat / exp) and emit inventory text
-    /// the Phase 9 InventoryManager parser will consume once it ships.
+    /// Startup refresh sent once the first in-game room display confirms
+    /// we entered the realm. <c>stat</c> / <c>exp</c> populate
+    /// <see cref="PlayerStats"/>; <c>i</c> emits inventory text the
+    /// Phase 9 InventoryManager parser will consume once it ships.
     /// Read-only so tests + future settings UI can introspect the
     /// canonical sequence without rebuilding it.
     /// </summary>
     public static readonly IReadOnlyList<string> StartupSequence =
-        new[] { string.Empty, "stat", "exp", "i" };
+        new[] { "stat", "exp", "i" };
 
     /// <summary>
     /// How long the latch stays armed after <see cref="Arm"/>. Default
@@ -124,6 +134,10 @@ public sealed class MainMenuEntryAutomation : IDisposable
         _hangup = hangup;
         _log = log;
         _patternSub = _router.Subscribe(KnownPatterns.MainMenuEnterRealm, OnMainMenuLine);
+        // Game-entry confirmation: the first "Obvious exits:" line after
+        // an entry-command send proves we're actually in the realm and
+        // unlocks the stat/exp/i refresh. See OnRoomExitsLine.
+        _roomSub = _router.Subscribe(KnownPatterns.RoomExits, OnRoomExitsLine);
     }
 
     /// <summary>
@@ -145,6 +159,11 @@ public sealed class MainMenuEntryAutomation : IDisposable
     /// </summary>
     public void Arm()
     {
+        // Fresh login → clear any stale room-display gate from a prior
+        // connect where the entry command fired but no room ever
+        // appeared, so a late room line can't trip the refresh out of
+        // band (and a hangup-suppressed Arm leaves nothing armed).
+        _awaitingFirstRoom = false;
         if (_hangup.ConsumeSuppressEntry())
         {
             _log?.Log(LogSeverity.Info, "MainMenuEntry",
@@ -159,6 +178,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
         if (_disposed) return;
         _disposed = true;
         _patternSub.Dispose();
+        _roomSub.Dispose();
         StopStartupSequence();
     }
 
@@ -191,7 +211,21 @@ public sealed class MainMenuEntryAutomation : IDisposable
 
         _wire.Send(command);
         _log?.Log(LogSeverity.Info, "MainMenuEntry",
-            $"Auto-entered realm with '{command}' after login automation completed.");
+            $"Auto-entered realm with '{command}'; awaiting first room display before refresh.");
+        // Don't fire stat/exp/i yet — wait until a room display proves
+        // we actually landed in the realm. OnRoomExitsLine releases it.
+        _awaitingFirstRoom = true;
+    }
+
+    private void OnRoomExitsLine(MatchResult _)
+    {
+        // One-shot gate: only the first "Obvious exits:" line following
+        // a successful entry-command send unlocks the refresh. Rooms
+        // seen during normal play (or before any entry) are ignored.
+        if (!_awaitingFirstRoom) return;
+        _awaitingFirstRoom = false;
+        _log?.Log(LogSeverity.Info, "MainMenuEntry",
+            "First in-game room observed — sending startup refresh (stat/exp/i).");
         StartStartupSequence();
     }
 
@@ -226,8 +260,6 @@ public sealed class MainMenuEntryAutomation : IDisposable
         _startupIndex++;
         _wire.Send(next);
         _log?.Log(LogSeverity.Debug, "MainMenuEntry",
-            next.Length == 0
-                ? "Sent post-entry CR (MOTD flush)."
-                : $"Sent post-entry refresh: {next}.");
+            $"Sent post-entry refresh: {next}.");
     }
 }
