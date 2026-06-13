@@ -34,13 +34,21 @@ namespace FujinTerm.Game.Cash;
 /// pickups already dispatched but not yet confirmed so multi-coin
 /// batches and quick re-displays can't over-collect.</item>
 /// <item><b>CashPickedUp / CashDropped → tally update</b>. Held
-/// counts exposed via <see cref="HeldCoin"/> for the wealth-
-/// threshold check.</item>
-/// <item><b>AutoDeposit trigger</b>. When the gold-equivalent total
-/// crosses <see cref="CashSettings.AutoDepositIfWealthExceeds"/>,
-/// <see cref="AutoDepositRequested"/> fires once per crossing.
-/// Subscribers (the future walker reroute) decide what to do —
-/// v1 only signals.</item>
+/// per-currency counts exposed via <see cref="HeldCoin"/> feed the
+/// stash-room and discard paths.</item>
+/// <item><b>AutoDeposit trigger</b>. The gates read the authoritative
+/// <see cref="InventorySnapshot.Currency"/> (the <c>i</c>-seeded,
+/// delta-tracked holdings — not the local pickup tally): wealth gate
+/// against <see cref="CurrencyHoldings.TotalCopperValue"/> (the
+/// game's <c>Wealth:</c> line), coin gate against
+/// <see cref="CurrencyHoldings.TotalCoinCount"/>. Either crossing
+/// fires <see cref="AutoDepositRequested"/> once per crossing, but
+/// only when a bank / stash location (<see cref="CashSettings.BankRoomKey"/>)
+/// is configured — no location, no reroute destination, no fire.
+/// Re-evaluated on <see cref="OnInventoryChanged"/> so buy / sell
+/// wealth swings (which the CashManager's own patterns don't observe)
+/// still arm the gate. Subscribers (the walker reroute) decide what
+/// to do — this layer only signals.</item>
 /// </list>
 /// <para>
 /// <b>Deferred to follow-ups</b>:
@@ -65,21 +73,6 @@ public sealed class CashManager : IDisposable
     /// <summary>LogService category — appears as <c>[Cash]</c> rows
     /// per dispatch + threshold fire.</summary>
     public const string LogCategory = "Cash";
-
-    /// <summary>Gold-equivalent multipliers per currency unit. Stock
-    /// MajorMUD economy:
-    /// 1 platinum = 100 gold; 1 gold = 100 silver; 1 silver = 100
-    /// copper; 1 runic = 1000 gold (varies per realm — overridable
-    /// in a follow-up).</summary>
-    private static readonly IReadOnlyDictionary<string, long> GoldEquivalent =
-        new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["copper"]   = 1,        // 1/100 gold but we track integer; cap to 1
-            ["silver"]   = 1,        // ditto — for v1 we round low-denominations to 1g
-            ["gold"]     = 1,
-            ["platinum"] = 100,
-            ["runic"]    = 1000,
-        };
 
     private readonly Func<CashSettings> _readSettings;
     private readonly Func<bool> _isEnabled;
@@ -145,10 +138,13 @@ public sealed class CashManager : IDisposable
     /// action.</summary>
     public event Action<string, int, CashPolicy>? CashDispatched;
 
-    /// <summary>Fires once when the gold-equivalent held wealth
-    /// crosses <see cref="CashSettings.AutoDepositIfWealthExceeds"/>.
-    /// Single-shot per crossing — re-arms when wealth drops back
-    /// below the threshold.</summary>
+    /// <summary>Fires once when the authoritative held wealth crosses
+    /// <see cref="CashSettings.AutoDepositIfWealthExceeds"/> or the held
+    /// coin count crosses <see cref="CashSettings.AutoDepositIfCoinsExceed"/>
+    /// — provided a bank / stash location is configured. Payload is the
+    /// current wealth value (the game's <c>Wealth:</c> figure). Single-shot
+    /// per crossing — re-arms only once BOTH gates fall back below their
+    /// thresholds.</summary>
     public event Action<long>? AutoDepositRequested;
 
     public CashManager(
@@ -210,36 +206,6 @@ public sealed class CashManager : IDisposable
     public long HeldCoin(string currency)
     {
         return _held.TryGetValue(currency, out long count) ? count : 0;
-    }
-
-    /// <summary>Gold-equivalent of all held coins via
-    /// <see cref="GoldEquivalent"/>.</summary>
-    public long HeldGoldEquivalent
-    {
-        get
-        {
-            long total = 0;
-            foreach ((string c, long n) in _held)
-            {
-                if (GoldEquivalent.TryGetValue(c, out long mult))
-                    total += n * mult;
-            }
-            return total;
-        }
-    }
-
-    /// <summary>Total number of physical coins held across every
-    /// denomination, ignoring each coin's value. Drives the coin-count
-    /// auto-deposit gate (distinct from <see cref="HeldGoldEquivalent"/>,
-    /// which weights by denomination).</summary>
-    public long HeldCoinCount
-    {
-        get
-        {
-            long total = 0;
-            foreach (long n in _held.Values) total += n;
-            return total;
-        }
     }
 
     /// <summary>Reset held counts (called on profile load to drop
@@ -776,18 +742,41 @@ public sealed class CashManager : IDisposable
         _held[currency] = next;
     }
 
+    /// <summary>
+    /// Re-evaluate the auto-deposit gates against the latest authoritative
+    /// <see cref="InventorySnapshot"/>. Wired to
+    /// <c>InventoryManager.Changed</c> so a wealth swing the CashManager's
+    /// own patterns never observe — a buy or sell — still arms the gate, and
+    /// so a get / drop the snapshot processes after our pattern handler
+    /// (subscription-order dependent) is re-checked once the snapshot is
+    /// fresh.
+    /// </summary>
+    public void OnInventoryChanged() => CheckAutoDeposit();
+
     private void CheckAutoDeposit()
     {
         CashSettings settings = _readSettings();
         long wealthThreshold = settings.AutoDepositIfWealthExceeds;
         long coinThreshold = settings.AutoDepositIfCoinsExceed;
+        // Both gates off → auto-deposit disarmed entirely.
         if (wealthThreshold <= 0 && coinThreshold <= 0) return;
 
-        long heldGold = HeldGoldEquivalent;
-        long heldCoins = HeldCoinCount;
+        // Location precondition: with no bank / stash room picked there's
+        // nowhere to detour, so the gates can't arm (a fired event with no
+        // reroute destination is meaningless). Both a gate AND a location are
+        // required — matches the Settings → Cash auto-deposit contract.
+        if (string.IsNullOrEmpty(settings.BankRoomKey)) return;
 
-        bool wealthGate = wealthThreshold > 0 && heldGold > wealthThreshold;
-        bool coinGate = coinThreshold > 0 && heldCoins > coinThreshold;
+        // Authoritative holdings: wealth gate against the game's "Wealth:"
+        // value (TotalCopperValue), coin gate against the raw coin count —
+        // not the local pickup tally, which never sees the `i`-seeded
+        // starting balance or buy / sell conversions.
+        CurrencyHoldings held = _getSnapshot().Currency;
+        long wealthValue = held.TotalCopperValue;
+        long coinCount = held.TotalCoinCount;
+
+        bool wealthGate = wealthThreshold > 0 && wealthValue > wealthThreshold;
+        bool coinGate = coinThreshold > 0 && coinCount > coinThreshold;
 
         // OR logic: either gate firing triggers the deposit. The single-fire
         // guard re-arms only once BOTH gates fall back below their thresholds,
@@ -796,15 +785,15 @@ public sealed class CashManager : IDisposable
         {
             _autoDepositFiredThisCrossing = true;
             _log?.Info(LogCategory,
-                $"auto-deposit triggered held-gold-eq={heldGold} (gate={wealthThreshold}) " +
-                $"held-coins={heldCoins} (gate={coinThreshold})");
-            AutoDepositRequested?.Invoke(heldGold);
+                $"auto-deposit triggered wealth={wealthValue} (gate={wealthThreshold}) " +
+                $"coins={coinCount} (gate={coinThreshold})");
+            AutoDepositRequested?.Invoke(wealthValue);
         }
         else if (!wealthGate && !coinGate && _autoDepositFiredThisCrossing)
         {
             _autoDepositFiredThisCrossing = false;
             _log?.Debug(LogCategory,
-                $"auto-deposit re-armed held-gold-eq={heldGold} held-coins={heldCoins}");
+                $"auto-deposit re-armed wealth={wealthValue} coins={coinCount}");
         }
     }
 

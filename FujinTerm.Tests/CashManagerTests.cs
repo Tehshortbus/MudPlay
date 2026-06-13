@@ -163,22 +163,16 @@ public sealed class CashManagerTests
     }
 
     [Fact]
-    public void HeldGoldEquivalent_ComputesMultiplier()
-    {
-        using Harness h = new();
-        h.Feed("You picked up 5 platinum pieces.");    // 5 * 100 = 500g
-        h.Feed("You picked up 100 gold pieces.");      // 100 * 1 = 100g
-
-        Assert.Equal(600, h.Cash.HeldGoldEquivalent);
-    }
-
-    [Fact]
     public void AutoDeposit_FiresWhenWealthExceedsThreshold()
     {
+        // The wealth gate reads the authoritative Wealth: value
+        // (TotalCopperValue), not the local pickup tally.
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 150 gold pieces.");
+        h.Snapshot = Wealth(150);
+        h.Cash.OnInventoryChanged();
 
         Assert.Single(h.AutoDeposits);
         Assert.Equal(150, h.AutoDeposits[0]);
@@ -189,9 +183,12 @@ public sealed class CashManagerTests
     {
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 150 gold pieces.");
-        h.Feed("You picked up 50 gold pieces.");
+        h.Snapshot = Wealth(150);
+        h.Cash.OnInventoryChanged();
+        h.Snapshot = Wealth(200);
+        h.Cash.OnInventoryChanged();
 
         Assert.Single(h.AutoDeposits);
     }
@@ -201,12 +198,16 @@ public sealed class CashManagerTests
     {
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 150 gold pieces.");
+        h.Snapshot = Wealth(150);
+        h.Cash.OnInventoryChanged();
         Assert.Single(h.AutoDeposits);
 
-        h.Feed("You dropped 120 gold pieces.");       // back to 30 — below threshold
-        h.Feed("You picked up 100 gold pieces.");     // back to 130 — re-fires
+        h.Snapshot = Wealth(30);          // below threshold → re-arms
+        h.Cash.OnInventoryChanged();
+        h.Snapshot = Wealth(130);         // back above → re-fires
+        h.Cash.OnInventoryChanged();
 
         Assert.Equal(2, h.AutoDeposits.Count);
     }
@@ -214,11 +215,30 @@ public sealed class CashManagerTests
     [Fact]
     public void AutoDeposit_ZeroThreshold_NoFire()
     {
-        // 0 means disabled.
+        // Both gates 0 means disabled — no fire regardless of holdings.
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 0;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 1000 gold pieces.");
+        h.Snapshot = Wealth(100_000);
+        h.Cash.OnInventoryChanged();
+
+        Assert.Empty(h.AutoDeposits);
+    }
+
+    // ----- location precondition --------------------------------------
+
+    [Fact]
+    public void AutoDeposit_NoLocation_NoFire()
+    {
+        // A gate is set and exceeded, but no bank / stash room is picked —
+        // there's nowhere to detour, so the gate can't arm.
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = string.Empty;
+
+        h.Snapshot = Wealth(500);
+        h.Cash.OnInventoryChanged();
 
         Assert.Empty(h.AutoDeposits);
     }
@@ -226,24 +246,15 @@ public sealed class CashManagerTests
     // ----- coin-count gate (independent of wealth value) --------------
 
     [Fact]
-    public void HeldCoinCount_SumsAllDenominationsByCount()
-    {
-        using Harness h = new();
-        h.Feed("You picked up 5 platinum pieces.");    // count 5, value 500
-        h.Feed("You picked up 100 gold pieces.");      // count 100, value 100
-
-        Assert.Equal(105, h.Cash.HeldCoinCount);       // count ignores value
-        Assert.Equal(600, h.Cash.HeldGoldEquivalent);  // value weights denomination
-    }
-
-    [Fact]
     public void AutoDeposit_FiresWhenCoinCountExceeds_EvenIfWealthBelow()
     {
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 1000;  // wealth gate stays above
         h.Settings.AutoDepositIfCoinsExceed = 10;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 50 copper pieces.");     // count 50 > 10, value 50 < 1000
+        h.Snapshot = Wealth(50, copper: 50);  // count 50 > 10, value 50 < 1000
+        h.Cash.OnInventoryChanged();
 
         Assert.Single(h.AutoDeposits);
     }
@@ -254,8 +265,10 @@ public sealed class CashManagerTests
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 100;
         h.Settings.AutoDepositIfCoinsExceed = 1000;    // coin gate stays above
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 150 gold pieces.");      // wealth 150 > 100
+        h.Snapshot = Wealth(150, copper: 1);  // wealth 150 > 100, count 1 < 1000
+        h.Cash.OnInventoryChanged();
 
         Assert.Single(h.AutoDeposits);
     }
@@ -266,15 +279,19 @@ public sealed class CashManagerTests
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 100;
         h.Settings.AutoDepositIfCoinsExceed = 200;
+        h.Settings.BankRoomKey = "bank";
 
-        // 150 gold: wealth 150 > 100 fires; count 150 < 200.
-        h.Feed("You picked up 150 gold pieces.");
+        // wealth 150 > 100 fires; count 150 < 200.
+        h.Snapshot = Wealth(150, copper: 150);
+        h.Cash.OnInventoryChanged();
         Assert.Single(h.AutoDeposits);
 
-        // Drop wealth below its gate but the coin count is still under 200,
-        // so re-arm hinges on wealth alone here.
-        h.Feed("You dropped 130 gold pieces.");        // wealth 20, count 20 — both below → re-armed
-        h.Feed("You picked up 150 gold pieces.");      // wealth 170 > 100 → re-fires
+        // Both below → re-armed.
+        h.Snapshot = Wealth(20, copper: 20);
+        h.Cash.OnInventoryChanged();
+        // wealth 170 > 100 → re-fires.
+        h.Snapshot = Wealth(170, copper: 170);
+        h.Cash.OnInventoryChanged();
         Assert.Equal(2, h.AutoDeposits.Count);
     }
 
@@ -284,12 +301,16 @@ public sealed class CashManagerTests
         using Harness h = new();
         h.Settings.AutoDepositIfWealthExceeds = 1000;
         h.Settings.AutoDepositIfCoinsExceed = 10;
+        h.Settings.BankRoomKey = "bank";
 
-        h.Feed("You picked up 50 copper pieces.");     // count 50 > 10 → fires
+        h.Snapshot = Wealth(50, copper: 50);  // count 50 > 10 → fires
+        h.Cash.OnInventoryChanged();
         Assert.Single(h.AutoDeposits);
 
-        h.Feed("You dropped 5 copper pieces.");        // count 45 still > 10 → no re-arm, no re-fire
-        h.Feed("You picked up 5 copper pieces.");      // count 50 again
+        h.Snapshot = Wealth(45, copper: 45);  // count 45 still > 10 → no re-arm
+        h.Cash.OnInventoryChanged();
+        h.Snapshot = Wealth(50, copper: 50);  // count 50 again
+        h.Cash.OnInventoryChanged();
         Assert.Single(h.AutoDeposits);
     }
 
@@ -303,7 +324,6 @@ public sealed class CashManagerTests
         h.Cash.ResetTallies();
 
         Assert.Equal(0, h.Cash.HeldCoin("gold"));
-        Assert.Equal(0, h.Cash.HeldGoldEquivalent);
     }
 
     // ----- stash-room foundation (hide pattern) ----------------------
@@ -329,24 +349,6 @@ public sealed class CashManagerTests
         h.Feed("You hid a gold piece.");
 
         Assert.Equal(4, h.Cash.HeldCoin("gold"));
-    }
-
-    [Fact]
-    public void Hidden_TriggersAutoDepositReArm()
-    {
-        // Wealth crossed threshold, fires deposit. Then we hide
-        // enough coin to drop back under — next pickup that crosses
-        // again should re-fire.
-        using Harness h = new();
-        h.Settings.AutoDepositIfWealthExceeds = 100;
-
-        h.Feed("You picked up 150 gold pieces.");
-        Assert.Single(h.AutoDeposits);
-
-        h.Feed("You hid 100 gold pieces.");         // down to 50 — re-arms
-        h.Feed("You picked up 100 gold pieces.");   // back to 150 — re-fires
-
-        Assert.Equal(2, h.AutoDeposits.Count);
     }
 
     // ----- Discard auto-drop -----------------------------------------
@@ -406,14 +408,16 @@ public sealed class CashManagerTests
     [Fact]
     public void OnSettingsChanged_ReEvaluatesAutoDeposit()
     {
-        // User edits threshold while holding coin above the new value.
-        // Without OnSettingsChanged() the trigger waits for the next
-        // pickup line — could be a long time.
+        // User edits threshold while already holding wealth above the new
+        // value. Without OnSettingsChanged() the trigger waits for the next
+        // inventory change — could be a long time.
         using Harness h = new();
-        h.Feed("You picked up 200 gold pieces.");
-        Assert.Empty(h.AutoDeposits);                // no threshold yet
+        h.Snapshot = Wealth(200);
+        h.Cash.OnInventoryChanged();
+        Assert.Empty(h.AutoDeposits);                // no threshold / location yet
 
         h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
         h.Cash.OnSettingsChanged();
 
         Assert.Single(h.AutoDeposits);
@@ -545,6 +549,20 @@ public sealed class CashManagerTests
         return new InventorySnapshot(
             new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
             new EncumbranceReading(currentWeight, maxWeight, 0, EncumbranceLevel.None),
+            DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>Build a holdings snapshot for the auto-deposit gates:
+    /// <paramref name="wealthValue"/> is the game's Wealth: figure
+    /// (TotalCopperValue); the coin counts drive TotalCoinCount. Encumbrance
+    /// is irrelevant to the gates so it's left empty.</summary>
+    private static InventorySnapshot Wealth(
+        long wealthValue,
+        int copper = 0, int silver = 0, int gold = 0, int platinum = 0, int runic = 0)
+    {
+        return new InventorySnapshot(
+            new CurrencyHoldings(copper, silver, gold, platinum, runic, wealthValue),
+            EncumbranceReading.Empty,
             DateTimeOffset.UtcNow);
     }
 

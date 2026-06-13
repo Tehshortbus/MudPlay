@@ -2086,6 +2086,11 @@ public sealed class AppServices
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
         Cash.SetAcquisitionGate(Acquisition);
+        // The auto-deposit gates read the authoritative inventory snapshot
+        // (wealth value + coin count), so re-evaluate whenever the parser
+        // updates holdings — this is the only path that catches buy / sell
+        // wealth swings (CashManager's own patterns see get / drop only).
+        Inventory.Changed += Cash.OnInventoryChanged;
 
         // Phase 9 PR 9.E follow-up — StashRoomManager. Driven by
         // RoomTracker.StateChanged; looks up the entered room in
