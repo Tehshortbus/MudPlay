@@ -40,6 +40,20 @@ public partial class NavigationManagerDialog : Window
     {
         InitializeComponent();
         WireDragDrop(WalkTreeView);
+        WalkTreeView.AddHandler(DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Tunnel);
+    }
+
+    // Double-clicking a leaf opens its editor — same action as the Edit
+    // button / context menu, just the faster gesture. Folder nodes are
+    // ignored (LeafRowOf returns null for them).
+    private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not NavigationManagerDialogViewModel vm) return;
+        switch (LeafRowOf(e.Source as StyledElement))
+        {
+            case ManagerLoopRow loop:      vm.EditLoopCommand.Execute(loop); break;
+            case ManagerLairSetupRow lair: vm.EditLairSetupCommand.Execute(lair); break;
+        }
     }
 
     private void WireDragDrop(TreeView tree)
