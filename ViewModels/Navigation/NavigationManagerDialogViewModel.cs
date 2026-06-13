@@ -48,13 +48,23 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly RoomGraphManager _graph;
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
+    private readonly NavFolderManager? _folders;
     private readonly LoopRunner? _runner;
     private readonly MpFileImporter? _mpImporter;
     private readonly LogService? _log;
     private readonly Action? _onDraftConsumed;
 
+    /// <summary>Flat backing rows for the Loops pane — source the tree is grouped from + drives <see cref="HasLoops"/>.</summary>
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
+
+    /// <summary>Flat backing rows for the Auto-Lair pane — source the tree is grouped from + drives <see cref="HasLairSetups"/>.</summary>
     public ObservableCollection<ManagerLairSetupRow> LairSetups { get; } = new();
+
+    /// <summary>Folder-grouped Loops tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="ManagerLoopRow"/>), bound by the dialog's TreeView.</summary>
+    public ObservableCollection<object> LoopTree { get; } = new();
+
+    /// <summary>Folder-grouped Auto-Lair tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="ManagerLairSetupRow"/>).</summary>
+    public ObservableCollection<object> LairTree { get; } = new();
 
     /// <summary>
     /// In-progress build session from the Navigation window, or null
@@ -74,6 +84,13 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     public bool HasLoops => Loops.Count > 0;
     public bool HasLairSetups => LairSetups.Count > 0;
+
+    /// <summary>True when the Loops tree has any node (loop or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    public bool HasLoopTree => LoopTree.Count > 0;
+
+    /// <summary>True when the Auto-Lair tree has any node (setup or empty folder).</summary>
+    public bool HasLairTree => LairTree.Count > 0;
+
     public bool HasDraft => Draft is not null;
 
     /// <summary>
@@ -91,6 +108,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         RoomGraphManager graph,
         ConfirmService confirm,
         DialogService dialogs,
+        NavFolderManager? folders = null,
         LoopBuilderSessionViewModel? draft = null,
         Action? onDraftConsumed = null,
         LoopRunner? runner = null,
@@ -109,6 +127,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _graph = graph;
         _confirm = confirm;
         _dialogs = dialogs;
+        _folders = folders;
         _runner = runner;
         _mpImporter = mpImporter;
         _log = log;
@@ -118,16 +137,31 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
         _loops.LoopsChanged += RebuildLoops;
         _lairSetups.SetupsChanged += RebuildLairSetups;
+        // Empty-folder creation produces no loop/lair change, so both
+        // trees rebuild on the coordinator's own folder event too.
+        if (_folders is not null) _folders.FoldersChanged += OnFoldersChanged;
         RebuildLoops();
         RebuildLairSetups();
     }
+
+    private void OnFoldersChanged()
+    {
+        RebuildLoops();
+        RebuildLairSetups();
+    }
+
+    /// <summary>Empty + ancestor folders to seed both trees with, so user-created folders render before anything is filed under them.</summary>
+    private IEnumerable<string> FolderSeed =>
+        _folders?.AllFolders ?? Enumerable.Empty<string>();
 
     private void RebuildLoops()
     {
         Loops.Clear();
         foreach (Loop loop in _loops.Loops.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
             Loops.Add(new ManagerLoopRow(loop));
+        NavTreeBuilder.Sync(LoopTree, Loops, r => r.Source.Folder, r => r.Name, FolderSeed);
         OnPropertyChanged(nameof(HasLoops));
+        OnPropertyChanged(nameof(HasLoopTree));
     }
 
     private void RebuildLairSetups()
@@ -135,7 +169,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         LairSetups.Clear();
         foreach (LairSetup setup in _lairSetups.Setups)
             LairSetups.Add(new ManagerLairSetupRow(setup));
+        NavTreeBuilder.Sync(LairTree, LairSetups, r => r.Source.Folder, r => r.Name, FolderSeed);
         OnPropertyChanged(nameof(HasLairSetups));
+        OnPropertyChanged(nameof(HasLairTree));
     }
 
     // ----- Loop row commands -----------------------------------------
@@ -388,6 +424,101 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     // dialog is CRUD-only (Edit + Delete) for saved setups, mirroring
     // how the Loops section works.
 
+    // ----- folder commands -------------------------------------------
+    // Folders are SHARED on-disk between loops and lairs (one Loops
+    // directory tree), so folder CRUD here mutates both panes at once
+    // via the coordinator. The move commands stay per-pane.
+
+    /// <summary>
+    /// Prompt for a name and create a new (empty) folder at the root,
+    /// or — when invoked on a folder node — nested under it. The new
+    /// directory shows immediately in both panes via
+    /// <see cref="NavFolderManager.FoldersChanged"/>.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        if (_folders is null) return;
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _folders.CreateFolder(full);
+    }
+
+    /// <summary>Rename a folder (and everything beneath it). No-op if the target name already exists.</summary>
+    [RelayCommand]
+    private async Task RenameFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (_folders is null || node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        // Rename swaps only the last segment unless the user typed a
+        // path; rebase onto the same parent so a bare name moves in place.
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _folders.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>
+    /// Delete a folder. Its loops / lairs / sub-folders are re-parented
+    /// one level up (nothing is destroyed); only the folder grouping
+    /// goes away.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (_folders is null || node is null) return;
+        bool ok = await _confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _folders.DeleteFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>Move a loop into the folder identified by <paramref name="folder"/> (empty = root). Used by drag-drop + context-menu move.</summary>
+    public void MoveLoopToFolder(ManagerLoopRow? row, string? folder)
+    {
+        if (row is null) return;
+        _loops.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move an Auto-Lair setup into the folder identified by <paramref name="folder"/> (empty = root).</summary>
+    public void MoveLairToFolder(ManagerLairSetupRow? row, string? folder)
+    {
+        if (row is null) return;
+        _lairSetups.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a loop — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLoopAsync(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move loop", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLoopToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for an Auto-Lair setup — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLairAsync(ManagerLairSetupRow? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move setup", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLairToFolder(row, folder);
+    }
+
+    private async Task<string?> PromptFolderNameAsync(string title, string prompt, string initial = "")
+    {
+        NavFolderNameDialogViewModel vm = new(title, prompt, initial);
+        return await _dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
+    }
+
     // ----- close -----------------------------------------------------
 
     [RelayCommand]
@@ -395,6 +526,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     {
         _loops.LoopsChanged -= RebuildLoops;
         _lairSetups.SetupsChanged -= RebuildLairSetups;
+        if (_folders is not null) _folders.FoldersChanged -= OnFoldersChanged;
         CloseRequested?.Invoke(true);
     }
 }

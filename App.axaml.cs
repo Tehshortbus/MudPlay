@@ -87,6 +87,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.FavoriteRenameDialogViewModel,
                 FujinTerm.Views.Navigation.FavoriteRenameDialog>();
 
+            // Folder name prompt — New / Rename folder on both the Manage
+            // dialog (loops + lairs) and the rail (gotos).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.NavFolderNameDialogViewModel,
+                FujinTerm.Views.Navigation.NavFolderNameDialog>();
+
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
             // profiles live as subfolders, not flat .json files).

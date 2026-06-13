@@ -96,7 +96,7 @@
                         <Border Grid.Row="0"
                                 Background="{StaticResource ChromeBgElevBrush}"
                                 Padding="6,3">
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                                 <TextBlock Grid.Column="0"
                                            Text="Loops"
                                            FontSize="11" FontWeight="SemiBold"
@@ -109,13 +109,23 @@
                                     <Run Text="{Binding Loops.Count, FallbackValue=0}"/>
                                     <Run Text=" saved"/>
                                 </TextBlock>
+                                <!-- New folder: folders are shared on-disk
+                                     between loops + lairs, so a folder
+                                     created here also appears in the
+                                     Auto-Lair tree. -->
+                                <Button Grid.Column="2"
+                                        Content="+ Folder"
+                                        FontSize="10"
+                                        Padding="8,2"
+                                        Command="{Binding NewFolderCommand}"
+                                        ToolTip.Tip="Create a new folder at the root (shared between loops and Auto-Lair setups)."/>
                                 <!-- New: opens the LoopEditor dialog in
                                      create mode (title flips to "Create
                                      Loop"). Away-from-the-map flow —
                                      the user types the name + adds
                                      rooms via the editor's search box
                                      without leaving this surface. -->
-                                <Button Grid.Column="2"
+                                <Button Grid.Column="3"
                                         Content="New"
                                         FontSize="10"
                                         Padding="8,2"
@@ -125,7 +135,7 @@
                                      .mp loop file → anchor resolver →
                                      LoopEditor with the imported loop
                                      pre-filled. -->
-                                <Button Grid.Column="3"
+                                <Button Grid.Column="4"
                                         Content="Import .mp"
                                         FontSize="10"
                                         Padding="8,2"
@@ -183,12 +193,53 @@
                                            Padding="8"
                                            FontSize="11"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           IsVisible="{Binding !HasLoops}"/>
-                                <ItemsControl ItemsSource="{Binding Loops}"
-                                              IsVisible="{Binding HasLoops}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ManagerLoopRow">
-                                            <Border Classes="ManagerRow">
+                                           IsVisible="{Binding !HasLoopTree}"/>
+                                <TreeView Name="LoopTreeView"
+                                          ItemsSource="{Binding LoopTree}"
+                                          IsVisible="{Binding HasLoopTree}"
+                                          Background="Transparent"
+                                          DragDrop.AllowDrop="True">
+                                    <TreeView.Styles>
+                                        <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
+                                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                        </Style>
+                                    </TreeView.Styles>
+                                    <TreeView.DataTemplates>
+                                        <!-- Folder node — recurses via Children. -->
+                                        <TreeDataTemplate DataType="vm:NavFolderNodeViewModel"
+                                                          ItemsSource="{Binding Children}">
+                                            <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
+                                                <Grid ColumnDefinitions="Auto,*">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="📁"
+                                                               FontSize="11"
+                                                               Margin="0,0,4,0"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Name}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="New subfolder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).NewFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Rename folder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RenameFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Delete folder"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
+                                            </Border>
+                                        </TreeDataTemplate>
+                                        <!-- Loop leaf. -->
+                                        <DataTemplate DataType="vm:ManagerLoopRow">
+                                            <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
                                                 <Grid ColumnDefinitions="*,60,*,Auto,Auto" ColumnSpacing="6">
                                                     <TextBlock Grid.Column="0"
                                                                Text="{Binding Name}"
@@ -210,7 +261,7 @@
                                                             Content="Edit"
                                                             FontSize="10"
                                                             Padding="8,2"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
+                                                            Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
                                                             CommandParameter="{Binding}"/>
                                                     <Button Grid.Column="4"
                                                             Content="✕"
@@ -218,13 +269,27 @@
                                                             Padding="6,2"
                                                             Foreground="{StaticResource AccentRedBrush}"
                                                             ToolTip.Tip="Delete loop"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLoopCommand}"
+                                                            Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLoopCommand}"
                                                             CommandParameter="{Binding}"/>
                                                 </Grid>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Edit…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Move to folder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).MoveLoopCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <Separator/>
+                                                        <MenuItem Header="Delete"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLoopCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
                                             </Border>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </TreeView.DataTemplates>
+                                </TreeView>
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
@@ -278,12 +343,53 @@
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{StaticResource ChromeFgMutedBrush}"
-                                           IsVisible="{Binding !HasLairSetups}"/>
-                                <ItemsControl ItemsSource="{Binding LairSetups}"
-                                              IsVisible="{Binding HasLairSetups}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ManagerLairSetupRow">
-                                            <Border Classes="ManagerRow">
+                                           IsVisible="{Binding !HasLairTree}"/>
+                                <TreeView Name="LairTreeView"
+                                          ItemsSource="{Binding LairTree}"
+                                          IsVisible="{Binding HasLairTree}"
+                                          Background="Transparent"
+                                          DragDrop.AllowDrop="True">
+                                    <TreeView.Styles>
+                                        <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
+                                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                        </Style>
+                                    </TreeView.Styles>
+                                    <TreeView.DataTemplates>
+                                        <!-- Folder node — recurses via Children. -->
+                                        <TreeDataTemplate DataType="vm:NavFolderNodeViewModel"
+                                                          ItemsSource="{Binding Children}">
+                                            <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
+                                                <Grid ColumnDefinitions="Auto,*">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="📁"
+                                                               FontSize="11"
+                                                               Margin="0,0,4,0"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Name}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="New subfolder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).NewFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Rename folder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RenameFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Delete folder"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteFolderCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
+                                            </Border>
+                                        </TreeDataTemplate>
+                                        <!-- Auto-Lair leaf. -->
+                                        <DataTemplate DataType="vm:ManagerLairSetupRow">
+                                            <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
                                                 <Grid ColumnDefinitions="*,Auto,Auto"
                                                       ColumnSpacing="6">
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -306,20 +412,34 @@
                                                     <Button Grid.Column="1"
                                                             Content="Edit" FontSize="10"
                                                             Padding="8,2"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
+                                                            Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
                                                             CommandParameter="{Binding}"/>
                                                     <Button Grid.Column="2"
                                                             Content="✕" FontSize="10"
                                                             Padding="6,2"
                                                             ToolTip.Tip="Delete this setup"
                                                             Foreground="{StaticResource AccentRedBrush}"
-                                                            Command="{Binding $parent[ItemsControl].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
+                                                            Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
                                                             CommandParameter="{Binding}"/>
                                                 </Grid>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Edit…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLairSetupCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <MenuItem Header="Move to folder…"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).MoveLairCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <Separator/>
+                                                        <MenuItem Header="Delete"
+                                                                  Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).DeleteLairSetupCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
                                             </Border>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </TreeView.DataTemplates>
+                                </TreeView>
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

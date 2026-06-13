@@ -1609,6 +1609,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.RoomGraph,
             _services.Confirm,
             _services.Dialogs,
+            folders: _services.NavFolders,
             draft: LoopBuilder,
             onDraftConsumed: () =>
             {
