@@ -593,9 +593,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         }
         if (string.IsNullOrWhiteSpace(assigned)) return (null, 0, 0);
 
-        // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334").
-        if (!assigned.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
-        string remainder = assigned[5..].Trim();
+        // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334"); a shop
+        // can host out of several rooms, listed comma-separated ("Room 1/169,
+        // Room 1/291"). Resolve the first — it's the canonical coordinate the
+        // game reports and what the bought/sold line shows.
+        string firstRoom = assigned.Split(',')[0].Trim();
+        if (!firstRoom.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
+        string remainder = firstRoom[5..].Trim();
         int slash = remainder.IndexOf('/');
         if (slash <= 0) return (null, 0, 0);
         if (!int.TryParse(remainder[..slash], out int mapNo)) return (null, 0, 0);
