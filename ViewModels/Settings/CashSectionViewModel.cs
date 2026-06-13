@@ -47,6 +47,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         "Copper", "Silver", "Gold", "Platinum", "Runic",
         "Collect", "Ignore", "Discard",
         "Auto-deposit", "Stashing", "Bank", "Keep on hand", "Wealth threshold",
+        "Coin count", "Coins exceed",
     };
 
     // ----- Per-currency policy --------------------------------------
@@ -60,6 +61,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     // ----- Auto-deposit ---------------------------------------------
 
     [ObservableProperty] private long _autoDepositIfWealthExceeds;
+    [ObservableProperty] private long _autoDepositIfCoinsExceed;
     [ObservableProperty] private string _bankRoomKey = string.Empty;
 
     /// <summary>Dropdown items for the Bank picker — banks from the
@@ -120,6 +122,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
             RunicPolicy    = RunicPolicy,
 
             AutoDepositIfWealthExceeds = ClampNonNeg(AutoDepositIfWealthExceeds),
+            AutoDepositIfCoinsExceed   = ClampNonNeg(AutoDepositIfCoinsExceed),
             BankRoomKey                = SelectedBank?.Value ?? BankRoomKey ?? string.Empty,
 
             KeepCopperOnHand   = ClampNonNeg(KeepCopperOnHand),
@@ -181,6 +184,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         RunicPolicy    = dto.RunicPolicy;
 
         AutoDepositIfWealthExceeds = dto.AutoDepositIfWealthExceeds;
+        AutoDepositIfCoinsExceed   = dto.AutoDepositIfCoinsExceed;
         BankRoomKey                = dto.BankRoomKey ?? string.Empty;
 
         RebuildBankChoices();
@@ -239,6 +243,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnPlatinumPolicyChanged(CashPolicy value)            => MarkDirty();
     partial void OnRunicPolicyChanged(CashPolicy value)               => MarkDirty();
     partial void OnAutoDepositIfWealthExceedsChanged(long value)      => MarkDirty();
+    partial void OnAutoDepositIfCoinsExceedChanged(long value)        => MarkDirty();
     partial void OnBankRoomKeyChanged(string value)                   => MarkDirty();
     partial void OnKeepCopperOnHandChanged(long value)                => MarkDirty();
     partial void OnKeepSilverOnHandChanged(long value)                => MarkDirty();

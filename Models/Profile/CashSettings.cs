@@ -40,6 +40,17 @@ public sealed class CashSettings
     public long AutoDepositIfWealthExceeds { get; set; }
 
     /// <summary>
+    /// Auto-deposit trigger — fire when the total number of physical
+    /// coins held (summed across every denomination, regardless of
+    /// each coin's value) exceeds this count. <c>0</c> disables the
+    /// trigger. Independent of <see cref="AutoDepositIfWealthExceeds"/>:
+    /// either gate firing triggers the deposit (OR logic), and the
+    /// single-fire guard re-arms only once BOTH gates fall back below
+    /// their thresholds.
+    /// </summary>
+    public long AutoDepositIfCoinsExceed { get; set; }
+
+    /// <summary>
     /// Bank room key — used by the (follow-up) auto-deposit walker
     /// reroute to know where to walk. Sourced from the Phase 5 Shops
     /// table where <c>ShopType == 7</c> (bank). v1 just stores it;

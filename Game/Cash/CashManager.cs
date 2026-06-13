@@ -228,6 +228,20 @@ public sealed class CashManager : IDisposable
         }
     }
 
+    /// <summary>Total number of physical coins held across every
+    /// denomination, ignoring each coin's value. Drives the coin-count
+    /// auto-deposit gate (distinct from <see cref="HeldGoldEquivalent"/>,
+    /// which weights by denomination).</summary>
+    public long HeldCoinCount
+    {
+        get
+        {
+            long total = 0;
+            foreach (long n in _held.Values) total += n;
+            return total;
+        }
+    }
+
     /// <summary>Reset held counts (called on profile load to drop
     /// the prior character's tallies). Also clears the in-flight coin
     /// projection so a pending get/drop from the prior session can't
@@ -765,22 +779,32 @@ public sealed class CashManager : IDisposable
     private void CheckAutoDeposit()
     {
         CashSettings settings = _readSettings();
-        long threshold = settings.AutoDepositIfWealthExceeds;
-        if (threshold <= 0) return;
-        long held = HeldGoldEquivalent;
+        long wealthThreshold = settings.AutoDepositIfWealthExceeds;
+        long coinThreshold = settings.AutoDepositIfCoinsExceed;
+        if (wealthThreshold <= 0 && coinThreshold <= 0) return;
 
-        if (held > threshold && !_autoDepositFiredThisCrossing)
+        long heldGold = HeldGoldEquivalent;
+        long heldCoins = HeldCoinCount;
+
+        bool wealthGate = wealthThreshold > 0 && heldGold > wealthThreshold;
+        bool coinGate = coinThreshold > 0 && heldCoins > coinThreshold;
+
+        // OR logic: either gate firing triggers the deposit. The single-fire
+        // guard re-arms only once BOTH gates fall back below their thresholds,
+        // so a deposit that clears wealth but not coin count doesn't re-fire.
+        if ((wealthGate || coinGate) && !_autoDepositFiredThisCrossing)
         {
             _autoDepositFiredThisCrossing = true;
             _log?.Info(LogCategory,
-                $"auto-deposit triggered held-gold-eq={held} threshold={threshold}");
-            AutoDepositRequested?.Invoke(held);
+                $"auto-deposit triggered held-gold-eq={heldGold} (gate={wealthThreshold}) " +
+                $"held-coins={heldCoins} (gate={coinThreshold})");
+            AutoDepositRequested?.Invoke(heldGold);
         }
-        else if (held <= threshold && _autoDepositFiredThisCrossing)
+        else if (!wealthGate && !coinGate && _autoDepositFiredThisCrossing)
         {
             _autoDepositFiredThisCrossing = false;
             _log?.Debug(LogCategory,
-                $"auto-deposit re-armed held-gold-eq={held}");
+                $"auto-deposit re-armed held-gold-eq={heldGold} held-coins={heldCoins}");
         }
     }
 

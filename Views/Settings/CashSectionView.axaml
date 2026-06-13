@@ -82,17 +82,24 @@
                 <!-- ============ Auto-Deposit and Stashing ============ -->
                 <TextBlock Classes="SectionHeader" Text="Auto-Deposit and Stashing"/>
 
-                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto">
+                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
                                Text="Auto-deposit if wealth exceeds"/>
                     <NumericUpDown Grid.Row="0" Grid.Column="1"
                                    Value="{Binding AutoDepositIfWealthExceeds, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000000" Width="200" HorizontalAlignment="Left"
-                                   ToolTip.Tip="0 = disabled. Triggers AutoDepositRequested once per crossing; re-arms when wealth drops back below."/>
+                                   ToolTip.Tip="0 = disabled. Gate on total wealth VALUE (gold-equivalent). Either this or the coin-count gate firing triggers a deposit; re-arms only when both drop back below."/>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel"
+                               Text="Auto-deposit if coins exceed"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding AutoDepositIfCoinsExceed, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="200" HorizontalAlignment="Left"
+                                   ToolTip.Tip="0 = disabled. Gate on the COUNT of physical coins held across all denominations (regardless of value). Either this or the wealth gate firing triggers a deposit; re-arms only when both drop back below."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
                                Text="Bank"/>
-                    <ComboBox Grid.Row="1" Grid.Column="1"
+                    <ComboBox Grid.Row="2" Grid.Column="1"
                               ItemsSource="{Binding BankChoices}"
                               SelectedItem="{Binding SelectedBank, Mode=TwoWay}"
                               DisplayMemberBinding="{Binding Display}"

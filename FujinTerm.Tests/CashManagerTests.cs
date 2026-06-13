@@ -223,6 +223,76 @@ public sealed class CashManagerTests
         Assert.Empty(h.AutoDeposits);
     }
 
+    // ----- coin-count gate (independent of wealth value) --------------
+
+    [Fact]
+    public void HeldCoinCount_SumsAllDenominationsByCount()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 5 platinum pieces.");    // count 5, value 500
+        h.Feed("You picked up 100 gold pieces.");      // count 100, value 100
+
+        Assert.Equal(105, h.Cash.HeldCoinCount);       // count ignores value
+        Assert.Equal(600, h.Cash.HeldGoldEquivalent);  // value weights denomination
+    }
+
+    [Fact]
+    public void AutoDeposit_FiresWhenCoinCountExceeds_EvenIfWealthBelow()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 1000;  // wealth gate stays above
+        h.Settings.AutoDepositIfCoinsExceed = 10;
+
+        h.Feed("You picked up 50 copper pieces.");     // count 50 > 10, value 50 < 1000
+
+        Assert.Single(h.AutoDeposits);
+    }
+
+    [Fact]
+    public void AutoDeposit_EitherGateFires_OrLogic()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.AutoDepositIfCoinsExceed = 1000;    // coin gate stays above
+
+        h.Feed("You picked up 150 gold pieces.");      // wealth 150 > 100
+
+        Assert.Single(h.AutoDeposits);
+    }
+
+    [Fact]
+    public void AutoDeposit_ReArmsOnlyWhenBothGatesBelow()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.AutoDepositIfCoinsExceed = 200;
+
+        // 150 gold: wealth 150 > 100 fires; count 150 < 200.
+        h.Feed("You picked up 150 gold pieces.");
+        Assert.Single(h.AutoDeposits);
+
+        // Drop wealth below its gate but the coin count is still under 200,
+        // so re-arm hinges on wealth alone here.
+        h.Feed("You dropped 130 gold pieces.");        // wealth 20, count 20 — both below → re-armed
+        h.Feed("You picked up 150 gold pieces.");      // wealth 170 > 100 → re-fires
+        Assert.Equal(2, h.AutoDeposits.Count);
+    }
+
+    [Fact]
+    public void AutoDeposit_StaysFiredWhileEitherGateAbove()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+        h.Settings.AutoDepositIfCoinsExceed = 10;
+
+        h.Feed("You picked up 50 copper pieces.");     // count 50 > 10 → fires
+        Assert.Single(h.AutoDeposits);
+
+        h.Feed("You dropped 5 copper pieces.");        // count 45 still > 10 → no re-arm, no re-fire
+        h.Feed("You picked up 5 copper pieces.");      // count 50 again
+        Assert.Single(h.AutoDeposits);
+    }
+
     // ----- reset tallies ----------------------------------------------
 
     [Fact]
