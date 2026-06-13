@@ -219,6 +219,27 @@ public sealed class KnownSpellCatalog
     }
 
     /// <summary>
+    /// Resolve a <c>Spells.Number</c> to its <see cref="SpellFormulaInput"/>
+    /// across the entire Spells table (no class / magery / learnable filter).
+    /// Used by the Game Data Items pane to render a weapon's use-cast / proc
+    /// spell effect without depending on a class spell book. Returns
+    /// <c>null</c> when no row has that number.
+    /// </summary>
+    public SpellFormulaInput? GetFormulaByNumber(int spellNumber)
+    {
+        if (spellNumber < 1) return null;
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return null;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (ReadInt(row, "Number") != spellNumber) continue;
+            return ToFormula(row);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Build the reverse index from a <c>TBInfo</c> textblock number to every
     /// spell that textblock casts, parsed from each spell row's denormalised
     /// <c>Casted By</c> column (e.g. <c>"Textblock #2910, Textblock #2911"</c>).

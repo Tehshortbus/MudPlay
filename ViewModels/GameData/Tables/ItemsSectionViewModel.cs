@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Edit;
@@ -184,6 +185,27 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         if (doc is null)
             return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
 
+        // Spell-effect renderer for weapon use-cast / proc rows. The cast
+        // spell's effect is rendered at its own base level (level 0 →
+        // SpellCalculator clamps to ReqLevel) since the item pane has no
+        // character context. The TextBlock cast-index is a full-table scan,
+        // so build it lazily on the first cast-bearing weapon and reuse it.
+        KnownSpellCatalog catalog = new(_cache);
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex = null;
+        string CastEffect(int spellNumber)
+        {
+            if (catalog.GetFormulaByNumber(spellNumber) is not { } f) return string.Empty;
+            tbIndex ??= catalog.BuildCastByTextblockIndex();
+            IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> idx = tbIndex;
+            string rendered = SpellEffectFormatter.Format(
+                f, level: 0,
+                resolveChain: catalog.GetFormulaByNumber,
+                resolveSpellName: catalog.GetSpellNameByNumber,
+                resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
+                    ? list : System.Array.Empty<KnownSpell>());
+            return rendered == "—" ? string.Empty : rendered;
+        }
+
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
             if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
@@ -318,6 +340,14 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                         ? "Casts (on use)"
                         : $"Casts ({pendingPercent}%/{pendingTrigger})";
                     otherInfo.Add(new KeyValuePair<string, string>(castLabel, ResolveSpellName(val)));
+
+                    // Indented sub-row showing the cast spell's effect /
+                    // damage at base level (e.g. "Dmg 10–40"). Suppressed
+                    // when the spell yields no figure or isn't in the set.
+                    string castEffect = CastEffect(val);
+                    if (castEffect.Length > 0)
+                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
+
                     pendingPercent = 0;
                     pendingTrigger = null;
                     continue;
