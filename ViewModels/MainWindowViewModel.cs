@@ -2966,6 +2966,41 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
+    /// <summary>
+    /// File → Game Data → Import loops (MegaMUD .mp)… — runs the exact
+    /// same <c>.mp</c> loop import as the Navigation Manage window's
+    /// "Import .mp" button. We spin up a transient manager view-model
+    /// purely to reuse its <c>ImportMp</c> command (file picker → parse →
+    /// anchor-resolve → LoopEditor), then dispose it via its Close command
+    /// so the LoopsChanged / SetupsChanged subscriptions it wires in its
+    /// constructor don't leak onto the long-lived managers.
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportMegaMudLoopsAsync()
+    {
+        var s = AppServices.Current;
+        ViewModels.Navigation.NavigationManagerDialogViewModel vm = new(
+            s.Loops,
+            s.Lairs,
+            s.LairTimers,
+            s.RoomGraph,
+            s.Confirm,
+            s.Dialogs,
+            runner: s.LoopRunner,
+            mpImporter: s.MpImporter,
+            log: s.Log);
+        try
+        {
+            await vm.ImportMpCommand.ExecuteAsync(null);
+        }
+        finally
+        {
+            // Drops the constructor's event subscriptions (no UI consumer
+            // is attached to CloseRequested on this transient instance).
+            vm.CloseCommand.Execute(null);
+        }
+    }
+
     /// <summary>Singleton handle for the live NavigationWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
     private Views.Navigation.NavigationWindow? _navigationWindow;
 
