@@ -319,15 +319,31 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         58, 65, 66, 67, 68, 69, 70, 145, 187,
     };
 
-    private string AbilityValueForDialog(int code, int rawValue) => code switch
+    private string AbilityValueForDialog(int code, int rawValue)
     {
-        42 => ResolveSpellName(rawValue),  // LearnSpell — value is a Spells.Number
-        43 => ResolveSpellName(rawValue),  // CastSpell  — same
-        59 => ResolveClassName(rawValue),  // ClassOK    — value is a Classes.Number
-        _  => SignedAbilityCodes.Contains(code)
-              ? FormatSigned(rawValue)
-              : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
-    };
+        // Codes whose value is a record number in another table (42/43 → Spells,
+        // 59 → Classes, etc.) resolve to that row's Name. The static code → table
+        // map lives in LookupEnums; resolution stays here because it needs the cache.
+        if (LookupEnums.ReferencedTable(code) is { } table)
+            return ResolveTableRef(table, rawValue);
+        return SignedAbilityCodes.Contains(code)
+            ? FormatSigned(rawValue)
+            : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Resolve an ability value that is a record number in <paramref name="table"/>
+    /// to that row's Name. 0 → "None"; an absent row — or a table without a Name
+    /// column (e.g. TextBlocks) — falls back to the raw number.
+    /// </summary>
+    private string ResolveTableRef(string table, int value)
+    {
+        if (value == 0) return "None";
+        string? name = _cache.FindNameByNumber(table, value);
+        return string.IsNullOrEmpty(name)
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : name;
+    }
 
     private static string FormatSigned(int n) => n > 0
         ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)

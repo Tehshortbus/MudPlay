@@ -191,6 +191,40 @@ public static class LookupEnums
         return value == 0 ? string.Empty : value.ToString(CultureInfo.InvariantCulture);
     }
 
+    private static readonly FrozenDictionary<int, string> AbilityValueTableRefs = new Dictionary<int, string>
+    {
+        // → Spells.Number (LearnSp / CastsSp / RemovesSpell / EndCast / KillSpell / GiveTempSpell)
+        [42] = "Spells", [43] = "Spells", [122] = "Spells",
+        [151] = "Spells", [153] = "Spells", [160] = "Spells",
+        // → Classes.Number (ClassOk)
+        [59] = "Classes",
+        // → Monsters.Number (Summon / MonsGuards)
+        [12] = "Monsters", [146] = "Monsters",
+        // → Items.Number (NoAttackIfItemNum / NoFirstKillDrop)
+        [185] = "Items", [1115] = "Items",
+        // → TextBlocks.Number (TextBlock)
+        [148] = "TextBlocks",
+    }.ToFrozenDictionary();
+
+    /// <summary>
+    /// For an ability code whose <c>AbilVal-N</c> is a foreign key into another
+    /// game-data table, returns that table's name (the identifier
+    /// <see cref="Services.GameDataCache.FindNameByNumber"/> expects); otherwise
+    /// <c>null</c>. Mirrors the name-resolving cases of MMUD Explorer's
+    /// <c>GetAbilityStats</c> (<c>modMMudFunc.bas</c>): Spells (42/43/122/151/153/160),
+    /// Classes (59), Monsters (12/146), Items (185/1115), TextBlocks (148).
+    /// </summary>
+    /// <remarks>
+    /// Resolution itself stays with the caller because turning a record number
+    /// into a name needs the live <see cref="Services.GameDataCache"/>; this map
+    /// owns only the static <c>code → table</c> half. Codes 73/124 (value is
+    /// another ability code, not a table row — resolve via <see cref="AbilityNames"/>)
+    /// and 140/141 (raw room/map number, which MME never name-resolves) are
+    /// intentionally excluded.
+    /// </remarks>
+    public static string? ReferencedTable(int abilityCode) =>
+        AbilityValueTableRefs.TryGetValue(abilityCode, out string? table) ? table : null;
+
     // ----- private helpers --------------------------------------------------
 
     private static string? Map(string? raw, FrozenDictionary<int, string> table)
