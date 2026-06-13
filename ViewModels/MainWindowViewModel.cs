@@ -456,6 +456,11 @@ public partial class MainWindowViewModel : ObservableObject
         // Mirror RoomTracker into the status-bar location slot so the
         // bottom bar and the Navigation window's strip stay in sync.
         AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+        // Swapping game-data sets (incl. clearing to none) reseeds the
+        // room graph; refresh the location slot so the "load a game data
+        // set" hint appears when the graph empties and clears when it fills.
+        AppServices.Current.RoomGraph.GraphReloaded +=
+            () => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
         // Engine-state chip — same shape as the Navigation window's
         // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
@@ -1110,6 +1115,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
+        // Without an active game-data set the room graph is empty, so the
+        // tracker can never locate us — every state reads "Lost", which
+        // misleads a fresh profile into thinking something broke. Surface
+        // the real cause instead and point the user at the fix. Clears
+        // automatically once a set loads (RoomGraph.GraphReloaded → here).
+        if (room is null && AppServices.Current.RoomGraph.RoomCount == 0)
+        {
+            LocationText = "Load a game data set to use navigation";
+            return;
+        }
         // Full room display name + key — TextTrimming on the status-bar
         // TextBlock clips long names down to the column's actual width
         // at render time. The VM stays a faithful mirror of game state.
@@ -3377,6 +3392,11 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info(
             "Reconnect", "Re-enabled opted-in auto-actions after reconnect");
     }
+
+    // Connecting with no game-data set loaded should immediately show the
+    // navigation hint rather than waiting for the first room transition
+    // (which never confidently resolves without a graph).
+    partial void OnIsConnectedChanged(bool value) => RefreshLocationSlot();
 
     partial void OnIsAutoCombatActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoCombat = value);
