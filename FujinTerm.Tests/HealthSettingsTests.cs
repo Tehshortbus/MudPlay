@@ -33,7 +33,7 @@ public sealed class HealthSettingsTests
         Assert.Equal(10, dto.RunIfBelowMa);
         Assert.Equal(70, dto.BlessIfAboveMa);
 
-        Assert.True(dto.UseMeditateAbility);
+        Assert.False(dto.UseMeditateAbility);
         Assert.False(dto.MeditateBeforeResting);
 
         Assert.Equal(string.Empty, dto.PreRestCommand);

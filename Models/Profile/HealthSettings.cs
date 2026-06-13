@@ -85,8 +85,8 @@ public sealed class HealthSettings
     // ----- Meditation -----------------------------------------------
 
     /// <summary>Use the class-specific <c>meditate</c> command on classes that
-    /// have it. Default true.</summary>
-    public bool UseMeditateAbility { get; set; } = true;
+    /// have it. Default false.</summary>
+    public bool UseMeditateAbility { get; set; }
 
     /// <summary>Sit and meditate first when both HP and MA are low. Default
     /// false (rest covers both).</summary>

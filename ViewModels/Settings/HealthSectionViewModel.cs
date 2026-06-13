@@ -75,7 +75,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
     // ----- Meditation -----------------------------------------------
 
-    [ObservableProperty] private bool _useMeditateAbility = true;
+    [ObservableProperty] private bool _useMeditateAbility;
     [ObservableProperty] private bool _meditateBeforeResting;
 
     // ----- Resting commands -----------------------------------------

@@ -895,7 +895,8 @@ public sealed class HealthManagerTests
     public void Meditate_OnlyMaGated_PrefersMeditate()
     {
         // Caster: MA dropped below trigger, HP at max → meditate.
-        using Harness h = new();
+        HealthSettings s = new() { UseMeditateAbility = true };
+        using Harness h = new(s);
         h.State.MaxHp = 200;
         h.State.Hp = 200;        // HP healthy first so HP gate stays clear
         h.State.MaxMa = 100;
@@ -924,7 +925,7 @@ public sealed class HealthManagerTests
     [Fact]
     public void Meditate_BothPoolsGated_MeditateBeforeRestingFlipsOrder()
     {
-        HealthSettings s = new() { MeditateBeforeResting = true };
+        HealthSettings s = new() { UseMeditateAbility = true, MeditateBeforeResting = true };
         using Harness h = new(s);
         h.State.MaxHp = 200;
         h.State.MaxMa = 100;
