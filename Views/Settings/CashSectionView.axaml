@@ -110,27 +110,37 @@
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Keep copper"/>
                     <NumericUpDown Grid.Row="0" Grid.Column="1"
                                    Value="{Binding KeepCopperOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Keep silver"/>
                     <NumericUpDown Grid.Row="1" Grid.Column="1"
                                    Value="{Binding KeepSilverOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
 
                     <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Keep gold"/>
                     <NumericUpDown Grid.Row="2" Grid.Column="1"
                                    Value="{Binding KeepGoldOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Keep platinum"/>
                     <NumericUpDown Grid.Row="3" Grid.Column="1"
                                    Value="{Binding KeepPlatinumOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
 
                     <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Keep runic"/>
                     <NumericUpDown Grid.Row="4" Grid.Column="1"
                                    Value="{Binding KeepRunicOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
                 </Grid>
 
                 <!-- ============ Collection Rules ============ -->
