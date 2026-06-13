@@ -976,7 +976,8 @@ public partial class MainWindowViewModel : ObservableObject
                 row.IsActive = IsAutoHideActive;
                 break;
             case "ToggleAllAutoOff":
-                row.IsActive = IsAllAutoOff;
+                // Depressed = auto-responses running; inverse of "all off".
+                row.IsActive = !IsAllAutoOff;
                 break;
         }
     }

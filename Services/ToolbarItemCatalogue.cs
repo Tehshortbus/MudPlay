@@ -92,10 +92,12 @@ public static class ToolbarItemCatalogue
             Tooltip: "Deposit All — wired in Phase 13 PR 13.E (CashManager)",
             InDefaultLayout: false),
 
-        // Master kill-switch — flips every Auto-* off in one click.
-        new("ToggleAllAutoOff",   "All Auto-Responses Off","IconKillSwitch",
+        // Master auto-responses switch. Active = auto-engines run; clicking
+        // off kills every Auto-* (remembering which were on) and also gates
+        // the game-entry command. Clicking back on restores the prior set.
+        new("ToggleAllAutoOff",   "All auto-responses",   "IconKillSwitch",
             "AllAutoOffCommand",
-            Tooltip: "Master kill-switch — wired in Phase 13 (clears every auto-toggle below)",
+            Tooltip: "Master switch — off kills every auto-engine and auto-entry; on restores them",
             InDefaultLayout: false),
 
         // Auto-engine toggles. Button is depressed (IsActive) while its

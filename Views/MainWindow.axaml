@@ -154,15 +154,16 @@
                 <MenuItem Header="Deposit All" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
                 <Separator/>
 
-                <!-- Master kill-switch. Snapshot logic lives in
+                <!-- Master auto-responses switch. Snapshot logic lives in
                      AutoModeController, so this drives a Command (not a
-                     two-way bool) and shows checked when every engine is
-                     off. -->
-                <MenuItem Header="All Auto-Responses Off"
+                     two-way bool). Checked = auto-engines run; unchecked =
+                     every engine off (and auto-entry gated), hence the
+                     inverted IsAllAutoOff binding. -->
+                <MenuItem Header="All auto-responses"
                           ToggleType="CheckBox"
-                          IsChecked="{Binding IsAllAutoOff, Mode=OneWay}"
+                          IsChecked="{Binding IsAllAutoOff, Mode=OneWay, Converter={x:Static conv:BoolConverters.Not}}"
                           Command="{Binding AllAutoOffCommand}"
-                          ToolTip.Tip="Toggle every auto-engine off (snapshots what was on); press again to restore"/>
+                          ToolTip.Tip="Off kills every auto-engine and auto-entry (snapshots what was on); on restores them"/>
                 <Separator/>
 
                 <!-- Master auto-engine toggles. Per-item / per-spell tuning
