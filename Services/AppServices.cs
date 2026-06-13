@@ -285,6 +285,14 @@ public sealed class AppServices
     public Game.Remote.AutoModeRemoteHandler AutoMode { get; private set; } = null!;
 
     /// <summary>
+    /// <c>@atkprio</c> / <c>@atkorder</c> remote commands — a party member
+    /// changes our Target Priority (who) / Attack Order (when) via the same
+    /// numbered options as the Combat tab's dropdowns. Backed by the loaded
+    /// character profile's <c>Combat</c> section.
+    /// </summary>
+    public Game.Remote.AttackTargetingRemoteHandler AttackTargeting { get; }
+
+    /// <summary>
     /// Master "Auto-All" kill-switch shared by the toolbar / Action-menu
     /// button and the <c>@auto-all</c> remote command. One press snapshots
     /// + clears every wired auto-engine; the next restores the snapshot.
@@ -1399,6 +1407,10 @@ public sealed class AppServices
         Profile.ProfileLoaded += _ => AutoModeController.ResetSnapshot();
         AutoMode = new Game.Remote.AutoModeRemoteHandler(
             RemoteCommands, Profile, AutoModeController, Log);
+        // @atkprio / @atkorder — party member retunes our Target Priority /
+        // Attack Order through the same numbered options as the Combat tab.
+        AttackTargeting = new Game.Remote.AttackTargetingRemoteHandler(
+            RemoteCommands, Profile, Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
