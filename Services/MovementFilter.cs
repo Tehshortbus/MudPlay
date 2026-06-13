@@ -38,6 +38,16 @@ public sealed class MovementFilter : IRoomFilter
     private readonly HashSet<RoomKey> _avoided = new();
     private readonly HashSet<RoomKey> _stash = new();
 
+    /// <summary>
+    /// Supplies the player's current character level for Form-A exit
+    /// level-gate evaluation, or <c>null</c> when the level isn't known
+    /// yet (no <c>stat</c> screen parsed). Wired by
+    /// <see cref="AppServices"/> to <c>StatParser</c>. When null,
+    /// <see cref="IsExitBlocked"/> never blocks — we don't refuse a walk
+    /// on a gate we can't yet evaluate.
+    /// </summary>
+    public Func<int?>? LevelProvider { get; set; }
+
     /// <summary>Read-only snapshot of the currently-avoided room keys.</summary>
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
 
@@ -66,6 +76,20 @@ public sealed class MovementFilter : IRoomFilter
 
     /// <inheritdoc/>
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
+
+    /// <inheritdoc/>
+    public bool IsExitBlocked(in RoomExit exit)
+    {
+        if (!exit.HasLevelGate) return false;
+        if (LevelProvider?.Invoke() is not { } level) return false;  // level unknown → don't gate
+
+        // Form-A window: MinLevel>0 is a floor, MaxLevel>0 is a cap.
+        // 0 in either slot means "no bound on that side" (the MDB's
+        // 0/999 sentinels are normalised to 0 at parse time).
+        if (exit.MinLevel > 0 && level < exit.MinLevel) return true;
+        if (exit.MaxLevel > 0 && level > exit.MaxLevel) return true;
+        return false;
+    }
 
     /// <summary>True when the user has flagged this room as a stash drop-off point.</summary>
     public bool IsStash(RoomKey key) => _stash.Contains(key);

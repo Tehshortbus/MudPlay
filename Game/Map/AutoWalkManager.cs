@@ -467,7 +467,18 @@ public sealed class AutoWalkManager : IRecoverableEngine
         IReadOnlyList<Direction>? path = _bfs.FindPath(source.Key, destination, _filter);
         if (path is null || path.Count == 0)
         {
-            Raise(new WalkEvent(WalkEventKind.Failed, "no path", destination));
+            // Distinguish "all routes blocked by a level requirement"
+            // from a genuinely disconnected target: re-probe with the
+            // exit-level gates ignored. A path that appears only when
+            // gates are off means every route there is level-gated
+            // beyond the player — surface that reason so the user
+            // understands why we won't move.
+            IReadOnlyList<Direction>? ungated =
+                _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
+            string reason = ungated is { Count: > 0 }
+                ? "all routes blocked by a level requirement"
+                : "no path";
+            Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
             return false;
         }
 

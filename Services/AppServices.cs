@@ -1686,6 +1686,10 @@ public sealed class AppServices
         // Constructor subscribes ProfileLoaded / ProfileClosed and
         // hydrates from the currently-loaded profile if there is one.
         Movement = new MovementFilter(Profile, Log);
+        // Feed the player's level into Form-A exit level-gate evaluation.
+        // null until a stat screen parses — IsExitBlocked never gates on
+        // an unknown level, so an unparsed character walks unrestricted.
+        Movement.LevelProvider = () => Stats.HasParsed ? PlayerStats.Level : (int?)null;
         Favorites = new FavoritesStore(Profile, Log);
 
         // Phase 7 PR 7.7 — coordinator + walker. Coordinator is the

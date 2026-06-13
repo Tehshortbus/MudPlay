@@ -1891,7 +1891,27 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnWalkerEvent(WalkEvent _) => RefreshFromWalker();
+    private void OnWalkerEvent(WalkEvent e)
+    {
+        // A failed walk leaves the engine Idle; stash the reason so the
+        // top-bar status + CURRENT NAV header can explain why we didn't
+        // move (e.g. "all routes blocked by a level requirement"). Any
+        // forward progress or a fresh start clears it.
+        switch (e.Kind)
+        {
+            case WalkEventKind.Failed:
+                EngineError = e.Detail;
+                break;
+            case WalkEventKind.Started:
+            case WalkEventKind.Resumed:
+            case WalkEventKind.StepCompleted:
+            case WalkEventKind.Finished:
+            case WalkEventKind.Stopped:
+                EngineError = null;
+                break;
+        }
+        RefreshFromWalker();
+    }
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 
     private void RefreshFromTracker()
@@ -2063,6 +2083,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private NavigationEngineKind _engineActionKind = NavigationEngineKind.Idle;
 
+    /// <summary>
+    /// Reason the last navigation attempt failed, surfaced in the
+    /// top-bar status text + CURRENT NAV header while the engine is
+    /// Idle. Null when there's nothing to report. Set by
+    /// <see cref="OnWalkerEvent"/> on a Failed event; cleared on any
+    /// Started / progress / Stopped event.
+    /// </summary>
+    [ObservableProperty] private string? _engineError;
+
     /// <summary>True when any movement engine is actively driving the player.</summary>
     public bool IsAnyExecuting =>
         EngineActionKind != NavigationEngineKind.Idle;
@@ -2148,6 +2177,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 default:
                 {
+                    if (EngineError is { Length: > 0 } err) return $"⚠ {err}";
                     Room? here = _services.RoomTracker.State.CurrentRoom;
                     return here is null ? "—" : FormatRoomRef(here.Key);
                 }
@@ -2635,7 +2665,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                         : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
                 NavigationEngineKind.Looping  => BuildLoopHeader(),
                 NavigationEngineKind.AutoLair => "Cycling marked lairs",
-                _ => "No Active Navigation",
+                _ => EngineError is { Length: > 0 } err
+                    ? $"⚠ {err}"
+                    : "No Active Navigation",
             };
         }
     }

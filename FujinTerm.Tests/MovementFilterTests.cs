@@ -190,6 +190,84 @@ public sealed class MovementFilterTests
         Assert.Empty(filter.Avoided);
     }
 
+    // ----- IsExitBlocked: Form-A level-gate evaluation ---------------
+
+    private static RoomExit GatedExit(int min, int max) =>
+        new(new RoomKey(1, 2), RoomExitHint.None, RawHint: null,
+            MinLevel: min, MaxLevel: max);
+
+    [Fact]
+    public void IsExitBlocked_NoGate_NeverBlocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 1;
+        Assert.False(filter.IsExitBlocked(GatedExit(0, 0)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_UnknownLevel_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => null;   // no stat screen parsed yet
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_NoLevelProvider_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // LevelProvider unset (AppServices wires it; a bare filter has none).
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_BelowFloor_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 19;
+        Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));   // need 20+, have 19
+    }
+
+    [Fact]
+    public void IsExitBlocked_AtFloor_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 20;
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));  // exactly meets floor
+    }
+
+    [Fact]
+    public void IsExitBlocked_AboveCap_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 4;
+        Assert.True(filter.IsExitBlocked(GatedExit(0, 3)));    // cap 3, have 4
+    }
+
+    [Fact]
+    public void IsExitBlocked_AtCap_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 3;
+        Assert.False(filter.IsExitBlocked(GatedExit(0, 3)));   // exactly at cap
+    }
+
+    [Fact]
+    public void IsExitBlocked_WithinWindow_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 15;
+        Assert.False(filter.IsExitBlocked(GatedExit(10, 25))); // 10..25, have 15
+    }
+
+    [Fact]
+    public void IsExitBlocked_OutsideWindow_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 30;
+        Assert.True(filter.IsExitBlocked(GatedExit(10, 25)));  // 10..25, have 30
+    }
+
     // ----- IRoomFilter integration with BfsMapper -------------------
 
     [Fact]

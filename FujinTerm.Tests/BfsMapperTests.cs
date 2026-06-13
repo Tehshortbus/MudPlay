@@ -172,6 +172,115 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3), filter));
     }
 
+    // ----- Form-A level gates ----------------------------------------
+
+    private sealed class LevelFilter(int? level) : IRoomFilter
+    {
+        public bool IsAvoided(RoomKey key) => false;
+        public bool IsExitBlocked(in RoomExit exit)
+        {
+            if (!exit.HasLevelGate) return false;
+            if (level is not { } lv) return false;
+            if (exit.MinLevel > 0 && lv < exit.MinLevel) return true;
+            if (exit.MaxLevel > 0 && lv > exit.MaxLevel) return true;
+            return false;
+        }
+    }
+
+    //  1/1 ──N (Level: 20 to 0)── 1/2   (gated, only route)
+    private const string GatedOnlyJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Foot of Stair",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Level: 20 to 0)", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "High Ledge",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void FindPath_LevelGate_BlocksUnderleveledPlayer()
+    {
+        var (bfs, _) = NewMapper(GatedOnlyJson);
+        Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(10)));
+    }
+
+    [Fact]
+    public void FindPath_LevelGate_AllowsAtOrAboveFloor()
+    {
+        var (bfs, _) = NewMapper(GatedOnlyJson);
+        var path = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(20));
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.N }, path);
+    }
+
+    [Fact]
+    public void FindPath_LevelGate_UnknownLevel_DoesNotGate()
+    {
+        var (bfs, _) = NewMapper(GatedOnlyJson);
+        var path = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(null));
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.N }, path);
+    }
+
+    [Fact]
+    public void FindPath_LevelGate_IgnoreExitGates_ReprobeFindsBlockedRoute()
+    {
+        var (bfs, _) = NewMapper(GatedOnlyJson);
+        // Underleveled → normal probe null, gated re-probe finds it.
+        Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(10)));
+        var ungated = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2),
+            new LevelFilter(10), ignoreExitGates: true);
+        Assert.NotNull(ungated);
+        Assert.Equal(new[] { Direction.N }, ungated);
+    }
+
+    [Fact]
+    public void FindPath_LevelGate_RoutesAroundViaUngatedAlternative()
+    {
+        //  1/1 ──N (Level: 20 to 0)── 1/2   (gated, 1 hop)
+        //  1/1 ──E── 1/3 ──N── 1/2          (ungated detour, 2 hops)
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Junction",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2 (Level: 20 to 0)", "S": "0", "E": "1/3", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "Plateau",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Switchback",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "0", "W": "1/1",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+
+        // Underleveled → gated N is cut, walker takes the detour.
+        var detour = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(10));
+        Assert.NotNull(detour);
+        Assert.Equal(new[] { Direction.E, Direction.N }, detour);
+
+        // At level → the 1-hop gated route wins (shortest).
+        var direct = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(25));
+        Assert.NotNull(direct);
+        Assert.Equal(new[] { Direction.N }, direct);
+    }
+
+    [Fact]
+    public void ComputeDistancesFrom_LevelGate_DropsGatedOnlyRoom()
+    {
+        var (bfs, _) = NewMapper(GatedOnlyJson);
+        var dist = bfs.ComputeDistancesFrom(new RoomKey(1, 1), new LevelFilter(10));
+        Assert.True(dist.ContainsKey(new RoomKey(1, 1)));
+        Assert.False(dist.ContainsKey(new RoomKey(1, 2)));   // unreachable underleveled
+    }
+
     [Fact]
     public void DistanceBetween_ReturnsHopCount()
     {
