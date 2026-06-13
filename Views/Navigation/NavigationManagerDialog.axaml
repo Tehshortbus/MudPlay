@@ -245,6 +245,7 @@
                                                            Text="{Binding Name}"
                                                            VerticalAlignment="Center"
                                                            FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentGreenBrush}"
                                                            TextTrimming="CharacterEllipsis"/>
                                                 <TextBlock Grid.Column="1"
                                                            VerticalAlignment="Center"
