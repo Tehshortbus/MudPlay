@@ -2133,6 +2133,10 @@ public sealed class AppServices
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner, recovery: Recovery);
+        // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
+        // through the walker — attached here since the walker is built
+        // after the manager.
+        DeathRecovery.AttachWalker(Walker);
         // Phase 7 PR 7.22 — route walker over trapped exits through
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);

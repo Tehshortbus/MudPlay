@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Game.Combat;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
@@ -45,6 +46,7 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     private readonly DeathLineWatcher _deathWatcher;
     private readonly ProfileService _profile;
     private readonly LogService? _log;
+    private AutoWalkManager? _walker;
     private bool _disposed;
 
     [ObservableProperty]
@@ -119,6 +121,141 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     /// manual refresh after edits (mark-recovered, etc.).
     /// </summary>
     public void Refresh() => SyncFromProfile();
+
+    /// <summary>
+    /// Wire the walker used by <see cref="WalkToDeathRoom"/> /
+    /// <see cref="RecoverNow"/>. Set post-construction because the
+    /// <see cref="AutoWalkManager"/> is built after this manager in
+    /// <see cref="AppServices"/>.
+    /// </summary>
+    public void AttachWalker(AutoWalkManager walker) => _walker = walker;
+
+    /// <summary>
+    /// The loaded profile's death history (oldest → newest). Empty when
+    /// no profile is loaded or the lucky character has never died. The
+    /// DEATH grid sorts this newest-first for display.
+    /// </summary>
+    public IReadOnlyList<DeathRecord> Records =>
+        _profile.Current?.DeathHistory is { } list ? list : Array.Empty<DeathRecord>();
+
+    /// <summary>
+    /// Auto-grab a deathpile's lost items (ignoring per-item auto-get
+    /// policy) when re-entering the death room. Persisted per-character.
+    /// The grab itself is inert until inventory tracking records lost
+    /// items; the preference is stored now.
+    /// </summary>
+    public bool AutoRecover
+    {
+        get => _profile.Current?.DeathAutoRecover ?? false;
+        set
+        {
+            if (_profile.Current is not { } p || p.DeathAutoRecover == value) return;
+            p.DeathAutoRecover = value;
+            _profile.Save();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Re-equip items that were worn at death after recovering them.
+    /// Persisted per-character; inert until inventory tracking records
+    /// what was equipped at death.
+    /// </summary>
+    public bool AutoEquip
+    {
+        get => _profile.Current?.DeathAutoEquip ?? false;
+        set
+        {
+            if (_profile.Current is not { } p || p.DeathAutoEquip == value) return;
+            p.DeathAutoEquip = value;
+            _profile.Save();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Manually flag a record as fully recovered (user pressed "Mark
+    /// Recovered"). Sets <see cref="DeathRecoveryStatus.Recovered"/>,
+    /// persists, and notifies binders.
+    /// </summary>
+    public void MarkRecovered(DeathRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (record.Status == DeathRecoveryStatus.Recovered) return;
+        record.Status = DeathRecoveryStatus.Recovered;
+        record.RecoveryMessage = "Marked recovered by user.";
+        _profile.Save();
+        OnPropertyChanged(nameof(Records));
+    }
+
+    /// <summary>Remove a single record from the history.</summary>
+    public void ClearSelected(DeathRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (_profile.Current?.DeathHistory is not { } list || !list.Remove(record)) return;
+        _profile.Save();
+        SyncFromProfile();
+        OnPropertyChanged(nameof(Records));
+    }
+
+    /// <summary>Remove every record whose status is Recovered.</summary>
+    public void ClearAllRecovered()
+    {
+        if (_profile.Current?.DeathHistory is not { } list) return;
+        if (list.RemoveAll(r => r.Status == DeathRecoveryStatus.Recovered) == 0) return;
+        _profile.Save();
+        SyncFromProfile();
+        OnPropertyChanged(nameof(Records));
+    }
+
+    /// <summary>
+    /// Walk to the room a death occurred in. Returns false when no
+    /// walker is attached or the record has no recorded room.
+    /// </summary>
+    public bool WalkToDeathRoom(DeathRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (_walker is null || record.Room is not { } r) return false;
+        return _walker.WalkTo(new RoomKey(r.Map, r.Room));
+    }
+
+    /// <summary>
+    /// Demand signal: walk to the death room now to recover the pile.
+    /// The item grab + re-equip on arrival is deferred until inventory
+    /// tracking records what was lost / worn at death, so for now this
+    /// just routes the walker there.
+    /// </summary>
+    public bool RecoverNow(DeathRecord record)
+    {
+        bool walking = WalkToDeathRoom(record);
+        if (walking)
+            _log?.Info(LogCategory,
+                $"recover-now: walking to {record.RoomName ?? record.Room?.ToString() ?? "(unknown room)"}");
+        return walking;
+    }
+
+    /// <summary>
+    /// Append a synthetic death record (the "Simulate Death" button) so
+    /// the DEATH grid + recovery flow can be exercised without dying in
+    /// game. Decrements the displayed lives by one, floored at zero.
+    /// </summary>
+    public void SimulateDeath()
+    {
+        if (_profile.Current is not { } p) return;
+        p.DeathHistory ??= new List<DeathRecord>();
+        var record = new DeathRecord(
+            DateTimeOffset.UtcNow, null, Math.Max(0, LivesRemaining - 1),
+            "Simulated death (test).")
+        {
+            RecordNumber = p.DeathHistory.Count + 1,
+            RoomName = "(simulated)",
+            Status = DeathRecoveryStatus.Active,
+        };
+        p.DeathHistory.Add(record);
+        _profile.Save();
+        SyncFromProfile();
+        OnPropertyChanged(nameof(Records));
+    }
 
     public void Dispose()
     {
