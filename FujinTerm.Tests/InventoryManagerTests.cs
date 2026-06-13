@@ -223,6 +223,79 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void Buy_ExactDenoms_DeductsPerCoinKeepingMix()
+    {
+        using Harness h = new();
+        // Hold a mix; buy for 3 gold + 5 copper, both of which we hold exactly.
+        h.Feed("You are carrying 2 platinum pieces, 10 gold crowns, 9 copper farthings.");
+        h.Feed("Wealth:    21009 copper farthings");
+        h.Feed("Encumbrance:    7/2880  -  None  [0%]");
+
+        h.Feed("You bought broadsword for 3 gold crowns, 5 copper farthings.");
+
+        CurrencyHoldings c = h.Inv.Snapshot.Currency;
+        // Per-coin subtract, no change broken: platinum untouched, gold 10→7,
+        // copper 9→4. Mix preserved.
+        Assert.Equal(2, c.Platinum);
+        Assert.Equal(7, c.Gold);
+        Assert.Equal(4, c.Copper);
+        Assert.Equal(20704, c.TotalCopperValue);   // 21009 - 305
+    }
+
+    [Fact]
+    public void Buy_ForcedBreak_ConsolidatesWholePurse()
+    {
+        using Harness h = new();
+        // Hold only 1 platinum (10000). Buy for 3 gold (300) — we lack the gold,
+        // so the game breaks the platinum and hands back consolidated change.
+        h.Feed("You are carrying 1 platinum piece.");
+        h.Feed("Wealth:    10000 copper farthings");
+        h.Feed("Encumbrance:    0/2880  -  None  [0%]");
+
+        h.Feed("You just bought broadsword for 3 gold crowns.");
+
+        CurrencyHoldings c = h.Inv.Snapshot.Currency;
+        // 10000 - 300 = 9700 → greedy: 97 gold crowns, nothing else.
+        Assert.Equal(9700, c.TotalCopperValue);
+        Assert.Equal(0, c.Platinum);
+        Assert.Equal(97, c.Gold);
+        Assert.Equal(0, c.Silver);
+        Assert.Equal(0, c.Copper);
+    }
+
+    [Fact]
+    public void Sell_AddsConsolidatedChange()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        h.Feed("You sold lantern for 101 copper farthings.");
+
+        CurrencyHoldings c = h.Inv.Snapshot.Currency;
+        // 5 + 101 = 106 → greedy: 1 gold, 0 silver, 6 copper.
+        Assert.Equal(106, c.TotalCopperValue);
+        Assert.Equal(1, c.Gold);
+        Assert.Equal(0, c.Silver);
+        Assert.Equal(6, c.Copper);
+    }
+
+    [Fact]
+    public void Buy_ForNothing_NoChange()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 10 gold crowns.");
+        h.Feed("Wealth:    1000 copper farthings");
+        h.Feed("Encumbrance:    3/2880  -  None  [0%]");
+
+        h.Feed("You just bought 2 torch for nothing.");
+
+        Assert.Equal(1000, h.Inv.Snapshot.Currency.TotalCopperValue);
+        Assert.Equal(10, h.Inv.Snapshot.Currency.Gold);
+    }
+
+    [Fact]
     public void MarkStale_KeepsDataDropsLoadedFlag()
     {
         using Harness h = new();

@@ -191,7 +191,11 @@ public sealed partial class InventoryManager : IDisposable
         if (line.EndsWith('.')) return false;
         return line.StartsWith("You deposit ", StringComparison.Ordinal)
             || line.StartsWith("You withdrew ", StringComparison.Ordinal)
-            || line.StartsWith("you withdrew ", StringComparison.Ordinal);
+            || line.StartsWith("you withdrew ", StringComparison.Ordinal)
+            || line.StartsWith("You bought ", StringComparison.Ordinal)
+            || line.StartsWith("You just bought ", StringComparison.Ordinal)
+            || line.StartsWith("You sold ", StringComparison.Ordinal)
+            || line.StartsWith("You just sold ", StringComparison.Ordinal);
     }
 
     private void ProcessIncremental(string line)
@@ -233,6 +237,52 @@ public sealed partial class InventoryManager : IDisposable
             long amount = ParsePriceToCopper(withdraw.Groups[1].Value);
             lock (_lock) ApplyTransaction(amount);
             Changed?.Invoke();
+            return;
+        }
+
+        // Buy: "You bought lantern for 396 copper farthings." (Stock) /
+        // "You just bought broadsword for 26 gold crowns, 1 silver noble,
+        // 16 copper farthings." (ParaMUD multi-currency). When the player
+        // holds at least the exact denominations of the price, the game
+        // pays per-coin without breaking change — subtract those coins and
+        // keep the rest of the mix intact (ApplyBuyDeduction). Otherwise the
+        // game breaks a larger coin to make change, re-consolidating the
+        // whole purse — model that with the greedy ApplyTransaction path.
+        Match bought = BoughtRegex().Match(line);
+        if (bought.Success)
+        {
+            string priceTail = bought.Groups[2].Value;
+            long priceCopper = ParsePriceToCopper(priceTail);
+            if (priceCopper > 0)
+            {
+                (int Copper, int Silver, int Gold, int Platinum, int Runic) paid =
+                    ParsePriceBreakdown(priceTail);
+                lock (_lock)
+                {
+                    bool exactDenoms = _copper >= paid.Copper
+                        && _silver >= paid.Silver
+                        && _gold >= paid.Gold
+                        && _platinum >= paid.Platinum
+                        && _runic >= paid.Runic;
+                    if (exactDenoms) ApplyBuyDeduction(paid);
+                    else ApplyTransaction(-priceCopper);
+                }
+                Changed?.Invoke();
+            }
+            return;
+        }
+
+        // Sell: "You sold lantern for 101 copper farthings." — the game hands
+        // back consolidated change, so the greedy re-decompose models it.
+        Match sold = SoldRegex().Match(line);
+        if (sold.Success)
+        {
+            long price = ParsePriceToCopper(sold.Groups[2].Value);
+            if (price > 0)
+            {
+                lock (_lock) ApplyTransaction(price);
+                Changed?.Invoke();
+            }
         }
     }
 
@@ -385,6 +435,24 @@ public sealed partial class InventoryManager : IDisposable
         ApplyWeightDelta(oldCoins);
     }
 
+    // Buy-time per-coin deduction: the player held the exact denominations of
+    // the price, so the game pays without breaking change. Subtract those
+    // coins, leave the rest of the mix as-is, and recompute wealth + weight.
+    // The caller verifies sufficiency per denomination before calling.
+    private void ApplyBuyDeduction((int Copper, int Silver, int Gold, int Platinum, int Runic) paid)
+    {
+        long oldCoins = TotalCoins();
+
+        _copper = Math.Max(0, _copper - paid.Copper);
+        _silver = Math.Max(0, _silver - paid.Silver);
+        _gold = Math.Max(0, _gold - paid.Gold);
+        _platinum = Math.Max(0, _platinum - paid.Platinum);
+        _runic = Math.Max(0, _runic - paid.Runic);
+
+        _wealthCopper = ComputeWealth(_copper, _silver, _gold, _platinum, _runic);
+        ApplyWeightDelta(oldCoins);
+    }
+
     private long TotalCoins() => (long)_copper + _silver + _gold + _platinum + _runic;
 
     private void ApplyWeightDelta(long oldCoins)
@@ -469,6 +537,30 @@ public sealed partial class InventoryManager : IDisposable
         return total;
     }
 
+    /// <summary>
+    /// Same price-tail input as <see cref="ParsePriceToCopper"/>, but returns
+    /// the per-denomination coin counts so the buy handler can tell an
+    /// exact-denomination payment (no change broken) from a forced-break one.
+    /// </summary>
+    private static (int Copper, int Silver, int Gold, int Platinum, int Runic) ParsePriceBreakdown(string priceTail)
+    {
+        int c = 0, s = 0, g = 0, p = 0, r = 0;
+        if (string.IsNullOrEmpty(priceTail)) return (c, s, g, p, r);
+        foreach (Match m in PriceSegmentRegex().Matches(priceTail))
+        {
+            if (!int.TryParse(m.Groups[1].Value, out int count)) continue;
+            switch (m.Groups[2].Value.TrimEnd('s'))
+            {
+                case "runic coin": r += count; break;
+                case "platinum piece": p += count; break;
+                case "gold crown": g += count; break;
+                case "silver noble": s += count; break;
+                case "copper farthing": c += count; break;
+            }
+        }
+        return (c, s, g, p, r);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -499,6 +591,14 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^[Yy]ou withdrew (\d.+)\.$")]
     private static partial Regex WithdrawCurrencyRegex();
+
+    // "just " is ParaMUD; Stock omits it. Item-name + price groups captured;
+    // only the price tail (group 2) drives currency math here.
+    [GeneratedRegex(@"^You (?:just )?bought (.+) for (.+)\.$")]
+    private static partial Regex BoughtRegex();
+
+    [GeneratedRegex(@"^You (?:just )?sold (.+) for (.+)\.$")]
+    private static partial Regex SoldRegex();
 
     [GeneratedRegex(@"(\d+)\s+(runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)")]
     private static partial Regex PriceSegmentRegex();
