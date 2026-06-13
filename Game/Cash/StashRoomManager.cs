@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -38,9 +39,9 @@ public sealed class StashRoomManager : IDisposable
     /// rows per entry + dispatch.</summary>
     public const string LogCategory = "StashRoom";
 
-    private readonly CashManager _cash;
     private readonly ProfileService _profile;
     private readonly Func<CashSettings> _readCash;
+    private readonly Func<InventorySnapshot> _getSnapshot;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
@@ -52,19 +53,19 @@ public sealed class StashRoomManager : IDisposable
     public event Action<RoomKey, IReadOnlyList<(string Currency, long Amount)>>? StashExecuted;
 
     public StashRoomManager(
-        CashManager cash,
         ProfileService profile,
         Func<CashSettings> readCash,
+        Func<InventorySnapshot> getSnapshot,
         Func<bool> isEnabled,
         LogService? log = null)
     {
-        ArgumentNullException.ThrowIfNull(cash);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(readCash);
+        ArgumentNullException.ThrowIfNull(getSnapshot);
         ArgumentNullException.ThrowIfNull(isEnabled);
-        _cash = cash;
         _profile = profile;
         _readCash = readCash;
+        _getSnapshot = getSnapshot;
         _isEnabled = isEnabled;
         _log = log;
     }
@@ -101,15 +102,20 @@ public sealed class StashRoomManager : IDisposable
         if (!isStash) return;
 
         CashSettings cash = _readCash();
+        // Authoritative per-denomination holdings (the `i`-seeded,
+        // delta-tracked snapshot) — NOT CashManager's since-engine-start
+        // pickup tally, which never sees the starting balance and would
+        // undercount the hide amounts.
+        CurrencyHoldings held = _getSnapshot().Currency;
         _log?.Debug(LogCategory,
             $"entered stash room map={enteredRoom.Map} room={enteredRoom.Room}");
 
         List<(string Currency, long Amount)> dispatched = new();
-        DispatchOne("copper",   cash.KeepCopperOnHand,   dispatched);
-        DispatchOne("silver",   cash.KeepSilverOnHand,   dispatched);
-        DispatchOne("gold",     cash.KeepGoldOnHand,     dispatched);
-        DispatchOne("platinum", cash.KeepPlatinumOnHand, dispatched);
-        DispatchOne("runic",    cash.KeepRunicOnHand,    dispatched);
+        DispatchOne("copper",   held.Copper,   cash.KeepCopperOnHand,   dispatched);
+        DispatchOne("silver",   held.Silver,   cash.KeepSilverOnHand,   dispatched);
+        DispatchOne("gold",     held.Gold,     cash.KeepGoldOnHand,     dispatched);
+        DispatchOne("platinum", held.Platinum, cash.KeepPlatinumOnHand, dispatched);
+        DispatchOne("runic",    held.Runic,    cash.KeepRunicOnHand,    dispatched);
 
         if (dispatched.Count > 0)
         {
@@ -119,10 +125,9 @@ public sealed class StashRoomManager : IDisposable
         }
     }
 
-    private void DispatchOne(string currency, long keep,
+    private void DispatchOne(string currency, long held, long keep,
                               List<(string, long)> dispatched)
     {
-        long held = _cash.HeldCoin(currency);
         long excess = held - keep;
         if (excess <= 0) return;
         Send($"hide {excess} {currency}");

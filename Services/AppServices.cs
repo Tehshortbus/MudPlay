@@ -2097,8 +2097,9 @@ public sealed class AppServices
         // the user's stash list and dispatches per-currency hide
         // commands. Shares AutoGetCash gating with CashManager
         // (cash automation is one mental toggle).
-        Stash = new Game.Cash.StashRoomManager(Cash, Profile,
+        Stash = new Game.Cash.StashRoomManager(Profile,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            getSnapshot: () => Inventory.Snapshot,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log);
         RoomTracker.StateChanged += t =>

@@ -1,10 +1,9 @@
 using System.Text;
 using FujinTerm.Game.Cash;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
-using FujinTerm.Services.Patterns;
-using FujinTerm.Terminal;
 using Xunit;
 
 namespace FujinTerm.Tests;
@@ -13,32 +12,32 @@ namespace FujinTerm.Tests;
 /// PR 9.E follow-up — <see cref="StashRoomManager"/> on-entry stash
 /// dispatch driven by user-marked rooms from
 /// <see cref="CharacterProfile.StashRooms"/> + per-currency
-/// keep-on-hand rules on <see cref="CashSettings"/>.
+/// keep-on-hand rules on <see cref="CashSettings"/>. Held amounts come
+/// from the authoritative <see cref="InventorySnapshot"/> (the
+/// <c>i</c>-seeded, delta-tracked holdings) — not a local pickup tally,
+/// which would undercount the starting balance.
 /// </summary>
 public sealed class StashRoomManagerTests
 {
     private sealed class Harness : IDisposable
     {
-        public MessageRouter Router { get; } = new();
         public LogService Log { get; } = new();
         public ProfileService Profile { get; } = new();
-        public CashManager Cash { get; }
         public StashRoomManager Stash { get; }
         public List<byte[]> Sent { get; } = new();
         public CashSettings CashSettings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
+        // Per-denomination holdings the stash plan reads. Seed before
+        // NoteRoomEntered to model what an `i` parse would have produced.
+        public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<(RoomKey Room, IReadOnlyList<(string Currency, long Amount)> Dispatch)> Executed { get; } = new();
 
         public Harness()
         {
-            DefaultPatterns.Seed(Router);
             Profile.LoadBlank();
-            Cash = new CashManager(Router,
-                readSettings: () => CashSettings,
-                isEnabled: () => true,
-                log: Log);
-            Stash = new StashRoomManager(Cash, Profile,
+            Stash = new StashRoomManager(Profile,
                 readCash: () => CashSettings,
+                getSnapshot: () => Snapshot,
                 isEnabled: () => AutoGetCashEnabled,
                 log: Log);
             Stash.SetWireSender(b => Sent.Add(b));
@@ -52,21 +51,21 @@ public sealed class StashRoomManagerTests
             p.StashRooms.Add(new RoomRef(map, room));
         }
 
-        public void Feed(string line)
-        {
-            Router.Dispatch(new LineExtractor.EmittedLine(
-                line, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-
         public IEnumerable<string> SentLines() =>
             Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
 
-        public void Dispose()
-        {
-            Stash.Dispose();
-            Cash.Dispose();
-        }
+        public void Dispose() => Stash.Dispose();
+    }
+
+    /// <summary>Holdings snapshot with the given per-denomination coin
+    /// counts; wealth value is irrelevant to the stash plan so it's 0.</summary>
+    private static InventorySnapshot Coins(
+        int copper = 0, int silver = 0, int gold = 0, int platinum = 0, int runic = 0)
+    {
+        return new InventorySnapshot(
+            new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
+            EncumbranceReading.Empty,
+            DateTimeOffset.UtcNow);
     }
 
     [Fact]
@@ -74,7 +73,7 @@ public sealed class StashRoomManagerTests
     {
         using Harness h = new();
         h.MarkRoomAsStash(1, 42);
-        h.Feed("You picked up 500 gold pieces.");
+        h.Snapshot = Coins(gold: 500);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -88,7 +87,7 @@ public sealed class StashRoomManagerTests
         using Harness h = new();
         h.MarkRoomAsStash(1, 42);
         h.CashSettings.KeepGoldOnHand = 100;
-        h.Feed("You picked up 500 gold pieces.");
+        h.Snapshot = Coins(gold: 500);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -102,7 +101,7 @@ public sealed class StashRoomManagerTests
         using Harness h = new();
         h.MarkRoomAsStash(1, 42);
         h.CashSettings.KeepGoldOnHand = 100;
-        h.Feed("You picked up 80 gold pieces.");
+        h.Snapshot = Coins(gold: 80);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -114,7 +113,7 @@ public sealed class StashRoomManagerTests
     {
         using Harness h = new();
         h.MarkRoomAsStash(1, 42);
-        h.Feed("You picked up 500 gold pieces.");
+        h.Snapshot = Coins(gold: 500);
 
         h.Stash.NoteRoomEntered(new RoomKey(2, 99));
 
@@ -128,8 +127,7 @@ public sealed class StashRoomManagerTests
         h.MarkRoomAsStash(1, 42);
         h.CashSettings.KeepGoldOnHand     = 100;
         h.CashSettings.KeepPlatinumOnHand = 10;
-        h.Feed("You picked up 300 gold pieces.");
-        h.Feed("You picked up 50 platinum pieces.");
+        h.Snapshot = Coins(gold: 300, platinum: 50);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -145,7 +143,7 @@ public sealed class StashRoomManagerTests
     {
         using Harness h = new() { AutoGetCashEnabled = false };
         h.MarkRoomAsStash(1, 42);
-        h.Feed("You picked up 100 gold pieces.");
+        h.Snapshot = Coins(gold: 100);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -156,7 +154,7 @@ public sealed class StashRoomManagerTests
     public void NoStashRoomsConfigured_NoDispatch()
     {
         using Harness h = new();
-        h.Feed("You picked up 100 gold pieces.");
+        h.Snapshot = Coins(gold: 100);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
 
@@ -164,19 +162,20 @@ public sealed class StashRoomManagerTests
     }
 
     [Fact]
-    public void SecondVisit_AfterServerConfirms_NoReDispatch()
+    public void SecondVisit_AfterHoldingsDrop_NoReDispatch()
     {
         using Harness h = new();
         h.MarkRoomAsStash(1, 42);
         h.CashSettings.KeepGoldOnHand = 100;
-        h.Feed("You picked up 500 gold pieces.");
+        h.Snapshot = Coins(gold: 500);
 
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
         Assert.Single(h.Sent);
 
-        h.Feed("You hid 400 gold pieces.");
-        Assert.Equal(100, h.Cash.HeldCoin("gold"));
-
+        // After the server confirms the hide, the InventoryManager
+        // snapshot drops to the kept floor — a re-entry finds nothing
+        // above keep and stays quiet.
+        h.Snapshot = Coins(gold: 100);
         h.Stash.NoteRoomEntered(new RoomKey(1, 42));
         Assert.Single(h.Sent);
     }
