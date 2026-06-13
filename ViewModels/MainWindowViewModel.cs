@@ -1874,6 +1874,10 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanConnect));
         OnPropertyChanged(nameof(BbsWebsiteUrl));
         OnPropertyChanged(nameof(HasBbsWebsite));
+
+        // Mirror the title-bar identity onto the OS process name so
+        // multiple instances are distinguishable in ps / top / htop.
+        ProcessTitle.Set(AppServices.Current.Profile.CurrentProfileName, ResolveActiveBbs()?.Name);
     }
 
     /// <summary>
