@@ -391,12 +391,17 @@ public sealed class RoomTracker
 
         if (_profile is not null)
         {
+            _profile.DeathHistory ??= new List<DeathRecord>();
             var record = new DeathRecord(
                 when,
                 died is null ? null : new RoomRef(died.Key.Map, died.Key.Room),
                 livesRemaining,
-                messageText);
-            _profile.DeathHistory ??= new List<DeathRecord>();
+                messageText)
+            {
+                RecordNumber = _profile.DeathHistory.Count + 1,
+                RoomName = died?.Name,
+                Status = DeathRecoveryStatus.Active,
+            };
             _profile.DeathHistory.Add(record);
             _log?.Log(LogSeverity.Info, "RoomTracker",
                 $"Death recorded at {(died?.Key.ToString() ?? "(unknown room)")}; {livesRemaining} lives remaining.");

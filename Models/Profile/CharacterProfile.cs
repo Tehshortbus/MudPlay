@@ -231,4 +231,22 @@ public sealed class CharacterProfile
     /// empty means no deaths yet (the lucky case).
     /// </summary>
     public List<DeathRecord>? DeathHistory { get; set; }
+
+    /// <summary>
+    /// When true, the DEATH-recovery flow grabs lost items (and re-equips
+    /// what was worn at death) automatically whenever the character
+    /// re-enters a room holding one of their own deathpiles — regardless
+    /// of the item's auto-get policy. Per-character. Defaults false.
+    /// The item-grab side is inert until the inventory tracker lands; the
+    /// toggle persists now so the preference survives that gap.
+    /// </summary>
+    public bool DeathAutoRecover { get; set; }
+
+    /// <summary>
+    /// When true, items recovered from a deathpile that were equipped at
+    /// the moment of death are automatically re-equipped after pickup.
+    /// Per-character. Defaults false. Inert until inventory tracking
+    /// records what was worn at death.
+    /// </summary>
+    public bool DeathAutoEquip { get; set; }
 }
