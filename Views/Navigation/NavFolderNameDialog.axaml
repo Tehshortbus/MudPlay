@@ -23,7 +23,8 @@
                        FontSize="11"
                        TextWrapping="Wrap"/>
 
-            <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+            <TextBox Name="NameBox"
+                     Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      PlaceholderText="Folder name (use / for nesting)"
                      Margin="0,6,0,0"/>
 
