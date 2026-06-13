@@ -45,6 +45,7 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 
     private readonly DeathLineWatcher _deathWatcher;
     private readonly ProfileService _profile;
+    private readonly RoomTracker _roomTracker;
     private readonly LogService? _log;
     private AutoWalkManager? _walker;
     private bool _disposed;
@@ -68,12 +69,15 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     public DeathRecoveryManager(
         DeathLineWatcher deathWatcher,
         ProfileService profile,
+        RoomTracker roomTracker,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(deathWatcher);
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(roomTracker);
         _deathWatcher = deathWatcher;
         _profile = profile;
+        _roomTracker = roomTracker;
         _log = log;
 
         _deathWatcher.PlayerDied += OnPlayerDied;
@@ -220,17 +224,32 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Demand signal: walk to the death room now to recover the pile.
-    /// The item grab + re-equip on arrival is deferred until inventory
-    /// tracking records what was lost / worn at death, so for now this
-    /// just routes the walker there.
+    /// Demand signal to recover a deathpile. If we're already standing
+    /// in the death room, grab every matching pile item we can in place;
+    /// otherwise start walking there and recover on arrival. The actual
+    /// item grab + re-equip is deferred until inventory tracking records
+    /// what was lost / worn at death — for now the in-room branch logs
+    /// the intent and the walk branch just routes the walker.
     /// </summary>
     public bool RecoverNow(DeathRecord record)
     {
+        ArgumentNullException.ThrowIfNull(record);
+        if (record.Room is not { } target) return false;
+
+        Room? here = _roomTracker.State.CurrentRoom;
+        bool inRoom = here is not null && here.Key.Map == target.Map && here.Key.Room == target.Room;
+        string where = record.RoomName ?? record.RoomKeyText;
+
+        if (inRoom)
+        {
+            _log?.Info(LogCategory,
+                $"recover-now: in death room {where} — grabbing pile (item grab deferred until inventory tracking lands)");
+            return true;
+        }
+
         bool walking = WalkToDeathRoom(record);
         if (walking)
-            _log?.Info(LogCategory,
-                $"recover-now: walking to {record.RoomName ?? record.Room?.ToString() ?? "(unknown room)"}");
+            _log?.Info(LogCategory, $"recover-now: walking to {where} then recovering");
         return walking;
     }
 
@@ -243,12 +262,15 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     {
         if (_profile.Current is not { } p) return;
         p.DeathHistory ??= new List<DeathRecord>();
+        Room? here = _roomTracker.State.CurrentRoom;
         var record = new DeathRecord(
-            DateTimeOffset.UtcNow, null, Math.Max(0, LivesRemaining - 1),
+            DateTimeOffset.UtcNow,
+            here is null ? null : new RoomRef(here.Key.Map, here.Key.Room),
+            Math.Max(0, LivesRemaining - 1),
             "Simulated death (test).")
         {
             RecordNumber = p.DeathHistory.Count + 1,
-            RoomName = "(simulated)",
+            RoomName = here?.Name,
             Status = DeathRecoveryStatus.Active,
         };
         p.DeathHistory.Add(record);

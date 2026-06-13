@@ -1,4 +1,5 @@
 using FujinTerm.Game.Combat;
+using FujinTerm.Game.Map;
 using FujinTerm.Game.Recovery;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -29,7 +30,10 @@ public sealed class DeathRecoveryManagerTests
         {
             DefaultPatterns.Seed(Router);
             Watcher = new DeathLineWatcher(Router, Log);
-            Recovery = new DeathRecoveryManager(Watcher, Profile, Log);
+            // Empty graph (no set loaded) → CurrentRoom is null, which is
+            // all these history-mirror tests need from the tracker.
+            var tracker = new RoomTracker(new RoomGraphManager(new GameDataCache()));
+            Recovery = new DeathRecoveryManager(Watcher, Profile, tracker, Log);
         }
 
         public void FeedSlain(string killer)

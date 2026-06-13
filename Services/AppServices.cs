@@ -2051,7 +2051,7 @@ public sealed class AppServices
         // DEATH section binds to. (@comeback is a separate party-pickup
         // flow owned by PartyComebackManager, wired after the engines.)
         DeathRecovery = new Game.Recovery.DeathRecoveryManager(
-            DeathWatcher, Profile, Log);
+            DeathWatcher, Profile, RoomTracker, Log);
 
         // Phase 9 — InventoryManager. Parses the full `i` dump into a
         // currency + numeric-encumbrance snapshot and patches it on
