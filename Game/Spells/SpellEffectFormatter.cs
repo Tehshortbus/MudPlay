@@ -42,6 +42,22 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName = null,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null)
+        => FormatCore(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited: null);
+
+    /// <summary>
+    /// Format implementation that threads the EndCast cycle-guard set.
+    /// <paramref name="visited"/> carries the spell numbers already being
+    /// expanded up the EndCast chain so a spell whose chain loops back to an
+    /// ancestor stops rather than recursing forever; <c>null</c> at the top
+    /// level (a fresh set is allocated only when an EndCast is encountered).
+    /// </summary>
+    private static string FormatCore(
+        in SpellFormulaInput formula,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        HashSet<int>? visited)
     {
         List<string> parts = new();
 
@@ -67,6 +83,18 @@ public static class SpellEffectFormatter
         string affects = BuildAffects(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts);
         if (affects.Length > 0) parts.Add(affects);
 
+        // EndCast chains are whole follow-up spells, not stat affects — each
+        // gets its own " · " part (after the affects rollup, before cleanup)
+        // so "Dmg 100–150 · 20% EndCast spear slam knockdown (…)" reads as a
+        // sequence rather than comma-mixed with bonus magnitudes.
+        foreach (SpellAbility a in formula.Abilities)
+        {
+            if (a.Code != EndCastCode) continue;
+            string clause = BuildEndCast(
+                formula, a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
+            if (clause.Length > 0) parts.Add(clause);
+        }
+
         // A spell's "Removes …" clause trails its own gain figures — consistent
         // with multi-cast textblock expansion (gains first, cleanup last).
         string removes = BuildRemoves(formula, resolveSpellName);
@@ -81,14 +109,26 @@ public static class SpellEffectFormatter
     /// <list type="bullet">
     /// <item>Already surfaced elsewhere — Damage (1), DrainLife (8),
     /// Damage(-MR) (17), Heal (18) fold into the Dmg / Heal figure;
-    /// EndCast (151) is a cast-chaining marker; RemovesSpell (122) is rendered
-    /// by name separately (see <see cref="BuildRemoves"/>).</item>
+    /// EndCast (151) expands into its chained spell as its own part and
+    /// EndCast% (164) is consumed as that clause's prefix (see
+    /// <see cref="BuildEndCast"/>); RemovesSpell (122) is rendered by name
+    /// separately (see <see cref="BuildRemoves"/>).</item>
     /// <item>Display-only message slots MME hides by default (its
     /// <c>GetAbilityName</c> returns "" without <c>bForceAll</c>) —
     /// ConfuseMsg (101), DescMsg (115), StartMsg (120), ShockMsg (137).</item>
     /// </list>
     /// </summary>
-    private static readonly int[] _affectSkip = { 1, 8, 17, 18, 151, 122, 101, 115, 120, 137 };
+    private static readonly int[] _affectSkip = { 1, 8, 17, 18, 122, 101, 115, 120, 137, 151, 164 };
+
+    /// <summary>EndCast ability code (MME Abil 151). Its <c>AbilVal</c> is the
+    /// spell number the cast chains into on completion.</summary>
+    private const int EndCastCode = 151;
+
+    /// <summary>EndCast% ability code (MME Abil 164) — the percentage chance
+    /// the sibling <see cref="EndCastCode"/> chain fires. Consumed by
+    /// <see cref="BuildEndCast"/> as the clause's prefix, never rendered as a
+    /// standalone "+N" affect.</summary>
+    private const int EndCastPercentCode = 164;
 
     /// <summary>RemovesSpell ability code (MME Abil 122).</summary>
     private const int RemovesSpellCode = 122;
@@ -212,6 +252,55 @@ public static class SpellEffectFormatter
                 parts.Add(name); // flag-style affect — no magnitude to show
         }
         return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Expand an EndCast (Abil 151) slot into its chained spell's effects,
+    /// prefixed by the sibling EndCast% (Abil 164) chance when present —
+    /// "20% EndCast spear slam knockdown (12 seconds · HoldPerson +100, …)".
+    /// Recurses through nested EndCasts (a chained spell may itself EndCast),
+    /// guarding against a chain that loops back to an ancestor via
+    /// <paramref name="visited"/>. When the chained spell can't be resolved or
+    /// produces no figure, only the named prefix shows.
+    /// </summary>
+    private static string BuildEndCast(
+        in SpellFormulaInput parent,
+        int chainedNumber,
+        int level,
+        Func<int, SpellFormulaInput?> resolveChain,
+        Func<int, string?>? resolveSpellName,
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        HashSet<int>? visited)
+    {
+        if (chainedNumber == 0) return string.Empty;
+
+        visited ??= new HashSet<int>();
+        if (parent.Number != 0) visited.Add(parent.Number);
+        if (!visited.Add(chainedNumber)) return string.Empty; // chain loops back — stop
+
+        string name = resolveSpellName?.Invoke(chainedNumber)?.Trim() is { Length: > 0 } resolved
+            ? resolved
+            : $"#{chainedNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+        int pct = EndCastPercent(parent);
+        string prefix = pct > 0
+            ? $"{pct.ToString(System.Globalization.CultureInfo.InvariantCulture)}% EndCast {name}"
+            : $"EndCast {name}";
+
+        string effect = resolveChain(chainedNumber) is { } chained
+            ? FormatCore(chained, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited)
+            : string.Empty;
+
+        return effect.Length == 0 || effect == "—" ? prefix : $"{prefix} ({effect})";
+    }
+
+    /// <summary>The sibling EndCast% (Abil 164) chance on the same formula —
+    /// the percentage the EndCast chain fires. 0 when absent.</summary>
+    private static int EndCastPercent(in SpellFormulaInput formula)
+    {
+        foreach (SpellAbility a in formula.Abilities)
+            if (a.Code == EndCastPercentCode) return a.Value;
+        return 0;
     }
 
     /// <summary>
