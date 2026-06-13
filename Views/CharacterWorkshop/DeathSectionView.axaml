@@ -1,10 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:vmroot="using:FujinTerm.ViewModels"
              xmlns:profile="using:FujinTerm.Models.Profile"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="500"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="560"
              x:Class="FujinTerm.Views.CharacterWorkshop.DeathSectionView"
              x:DataType="vm:DeathSectionViewModel">
 
@@ -26,61 +27,131 @@
         </Style>
     </UserControl.Styles>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+    <Grid Margin="22" RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <!-- Title -->
+        <TextBlock Grid.Row="0" Text="Death Recovery"
+                   Foreground="{StaticResource ChromeFgBrush}"
+                   FontSize="{StaticResource FontSizeLg}"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8"/>
+
+        <!-- Header: toggles + lives -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,8">
+            <CheckBox Grid.Column="0" Content="Auto-Recover Deathpiles"
+                      IsChecked="{Binding AutoRecover, Mode=TwoWay}"
+                      ToolTip.Tip="On re-entering a room holding your deathpile, grab the lost items (ignoring per-item auto-get policy). Item grab is inert until inventory tracking lands; the preference persists now."/>
+            <CheckBox Grid.Column="1" Content="Auto-Equip After Recovery"
+                      Margin="16,0,0,0"
+                      IsChecked="{Binding AutoEquip, Mode=TwoWay}"
+                      ToolTip.Tip="Re-equip items that were worn at death after recovering them. Inert until inventory tracking records what was equipped at death."/>
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Classes="FieldLabel" Text="Lives:" VerticalAlignment="Center"/>
+                <TextBlock Classes="FieldValue" Text="{Binding LivesRemaining}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Action buttons -->
+        <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Content="Walk to Room" Margin="0,0,6,6"
+                    Command="{Binding WalkToRoomCommand}"/>
+            <Button Content="Recover Now" Margin="0,0,6,6"
+                    Command="{Binding RecoverNowCommand}"/>
+            <Button Content="Mark Recovered" Margin="0,0,6,6"
+                    Command="{Binding MarkRecoveredCommand}"/>
+            <Button Content="View Entry" Margin="0,0,6,6"
+                    Command="{Binding ViewEntryCommand}"/>
+            <Button Content="Clear Selected" Margin="0,0,6,6"
+                    Command="{Binding ClearSelectedCommand}"/>
+            <Button Content="Clear All Recovered" Margin="0,0,18,6"
+                    Command="{Binding ClearAllRecoveredCommand}"/>
+            <Button Content="Simulate Death" Margin="0,0,6,6"
+                    Command="{Binding SimulateDeathCommand}"
+                    ToolTip.Tip="Append a synthetic death record to exercise the grid + recovery flow without dying in game."/>
+        </WrapPanel>
+
+        <!-- Deathpile grid -->
+        <DataGrid Grid.Row="3"
+                  ItemsSource="{Binding Records}"
+                  SelectedItem="{Binding SelectedRecord, Mode=TwoWay}"
+                  Background="{StaticResource ChromeBgSunkenBrush}"
+                  BorderThickness="1"
+                  BorderBrush="{StaticResource ChromeBorderBrush}"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="True"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="True"
+                  HorizontalScrollBarVisibility="Auto"
                   VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="22" Spacing="4"
-                    MaxWidth="720" HorizontalAlignment="Left">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="#" Binding="{ReflectionBinding RecordNumber}" SortMemberPath="RecordNumber"
+                                    Width="50" FontFamily="{StaticResource FontMono}"
+                                    Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTextColumn Header="Room" Binding="{ReflectionBinding RoomName, TargetNullValue='—'}" SortMemberPath="RoomName"
+                                    Width="240" Foreground="{StaticResource ChromeFgBrush}"/>
+                <DataGridTextColumn Header="Map / Room #" Binding="{ReflectionBinding RoomKeyText}" SortMemberPath="RoomKeyText"
+                                    Width="110" FontFamily="{StaticResource FontMono}"
+                                    Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTextColumn Header="Died" Binding="{ReflectionBinding At, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" SortMemberPath="At"
+                                    Width="150" FontFamily="{StaticResource FontMono}"
+                                    Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTemplateColumn Header="Items Lost" Width="90">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="profile:DeathRecord">
+                            <!-- Placeholder: lost-item capture is deferred until
+                                 inventory tracking records what dropped at death. -->
+                            <TextBlock Text="—" VerticalAlignment="Center"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       ToolTip.Tip="Lost-item capture is deferred until inventory tracking lands."/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Status" SortMemberPath="Status" Width="*" MinWidth="120">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="profile:DeathRecord">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="●" VerticalAlignment="Center"
+                                           Foreground="{ReflectionBinding Status, Converter={x:Static vmroot:DeathStatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{ReflectionBinding Status}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource ChromeFgBrush}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
 
-            <TextBlock Text="Death"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,8"/>
+        <!-- Detail panel for the selected record (View Entry) -->
+        <Border Grid.Row="4" Margin="0,10,0,0" Padding="12"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="1" CornerRadius="4"
+                IsVisible="{Binding DetailsVisible}">
+            <StackPanel Spacing="4">
+                <TextBlock Classes="SectionHeader" Text="Entry detail" Margin="0,0,0,4"/>
+                <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Died at"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue"
+                               Text="{Binding SelectedRecord.At, FallbackValue='—', StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"/>
 
-            <!-- Live summary from DeathRecoveryManager -->
-            <TextBlock Classes="SectionHeader" Text="Live status"/>
-            <Grid ColumnDefinitions="200,*" RowDefinitions="Auto,Auto,Auto,Auto">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Lives remaining"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue"
-                           Text="{Binding LivesRemaining}"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Room"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue"
+                               Text="{Binding SelectedRecord.RoomName, FallbackValue='—', TargetNullValue='—'}"/>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Total deaths recorded"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue"
-                           Text="{Binding DeathCount}"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Lives remaining"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue"
+                               Text="{Binding SelectedRecord.LivesRemaining, FallbackValue='—'}"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Last killer"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue"
-                           Text="{Binding LastKiller, FallbackValue='—'}"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Message"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" TextWrapping="Wrap"
+                               Text="{Binding SelectedRecord.MessageText, FallbackValue='—', TargetNullValue='(no message)'}"/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Last death at"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue"
-                           Text="{Binding LastDeathAt, FallbackValue='—', StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"/>
-            </Grid>
-
-            <!-- Death history -->
-            <TextBlock Classes="SectionHeader" Text="Death history"/>
-
-            <ItemsControl ItemsSource="{Binding History}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="profile:DeathRecord">
-                        <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                                BorderThickness="0,0,0,1"
-                                Padding="0,6,0,6">
-                            <Grid ColumnDefinitions="180,*">
-                                <TextBlock Grid.Column="0" Classes="FieldLabel"
-                                           Text="{Binding At, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
-                                <StackPanel Grid.Column="1" Spacing="2">
-                                    <TextBlock Classes="FieldValue"
-                                               Text="{Binding MessageText, FallbackValue='(no message)'}"/>
-                                    <TextBlock Classes="FieldLabel"
-                                               Text="{Binding LivesRemaining, StringFormat='Lives remaining: {0}'}"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-        </StackPanel>
-    </ScrollViewer>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Items lost"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldLabel"
+                               Text="Recorded once inventory tracking lands."/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

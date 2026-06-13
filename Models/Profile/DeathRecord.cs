@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace FujinTerm.Models.Profile;
 
 /// <summary>
@@ -62,6 +64,14 @@ public sealed class DeathRecord
     /// a recovery action touches the record.
     /// </summary>
     public string? RecoveryMessage { get; set; }
+
+    /// <summary>
+    /// <c>"{Map}/{Room}"</c> for the DEATH grid's map/room column, or
+    /// <c>"—"</c> when the death room was unknown. Display-only — not
+    /// persisted.
+    /// </summary>
+    [JsonIgnore]
+    public string RoomKeyText => Room is null ? "—" : $"{Room.Map}/{Room.Room}";
 
     public DeathRecord() { }
 
