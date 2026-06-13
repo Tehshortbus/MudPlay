@@ -73,6 +73,15 @@ public sealed class DeathRecord
     [JsonIgnore]
     public string RoomKeyText => Room is null ? "—" : $"{Room.Map}/{Room.Room}";
 
+    /// <summary>
+    /// Local-time <c>"yyyy-MM-dd HH:mm:ss"</c> for the DEATH grid's
+    /// "Died" column — date AND time, shown in the player's local zone
+    /// (records persist <see cref="At"/> as UTC). Display-only — not
+    /// persisted.
+    /// </summary>
+    [JsonIgnore]
+    public string DiedText => At == default ? "—" : At.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+
     public DeathRecord() { }
 
     public DeathRecord(DateTimeOffset at, RoomRef? room, int livesRemaining, string? messageText)
