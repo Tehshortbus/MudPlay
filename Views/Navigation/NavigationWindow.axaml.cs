@@ -161,7 +161,7 @@ public partial class NavigationWindow : Window
         popup.Opacity = 1;
     }
 
-    private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)
+    private void OnMapRoomRightClicked(Game.Map.RoomKey? key, Point _)
     {
         if (DataContext is NavigationViewModel vm) vm.ContextRoomKey = key;
     }

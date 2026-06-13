@@ -602,7 +602,12 @@ public sealed class MapControl : Control
         });
     }
 
-    public event Action<RoomKey, Point>? RoomRightClicked;
+    /// <summary>
+    /// Raised on right-click. The key is the hit room, or <c>null</c> when
+    /// the click landed on empty map space — so the context-menu target is
+    /// cleared instead of left pointing at a stale (off-screen) room.
+    /// </summary>
+    public event Action<RoomKey?, Point>? RoomRightClicked;
     public event Action<RoomKey, Point>? RoomLeftClicked;
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -646,14 +651,23 @@ public sealed class MapControl : Control
             return;
         }
 
-        if (point.Properties.IsRightButtonPressed
-            && TryHitTestRoom(point.Position, out RoomKey hit))
+        if (point.Properties.IsRightButtonPressed)
         {
-            // Mirror the crawler outline onto the right-clicked room
-            // so the user can see which square the context menu is
-            // attached to (the menu can move off-screen on small maps).
-            SelectedRoomKey = hit;
-            RoomRightClicked?.Invoke(hit, point.Position);
+            if (TryHitTestRoom(point.Position, out RoomKey hit))
+            {
+                // Mirror the crawler outline onto the right-clicked room
+                // so the user can see which square the context menu is
+                // attached to (the menu can move off-screen on small maps).
+                SelectedRoomKey = hit;
+                RoomRightClicked?.Invoke(hit, point.Position);
+            }
+            else
+            {
+                // Empty-space right-click: clear the context target so the
+                // menu doesn't keep showing the previous room's entries
+                // (teleports, etc.) after the map has shifted under it.
+                RoomRightClicked?.Invoke(null, point.Position);
+            }
             e.Handled = true;
         }
     }
