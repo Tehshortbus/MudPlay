@@ -111,13 +111,16 @@ public sealed class RemoteCommandManager : IDisposable
     public bool MasterDisable { get; set; }
 
     /// <summary>
-    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist. When
-    /// <c>true</c>, party-whitelist handlers (registered with
-    /// <see cref="PlayerRemoteControls.None"/>) deny even for active party
-    /// members. Pushed from
+    /// Disallows the <c>@party &lt;sub&gt;</c> directive path only. When
+    /// <c>true</c>, an active party member's <c>@party attack / rest /
+    /// meditate / go / stat / i / par</c> is denied unless the sender
+    /// carries an explicit per-player grant. Does NOT affect the rest of
+    /// the party-whitelist (<c>@wait</c> / <c>@ok</c> / <c>@comeback</c> /
+    /// <c>@share</c>) — those stay allowed for active members regardless.
+    /// Pushed from
     /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommands"/>.
     /// </summary>
-    public bool DisablePartyWhitelist { get; set; }
+    public bool DisallowPartyDirectives { get; set; }
 
     /// <summary>
     /// Leader-side eligibility hook for a stranded follower's
@@ -523,11 +526,11 @@ public sealed class RemoteCommandManager : IDisposable
     {
         // Special case: requiredCategory == None means "party whitelist —
         // allowed for any active party member". Used by @wait / @ok /
-        // @kill / @comeback / etc. Settings.Talk → Disallow @party
-        // commands flips this off even for active members.
+        // @comeback / @share. These are NOT affected by Disallow @party
+        // commands — that toggle narrows only the @party directive path
+        // (handled by the @party fallback branch below), per user spec.
         if (requiredCategory == PlayerRemoteControls.None)
         {
-            if (DisablePartyWhitelist) return false;
             if (IsActivePartyMember(sender)) return true;
             // @comeback is the one whitelist command a left-behind follower
             // can't satisfy via IsActivePartyMember — the server already
@@ -558,10 +561,10 @@ public sealed class RemoteCommandManager : IDisposable
         // callers with that grant can reach the status-query path;
         // this fallback restores the party-whitelist semantics for
         // members who don't carry an explicit grant.
-        // DisablePartyWhitelist still kills the whitelist path,
-        // matching the None-tier rule.
+        // DisallowPartyDirectives kills this @party member-fallback path —
+        // it's the only command the toggle gates.
         if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)
-            && !DisablePartyWhitelist
+            && !DisallowPartyDirectives
             && IsActivePartyMember(sender))
         {
             return true;

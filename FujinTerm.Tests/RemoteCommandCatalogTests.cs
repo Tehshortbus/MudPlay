@@ -123,12 +123,18 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@wait")]
     [InlineData("@ok")]
     [InlineData("@comeback")]
-    [InlineData("@kill")]
     [InlineData("@share")]
     public void PartyWhitelist_NoneCategory(string cmd)
         // None = "any active party member" — engine routes these through
         // the party-whitelist branch instead of the per-player flag.
         => Assert.Equal(PlayerRemoteControls.None, Lookup(cmd));
+
+    [Fact]
+    public void Kill_RoutesToExecuteCommands_NotPartyWhitelist()
+        // @kill <target> asks a member to attack a named target on the
+        // sender's behalf — an action request, not a party coordination
+        // signal — so it's per-player ExecuteCommands-gated like @do / @heal.
+        => Assert.Equal(PlayerRemoteControls.ExecuteCommands, Lookup("@kill"));
 
     [Fact]
     public void Heal_RoutesToExecuteCommands_NotPartyWhitelist()

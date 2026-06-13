@@ -56,9 +56,9 @@
 
             <CheckBox Content="Disallow @party commands (from any party member)"
                       IsChecked="{Binding DisallowPartyCommands, Mode=TwoWay}"
-                      ToolTip.Tip="Overrides the base @party &lt;sub&gt; whitelist for every active party member, not just the leader."/>
+                      ToolTip.Tip="Gates only the @party directive path (attack / rest / meditate / go / stat / i / par) for every active party member, not just the leader."/>
             <TextBlock Classes="HelpText"
-                       Text="Makes @party a no-op no matter who in the party sends it — useful for solo runs inside a party where party directives shouldn't steer this character."/>
+                       Text="Makes @party and its sub-commands a no-op no matter who in the party sends it — useful for solo runs inside a party where party directives shouldn't steer this character. The coordination signals @wait / @ok / @comeback / @share are unaffected and still work for party members."/>
 
             <!-- ============ Per-channel disable (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Per-channel disable"/>

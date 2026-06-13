@@ -334,7 +334,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
     ///         <see cref="DispatchPartySubCommand"/>. Gated on
     ///         <see cref="IsActivePartyMember"/> +
-    ///         <see cref="RemoteCommandManager.DisablePartyWhitelist"/>
+    ///         <see cref="RemoteCommandManager.DisallowPartyDirectives"/>
     ///         because the engine's authorize tier for <c>@party</c> is
     ///         QueryHealthStatus (so a non-party caller with that
     ///         grant reaches this handler for the status form too) —
@@ -361,7 +361,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         // here because the engine-level authorize tier (QueryHealthStatus)
         // lets non-party players reach this handler for the status form;
         // the destructive verb path is party-member-only by design.
-        if (_engine.DisablePartyWhitelist) return;
+        if (_engine.DisallowPartyDirectives) return;
         if (!IsActivePartyMember(ctx.Sender)) return;
         DispatchPartySubCommand(ctx);
     }

@@ -49,12 +49,15 @@ namespace FujinTerm.Game.Remote;
 /// </list>
 /// </para>
 /// <para>
-/// Party-coordination commands (@wait / @ok / @comeback / @party /
-/// @kill / @share) map to <see cref="PlayerRemoteControls.None"/> —
-/// they're gated by the engine's party-whitelist branch instead of the
-/// per-player flag check. Any active party member can issue them by
-/// default; the user disables them wholesale via Settings.Talk →
-/// Disallow @party commands.
+/// Party-coordination commands (@wait / @ok / @comeback / @share) map
+/// to <see cref="PlayerRemoteControls.None"/> — they're gated by the
+/// engine's party-whitelist branch instead of the per-player flag check.
+/// Any active party member can issue them by default. Settings.Talk →
+/// Disallow @party commands narrows ONLY the <c>@party &lt;sub&gt;</c>
+/// directive path (attack / rest / meditate / go / …); it does not touch
+/// these coordination signals. <c>@kill</c> is NOT in this family — it's
+/// an action request ("attack this target on my behalf") and sits at
+/// <see cref="PlayerRemoteControls.ExecuteCommands"/> alongside @do / @heal.
 /// </para>
 /// <para>
 /// The ailment / status broadcast tokens (<c>@poisoned</c> / <c>@blind</c>
@@ -114,6 +117,11 @@ public static class RemoteCommandCatalog
             ["@equip-all"]    = PlayerRemoteControls.ExecuteCommands,
             ["@deposit-all"]  = PlayerRemoteControls.ExecuteCommands,
             ["@do"]           = PlayerRemoteControls.ExecuteCommands,
+            // @kill <target> asks a party member to attack a named target
+            // on the sender's behalf — an action request, not a party
+            // coordination signal, so it's per-player ExecuteCommands-gated
+            // rather than party-whitelist. Handler lives in KillHandler.cs.
+            ["@kill"]         = PlayerRemoteControls.ExecuteCommands,
             // @trap <dir> asks a Traps-skilled character to search +
             // disarm a trap on the sender's behalf; @trap stop aborts.
             // Soft-gated on Stats.Traps > 0 inside the handler; the
@@ -163,6 +171,7 @@ public static class RemoteCommandCatalog
             ["@wait"]         = PlayerRemoteControls.None,
             ["@ok"]           = PlayerRemoteControls.None,
             ["@comeback"]     = PlayerRemoteControls.None,
+            // (@kill moved to ExecuteCommands — see Basic Commands above.)
             // @heal sits at ExecuteCommands rather than None: it's an
             // action request ("cast heal on me"), not a coordination
             // signal. A sender may legitimately need it even when the
@@ -179,11 +188,10 @@ public static class RemoteCommandCatalog
             // when the sender has no per-player grant. The destructive
             // sub-command dispatch path (Local channel + args) lives
             // in PartyEssentialHandlers.OnParty and gates on
-            // IsActivePartyMember + !DisablePartyWhitelist itself.
+            // IsActivePartyMember + !DisallowPartyDirectives itself.
             // Hard-blocks (@party suicide, @party reroll) bypass both
             // at engine level via IsHardBlocked.
             ["@party"]        = PlayerRemoteControls.QueryHealthStatus,
-            ["@kill"]         = PlayerRemoteControls.None,
             ["@share"]        = PlayerRemoteControls.None,
         };
 

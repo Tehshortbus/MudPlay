@@ -162,7 +162,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     {
         Game.Remote.RemoteCommandManager engine = AppServices.Current.RemoteCommands;
         engine.MasterDisable           = dto.DisallowAllRemoteCommands;
-        engine.DisablePartyWhitelist   = dto.DisallowPartyCommands;
+        engine.DisallowPartyDirectives = dto.DisallowPartyCommands;
         engine.DisableTelepathChannel  = dto.DisallowRemoteFromTelepaths;
         engine.DisableGangpathChannel  = dto.DisallowRemoteFromGangpaths;
         engine.DisableLocalChannel     = dto.DisallowRemoteFromLocal;

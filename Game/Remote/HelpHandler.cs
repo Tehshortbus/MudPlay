@@ -11,7 +11,7 @@ namespace FujinTerm.Game.Remote;
 /// <see cref="RemoteCommandManager.GetPermittedCommands"/>.
 /// </summary>
 /// <remarks>
-/// Party-whitelist commands (@wait / @ok / @kill / etc.) are excluded —
+/// Party-whitelist commands (@wait / @ok / @comeback / @share) are excluded —
 /// those aren't permission-gated, so they don't belong in a
 /// per-permission help list. The list is split across multiple telepath
 /// replies when it exceeds <see cref="MaxPayloadChars"/> so no single
