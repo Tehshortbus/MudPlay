@@ -280,6 +280,17 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             // (CastSpell) resolve their values to spell names; code 59
             // (ClassOK) resolves to a class name. Stat-bonus codes get
             // signed display ("+5"), threshold/value codes render raw.
+            //
+            // On weapons, a CastsSp (43) is interpreted via the code that
+            // precedes it: a %Spell (114) folds in as a per-swing proc
+            // ("Casts (25%/swing)"), a CastOnKill% (1114) as a kill proc
+            // ("Casts (25%/kill)"). A 43 with no pending modifier is a
+            // command-activated cast ("Casts (on use)"). MME's weapon-damage
+            // loop does the same fold; the modifier codes (114 / 1114) are
+            // consumed silently and never emit their own rows.
+            bool isWeapon = itemType == 1;
+            int pendingPercent = 0;
+            string? pendingTrigger = null;   // "swing" | "kill"
             for (int i = 0; i < 20; i++)
             {
                 int code = ReadInt(el, $"Abil-{i}");
@@ -288,6 +299,30 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 // above (weapon block); suppress the duplicate here.
                 if (code == 116) continue;
                 int val = ReadInt(el, $"AbilVal-{i}");
+
+                if (isWeapon && code == 114)       // %Spell → modifies the next CastsSp
+                {
+                    pendingPercent = val;
+                    pendingTrigger = "swing";
+                    continue;
+                }
+                if (isWeapon && code == 1114)      // CastOnKill% → modifies the next CastsSp
+                {
+                    pendingPercent = val;
+                    pendingTrigger = "kill";
+                    continue;
+                }
+                if (isWeapon && code == 43)        // CastsSp — fold any pending modifier
+                {
+                    string castLabel = pendingTrigger is null
+                        ? "Casts (on use)"
+                        : $"Casts ({pendingPercent}%/{pendingTrigger})";
+                    otherInfo.Add(new KeyValuePair<string, string>(castLabel, ResolveSpellName(val)));
+                    pendingPercent = 0;
+                    pendingTrigger = null;
+                    continue;
+                }
+
                 string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
