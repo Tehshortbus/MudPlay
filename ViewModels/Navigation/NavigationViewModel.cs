@@ -56,6 +56,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.AutoLair.PausedChanged += OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   += OnBlacklistChanged;
         _services.Lairs.SetupsChanged    += OnSetupsChanged;
+        _services.NavFolders.FoldersChanged += OnNavFoldersChanged;
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
         RefreshSetups();
@@ -98,7 +99,17 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.AutoLair.PausedChanged -= OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   -= OnBlacklistChanged;
         _services.Lairs.SetupsChanged    -= OnSetupsChanged;
+        _services.NavFolders.FoldersChanged -= OnNavFoldersChanged;
         _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
+    }
+
+    // Loops + lairs share the on-disk folder tree; a folder add / rename /
+    // delete from either the rail or the Manage dialog rebuilds both trees
+    // so an empty folder (or a moved-contents reparent) shows up at once.
+    private void OnNavFoldersChanged()
+    {
+        RefreshLoops();
+        RefreshSetups();
     }
 
     private void OnMacrosCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -739,10 +750,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- Loops list (PR 7.13) -------------------------------------
 
-    /// <summary>Loops in the active BBS, ordered by LoopManager (alphabetical).</summary>
+    /// <summary>Loops in the active BBS (flat backing list — source the folder tree is grouped from).</summary>
     public ObservableCollection<LoopRowViewModel> Loops { get; } = new();
 
+    /// <summary>Folder-grouped Loops tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="LoopRowViewModel"/>).</summary>
+    public ObservableCollection<object> LoopTree { get; } = new();
+
     public bool HasLoops => Loops.Count > 0;
+
+    /// <summary>True when the Loops tree has any node (loop or empty folder).</summary>
+    public bool HasLoopTree => LoopTree.Count > 0;
 
     private void OnLoopsChanged() => RefreshLoops();
 
@@ -751,7 +768,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Loops.Clear();
         foreach (Loop loop in _services.Loops.Loops)
             Loops.Add(new LoopRowViewModel(loop));
+        // Loops + lairs share the on-disk folder tree, so both seed from
+        // the same NavFolderManager folder set.
+        NavTreeBuilder.Sync(LoopTree, Loops, r => r.Source.Folder, r => r.Name, _services.NavFolders.AllFolders);
         OnPropertyChanged(nameof(HasLoops));
+        OnPropertyChanged(nameof(HasLoopTree));
     }
 
     // ----- Auto-Lair Setups list (PR 7.20) --------------------------
@@ -764,7 +785,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// </summary>
     public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
 
+    /// <summary>Folder-grouped Setups tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="LairSetupRowViewModel"/>).</summary>
+    public ObservableCollection<object> SetupTree { get; } = new();
+
     public bool HasSetups => Setups.Count > 0;
+
+    /// <summary>True when the Setups tree has any node (setup or empty folder).</summary>
+    public bool HasSetupTree => SetupTree.Count > 0;
 
     private void OnSetupsChanged() => RefreshSetups();
 
@@ -773,7 +800,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Setups.Clear();
         foreach (Models.Profile.LairSetup s in _services.Lairs.Setups)
             Setups.Add(new LairSetupRowViewModel(s));
+        // Loops + lairs share the on-disk folder tree, so both seed from
+        // the same NavFolderManager folder set.
+        NavTreeBuilder.Sync(SetupTree, Setups, r => r.Source.Folder, r => r.Name, _services.NavFolders.AllFolders);
         OnPropertyChanged(nameof(HasSetups));
+        OnPropertyChanged(nameof(HasSetupTree));
     }
 
     /// <summary>
@@ -1004,10 +1035,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- GOTO / Favorites pane ------------------------------------
 
-    /// <summary>Per-character favourite-room bookmarks. Click to walk.</summary>
+    /// <summary>Per-character favourite-room bookmarks (flat backing list — source the folder tree is grouped from).</summary>
     public ObservableCollection<FavoriteRowViewModel> Favorites { get; } = new();
 
+    /// <summary>Folder-grouped GOTO tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="FavoriteRowViewModel"/>), bound by the rail's TreeView.</summary>
+    public ObservableCollection<object> FavoriteTree { get; } = new();
+
     public bool HasFavorites => Favorites.Count > 0;
+
+    /// <summary>True when the GOTO tree has any node (favourite or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    public bool HasFavoriteTree => FavoriteTree.Count > 0;
 
     private void OnFavoritesChanged() => RefreshFavorites();
 
@@ -1026,11 +1063,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 : _services.RoomGraph.GetRoom(key) is { } r
                     ? r.Name
                     : key.ToString();
-            entries.Add(new FavoriteRowViewModel(key, label));
+            entries.Add(new FavoriteRowViewModel(key, label, _services.Favorites.FolderOf(key)));
         }
         entries.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
         foreach (FavoriteRowViewModel e in entries) Favorites.Add(e);
+        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, r => r.Label, _services.Favorites.AllFolders);
         OnPropertyChanged(nameof(HasFavorites));
+        OnPropertyChanged(nameof(HasFavoriteTree));
     }
 
     /// <summary>Click a favourite → walk there (stops loop/lair first).</summary>
@@ -1198,6 +1237,144 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         IReadOnlyList<RoomKey> keys = LoopExpander.ResolveCycleRoomKeys(
             row.Source.Waypoints, _services.Bfs, _services.RoomGraph, _services.Movement);
         LoopPath = keys.Count >= 2 ? keys : null;
+    }
+
+    // ----- Rail folder commands --------------------------------------
+    // Two folder namespaces back the rail: GOTO folders live in the
+    // character profile (FavoritesStore), while Loops + Lairs share one
+    // on-disk Loops directory tree (NavFolderManager). The move commands
+    // are per-section; folder CRUD is per-namespace.
+
+    /// <summary>New folder for Loops/Lairs (shared on-disk tree). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    [RelayCommand]
+    private async Task NewLoopFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _services.NavFolders.CreateFolder(full);
+    }
+
+    /// <summary>Rename a Loops/Lairs folder (and everything beneath it).</summary>
+    [RelayCommand]
+    private async Task RenameLoopFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _services.NavFolders.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>Delete a Loops/Lairs folder — its loops / lairs / sub-folders re-parent one level up.</summary>
+    [RelayCommand]
+    private async Task DeleteLoopFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _services.NavFolders.DeleteFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>New GOTO folder (profile-backed). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    [RelayCommand]
+    private async Task NewGotoFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _services.Favorites.AddFolder(full);
+    }
+
+    /// <summary>Rename a GOTO folder (and every favourite / sub-folder beneath it).</summary>
+    [RelayCommand]
+    private async Task RenameGotoFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _services.Favorites.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>Delete a GOTO folder — its favourites / sub-folders re-parent one level up.</summary>
+    [RelayCommand]
+    private async Task DeleteGotoFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _services.Favorites.RemoveFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>Move a loop into <paramref name="folder"/> (empty = root). Used by drag-drop + context-menu move.</summary>
+    public void MoveLoopToFolder(LoopRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Loops.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move an Auto-Lair setup into <paramref name="folder"/> (empty = root).</summary>
+    public void MoveSetupToFolder(LairSetupRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Lairs.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move a GOTO favourite into <paramref name="folder"/> (empty = root).</summary>
+    public void MoveFavoriteToFolder(FavoriteRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Favorites.MoveFavorite(row.Key, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a loop — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLoopToFolderPromptAsync(LoopRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move loop", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLoopToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for an Auto-Lair setup — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveSetupToFolderPromptAsync(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move setup", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveSetupToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a GOTO favourite — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveFavoriteToFolderPromptAsync(FavoriteRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move favourite", "Destination folder (blank = root).", row.Folder);
+        if (folder is null) return;
+        MoveFavoriteToFolder(row, folder);
+    }
+
+    private async Task<string?> PromptFolderNameAsync(string title, string prompt, string initial = "")
+    {
+        NavFolderNameDialogViewModel vm = new(title, prompt, initial);
+        return await _services.Dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
     }
 
     private IReadOnlyList<RoomKey> WalkLoopSteps(RoomKey from, IReadOnlyList<LoopStep> steps)
