@@ -61,8 +61,11 @@ public sealed record ItemOverlay
     /// <summary>Auto-buy this item from shops when wealth permits.</summary>
     public bool? AutoBuy { get; init; }
 
-    /// <summary>Auto-sell or stash this item at the configured shop / stash room.</summary>
+    /// <summary>Auto-sell this item at the configured shop.</summary>
     public bool? AutoSell { get; init; }
+
+    /// <summary>Auto-stash this item at the configured stash room.</summary>
+    public bool? AutoStash { get; init; }
 
     /// <summary>Cannot be taken — the combat / loot engines treat this as quest-bound.</summary>
     public bool? CannotBeTaken { get; init; }
