@@ -72,6 +72,34 @@ public sealed class ItemUseCastEffectTests : IDisposable
     }
 
     [Fact]
+    public void UseCast_PerLevelSpell_ScalesToItemRequiredLevel()
+    {
+        // Spell #8 "spear": pure per-level scaling — no flat base, only
+        // MinInc/MaxInc per level (slope 2 / 3, denominator 1). At level 0 it
+        // yields 0, so it would render no damage unless evaluated at the item's
+        // level. ReqLevel 0 means there's no spell-side clamp to lift it.
+        Seed("Spells",
+            "[{\"Number\":8,\"Name\":\"spear\",\"ReqLevel\":0,\"Cap\":50," +
+             "\"MinBase\":0,\"MaxBase\":0,\"MinInc\":2,\"MinIncLVLs\":1," +
+             "\"MaxInc\":3,\"MaxIncLVLs\":1,\"Abil-0\":1,\"AbilVal-0\":0}]");
+
+        // Item #102: a weapon (ItemType 1) whose required level is encoded as
+        // ability code 135 (MinLevel) = 45. Its use-cast (Abil 43) is spear.
+        // The cast must scale to 45: Dmg 2*45 – 3*45 = "Dmg 90–135".
+        Seed("Items",
+            "[{\"Number\":102,\"Name\":\"Nexus Spear\",\"ItemType\":1," +
+             "\"Abil-0\":135,\"AbilVal-0\":45,\"Abil-1\":43,\"AbilVal-1\":8}]");
+        _cache.SwitchSet("v1.11p");
+
+        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("102");
+
+        Assert.Contains(info, kv => kv.Key == "Casts (on use)" && kv.Value == "spear");
+        KeyValuePair<string, string> effect =
+            info.Single(kv => kv.Key.Trim() == "Effect");
+        Assert.Equal("Dmg 90–135", effect.Value);
+    }
+
+    [Fact]
     public void WeaponUseCast_StillShowsEffectDamage()
     {
         // Same spell, but cast by a weapon (ItemType 1) — the existing weapon

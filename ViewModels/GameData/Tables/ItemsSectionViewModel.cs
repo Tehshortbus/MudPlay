@@ -185,20 +185,23 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         if (doc is null)
             return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
 
-        // Spell-effect renderer for weapon use-cast / proc rows. The cast
-        // spell's effect is rendered at its own base level (level 0 →
-        // SpellCalculator clamps to ReqLevel) since the item pane has no
-        // character context. The TextBlock cast-index is a full-table scan,
-        // so build it lazily on the first cast-bearing weapon and reuse it.
+        // Spell-effect renderer for weapon use-cast / proc rows. An item's
+        // cast spell scales to the item's required level (ability code 135 =
+        // MinLevel) — that level is the spell's effective base level when the
+        // spell is delivered by the item rather than learned by a character.
+        // Per-level-only spells (no flat base, scaling purely via Min/MaxInc)
+        // therefore render zero at level 0 and only surface real damage once
+        // evaluated at the item's required level. The TextBlock cast-index is a
+        // full-table scan, so build it lazily on the first cast-bearing item.
         KnownSpellCatalog catalog = new(_cache);
         IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex = null;
-        string CastEffect(int spellNumber)
+        string CastEffect(int spellNumber, int castLevel)
         {
             if (catalog.GetFormulaByNumber(spellNumber) is not { } f) return string.Empty;
             tbIndex ??= catalog.BuildCastByTextblockIndex();
             IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> idx = tbIndex;
             string rendered = SpellEffectFormatter.Format(
-                f, level: 0,
+                f, level: castLevel,
                 resolveChain: catalog.GetFormulaByNumber,
                 resolveSpellName: catalog.GetSpellNameByNumber,
                 resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
@@ -313,6 +316,15 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             bool isWeapon = itemType == 1;
             int pendingPercent = 0;
             string? pendingTrigger = null;   // "swing" | "kill"
+
+            // Item required level (ability code 135 = MinLevel) is the base
+            // level the item's cast spell scales to. There's no dedicated
+            // level column on item records — it's encoded as an ability pair.
+            int itemCastLevel = 0;
+            for (int i = 0; i < 20; i++)
+            {
+                if (ReadInt(el, $"Abil-{i}") == 135) { itemCastLevel = ReadInt(el, $"AbilVal-{i}"); break; }
+            }
             for (int i = 0; i < 20; i++)
             {
                 int code = ReadInt(el, $"Abil-{i}");
@@ -342,9 +354,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                     otherInfo.Add(new KeyValuePair<string, string>(castLabel, ResolveSpellName(val)));
 
                     // Indented sub-row showing the cast spell's effect /
-                    // damage at base level (e.g. "Dmg 10–40"). Suppressed
-                    // when the spell yields no figure or isn't in the set.
-                    string castEffect = CastEffect(val);
+                    // damage at the item's required level (e.g. "Dmg 10–40").
+                    // Suppressed when the spell yields no figure or isn't in the set.
+                    string castEffect = CastEffect(val, itemCastLevel);
                     if (castEffect.Length > 0)
                         otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
 
@@ -365,7 +377,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 // never reaches this row.)
                 if (code == 43)
                 {
-                    string castEffect = CastEffect(val);
+                    string castEffect = CastEffect(val, itemCastLevel);
                     if (castEffect.Length > 0)
                         otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
                 }
