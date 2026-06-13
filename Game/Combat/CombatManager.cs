@@ -335,6 +335,39 @@ public sealed partial class CombatManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Force our combat target to the named monster and engage it this round,
+    /// regardless of the master auto-attack switch — the explicit-engage path
+    /// behind the <c>@kill &lt;target&gt;</c> remote command. When the named
+    /// monster is in our live room view, the round is dispatched through the
+    /// full per-round chooser so the configured weapon swap / attack-spell /
+    /// backstab selection apply exactly as they would for any single target.
+    /// When we have no room view (or the name isn't in it), we send a literal
+    /// <c>attack &lt;name&gt;</c> and let the server resolve the instance.
+    /// No-op on a blank name.
+    /// </summary>
+    public void RetargetTo(string monsterName)
+    {
+        if (string.IsNullOrWhiteSpace(monsterName)) return;
+        string target = monsterName.Trim();
+        CombatSettings settings = _readSettings();
+
+        if (_classifier.Current is { } liveObs &&
+            TryBuildCandidate(liveObs, target) is { } cand)
+        {
+            _log?.Info(LogCategory, $"@kill retarget → {cand.RawName}");
+            DispatchRoundAction(settings, cand, CountEngageable(liveObs), liveObs);
+            return;
+        }
+
+        // No room view (or the name isn't in it) — literal attack; the server
+        // resolves the instance. Set _currentTarget so the re-fire / round
+        // bookkeeping tracks it just like a chooser-dispatched engage.
+        _currentTarget = target;
+        SendAttack(settings.NormalAttackCommand, target, refire: true,
+                   refireReason: "@kill retarget");
+    }
+
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
         CombatSettings settings = _readSettings();

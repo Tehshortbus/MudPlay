@@ -293,6 +293,13 @@ public sealed class AppServices
     public Game.Remote.AttackTargetingRemoteHandler AttackTargeting { get; }
 
     /// <summary>
+    /// <c>@kill &lt;target&gt;</c> remote command — a party member asks us to
+    /// engage a named monster. Retargets <see cref="Combat"/> (forcing an
+    /// engage even with master auto-attack off) and stays silent on success.
+    /// </summary>
+    public Game.Remote.KillHandler Kill { get; }
+
+    /// <summary>
     /// Master "Auto-All" kill-switch shared by the toolbar / Action-menu
     /// button and the <c>@auto-all</c> remote command. One press snapshots
     /// + clears every wired auto-engine; the next restores the snapshot.
@@ -1411,6 +1418,11 @@ public sealed class AppServices
         // Attack Order through the same numbered options as the Combat tab.
         AttackTargeting = new Game.Remote.AttackTargetingRemoteHandler(
             RemoteCommands, Profile, Log);
+        // @kill <target> — party member asks us to engage a named monster.
+        // Lazily resolves Combat (constructed later in this ctor) so the
+        // retarget runs against the live engine at @kill time.
+        Kill = new Game.Remote.KillHandler(
+            RemoteCommands, name => Combat.RetargetTo(name), Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
