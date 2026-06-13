@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:controls="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -413,16 +414,21 @@
                         <MenuItem Header="Use Teleport"
                                   Command="{Binding UseTeleportCommand}"
                                   IsVisible="{Binding ContextTeleportSingle}"/>
-                        <MenuItem Header="Use Teleport"
-                                  ItemsSource="{Binding ContextTeleportDestinations}"
-                                  IsVisible="{Binding ContextTeleportHasMultiple}">
-                            <MenuItem.ItemContainerTheme>
-                                <ControlTheme TargetType="MenuItem" x:DataType="vm:TeleportDestinationItem">
-                                    <Setter Property="Header" Value="{Binding Label}"/>
-                                    <Setter Property="Command" Value="{Binding Command}"/>
-                                </ControlTheme>
-                            </MenuItem.ItemContainerTheme>
-                        </MenuItem>
+                        <MenuItem Header="{Binding Teleport0.Label}"
+                                  Command="{Binding Teleport0.Command}"
+                                  IsVisible="{Binding Teleport0, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                        <MenuItem Header="{Binding Teleport1.Label}"
+                                  Command="{Binding Teleport1.Command}"
+                                  IsVisible="{Binding Teleport1, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                        <MenuItem Header="{Binding Teleport2.Label}"
+                                  Command="{Binding Teleport2.Command}"
+                                  IsVisible="{Binding Teleport2, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                        <MenuItem Header="{Binding Teleport3.Label}"
+                                  Command="{Binding Teleport3.Command}"
+                                  IsVisible="{Binding Teleport3, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                        <MenuItem Header="{Binding Teleport4.Label}"
+                                  Command="{Binding Teleport4.Command}"
+                                  IsVisible="{Binding Teleport4, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
                         <Separator/>
                         <MenuItem Header="Center on Player"
                                   Command="{Binding CenterOnPlayerCommand}"/>

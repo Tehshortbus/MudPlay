@@ -1240,54 +1240,70 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public bool ContextIsFavorite => ContextRoomKey is { } k && _services.Favorites.IsFavorite(k);
 
     // ----- "Use Teleport" (right-click a CMD/teleport room) ----------
-    // A CMD room's TBInfo Action chain can teleport to one room (the
-    // common case) or several distinct rooms. "Use Teleport" just shifts
-    // the map view to where you'd land — the actual traversal command is
-    // irrelevant here. One destination → a flat menu item; many → a
-    // submenu listing each landing room.
+    // A CMD room's TBInfo Action chain teleports to one room (the common
+    // case) or several distinct rooms. "Use Teleport" just shifts the map
+    // view to where you'd land — the actual traversal command is
+    // irrelevant here. One destination → a flat "Use Teleport" item; many
+    // → one flat "Use Teleport → <room>" entry each, rendered directly in
+    // the context menu via indexed slots (mirrors the File-menu
+    // Recent0..4 pattern — no submenu/flyout).
+    private const int MaxTeleportSlots = 5;
 
     private readonly List<RoomKey> _contextTeleportDests = new();
+    private readonly TeleportDestinationItem?[] _teleportSlots =
+        new TeleportDestinationItem?[MaxTeleportSlots];
 
-    /// <summary>Submenu entries for a multi-destination teleport room (empty otherwise).</summary>
-    public ObservableCollection<TeleportDestinationItem> ContextTeleportDestinations { get; } = new();
-
-    /// <summary>True when the context room is a CMD/teleport room with at least one destination.</summary>
-    public bool ContextIsTeleport => _contextTeleportDests.Count > 0;
-
-    /// <summary>True when exactly one teleport destination — show the flat "Use Teleport" item.</summary>
+    /// <summary>True when the context room teleports to exactly one room — show the flat "Use Teleport" item.</summary>
     public bool ContextTeleportSingle => _contextTeleportDests.Count == 1;
 
-    /// <summary>True when several distinct destinations — show the "Use Teleport" submenu.</summary>
-    public bool ContextTeleportHasMultiple => _contextTeleportDests.Count > 1;
+    /// <summary>Indexed flat "Use Teleport → room" entries, populated only when the room has multiple distinct destinations.</summary>
+    public TeleportDestinationItem? Teleport0 => _teleportSlots[0];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport1 => _teleportSlots[1];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport2 => _teleportSlots[2];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport3 => _teleportSlots[3];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport4 => _teleportSlots[4];
 
     private void RebuildContextTeleports(RoomKey? value)
     {
         _contextTeleportDests.Clear();
-        ContextTeleportDestinations.Clear();
+        Array.Clear(_teleportSlots);
         if (value is { } k && Graph?.GetRoom(k) is { Cmd: > 0 } room)
         {
             foreach ((string _, RoomKey dest) in
                      TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd))
             {
-                if (_contextTeleportDests.Contains(dest)) continue;
-                _contextTeleportDests.Add(dest);
-                string label = Graph.GetRoom(dest) is { } dr
-                    ? $"{dr.Name}  ({dest})"
-                    : $"({dest})";
-                RoomKey target = dest;
-                ContextTeleportDestinations.Add(new TeleportDestinationItem(
-                    label, new RelayCommand(() => OnFloorChangeRequested(target))));
+                if (!_contextTeleportDests.Contains(dest)) _contextTeleportDests.Add(dest);
+            }
+            // Only the multi-destination case needs per-room entries — a
+            // single destination is served by the flat UseTeleport command.
+            if (_contextTeleportDests.Count > 1)
+            {
+                for (int i = 0; i < _contextTeleportDests.Count && i < MaxTeleportSlots; i++)
+                {
+                    RoomKey dest = _contextTeleportDests[i];
+                    string name = Graph.GetRoom(dest)?.Name ?? "(unknown)";
+                    _teleportSlots[i] = new TeleportDestinationItem(
+                        $"Use Teleport → {name}  ({dest})",
+                        new RelayCommand(() => OnFloorChangeRequested(dest)));
+                }
             }
         }
-        OnPropertyChanged(nameof(ContextIsTeleport));
         OnPropertyChanged(nameof(ContextTeleportSingle));
-        OnPropertyChanged(nameof(ContextTeleportHasMultiple));
+        OnPropertyChanged(nameof(Teleport0));
+        OnPropertyChanged(nameof(Teleport1));
+        OnPropertyChanged(nameof(Teleport2));
+        OnPropertyChanged(nameof(Teleport3));
+        OnPropertyChanged(nameof(Teleport4));
     }
 
     /// <summary>
     /// Single-destination "Use Teleport": shift the map to the one room
-    /// the teleport leads to. Multi-destination rooms use the submenu's
-    /// per-entry commands instead.
+    /// the teleport leads to. Multi-destination rooms use the per-room
+    /// <see cref="Teleport0"/>..<see cref="Teleport4"/> entries instead.
     /// </summary>
     [RelayCommand]
     private void UseTeleport()
