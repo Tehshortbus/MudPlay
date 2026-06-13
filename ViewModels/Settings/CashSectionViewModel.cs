@@ -247,9 +247,39 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnKeepGoldOnHandChanged(long value)                  => MarkDirty();
     partial void OnKeepPlatinumOnHandChanged(long value)              => MarkDirty();
     partial void OnKeepRunicOnHandChanged(long value)                 => MarkDirty();
-    partial void OnSkipCollectIfMakesLightChanged(bool value)         => MarkDirty();
-    partial void OnSkipCollectIfMakesMediumChanged(bool value)        => MarkDirty();
-    partial void OnSkipCollectIfMakesHeavyChanged(bool value)         => MarkDirty();
+    // ----- Encumbrance-gate cascade ---------------------------------
+    // The three gates are nested by strictness: Light (strictest) ⊃
+    // Medium ⊃ Heavy (loosest). Checking a stricter gate subsumes the
+    // looser ones — refusing a pickup that would make you Light also
+    // refuses ones that would make you Medium / Heavy — so the looser
+    // gates are forced checked and disabled. Only the strictest checked
+    // gate stays user-editable; unchecking it re-enables the next gate
+    // down (which remains checked, now the new strictest).
+
+    /// <summary>Medium gate editable only while the stricter Light gate
+    /// is unchecked; otherwise it's locked checked + disabled.</summary>
+    public bool SkipMediumEnabled => !SkipCollectIfMakesLight;
+
+    /// <summary>Heavy gate editable only while both stricter gates
+    /// (Light, Medium) are unchecked.</summary>
+    public bool SkipHeavyEnabled => !(SkipCollectIfMakesLight || SkipCollectIfMakesMedium);
+
+    partial void OnSkipCollectIfMakesLightChanged(bool value)
+    {
+        if (value) SkipCollectIfMakesMedium = true;   // cascades Heavy on
+        OnPropertyChanged(nameof(SkipMediumEnabled));
+        OnPropertyChanged(nameof(SkipHeavyEnabled));
+        MarkDirty();
+    }
+
+    partial void OnSkipCollectIfMakesMediumChanged(bool value)
+    {
+        if (value) SkipCollectIfMakesHeavy = true;
+        OnPropertyChanged(nameof(SkipHeavyEnabled));
+        MarkDirty();
+    }
+
+    partial void OnSkipCollectIfMakesHeavyChanged(bool value)          => MarkDirty();
     partial void OnCollectAfterCombatFinishedChanged(bool value)      => MarkDirty();
     partial void OnDropSmallerForLargerChanged(bool value)            => MarkDirty();
     partial void OnSelectedBankChanged(BankChoice? value)
