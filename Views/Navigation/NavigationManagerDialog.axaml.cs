@@ -40,7 +40,9 @@ public partial class NavigationManagerDialog : Window
     {
         InitializeComponent();
         WireDragDrop(WalkTreeView);
-        WalkTreeView.AddHandler(DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Tunnel);
+        // DoubleTapped only routes as Bubble, so the handler must be
+        // registered on that strategy to fire at all.
+        WalkTreeView.AddHandler(DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Bubble);
     }
 
     // Double-clicking a leaf opens its editor — same action as the Edit
