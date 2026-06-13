@@ -356,6 +356,19 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
+
+                // A CastsSp (43) on a non-weapon item — potion / wand / scroll —
+                // is a use-activated cast. The weapon branch above renders the
+                // cast spell's effect inline; do the same here so "use this item"
+                // effects surface the damage / heal they do, not just the spell
+                // name. (Weapon CastsSp is consumed by the isWeapon branch and
+                // never reaches this row.)
+                if (code == 43)
+                {
+                    string castEffect = CastEffect(val);
+                    if (castEffect.Length > 0)
+                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
+                }
             }
 
             // Dropped By — extract Monster #N(X%) tokens, resolve each
@@ -653,6 +666,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         string? name = _cache.FindNameByNumber("Classes", classId);
         return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
     }
+
+    /// <summary>Test seam: the rendered "Other Info" rows for a given item
+    /// Number, so the use-cast effect / damage rendering can be pinned without
+    /// standing up a dialog. Mirrors what the edit dialog's read-only pane shows.</summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> BuildOtherInfoForTests(string itemNumber)
+        => BuildMdbView(itemNumber).OtherInfo;
 
     /// <summary>Bundle returned by <see cref="BuildMdbView"/>.</summary>
     private sealed record ItemMdbView(
