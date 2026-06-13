@@ -18,13 +18,14 @@ public sealed class MainMenuEntryAutomationTests
 {
     private static readonly DateTime Now = new(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
 
-    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands, HangupSignal signal) Setup()
+    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands, HangupSignal signal) Setup(
+        Func<bool>? isAutoEnabled = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         GameCommands commands = new();   // defaults: "E" / "=x"
         HangupSignal signal = new();
-        MainMenuEntryAutomation engine = new(router, commands, signal)
+        MainMenuEntryAutomation engine = new(router, commands, signal, isAutoEnabled)
         {
             NowProvider = () => Now,
         };
@@ -249,6 +250,51 @@ public sealed class MainMenuEntryAutomationTests
         engine.Arm();
         DispatchMenuLine(router);
         Assert.Single(engine.LastSentForTests);
+    }
+
+    // ===== Master auto-responses gate ===================================
+
+    [Fact]
+    public void Arm_AutoResponsesOff_SkipsEntry()
+    {
+        // The master "All auto-responses" switch is off — auto-entry must
+        // stay silent even on a freshly-armed menu match (first connect or
+        // post-cleanup relog). The user types the entry command manually.
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => false);
+        engine.Arm();
+
+        DispatchMenuLine(router);
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Arm_AutoResponsesOff_ConsumesLatch_NoLateFire()
+    {
+        // The latch is consumed on the suppressed match, so flipping
+        // auto-responses back on afterwards must NOT let a stale menu line
+        // re-fire — only a fresh Arm re-opens the window.
+        bool autoOn = false;
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => autoOn);
+        engine.Arm();
+        DispatchMenuLine(router);   // suppressed, latch consumed
+        Assert.Empty(engine.LastSentForTests);
+
+        autoOn = true;
+        DispatchMenuLine(router);   // no re-arm → still nothing
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Arm_AutoResponsesOn_FiresNormally()
+    {
+        // Predicate returns true → behaves exactly as the default path.
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => true);
+        engine.Arm();
+
+        DispatchMenuLine(router);
+
+        Assert.Equal("E\r", Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
     }
 
     // ===== Post-entry startup sequence (room-gated) =====================

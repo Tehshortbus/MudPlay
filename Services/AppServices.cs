@@ -1490,7 +1490,12 @@ public sealed class AppServices
         // never trick it; ALSO skips on the first connect after a
         // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
         // read the screen before they decide to act.
-        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, HangupSignal, Log);
+        // Auto-entry obeys the master auto-responses switch: when every
+        // wired engine is off, the menu-match send is suppressed too.
+        MainMenuEntry = new Game.MainMenuEntryAutomation(
+            Router, GameCommands, HangupSignal,
+            isAutoEnabled: () => !AutoModeController.AllWiredOff,
+            log: Log);
         // Cleanup-driven proactive log-off. Subscribes to the same
         // CleanupWarningWatcher the reconnect scheduler reads; its safe
         // predicate + connection check + disconnect callback are wired by

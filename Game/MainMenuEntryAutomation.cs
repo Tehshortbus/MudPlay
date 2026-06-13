@@ -75,6 +75,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     private readonly MessageRouter _router;
     private readonly GameCommands _commands;
     private readonly HangupSignal _hangup;
+    private readonly Func<bool> _isAutoEnabled;
     private readonly LogService? _log;
     private readonly IDisposable _patternSub;
     private readonly IDisposable _roomSub;
@@ -127,6 +128,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
         MessageRouter router,
         GameCommands commands,
         HangupSignal hangup,
+        Func<bool>? isAutoEnabled = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -135,6 +137,10 @@ public sealed class MainMenuEntryAutomation : IDisposable
         _router = router;
         _commands = commands;
         _hangup = hangup;
+        // Master auto-responses gate. When it returns false, auto-entry is
+        // suppressed on every connect / post-cleanup relog. Defaults to
+        // "always on" so tests + callers that don't pass it behave as before.
+        _isAutoEnabled = isAutoEnabled ?? (() => true);
         _log = log;
         _patternSub = _router.Subscribe(KnownPatterns.MainMenuEnterRealm, OnMainMenuLine);
         // Game-entry confirmation: the first "Obvious exits:" line after
@@ -207,6 +213,16 @@ public sealed class MainMenuEntryAutomation : IDisposable
         // (gossip, telepath, room description) can't re-fire.
         if (NowProvider() >= _armedUntilUtc) return;
         _armedUntilUtc = DateTime.MinValue;
+
+        // Master gate: auto-responses off → no auto-entry, regardless of
+        // first connect or relog after cleanup. The latch is already
+        // consumed above, so a later toggle-on can't fire this stale match.
+        if (!_isAutoEnabled())
+        {
+            _log?.Log(LogSeverity.Info, "MainMenuEntry",
+                "Auto-responses off — skipping auto-entry; user types the entry command manually.");
+            return;
+        }
 
         string command = _commands.EntryCommand;
         if (string.IsNullOrEmpty(command)) return;
