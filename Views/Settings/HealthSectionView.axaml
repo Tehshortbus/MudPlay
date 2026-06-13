@@ -198,7 +198,11 @@
 
                 <!-- ============ Resting commands ============ -->
                 <TextBlock Classes="SectionHeader" Text="Resting commands"/>
-                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto" Margin="0,0,0,4">
+                <!-- Box column (514) is sized so the TextBox right edge lines
+                     up with the Mana pickers' right edge above: HP grid (390)
+                     + spacer (64) + Mana label col (160) + picker width (120)
+                     = 734 from content-left; minus the 220 label col here. -->
+                <Grid ColumnDefinitions="220,514" RowDefinitions="Auto,Auto" Margin="0,0,0,4">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
                                Text="Pre-rest / meditate command"/>
                     <TextBox Grid.Row="0" Grid.Column="1"
