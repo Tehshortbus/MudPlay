@@ -73,6 +73,21 @@ public sealed class StatParserTests
     }
 
     [Fact]
+    public void Class_SingleSpaceBeforeNextLabel_StillCaptured()
+    {
+        // Real wire layout (MMUD Reborn): the Class column is only a
+        // SINGLE space from the following "Level:" label, unlike the
+        // 2-space gutters on Name / Race. The old 2-space-only
+        // terminator silently dropped Class here, so a rerolled
+        // character's class never updated in the profile.
+        var (p, s) = Setup();
+        p.FeedTestLine("Class: Missionary Level: 2             Stealth:        65");
+        Assert.Equal("Missionary", s.Class);
+        Assert.Equal(2, s.Level);
+        Assert.Equal(65, s.Stealth);
+    }
+
+    [Fact]
     public void AlteredStatAsterisk_IsTolerated()
     {
         // Buffed Strength shows as "Strength: *80". The `\*?`
