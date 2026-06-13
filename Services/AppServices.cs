@@ -2224,8 +2224,8 @@ public sealed class AppServices
         // BFS picks it up via the Changed event before the first
         // layout build for the new BBS.
         RoomBlacklist = new RoomBlacklistStore(Log);
-        Profile.ProfileLoaded += p => RoomBlacklist.OnBbsPinApplied(p);
-        Profile.BbsPinApplied += p => RoomBlacklist.OnBbsPinApplied(p);
+        Profile.ProfileLoaded += _ => RoomBlacklist.OnBbsPinApplied(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _ => RoomBlacklist.OnBbsPinApplied(ResolveActiveBbs()?.Name);
         // BFS consults the blacklist to skip placement of hidden
         // rooms (edge still recorded → dangling stub). Cache flushes
         // on every blacklist change so the next layout build picks
@@ -2782,7 +2782,7 @@ public sealed class AppServices
     /// </summary>
     public Models.Settings.BbsProfile? ResolveActiveBbs()
     {
-        string? name = Profile.Current?.BbsName;
+        string? name = Profile.CurrentBbsName;
         if (!string.IsNullOrEmpty(name))
         {
             Models.Settings.BbsProfile? pinned = Bbs.Get(name);
@@ -2843,10 +2843,12 @@ public sealed class AppServices
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)
     {
-        if (Profile.CurrentProfileName is null) return;
-        if (Settings.Current.LastUsedProfileName == Profile.CurrentProfileName) return;
+        if (Profile.CurrentProfileName is null || Profile.CurrentBbsName is null) return;
 
-        Settings.Current.LastUsedProfileName = Profile.CurrentProfileName;
+        Models.Profile.ProfileRef loaded = new(Profile.CurrentBbsName, Profile.CurrentProfileName);
+        if (Settings.Current.LastUsedProfile == loaded) return;
+
+        Settings.Current.LastUsedProfile = loaded;
         Settings.Save();
     }
 }

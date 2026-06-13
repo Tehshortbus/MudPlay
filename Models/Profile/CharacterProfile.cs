@@ -25,13 +25,6 @@ public sealed class CharacterProfile
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the BBS this character connects to. Matches a
-    /// <c>BbsProfile.Name</c> stored under <c>Data/BBS/</c>. <c>null</c> when
-    /// the user hasn't picked a BBS yet.
-    /// </summary>
-    public string? BbsName { get; set; }
-
-    /// <summary>
     /// Per-tab settings deltas at the Character tier — same shape as
     /// <see cref="Settings.GlobalSettings.Settings"/>. Anything the user
     /// pinned to "only for this character."

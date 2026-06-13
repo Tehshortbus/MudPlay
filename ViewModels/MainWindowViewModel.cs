@@ -1853,8 +1853,8 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Resolve which BBS the connect target reads off of. Preference order:
     /// <list type="number">
-    ///   <item><description>The pin on the loaded character profile
-    ///     (<c>CharacterProfile.BbsName</c>).</description></item>
+    ///   <item><description>The BBS the loaded character profile lives under
+    ///     (<c>ProfileService.CurrentBbsName</c>).</description></item>
     ///   <item><description>The first BBS in the global list (alphabetical),
     ///     so a user on a blank draft can still click Connect without
     ///     opening Settings first.</description></item>
@@ -2428,7 +2428,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// Rebuilt from <c>GlobalSettings</c> on startup and after every
     /// profile save.
     /// </summary>
-    public ObservableCollection<string> RecentProfiles { get; } = new();
+    public ObservableCollection<ProfileRef> RecentProfiles { get; } = new();
 
     // Indexed accessors so the File menu can lay out five fixed MenuItems
     // instead of a flyout submenu. Avalonia ItemsSource inside MenuItem
@@ -2447,20 +2447,19 @@ public partial class MainWindowViewModel : ObservableObject
     public string? Recent3 => RecentLabel(3);
     public string? Recent4 => RecentLabel(4);
 
-    // ProfileNameN parallel accessors — kept as the raw profile name
-    // for the click handler. Recent0..4 are display strings only.
-    public string? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
-    public string? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
-    public string? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
-    public string? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
-    public string? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+    // ProfileNameN parallel accessors — the (bbs, char) ref for the click
+    // handler. Recent0..4 are display strings only.
+    public ProfileRef? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public ProfileRef? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public ProfileRef? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public ProfileRef? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public ProfileRef? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
 
     private string? RecentLabel(int index)
     {
         if (index < 0 || index >= RecentProfiles.Count) return null;
-        string name = RecentProfiles[index];
-        string? bbs = AppServices.Current.Profile.PeekBbs(name);
-        return string.IsNullOrEmpty(bbs) ? name : $"{name} - {bbs}";
+        ProfileRef recent = RecentProfiles[index];
+        return string.IsNullOrEmpty(recent.Bbs) ? recent.Name : $"{recent.Name} - {recent.Bbs}";
     }
 
     /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
@@ -2494,21 +2493,22 @@ public partial class MainWindowViewModel : ObservableObject
     {
         ProfileService profile = AppServices.Current.Profile;
         FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel vm =
-            new(profile.ListNames());
+            new(profile.ListAll());
 
-        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
-            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, string>(vm);
-        if (string.IsNullOrEmpty(name)) return;
+        ProfileRef? picked = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, ProfileRef>(vm);
+        if (picked is null) return;
 
         try
         {
-            profile.Load(name);
-            PromoteRecent(name);
+            profile.Load(picked.Bbs, picked.Name);
+            PromoteRecent(picked);
             SyncProfileMenuState();
         }
         catch (Exception ex)
         {
-            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+            AppServices.Current.Log.Error("Profile",
+                $"Failed to load '{picked.Name}' on '{picked.Bbs}': {ex.Message}");
         }
     }
 
@@ -2540,52 +2540,66 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        // Profiles are BBS-scoped: Save As targets the currently-pinned BBS
+        // silently. A draft with no BBS pinned yet has nowhere to live — the
+        // user must pick a BBS (Settings → BBS) before naming the profile.
+        string? bbs = profile.CurrentBbsName;
+        if (string.IsNullOrWhiteSpace(bbs))
+        {
+            AppServices.Current.Log.Warn("Profile",
+                "Pick a BBS (Settings → BBS) before saving this profile.");
+            return;
+        }
+
         FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel vm = new(
             suggestedName: profile.CurrentProfileName ?? "character",
-            exists:        profile.Exists);
+            exists:        name => profile.Exists(bbs, name));
 
         string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
             FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel, string>(vm);
         if (string.IsNullOrWhiteSpace(name)) return;
 
-        profile.SaveAs(name);
-        PromoteRecent(name);
+        profile.SaveAs(bbs, name);
+        PromoteRecent(new ProfileRef(bbs, name));
         SyncProfileMenuState();
-        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}'.");
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}' on '{bbs}'.");
     }
 
     [RelayCommand]
-    private void OpenRecentProfile(string? name)
+    private void OpenRecentProfile(ProfileRef? recent)
     {
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (!AppServices.Current.Profile.Exists(name))
+        if (recent is null) return;
+        ProfileService profile = AppServices.Current.Profile;
+        if (!profile.Exists(recent.Bbs, recent.Name))
         {
-            AppServices.Current.Log.Warn("Profile", $"Recent profile '{name}' no longer exists.");
-            RecentProfiles.Remove(name);
+            AppServices.Current.Log.Warn("Profile",
+                $"Recent profile '{recent.Name}' on '{recent.Bbs}' no longer exists.");
+            RecentProfiles.Remove(recent);
             return;
         }
         try
         {
-            AppServices.Current.Profile.Load(name);
-            PromoteRecent(name);
+            profile.Load(recent.Bbs, recent.Name);
+            PromoteRecent(recent);
             SyncProfileMenuState();
         }
         catch (Exception ex)
         {
-            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+            AppServices.Current.Log.Error("Profile",
+                $"Failed to load '{recent.Name}' on '{recent.Bbs}': {ex.Message}");
         }
     }
 
-    private void PromoteRecent(string profileName)
+    private void PromoteRecent(ProfileRef profileRef)
     {
         SettingsService settingsSvc = AppServices.Current.Settings;
         GlobalSettings settings = settingsSvc.Current;
         settings.RecentProfiles ??= new();
-        settings.RecentProfiles.Remove(profileName);
-        settings.RecentProfiles.Insert(0, profileName);
+        settings.RecentProfiles.RemoveAll(r => r == profileRef);
+        settings.RecentProfiles.Insert(0, profileRef);
         while (settings.RecentProfiles.Count > GlobalSettings.RecentProfilesLimit)
             settings.RecentProfiles.RemoveAt(settings.RecentProfiles.Count - 1);
-        settings.LastUsedProfileName = profileName;
+        settings.LastUsedProfile = profileRef;
         settingsSvc.Save();
         RebuildRecentProfiles();
     }
@@ -2593,9 +2607,9 @@ public partial class MainWindowViewModel : ObservableObject
     private void RebuildRecentProfiles()
     {
         RecentProfiles.Clear();
-        IList<string>? source = AppServices.Current.Settings.Current.RecentProfiles;
+        IList<ProfileRef>? source = AppServices.Current.Settings.Current.RecentProfiles;
         if (source is null) return;
-        foreach (string name in source) RecentProfiles.Add(name);
+        foreach (ProfileRef recent in source) RecentProfiles.Add(recent);
     }
 
     private void SyncProfileMenuState()

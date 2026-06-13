@@ -105,15 +105,15 @@ public sealed class RoomBlacklistStore
     }
 
     /// <summary>
-    /// Load the blacklist for the BBS pinned on
-    /// <paramref name="profile"/>. Called by <see cref="AppServices"/>
-    /// on <see cref="ProfileService.BbsPinApplied"/>; resets the
-    /// in-memory store when the pin clears.
+    /// Load the blacklist for the active BBS <paramref name="bbs"/>. Called
+    /// by <see cref="AppServices"/> on
+    /// <see cref="ProfileService.ProfileLoaded"/> /
+    /// <see cref="ProfileService.BbsPinApplied"/> with the resolved active
+    /// BBS name; resets the in-memory store when the pin clears
+    /// (<paramref name="bbs"/> is <c>null</c> / blank).
     /// </summary>
-    public void OnBbsPinApplied(CharacterProfile profile)
+    public void OnBbsPinApplied(string? bbs)
     {
-        ArgumentNullException.ThrowIfNull(profile);
-        string? bbs = profile.BbsName;
         if (string.IsNullOrWhiteSpace(bbs))
         {
             if (_activeBbs is not null)

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
 using FujinTerm.Models.Settings;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.Profile;
 using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
@@ -187,7 +188,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // Default selection to the loaded character's active BBS when it's
         // in the list — re-entering settings should land on the BBS the
         // user is currently dialed at.
-        string? preferred = _profile.Current?.BbsName;
+        string? preferred = _profile.CurrentBbsName;
         SelectedBbsName = preferred is not null && AvailableBbsNames.Contains(preferred)
             ? preferred
             : AvailableBbsNames.FirstOrDefault();
@@ -203,7 +204,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // pin — common case: blank draft (BbsName null) on first open with
         // one BBS in the list — mark dirty so OK stamps the pin even when
         // the user doesn't touch any field.
-        if (!string.Equals(SelectedBbsName, _profile.Current?.BbsName, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(SelectedBbsName, _profile.CurrentBbsName, StringComparison.OrdinalIgnoreCase))
         {
             Dirty();
         }
@@ -285,14 +286,20 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     /// <summary>
     /// Push the BBS section's character-side decisions onto the loaded
-    /// profile. Two slices that fire independently:
-    ///   • BbsName — pins the active BBS for the loaded character; works
-    ///     even on the blank draft so the main window's connect target
-    ///     resolves before the user has named their profile.
-    ///   • Credentials — username, password, menu-nav. Needs a named
-    ///     profile because the credential-store key embeds the char name.
-    /// Both slices end with a <see cref="ProfileService.NotifyMutated"/>
-    /// so the main window's title / Host / Port re-resolve.
+    /// profile. The BBS link is now the folder the profile lives under
+    /// (there's no <c>BbsName</c> field on the DTO), so "pinning a BBS"
+    /// means one of three things depending on profile state:
+    ///   • Blank draft → <see cref="ProfileService.PinDraftBbs"/> records
+    ///     the home BBS so the draft's first Save lands under it.
+    ///   • Named profile, same BBS → nothing to move; just re-commit
+    ///     credentials.
+    ///   • Named profile, different BBS → re-home the on-disk folder.
+    ///     No name clash in the destination → silent move now. Clash →
+    ///     prompt for a new name asynchronously and finish the move in the
+    ///     continuation (Apply itself stays synchronous; the Settings
+    ///     window may close while the prompt is up).
+    /// Every path ends in <see cref="CommitCredentials"/>, which writes the
+    /// per-BBS credential slice and fires the mutate / pin notifications.
     /// </summary>
     private void ApplyToCurrentProfile()
     {
@@ -300,14 +307,98 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         CharacterProfile? character = _profile.Current;
         if (character is null) return;
 
-        // Slice 1 — pin the active BBS onto the character profile.
-        character.BbsName = bbs;
+        // Blank draft: just record the home BBS; there's no folder to move.
+        if (_profile.CurrentProfileName is null)
+        {
+            _profile.PinDraftBbs(bbs);
+            CommitCredentials(bbs, character);
+            return;
+        }
 
-        // Slice 2 — credentials. Runs whenever any CharacterProfile is
-        // loaded (draft or named) because the inline EncryptedPassword
-        // is keyed off the per-user .credkey, not the profile name. A
-        // draft's BbsCredentials survive into the first Save and are
-        // serialised right alongside the BbsName pin.
+        // Named profile staying on its current BBS: no move needed.
+        if (string.Equals(bbs, _profile.CurrentBbsName, StringComparison.OrdinalIgnoreCase))
+        {
+            CommitCredentials(bbs, character);
+            return;
+        }
+
+        // Named profile changing BBS → re-home. A same-named profile already
+        // under the destination BBS forces a rename (async-after-Apply);
+        // otherwise the move is silent and immediate.
+        if (_profile.Exists(bbs, _profile.CurrentProfileName))
+        {
+            _ = ReHomeWithRenameAsync(bbs, character);
+        }
+        else
+        {
+            _profile.ReHome(bbs);
+            CommitCredentials(bbs, character);
+        }
+    }
+
+    /// <summary>
+    /// Re-home flow for the name-clash case: prompt the user for a fresh
+    /// profile name in the destination BBS, then move + commit. Fire-and-
+    /// forget from <see cref="ApplyToCurrentProfile"/> so Apply stays
+    /// synchronous; cancelling the prompt leaves the profile where it is.
+    /// </summary>
+    private async Task ReHomeWithRenameAsync(string bbs, CharacterProfile character)
+    {
+        string? currentName = _profile.CurrentProfileName;
+        if (currentName is null) return; // named-profile path only.
+
+        ProfileNameInputDialogViewModel vm = new(
+            suggestedName: DeriveUniqueName(bbs, currentName),
+            exists:        name => _profile.Exists(bbs, name));
+
+        string? newName = await AppServices.Current.Dialogs.OpenWindowAsync<
+            ProfileNameInputDialogViewModel, string>(vm);
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            AppServices.Current.Log.Info("Profile",
+                $"Re-home of '{currentName}' to BBS '{bbs}' cancelled — left in place.");
+            return;
+        }
+
+        try
+        {
+            _profile.ReHome(bbs, newName);
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Profile",
+                $"Re-home of '{currentName}' to BBS '{bbs}' failed: {ex.Message}");
+            return;
+        }
+        CommitCredentials(bbs, character);
+    }
+
+    /// <summary>
+    /// Suggest a destination profile name that doesn't already exist under
+    /// <paramref name="bbs"/>, so the rename prompt's default is valid. Tries
+    /// the original name first, then appends <c> 2</c>, <c> 3</c>, …
+    /// </summary>
+    private string DeriveUniqueName(string bbs, string baseName)
+    {
+        if (!_profile.Exists(bbs, baseName)) return baseName;
+        for (int n = 2; ; n++)
+        {
+            string candidate = $"{baseName} {n}";
+            if (!_profile.Exists(bbs, candidate)) return candidate;
+        }
+    }
+
+    /// <summary>
+    /// Write the per-BBS credential slice (username, password, menu-nav,
+    /// sysop flag) onto the loaded profile and persist. Runs whenever any
+    /// CharacterProfile is loaded (draft or named) because the inline
+    /// EncryptedPassword is keyed off the per-user .credkey, not the profile
+    /// name — a draft's BbsCredentials survive into its first Save. Ends in
+    /// the mutate / pin notifications so the main window's title / Host /
+    /// Port re-resolve and any Quick Connect override clears.
+    /// </summary>
+    private void CommitCredentials(string bbs, CharacterProfile character)
+    {
         character.BbsCredentials ??= new();
         if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
         {
@@ -330,10 +421,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // always fires so observers refresh either way.
         _profile.Save();
         _profile.NotifyMutated();
-
-        // The user explicitly pinned a BBS via this tab — let the main
-        // window drop any Quick Connect override even when the pinned
-        // name didn't actually change between opens.
         _profile.NotifyBbsPinApplied();
     }
 
@@ -386,7 +473,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     private void SyncDisplayToActiveBbs()
     {
-        string? activeName = _profile.Current?.BbsName;
+        string? activeName = _profile.CurrentBbsName;
         BbsProfile? active = string.IsNullOrEmpty(activeName) ? null : _bbsStore.Get(activeName);
         BbsProfile values = active ?? new BbsProfile();
         _display.FontSize = values.FontSize;

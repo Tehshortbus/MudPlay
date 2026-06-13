@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels.Profile"
+        xmlns:models="using:FujinTerm.Models.Profile"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="420"
@@ -26,7 +27,17 @@
                              ItemsSource="{Binding Profiles}"
                              SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
                              DoubleTapped="OnRowDoubleTapped"
-                             IsVisible="{Binding HasProfiles}"/>
+                             IsVisible="{Binding HasProfiles}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:ProfileRef">
+                                <TextBlock>
+                                    <Run Text="{Binding Name}"/>
+                                    <Run Text="  —  " Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                    <Run Text="{Binding Bbs}" Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                     <TextBlock Text="No saved profiles yet — use File → Save profile as… to create one."
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="11" TextWrapping="Wrap"

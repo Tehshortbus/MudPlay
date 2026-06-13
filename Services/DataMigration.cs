@@ -4,13 +4,20 @@ using System.Linq;
 namespace FujinTerm.Services;
 
 /// <summary>
-/// One-shot migration that moves legacy flat-file layouts into the
-/// per-tier folder layout (<c>Data/BBS/{name}/bbs.json</c> /
-/// <c>Data/profiles/{name}/profile.json</c>). Runs at startup before
-/// any service touches the filesystem. Idempotent — re-running on an
-/// already-migrated tree is a no-op. Defensive — never deletes the
-/// source file unless the destination write succeeded.
+/// One-shot migration that moves the legacy flat per-BBS settings file
+/// (<c>Data/BBS/{name}.json</c>) into the per-folder layout
+/// (<c>Data/BBS/{name}/bbs.json</c>). Runs at startup before any service
+/// touches the filesystem. Idempotent — re-running on an already-migrated
+/// tree is a no-op. Defensive — never deletes the source file unless the
+/// destination write succeeded.
 /// </summary>
+/// <remarks>
+/// Character profiles are NOT migrated automatically: they moved from a
+/// flat <c>Data/profiles/{char}/</c> layout to BBS-scoped
+/// <c>Data/BBS/{bbs}/profiles/{char}/</c>, and the correct destination BBS
+/// can't be inferred safely. Users relocate any pre-existing profiles by
+/// hand.
+/// </remarks>
 /// <remarks>
 /// The new layout exists so each tier can grow helper files alongside
 /// its primary settings JSON without forcing monolithic blobs (per-set
@@ -30,19 +37,11 @@ public static class DataMigration
     {
         ArgumentNullException.ThrowIfNull(log);
 
-        int moved = 0;
-        moved += MigrateLegacyFlatJsons(
+        int moved = MigrateLegacyFlatJsons(
             sourceDir: AppPaths.BbsDir,
             targetFolderResolver: AppPaths.BbsFolder,
             targetFileResolver:   AppPaths.BbsProfileFile,
             tierLabel: "BBS",
-            log: log);
-
-        moved += MigrateLegacyFlatJsons(
-            sourceDir: AppPaths.ProfilesDir,
-            targetFolderResolver: AppPaths.ProfileFolder,
-            targetFileResolver:   AppPaths.CharacterProfileFile,
-            tierLabel: "profile",
             log: log);
 
         if (moved > 0)

@@ -159,7 +159,7 @@ public sealed class RoomBlacklistStoreTests : IDisposable
             }));
 
         RoomBlacklistStore store = new();
-        store.OnBbsPinApplied(new CharacterProfile { BbsName = _scratchBbs });
+        store.OnBbsPinApplied(_scratchBbs);
 
         Assert.True(store.IsBlacklisted(new RoomKey(15, 200)));
         Assert.True(store.IsBlacklisted(new RoomKey(15, 201)));
@@ -169,7 +169,7 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     public void Add_AfterPin_PersistsToBbsFolder()
     {
         RoomBlacklistStore store = new();
-        store.OnBbsPinApplied(new CharacterProfile { BbsName = _scratchBbs });
+        store.OnBbsPinApplied(_scratchBbs);
         store.Add(new RoomKey(15, 200), "Ganghouse");
 
         string path = AppPaths.BbsRoomBlacklistFile(_scratchBbs);
@@ -186,14 +186,14 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     public void OnBbsPinApplied_ClearsStore_WhenBbsNameBlank()
     {
         RoomBlacklistStore store = new();
-        store.OnBbsPinApplied(new CharacterProfile { BbsName = _scratchBbs });
+        store.OnBbsPinApplied(_scratchBbs);
         store.Add(new RoomKey(15, 1), "x");
         Assert.True(store.IsBlacklisted(new RoomKey(15, 1)));
 
         // Unpinning clears in-memory state — the new profile is fresh.
         int fires = 0;
         store.Changed += () => fires++;
-        store.OnBbsPinApplied(new CharacterProfile { BbsName = null });
+        store.OnBbsPinApplied(null);
 
         Assert.False(store.IsBlacklisted(new RoomKey(15, 1)));
         Assert.Equal(1, fires);
@@ -209,7 +209,7 @@ public sealed class RoomBlacklistStoreTests : IDisposable
             "{ not valid json ]");
 
         RoomBlacklistStore store = new();
-        store.OnBbsPinApplied(new CharacterProfile { BbsName = _scratchBbs });
+        store.OnBbsPinApplied(_scratchBbs);
 
         Assert.Empty(store.Blacklisted);
     }
