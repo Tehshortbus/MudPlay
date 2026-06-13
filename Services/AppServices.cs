@@ -911,6 +911,16 @@ public sealed class AppServices
     public Game.Cash.StashRoomManager Stash { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 9 PR 9.E follow-up — auto-deposit reroute. Subscribes to
+    /// <see cref="Game.Cash.CashManager.AutoDepositRequested"/>; when a
+    /// wealth / coin gate crosses while a loop or auto-lair is running,
+    /// detours to the configured bank / stash room, offloads the excess
+    /// coin (<c>dep</c> for a bank, <see cref="Stash"/>'s <c>hide</c> for
+    /// a stash room), walks back, and restarts the captured engine.
+    /// </summary>
+    public Game.Cash.AutoDepositManager AutoDeposit { get; private set; } = null!;
+
+    /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
     /// per-monster automation behavior (relationship / priority /
     /// NotHostile / DontBackstab). Realm flavor is auto-picked from
@@ -2284,6 +2294,24 @@ public sealed class AppServices
         // from Settings → Other by ApplyOtherFromActiveProfile on load.
         PartyComeback = new Game.Remote.PartyComebackManager(
             RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Log);
+
+        // Phase 9 PR 9.E follow-up — auto-deposit reroute. Built here
+        // (after the movement engines) so it can snapshot / stop / restart
+        // the running Loop or Auto-Lair when CashManager's gate crosses.
+        // Stop-and-restart, NOT a coordinator gate — a gate would block the
+        // detour walk itself (same reasoning as PartyComebackManager). The
+        // wire sender for the bank `dep` is bound by MainWindowViewModel
+        // after telnet connects, alongside the Cash / Stash senders.
+        AutoDeposit = new Game.Cash.AutoDepositManager(
+            Cash,
+            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            getSnapshot: () => Inventory.Snapshot,
+            profile: Profile,
+            tracker: RoomTracker,
+            walker: Walker,
+            loopRunner: LoopRunner,
+            autoLair: AutoLair,
+            log: Log);
 
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately
