@@ -59,14 +59,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.NavFolders.FoldersChanged += OnNavFoldersChanged;
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
-        RefreshSetups();
+        RefreshLoopsAndLairs();
         Graph = _services.RoomGraph;
         EnsureLairTickRunning();
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
         RefreshFromWalker();
         RefreshLayout();
-        RefreshLoops();
         RefreshFavorites();
         RefreshCrawlerChords();
         RefreshTeleportRooms();
@@ -106,11 +105,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // Loops + lairs share the on-disk folder tree; a folder add / rename /
     // delete from either the rail or the Manage dialog rebuilds both trees
     // so an empty folder (or a moved-contents reparent) shows up at once.
-    private void OnNavFoldersChanged()
-    {
-        RefreshLoops();
-        RefreshSetups();
-    }
+    private void OnNavFoldersChanged() => RefreshLoopsAndLairs();
 
     private void OnMacrosCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         => RefreshCrawlerChords();
@@ -748,64 +743,65 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         SearchQuery = string.Empty;
     }
 
-    // ----- Loops list (PR 7.13) -------------------------------------
+    // ----- Loops + Auto-Lair setups (combined, PR 7.13 / 7.20) ------
 
-    /// <summary>Loops in the active BBS (flat backing list — source the folder tree is grouped from).</summary>
+    /// <summary>Loops in the active BBS (flat backing list).</summary>
     public ObservableCollection<LoopRowViewModel> Loops { get; } = new();
 
-    /// <summary>Folder-grouped Loops tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="LoopRowViewModel"/>).</summary>
-    public ObservableCollection<object> LoopTree { get; } = new();
+    /// <summary>
+    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active BBS
+    /// (flat backing list).
+    /// </summary>
+    public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
 
-    public bool HasLoops => Loops.Count > 0;
+    /// <summary>
+    /// Folder-grouped tree mixing <see cref="NavFolderNodeViewModel"/>
+    /// folders with both loop (<see cref="LoopRowViewModel"/>) and
+    /// Auto-Lair (<see cref="LairSetupRowViewModel"/>) leaves. Loops and
+    /// lairs share one on-disk Loops directory, so the rail renders them
+    /// together as a single combined list under one header.
+    /// </summary>
+    public ObservableCollection<object> NavTree { get; } = new();
 
-    /// <summary>True when the Loops tree has any node (loop or empty folder).</summary>
-    public bool HasLoopTree => LoopTree.Count > 0;
+    /// <summary>True when the combined tree has any node (leaf or empty folder).</summary>
+    public bool HasNavTree => NavTree.Count > 0;
 
-    private void OnLoopsChanged() => RefreshLoops();
+    private void OnLoopsChanged() => RefreshLoopsAndLairs();
 
-    private void RefreshLoops()
+    private void OnSetupsChanged() => RefreshLoopsAndLairs();
+
+    private void RefreshLoopsAndLairs()
     {
         Loops.Clear();
         foreach (Loop loop in _services.Loops.Loops)
             Loops.Add(new LoopRowViewModel(loop));
-        // Loops + lairs share the on-disk folder tree, so both seed from
-        // the same NavFolderManager folder set.
-        NavTreeBuilder.Sync(LoopTree, Loops, r => r.Source.Folder, r => r.Name, _services.NavFolders.AllFolders);
-        OnPropertyChanged(nameof(HasLoops));
-        OnPropertyChanged(nameof(HasLoopTree));
-    }
-
-    // ----- Auto-Lair Setups list (PR 7.20) --------------------------
-
-    /// <summary>
-    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active
-    /// BBS — rendered alongside <see cref="Loops"/> in the rail's
-    /// "LOOPS + AUTO-LAIRS" section. Ordered alphabetically by
-    /// <see cref="LairManager.Setups"/>.
-    /// </summary>
-    public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
-
-    /// <summary>Folder-grouped Setups tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="LairSetupRowViewModel"/>).</summary>
-    public ObservableCollection<object> SetupTree { get; } = new();
-
-    public bool HasSetups => Setups.Count > 0;
-
-    /// <summary>True when the Setups tree has any node (setup or empty folder).</summary>
-    public bool HasSetupTree => SetupTree.Count > 0;
-
-    private void OnSetupsChanged() => RefreshSetups();
-
-    private void RefreshSetups()
-    {
         Setups.Clear();
         foreach (Models.Profile.LairSetup s in _services.Lairs.Setups)
             Setups.Add(new LairSetupRowViewModel(s));
-        // Loops + lairs share the on-disk folder tree, so both seed from
-        // the same NavFolderManager folder set.
-        NavTreeBuilder.Sync(SetupTree, Setups, r => r.Source.Folder, r => r.Name, _services.NavFolders.AllFolders);
-        OnPropertyChanged(nameof(HasSetups));
-        OnPropertyChanged(nameof(HasSetupTree));
+
+        // Both leaf kinds feed one tree keyed off the shared
+        // NavFolderManager folder set; NavTreeBuilder orders folders
+        // first then leaves alphabetically by type-aware sort key.
+        var rows = new List<object>(Setups.Count + Loops.Count);
+        rows.AddRange(Setups);
+        rows.AddRange(Loops);
+        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, NameOfNavRow, _services.NavFolders.AllFolders);
+        OnPropertyChanged(nameof(HasNavTree));
     }
+
+    private static string FolderOfNavRow(object row) => row switch
+    {
+        LoopRowViewModel l => l.Source.Folder,
+        LairSetupRowViewModel s => s.Source.Folder,
+        _ => string.Empty,
+    };
+
+    private static string NameOfNavRow(object row) => row switch
+    {
+        LoopRowViewModel l => l.Name,
+        LairSetupRowViewModel s => s.Name,
+        _ => string.Empty,
+    };
 
     /// <summary>
     /// Run a saved setup — wipes <see cref="AutoLairManager"/>'s current

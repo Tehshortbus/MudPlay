@@ -827,18 +827,11 @@
                                     <TextBlock Classes="RailSectionHeader Goto" Text="GOTO" Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="2" HorizontalAlignment="Stretch">
-                                    <!-- + Folder: GOTO folders live in the
-                                         character profile (not on disk like
-                                         loops/lairs). Creates a new empty
-                                         folder at the root; nested folders
-                                         come from a folder node's right-click
-                                         "New subfolder…". -->
-                                    <Button Content="+ Folder"
-                                            FontSize="10"
-                                            Padding="8,2"
-                                            HorizontalAlignment="Left"
-                                            Command="{Binding NewGotoFolderCommand}"
-                                            ToolTip.Tip="Create a new GOTO folder at the root."/>
+                                    <!-- GOTO folders live in the character profile
+                                         (not on disk like loops/lairs). There is no
+                                         "+ Folder" button: a root folder is created by
+                                         right-clicking empty tree space → "New folder…",
+                                         a nested one from a folder node's "New subfolder…". -->
                                     <!-- Empty-state hint — cap MaxWidth +
                                          keep wrapping so a long string
                                          can't push the rail wider than
@@ -855,8 +848,23 @@
                                               ItemsSource="{Binding FavoriteTree}"
                                               IsVisible="{Binding HasFavoriteTree}"
                                               Background="Transparent"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                               DragDrop.AllowDrop="True">
+                                        <!-- Right-click empty tree space → create a
+                                             root-level GOTO folder (null parent). -->
+                                        <TreeView.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="New folder…"
+                                                          Command="{Binding NewGotoFolderCommand}"/>
+                                            </ContextMenu>
+                                        </TreeView.ContextMenu>
                                         <TreeView.Styles>
+                                            <!-- Stretch + no horizontal scroll keeps long
+                                                 favourite labels from pushing the ✎ / ✕
+                                                 buttons off the rail edge. -->
+                                            <Style Selector="TreeViewItem">
+                                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            </Style>
                                             <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
                                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                                             </Style>
@@ -964,48 +972,41 @@
                                     </TextBlock>
                                 </Expander.Header>
                                 <StackPanel Spacing="2" HorizontalAlignment="Stretch">
-                                    <!-- + Folder: loops + lairs share ONE on-disk
-                                         Loops directory tree, so a folder created
-                                         here shows under both the Auto-Lair and
-                                         Loops trees below. -->
-                                    <Button Content="+ Folder"
-                                            FontSize="10"
-                                            Padding="8,2"
-                                            HorizontalAlignment="Left"
-                                            Command="{Binding NewLoopFolderCommand}"
-                                            ToolTip.Tip="Create a new folder at the root (shared between loops and Auto-Lair setups)."/>
-                                    <TextBlock Text="No auto-lair setups saved on this BBS."
+                                    <TextBlock Text="No loops or Auto-Lair setups saved on this BBS."
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"
                                                TextWrapping="Wrap"
                                                MaxWidth="250"
                                                HorizontalAlignment="Left"
-                                               IsVisible="{Binding !HasSetupTree}"/>
-                                    <TextBlock Text="No loops saved on this BBS."
-                                               Foreground="{StaticResource ChromeFgMutedBrush}"
-                                               FontSize="11"
-                                               TextWrapping="Wrap"
-                                               MaxWidth="250"
-                                               HorizontalAlignment="Left"
-                                               IsVisible="{Binding !HasLoopTree}"/>
-                                    <!-- Saved Auto-Lair setups — amber accent matching the
-                                         section header's "AUTO-LAIRS" run. Renders ABOVE
-                                         loops per UX direction: lairs come first in scan
-                                         order since they're the primary surface this
-                                         section is named after when the user is mid
-                                         farming run. -->
-                                    <TreeView Name="SetupTreeView"
-                                              ItemsSource="{Binding SetupTree}"
-                                              IsVisible="{Binding HasSetupTree}"
+                                               IsVisible="{Binding !HasNavTree}"/>
+                                    <!-- Loops + Auto-Lair setups share ONE on-disk Loops
+                                         directory tree and render as a single combined
+                                         list: Auto-Lair leaves amber, loop leaves green.
+                                         Folder create / rename / delete is reachable via
+                                         the folder-node context menu here (and the Manage
+                                         dialog); there is no "+ Folder" button on the rail. -->
+                                    <TreeView Name="NavTreeView"
+                                              ItemsSource="{Binding NavTree}"
+                                              IsVisible="{Binding HasNavTree}"
                                               Background="Transparent"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                               DragDrop.AllowDrop="True">
                                         <TreeView.Styles>
+                                            <!-- Stretch + no horizontal scroll constrains each
+                                                 row to the rail width so the Load / Run buttons
+                                                 stay on-screen instead of being pushed off by a
+                                                 long loop / setup name. -->
+                                            <Style Selector="TreeViewItem">
+                                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            </Style>
                                             <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
                                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
                                             </Style>
                                         </TreeView.Styles>
                                         <TreeView.DataTemplates>
-                                            <!-- Folder node — recurses via Children. -->
+                                            <!-- Folder node — recurses via Children. Loop +
+                                                 lair folders are one on-disk tree, so these
+                                                 commands mutate both leaf kinds at once. -->
                                             <TreeDataTemplate DataType="vm:NavFolderNodeViewModel"
                                                               ItemsSource="{Binding Children}">
                                                 <Grid ColumnDefinitions="Auto,*" Background="Transparent">
@@ -1035,10 +1036,10 @@
                                                     </Grid.ContextMenu>
                                                 </Grid>
                                             </TreeDataTemplate>
-                                            <!-- Auto-Lair setup leaf. -->
+                                            <!-- Auto-Lair setup leaf — amber accent. -->
                                             <DataTemplate DataType="vm:LairSetupRowViewModel">
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4" Background="Transparent">
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" MinWidth="0">
                                                         <TextBlock Text="{Binding Name}"
                                                                    FontSize="11"
                                                                    Foreground="{StaticResource AccentAmberBrush}"
@@ -1079,61 +1080,13 @@
                                                     </Grid.ContextMenu>
                                                 </Grid>
                                             </DataTemplate>
-                                        </TreeView.DataTemplates>
-                                    </TreeView>
-
-                                    <TreeView Name="LoopTreeView"
-                                              ItemsSource="{Binding LoopTree}"
-                                              IsVisible="{Binding HasLoopTree}"
-                                              Background="Transparent"
-                                              DragDrop.AllowDrop="True">
-                                        <TreeView.Styles>
-                                            <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
-                                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                                            </Style>
-                                        </TreeView.Styles>
-                                        <TreeView.DataTemplates>
-                                            <!-- Folder node — recurses via Children. Shares
-                                                 the loop/lair folder commands (one on-disk
-                                                 tree), so creating / renaming here mutates
-                                                 the Auto-Lair tree too. -->
-                                            <TreeDataTemplate DataType="vm:NavFolderNodeViewModel"
-                                                              ItemsSource="{Binding Children}">
-                                                <Grid ColumnDefinitions="Auto,*" Background="Transparent">
-                                                    <TextBlock Grid.Column="0"
-                                                               Text="📁"
-                                                               FontSize="11"
-                                                               Margin="0,0,4,0"
-                                                               VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding Name}"
-                                                               FontSize="11"
-                                                               FontWeight="SemiBold"
-                                                               VerticalAlignment="Center"
-                                                               TextTrimming="CharacterEllipsis"/>
-                                                    <Grid.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="New subfolder…"
-                                                                      Command="{Binding $parent[TreeView].((vm:NavigationViewModel)DataContext).NewLoopFolderCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <MenuItem Header="Rename folder…"
-                                                                      Command="{Binding $parent[TreeView].((vm:NavigationViewModel)DataContext).RenameLoopFolderCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                            <MenuItem Header="Delete folder"
-                                                                      Command="{Binding $parent[TreeView].((vm:NavigationViewModel)DataContext).DeleteLoopFolderCommand}"
-                                                                      CommandParameter="{Binding}"/>
-                                                        </ContextMenu>
-                                                    </Grid.ContextMenu>
-                                                </Grid>
-                                            </TreeDataTemplate>
-                                            <!-- Loop leaf. Name on top (ellipsised when long
-                                                 so the rail can't be stretched by overlong
-                                                 loop labels); start-room key + room count on
-                                                 a smaller second line. Load + Run stay aligned
-                                                 on the right at any name length. -->
+                                            <!-- Loop leaf — green accent. Name ellipsised when
+                                                 long; start-room key + room count on a smaller
+                                                 second line. Load + Run stay right-aligned at
+                                                 any name length. -->
                                             <DataTemplate DataType="vm:LoopRowViewModel">
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4" Background="Transparent">
-                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" MinWidth="0">
                                                         <TextBlock Text="{Binding Name}"
                                                                    FontSize="11"
                                                                    Foreground="{StaticResource AccentGreenBrush}"
@@ -1147,9 +1100,6 @@
                                                             <Run Text="{Binding SubLabel}"/>
                                                         </TextBlock>
                                                     </StackPanel>
-                                                    <!-- Load: enters LoopBuild mode pre-seeded with this
-                                                         loop's waypoints so the user can preview the
-                                                         red overlay / edit before running. -->
                                                     <Button Grid.Column="1"
                                                             Content="Load" FontSize="10"
                                                             Padding="8,2"

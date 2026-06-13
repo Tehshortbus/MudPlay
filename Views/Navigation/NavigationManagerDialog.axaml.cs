@@ -39,8 +39,7 @@ public partial class NavigationManagerDialog : Window
     public NavigationManagerDialog()
     {
         InitializeComponent();
-        WireDragDrop(LoopTreeView);
-        WireDragDrop(LairTreeView);
+        WireDragDrop(WalkTreeView);
     }
 
     private void WireDragDrop(TreeView tree)

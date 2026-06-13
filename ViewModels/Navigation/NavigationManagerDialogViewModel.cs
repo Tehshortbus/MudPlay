@@ -60,11 +60,14 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     /// <summary>Flat backing rows for the Auto-Lair pane — source the tree is grouped from + drives <see cref="HasLairSetups"/>.</summary>
     public ObservableCollection<ManagerLairSetupRow> LairSetups { get; } = new();
 
-    /// <summary>Folder-grouped Loops tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="ManagerLoopRow"/>), bound by the dialog's TreeView.</summary>
-    public ObservableCollection<object> LoopTree { get; } = new();
-
-    /// <summary>Folder-grouped Auto-Lair tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="ManagerLairSetupRow"/>).</summary>
-    public ObservableCollection<object> LairTree { get; } = new();
+    /// <summary>
+    /// Single folder-grouped tree mixing <see cref="NavFolderNodeViewModel"/>
+    /// folders with both <see cref="ManagerLairSetupRow"/> and
+    /// <see cref="ManagerLoopRow"/> leaves — loops and lairs share one
+    /// list (and one on-disk folder layout), so the manager shows them
+    /// together. Lairs sort ahead of loops within a folder (added first).
+    /// </summary>
+    public ObservableCollection<object> WalkTree { get; } = new();
 
     /// <summary>
     /// In-progress build session from the Navigation window, or null
@@ -85,11 +88,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     public bool HasLoops => Loops.Count > 0;
     public bool HasLairSetups => LairSetups.Count > 0;
 
-    /// <summary>True when the Loops tree has any node (loop or empty folder) — drives tree-vs-placeholder visibility.</summary>
-    public bool HasLoopTree => LoopTree.Count > 0;
-
-    /// <summary>True when the Auto-Lair tree has any node (setup or empty folder).</summary>
-    public bool HasLairTree => LairTree.Count > 0;
+    /// <summary>True when the combined tree has any node (loop, lair, or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    public bool HasWalkTree => WalkTree.Count > 0;
 
     public bool HasDraft => Draft is not null;
 
@@ -159,9 +159,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         Loops.Clear();
         foreach (Loop loop in _loops.Loops.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
             Loops.Add(new ManagerLoopRow(loop));
-        NavTreeBuilder.Sync(LoopTree, Loops, r => r.Source.Folder, r => r.Name, FolderSeed);
         OnPropertyChanged(nameof(HasLoops));
-        OnPropertyChanged(nameof(HasLoopTree));
+        RebuildWalkTree();
     }
 
     private void RebuildLairSetups()
@@ -169,10 +168,37 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         LairSetups.Clear();
         foreach (LairSetup setup in _lairSetups.Setups)
             LairSetups.Add(new ManagerLairSetupRow(setup));
-        NavTreeBuilder.Sync(LairTree, LairSetups, r => r.Source.Folder, r => r.Name, FolderSeed);
         OnPropertyChanged(nameof(HasLairSetups));
-        OnPropertyChanged(nameof(HasLairTree));
+        RebuildWalkTree();
     }
+
+    /// <summary>
+    /// Rebuild the single combined tree from both backing lists. Lairs
+    /// are added before loops so they sort ahead within each folder; the
+    /// TreeView picks a leaf DataTemplate by runtime row type.
+    /// </summary>
+    private void RebuildWalkTree()
+    {
+        var rows = new List<object>(LairSetups.Count + Loops.Count);
+        rows.AddRange(LairSetups);
+        rows.AddRange(Loops);
+        NavTreeBuilder.Sync<object>(WalkTree, rows, FolderOfWalkRow, NameOfWalkRow, FolderSeed);
+        OnPropertyChanged(nameof(HasWalkTree));
+    }
+
+    private static string FolderOfWalkRow(object row) => row switch
+    {
+        ManagerLoopRow l      => l.Source.Folder,
+        ManagerLairSetupRow s => s.Source.Folder,
+        _                     => string.Empty,
+    };
+
+    private static string NameOfWalkRow(object row) => row switch
+    {
+        ManagerLoopRow l      => l.Name,
+        ManagerLairSetupRow s => s.Name,
+        _                     => string.Empty,
+    };
 
     // ----- Loop row commands -----------------------------------------
 

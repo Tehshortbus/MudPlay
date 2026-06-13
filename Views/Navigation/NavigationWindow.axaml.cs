@@ -56,8 +56,7 @@ public partial class NavigationWindow : Window
         // wiring; the drop handler routes by leaf type to the matching
         // VM move method.
         if (this.FindControl<TreeView>("FavoriteTreeView") is { } favTree) WireRowDragDrop(favTree);
-        if (this.FindControl<TreeView>("SetupTreeView")    is { } setupTree) WireRowDragDrop(setupTree);
-        if (this.FindControl<TreeView>("LoopTreeView")     is { } loopTree) WireRowDragDrop(loopTree);
+        if (this.FindControl<TreeView>("NavTreeView")      is { } navTree) WireRowDragDrop(navTree);
 
         // Right-click → "Center on Player" routes through a VM event so
         // the command can sit on the VM (where the rest of the context-
