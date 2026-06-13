@@ -33,7 +33,6 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
     [ObservableProperty] private IReadOnlyList<DeathRecord> _records = Array.Empty<DeathRecord>();
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(WalkToRoomCommand))]
     [NotifyCanExecuteChangedFor(nameof(RecoverNowCommand))]
     [NotifyCanExecuteChangedFor(nameof(MarkRecoveredCommand))]
     [NotifyCanExecuteChangedFor(nameof(ViewEntryCommand))]
@@ -90,9 +89,6 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
         OnPropertyChanged(nameof(AutoEquip));
         ClearAllRecoveredCommand.NotifyCanExecuteChanged();
     }
-
-    [RelayCommand(CanExecute = nameof(CanRecoverSelected))]
-    private void WalkToRoom() { if (SelectedRecord is { } r) _recovery.WalkToDeathRoom(r); }
 
     [RelayCommand(CanExecute = nameof(CanRecoverSelected))]
     private void RecoverNow() { if (SelectedRecord is { } r) _recovery.RecoverNow(r); }
