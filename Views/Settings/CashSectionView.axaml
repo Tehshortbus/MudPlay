@@ -79,10 +79,10 @@
                               Width="180" HorizontalAlignment="Left"/>
                 </Grid>
 
-                <!-- ============ Auto-deposit ============ -->
-                <TextBlock Classes="SectionHeader" Text="Auto-deposit"/>
+                <!-- ============ Auto-Deposit and Stashing ============ -->
+                <TextBlock Classes="SectionHeader" Text="Auto-Deposit and Stashing"/>
 
-                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto">
+                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
                                Text="Auto-deposit if wealth exceeds"/>
                     <NumericUpDown Grid.Row="0" Grid.Column="1"
@@ -91,15 +91,8 @@
                                    ToolTip.Tip="0 = disabled. Triggers AutoDepositRequested once per crossing; re-arms when wealth drops back below."/>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel"
-                               Text="Minimum cash on hand"/>
-                    <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                   Value="{Binding MinimumCashOnHand, Mode=TwoWay}"
-                                   Minimum="0" Maximum="100000000" Width="200" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Don't deposit below this floor. Honoured by the (follow-up) auto-deposit walker reroute."/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
                                Text="Bank"/>
-                    <ComboBox Grid.Row="2" Grid.Column="1"
+                    <ComboBox Grid.Row="1" Grid.Column="1"
                               ItemsSource="{Binding BankChoices}"
                               SelectedItem="{Binding SelectedBank, Mode=TwoWay}"
                               DisplayMemberBinding="{Binding Display}"
@@ -108,29 +101,10 @@
                               ToolTip.Tip="Populated from the active game-data Shops table where ShopType == 7 (banks), plus every room you've toggled as a stash on the Navigation map."/>
                 </Grid>
 
-                <!-- ============ Collection Rules ============ -->
-                <TextBlock Classes="SectionHeader" Text="Collection Rules"/>
-
-                <CheckBox Content="Don't collect if it makes you Light"
-                          IsChecked="{Binding SkipCollectIfMakesLight, Mode=TwoWay}"
-                          ToolTip.Tip="Skip pickups that would push the character into the Light bracket."/>
-                <CheckBox Content="Don't collect if it makes you Medium"
-                          IsChecked="{Binding SkipCollectIfMakesMedium, Mode=TwoWay}"
-                          IsEnabled="{Binding SkipMediumEnabled}"
-                          ToolTip.Tip="Skip pickups that would push past Light → Medium. Auto-checked + locked while the stricter Light gate is on."/>
-                <CheckBox Content="Don't collect if it makes you Heavy"
-                          IsChecked="{Binding SkipCollectIfMakesHeavy, Mode=TwoWay}"
-                          IsEnabled="{Binding SkipHeavyEnabled}"
-                          ToolTip.Tip="Skip pickups that would push past Medium → Heavy. Auto-checked + locked while a stricter gate (Light or Medium) is on."/>
-                <CheckBox Content="Collect after combat finished (Cash and Items)"
-                          IsChecked="{Binding CollectAfterCombatFinished, Mode=TwoWay}"
-                          ToolTip.Tip="Defer pickups until the room's combat is over before sending get commands. Shared by Cash auto-collect and the Items auto-get engine."/>
-                <CheckBox Content="Drop smaller currency to make room for larger Collect-flagged coin"
-                          IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
-                          ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>
-
-                <!-- ============ Stash rooms — per-currency keep ============ -->
-                <TextBlock Classes="SectionHeader" Text="Stash rooms — keep on hand"/>
+                <!-- Per-currency keep-on-hand floor — honoured by BOTH the
+                     auto-deposit reroute and stash-room `hide N <coin>`. -->
+                <TextBlock Classes="FieldLabel" Margin="0,8,0,2"
+                           Text="Keep on hand (applies to depositing and stashing)"/>
 
                 <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Keep copper"/>
@@ -158,6 +132,27 @@
                                    Value="{Binding KeepRunicOnHand, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000000" Width="180" HorizontalAlignment="Left"/>
                 </Grid>
+
+                <!-- ============ Collection Rules ============ -->
+                <TextBlock Classes="SectionHeader" Text="Collection Rules"/>
+
+                <CheckBox Content="Don't collect if it makes you Light"
+                          IsChecked="{Binding SkipCollectIfMakesLight, Mode=TwoWay}"
+                          ToolTip.Tip="Skip pickups that would push the character into the Light bracket."/>
+                <CheckBox Content="Don't collect if it makes you Medium"
+                          IsChecked="{Binding SkipCollectIfMakesMedium, Mode=TwoWay}"
+                          IsEnabled="{Binding SkipMediumEnabled}"
+                          ToolTip.Tip="Skip pickups that would push past Light → Medium. Auto-checked + locked while the stricter Light gate is on."/>
+                <CheckBox Content="Don't collect if it makes you Heavy"
+                          IsChecked="{Binding SkipCollectIfMakesHeavy, Mode=TwoWay}"
+                          IsEnabled="{Binding SkipHeavyEnabled}"
+                          ToolTip.Tip="Skip pickups that would push past Medium → Heavy. Auto-checked + locked while a stricter gate (Light or Medium) is on."/>
+                <CheckBox Content="Collect after combat finished (Cash and Items)"
+                          IsChecked="{Binding CollectAfterCombatFinished, Mode=TwoWay}"
+                          ToolTip.Tip="Defer pickups until the room's combat is over before sending get commands. Shared by Cash auto-collect and the Items auto-get engine."/>
+                <CheckBox Content="Drop smaller currency to make room for larger Collect-flagged coin"
+                          IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
+                          ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>
 
             </StackPanel>
         </Grid>

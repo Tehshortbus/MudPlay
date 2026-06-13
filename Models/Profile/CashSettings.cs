@@ -47,35 +47,31 @@ public sealed class CashSettings
     /// </summary>
     public string BankRoomKey { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Minimum cash to keep on hand after a deposit. Honoured by the
-    /// (follow-up) auto-deposit flow. v1 just stores the value.
-    /// </summary>
-    public long MinimumCashOnHand { get; set; }
+    // ----- Per-currency minimum to keep on hand ---------------------
+    // The floor the character keeps after offloading coin, applied to
+    // BOTH banking (auto-deposit) and stashing. StashRoomManager reads
+    // these at entry into a marked stash room: held - keep is the
+    // amount dumped via `hide N <coin>`; the auto-deposit reroute uses
+    // the same floor for `deposit`. Defaults all 0 = offload everything.
 
-    // ----- Per-currency keep-on-hand for stash rooms ----------------
-    // StashRoomManager reads these at entry into a marked stash
-    // room: held - keep is the amount dumped via `hide N <coin>`.
-    // Defaults all 0 = dump everything held at every stash room.
-
-    /// <summary>How much copper to leave in hand at a stash room.
-    /// Default 0 — dump all.</summary>
+    /// <summary>Copper to keep on hand when depositing / stashing.
+    /// Default 0 — offload all.</summary>
     public long KeepCopperOnHand { get; set; }
 
-    /// <summary>How much silver to leave in hand at a stash room.
-    /// Default 0 — dump all.</summary>
+    /// <summary>Silver to keep on hand when depositing / stashing.
+    /// Default 0 — offload all.</summary>
     public long KeepSilverOnHand { get; set; }
 
-    /// <summary>How much gold to leave in hand at a stash room.
-    /// Default 0 — dump all.</summary>
+    /// <summary>Gold to keep on hand when depositing / stashing.
+    /// Default 0 — offload all.</summary>
     public long KeepGoldOnHand { get; set; }
 
-    /// <summary>How much platinum to leave in hand at a stash room.
-    /// Default 0 — dump all.</summary>
+    /// <summary>Platinum to keep on hand when depositing / stashing.
+    /// Default 0 — offload all.</summary>
     public long KeepPlatinumOnHand { get; set; }
 
-    /// <summary>How much runic to leave in hand at a stash room.
-    /// Default 0 — dump all.</summary>
+    /// <summary>Runic to keep on hand when depositing / stashing.
+    /// Default 0 — offload all.</summary>
     public long KeepRunicOnHand { get; set; }
 
     // ----- Encumbrance + cascade (persisted; engines deferred) -------

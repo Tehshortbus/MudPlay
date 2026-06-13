@@ -46,7 +46,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         "Cash", "Coin", "Currency",
         "Copper", "Silver", "Gold", "Platinum", "Runic",
         "Collect", "Ignore", "Discard",
-        "Auto-deposit", "Bank", "Minimum cash on hand", "Wealth threshold",
+        "Auto-deposit", "Stashing", "Bank", "Keep on hand", "Wealth threshold",
     };
 
     // ----- Per-currency policy --------------------------------------
@@ -60,7 +60,6 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     // ----- Auto-deposit ---------------------------------------------
 
     [ObservableProperty] private long _autoDepositIfWealthExceeds;
-    [ObservableProperty] private long _minimumCashOnHand;
     [ObservableProperty] private string _bankRoomKey = string.Empty;
 
     /// <summary>Dropdown items for the Bank picker — banks from the
@@ -70,7 +69,9 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private BankChoice? _selectedBank;
 
-    // ----- Per-currency keep-on-hand for stash rooms ---------------
+    // ----- Per-currency keep-on-hand (banking + stashing) ----------
+    // The floor kept after offloading coin, honoured by BOTH the
+    // auto-deposit reroute and StashRoomManager's `hide N <coin>`.
 
     [ObservableProperty] private long _keepCopperOnHand;
     [ObservableProperty] private long _keepSilverOnHand;
@@ -119,7 +120,6 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
             RunicPolicy    = RunicPolicy,
 
             AutoDepositIfWealthExceeds = ClampNonNeg(AutoDepositIfWealthExceeds),
-            MinimumCashOnHand          = ClampNonNeg(MinimumCashOnHand),
             BankRoomKey                = SelectedBank?.Value ?? BankRoomKey ?? string.Empty,
 
             KeepCopperOnHand   = ClampNonNeg(KeepCopperOnHand),
@@ -181,7 +181,6 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         RunicPolicy    = dto.RunicPolicy;
 
         AutoDepositIfWealthExceeds = dto.AutoDepositIfWealthExceeds;
-        MinimumCashOnHand          = dto.MinimumCashOnHand;
         BankRoomKey                = dto.BankRoomKey ?? string.Empty;
 
         RebuildBankChoices();
@@ -240,7 +239,6 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnPlatinumPolicyChanged(CashPolicy value)            => MarkDirty();
     partial void OnRunicPolicyChanged(CashPolicy value)               => MarkDirty();
     partial void OnAutoDepositIfWealthExceedsChanged(long value)      => MarkDirty();
-    partial void OnMinimumCashOnHandChanged(long value)               => MarkDirty();
     partial void OnBankRoomKeyChanged(string value)                   => MarkDirty();
     partial void OnKeepCopperOnHandChanged(long value)                => MarkDirty();
     partial void OnKeepSilverOnHandChanged(long value)                => MarkDirty();
