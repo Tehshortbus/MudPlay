@@ -166,6 +166,22 @@ public sealed partial class CombatManager : IDisposable
     private bool _combatOff;
 
     /// <summary>
+    /// Timestamp of the last interrupt-resume (see
+    /// <see cref="TryResumeEngage"/>) — paces re-engages to one per round so
+    /// a non-sustaining attack (KAI pummel, which emits <c>*Combat Off*</c>
+    /// after every strike) can't spin.
+    /// </summary>
+    private DateTimeOffset _lastInterruptResumeAt = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Minimum spacing between interrupt-resumes. Shorter than a combat
+    /// round (~5s) so a legitimate next-round resume isn't blocked, but long
+    /// enough to swallow the instant <c>Off</c>/<c>Engaged</c> cycle a
+    /// per-strike attack produces.
+    /// </summary>
+    private static readonly TimeSpan ResumePacing = TimeSpan.FromMilliseconds(2500);
+
+    /// <summary>
     /// Server-confirmed engagement, driven ONLY by the wire
     /// <c>*Combat Engaged*</c> / <c>*Combat Off*</c> lines — unlike
     /// <see cref="_combatOff"/> (optimistically cleared on every attack
@@ -1058,7 +1074,7 @@ public sealed partial class CombatManager : IDisposable
             && _classifier.Current is { } live
             && HasEngageable(live))
         {
-            ResumeEngage(live);
+            TryResumeEngage(live);
             return;
         }
 
@@ -1108,9 +1124,7 @@ public sealed partial class CombatManager : IDisposable
     /// (an in-between self-heal / buff cast, a stun, etc.) while an
     /// engageable mob is still present. Disarms the interrupt flag, drops
     /// the stale target so <see cref="OnEntitiesObserved"/> re-picks and
-    /// re-equips cleanly, then re-issues the round's action. Shared by the
-    /// mob-swing resume (<see cref="OnCombatLine"/>) and the immediate
-    /// combat-off resume (<see cref="OnCombatStatus"/>).
+    /// re-equips cleanly, then re-issues the round's action.
     /// </summary>
     private void ResumeEngage(RoomEntitiesObservation live)
     {
@@ -1118,6 +1132,26 @@ public sealed partial class CombatManager : IDisposable
         _log?.Info(LogCategory, "combat resumed after interrupt — re-engaging room");
         _currentTarget = null;     // force a fresh pick + equip
         OnEntitiesObserved(live);
+    }
+
+    /// <summary>
+    /// Round-paced wrapper over <see cref="ResumeEngage"/>: re-engages at
+    /// most once per <see cref="ResumePacing"/> window. The pacing is what
+    /// keeps a re-issued attack that itself emits <c>*Combat Off*</c> every
+    /// strike (KAI pummel and other non-sustaining attacks) from spinning —
+    /// the resume can't fire again until the next round, no matter how fast
+    /// the off/engaged lines cycle. Shared by the mob-swing resume
+    /// (<see cref="OnCombatLine"/>) and the deterministic tick resume
+    /// (<see cref="OnCombatTick"/>) so the two paths never double-fire in a
+    /// single round. Returns true when it actually resumed.
+    /// </summary>
+    private bool TryResumeEngage(RoomEntitiesObservation live)
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastInterruptResumeAt < ResumePacing) return false;
+        _lastInterruptResumeAt = now;
+        ResumeEngage(live);
+        return true;
     }
 
     /// <summary>
@@ -1134,29 +1168,6 @@ public sealed partial class CombatManager : IDisposable
         {
             _combatOff = true;
             _engageConfirmed = false;
-
-            // Resume immediately when an in-between cast (self-heal / buff
-            // from CastingDirector) interrupted a weapon swing: the server
-            // stopped attacking for us, but we still hold a target and the
-            // mob is in the room, so re-issue now instead of waiting for the
-            // mob's next combat line — that wait is up to a full round and
-            // shows as a long pause before re-attack. Gated on:
-            //   • _isEnabled  — don't drive combat while the engine is off.
-            //   • _currentTarget != null — a *Combat Off* that follows a kill
-            //     finds the target already cleared by the death watcher, so
-            //     we never swing at a corpse.
-            //   • _castingSpellTarget == null — in spell mode the spell IS the
-            //     round's action; the OnCombatTick heartbeat re-issues it, so
-            //     leave that flow untouched (only weapon attackers resume here).
-            //   • HasEngageable(live) — a mob remains to fight.
-            if (_isEnabled()
-                && _currentTarget is not null
-                && _castingSpellTarget is null
-                && _classifier.Current is { } live
-                && HasEngageable(live))
-            {
-                ResumeEngage(live);
-            }
         }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
         {

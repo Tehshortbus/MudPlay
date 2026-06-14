@@ -220,6 +220,30 @@ public sealed partial class CombatManager
         // recovery. Must precede the CombatSpellsWired gate below.
         VerifyEngagement();
 
+        // Deterministic interrupt-resume: the combat tick is the round
+        // heartbeat, so this re-issues a weapon attack at most once per
+        // round after an in-between cast (CastingDirector self-heal / buff)
+        // turned it off. Unlike the OnCombatLine resume it doesn't depend on
+        // the mob's attack line matching — a mob whose swing message we
+        // don't parse would otherwise leave us idle for several rounds (the
+        // "long pause before re-attack" symptom). Runs before the spell
+        // gates because a pure-weapon build never wires the combat-spell
+        // caster. Weapon mode only (_castingSpellTarget null): in spell mode
+        // the heartbeat below owns the re-cast. Skipped after a kill
+        // (_currentTarget cleared by the death watcher) so we never swing at
+        // a corpse. TryResumeEngage's pacing prevents a double-fire with the
+        // OnCombatLine resume in the same round.
+        if (_isEnabled()
+            && _combatOff
+            && _castingSpellTarget is null
+            && _currentTarget is not null
+            && _classifier.Current is { } resume
+            && HasEngageable(resume))
+        {
+            TryResumeEngage(resume);
+            return;
+        }
+
         if (!CombatSpellsWired) return;
         if (!_isEnabled()) return;
         if (_combatOff) return;                         // round interrupted; resume path owns re-engage
