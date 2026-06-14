@@ -251,26 +251,26 @@
                                     <!-- Loop leaf. -->
                                     <DataTemplate DataType="vm:ManagerLoopRow">
                                         <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
-                                            <Grid ColumnDefinitions="*,60,Auto,Auto" ColumnSpacing="6" MinWidth="0">
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding Name}"
-                                                           VerticalAlignment="Center"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource AccentGreenBrush}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Grid.Column="1"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{StaticResource ChromeFgMutedBrush}">
-                                                    <Run Text="{Binding WaypointCount}"/>
-                                                    <Run Text=" wpt"/>
-                                                </TextBlock>
-                                                <Button Grid.Column="2"
+                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" MinWidth="0">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource AccentGreenBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding WaypointCount}"/>
+                                                        <Run Text=" wpt"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Button Grid.Column="1"
                                                         Content="Edit"
                                                         FontSize="10"
                                                         Padding="8,2"
                                                         Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
                                                         CommandParameter="{Binding}"/>
-                                                <Button Grid.Column="3"
+                                                <Button Grid.Column="2"
                                                         Content="✕"
                                                         FontSize="10"
                                                         Padding="6,2"
