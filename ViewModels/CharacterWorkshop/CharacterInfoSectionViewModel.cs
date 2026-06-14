@@ -110,9 +110,15 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _alignment = "—";
 
     // ----- Box E: monster matchup ----------------------------------------
-    /// <summary>Typeahead source — every monster name in the active game-data set.</summary>
+    /// <summary>
+    /// Typeahead source — one entry per monster, labelled <c>"name (#number)"</c>
+    /// so duplicate-named monsters stay distinguishable and the user can read off
+    /// the exact record number.
+    /// </summary>
     public ObservableCollection<string> MonsterNames { get; } = new();
-    /// <summary>The monster the user picked; null/empty clears the matchup readout.</summary>
+    /// <summary>Maps each typeahead label back to its monster Number for exact-record lookup.</summary>
+    private readonly Dictionary<string, int> _monsterNumberByLabel = new(StringComparer.Ordinal);
+    /// <summary>The label the user picked; null/empty clears the matchup readout.</summary>
     [ObservableProperty] private string? _selectedMonsterName;
     /// <summary>True once a valid monster row is resolved — gates the whole Box E readout.</summary>
     [ObservableProperty] private bool _hasMatchup;
@@ -496,8 +502,30 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             if (!row.TryGetProperty("Name", out JsonElement nameEl)) continue;
             if (nameEl.ValueKind != JsonValueKind.String) continue;
             string? name = nameEl.GetString();
-            if (!string.IsNullOrEmpty(name)) MonsterNames.Add(name);
+            if (string.IsNullOrEmpty(name)) continue;
+
+            int number = row.TryGetProperty("Number", out JsonElement numEl)
+                         && numEl.ValueKind == JsonValueKind.Number && numEl.TryGetInt32(out int n)
+                ? n : 0;
+            string label = string.Create(CultureInfo.InvariantCulture, $"{name} (#{number})");
+            MonsterNames.Add(label);
+            _monsterNumberByLabel[label] = number;
         }
+    }
+
+    // Resolve the exact monster record by its Number — names aren't unique, so
+    // the typeahead label carries the number and we look up against it.
+    private JsonElement? FindMonsterRowByNumber(int number)
+    {
+        JsonDocument? doc = _gameData.GetRawTable("Monsters");
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (row.TryGetProperty("Number", out JsonElement n)
+                && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v) && v == number)
+                return row;
+        }
+        return null;
     }
 
     partial void OnSelectedMonsterNameChanged(string? value) => RefreshMatchup();
@@ -506,13 +534,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     {
         EnsureMonsterNames();
 
-        if (string.IsNullOrEmpty(SelectedMonsterName))
+        if (string.IsNullOrEmpty(SelectedMonsterName)
+            || !_monsterNumberByLabel.TryGetValue(SelectedMonsterName, out int monsterNumber))
         {
             HasMatchup = false;
             return;
         }
 
-        JsonElement? rowOpt = _gameData.FindRowByName("Monsters", SelectedMonsterName);
+        JsonElement? rowOpt = FindMonsterRowByNumber(monsterNumber);
         if (rowOpt is not JsonElement row)
         {
             HasMatchup = false;
