@@ -170,11 +170,6 @@
                     <!-- Box C: Derived Combat -->
                     <Border Classes="Box">
                         <StackPanel Spacing="2">
-                            <TextBlock Text="Combat"
-                                       Foreground="{StaticResource ChromeFgBrush}"
-                                       FontSize="{StaticResource FontSizeMd}"
-                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
-
                             <Grid ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                                 <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldLabel" Text="Accy" Margin="0,0,16,4"/>
                                 <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Dmg" Margin="0,0,0,4"/>
