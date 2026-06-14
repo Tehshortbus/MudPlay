@@ -70,6 +70,9 @@ public sealed class EquipmentStatSummary
     public int OffHandAccy { get; set; }         // Accy field from Off-Hand item
     public int TotalWornAccy { get; set; }       // Sum of Accy fields from ALL equipped items
     public int WeaponStrReq { get; set; }        // StrReq from Weapon Hand item
+    public int WeaponMin { get; set; }           // Min damage from Weapon Hand item (0 = unarmed)
+    public int WeaponMax { get; set; }           // Max damage from Weapon Hand item (0 = unarmed)
+    public int WeaponType { get; set; }          // WeaponType from Weapon Hand item
     public int MaxSingleAbil22 { get; set; }     // Highest single abil 22/105/106 value across all sources (Stock accuracy)
 
     // Martial arts (Mystic).

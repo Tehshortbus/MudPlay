@@ -249,6 +249,9 @@ public static class CharacterCalculator
             {
                 totals.WeaponHandAccy = itemAccy;
                 totals.WeaponStrReq = GetInt(itemData, "StrReq");
+                totals.WeaponMin = GetInt(itemData, "Min");
+                totals.WeaponMax = GetInt(itemData, "Max");
+                totals.WeaponType = GetInt(itemData, "WeaponType");
             }
             else if (item.Slot == "Off-Hand")
             {

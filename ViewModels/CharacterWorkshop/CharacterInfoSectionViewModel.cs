@@ -83,6 +83,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _bashAccuracy = "—";
     [ObservableProperty] private string _smashAccuracy = "—";
     [ObservableProperty] private string _backstabAccuracy = "—";
+    /// <summary>Backstab damage range ("min-max") for the equipped weapon; empty when not stealth-capable.</summary>
+    [ObservableProperty] private string _backstabDamage = string.Empty;
     /// <summary>Smash row visible only for smash-capable classes.</summary>
     [ObservableProperty] private bool _showSmash;
     /// <summary>Backstab row visible only when the character has innate (race or class) stealth.</summary>
@@ -219,12 +221,21 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
                 stealth, agi, level, str, t.WeaponStrReq,
                 t.PlusBSAccuracy, bsNormAccy, hasClassStealth, realm);
             BackstabAccuracy = bsAccy.ToString(CultureInfo.InvariantCulture);
+
+            // Damage range for the equipped weapon (WeaponMin/Max are 0 when
+            // unarmed, which CalcBSDamage handles as the strength-only profile).
+            BSDamageResult bsDmg = CombatCalculator.CalcBSDamage(
+                level, stealth, str, t.WeaponMin, t.WeaponMax,
+                t.PlusBSMin, t.PlusBSMax, t.PlusMaxDamage, hasClassStealth, realm);
+            BackstabDamage = string.Create(CultureInfo.InvariantCulture,
+                $"{bsDmg.MinDamage}-{bsDmg.MaxDamage}");
         }
         else
         {
             // Char has a stealth source but can't compute yet (no level / stealth
             // snapshot) → em-dash; genuinely non-stealth chars read N/A.
             BackstabAccuracy = stealth > 0 ? "—" : "N/A";
+            BackstabDamage = string.Empty;
         }
     }
 
