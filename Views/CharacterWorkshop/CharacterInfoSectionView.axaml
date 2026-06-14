@@ -29,13 +29,8 @@
 
     <Grid Margin="22" RowDefinitions="Auto,*">
 
-        <!-- Title + refresh controls -->
+        <!-- Refresh controls (right-aligned; the section title lives in the workshop nav rail) -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
-            <TextBlock Grid.Column="0" Text="Character Info"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"/>
             <Button Grid.Column="1" Content="Reset" Margin="0,0,6,0"
                     Command="{Binding RefreshCommand}"
                     ToolTip.Tip="Re-pull the live stat snapshot, re-aggregate worn gear, and recompute combat accuracy."/>
