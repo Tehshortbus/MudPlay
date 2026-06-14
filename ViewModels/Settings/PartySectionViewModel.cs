@@ -53,11 +53,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         "Party heal", "Minor heal", "Major heal", "Single-target", "Party AOE",
         "Use AOE", "Request healing",
         "Bless", "Bless while resting", "Bless during combat",
-        "Auto-share cash", "Help leader bash doors",
+        "Help leader open doors",
         "Auto-invite", "Auto-Exp-Reset", "par frequency",
-        "Wait for members", "Max monsters", "Max monster experience",
-        "Ignore party when following", "Auto-collect when following",
-        "Say emote", "Go @panic when injured",
+        "Wait for members", "Max monsters",
     };
 
     // ----- Wired knobs (PR 6.9) -----
