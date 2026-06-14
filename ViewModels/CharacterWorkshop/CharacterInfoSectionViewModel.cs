@@ -105,6 +105,40 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// <summary>Three-bucket reduction (Good / Neutral / Evil) the Equipment Manager alignment filter consumes.</summary>
     [ObservableProperty] private string _alignmentBucket = "—";
 
+    // ----- Box E: monster matchup ----------------------------------------
+    /// <summary>Typeahead source — every monster name in the active game-data set.</summary>
+    public ObservableCollection<string> MonsterNames { get; } = new();
+    /// <summary>The monster the user picked; null/empty clears the matchup readout.</summary>
+    [ObservableProperty] private string? _selectedMonsterName;
+    /// <summary>True once a valid monster row is resolved — gates the whole Box E readout.</summary>
+    [ObservableProperty] private bool _hasMatchup;
+    // Player → monster.
+    [ObservableProperty] private string _matchupPlayerHit = "—";
+    [ObservableProperty] private string _matchupPlayerDamage = "—";
+    [ObservableProperty] private string _matchupSwings = "—";
+    [ObservableProperty] private string _matchupDps = "—";
+    [ObservableProperty] private string _matchupRounds = "—";
+    /// <summary>False when unarmed — hides the DPS / rounds-to-kill rows that need a weapon.</summary>
+    [ObservableProperty] private bool _matchupHasWeapon;
+    // Monster → player.
+    [ObservableProperty] private string _matchupMonsterHit = "—";
+    [ObservableProperty] private string _matchupMonsterDamage = "—";
+    /// <summary>False when the monster has no physical attack slot to preview.</summary>
+    [ObservableProperty] private bool _matchupMonsterHasAttack;
+
+    // Player-side values captured by ComputeDerivedCombat so the matchup can be
+    // recomputed (on monster pick or stat/gear change) without re-aggregating.
+    private RealmType _mRealm;
+    private int _mNormalAccuracy;
+    private int _mAvgWeaponDamage;
+    private double _mSwingsPerRound;
+    private bool _mHasWeapon;
+    private int _mArmourClass;
+    private int _mDodge;
+    private int _mProtEvil;
+    private int _mProtGood;
+    private int _mDamageResist;
+
     public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb)
     {
         ArgumentNullException.ThrowIfNull(stats);
@@ -119,6 +153,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _playerDb.Players.CollectionChanged += OnPlayersChanged;
+        EnsureMonsterNames();
         Refresh();
     }
 
@@ -129,6 +164,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         RefreshBaseStats();
         RefreshDerived();
         RefreshAlignment();
+        RefreshMatchup();
     }
 
     // ----- Box A ----------------------------------------------------------
@@ -269,6 +305,40 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             BackstabAccuracy = stealth > 0 ? "—" : "N/A";
             BackstabDamage = string.Empty;
         }
+
+        CapturePlayerMatchupInputs(t, realm, level, nCombatLevel, str, agi, intel, chm, encumCur, encumMax);
+    }
+
+    // Snapshot the player-side numbers the monster matchup needs so Box E can
+    // recompute against any selected monster without re-aggregating gear.
+    private void CapturePlayerMatchupInputs(EquipmentStatSummary t, RealmType realm,
+                                            int level, int nCombatLevel,
+                                            int str, int agi, int intel, int chm,
+                                            int encumCur, int encumMax)
+    {
+        _mRealm = realm;
+        _mNormalAccuracy = (level > 0 && nCombatLevel > 0)
+            ? CombatCalculator.CalcAccuracy(MudAttackType.Normal, realm, level, nCombatLevel,
+                str, agi, intel, chm, t.TotalWornAccy,
+                realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22,
+                encumCur, encumMax, t.WeaponStrReq)
+            : 0;
+
+        _mHasWeapon = t.WeaponMax > 0;
+        MeleeDamageResult dmg = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, realm, str, t.WeaponMin, t.WeaponMax, t.PlusMaxDamage);
+        _mAvgWeaponDamage = _mHasWeapon ? (dmg.MinDamage + dmg.MaxDamage) / 2 : 0;
+
+        SwingCalcResult swings = CombatCalculator.CalcSwings(
+            nCombatLevel, level, t.WeaponSpeed, agi, str, t.WeaponStrReq,
+            encumCur, encumMax, realmType: realm);
+        _mSwingsPerRound = swings.RawSwings;
+
+        _mArmourClass = _stats.ArmourClass;
+        _mDodge = CombatCalculator.CalcDodge(level, agi, chm, t.PlusDodge, encumCur, encumMax);
+        _mProtEvil = t.PlusProtEvil;
+        _mProtGood = t.PlusProtGood;
+        _mDamageResist = (int)System.Math.Round(t.PlusDR, System.MidpointRounding.AwayFromZero);
     }
 
     private static string Acc(MudAttackType type, RealmType realm, int level, int nCombatLevel,
@@ -418,6 +488,117 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         _ => "Neutral",
     };
 
+    // ----- Box E ----------------------------------------------------------
+
+    // Populate the typeahead list once from the active set. Cheap to retry if
+    // the set wasn't loaded at construction (no monsters yet).
+    private void EnsureMonsterNames()
+    {
+        if (MonsterNames.Count > 0) return;
+        JsonDocument? doc = _gameData.GetRawTable("Monsters");
+        if (doc is null) return;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)) continue;
+            if (nameEl.ValueKind != JsonValueKind.String) continue;
+            string? name = nameEl.GetString();
+            if (!string.IsNullOrEmpty(name)) MonsterNames.Add(name);
+        }
+    }
+
+    partial void OnSelectedMonsterNameChanged(string? value) => RefreshMatchup();
+
+    private void RefreshMatchup()
+    {
+        EnsureMonsterNames();
+
+        if (string.IsNullOrEmpty(SelectedMonsterName))
+        {
+            HasMatchup = false;
+            return;
+        }
+
+        JsonElement? rowOpt = _gameData.FindRowByName("Monsters", SelectedMonsterName);
+        if (rowOpt is not JsonElement row)
+        {
+            HasMatchup = false;
+            return;
+        }
+
+        int align = GetInt(row, "Align");
+        bool isEvil = align is 1 or 2 or 5 or 6;
+        bool isGood = align is 0 or 4;
+
+        // Primary physical attack = first slot (0..4) with AttType 1 (melee) or
+        // 3 (rob). For those, AttAcc / AttMin / AttMax are numeric; for spell
+        // slots (type 2) those columns are spell metadata, so we skip them.
+        bool hasPhysical = false;
+        int attackAcc = 0, attackAvg = 0;
+        for (int i = 0; i < 5; i++)
+        {
+            int type = GetInt(row, $"AttType-{i}");
+            if (type is not (1 or 3)) continue;
+            attackAcc = GetInt(row, $"AttAcc-{i}");
+            int min = GetInt(row, $"AttMin-{i}");
+            int max = GetInt(row, $"AttMax-{i}");
+            attackAvg = (min + max) / 2;
+            hasPhysical = true;
+            break;
+        }
+
+        var monster = new MonsterMatchupProfile(
+            ArmourClass: GetInt(row, "ArmourClass"),
+            DamageResist: GetInt(row, "DamageResist"),
+            Hp: GetInt(row, "HP"),
+            HasPhysicalAttack: hasPhysical,
+            AttackAccuracy: attackAcc,
+            AvgAttackDamage: attackAvg,
+            IsEvil: isEvil,
+            IsGood: isGood);
+
+        var player = new PlayerMatchupProfile(
+            Realm: _mRealm,
+            NormalAccuracy: _mNormalAccuracy,
+            AvgWeaponDamage: _mAvgWeaponDamage,
+            SwingsPerRound: _mSwingsPerRound,
+            HasWeapon: _mHasWeapon,
+            ArmourClass: _mArmourClass,
+            Dodge: _mDodge,
+            ProtEvil: _mProtEvil,
+            ProtGood: _mProtGood,
+            DamageResist: _mDamageResist);
+
+        MonsterMatchupResult r = MonsterMatchupCalculator.Compute(player, monster);
+
+        MatchupHasWeapon = r.HasWeapon;
+        MatchupPlayerHit = $"{r.PlayerHitPercent}%";
+        MatchupPlayerDamage = $"{r.PlayerDamagePerHit} / hit";
+        MatchupSwings = r.HasWeapon
+            ? r.PlayerSwingsPerRound.ToString("0.0", CultureInfo.InvariantCulture)
+            : "—";
+        MatchupDps = r.HasWeapon
+            ? r.PlayerDps.ToString("0.0", CultureInfo.InvariantCulture)
+            : "—";
+        MatchupRounds = r.RoundsToKill > 0
+            ? r.RoundsToKill.ToString(CultureInfo.InvariantCulture)
+            : "—";
+
+        MatchupMonsterHasAttack = r.MonsterHasPhysicalAttack;
+        if (r.MonsterHasPhysicalAttack)
+        {
+            MatchupMonsterHit = $"{r.MonsterHitPercent}%";
+            MatchupMonsterDamage = $"{r.MonsterDamagePerHit} / hit";
+        }
+        else
+        {
+            MatchupMonsterHit = "N/A";
+            MatchupMonsterDamage = "N/A";
+        }
+
+        HasMatchup = true;
+    }
+
     private static string Display(string value) => string.IsNullOrEmpty(value) ? "—" : value;
 
     private static int GetInt(JsonElement? row, string property)
@@ -428,6 +609,10 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     }
 
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
-    private void OnInventoryChanged() => RefreshDerived();
+    private void OnInventoryChanged()
+    {
+        RefreshDerived();
+        RefreshMatchup();
+    }
     private void OnPlayersChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshAlignment();
 }

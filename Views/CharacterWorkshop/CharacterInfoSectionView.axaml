@@ -208,6 +208,63 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- Box E: Monster Matchup -->
+                    <Border Classes="Box">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Monster Matchup"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       FontSize="{StaticResource FontSizeMd}"
+                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <AutoCompleteBox ItemsSource="{Binding MonsterNames}"
+                                             SelectedItem="{Binding SelectedMonsterName, Mode=TwoWay}"
+                                             FilterMode="ContainsOrdinal"
+                                             MinimumPrefixLength="1"
+                                             PlaceholderText="Type a monster name…"
+                                             Margin="0,0,0,8"/>
+
+                            <TextBlock Classes="FieldLabel"
+                                       Text="Pick a monster to preview both hit directions."
+                                       IsVisible="{Binding !HasMatchup}"/>
+
+                            <StackPanel Spacing="2" IsVisible="{Binding HasMatchup}">
+                                <TextBlock Text="You → Monster"
+                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                           FontSize="{StaticResource FontSizeMd}"
+                                           FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Hit Chance" Margin="0,0,12,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupPlayerHit}" Margin="0,0,0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Damage" Margin="0,0,12,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupPlayerDamage}" Margin="0,0,0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Swings/Rnd" Margin="0,0,12,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupSwings}" Margin="0,0,0,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="DPS" Margin="0,0,12,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupDps}" Margin="0,0,0,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Rounds to Kill" Margin="0,0,12,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupRounds}" Margin="0,0,0,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                </Grid>
+
+                                <TextBlock Text="Monster → You"
+                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                           FontSize="{StaticResource FontSizeMd}"
+                                           FontWeight="SemiBold" Margin="0,8,0,3"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Hit Chance" Margin="0,0,12,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupMonsterHit}" Margin="0,0,0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Damage" Margin="0,0,12,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupMonsterDamage}" Margin="0,0,0,2"/>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </ScrollViewer>
