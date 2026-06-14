@@ -24,7 +24,7 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
     private Control? _view;
 
     public override string Id => "death";
-    public override string Title => "Death";
+    public override string Title => "Death Recovery";
     public override Control View => _view ??= new DeathSectionView { DataContext = this };
 
     [ObservableProperty] private int _livesRemaining;

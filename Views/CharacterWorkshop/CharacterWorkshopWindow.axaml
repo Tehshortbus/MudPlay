@@ -11,29 +11,23 @@
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource ChromeBgBrush}">
 
-    <Grid ColumnDefinitions="200,*">
-
-        <!-- Left rail — section navigation. -->
-        <Border Grid.Column="0" BorderBrush="{StaticResource ChromeBorderBrush}"
-                BorderThickness="0,0,1,0" Background="{StaticResource ChromeRailBgBrush}">
-            <ListBox ItemsSource="{Binding Sections}"
-                     SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
-                     Background="Transparent"
-                     BorderThickness="0">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:WorkshopSectionViewModel">
-                        <TextBlock Text="{Binding Title}"
-                                   Padding="14,8"
-                                   FontSize="{StaticResource FontSizeMd}"
-                                   Foreground="{StaticResource ChromeFgBrush}"/>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </Border>
-
-        <!-- Right pane — selected section's view. -->
-        <ContentControl Grid.Column="1"
-                        Content="{Binding SelectedSection.View}"
-                        Background="{StaticResource ChromeBgBrush}"/>
-    </Grid>
+    <!-- Flat tab strip across the six Phase-10 tabs (mirrors MudProxy's
+         Character Status dialog). Each tab's content is the section's own
+         view; the live DeathSection sits at index 2. -->
+    <TabControl ItemsSource="{Binding Sections}"
+                SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
+                Background="{StaticResource ChromeBgBrush}"
+                Padding="0">
+        <TabControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:WorkshopSectionViewModel">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="{StaticResource FontSizeMd}"/>
+            </DataTemplate>
+        </TabControl.ItemTemplate>
+        <TabControl.ContentTemplate>
+            <DataTemplate x:DataType="vm:WorkshopSectionViewModel">
+                <ContentControl Content="{Binding View}"/>
+            </DataTemplate>
+        </TabControl.ContentTemplate>
+    </TabControl>
 </Window>

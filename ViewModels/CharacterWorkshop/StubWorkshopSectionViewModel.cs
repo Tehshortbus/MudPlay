@@ -5,9 +5,9 @@ using Avalonia.Media;
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// Placeholder section — renders a "wired in PR X" banner so the user
-/// sees the full Workshop nav from day one even when individual
-/// sections haven't shipped engines yet.
+/// Placeholder tab — renders a "wired in PR X" banner so the user sees
+/// the full Workshop tab strip from day one even when individual tabs
+/// haven't shipped engines yet.
 /// </summary>
 public sealed class StubWorkshopSectionViewModel : WorkshopSectionViewModel
 {

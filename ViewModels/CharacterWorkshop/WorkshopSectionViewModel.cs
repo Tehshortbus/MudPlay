@@ -4,21 +4,21 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// Base for one section in the <see cref="CharacterWorkshopViewModel"/>'s
-/// left-rail navigation. The Workshop is the unified character hub
-/// per Phase 9 PR 9.I direction — STATS / PROGRESS / EQUIP / COMBAT /
-/// QUESTS / DEATH all live here. v1 ships the shell + Death section
-/// wired to DeathRecoveryManager; the rest are stubs.
+/// Base for one tab in the <see cref="CharacterWorkshopViewModel"/>'s flat
+/// tab strip. The Workshop mirrors MudProxy's Character Status dialog —
+/// Character Info / Death Recovery / Level Projection / CP Allocation /
+/// Quest Status / Equipment Manager. Death Recovery is wired to
+/// DeathRecoveryManager; the rest are stubs until their Phase-10 PR ships.
 /// </summary>
 public abstract class WorkshopSectionViewModel : ObservableObject
 {
-    /// <summary>Stable identifier — sidebar selection persists across reopens against this.</summary>
+    /// <summary>Stable identifier — tab selection persists across reopens against this.</summary>
     public abstract string Id { get; }
 
-    /// <summary>Display title in the sidebar.</summary>
+    /// <summary>Display title on the tab.</summary>
     public abstract string Title { get; }
 
-    /// <summary>The content UserControl rendered in the right pane.
+    /// <summary>The content UserControl rendered under the tab.
     /// Constructed lazily on first access.</summary>
     public abstract Control View { get; }
 }
