@@ -11,11 +11,9 @@ using FujinTerm.Services;
 namespace FujinTerm.ViewModels.Navigation;
 
 /// <summary>
-/// View-model for the Phase 7 <c>NavigationWindow</c>. PR 7.10 ships
-/// the shell — status strip + mode bar + placeholder layout; the
-/// per-section view-models for map / room tree / favourites / loop
-/// builder land in PRs 7.11–7.17 and plug into this shell as
-/// child VMs.
+/// View-model for the <c>NavigationWindow</c> shell — owns the status
+/// strip + mode bar and hosts the per-section state for map / room tree
+/// / favourites / loop builder.
 /// </summary>
 public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 {
