@@ -251,7 +251,7 @@
                                     <!-- Loop leaf. -->
                                     <DataTemplate DataType="vm:ManagerLoopRow">
                                         <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
-                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6" MinWidth="0">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6" MinWidth="0">
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}"
                                                                FontWeight="SemiBold"
@@ -265,6 +265,13 @@
                                                     </TextBlock>
                                                 </StackPanel>
                                                 <Button Grid.Column="1"
+                                                        Content="Load"
+                                                        FontSize="10"
+                                                        Padding="8,2"
+                                                        ToolTip.Tip="Stage this loop as active; start it later from the toolbar"
+                                                        Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).LoadLoopCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="2"
                                                         Content="Run"
                                                         FontSize="10"
                                                         Padding="8,2"
@@ -272,13 +279,13 @@
                                                         ToolTip.Tip="Run this loop now (no map needed)"
                                                         Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RunLoopCommand}"
                                                         CommandParameter="{Binding}"/>
-                                                <Button Grid.Column="2"
+                                                <Button Grid.Column="3"
                                                         Content="Edit"
                                                         FontSize="10"
                                                         Padding="8,2"
                                                         Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
                                                         CommandParameter="{Binding}"/>
-                                                <Button Grid.Column="3"
+                                                <Button Grid.Column="4"
                                                         Content="✕"
                                                         FontSize="10"
                                                         Padding="6,2"
@@ -289,6 +296,9 @@
                                             </Grid>
                                             <Border.ContextMenu>
                                                 <ContextMenu>
+                                                    <MenuItem Header="Load (stage as active)"
+                                                              Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).LoadLoopCommand}"
+                                                              CommandParameter="{Binding}"/>
                                                     <MenuItem Header="Run now"
                                                               Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RunLoopCommand}"
                                                               CommandParameter="{Binding}"/>

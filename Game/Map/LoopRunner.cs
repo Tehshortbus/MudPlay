@@ -126,6 +126,27 @@ public sealed class LoopRunner : IRecoverableEngine
     public Loop? CurrentLoop => _loop;
     public int CurrentIndex => _index;
 
+    /// <summary>
+    /// Loop the user has "loaded" (staged) but not yet started — the
+    /// Manage dialog's Load action records it here. Distinct from
+    /// <see cref="CurrentLoop"/> (which is only set while a run is live):
+    /// a staged loop sits idle until something begins it. The toolbar
+    /// Start button reads this to run the staged loop without reopening
+    /// the Manage window. Null until the user stages one.
+    /// </summary>
+    public Loop? StagedLoop { get; private set; }
+
+    /// <summary>
+    /// Remember <paramref name="loop"/> as the staged loop (see
+    /// <see cref="StagedLoop"/>) without starting movement. Idempotent —
+    /// re-staging simply replaces the remembered loop.
+    /// </summary>
+    public void Stage(Loop loop)
+    {
+        ArgumentNullException.ThrowIfNull(loop);
+        StagedLoop = loop;
+    }
+
     /// <summary>Waypoint the walker is approaching, or null when not in <see cref="LoopState.Approaching"/>.</summary>
     public RoomKey? ApproachTarget => _approachTarget;
 

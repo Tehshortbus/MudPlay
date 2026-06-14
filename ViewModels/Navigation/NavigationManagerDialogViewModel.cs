@@ -232,6 +232,20 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     }
 
     /// <summary>
+    /// Stage the selected loop as the active one without starting
+    /// movement (<see cref="LoopRunner.Stage"/>). The toolbar Start
+    /// button picks the staged loop up when the user presses it, so
+    /// "Load" lets the user pre-select a loop here and begin it later
+    /// from the toolbar — no map needed. No-op when no runner is wired.
+    /// </summary>
+    [RelayCommand]
+    private void LoadLoop(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        _runner?.Stage(row.Source);
+    }
+
+    /// <summary>
     /// Open the LoopEditor dialog on a fresh empty loop. The editor
     /// flips its title to "Create Loop" via the
     /// <see cref="LoopEditorDialogViewModel.DialogTitle"/> binding;
