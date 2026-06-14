@@ -2701,13 +2701,19 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (_workshop is { } existing)
         {
-            if (existing.DataContext is ViewModels.CharacterWorkshop.CharacterWorkshopViewModel vm
-                && sectionId is not null)
+            if (existing.DataContext is ViewModels.CharacterWorkshop.CharacterWorkshopViewModel vm)
             {
-                ViewModels.CharacterWorkshop.WorkshopSectionViewModel? section = vm.Sections
-                    .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
-                if (section is not null) vm.SelectedSection = section;
-                existing.Activate();
+                if (sectionId is not null)
+                {
+                    // Deep-link re-press: switch section + raise, don't toggle closed.
+                    ViewModels.CharacterWorkshop.WorkshopSectionViewModel? section = vm.Sections
+                        .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+                    if (section is not null) vm.SelectedSection = section;
+                    existing.Activate();
+                    return;
+                }
+                // Toggle re-press follows the edit-window save path (CLAUDE.md).
+                vm.ApplyAndClose();
                 return;
             }
             existing.Close();
