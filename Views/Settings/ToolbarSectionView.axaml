@@ -38,6 +38,19 @@
             <Setter Property="FontStyle" Value="Italic"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
+        <!-- Fixed-height rows so each list shows exactly 5 at a time
+             (28px × 5 = 140 → the Border height below). Predictable
+             height keeps the rail buttons from overlapping the way the
+             old proportional (2*/3*) sizing did when the window shrank. -->
+        <Style Selector="ListBox.RowList">
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        <Style Selector="ListBox.RowList ListBoxItem">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
     </UserControl.Styles>
 
     <UserControl.Resources>
@@ -83,10 +96,14 @@
             </StackPanel>
         </Border>
 
-        <!-- Editor — visible when a profile is loaded. -->
-        <Grid IsVisible="{Binding HasProfile}"
-              Margin="22"
-              RowDefinitions="Auto,Auto,2*,Auto,3*"
+        <!-- Editor — visible when a profile is loaded. Fixed (Auto) row
+             heights with 5-row lists; a ScrollViewer guards against the
+             window being too short to show the whole editor. -->
+        <ScrollViewer IsVisible="{Binding HasProfile}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="22"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnDefinitions="*,180">
 
             <!-- Visibility + orientation. ShowToolbar is the master gate;
@@ -135,21 +152,24 @@
                        Classes="SectionHeader"
                        Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
-            <!-- Toolbar row list. -->
+            <!-- Toolbar row list — fixed height for 5 rows; scrolls past that. -->
             <Border Grid.Row="2" Grid.Column="0"
+                    Height="150" VerticalAlignment="Top"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
-                <ListBox ItemsSource="{Binding Rows}"
+                <ListBox Classes="RowList"
+                         ItemsSource="{Binding Rows}"
                          SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                          ItemTemplate="{StaticResource RowTemplate}"
                          Background="Transparent"
                          BorderThickness="0"/>
             </Border>
 
-            <!-- Toolbar rail: reorder / remove / keybind / add separator / reset. -->
+            <!-- Toolbar rail: reorder / add separator / remove / keybind / reset. -->
             <StackPanel Grid.Row="2" Grid.Column="1"
                         Margin="12,0,0,0"
+                        VerticalAlignment="Top"
                         Spacing="6">
                 <Button Content="Move up"
                         Command="{Binding MoveUpCommand}"
@@ -157,13 +177,14 @@
                 <Button Content="Move down"
                         Command="{Binding MoveDownCommand}"
                         HorizontalAlignment="Stretch"/>
+                <Button Content="Add separator"
+                        Command="{Binding AddSeparatorCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Append a visual divider to the toolbar."/>
                 <Button Content="Remove"
                         Command="{Binding RemoveFromToolbarCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Take the selected button off the toolbar (it stays available below as a shortcut). Separators are simply deleted."/>
-
-                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,8"/>
-
                 <Button Content="Change keybind…"
                         Command="{Binding ChangeToolbarKeybindCommand}"
                         HorizontalAlignment="Stretch"
@@ -172,13 +193,6 @@
                         Command="{Binding ResetToolbarKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Restore the selected action's shortcut to its default."/>
-
-                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,8"/>
-
-                <Button Content="Add separator"
-                        Command="{Binding AddSeparatorCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Append a visual divider to the toolbar."/>
                 <Button Content="Reset layout"
                         Command="{Binding ResetToDefaultsCommand}"
                         HorizontalAlignment="Stretch"
@@ -189,12 +203,15 @@
                        Classes="SectionHeader"
                        Text="Shortcuts — every action not on the toolbar; each can still hold a keybind"/>
 
-            <!-- Shortcuts list: the full pool of off-toolbar actions. -->
+            <!-- Shortcuts list: the full pool of off-toolbar actions —
+                 fixed height for 5 rows; scrolls past that. -->
             <Border Grid.Row="4" Grid.Column="0"
+                    Height="150" VerticalAlignment="Top"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
-                <ListBox ItemsSource="{Binding ShortcutRows}"
+                <ListBox Classes="RowList"
+                         ItemsSource="{Binding ShortcutRows}"
                          SelectedItem="{Binding SelectedShortcutRow, Mode=TwoWay}"
                          ItemTemplate="{StaticResource RowTemplate}"
                          Background="Transparent"
@@ -204,14 +221,12 @@
             <!-- Shortcuts rail: promote to toolbar / keybind / reset-all. -->
             <StackPanel Grid.Row="4" Grid.Column="1"
                         Margin="12,0,0,0"
+                        VerticalAlignment="Top"
                         Spacing="6">
                 <Button Content="Add to toolbar"
                         Command="{Binding AddToToolbarCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Promote the selected action to a toolbar button."/>
-
-                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,8"/>
-
                 <Button Content="Change keybind…"
                         Command="{Binding ChangeShortcutKeybindCommand}"
                         HorizontalAlignment="Stretch"
@@ -220,15 +235,13 @@
                         Command="{Binding ResetShortcutKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Restore the selected action's shortcut to its default."/>
-
-                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,8"/>
-
                 <Button Content="Reset all shortcuts"
                         Command="{Binding ResetAllKeybindsCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Restore every shortcut across all actions to its default chord."/>
             </StackPanel>
         </Grid>
+        </ScrollViewer>
 
     </Grid>
 </UserControl>
