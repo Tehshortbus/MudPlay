@@ -1167,6 +1167,13 @@ public sealed class AppServices
     /// </summary>
     public Game.Map.AutoLairManager AutoLair { get; private set; } = null!;
 
+    /// <summary>
+    /// Always-alive control surface over the three movement engines —
+    /// coalesces their run-state and routes Pause / Resume / Stop to the
+    /// right engine. Backs the toolbar movement-flow buttons.
+    /// </summary>
+    public Game.Map.MovementController MovementControl { get; private set; } = null!;
+
 
     /// <summary>
     /// Construct and register the singleton. Idempotent — repeated calls return
@@ -2264,6 +2271,13 @@ public sealed class AppServices
         // at a wait-room one hop short, then steps in on the tick.
         AutoLair = new Game.Map.AutoLairManager(
             Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
+
+        // Always-alive control surface over the three movement engines.
+        // Backs the toolbar Start / Pause / Stop buttons (which outlive
+        // the window-scoped NavigationViewModel) and stays in sync with
+        // the Nav window because both act on the same engine primitives.
+        MovementControl = new Game.Map.MovementController(
+            Walker, LoopRunner, AutoLair, MovementCoordinator);
 
         // Shared room-search resolver — backs the Nav rail search
         // box AND the @goto handler. Subscribes to ActiveSetChanged
