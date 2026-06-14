@@ -2701,6 +2701,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (_workshop is { } existing)
         {
+            // Deep-link re-press: switch section + raise, don't toggle closed.
+            // The Workshop shell holds no window-level pending state (each
+            // editable section owns its own Save / Apply / Cancel), so a plain
+            // re-press just closes — no ApplyAndClose save path at the shell.
             if (existing.DataContext is ViewModels.CharacterWorkshop.CharacterWorkshopViewModel vm
                 && sectionId is not null)
             {

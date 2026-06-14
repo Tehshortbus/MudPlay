@@ -16,10 +16,11 @@ namespace FujinTerm.ViewModels.Settings;
 /// <c>"Spells"</c> entry in <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
-/// Wires DTO storage now (PR 9.0a sub-D); CastingDirector (PR 9.D)
-/// arrives later and subscribes to <see cref="ProfileService.ProfileLoaded"/>
-/// to re-read the DTO. Heal-trigger thresholds (HP / MA percentages) live
-/// on <see cref="HealthSettings"/> — this tab only owns the spell names.
+/// Wires DTO storage only — <c>CastingDirector</c> (the between-round
+/// cast engine) lands in a later phase and subscribes to
+/// <see cref="ProfileService.ProfileLoaded"/> to re-read the DTO.
+/// Heal-trigger thresholds (HP / MA percentages) live on
+/// <see cref="HealthSettings"/> — this tab only owns the spell names.
 /// </remarks>
 public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 {

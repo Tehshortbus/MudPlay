@@ -14,12 +14,13 @@ namespace FujinTerm.ViewModels.Settings;
 /// <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
-/// Wires DTO storage now (PR 9.0a sub-B); engines that read these values
-/// arrive in PR 9.B (HealthManager — rest / hang / run flow) and PR 9.D
-/// (CastingDirector — heal-cast thresholds). No <c>ApplyToServices</c>
-/// call because the consumer services don't exist on the branch yet —
-/// they will subscribe to <see cref="ProfileService.ProfileLoaded"/> when
-/// they land and re-read the DTO from there.
+/// Wires DTO storage only — the engines that read these values land in a
+/// later phase: <c>HealthManager</c> (rest / hang / run flow) and
+/// <c>CastingDirector</c> (heal-cast thresholds). No
+/// <c>ApplyToServices</c> call because those consumer services don't
+/// exist yet; they will subscribe to
+/// <see cref="ProfileService.ProfileLoaded"/> when they arrive and re-read
+/// the DTO from there.
 /// </remarks>
 public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 {

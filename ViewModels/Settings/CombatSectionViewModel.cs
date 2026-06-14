@@ -15,10 +15,10 @@ namespace FujinTerm.ViewModels.Settings;
 /// <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
-/// Wires DTO storage now (PR 9.0a sub-C); the engine that reads these
-/// values arrives in PR 9.A (CombatManager). No <c>ApplyToServices</c>
-/// call yet — CombatManager will subscribe to
-/// <see cref="ProfileService.ProfileLoaded"/> when it lands and re-read
+/// Wires DTO storage only — <c>CombatManager</c> (the auto-attack engine
+/// that reads these values) lands in a later phase. No
+/// <c>ApplyToServices</c> call yet; CombatManager will subscribe to
+/// <see cref="ProfileService.ProfileLoaded"/> when it arrives and re-read
 /// the DTO from there.
 /// </remarks>
 public sealed partial class CombatSectionViewModel : SettingsSectionViewModel

@@ -73,14 +73,6 @@ public sealed class RemoteCommandManager : IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// Optional callback returning the local character's remaining lives.
-    /// Consulted for the <c>@do suicide</c> / <c>@party suicide</c>
-    /// hard-block check. When <c>null</c> the engine treats lives as
-    /// unknown and blocks every suicide-bearing command unconditionally —
-    /// the conservative default until the Phase 9 DEATH section wires
-    /// up live-lives tracking.
-    /// </summary>
-    /// <summary>
     /// Live lives provider. Returns the current Lives count from the
     /// most recent <c>stat</c>-screen parse, or <c>null</c> when no
     /// stat screen has been observed yet (so the hard-block defaults
@@ -92,9 +84,9 @@ public sealed class RemoteCommandManager : IDisposable
 
     /// <summary>
     /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
-    /// lives are at or below this threshold. Default 3 per the Phase 6
-    /// spec; settable to 0 in Settings.Other (PR 6.9 wires the UI) to
-    /// allow forced suicide through all lives.
+    /// lives are at or below this threshold. Default 5; settable to 0 in
+    /// Settings.Other to allow forced suicide through all lives. Max
+    /// lives in MajorMUD is 9, so the UI clamps this to 0..9.
     /// </summary>
     public int MaxSuicideLivesThreshold { get; set; } = 5;
 
@@ -227,9 +219,9 @@ public sealed class RemoteCommandManager : IDisposable
     /// permitted to issue, given their merged per-player permission grant.
     /// Backs the <c>@help</c> handler's reply. Party-whitelist commands
     /// (those mapped to <see cref="PlayerRemoteControls.None"/> — @wait /
-    /// @ok / @kill / etc.) are excluded: they're gated by party membership
-    /// alone, not an explicit permission flag, so they don't belong in a
-    /// per-permission command list. Reuses <see cref="IsAuthorised"/> so the
+    /// @ok / @comeback / @share) are excluded: they're gated by party
+    /// membership alone, not an explicit permission flag, so they don't
+    /// belong in a per-permission command list. Reuses <see cref="IsAuthorised"/> so the
     /// answer always matches what the engine would actually allow. Result
     /// follows the catalog's grouped enumeration order.
     /// </summary>

@@ -337,7 +337,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     private static void ApplyToServices(OtherSettings dto)
     {
         AppServices svcs = AppServices.Current;
-        svcs.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
+        // MajorMUD caps lives at 9 (0 lives deletes the character), so the
+        // threshold clamps 0..9 — matching the Apply() DTO clamp + the UI.
+        svcs.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 9);
         // @trap attempt caps — push into the live manager so the next
         // queued @trap honours the edit without a profile reload.
         svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);

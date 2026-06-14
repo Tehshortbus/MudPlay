@@ -29,7 +29,7 @@ namespace FujinTerm.Game.Remote;
 ///         progress, who's in the room).</item>
 ///   <item><b>QueryInventory</b> — items / cash / encumbrance / have-checks.</item>
 ///   <item><b>RequestInvite</b> — party invite / join / leave signals.</item>
-///   <item><b>MovePlayer</b> — goto / loop / roam / stop / rego.</item>
+///   <item><b>MovePlayer</b> — goto / loop / lair / stop / rego.</item>
 ///   <item><b>ExecuteCommands</b> — @do passthrough + bulk inventory actions
 ///         (@get-all / @drop-all / @equip-all / @deposit-all).</item>
 ///   <item><b>HangupDisconnect</b> — @hangup / @relog.</item>

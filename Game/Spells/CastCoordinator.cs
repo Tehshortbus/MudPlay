@@ -125,11 +125,6 @@ public sealed class CastCoordinator : IDisposable
         }
     }
 
-    /// <summary>Timestamp of the most recent successful cast emit.
-    /// <see cref="DateTimeOffset.MinValue"/> when no cast has been sent
-    /// since the last tick reset.</summary>
-    public DateTimeOffset LastCastSentAt => _lastCastSentAt;
-
     /// <summary>
     /// Attempt to send <c>&lt;cast-code&gt; [target]</c> (the configured
     /// 4-letter cast-code typed directly — not prefixed with <c>c</c>).

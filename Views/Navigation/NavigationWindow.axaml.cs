@@ -12,10 +12,9 @@ namespace FujinTerm.Views.Navigation;
 
 /// <summary>
 /// Modeless Navigation window. Bound to
-/// <see cref="ViewModels.Navigation.NavigationViewModel"/>; PR 7.10
-/// ships the shell with status strip + mode bar + map placeholder.
-/// The MapControl lands in PR 7.11; the right-rail tree / favourites
-/// / loop builder land in PRs 7.12–7.17.
+/// <see cref="ViewModels.Navigation.NavigationViewModel"/>: status strip
+/// + mode bar, the <see cref="Controls.MapControl"/> canvas, and the
+/// right-rail room tree / favourites / loop builder.
 /// </summary>
 public partial class NavigationWindow : Window
 {

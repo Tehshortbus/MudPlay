@@ -33,7 +33,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     private readonly bool _isNew;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
@@ -44,35 +43,30 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     // ----- Five perspective line slots -----
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _casterMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _targetMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _witnessMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _appliedMessage = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ProjectedId))]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]

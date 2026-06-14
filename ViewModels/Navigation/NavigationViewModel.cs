@@ -11,11 +11,9 @@ using FujinTerm.Services;
 namespace FujinTerm.ViewModels.Navigation;
 
 /// <summary>
-/// View-model for the Phase 7 <c>NavigationWindow</c>. PR 7.10 ships
-/// the shell — status strip + mode bar + placeholder layout; the
-/// per-section view-models for map / room tree / favourites / loop
-/// builder land in PRs 7.11–7.17 and plug into this shell as
-/// child VMs.
+/// View-model for the <c>NavigationWindow</c> shell — owns the status
+/// strip + mode bar and hosts the per-section state for map / room tree
+/// / favourites / loop builder.
 /// </summary>
 public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 {
@@ -785,7 +783,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         var rows = new List<object>(Setups.Count + Loops.Count);
         rows.AddRange(Setups);
         rows.AddRange(Loops);
-        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, NameOfNavRow, _services.NavFolders.AllFolders);
+        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, _services.NavFolders.AllFolders);
         OnPropertyChanged(nameof(HasNavTree));
     }
 
@@ -793,13 +791,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         LoopRowViewModel l => l.Source.Folder,
         LairSetupRowViewModel s => s.Source.Folder,
-        _ => string.Empty,
-    };
-
-    private static string NameOfNavRow(object row) => row switch
-    {
-        LoopRowViewModel l => l.Name,
-        LairSetupRowViewModel s => s.Name,
         _ => string.Empty,
     };
 
@@ -1063,7 +1054,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         entries.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
         foreach (FavoriteRowViewModel e in entries) Favorites.Add(e);
-        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, r => r.Label, _services.Favorites.AllFolders);
+        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, _services.Favorites.AllFolders);
         OnPropertyChanged(nameof(HasFavorites));
         OnPropertyChanged(nameof(HasFavoriteTree));
     }
