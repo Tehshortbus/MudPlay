@@ -909,16 +909,9 @@ public partial class MainWindowViewModel : ObservableObject
             string tooltip = entry.Tooltip
                           ?? (liveHint is null ? entry.Label : $"{entry.Label} ({liveHint})");
 
-            // Dual-icon rows: the Connect button swaps plug / unplug; the
-            // movement Pause button swaps pause / play (the play glyph reads
-            // as "Resume" while the engine is paused). Everything else uses
-            // a single static glyph.
-            string? alt = entry.ActionId switch
-            {
-                "ToggleConnection" => "IconUnplug",
-                "MovementPause"    => "IconPlay",
-                _                  => null,
-            };
+            // Connect button is the one row with a dual-icon (plug / unplug)
+            // visual; everything else uses a single static glyph.
+            string? alt = entry.ActionId == "ToggleConnection" ? "IconUnplug" : null;
 
             ToolbarButtonItem row = new(
                 ToolbarItemKind.Button, entry.ActionId,
@@ -1000,25 +993,25 @@ public partial class MainWindowViewModel : ObservableObject
                 row.IsActive = !IsAllAutoOff;
                 break;
             case "MovementStart":
-                // Start is the idle-only affordance — it runs the staged
-                // loop or opens Manage to pick one.
-                row.IsVisible = AppServices.Current.MovementControl.IsIdle;
+            {
+                // Always visible; enabled when idle (open Manage / run staged)
+                // or paused (doubles as Resume for the paused nav mode).
+                Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+                row.IsActionEnabled = ctl.IsIdle || ctl.IsPaused;
+                row.Tooltip = ctl.IsPaused
+                    ? "Resume movement"
+                    : "Start movement — run the staged loop, or open Manage to pick one";
                 break;
+            }
             case "MovementPause":
             {
-                // Shown only while an engine runs; swaps to a Play glyph +
-                // "Resume" tooltip when paused so the one button toggles
-                // Pause ↔ Resume.
+                // Pure pause: enabled only while an engine is actively running.
                 Game.Map.MovementController ctl = AppServices.Current.MovementControl;
-                row.IsVisible = ctl.IsActive;
-                row.ShowAlternate = ctl.IsPaused;
-                row.Tooltip = ctl.IsPaused
-                    ? "Resume the paused engine"
-                    : "Pause the running engine (click again to resume)";
+                row.IsActionEnabled = ctl.IsActive && !ctl.IsPaused;
                 break;
             }
             case "MovementStop":
-                row.IsVisible = AppServices.Current.MovementControl.IsActive;
+                row.IsActionEnabled = AppServices.Current.MovementControl.IsActive;
                 break;
         }
     }
@@ -3107,14 +3100,22 @@ public partial class MainWindowViewModel : ObservableObject
     private bool _manageDialogOpen;
 
     /// <summary>
-    /// Toolbar Start (idle only). If a loop is staged via the Manage
-    /// dialog's Load action, run it straight away — "start the staged
-    /// loop without reopening the map". Otherwise open the Manage dialog
-    /// so the user can pick / load / run one.
+    /// Toolbar Start, which doubles as Resume. If a nav mode is paused,
+    /// resume it. If idle and a loop is staged via the Manage dialog's Load
+    /// action, run it straight away — "start the staged loop without
+    /// reopening the map". Otherwise (idle, nothing staged) open the Manage
+    /// dialog so the user can pick / load / run one.
     /// </summary>
     [RelayCommand]
     private async Task MovementStartAsync()
     {
+        Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+        if (ctl.IsPaused)
+        {
+            ctl.Resume();
+            return;
+        }
+        if (!ctl.IsIdle) return;
         if (AppServices.Current.LoopRunner.StagedLoop is { } staged)
         {
             AppServices.Current.LoopRunner.Start(staged);
@@ -3123,9 +3124,9 @@ public partial class MainWindowViewModel : ObservableObject
         await OpenManagerStandaloneAsync();
     }
 
-    /// <summary>Toolbar Pause / Resume — toggles the running engine's pause gate.</summary>
+    /// <summary>Toolbar Pause — pauses the running engine (no-op if already paused / idle).</summary>
     [RelayCommand]
-    private void MovementPause() => AppServices.Current.MovementControl.TogglePause();
+    private void MovementPause() => AppServices.Current.MovementControl.Pause();
 
     /// <summary>Toolbar Stop — backs the running engine fully out to Idle.</summary>
     [RelayCommand]

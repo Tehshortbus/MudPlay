@@ -20,15 +20,6 @@ public sealed partial class ToolbarButtonItem : ObservableObject
     public bool IsButton => Kind == ToolbarItemKind.Button;
     public bool IsSeparator => Kind == ToolbarItemKind.Separator;
 
-    /// <summary>
-    /// True when this row is a button AND currently shown. The movement
-    /// Start / Pause / Stop buttons flip <see cref="IsVisible"/> with the
-    /// engine state (Start idle-only; Pause + Stop active-only); every
-    /// other button stays visible. The XAML binds the button's
-    /// <c>IsVisible</c> here so hidden rows collapse cleanly.
-    /// </summary>
-    public bool IsButtonShown => IsButton && IsVisible;
-
     public string Label { get; }
     public string? IconResourceKey { get; }
 
@@ -40,18 +31,18 @@ public sealed partial class ToolbarButtonItem : ObservableObject
 
     /// <summary>
     /// Tooltip text (icon-only buttons use this as their label).
-    /// Observable so the movement Pause button can re-label itself
-    /// "Resume" when the engine is paused.
+    /// Observable so the movement Start button can re-label itself
+    /// "Resume" when the active nav mode is paused.
     /// </summary>
     [ObservableProperty] private string _tooltip;
 
     /// <summary>
-    /// Whether the button is currently shown. Default true; the movement
-    /// buttons toggle it with engine state. Feeds <see cref="IsButtonShown"/>.
+    /// Whether the button is currently actionable. Default true; the
+    /// movement Start / Pause / Stop rows toggle it with engine state so
+    /// a button that would no-op renders disabled (greyed) instead of
+    /// firing. Bound to the toolbar button's <c>IsEnabled</c>.
     /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsButtonShown))]
-    private bool _isVisible = true;
+    [ObservableProperty] private bool _isActionEnabled = true;
 
     public ICommand? Command { get; }
 

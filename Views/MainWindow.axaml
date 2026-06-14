@@ -250,7 +250,7 @@
                                 <Button Classes="ToolbarBtn"
                                         Classes.Active="{Binding IsActive}"
                                         Classes.Danger="{Binding IsDanger}"
-                                        IsVisible="{Binding IsButtonShown}"
+                                        IsVisible="{Binding IsButton}" IsEnabled="{Binding IsActionEnabled}"
                                         Command="{Binding Command}"
                                         ToolTip.Tip="{Binding Tooltip}">
                                     <Panel>
@@ -291,7 +291,7 @@
                             <Button Classes="ToolbarBtn"
                                     Classes.Active="{Binding IsActive}"
                                     Classes.Danger="{Binding IsDanger}"
-                                    IsVisible="{Binding IsButtonShown}"
+                                    IsVisible="{Binding IsButton}" IsEnabled="{Binding IsActionEnabled}"
                                     Command="{Binding Command}"
                                     ToolTip.Tip="{Binding Tooltip}">
                                 <Panel>
@@ -331,7 +331,7 @@
                             <Button Classes="ToolbarBtn"
                                     Classes.Active="{Binding IsActive}"
                                     Classes.Danger="{Binding IsDanger}"
-                                    IsVisible="{Binding IsButtonShown}"
+                                    IsVisible="{Binding IsButton}" IsEnabled="{Binding IsActionEnabled}"
                                     Command="{Binding Command}"
                                     ToolTip.Tip="{Binding Tooltip}">
                                 <Panel>
