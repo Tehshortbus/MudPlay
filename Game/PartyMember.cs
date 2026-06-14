@@ -153,10 +153,12 @@ public sealed partial class PartyMember : ObservableObject
     // Meditating are the only ones live-wired (from the par state column).
     //
     // Set chosen for PartyWindow surfacing: rest / meditate posture, the
-    // four ailments that meaningfully change party tactics (blind, poison,
-    // disease, confuse), and the cross-cutting WAIT coordination flag
-    // below. Stealth (hidden/sneaking), paralysis, and held are tracked
-    // elsewhere by their own subsystems — no reason to mirror them here.
+    // four curable ailments that meaningfully change party tactics (blind,
+    // poison, disease, confuse), the movement-prevented HELD flag (a member
+    // says ".@held" so a party cure-holds caster can react), and the
+    // cross-cutting WAIT coordination flag below. Stealth (hidden/sneaking)
+    // and paralysis are tracked elsewhere by their own subsystems — no
+    // reason to mirror them here.
 
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _resting;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _meditating;
@@ -164,6 +166,7 @@ public sealed partial class PartyMember : ObservableObject
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _poisoned;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _diseased;
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _confused;
+    [ObservableProperty] [field: Owner(typeof(PartyManager))] private bool _held;
 
     /// <summary>
     /// True when this member has asked the party to <c>@wait</c> and

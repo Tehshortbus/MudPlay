@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Edit;
@@ -22,7 +23,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>Encum</c> is encumbrance, <c>Accy</c> is to-hit modifier,
 /// <c>StrReq</c> is strength prerequisite. Numeric enum cells
 /// (<c>ItemType</c>, <c>Worn</c>, <c>WeaponType</c>, <c>ArmourType</c>,
-/// <c>Currency</c>) are formatted via <see cref="MmudEnums"/> so the
+/// <c>Currency</c>) are formatted via <see cref="LookupEnums"/> so the
 /// grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather than the
 /// raw integers.
 /// </remarks>
@@ -69,11 +70,11 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["ItemType"]   = MmudEnums.FormatItemType,
-            ["Worn"]       = MmudEnums.FormatWornSlot,
-            ["WeaponType"] = MmudEnums.FormatWeaponType,
-            ["ArmourType"] = MmudEnums.FormatArmourType,
-            ["Currency"]   = MmudEnums.FormatCurrency,
+            ["ItemType"]   = LookupEnums.FormatItemType,
+            ["Worn"]       = LookupEnums.FormatWornSlot,
+            ["WeaponType"] = LookupEnums.FormatWeaponType,
+            ["ArmourType"] = LookupEnums.FormatArmourType,
+            ["Currency"]   = LookupEnums.FormatCurrency,
         };
 
     public IAsyncRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
@@ -184,6 +185,30 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         if (doc is null)
             return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
 
+        // Spell-effect renderer for weapon use-cast / proc rows. An item's
+        // cast spell scales to the item's required level (ability code 135 =
+        // MinLevel) — that level is the spell's effective base level when the
+        // spell is delivered by the item rather than learned by a character.
+        // Per-level-only spells (no flat base, scaling purely via Min/MaxInc)
+        // therefore render zero at level 0 and only surface real damage once
+        // evaluated at the item's required level. The TextBlock cast-index is a
+        // full-table scan, so build it lazily on the first cast-bearing item.
+        KnownSpellCatalog catalog = new(_cache);
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex = null;
+        string CastEffect(int spellNumber, int castLevel)
+        {
+            if (catalog.GetFormulaByNumber(spellNumber) is not { } f) return string.Empty;
+            tbIndex ??= catalog.BuildCastByTextblockIndex();
+            IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> idx = tbIndex;
+            string rendered = SpellEffectFormatter.Format(
+                f, level: castLevel,
+                resolveChain: catalog.GetFormulaByNumber,
+                resolveSpellName: catalog.GetSpellNameByNumber,
+                resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
+                    ? list : System.Array.Empty<KnownSpell>());
+            return rendered == "—" ? string.Empty : rendered;
+        }
+
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
         {
             if (!el.TryGetProperty("Number", out JsonElement numProp)) continue;
@@ -197,8 +222,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             // ----- Details section (left pane) -----
             weight       = ReadString(el, "Encum");
             price        = FormatPrice(el);
-            itemTypeText = MmudEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
-            bodyLocation = worn == 0 ? "None" : (MmudEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
+            itemTypeText = LookupEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
+            bodyLocation = worn == 0 ? "None" : (LookupEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
             boughtSold   = ResolveBoughtSold(obtainedFrom);
 
             // ----- Other Info pane (right pane) -----
@@ -280,6 +305,26 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             // (CastSpell) resolve their values to spell names; code 59
             // (ClassOK) resolves to a class name. Stat-bonus codes get
             // signed display ("+5"), threshold/value codes render raw.
+            //
+            // On weapons, a CastsSp (43) is interpreted via the code that
+            // precedes it: a %Spell (114) folds in as a per-swing proc
+            // ("Casts (25%/swing)"), a CastOnKill% (1114) as a kill proc
+            // ("Casts (25%/kill)"). A 43 with no pending modifier is a
+            // command-activated cast ("Casts (on use)"). MME's weapon-damage
+            // loop does the same fold; the modifier codes (114 / 1114) are
+            // consumed silently and never emit their own rows.
+            bool isWeapon = itemType == 1;
+            int pendingPercent = 0;
+            string? pendingTrigger = null;   // "swing" | "kill"
+
+            // Item required level (ability code 135 = MinLevel) is the base
+            // level the item's cast spell scales to. There's no dedicated
+            // level column on item records — it's encoded as an ability pair.
+            int itemCastLevel = 0;
+            for (int i = 0; i < 20; i++)
+            {
+                if (ReadInt(el, $"Abil-{i}") == 135) { itemCastLevel = ReadInt(el, $"AbilVal-{i}"); break; }
+            }
             for (int i = 0; i < 20; i++)
             {
                 int code = ReadInt(el, $"Abil-{i}");
@@ -288,9 +333,54 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 // above (weapon block); suppress the duplicate here.
                 if (code == 116) continue;
                 int val = ReadInt(el, $"AbilVal-{i}");
+
+                if (isWeapon && code == 114)       // %Spell → modifies the next CastsSp
+                {
+                    pendingPercent = val;
+                    pendingTrigger = "swing";
+                    continue;
+                }
+                if (isWeapon && code == 1114)      // CastOnKill% → modifies the next CastsSp
+                {
+                    pendingPercent = val;
+                    pendingTrigger = "kill";
+                    continue;
+                }
+                if (isWeapon && code == 43)        // CastsSp — fold any pending modifier
+                {
+                    string castLabel = pendingTrigger is null
+                        ? "Casts (on use)"
+                        : $"Casts ({pendingPercent}%/{pendingTrigger})";
+                    otherInfo.Add(new KeyValuePair<string, string>(castLabel, ResolveSpellName(val)));
+
+                    // Indented sub-row showing the cast spell's effect /
+                    // damage at the item's required level (e.g. "Dmg 10–40").
+                    // Suppressed when the spell yields no figure or isn't in the set.
+                    string castEffect = CastEffect(val, itemCastLevel);
+                    if (castEffect.Length > 0)
+                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
+
+                    pendingPercent = 0;
+                    pendingTrigger = null;
+                    continue;
+                }
+
                 string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
+
+                // A CastsSp (43) on a non-weapon item — potion / wand / scroll —
+                // is a use-activated cast. The weapon branch above renders the
+                // cast spell's effect inline; do the same here so "use this item"
+                // effects surface the damage / heal they do, not just the spell
+                // name. (Weapon CastsSp is consumed by the isWeapon branch and
+                // never reaches this row.)
+                if (code == 43)
+                {
+                    string castEffect = CastEffect(val, itemCastLevel);
+                    if (castEffect.Length > 0)
+                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
+                }
             }
 
             // Dropped By — extract Monster #N(X%) tokens, resolve each
@@ -319,15 +409,31 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         58, 65, 66, 67, 68, 69, 70, 145, 187,
     };
 
-    private string AbilityValueForDialog(int code, int rawValue) => code switch
+    private string AbilityValueForDialog(int code, int rawValue)
     {
-        42 => ResolveSpellName(rawValue),  // LearnSpell — value is a Spells.Number
-        43 => ResolveSpellName(rawValue),  // CastSpell  — same
-        59 => ResolveClassName(rawValue),  // ClassOK    — value is a Classes.Number
-        _  => SignedAbilityCodes.Contains(code)
-              ? FormatSigned(rawValue)
-              : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
-    };
+        // Codes whose value is a record number in another table (42/43 → Spells,
+        // 59 → Classes, etc.) resolve to that row's Name. The static code → table
+        // map lives in LookupEnums; resolution stays here because it needs the cache.
+        if (LookupEnums.ReferencedTable(code) is { } table)
+            return ResolveTableRef(table, rawValue);
+        return SignedAbilityCodes.Contains(code)
+            ? FormatSigned(rawValue)
+            : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Resolve an ability value that is a record number in <paramref name="table"/>
+    /// to that row's Name. 0 → "None"; an absent row — or a table without a Name
+    /// column (e.g. TextBlocks) — falls back to the raw number.
+    /// </summary>
+    private string ResolveTableRef(string table, int value)
+    {
+        if (value == 0) return "None";
+        string? name = _cache.FindNameByNumber(table, value);
+        return string.IsNullOrEmpty(name)
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : name;
+    }
 
     private static string FormatSigned(int n) => n > 0
         ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -347,18 +453,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         1 => "2-Handed Blunt",
         2 => "1-Handed Sharp",
         3 => "2-Handed Sharp",
-        _ => MmudEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
+        _ => LookupEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
     };
 
     /// <summary>
     /// Armour-Type label, or empty when 0. Note the stock data has
-    /// ArmourType=0 mapping to "Natural" in <see cref="MmudEnums"/>; for
+    /// ArmourType=0 mapping to "Natural" in <see cref="LookupEnums"/>; for
     /// the dialog we treat 0 as "no armour type" → suppress the row,
     /// matching the user's preference to hide None-valued requirements.
     /// </summary>
     private static string FormatArmourTypeOrEmpty(int code) => code == 0
         ? string.Empty
-        : MmudEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
+        : LookupEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
 
     /// <summary>"5-12" pair when either is non-zero, or empty when both are zero.</summary>
     private static string FormatRangeOrEmpty(int min, int max) =>
@@ -424,7 +530,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     {
         string price = ReadString(el, "Price");
         if (string.IsNullOrWhiteSpace(price) || price == "0") return "Free";
-        string currency = MmudEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
+        string currency = LookupEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
         return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
     }
 
@@ -512,9 +618,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         }
         if (string.IsNullOrWhiteSpace(assigned)) return (null, 0, 0);
 
-        // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334").
-        if (!assigned.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
-        string remainder = assigned[5..].Trim();
+        // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334"); a shop
+        // can host out of several rooms, listed comma-separated ("Room 1/169,
+        // Room 1/291"). Resolve the first — it's the canonical coordinate the
+        // game reports and what the bought/sold line shows.
+        string firstRoom = assigned.Split(',')[0].Trim();
+        if (!firstRoom.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
+        string remainder = firstRoom[5..].Trim();
         int slash = remainder.IndexOf('/');
         if (slash <= 0) return (null, 0, 0);
         if (!int.TryParse(remainder[..slash], out int mapNo)) return (null, 0, 0);
@@ -568,6 +678,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         string? name = _cache.FindNameByNumber("Classes", classId);
         return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
     }
+
+    /// <summary>Test seam: the rendered "Other Info" rows for a given item
+    /// Number, so the use-cast effect / damage rendering can be pinned without
+    /// standing up a dialog. Mirrors what the edit dialog's read-only pane shows.</summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> BuildOtherInfoForTests(string itemNumber)
+        => BuildMdbView(itemNumber).OtherInfo;
 
     /// <summary>Bundle returned by <see cref="BuildMdbView"/>.</summary>
     private sealed record ItemMdbView(

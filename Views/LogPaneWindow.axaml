@@ -37,11 +37,26 @@
                               Foreground="{StaticResource SeverityCmdBrush}" FontSize="11"/>
                 </StackPanel>
 
-                <CheckBox Grid.Column="1" Margin="14,0,0,0"
-                          IsChecked="{Binding AutoScroll}"
-                          Content="Auto-scroll"
-                          Foreground="{StaticResource ChromeFgSecBrush}"
-                          FontSize="11"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                            VerticalAlignment="Center" Margin="14,0,0,0">
+                    <!-- Unified combat toggle (was two: "Combat preset"
+                         filter + "Combat diagnostics" umbrella). Single
+                         click both narrows the displayed rows to the
+                         Phase 9 combat-engine source categories AND
+                         flips the LogDiagnosticState umbrella so
+                         RoundDamageTracker writes the per-round trace
+                         file. Off by default. -->
+                    <CheckBox IsChecked="{Binding CombatFilter}"
+                              Content="Combat"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"
+                              ToolTip.Tip="Combat focus: show only rows from the Phase 9 combat-engine source categories (Combat / CombatGate / RoomClassifier / Health / HealthGate / Casting / CastSend / Round / Gate), AND enable the per-round trace file at Data/Logs/combat-{sessionStart}.log. Session-only — resets on app launch."/>
+
+                    <CheckBox IsChecked="{Binding AutoScroll}"
+                              Content="Auto-scroll"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"/>
+                </StackPanel>
 
                 <TextBox Grid.Column="3" MinWidth="220"
                          PlaceholderText="Search source / message…"

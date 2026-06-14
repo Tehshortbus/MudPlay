@@ -50,20 +50,17 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Suicide threshold";
             yield return "Block @do suicide";
             yield return "Lives";
-            yield return "Ignore poison";
-            yield return "Ignore blindness";
-            yield return "Ignore confusion";
-            yield return "Ignore diseased";
-            yield return "Ailments";
-            yield return "Game entry command";
-            yield return "Game exit command";
-            yield return "Enter realm";
-            yield return "Logoff";
-            yield return "@hangup";
             yield return "Attempt bash";
             yield return "Pick locks instead of bashing";
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
+            yield return "Max comeback backtrack rooms";
+            yield return "@comeback";
+            yield return "Utilize self or party members to disarm traps";
+            yield return "Disarm traps";
+            yield return "Traps";
+            yield return "@trap max searches";
+            yield return "@trap max disarms";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -79,34 +76,21 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty] private int _maxSuicideLivesThreshold = 5;
 
-    // ----- Ignored ailments (wired Phase 6+) -----
-    // Default UNCHECKED — most parties want to pause on every ailment.
-    // Toggle ON when the party agrees to push through a specific
-    // ailment (e.g. don't pause for a poison tick during a boss).
-    // Drives the future WaitTriggerEngine's per-ailment @wait decision
-    // once message-matching lands.
-
-    [ObservableProperty] private bool _ignorePoison;
-    [ObservableProperty] private bool _ignoreBlindness;
-    [ObservableProperty] private bool _ignoreConfusion;
-    [ObservableProperty] private bool _ignoreDiseased;
-
-    // ----- Game-menu commands (wired) -----
-    // Entry: main-menu key to enter the realm (default "E").
-    // Exit:  main-menu logoff command (default "=x").
-    // HangupHandler consumes ExitCommand immediately on a permitted
-    // @hangup. The cleanup-warning + first-session-load automation
-    // for both commands ships in a follow-up PR once the small
-    // scheduler + main-menu pattern exist.
-
-    [ObservableProperty] private string _gameEntryCommand = "E";
-    [ObservableProperty] private string _gameExitCommand  = "=x";
+    // Note: the ailment Ignore* (@wait gates) and DoNotAnnounce* (say-
+    // suppression gates) toggles graduated to the Spells tab — they sit
+    // next to the cure-spell picks they coordinate with. AilmentSyncEngine
+    // reads them from SpellsSettings now.
 
     // ----- @trap auto-disarm attempt caps (wired) -----
     // Both push into TrapDisarmManager on Apply via ApplyToServices,
     // and via AppServices.ApplyOtherFromActiveProfile on ProfileLoaded /
     // ProfileMutated. Search row sits above disarm in the rendered
     // panel per user spec.
+
+    // Master gate for walker trap-disarming. Read live by the walker's
+    // trap-disarm gate (AppServices.SetTrapDisarmGate) which also AND-s
+    // in the local Traps-skill capability check.
+    [ObservableProperty] private bool _utilizeDisarmTrapsIfAble = true;
 
     [ObservableProperty] private int _maxTrapSearchAttempts = 20;
     [ObservableProperty] private int _maxTrapDisarmAttempts = 5;
@@ -146,6 +130,43 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _logMovementHopTiming;
 
     /// <summary>
+    /// Leader-side <c>@comeback</c> backtrack budget — how many rooms the
+    /// leader walks backwards along the path just taken when a stranded
+    /// follower sends a bare <c>@comeback</c> (no target room) before
+    /// giving up and going idle. Range 1..50, default 10. Ignored when
+    /// the follower supplies an explicit room. Pushed into the live
+    /// <see cref="Game.Remote.PartyComebackManager"/> on Apply +
+    /// profile load.
+    /// </summary>
+    [ObservableProperty] private int _maxComebackBacktrackRooms = 10;
+
+    /// <summary>
+    /// Follower-side auto-<c>@comeback</c>. When on (default), being left
+    /// behind by the party leader (a movement-failure line just before
+    /// "You are no longer following X.") telepaths <c>@comeback</c> to the
+    /// leader automatically. When off, the strand is detected but no
+    /// request is sent. Pushed into the live
+    /// <see cref="Game.Remote.ComebackRequester"/> on Apply + profile load.
+    /// </summary>
+    [ObservableProperty] private bool _autoRequestComebackWhenLeftBehind = true;
+
+    // Phase 9 per-category Verbose toggles + WriteCombatRoundTrace
+    // moved out of per-character settings into a session-only umbrella
+    // switch in the Log pane menu — see Services/LogDiagnosticState
+    // + LogPaneViewModel.CombatFilter. Verbose tracing isn't a
+    // per-character preference; it's "I'm debugging right now",
+    // and a session toggle in the LogPane is the right home.
+
+    // Note: the party-bless gates (Bless while resting / Bless during
+    // combat) graduated to the Party tab — they sit next to the bless
+    // slots they gate. CastingDirector reads them from PartySettings now.
+
+    // Note: the run-away (flee) knobs (Go-backwards-if-running /
+    // Break-combat-before-running) graduated to the Combat tab — they sit
+    // next to the room thresholds + RunDistance they coordinate with.
+    // HealthManager reads RunDirection / BreakBeforeFleeing from CombatSettings.
+
+    /// <summary>
     /// Inactive-player auto-cleanup window in days. Moved here from the
     /// General tab per user direction. Lives at the Global tier (one
     /// threshold for the whole install) so Apply writes through to
@@ -171,37 +192,36 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
-            new StubField("Allow hangup in all-off mode",    StubFieldKind.Check, "Phase 13 — gate hangup when every Auto-* toggle is off."),
-            new StubField("Hangup if naked",                 StubFieldKind.Check, "Phase 13 — recovery safety, disconnect if equipment got lost."),
+            // "Allow hangup in all-off mode" graduated to a wired checkbox on
+            // the General tab (HealthManager runs only the emergency-hangup
+            // branch when every Auto-* engine is off and
+            // GeneralSettings.AllowHangupInAllOffMode set).
+            // Removed per user direction: "Hangup if naked".
             new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
-            new StubField("Go backwards if running",         StubFieldKind.Check, "Phase 13 — flee direction prefers retracing rather than pushing forward."),
-            new StubField("Break combat before running",     StubFieldKind.Check, "Phase 13 — stop swinging before issuing the flee command."),
-            new StubField("Don't move unless sneaking",      StubFieldKind.Check, "Phase 7 — walker pause-gate when stealth drops."),
             // Removed per user direction: "Backwards if warning" (nonsense),
-            // "Provide light in dimly lit rooms" (handled elsewhere).
+            // "Provide light in dimly lit rooms" (handled elsewhere),
+            // "Don't move unless sneaking" (our movement engine always sneaks
+            // before moving — the toggle was a MegaMUD workaround for a
+            // message-parsing combat bug we don't share).
+            // "Go backwards if running" / "Break combat before running"
+            // graduated to wired checkboxes on the Combat tab (HealthManager
+            // reads CombatSettings.RunDirection / BreakBeforeFleeing).
             // Lock / trap preference toggles moved down next to their
             // matching retry-count pickers (see "Locks & traps" group).
         }),
         // Ignored ailments group graduated to a real wired section above
         // (rendered inline in OtherSectionView.axaml). Diseased added per
         // user direction so the four ailment families are symmetric.
-        new StubGroup("Auto-engage on connect", new[]
-        {
-            new StubField("Enable auto-combat on reconnect", StubFieldKind.Check, "Phase 13 PR 13.A — flips CombatManager on at logon."),
-            new StubField("Enable auto-rest on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.B — flips HealthManager rest on at logon."),
-            new StubField("Enable auto-heal on reconnect",   StubFieldKind.Check, "Phase 13 PR 13.D — flips CastingDirector self-heal on at logon."),
-            new StubField("Bless while resting",  StubFieldKind.Check, "Phase 13 PR 13.D — CastingDirector recasts party-buffs during downtime."),
-            new StubField("Bless during combat",  StubFieldKind.Check, "Phase 13 PR 13.D — extends bless casting into active rounds."),
-        }),
-        new StubGroup("Locks & traps", new[]
-        {
-            // Attempt-bash / Pick-locks-over-bash / Attempt-pick-lock
-            // graduated to wired fields by commit 2 (DoorOpenManager).
-            // They render in the wired section above; this group keeps
-            // the remaining trap-disarm toggles only.
-            new StubField("Attempt to disarm traps",       StubFieldKind.Check,   "Phase 7 PR 7.22 — walker pauses at trapped exits and tries disarm."),
-            new StubField("Attempt disarm",                StubFieldKind.Numeric, "Phase 7 PR 7.22 — retry cap on trap disarm before falling back.","times"),
-        }),
+        // "Auto-engage on connect" group graduated to a real wired section
+        // — the three mismatched stub fields became a 1-to-1 set of
+        // "re-enable on reconnect" checkboxes (one per AutoMode auto-action)
+        // rendered inline in OtherSectionView.axaml.
+        // "Locks & traps" group removed: Attempt-bash / Pick-locks-over-bash /
+        // Attempt-pick-lock graduated to wired fields by commit 2
+        // (DoorOpenManager); "Attempt to disarm traps" graduated to the wired
+        // "Utilize disarm traps if able" checkbox; "Attempt disarm" (retry
+        // cap) is the already-wired "@trap max disarms" picker above — no
+        // duplicate needed.
         // Removed per user direction:
         // - "Command splitter character" (^M and ; are hardwired)
         // - "Backscroll buffer size" (lives on BBS + Display)
@@ -233,18 +253,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         OtherSettings dto = new()
         {
             MaxSuicideLivesThreshold = Math.Clamp(MaxSuicideLivesThreshold, 0, 9),
-            IgnorePoison    = IgnorePoison,
-            IgnoreBlindness = IgnoreBlindness,
-            IgnoreConfusion = IgnoreConfusion,
-            IgnoreDiseased  = IgnoreDiseased,
-            GameEntryCommand = (GameEntryCommand ?? string.Empty).Trim(),
-            GameExitCommand  = (GameExitCommand  ?? string.Empty).Trim(),
+            UtilizeDisarmTrapsIfAble = UtilizeDisarmTrapsIfAble,
             MaxTrapSearchAttempts = Math.Clamp(MaxTrapSearchAttempts, 1, 100),
             MaxTrapDisarmAttempts = Math.Clamp(MaxTrapDisarmAttempts, 1, 50),
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             LogMovementHopTiming  = LogMovementHopTiming,
+            MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
+            AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
         };
 
         profile.Settings ??= new();
@@ -289,18 +306,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     {
         OtherSettings dto = ReadOrDefault();
         MaxSuicideLivesThreshold = dto.MaxSuicideLivesThreshold;
-        IgnorePoison    = dto.IgnorePoison;
-        IgnoreBlindness = dto.IgnoreBlindness;
-        IgnoreConfusion = dto.IgnoreConfusion;
-        IgnoreDiseased  = dto.IgnoreDiseased;
-        GameEntryCommand = dto.GameEntryCommand;
-        GameExitCommand  = dto.GameExitCommand;
+        UtilizeDisarmTrapsIfAble = dto.UtilizeDisarmTrapsIfAble;
         MaxTrapSearchAttempts = dto.MaxTrapSearchAttempts;
         MaxTrapDisarmAttempts = dto.MaxTrapDisarmAttempts;
         MaxBashAttempts       = dto.MaxBashAttempts;
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
+        MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
+        AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         ApplyToServices(dto);
     }
@@ -324,16 +338,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     {
         AppServices svcs = AppServices.Current;
         svcs.RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 20);
-        // Live-mirror the entry / exit commands so HangupHandler picks
-        // them up without a profile reload. Blank values fall back to
-        // the DTO defaults — see AppServices.ApplyOtherFromActiveProfile
-        // for the canonical guard.
-        svcs.GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
-            ? new OtherSettings().GameEntryCommand
-            : dto.GameEntryCommand;
-        svcs.GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
-            ? new OtherSettings().GameExitCommand
-            : dto.GameExitCommand;
         // @trap attempt caps — push into the live manager so the next
         // queued @trap honours the edit without a profile reload.
         svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
@@ -341,6 +345,12 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // Calibrator toggle — live-mirror so the user can flip it from
         // the Settings dialog without an Apply + profile reload cycle.
         svcs.HopCalibrator.Enabled = dto.LogMovementHopTiming;
+        // @comeback backtrack budget — live-mirror so the next stranded-
+        // follower pickup honours the edit without a profile reload.
+        svcs.PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
+        // Follower-side auto-@comeback toggle — live-mirror so the next
+        // left-behind honours the edit without a profile reload.
+        svcs.ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
     }
 
     // ----- IsDirty plumbing -----
@@ -352,19 +362,16 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     }
 
     partial void OnMaxSuicideLivesThresholdChanged(int value) => MarkDirty();
-    partial void OnIgnorePoisonChanged(bool value)    => MarkDirty();
-    partial void OnIgnoreBlindnessChanged(bool value) => MarkDirty();
-    partial void OnIgnoreConfusionChanged(bool value) => MarkDirty();
-    partial void OnIgnoreDiseasedChanged(bool value)  => MarkDirty();
-    partial void OnGameEntryCommandChanged(string value) => MarkDirty();
-    partial void OnGameExitCommandChanged(string value)  => MarkDirty();
     partial void OnPlayerCleanupDaysChanged(int value)   => MarkDirty();
+    partial void OnUtilizeDisarmTrapsIfAbleChanged(bool value) => MarkDirty();
     partial void OnMaxTrapSearchAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxTrapDisarmAttemptsChanged(int value) => MarkDirty();
     partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
+    partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
+    partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
 
     private void MarkDirty()
     {

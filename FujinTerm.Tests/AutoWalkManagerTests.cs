@@ -824,6 +824,22 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Walker_TextExit_StepDisplaysCommand_NotDirection()
+    {
+        // The step shown in the Navigation right-rail must read the actual
+        // command the exit uses ("borrow skiff"), not the cardinal the
+        // exit happens to sit on ("south").
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Single(h.Walker.Steps);
+        MoveStep step = Assert.IsType<MoveStep>(h.Walker.Steps[0]);
+        Assert.Equal(Direction.S, step.Direction);   // still south under the hood
+        Assert.Equal("borrow skiff", step.Display);   // but shows the command
+    }
+
+    [Fact]
     public void Walker_TextExit_RoomLandsAtTarget_AdvancesPath()
     {
         Harness h = NewHarness(TextExitGraphJson);

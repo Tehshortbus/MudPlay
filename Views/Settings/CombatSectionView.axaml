@@ -1,9 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:settings="using:FujinTerm.Views.Settings"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="720"
+             mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="900"
              x:Class="FujinTerm.Views.Settings.CombatSectionView"
              x:DataType="vm:CombatSectionViewModel">
 
@@ -30,209 +31,350 @@
 
     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="22" Spacing="4"
-                    MaxWidth="780" HorizontalAlignment="Left">
-
-            <!-- ============ Tab header ============ -->
-            <TextBlock Text="{Binding Title}"
-                       Foreground="{StaticResource ChromeFgBrush}"
-                       FontSize="{StaticResource FontSizeLg}"
-                       FontWeight="SemiBold"/>
-
-            <Border Padding="4,2"
-                    Background="{StaticResource ChromeBgElevBrush}"
-                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CornerSm}"
-                    HorizontalAlignment="Left"
-                    Margin="0,4,0,4">
-                <TextBlock Text="{Binding PhaseTag}"
-                           Foreground="{StaticResource AccentAmberBrush}"
-                           FontFamily="{StaticResource FontMono}"
-                           FontSize="11"/>
+        <Grid>
+            <!-- No-profile banner. -->
+            <Border IsVisible="{Binding !HasProfile}" Padding="22"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="Combat"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit combat settings."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
             </Border>
 
-            <TextBlock Text="{Binding Description}"
-                       Foreground="{StaticResource ChromeFgSecBrush}"
-                       FontSize="{StaticResource FontSizeMd}"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,4"/>
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22" Spacing="4"
+                        MaxWidth="800" HorizontalAlignment="Left">
 
-            <TextBlock Text="Surface preview only — every control below is disabled. Hover for the phase / PR that will wire it."
-                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                       FontSize="{StaticResource FontSizeSm}"
-                       FontStyle="Italic"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,8"/>
 
-            <!-- ============ Weapon Combat ============ -->
-            <TextBlock Classes="SectionHeader" Text="Weapon combat"/>
-            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Normal attack command"/>
-                <TextBox Grid.Row="0" Grid.Column="1" IsEnabled="False" Width="220" HorizontalAlignment="Left"
-                         PlaceholderText="a"
-                         ToolTip.Tip="Command sent each round to swing — default `a`."/>
+                <!-- The master on/off for auto-attack lives on
+                     Settings → General → Auto-Combat (mirrored by the
+                     toolbar Toggle button). This tab configures HOW
+                     to attack, not WHETHER to. -->
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Normal weapon"/>
-                <AutoCompleteBox Grid.Row="1" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Primary weapon — main-hand. Suggestion list populated from Phase 5 game data once imported."/>
+                <!-- ============ Combat priority order ============ -->
+                <TextBlock Classes="SectionHeader" Text="Combat priority order (per-round action order)"/>
+                <TextBlock Text="Use the arrows to reorder. Higher in the list = acts earlier. The engine evaluates these four categories top-to-bottom each round; the first applicable one owns the round. Physical is the terminal fallback (a swing is always possible)."
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,4"/>
+                <settings:PriorityRankingView DataContext="{Binding Priority}"
+                                              HorizontalAlignment="Left"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Normal off-hand"/>
-                <AutoCompleteBox Grid.Row="2" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Off-hand pairing for the normal weapon (shield or weapon)."/>
-
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Alternate weapon"/>
-                <AutoCompleteBox Grid.Row="3" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Swap target — used when CombatManager decides to switch."/>
-
-                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Alternate off-hand"/>
-                <AutoCompleteBox Grid.Row="4" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Off-hand pairing for the alternate weapon."/>
-
-                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="BS weapon"/>
-                <AutoCompleteBox Grid.Row="5" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Equipped for the BS attempt round."/>
-
-                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="BS weapon off-hand"/>
-                <AutoCompleteBox Grid.Row="6" Grid.Column="1" IsEnabled="False" Width="260" HorizontalAlignment="Left"
-                                 PlaceholderText="Type to filter…" FilterMode="Contains"
-                                 ToolTip.Tip="Off-hand worn alongside the BS weapon (often a shield, but any off-hand works)."/>
-            </Grid>
-
-            <!-- ============ Options ============ -->
-            <TextBlock Classes="SectionHeader" Text="Options"/>
-            <Grid ColumnDefinitions="*,16,*">
-                <StackPanel Grid.Column="0" Spacing="2">
-                    <CheckBox Content="Do BS attacks" IsEnabled="False"
-                              ToolTip.Tip="Off by default. Stealth-window gating handled by Phase 13 PR 13.F."/>
-                    <CheckBox Content="Don't BS if multi-attack" IsEnabled="False"
-                              ToolTip.Tip="Skip BS when the multi-attack room spell is going off this round."/>
-                    <CheckBox Content="Run if BS fails" IsEnabled="False"
-                              ToolTip.Tip="Trigger flee behaviour on a failed BS roll."/>
-                    <CheckBox Content="Attack all monsters" IsEnabled="False"
-                              ToolTip.Tip="Opposite of polite — engages every hostile regardless of who else is fighting."/>
-                    <CheckBox Content="Polite attacks" IsEnabled="False"
-                              ToolTip.Tip="Skip rooms where non-party players are already engaged."/>
-                </StackPanel>
-                <Grid Grid.Column="2" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. monsters"/>
-                    <NumericUpDown Grid.Row="0" Grid.Column="1" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="120" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Skip the room if fewer than this many hostiles are present. Range 0–20. Engine enforces Min ≤ Max once wired."/>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters"/>
-                    <NumericUpDown Grid.Row="1" Grid.Column="1" IsEnabled="False" Value="1" Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Skip the room if more than this many hostiles are present. Range 1–20 (rooms cap at 20 NPCs; 0 would mean always-run)."/>
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run distance"/>
-                    <NumericUpDown Grid.Row="2" Grid.Column="1" IsEnabled="False" Value="3" Minimum="1" Maximum="100" Width="120" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Rooms to flee before re-evaluating. Range 1–100; most users keep this at 3 or 4."/>
+                <Grid ColumnDefinitions="240,*" Margin="0,4,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal weapon attack command"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding NormalAttackCommand, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="220" HorizontalAlignment="Left"
+                             ToolTip.Tip="Command sent each round to swing the normal weapon — default `a` (the canonical MajorMUD attack alias)."/>
                 </Grid>
-            </Grid>
 
-            <!-- ============ Spell Combat ============ -->
-            <TextBlock Classes="SectionHeader" Text="Spell combat"/>
+                <Grid ColumnDefinitions="240,*" Margin="0,4,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Alternate weapon attack command"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding AlternateAttackCommand, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="220" HorizontalAlignment="Left"
+                             ToolTip.Tip="Command sent when swinging the alternate weapon — default `a`. Some 2H alt weapons use `swing` while a 1H normal uses `a`."/>
+                </Grid>
 
-            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
-                <TextBlock Classes="FieldLabel" Text="Minimum mana per cast:"/>
-                <RadioButton GroupName="SpellManaUnit" Content="Percentage"
-                             IsChecked="True" IsEnabled="False"
-                             ToolTip.Tip="Stub — Min mana columns below are interpreted as % of MaxMa / MaxKai."/>
-                <RadioButton GroupName="SpellManaUnit" Content="Value"
-                             IsEnabled="False"
-                             ToolTip.Tip="Stub — Min mana columns below are interpreted as absolute MA / KAI."/>
+                <!-- ============ Weapon Combat ============ -->
+                <TextBlock Classes="SectionHeader" Text="Weapon combat"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Normal weapon"/>
+                    <AutoCompleteBox Grid.Row="0" Grid.Column="1"
+                                     Text="{Binding NormalWeapon, Mode=TwoWay}"
+                                     ItemsSource="{Binding WeaponSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Primary weapon — main-hand. Type freely; the dropdown suggests weapons from the active game-data set."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Normal off-hand"/>
+                    <AutoCompleteBox Grid.Row="1" Grid.Column="1"
+                                     Text="{Binding NormalOffHand, Mode=TwoWay}"
+                                     ItemsSource="{Binding OffHandSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Off-hand pairing for the normal weapon. Suggests off-hand items (shields, tomes, instruments) from game data."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Alternate weapon"/>
+                    <AutoCompleteBox Grid.Row="2" Grid.Column="1"
+                                     Text="{Binding AlternateWeapon, Mode=TwoWay}"
+                                     ItemsSource="{Binding WeaponSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Swap target — equipped when CombatManager decides to switch."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Alternate off-hand"/>
+                    <AutoCompleteBox Grid.Row="3" Grid.Column="1"
+                                     Text="{Binding AlternateOffHand, Mode=TwoWay}"
+                                     ItemsSource="{Binding OffHandSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Off-hand pairing for the alternate weapon."/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="BS weapon"/>
+                    <AutoCompleteBox Grid.Row="4" Grid.Column="1"
+                                     Text="{Binding BackstabWeapon, Mode=TwoWay}"
+                                     ItemsSource="{Binding WeaponSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Equipped for the BS attempt round."/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="BS weapon off-hand"/>
+                    <AutoCompleteBox Grid.Row="5" Grid.Column="1"
+                                     Text="{Binding BackstabOffHand, Mode=TwoWay}"
+                                     ItemsSource="{Binding OffHandSuggestions}"
+                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Off-hand worn alongside the BS weapon (often a shield, but any off-hand works)."/>
+                </Grid>
+
+                <!-- ============ Targeting ============ -->
+                <TextBlock Classes="SectionHeader" Text="Targeting"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Target order"/>
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                        <RadioButton GroupName="TargetOrder" Content="Normal"
+                                     IsChecked="{Binding TargetOrderNormal, Mode=TwoWay}"
+                                     ToolTip.Tip="Swing at the highest-priority monster first (priority from Monsters.json AttackPriority). Only applies when Target Priority is Default."/>
+                        <RadioButton GroupName="TargetOrder" Content="Reverse"
+                                     IsChecked="{Binding TargetOrderReverse, Mode=TwoWay}"
+                                     ToolTip.Tip="Swing at the lowest-priority monster first. Only applies when Target Priority is Default."/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Target Priority"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding TargetPriorityOptions}"
+                              SelectedValue="{Binding TargetPriority, Mode=TwoWay}"
+                              SelectedValueBinding="{Binding Value}"
+                              DisplayMemberBinding="{Binding Label}"
+                              Width="280" HorizontalAlignment="Left"
+                              ToolTip.Tip="Which monster to target (the 'who'). Default = pick our own target from game data (Target order + per-monster AttackPriority). Attack what party leader attacks = mirror the party leader's announced target. Attack what player attacks = mirror the named player's announced target. If our weapons/spells can't hit the followed target, combat-fail logic falls back to another monster."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                               Text="Player name"/>
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Text="{Binding TargetPriorityMemberName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             IsEnabled="{Binding TargetPriorityMemberEnabled}"
+                             Width="220" HorizontalAlignment="Left"
+                             ToolTip.Tip="Only used when Target Priority is 'Attack what player attacks'. Mirror this player's announced target."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Attack Order"/>
+                    <ComboBox Grid.Row="3" Grid.Column="1"
+                              ItemsSource="{Binding AttackTimingOptions}"
+                              SelectedItem="{Binding AttackTiming, Mode=TwoWay}"
+                              Width="220" HorizontalAlignment="Left"
+                              ToolTip.Tip="When to re-fire (the 'when'). Pure timing — it re-fires our own current target and never switches the monster. Default = own cadence. Attack Last Party re-fires after every party member's announce; Attack Last Room drops the party filter (re-fire on anyone's announce); Attack After re-fires when the named player announces."/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel"
+                               Text="Attack-after player name"/>
+                    <TextBox Grid.Row="4" Grid.Column="1"
+                             Text="{Binding AttackAfterPlayerName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             IsEnabled="{Binding AttackAfterEnabled}"
+                             Width="220" HorizontalAlignment="Left"
+                             ToolTip.Tip="Only used when Attack Order is Attack After. Re-fire our current target when this player announces."/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Polite mode"/>
+                    <ComboBox Grid.Row="5" Grid.Column="1"
+                              ItemsSource="{Binding PoliteModeOptions}"
+                              SelectedItem="{Binding PoliteMode, Mode=TwoWay}"
+                              Width="220" HorizontalAlignment="Left"
+                              ToolTip.Tip="Behavior when a non-party player is fighting a monster we'd target. Off = attack regardless; WaitForOthers = pause; SkipRoom = continue walking; AttackDifferent = pick a different monster in the room."/>
+                </Grid>
+
+                <!-- ============ Backstab options ============ -->
+                <TextBlock Classes="SectionHeader" Text="Backstab"/>
+                <StackPanel Spacing="2">
+                    <CheckBox Content="Do BS attacks"
+                              IsChecked="{Binding DoBackstab, Mode=TwoWay}"
+                              ToolTip.Tip="Off by default. Stealth-window gating handled by StealthManager (PR 9.F) once it lands."/>
+                    <CheckBox Content="Don't BS if multi-attack room spell is firing"
+                              IsChecked="{Binding SkipBackstabIfMultiAttack, Mode=TwoWay}"
+                              ToolTip.Tip="Skip the BS attempt when the multi-attack room spell is going off this round."/>
+                    <CheckBox Content="Run if BS fails"
+                              IsChecked="{Binding RunIfBackstabFails, Mode=TwoWay}"
+                              ToolTip.Tip="Trigger flee behaviour on a failed BS roll."/>
+                    <CheckBox Content="Clear hostiles when sneak broken by see-hidden monster"
+                              IsChecked="{Binding ClearHostilesWhenSeenHidden, Mode=TwoWay}"
+                              ToolTip.Tip="Combat-off override for stealth runners. When sprinting a walk-to route with combat OFF and auto-sneak ON, a room holding a see-hidden monster breaks sneak. With this on, the engine force-clears every hostile in that room (bypassing the Min/Max gate) so the route can resume sneaking — preventing monsters from dragging and stacking across rooms. Off by default."/>
+                </StackPanel>
+
+                <!-- ============ Room-skip + failure ============ -->
+                <TextBlock Classes="SectionHeader" Text="Room thresholds"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. monsters"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding MinMonstersInRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="20" Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Skip the room if fewer than this many hostiles are present. Range 0–20."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding MaxMonstersInRoom, Mode=TwoWay}"
+                                   Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Skip the room if more than this many hostiles are present. Range 1–20."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run distance"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                   Value="{Binding RunDistance, Mode=TwoWay}"
+                                   Minimum="1" Maximum="100" Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Rooms to flee before re-evaluating. Range 1–100."/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="No-effect threshold"/>
+                    <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                   Value="{Binding NoEffectFailureThreshold, Mode=TwoWay}"
+                                   Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Consecutive 'no effect' lines that move a target to the room-scoped unhittable set. Canonical-species dedup applies (nasty giant rat and giant rat share)."/>
+                </Grid>
+
+                <!-- Run-away (flee) behaviour — coordinates with Run distance
+                     above. HealthManager.TryFlee reads RunDirection /
+                     BreakBeforeFleeing from CombatSettings. -->
+                <TextBlock Classes="FieldLabel" Text="When running away:" Margin="0,12,0,0"/>
+                <CheckBox Content="Go backwards if running"
+                          IsChecked="{Binding GoBackwardsIfRunning, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): an auto-flee retraces the rooms you just walked in through — safer because you know what's behind you. When unchecked, the flee pushes forward along the active walker path into unscouted rooms."/>
+                <CheckBox Content="Break combat before running"
+                          IsChecked="{Binding BreakBeforeFleeing, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): `break` is sent before the first flee move so auto-attack disengages and the move lands cleanly. When unchecked, the flee starts mid-fight and the server may reject the first move because you're still engaged — faster, but you may waste a round."/>
+
+                <!-- ============ Spell Combat ============ -->
+                <TextBlock Classes="SectionHeader" Text="Spell combat"/>
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
+                    <TextBlock Classes="FieldLabel" Text="Minimum mana per cast:"/>
+                    <RadioButton GroupName="SpellManaUnit" Content="Percentage"
+                                 IsChecked="{Binding SpellManaModePercentage, Mode=TwoWay}"
+                                 ToolTip.Tip="Min mana columns below are read as % of MaxMa / MaxKai."/>
+                    <RadioButton GroupName="SpellManaUnit" Content="Value"
+                                 IsChecked="{Binding SpellManaModeAbsolute, Mode=TwoWay}"
+                                 ToolTip.Tip="Min mana columns below are read as absolute MA / KAI."/>
+                </StackPanel>
+
+                <!-- Spell-row column headers. -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,4,0,0">
+                    <TextBlock Grid.Column="0"/>
+                    <TextBlock Grid.Column="1" Classes="ColumnHeader" Text="Spell"/>
+                    <TextBlock Grid.Column="2" Classes="ColumnHeader" Text="Min enemies"/>
+                    <TextBlock Grid.Column="3" Classes="ColumnHeader" Text="Max casts"/>
+                    <TextBlock Grid.Column="4" Classes="ColumnHeader" Text="Min mana per cast"/>
+                </Grid>
+
+                <!-- Multi-attack (room spell). -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Multi-attack"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding MultiAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Multi-target room spell to fire."/>
+                    <NumericUpDown Grid.Column="2"
+                                   Value="{Binding MultiAttackMinEnemies, Mode=TwoWay}"
+                                   Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Only cast when at least this many hostiles are present."/>
+                    <NumericUpDown Grid.Column="3"
+                                   Value="{Binding MultiAttackMaxCastsPerRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                    <NumericUpDown Grid.Column="4"
+                                   Value="{Binding MultiAttackMinManaPerCast, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Minimum mana required to cast — % or absolute per the toggle above."/>
+                </Grid>
+
+                <!-- Debuff (AOE). -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (AOE)"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding AreaDebuffSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Area-effect debuff (e.g. blind-room, curse-room)."/>
+                    <NumericUpDown Grid.Column="2"
+                                   Value="{Binding AreaDebuffMinEnemies, Mode=TwoWay}"
+                                   Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Only cast when at least this many hostiles are present."/>
+                    <NumericUpDown Grid.Column="3"
+                                   Value="{Binding AreaDebuffMaxCastsPerRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                    <NumericUpDown Grid.Column="4"
+                                   Value="{Binding AreaDebuffMinManaPerCast, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Minimum mana required to cast."/>
+                </Grid>
+
+                <!-- Debuff (single target — no Min enemies). -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (single target)"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SingleTargetDebuffSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Single-target debuff (e.g. weakness, slow)."/>
+                    <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
+                    <NumericUpDown Grid.Column="3"
+                                   Value="{Binding SingleTargetDebuffMaxCastsPerRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Re-cast cap for the active fight."/>
+                    <NumericUpDown Grid.Column="4"
+                                   Value="{Binding SingleTargetDebuffMinManaPerCast, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Minimum mana required to cast."/>
+                </Grid>
+
+                <!-- Normal attack spell (single-target — no Min enemies). -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal attack spell"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding NormalAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Primary single-target damage spell."/>
+                    <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
+                    <NumericUpDown Grid.Column="3"
+                                   Value="{Binding NormalAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                    <NumericUpDown Grid.Column="4"
+                                   Value="{Binding NormalAttackSpellMinManaPerCast, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Minimum mana required to cast."/>
+                </Grid>
+
+                <!-- Alternate attack spell (single-target — no Min enemies). -->
+                <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Alternate attack spell"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding AlternateAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                             Width="260" HorizontalAlignment="Left"
+                             ToolTip.Tip="Fallback / second-choice damage spell — used when the normal pick can't fire."/>
+                    <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
+                    <NumericUpDown Grid.Column="3"
+                                   Value="{Binding AlternateAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                    <NumericUpDown Grid.Column="4"
+                                   Value="{Binding AlternateAttackSpellMinManaPerCast, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Minimum mana required to cast."/>
+                </Grid>
+
+                <!-- ============ Display ============ -->
+                <TextBlock Classes="SectionHeader" Text="Display"/>
+                <CheckBox Content="Show combat round totals"
+                          IsChecked="{Binding ShowCombatRoundTotals, Mode=TwoWay}"
+                          ToolTip.Tip="Append the per-round damage roll-up to the terminal canvas after each round. CombatManager (PR 9.A)."/>
+
             </StackPanel>
-
-            <!-- Spell-row column headers. -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,4,0,0">
-                <TextBlock Grid.Column="0"/>
-                <TextBlock Grid.Column="1" Classes="ColumnHeader" Text="Spell"/>
-                <TextBlock Grid.Column="2" Classes="ColumnHeader" Text="Min enemies"/>
-                <TextBlock Grid.Column="3" Classes="ColumnHeader" Text="Max casts"/>
-                <TextBlock Grid.Column="4" Classes="ColumnHeader" Text="Min mana per cast"/>
-            </Grid>
-
-            <!-- Multi-attack (room spell). -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Multi-attack"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Multi-target room spell to fire."/>
-                <NumericUpDown Grid.Column="2" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Only cast when at least this many hostiles are present."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Cap on back-to-back fires."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell — % or absolute per the toggle above."/>
-            </Grid>
-
-            <!-- Debuff (AOE). -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (AOE)"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Area-effect debuff (e.g. blind-room, curse-room)."/>
-                <NumericUpDown Grid.Column="2" IsEnabled="False" Value="0" Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Only cast when at least this many hostiles are present."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Cap on back-to-back fires."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell."/>
-            </Grid>
-
-            <!-- Debuff (single target — no Min enemies). -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (single target)"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Single-target debuff (e.g. weakness, slow)."/>
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Re-cast cap for the active fight."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell."/>
-            </Grid>
-
-            <!-- Normal attack spell (single-target — no Min enemies). -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal attack spell"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Primary single-target damage spell."/>
-                <!-- Min enemies intentionally omitted for single-target spells. -->
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Cap on back-to-back fires."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell."/>
-            </Grid>
-
-            <!-- Alternate attack spell (single-target — no Min enemies). -->
-            <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
-                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Alternate attack spell"/>
-                <AutoCompleteBox Grid.Column="1" IsEnabled="False" Width="260" PlaceholderText="—" FilterMode="Contains"
-                                 ToolTip.Tip="Fallback / second-choice damage spell — used when the normal pick can't fire."/>
-                <!-- Min enemies intentionally omitted for single-target spells. -->
-                <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
-                <NumericUpDown Grid.Column="3" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                               ToolTip.Tip="Cap on back-to-back fires."/>
-                <NumericUpDown Grid.Column="4" IsEnabled="False" Value="0" Minimum="0" Maximum="100" Width="130" HorizontalAlignment="Left"
-                               ToolTip.Tip="Minimum mana required to cast this spell."/>
-            </Grid>
-
-            <!-- ============ Display ============ -->
-            <!-- Moved from the BBS tab's Display group — combat round
-                 totals are a combat-engine concern, so they live with
-                 the rest of the combat configuration and will be wired
-                 by Phase 13 PR 13.A. -->
-            <TextBlock Classes="SectionHeader" Text="Display"/>
-            <CheckBox Content="Show combat round totals" IsEnabled="False"
-                      ToolTip.Tip="Phase 13 PR 13.A — append the per-round damage roll-up to the terminal canvas after each round."/>
-
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

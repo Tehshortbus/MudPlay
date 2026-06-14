@@ -51,6 +51,16 @@ public sealed class AppServices
     /// <summary>App-wide severity-tagged ring-buffer log. Status bar + Phase 1 log pane subscribe.</summary>
     public LogService Log { get; }
 
+    /// <summary>
+    /// Session-only diagnostic switches surfaced in the Log pane menu
+    /// (Phase 9 — combat-verbose / round-trace umbrella). Consumers
+    /// (e.g. <see cref="Game.Combat.RoundDamageTracker"/>) read this
+    /// instead of per-character settings because verbose tracing isn't
+    /// a per-character affordance — it's a "while I'm debugging right
+    /// now" knob that resets on app launch.
+    /// </summary>
+    public LogDiagnosticState LogDiagnostics { get; } = new();
+
     /// <summary>Docking / floating panel framework (single-UserControl reparented).</summary>
     public FloatingPanelHost Panels { get; }
 
@@ -213,6 +223,35 @@ public sealed class AppServices
     public Game.Remote.HangupHandler Hangup { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
+    /// permission category — <c>@relog</c>. Sends the configured
+    /// <see cref="Services.GameCommands.ExitCommand"/> to gracefully log
+    /// out, then arms <see cref="RelogSignal"/> so MainWindowVM forces a
+    /// reconnect-and-login cycle.
+    /// </summary>
+    public Game.Remote.RelogHandler Relog { get; }
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.DivertConversations"/>
+    /// category — <c>@divert &lt;player&gt;</c>. While diverting, repeats
+    /// every incoming telepath to the chosen target as
+    /// <c>&lt;sender&gt; telepathed: &lt;message&gt;</c>; bare <c>@divert</c>
+    /// stops.
+    /// </summary>
+    public Game.Remote.DivertHandler Divert { get; }
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.QueryVersion"/>
+    /// category — <c>@help</c>. Replies with the flat list of remote
+    /// commands the sender's per-player permission grant allows, split
+    /// across telepaths when long.
+    /// </summary>
+    public Game.Remote.HelpHandler Help { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -239,6 +278,54 @@ public sealed class AppServices
     public Game.Remote.DoHandler Do { get; }
 
     /// <summary>
+    /// Phase 9 Cluster 5d — <c>@auto-*</c> remote command family
+    /// (party member toggles our AutoMode flags). Backed by the
+    /// loaded character profile's <c>General</c> section.
+    /// </summary>
+    public Game.Remote.AutoModeRemoteHandler AutoMode { get; private set; } = null!;
+
+    /// <summary>
+    /// <c>@atkprio</c> / <c>@atkorder</c> remote commands — a party member
+    /// changes our Target Priority (who) / Attack Order (when) via the same
+    /// numbered options as the Combat tab's dropdowns. Backed by the loaded
+    /// character profile's <c>Combat</c> section.
+    /// </summary>
+    public Game.Remote.AttackTargetingRemoteHandler AttackTargeting { get; }
+
+    /// <summary>
+    /// <c>@kill &lt;target&gt;</c> remote command — a party member asks us to
+    /// engage a named monster. Retargets <see cref="Combat"/> (forcing an
+    /// engage even with master auto-attack off) and stays silent on success.
+    /// </summary>
+    public Game.Remote.KillHandler Kill { get; }
+
+    /// <summary>
+    /// Master "Auto-All" kill-switch shared by the toolbar / Action-menu
+    /// button and the <c>@auto-all</c> remote command. One press snapshots
+    /// + clears every wired auto-engine; the next restores the snapshot.
+    /// </summary>
+    public Game.AutoModeController AutoModeController { get; }
+
+    /// <summary>
+    /// Leader-side <c>@comeback</c> party-pickup flow — pauses the
+    /// running movement engine, walks to recover a stranded follower
+    /// (explicit room or backtrack along the just-walked path), re-
+    /// invites + awaits follow, then resumes the captured engine. The
+    /// <see cref="Game.Remote.PartyComebackManager.MaxBacktrackRooms"/>
+    /// budget is pushed from Settings → Other.
+    /// </summary>
+    public Game.Remote.PartyComebackManager PartyComeback { get; private set; } = null!;
+
+    /// <summary>
+    /// PR 6.2 — follower-side <c>@comeback</c> sender. Detects being left
+    /// behind (a movement-failure line just before "You are no longer
+    /// following X.") and telepaths <c>@comeback</c> to the leader.
+    /// <see cref="Game.Remote.ComebackRequester.Enabled"/> is pushed from
+    /// Settings → Other.
+    /// </summary>
+    public Game.Remote.ComebackRequester ComebackRequest { get; private set; } = null!;
+
+    /// <summary>
     /// Drives the <c>@trap &lt;direction&gt;</c> auto-disarm flow:
     /// search → disarm state machine + FIFO request queue + Stats-
     /// skill gate. Bound by <see cref="TrapRemote"/>'s handler at
@@ -247,6 +334,16 @@ public sealed class AppServices
     /// / <c>MaxTrapDisarmAttempts</c> knobs in Settings → Other.
     /// </summary>
     public Game.TrapDisarmManager TrapDisarm { get; }
+
+    /// <summary>
+    /// Party-member trap delegation — when the local character can't
+    /// disarm a trapped exit but a capable party member can, broadcasts
+    /// <c>@trap &lt;dir&gt;</c> on say and resumes the walk on the
+    /// member's say reply. Capability via class (main gate) + race
+    /// (secondary). Distinct from <see cref="TrapDisarm"/>, which owns the
+    /// LOCAL self-disarm path keyed on the game's first-person signals.
+    /// </summary>
+    public Game.TrapDelegationManager TrapDelegation { get; }
 
     /// <summary>
     /// Walker's door-handling FSM — bash / pick / open with
@@ -259,6 +356,14 @@ public sealed class AppServices
     /// each request.
     /// </summary>
     public Game.Map.DoorOpenManager Door { get; }
+
+    /// <summary>
+    /// Helps the party leader force a door — when we observe the leader
+    /// fail to bash a door we can see, send the same <c>bash</c> / <c>pick</c>
+    /// verb at the same direction. Gated on
+    /// <see cref="Models.Profile.PartySettings.HelpLeaderOpenDoors"/>.
+    /// </summary>
+    public Game.Map.LeaderDoorAssistManager LeaderDoorAssist { get; }
 
     /// <summary>
     /// Walker's hidden-exit reveal FSM — fires <c>sea &lt;dir&gt;</c>
@@ -296,6 +401,39 @@ public sealed class AppServices
     /// <c>@suicide</c> hard-block has a real value to gate against.
     /// </summary>
     public Game.StatParser Stats { get; private set; } = null!;
+
+    /// <summary>
+    /// Per-class learnable-spell catalogue built from the active game-data
+    /// set (faithful port of MMUD Explorer's <c>SpellIsUsable</c>). Backs
+    /// both the Spell Book window and the Settings spell pickers.
+    /// </summary>
+    public Game.Spells.KnownSpellCatalog SpellCatalog { get; }
+
+    /// <summary>
+    /// The local character's spell book — the class's full learnable list
+    /// paired with the obtained set. Refreshed from <see cref="Stats"/>'
+    /// class+level on every stat poll; obtained set fed by
+    /// <see cref="SpellList"/>.
+    /// </summary>
+    public Game.Spells.SpellbookState Spellbook { get; }
+
+    /// <summary>
+    /// Parses <c>spells</c> / <c>pow</c> output into
+    /// <see cref="Spellbook"/>'s obtained set. App-level; bound to the
+    /// per-session <see cref="Terminal.LineExtractor"/> by
+    /// <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.Spells.SpellListParser SpellList { get; }
+
+    /// <summary>
+    /// Marks powers obtained the moment they're learned at training (the
+    /// "You learn the following Kai abilities:" block). Incremental, like the
+    /// learn-scroll line — feeds <see cref="Spellbook"/>'s obtained set
+    /// without snapshotting it. Bound to the per-session
+    /// <see cref="Terminal.LineExtractor"/> by
+    /// <see cref="ViewModels.MainWindowViewModel"/>.
+    /// </summary>
+    public Game.Spells.TrainLearnParser TrainLearn { get; }
 
     /// <summary>
     /// Sends the configured <see cref="GameCommands.EntryCommand"/>
@@ -346,6 +484,15 @@ public sealed class AppServices
     /// whether to arm an auto-reconnect.
     /// </summary>
     public CleanupWarningWatcher Cleanup { get; } = new();
+
+    /// <summary>
+    /// Proactive log-off engine for the nightly-cleanup cycle: on the
+    /// BBS's shutdown warning it waits for a safe room, exits to the main
+    /// menu, and drops the carrier — handing off to the predictive
+    /// reconnect scheduler in MainWindowViewModel. Opt-in behind the
+    /// active BBS's <see cref="Models.Settings.BbsProfile.ReconnectAfterCleanup"/>.
+    /// </summary>
+    public Game.CleanupLogoutOrchestrator CleanupLogout { get; }
 
     /// <summary>
     /// Combat / HP / MA tick heartbeat. Status bar countdown binds here;
@@ -406,6 +553,18 @@ public sealed class AppServices
     /// what's on screen and decide).
     /// </summary>
     public HangupSignal HangupSignal { get; } = new();
+
+    /// <summary>
+    /// One-shot coordinator for "relog" intent — a graceful exit plus a
+    /// forced reconnect-and-login. Set by
+    /// <see cref="Game.Remote.RelogHandler"/> when an authorised sender
+    /// requests <c>@relog</c>; consumed by
+    /// <see cref="ViewModels.MainWindowViewModel"/> to force the
+    /// unconditional dial-back. Inverse of <see cref="HangupSignal"/>:
+    /// relog does NOT suppress the entry automation, so login runs
+    /// normally on the reconnect.
+    /// </summary>
+    public RelogSignal RelogSignal { get; } = new();
 
     /// <summary>
     /// Passive observer for the in-game <c>set suicide</c> /
@@ -525,6 +684,241 @@ public sealed class AppServices
     /// <c>Data/game data/{set}/monster-messages.json</c>.
     /// </summary>
     public MonsterMessageStore MonsterMessages { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.0b — turns the wire's <c>Also here:</c> line into
+    /// a classified Player / Monster / Unknown list. Feeds
+    /// <see cref="CombatTracker"/>'s gate decisions and the LogPane's
+    /// unknown-entity click-to-fix dialog.
+    /// </summary>
+    public Game.Combat.RoomEntityClassifier RoomClassifier { get; private set; } = null!;
+
+    /// <summary>
+    /// Auto-greets newly-seen non-party players (Settings → Talk
+    /// "Greet players when first met"). Subscribes to
+    /// <see cref="RoomClassifier"/>'s observations; once-per-local-day
+    /// dedup on the per-BBS player record. Off by default.
+    /// </summary>
+    public Game.GreetManager Greet { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.0b — owns <see cref="PlayerState.InCombat"/> and
+    /// the <see cref="Game.Map.MovementCoordinator.CombatGate"/> hold
+    /// state. Cleared automatically when the room is free of
+    /// engageable monsters.
+    /// </summary>
+    public Game.Combat.CombatStateTracker CombatTracker { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.0c — aggregates combat lines into per-round
+    /// <see cref="Game.Combat.RoundSummary"/> records, keeping the
+    /// last 50 in a ring buffer. <c>CastingDirector</c> (PR 9.D) and
+    /// Phase 11 <c>CombatSessionTracker</c> consume the
+    /// <c>RoundComplete</c> event.
+    /// </summary>
+    public Game.Combat.RoundDamageTracker RoundDamage { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.0d — observes the "You have been slain by..."
+    /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
+    /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
+    /// engines subscribe for their own death-clean-up paths.
+    /// </summary>
+    public Game.Combat.DeathLineWatcher DeathWatcher { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.A — auto-attack engine. Picks a target from
+    /// <see cref="RoomClassifier"/>'s last observation and sends the
+    /// configured attack command when
+    /// <see cref="Models.Profile.CombatSettings.MasterAutoAttackEnabled"/>
+    /// is on. Wire sender is bound by <see cref="MainWindowViewModel"/>
+    /// alongside the other engines once the telnet client is up.
+    /// </summary>
+    public Game.Combat.CombatManager Combat { get; private set; } = null!;
+
+    /// <summary>
+    /// Lookup of monster Numbers carrying the SeeHidden ability (code
+    /// 57) in the active game-data set. Drives CombatManager's
+    /// backstab-skip — a seehidden room occupant ruins the opening BS.
+    /// </summary>
+    public Game.Combat.SeeHiddenIndex SeeHidden { get; private set; } = null!;
+
+    /// <summary>Lookup of each monster's <c>Magical</c> / <c>SpellImmu</c>
+    /// levels (codes 28 / 139) in the active game-data set. Drives
+    /// CombatManager's deterministic weapon-vs-monster hit eligibility and
+    /// spell-immunity gating.</summary>
+    public Game.Combat.MonsterMagicIndex MonsterMagic { get; private set; } = null!;
+
+    /// <summary>Lookup of each weapon's <c>HitMagic</c> level (code 142) in
+    /// the active game-data set. Paired with <see cref="MonsterMagic"/> for
+    /// the HitMagic ≥ Magical hit check.</summary>
+    public Game.Combat.ItemMagicIndex ItemMagic { get; private set; } = null!;
+
+    /// <summary>Lookup of each spell's <c>ReqLevel</c> by cast-code in the
+    /// active game-data set. Paired with <see cref="MonsterMagic"/> for the
+    /// ReqLevel ≥ SpellImmu eligibility check.</summary>
+    public Game.Combat.SpellReqLevelIndex SpellReqLevel { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.A — observes mid-room arrival lines
+    /// ("&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;.")
+    /// and appends the new entity to
+    /// <see cref="RoomClassifier"/>'s observation so CombatStateTracker
+    /// re-evaluates the Combat gate immediately on spawn.
+    /// </summary>
+    public Game.Combat.RoomEntryWatcher RoomEntry { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.A — recognises monster deaths via the per-monster
+    /// <see cref="Models.GameData.MonsterMessageRecord.DeathLine"/>
+    /// patterns + the "experience + Combat Off" fallback. On a match,
+    /// the dead monster is removed from <see cref="RoomClassifier"/>'s
+    /// observation so CombatManager re-picks correctly instead of
+    /// sitting on a stale entry.
+    /// </summary>
+    public Game.Combat.MonsterDeathWatcher MonsterDeath { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.B — passive HP/MA threshold engine. Asserts /
+    /// clears HealthRecovery + ManaRecovery gates and drives the
+    /// rest / stand cycle with pre- and post-rest command sequencing.
+    /// Does NOT cast spells — those route through CastingDirector
+    /// (PR 9.D).
+    /// </summary>
+    public Game.Health.HealthManager Health { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.C — low-level <c>c &lt;spell&gt; [target]</c>
+    /// emitter. Gates on combat-round cooldown + a cast-blocked latch
+    /// driven by server failure messages (fizzle / no-mana / already-
+    /// cast / interrupted). Consumed by CastingDirector (PR 9.D) and
+    /// any other engine that issues spell commands.
+    /// </summary>
+    public Game.Spells.CastCoordinator Cast { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.D — unified self+party heal / cure / buff
+    /// decision engine. Sits on top of <see cref="Cast"/> and decides
+    /// which spell (if any) to issue based on HP / MA / ailment state
+    /// + the user's Spells + Health tab thresholds.
+    /// </summary>
+    public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.D — condition tracker driven by the game-data
+    /// Messages tab. Subscribes to inbound lines, matches against
+    /// every <see cref="Models.GameData.MessageRecord.AppliedMessage"/>
+    /// / <see cref="Models.GameData.MessageRecord.AppliedEndsWith"/>
+    /// pair, surfaces the aggregated
+    /// <see cref="Models.GameData.MessageFlags"/> bitfield. Consumed
+    /// by CastingDirector's Tier-2 cure path.
+    /// </summary>
+    public Game.Conditions.ConditionTracker Conditions { get; private set; } = null!;
+
+    /// <summary>
+    /// Outbound ailment-sync engine — on a local curable ailment it
+    /// announces on say (<c>.@poisoned</c> etc.) so other FujinTerm
+    /// clients mirror our state, and @waits the leader; on clear it @oks.
+    /// </summary>
+    public Game.Conditions.AilmentSyncEngine AilmentSync { get; private set; } = null!;
+
+    /// <summary>
+    /// Inbound ailment-sync engine — mirrors a party member's
+    /// <c>.@poisoned</c> / <c>.@blind</c> / <c>.@diseased</c> / <c>.@confused</c>
+    /// say announce onto their party chip, and clears the chip when OUR cure
+    /// spell is observed landing on them. Counterpart to
+    /// <see cref="AilmentSync"/>.
+    /// </summary>
+    public Game.Conditions.PartyAilmentTracker PartyAilment { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.F — stealth state tracker. Owns
+    /// <see cref="PlayerState.IsSneaking"/> /
+    /// <see cref="PlayerState.IsHidden"/> and emits FSM-state
+    /// transitions + silent-loss detection on room change. Auto-
+    /// sneak / auto-hide engines (which actually issue commands)
+    /// layer on top in a follow-up.
+    /// </summary>
+    public Game.Stealth.StealthManager Stealth { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.K — auto-light need poster. On a "can't see"
+    /// room-light line it posts a <see cref="NeedKind.LightSource"/>
+    /// need to <see cref="Needs"/>; auto-get (PR 9.L) fulfils it.
+    /// Gated by the AutoLight master toggle.
+    /// </summary>
+    public Game.Light.AutoLightManager AutoLight { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.I — death observation aggregator. Mirrors the
+    /// most recent death record from the loaded profile into live
+    /// observables (LivesRemaining / LastKiller / LastDeathAt /
+    /// DeathCount) so the Workshop DEATH section can bind without
+    /// walking <see cref="Models.Profile.CharacterProfile.DeathHistory"/>.
+    /// Also exposes the <c>@comeback</c> hook for
+    /// <c>RemoteCommandManager</c>.
+    /// </summary>
+    public Game.Recovery.DeathRecoveryManager DeathRecovery { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 — runtime inventory parser. Folds the full <c>i</c>
+    /// dump into a currency + numeric-encumbrance
+    /// <see cref="Game.Inventory.InventorySnapshot"/> and patches it
+    /// incrementally on coin pickups / drops / bank moves. Feeds
+    /// <see cref="Cash"/>'s encumbrance gate the live carry weight.
+    /// </summary>
+    public Game.Inventory.InventoryManager Inventory { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.E — per-currency cash pickup engine. Dispatches
+    /// <c>get &lt;count&gt; &lt;coin&gt;</c> commands per
+    /// <see cref="Models.Profile.CashSettings"/> policy when the
+    /// room-cash line lands; tracks held tallies for the auto-
+    /// deposit trigger. Encumbrance gates + drop-smaller-for-larger
+    /// cascade run off <see cref="Inventory"/>'s snapshot; walker-
+    /// driven reroute is follow-up work.
+    /// </summary>
+    public Game.Cash.CashManager Cash { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.L — auto-get items engine. Parses the room
+    /// "You notice ... here." survey, resolves each entry against the
+    /// active set's items + the per-character
+    /// <see cref="Models.GameData.ItemOverlay.AutoCollect"/> flag, and
+    /// sends <c>get &lt;name&gt;</c> per flagged item. Gated by the
+    /// AutoGetItems master toggle; defer-until-combat-finished honours
+    /// the Settings → Items tab.
+    /// </summary>
+    public Game.Inventory.AutoGetItemsManager AutoGetItems { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
+    /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
+    /// the single assert/clear of
+    /// <see cref="Game.Map.MovementCoordinator.AcquisitionGate"/> so the
+    /// walker resumes only once both engines finish looting.
+    /// </summary>
+    public Game.Inventory.AcquisitionGate Acquisition { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.E follow-up — on-entry stash plan for user-
+    /// marked stash rooms. Dispatches <c>hide N &lt;coin&gt;</c>
+    /// commands per <see cref="Models.Profile.StashCurrencyRule"/>
+    /// when <see cref="RoomTracker"/> reports we've arrived in a
+    /// configured <see cref="Models.Profile.StashRoom"/>. Item-side
+    /// stash rules land when the inventory subsystem ships.
+    /// </summary>
+    public Game.Cash.StashRoomManager Stash { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 9 PR 9.E follow-up — auto-deposit reroute. Subscribes to
+    /// <see cref="Game.Cash.CashManager.AutoDepositRequested"/>; when a
+    /// wealth / coin gate crosses while a loop or auto-lair is running,
+    /// detours to the configured bank / stash room, offloads the excess
+    /// coin (<c>dep</c> for a bank, <see cref="Stash"/>'s <c>hide</c> for
+    /// a stash room), walks back, and restarts the captured engine.
+    /// </summary>
+    public Game.Cash.AutoDepositManager AutoDeposit { get; private set; } = null!;
 
     /// <summary>
     /// Active set's MonsterOverlay seed — Defaults-tier baseline for
@@ -678,6 +1072,20 @@ public sealed class AppServices
     public Game.Map.MovementCoordinator MovementCoordinator { get; private set; } = null!;
 
     /// <summary>
+    /// Party-vitals pause bridge — holds the active movement engine while
+    /// a party member is below the Party-tab HP% threshold.
+    /// </summary>
+    public Game.PartyVitalsWatcher PartyVitals { get; private set; } = null!;
+
+    /// <summary>
+    /// Fulfillment half of the Phase 9 auto-engine coordination model —
+    /// requesters post acquisition needs (light source, etc.), fulfilling
+    /// engines claim + resolve them. No engine references another by
+    /// type. PR 9.J.
+    /// </summary>
+    public NeedsRegistry Needs { get; private set; } = null!;
+
+    /// <summary>
     /// Walk-to engine — sends one move at a time, waits for the room
     /// tracker to confirm before advancing, and honours
     /// <see cref="MovementCoordinator"/> pause gates. PR 7.7.
@@ -716,6 +1124,14 @@ public sealed class AppServices
     public Game.Map.LairTimerStore LairTimers { get; private set; } = null!;
 
     /// <summary>
+    /// Folder CRUD over the shared per-BBS Loops directory that holds
+    /// both <see cref="Loops"/> and <see cref="Lairs"/>. Create / rename
+    /// / delete folders; reloads both catalogues after a filesystem
+    /// move so their in-memory <c>Folder</c> values stay in sync.
+    /// </summary>
+    public Game.Map.NavFolderManager NavFolders { get; private set; } = null!;
+
+    /// <summary>
     /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
     /// Subscribes the <c>enc</c> line via MessageRouter.
     /// </summary>
@@ -750,6 +1166,13 @@ public sealed class AppServices
     /// Auto-Lair scheduler. Session-only state.
     /// </summary>
     public Game.Map.AutoLairManager AutoLair { get; private set; } = null!;
+
+    /// <summary>
+    /// Always-alive control surface over the three movement engines —
+    /// coalesces their run-state and routes Pause / Resume / Stop to the
+    /// right engine. Backs the toolbar movement-flow buttons.
+    /// </summary>
+    public Game.Map.MovementController MovementControl { get; private set; } = null!;
 
 
     /// <summary>
@@ -865,9 +1288,43 @@ public sealed class AppServices
         // both the engine's @suicide hard-block and the @lives reply
         // path share the same "unknown until first stat poll" source.
         Stats = new Game.StatParser(PlayerStats, Log);
+        // Spell Book — the class's full learnable list (SpellCatalog) paired
+        // with the obtained set (Spellbook), fed by the spells/pow parser
+        // (SpellList). SpellList binds to the per-session LineExtractor in
+        // MainWindowViewModel; the Refresh coordinator lives in the
+        // Stats.ScreenParsed handler below.
+        SpellCatalog = new Game.Spells.KnownSpellCatalog(GameData);
+        Spellbook = new Game.Spells.SpellbookState(SpellCatalog);
+        SpellList = new Game.Spells.SpellListParser(Spellbook, Log);
+        // Train-time learning — mark a power obtained the moment the
+        // "You learn the following Kai abilities:" block lists it, without
+        // waiting for the next `pow` poll. Incremental, like the learn-scroll
+        // line. Also binds to the per-session LineExtractor in MainWindowVM.
+        TrainLearn = new Game.Spells.TrainLearnParser(Spellbook, Log);
+        // Reroll → drop the obtained set. The fresh character has learned
+        // nothing; the next `stat` rebuilds the available list. Done here
+        // rather than waiting for the stat poll so a same-class reroll
+        // doesn't keep spells the new character can't have yet.
+        Router.Subscribe(Services.Patterns.KnownPatterns.Reroll, _ => Spellbook.ClearObtained());
+        // Learn-scroll signal — mark the spell obtained the moment the
+        // "…and learn the spell <name>." line fires, without waiting for
+        // the next `spells` poll. Group 1 carries the full spell Name.
+        Router.Subscribe(Services.Patterns.KnownPatterns.LearnSpell, m =>
+        {
+            if (m.Groups.Count > 0) Spellbook.MarkObtainedByName(m.Groups[0]);
+        });
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
-        PartyEssentials = new Game.Remote.PartyEssentialHandlers(RemoteCommands, PlayerState, PartyState);
+        // readCurrentRoom / readRoomEntities defer to the live RoomTracker
+        // and RoomEntityClassifier (both constructed later in
+        // OnGameDataLoaded) via the property on each call, so they always
+        // read the current snapshot even across set-switch rebuilds.
+        PartyEssentials = new Game.Remote.PartyEssentialHandlers(
+            RemoteCommands, PlayerState, PartyState,
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            readCurrentRoom: () => RoomTracker?.State.CurrentRoom,
+            readRoomEntities: () => RoomClassifier?.Current?.Entities,
+            readMovement: () => Game.Remote.MovementStatus.Capture(Walker, LoopRunner, AutoLair));
         // Phase 6 PR 6.4 — drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel / PR 6.9.
@@ -914,17 +1371,38 @@ public sealed class AppServices
         // profile to disk). Drafts (no name) are still snapshotted —
         // ProfileService.Save no-ops on them, so the data just lives
         // for the rest of the session.
+        // Rebuild the Spell Book's available list from a class+level
+        // snapshot. Unknown / null class resolves to 0 (no class), which
+        // yields an empty book — correct for non-magery classes and the
+        // no-profile case alike. The obtained set is NOT seeded here (it
+        // isn't persisted); checkmarks stay empty until a live
+        // `spells`/`pow` snapshot confirms them in-game.
+        void SeedSpellbook(Models.Profile.LastKnownStats? snap) =>
+            Spellbook.Refresh(snap is null ? 0 : SpellCatalog.ResolveClassNumber(snap.Class) ?? 0, snap?.Level ?? 0);
+
         Stats.ScreenParsed += snapshot =>
         {
             if (Profile.Current is { } p) p.LastKnownStats = snapshot;
+            SeedSpellbook(snapshot);
         };
         // Restore the snapshot back into live PlayerStats whenever a
         // profile loads. StatParser owns the PlayerStats fields, so
         // hydration MUST route through Stats.Hydrate; passing null
         // resets every field to default (covers fresh / never-stat'd
-        // profiles cleanly).
-        Profile.ProfileLoaded += p => Stats.Hydrate(p.LastKnownStats);
-        Profile.ProfileClosed += () => Stats.Hydrate(null);
+        // profiles cleanly). Hydrate doesn't fire ScreenParsed, so seed
+        // the Spell Book here too — the persisted class+level gives the
+        // Settings spell pickers their suggestions immediately, before
+        // the first live `stat` reconfirms.
+        Profile.ProfileLoaded += p =>
+        {
+            Stats.Hydrate(p.LastKnownStats);
+            SeedSpellbook(p.LastKnownStats);
+        };
+        Profile.ProfileClosed += () =>
+        {
+            Stats.Hydrate(null);
+            SeedSpellbook(null);
+        };
         // @hangup handler — sends the configured GameCommands.ExitCommand
         // when an authorised sender (HangupDisconnect permission on
         // the Players-tab record) telepaths @hangup. Also raises the
@@ -933,15 +1411,49 @@ public sealed class AppServices
         // connect — user manually re-enters the realm after reading
         // what's on the screen.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
+        // @relog handler — graceful exit (GameCommands.ExitCommand) +
+        // RelogSignal so MainWindowVM forces an unconditional reconnect
+        // and the normal login automation logs the character back in.
+        Relog = new Game.Remote.RelogHandler(RemoteCommands, GameCommands, RelogSignal);
+        // @divert handler — subscribes to ChatRouter telepaths and repeats
+        // them to a target while diverting. Wire-sender bound in
+        // MainWindowVM after the telnet client is up.
+        Divert = new Game.Remote.DivertHandler(RemoteCommands, Chat);
+        // @help — replies to the sender with the catalog commands their
+        // per-player permission grant allows. Reply routes through the
+        // engine (ctx.Reply), so no separate wire-sender to bind.
+        Help = new Game.Remote.HelpHandler(RemoteCommands);
         // @do passthrough — wire-sender bound in MainWindowVM after the
         // telnet client is up. Hard-blocks (reroll, suicide-lives) fire
         // at engine level before this handler runs.
         Do = new Game.Remote.DoHandler(RemoteCommands, Log);
+        // Cluster 5d — @auto-* family. AutoMode handler mutates the
+        // loaded profile's General section + persists. (@comeback is
+        // wired in the Navigation block below as PartyComebackManager,
+        // which needs the movement engines.)
+        // AutoModeController owns the master "Auto-All" snapshot; the
+        // remote handler reuses it for @auto-all so button + telepath
+        // share one session snapshot. ResetSnapshot on load so a freshly
+        // loaded character doesn't restore the previous one's state.
+        AutoModeController = new Game.AutoModeController(Profile, Log);
+        Profile.ProfileLoaded += _ => AutoModeController.ResetSnapshot();
+        AutoMode = new Game.Remote.AutoModeRemoteHandler(
+            RemoteCommands, Profile, AutoModeController, Log);
+        // @atkprio / @atkorder — party member retunes our Target Priority /
+        // Attack Order through the same numbered options as the Combat tab.
+        AttackTargeting = new Game.Remote.AttackTargetingRemoteHandler(
+            RemoteCommands, Profile, Log);
+        // @kill <target> — party member asks us to engage a named monster.
+        // Lazily resolves Combat (constructed later in this ctor) so the
+        // retarget runs against the live engine at @kill time.
+        Kill = new Game.Remote.KillHandler(
+            RemoteCommands, name => Combat.RetargetTo(name), Log);
         // @trap auto-disarm flow — manager owns the state machine,
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
+        TrapDelegation = new Game.TrapDelegationManager(Party, Players, GameData, Router, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
         // Phase 7 PR 7.23 — @goto / @loop / @lair / @stop / @rego land
@@ -958,6 +1470,14 @@ public sealed class AppServices
             maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
             picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
             itemNameLookup:             id => ItemNames.GetName(id),
+            log: Log);
+        // LeaderDoorAssistManager — observes the leader failing to bash a
+        // door and pitches in. Reads the Party-tab toggle + the Other-tab
+        // pick/bash preference live. Wire-sender bound by MainWindowVM
+        // alongside the door/trap engines (gate-wrapped SendUserInput).
+        LeaderDoorAssist = new Game.Map.LeaderDoorAssistManager(Router, PartyState,
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            readOtherSettings: () => Resolver.Resolve<Models.Profile.OtherSettings>("Other"),
             log: Log);
         // HiddenSearch is constructed later, after RoomTracker exists
         // (it subscribes to RoomTracker.StateChanged for the reveal
@@ -977,7 +1497,17 @@ public sealed class AppServices
         // never trick it; ALSO skips on the first connect after a
         // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
         // read the screen before they decide to act.
-        MainMenuEntry = new Game.MainMenuEntryAutomation(Router, GameCommands, HangupSignal, Log);
+        // Auto-entry obeys the master auto-responses switch: when every
+        // wired engine is off, the menu-match send is suppressed too.
+        MainMenuEntry = new Game.MainMenuEntryAutomation(
+            Router, GameCommands, HangupSignal,
+            isAutoEnabled: () => !AutoModeController.AllWiredOff,
+            log: Log);
+        // Cleanup-driven proactive log-off. Subscribes to the same
+        // CleanupWarningWatcher the reconnect scheduler reads; its safe
+        // predicate + connection check + disconnect callback are wired by
+        // MainWindowViewModel (they depend on VM-level connection state).
+        CleanupLogout = new Game.CleanupLogoutOrchestrator(Cleanup, Router, Log);
 
         // Bridge: load persisted panel layouts on profile load; snapshot back
         // into the profile DTO just before serialization on save.
@@ -1178,6 +1708,10 @@ public sealed class AppServices
         // Constructor subscribes ProfileLoaded / ProfileClosed and
         // hydrates from the currently-loaded profile if there is one.
         Movement = new MovementFilter(Profile, Log);
+        // Feed the player's level into Form-A exit level-gate evaluation.
+        // null until a stat screen parses — IsExitBlocked never gates on
+        // an unknown level, so an unparsed character walks unrestricted.
+        Movement.LevelProvider = () => Stats.HasParsed ? PlayerStats.Level : (int?)null;
         Favorites = new FavoritesStore(Profile, Log);
 
         // Phase 7 PR 7.7 — coordinator + walker. Coordinator is the
@@ -1185,13 +1719,488 @@ public sealed class AppServices
         // loop / auto-lair later). Walker's wire sender is bound by
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
-        MovementCoordinator = new Game.Map.MovementCoordinator();
+        MovementCoordinator = new Game.Map.MovementCoordinator(Log);
+
+        // Party-vitals pause bridge — asserts MovementCoordinator's
+        // PartyVitalsGate while any other party member's HP% is below the
+        // Party-tab "wait if members are below" threshold.
+        PartyVitals = new Game.PartyVitalsWatcher(
+            PartyState, MovementCoordinator,
+            readSettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            log: Log);
+
+        // Phase 9 PR 9.J — needs registry. Cross-engine fulfillment hub;
+        // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on
+        // character swap so pending needs don't leak across profiles.
+        Needs = new NeedsRegistry(Log);
+        Profile.ProfileLoaded += _ => Needs.Clear();
+
+        // Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
+        // AutoGetItems and Cash feed this one instance (bound after they're
+        // constructed below) so the walker holds until BOTH finish looting.
+        Acquisition = new Game.Inventory.AcquisitionGate(MovementCoordinator, Log);
+
+        // Phase 9 PR 9.0b — RoomEntityClassifier + CombatStateTracker.
+        // Classifier subscribes to RoomAlsoHere; tracker subscribes to
+        // classifier output + combat-status / damage patterns to drive
+        // PlayerState.InCombat + the MovementCoordinator.CombatGate.
+        //
+        // CombatStateTracker's master switch reads
+        // GeneralSettings.AutoMode.AutoCombat from the live profile.
+        // Settings → General checkbox + the toolbar Toggle button
+        // write the same flag; the delegate is queried on every
+        // Also-Here line so toggling takes effect immediately.
+        RoomClassifier = new Game.Combat.RoomEntityClassifier(
+            Router, MonsterMessages, Players, RoomTracker, Log);
+        CombatTracker = new Game.Combat.CombatStateTracker(
+            Router, MovementCoordinator, RoomClassifier, MonsterMessages,
+            PlayerState,
+            isAutoAttackEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
+            // Same overlay-resolve closure CombatManager uses — keeps
+            // the engageable predicate consistent so the gate and the
+            // swing decision can't diverge on the same room state.
+            resolveOverlay: n => Resolver.ResolveGameData<Models.GameData.MonsterOverlay>(
+                "Monsters",
+                n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                MonsterOverlaySeed.GetOverlay(n)),
+            log: Log);
+
+        // Phase 9 PR 9.0c — RoundDamageTracker. shouldWriteTrace
+        // delegate reads the Log pane's combat-diagnostics umbrella
+        // (session-only, no per-profile persistence) so the user can
+        // toggle the per-round trace from the Log menu mid-session.
+        RoundDamage = new Game.Combat.RoundDamageTracker(
+            Router, PlayerState, Log,
+            shouldWriteTrace: () => LogDiagnostics.CombatDiagnostics);
+        // Reset round counter + ring on BBS connect to match
+        // CombatSessionTracker's session-boundary convention (PR 9.0c
+        // doesn't ship CombatSessionTracker — Phase 11 does — but the
+        // reset hook lives here on the data producer).
+        Profile.ProfileLoaded += _ => RoundDamage.Reset();
+
+        // Phase 9 PR 9.0d — local-death observation. Pure subscriber;
+        // DeathRecoveryManager (PR 9.I) consumes the PlayerDied event
+        // for its corpse-recovery flow. Reset the in-flight round
+        // accumulator on death so a partial round doesn't get
+        // attributed to the next combat.
+        DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
+        DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
+
+        // Phase 9 PR 9.A — CombatManager. Picks a target on each
+        // classifier emit and sends the configured attack command via
+        // the bound wire sender. Reads CombatSettings live (same
+        // pattern as CombatStateTracker) so toggling Master / changing
+        // TargetOrder / etc. mid-session takes effect on the next
+        // Also-Here line.
+        // Phase 9 — mid-room arrival watcher. Subscribes to the
+        // RoomEntryArrival pattern + appends to the classifier so the
+        // Combat gate / CombatManager react to spawns immediately.
+        RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
+
+        // Phase 9 — monster death watcher. Specific-pattern matches
+        // (per-monster DeathLine) + fallback (exp + Combat Off). On a
+        // death event the classifier removes the dead entity so
+        // CombatManager re-picks correctly instead of being blocked
+        // by a stale "still in the list" check against the
+        // just-killed mob (the "kobold thief arrived but no attack"
+        // bug). Multiple candidates per pattern are normal — shared
+        // wordings; we remove ONE matching entry and let the next
+        // room re-display correct any cross-variant ambiguity.
+        MonsterDeath = new Game.Combat.MonsterDeathWatcher(
+            Router, MonsterMessages, Log);
+        MonsterDeath.MonsterDied += evt =>
+        {
+            if (evt.IsFallback)
+            {
+                // Fallback path: we don't know which monster died.
+                // CombatManager's next swing window will be correct
+                // because the server's room re-display (or the next
+                // arrival) eventually rebuilds the list. We just log.
+                Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
+                    $"fallback death — no entity removed");
+                return;
+            }
+            foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
+            {
+                // Order matters: drop CombatManager's _currentTarget
+                // BEFORE removing the entity from the observation.
+                // NoteMonsterDied's resolved-name lookup needs the
+                // entity still present so the raw/resolved mapping
+                // is intact; RemoveDeadEntity then fires
+                // EntitiesObserved, which re-picks from the surviving
+                // engageables and re-issues `attack`. Without this
+                // ordering, a same-name kill (two "giant rat"s in a
+                // room, one dies) leaves CombatManager silent — the
+                // surviving rat shared RawName with our just-dead
+                // target and tripped the "server still swinging"
+                // short-circuit. See CombatManager.NoteMonsterDied.
+                Combat.NoteMonsterDied(id.Name);
+                if (RoomClassifier.RemoveDeadEntity(id.Name))
+                {
+                    Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
+                        $"removed dead entity name={id.Name}");
+                    break;     // remove one — multiple candidates are alt-names for the same death
+                }
+            }
+        };
+
+        Combat = new Game.Combat.CombatManager(
+            Router, RoomClassifier, MonsterMessages,
+            // Resolve per-monster overlay: seed-store value forms the
+            // Defaults tier, SettingsResolver overlays Global / BBS /
+            // Char-tier user overrides on top.
+            resolveOverlay: n => Resolver.ResolveGameData<Models.GameData.MonsterOverlay>(
+                "Monsters",
+                n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                MonsterOverlaySeed.GetOverlay(n)),
+            party: PartyState,
+            readSettings: () =>
+                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
+            readOwnGivenName: () => Profile.CurrentProfileName,
+            log: Log,
+            readPartySettings: () =>
+                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
+
+        // Phase 9 PR 9.B — HealthManager. Master on/off is
+        // GeneralSettings.AutoMode.AutoHealRest (shared with the
+        // Settings → General checkbox + toolbar Toggle button). When
+        // off, every threshold check + rest/stand emit short-circuits.
+        Health = new Game.Health.HealthManager(
+            PlayerState, MovementCoordinator,
+            readSettings: () =>
+                ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            readHangupCommand: () => GameCommands.ExitCommand,
+            getActiveMovementEngine: ResolveActiveMovementEngine,
+            getLastSentDirection: () =>
+                Recovery.ExecutedSinceAnchor.Count > 0
+                    ? Recovery.ExecutedSinceAnchor[^1]
+                    : (Game.Map.Direction?)null,
+            readCombatSettings: () =>
+                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            readGeneralSettings: () =>
+                ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General"),
+            // Don't try to rest while engageable hostiles are in the
+            // room — every combat round would otherwise break rest.
+            // CombatStateTracker owns the same boolean it uses to
+            // assert the CombatGate, so we stay in sync with the
+            // movement gate logic.
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            log: Log);
+
+        // Role-aware recovery: as a party follower we top off only to the
+        // rest floor (not full) and ping the leader via @wait / @ok so we
+        // don't silently hold or release the party. Solo / leader keeps the
+        // full rest-max topoff — PartyRestSync self-gates the telepaths.
+        Health.SetPartyRoleSync(
+            isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
+            requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
+            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health));
+
+        // Server-side resting state clears on move; drop our latch
+        // too so the next threshold breach actually fires `rest`
+        // again instead of skipping it on a stale _restInFlight.
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.PreviousRoom is null || t.NewRoom is null) return;
+            if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
+            if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            Health.NoteRoomChanged(t.NewRoom.Key);
+        };
+
+        // Phase 9 PR 9.C — CastCoordinator. Subscribes to spell-failure
+        // patterns directly; tick-clears its block latch + cooldown via
+        // TickEngine.CombatTickElapsed so the next round can cast.
+        Cast = new Game.Spells.CastCoordinator(Router, Log);
+        Tick.CombatTickElapsed += Cast.OnCombatTick;
+
+        // Phase 9 PR 9.D — ConditionTracker reads MessageStore +
+        // line-side patterns to surface ActiveFlags. CastingDirector
+        // consumes it for Tier-2 cure decisions. AttachLineExtractor
+        // lands in MainWindowViewModel alongside the other line
+        // consumers.
+        Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
+
+        // AilmentSyncEngine — outbound ailment broadcast. On catching a
+        // curable ailment (or being held) it announces ".@poisoned" /
+        // ".@held" etc. on say (so other FujinTerm clients mirror our state
+        // and a cure-holds caster can free us) and, for the curable four,
+        // @waits the leader; on clear it @oks. The say only fires when we're
+        // in a party AND have no cure spell configured for that ailment (we
+        // self-cure silently otherwise); held rides its say-pause with no
+        // @wait. Per-ailment OtherSettings DoNotAnnounce* (say) and Ignore*
+        // (@wait) gate the curable four on top. Wire-sender for the say bound
+        // in MainWindowViewModel; the @wait routes via PartyRest's own sender.
+        AilmentSync = new Game.Conditions.AilmentSyncEngine(
+            Conditions, PartyRest,
+            readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
+            isInParty: () => PartyState.IsInParty,
+            hasCureConfigured: HasCureConfigured,
+            log: Log);
+
+        // PartyAilmentTracker — inbound counterpart. Mirrors a member's
+        // ".@poisoned" / ".@held" etc. say announce onto their party chip (via
+        // PartyManager, the chip-field owner), pauses the leader on ".@held"
+        // (via PartyEssentials.NotePause), and clears the chip when OUR cure
+        // spell is observed landing on them. The cure matchers are read live
+        // each line so re-configuring a cure spell takes effect without
+        // rebuilding the tracker. AttachLineExtractor lands in
+        // MainWindowViewModel alongside the other line consumers.
+        PartyAilment = new Game.Conditions.PartyAilmentTracker(
+            Chat, Party, PartyEssentials, CureCastMatchers, Log);
+
+        // Phase 9 PR 9.D — CastingDirector. Sits on top of Cast,
+        // decides which heal / cure / buff (if any) to issue based on
+        // PlayerState + Spells/Health settings. AutoHealRest gates
+        // the engine (shared toggle with HealthManager's passive rest).
+        CastDirector = new Game.Spells.CastingDirector(
+            PlayerState, Cast, Conditions, PartyState,
+            readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
+            readHealth: () => ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health"),
+            readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            log: Log);
+        // Cluster 3 stealth gate — buff casts suppressed while
+        // sneaking or hidden so we don't break the backstab window.
+        CastDirector.SetStealthGate(() => Stealth.IsStealthed);
+        // Survival casts (heal / cure / buff / party heal) skip any spell the
+        // player can't afford — the cost comes from the game-data Spells table
+        // via the live spellbook. Combat-tab spells keep their own
+        // MinManaPerCast threshold and aren't gated here.
+        CastDirector.SetManaCostLookup(Spellbook.ManaCostOf);
+        // Auto-Bless auto-engine gate — when off, the Buffing category is
+        // suppressed (no Bless / regen / when-full buff fires).
+        CastDirector.SetAutoBlessGate(() => ReadAutoModeFlag(d => d.AutoBless));
+        // Feature 5 — buff-duration recast model. A buff cast (self or
+        // party) is confirmed, then suppressed until it's within the
+        // pre-expiry recast window. BuffInfoByShort maps a 4-letter cast
+        // code to its CasterMessage confirmation template + computed
+        // duration (SpellCalculator.Duration at the live level);
+        // ShortFromAppliedRecord maps a fired AppliedMessage record back
+        // to the cast code so a confirmed self-buff starts its timer.
+        CastDirector.SetBuffDurationSources(BuffInfoByShort, ShortFromAppliedRecord);
+        // Party-bless slots store class numbers; PartyMember.Class is a
+        // class name — resolve via the active set's Classes table.
+        CastDirector.SetClassResolver(SpellCatalog.ResolveClassName);
+        // A party-wide buff (Spells.Targets = Full / Divided Party Area) is
+        // cast once for the whole party; the picker checks this to skip the
+        // per-member loop.
+        CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
+        Tick.CombatTickElapsed += CastDirector.OnCombatTick;
+
+        // Phase 9 PR 9.A (spell extension) — opt the combat engine into the
+        // per-round combat-spell economy (pre-attack debuff + multi/normal/
+        // alternate attack spells) atop the shared CastCoordinator so the
+        // one-cast-per-round cooldown is honoured. The heartbeat subscribes
+        // AFTER Cast.OnCombatTick (clears the cooldown) and
+        // CastDirector.OnCombatTick (survival heal/cure/buff) so offensive
+        // combat casts yield this round when survival already spent it.
+        Combat.SetCombatSpellCaster(Cast, () => (PlayerState.Ma, PlayerState.MaxMa));
+        // Auto-Nuke auto-engine gate — when off, the chooser never offers the
+        // multi-target attack spell or either debuff (single-target attack
+        // spells are not nukes and stay available).
+        Combat.SetAutoNukeGate(() => ReadAutoModeFlag(d => d.AutoNuke));
+        // Debuffs are in-between actions, not combat actions — the combat
+        // engine owns the decision but CastDirector casts them through the
+        // shared in-between window (at PriorityDebuffing, so survival heals
+        // win). CastDirector.OnCombatTick (subscribed above) runs before
+        // Combat.OnCombatTick, so the debuff is offered before the combat
+        // heartbeat re-issues the round's combat action.
+        CastDirector.SetCombatDebuffSource(Combat.PickInBetweenDebuff, Combat.CommitInBetweenDebuff);
+        // A between-round survival cast stops our auto-attack; let the combat
+        // engine resume the weapon attack on the resulting *Combat Off*
+        // instead of idling until the next round.
+        CastDirector.CastFired += Combat.NoteBetweenRoundCast;
+        Tick.CombatTickElapsed += Combat.OnCombatTick;
+
+        // Phase 9 PR 9.F — StealthManager state tracker + auto-sneak /
+        // auto-hide engines. Owns PlayerState.IsSneaking/IsHidden,
+        // detects silent loss on room change, and sends `sneak` /
+        // `hide` per AutoMode toggles.
+        Stealth = new Game.Stealth.StealthManager(Router, PlayerState, Log);
+        Stealth.SetAutoToggles(
+            isAutoSneakEnabled: () => ReadAutoModeFlag(d => d.AutoSneak),
+            isAutoHideEnabled:  () => ReadAutoModeFlag(d => d.AutoHide));
+        // PR 4.b decision #1 — any NPC in the room prevents sneak, so
+        // suppress the doomed `sn` instead of firing it into a rejection.
+        Stealth.SetSneakBlockCheck(() => CombatTracker.HasRoomNpc);
+
+        // PR 4.c backstab window — CombatManager opens with `bs` on the
+        // first swing into a room while sneaking, unless a seehidden
+        // monster is present (which reveals us to the whole room).
+        SeeHidden = new Game.Combat.SeeHiddenIndex(GameData);
+        Combat.SetBackstabHooks(
+            isSneaking:   () => Stealth.IsSneaking,
+            hasSeeHidden: n => SeeHidden.Has(n));
+
+        // Deterministic magic eligibility — weapon HitMagic ≥ monster Magical
+        // picks normal-vs-alternate, and spell ReqLevel ≥ monster SpellImmu
+        // gates single-target debuff / attack spells. Both fail open when game
+        // data is silent.
+        MonsterMagic = new Game.Combat.MonsterMagicIndex(GameData);
+        ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
+        SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
+        Combat.SetMagicEligibility(MonsterMagic, ItemMagic, SpellReqLevel);
+
+        // Actionability gate — the walker-gate owner releases when a room's
+        // remaining hostiles are all un-actionable (no weapon hits, every
+        // attack spell level-blocked) so the walker moves past instead of
+        // standing in an unwinnable fight. Reuses CombatManager's deterministic
+        // CanEngageMonster so the gate and the swing decision can't diverge.
+        CombatTracker.SetActionabilityGate(n => Combat.CanEngageMonster(n));
+
+        // PR 4.c-b combat-off "clear hostiles when seen Hidden" override —
+        // a stealth runner (AutoSneak on) sprinting a route with combat
+        // OFF that hits a SeeHidden room must stop and clear it rather than
+        // drag/stack monsters onward. CombatStateTracker owns the latch +
+        // holds the walker gate; CombatManager reads the latch to engage
+        // despite combat-off.
+        CombatTracker.SetSeeHiddenClearGate(
+            clearWhenSeenHidden: () => ReadSection<Models.Profile.CombatSettings>(
+                Profile.Current, "Combat").ClearHostilesWhenSeenHidden,
+            isAutoSneakEnabled:  () => ReadAutoModeFlag(d => d.AutoSneak),
+            hasSeeHidden:        n => SeeHidden.Has(n));
+        Combat.SetSeeHiddenClearGate(() => CombatTracker.SeeHiddenClearActive);
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.PreviousRoom is null || t.NewRoom is null) return;
+            if (ReferenceEquals(t.PreviousRoom, t.NewRoom)) return;
+            if (t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            Stealth.NoteRoomChanged();
+            // Same hook drives the idle-hide opportunity for v1.
+            // Refine when a dedicated walker-idle signal lands.
+            Stealth.NoteIdleOpportunity();
+        };
+
+        // Phase 9 PR 9.K — AutoLightManager. Posts a LightSource need to
+        // the registry on a "can't see" room-light line; auto-get (9.L)
+        // fulfils it. Gated by the AutoLight master toggle (Settings →
+        // General checkbox + the toolbar Toggle button write the same
+        // flag; the delegate is queried per dark-room line so toggling
+        // takes effect immediately).
+        AutoLight = new Game.Light.AutoLightManager(Router, Needs, Log);
+        AutoLight.SetEnabledToggle(() => ReadAutoModeFlag(d => d.AutoLight));
+
+        // Phase 9 PR 9.I — DeathRecoveryManager. Aggregates the
+        // DeathLineWatcher.PlayerDied event + the profile's
+        // DeathHistory list (written by DeathDetector ->
+        // RoomTracker.NoteDeath) into observables the Workshop
+        // DEATH section binds to. (@comeback is a separate party-pickup
+        // flow owned by PartyComebackManager, wired after the engines.)
+        DeathRecovery = new Game.Recovery.DeathRecoveryManager(
+            DeathWatcher, Profile, RoomTracker, Log);
+
+        // Phase 9 — InventoryManager. Parses the full `i` dump into a
+        // currency + numeric-encumbrance snapshot and patches it on
+        // coin pickups / drops. CashManager reads the snapshot for its
+        // encumbrance gate. MarkStale on profile swap so the new
+        // character's first gate evaluation waits for a fresh `i`.
+        Inventory = new Game.Inventory.InventoryManager(Log);
+        Profile.ProfileLoaded += _ => Inventory.MarkStale();
+
+        // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
+        // / cash-picked-up / cash-dropped patterns and dispatches
+        // per-currency policy. AutoGetCash gates the whole engine
+        // (Settings -> General toggle + toolbar Toggle command).
+        Cash = new Game.Cash.CashManager(Router,
+            readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            getSnapshot: () => Inventory.Snapshot,
+            log: Log);
+        // Reset held tallies on profile swap — prior character's
+        // counts aren't relevant to the new one.
+        Profile.ProfileLoaded += _ => Cash.ResetTallies();
+        Cash.SetAcquisitionGate(Acquisition);
+        // The auto-deposit gates read the authoritative inventory snapshot
+        // (wealth value + coin count), so re-evaluate whenever the parser
+        // updates holdings — this is the only path that catches buy / sell
+        // wealth swings (CashManager's own patterns see get / drop only).
+        Inventory.Changed += Cash.OnInventoryChanged;
+
+        // Phase 9 PR 9.E follow-up — StashRoomManager. NOT autonomous:
+        // AutoDepositManager (built below) drives ExecuteStash on arrival
+        // at a stash destination during an auto-deposit reroute, so a
+        // manual walk through a stash room never triggers a hide. Shares
+        // AutoGetCash gating with CashManager (cash automation is one
+        // mental toggle).
+        Stash = new Game.Cash.StashRoomManager(Profile,
+            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            getSnapshot: () => Inventory.Snapshot,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            log: Log);
+
+        // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
+        // maps a loose "You notice ..." entry back to an item Number
+        // (ItemNames reverse index), reads the verbatim Name to send,
+        // and resolves the per-character AutoCollect override through
+        // the 4-tier hierarchy seeded by ItemOverlaySeed. Constructed
+        // after CombatTracker so its EntitiesObserved handler (wired
+        // below) runs after the gate update and reads a current
+        // HasEngageableHostiles.
+        AutoGetItems = new Game.Inventory.AutoGetItemsManager(Router,
+            resolve: ResolveAutoGetItem,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            collectAfterCombatFinished: () =>
+                ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
+                    .CollectAfterCombatFinished,
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            log: Log);
+        AutoGetItems.SetAcquisitionGate(Acquisition);
+        // Combat-finished flush: every room-entity observation re-checks
+        // the deferred queue (CombatStateTracker's handler ran first, so
+        // the hostile flag is current).
+        RoomClassifier.EntitiesObserved += _ => AutoGetItems.OnRoomObserved();
+        // Settings → Talk auto-greet. Self name resolves through the
+        // PartyManager's LocalCharacterName first (set on connect), then
+        // the loaded profile name as a fallback. Wire-sender bound by
+        // MainWindowViewModel after telnet connects.
+        Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
+            selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
+        // Drop the stale queue when we actually change rooms.
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.NewRoom is null) return;
+            if (t.PreviousRoom is not null
+             && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            AutoGetItems.OnRoomChanged();
+        };
+
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner, recovery: Recovery);
+        // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
+        // through the walker — attached here since the walker is built
+        // after the manager.
+        DeathRecovery.AttachWalker(Walker);
         // Phase 7 PR 7.22 — route walker over trapped exits through
         // the Phase 6 TrapDisarmManager.
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+        // Settings → Other "Utilize disarm traps if able": gate the
+        // walker's trap-disarm on the toggle AND a real local capability
+        // (Traps skill). When the gate is false the walker steps through
+        // trapped exits without a disarm. The party-delegation half of
+        // "if able" lands in a follow-up.
+        Walker.SetTrapDisarmGate(() =>
+            Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
+            && TrapDisarm.CanDisarm);
+        // Party-delegation half of "if able": same toggle, but the LOCAL
+        // character can't disarm AND a capable party member can. The
+        // walker tries the local gate first, then this; the delegation
+        // manager broadcasts @trap on say and resumes on the member's
+        // say reply (a signal source kept distinct from the self path).
+        Walker.SetTrapDelegator(TrapDelegation.Delegate);
+        Walker.SetTrapDelegateGate(() =>
+            Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
+            && !TrapDisarm.CanDisarm
+            && TrapDelegation.AnyPartyMemberCanDisarm());
+        Walker.SetTrapDelegateStopper(TrapDelegation.Cancel);
+        // PR 4.b — proactive pre-move sneak: `sn` goes out as the last
+        // command before each walker move so the move itself is sneaked
+        // (the reactive RoomTracker hook above only re-sneaks AFTER
+        // arriving). Non-blocking; the settled-state guard in
+        // StealthManager prevents a double-send when both paths fire.
+        Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
 
         // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
         // BBS-change signals so the catalogue reloads on profile load
@@ -1222,6 +2231,11 @@ public sealed class AppServices
         Profile.ProfileClosed += () => Lairs.LoadAll(null);
         LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
 
+        // Shared folder CRUD over the Loops directory (loops + lairs
+        // live in the same on-disk tree). Owns the filesystem move once
+        // and reloads both managers, instead of either racing the dir.
+        NavFolders = new Game.Map.NavFolderManager(Loops, Lairs, Log);
+
         // Phase 7 PR 7.18 — Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
         // logs measured per-hop times tagged with that level. Enabled via
@@ -1234,8 +2248,8 @@ public sealed class AppServices
         // BFS picks it up via the Changed event before the first
         // layout build for the new BBS.
         RoomBlacklist = new RoomBlacklistStore(Log);
-        Profile.ProfileLoaded += p => RoomBlacklist.OnBbsPinApplied(p);
-        Profile.BbsPinApplied += p => RoomBlacklist.OnBbsPinApplied(p);
+        Profile.ProfileLoaded += _ => RoomBlacklist.OnBbsPinApplied(ResolveActiveBbs()?.Name);
+        Profile.BbsPinApplied += _ => RoomBlacklist.OnBbsPinApplied(ResolveActiveBbs()?.Name);
         // BFS consults the blacklist to skip placement of hidden
         // rooms (edge still recorded → dangling stub). Cache flushes
         // on every blacklist change so the next layout build picks
@@ -1250,6 +2264,8 @@ public sealed class AppServices
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
             PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
+        // PR 4.b — same proactive pre-move sneak for loop circuits.
+        LoopRunner.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
@@ -1259,6 +2275,13 @@ public sealed class AppServices
         // at a wait-room one hop short, then steps in on the tick.
         AutoLair = new Game.Map.AutoLairManager(
             Walker, RoomTracker, RoomGraph, Bfs, LairTimers, Log, MovementCoordinator);
+
+        // Always-alive control surface over the three movement engines.
+        // Backs the toolbar Start / Pause / Stop buttons (which outlive
+        // the window-scoped NavigationViewModel) and stays in sync with
+        // the Nav window because both act on the same engine primitives.
+        MovementControl = new Game.Map.MovementController(
+            Walker, LoopRunner, AutoLair, MovementCoordinator);
 
         // Shared room-search resolver — backs the Nav rail search
         // box AND the @goto handler. Subscribes to ActiveSetChanged
@@ -1276,6 +2299,42 @@ public sealed class AppServices
         MoveRemote = new Game.Remote.MovePlayerHandler(
             RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
             Lairs, AutoLair, MovementCoordinator);
+
+        // PR 6.1 — leader-side @comeback. Snapshots the running movement
+        // engine, stops it (stop-and-restart, NOT a coordinator gate —
+        // a gate would block the recovery walk itself), walks to recover
+        // the stranded follower (explicit room or backtrack along the
+        // just-walked RoomTracker trail), re-invites + awaits follow,
+        // then resumes the captured engine. MaxBacktrackRooms is pushed
+        // from Settings → Other by ApplyOtherFromActiveProfile on load.
+        PartyComeback = new Game.Remote.PartyComebackManager(
+            RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Log);
+
+        // Phase 9 PR 9.E follow-up — auto-deposit reroute. Built here
+        // (after the movement engines) so it can snapshot / stop / restart
+        // the running Loop or Auto-Lair when CashManager's gate crosses.
+        // Stop-and-restart, NOT a coordinator gate — a gate would block the
+        // detour walk itself (same reasoning as PartyComebackManager). The
+        // wire sender for the bank `dep` is bound by MainWindowViewModel
+        // after telnet connects, alongside the Cash / Stash senders.
+        AutoDeposit = new Game.Cash.AutoDepositManager(
+            Cash,
+            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            getSnapshot: () => Inventory.Snapshot,
+            profile: Profile,
+            tracker: RoomTracker,
+            walker: Walker,
+            loopRunner: LoopRunner,
+            autoLair: AutoLair,
+            stash: Stash,
+            log: Log);
+
+        // PR 6.2 — follower-side @comeback. Watches for a movement-failure
+        // line (prevents-movement flag / over-encumbered) immediately
+        // before "You are no longer following X." — the signature of being
+        // left behind — and telepaths @comeback to the leader. Enabled is
+        // pushed from Settings → Other by ApplyOtherFromActiveProfile.
+        ComebackRequest = new Game.Remote.ComebackRequester(Router, RoomTracker, Log);
 
         // Phase 8 PR 8.1 — EventManager. Holds the loaded character's
         // scheduled / lifecycle events, dispatches actions into the
@@ -1335,6 +2394,23 @@ public sealed class AppServices
     /// is missing the named entry, or the JSON is malformed — the
     /// callers all want a non-null DTO they can apply unconditionally.
     /// </summary>
+    /// <summary>
+    /// Returns whichever of Walker / LoopRunner / AutoLair is currently
+    /// not Idle. Per design they're mutually exclusive (entering one
+    /// cleanly exits the other) so a simple first-non-idle scan is
+    /// sufficient. Returns <c>null</c> when the player is idle —
+    /// HealthManager treats that as "don't flee".
+    /// </summary>
+    private Game.Map.IRecoverableEngine? ResolveActiveMovementEngine()
+    {
+        if (Walker.State != Game.Map.WalkState.Idle) return Walker;
+        if (LoopRunner.State != Game.Map.LoopState.Idle) return LoopRunner;
+        // AutoLair routes through the walker when stepping; its own
+        // state machine reflects scheduling. If the walker is idle
+        // the AutoLair has nothing to flee from either.
+        return null;
+    }
+
     private static T ReadSection<T>(Models.Profile.CharacterProfile? profile, string key)
         where T : new()
     {
@@ -1348,6 +2424,215 @@ public sealed class AppServices
         {
             return new T();
         }
+    }
+
+    /// <summary>
+    /// Read a single boolean off the active profile's
+    /// <see cref="Models.Profile.GeneralSettings.AutoMode"/>. Used by
+    /// the Phase 9 engine isEnabled delegates so toggling Settings →
+    /// General → Auto-Combat (or the toolbar Toggle button) takes
+    /// effect immediately — no event subscription needed since each
+    /// engine queries on every tick / classifier emit.
+    /// </summary>
+    private bool ReadAutoModeFlag(Func<Models.Profile.AutoActionDefaults, bool> selector)
+    {
+        Models.Profile.GeneralSettings general =
+            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
+        return selector(general.AutoMode);
+    }
+
+    /// <summary>
+    /// Feature 5 buff-duration source: map a 4-letter cast code to the
+    /// buff's <see cref="Models.GameData.MessageRecord.CasterMessage"/>
+    /// confirmation template plus its computed effect duration in
+    /// seconds (<see cref="Game.Spells.SpellCalculator.Duration"/> at the
+    /// live <see cref="Game.Spells.SpellbookState.Level"/>). Returns
+    /// <c>null</c> for an unknown code, a code with no game-data message
+    /// record, or a record with no caster line.
+    /// </summary>
+    private (string Caster, long DurationSec)? BuffInfoByShort(string castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return null;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            if (rec is null || string.IsNullOrWhiteSpace(rec.CasterMessage)) return null;
+            return (rec.CasterMessage, Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// True when the buff with cast code <paramref name="castCode"/> targets
+    /// the whole party at once. Resolved from the active set's
+    /// <c>Spells.Targets</c> scope code: 13 = Full Party Area, 10 = Divided
+    /// Party Area — both blanket the party in a single cast (verified against
+    /// 1.11p, where every party-wide buff / heal uses 13; 10 is the divided
+    /// variant). See <see cref="Game.GameData.LookupEnums.FormatSpellTargets"/>
+    /// for the full label table. Unknown / non-party scopes ⇒ single-target.
+    /// </summary>
+    private bool IsPartyWideBuff(string castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return false;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+            if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return s.Targets is 10 or 13;
+        return false;
+    }
+
+    /// <summary>
+    /// Build the cure-confirmation matchers
+    /// <see cref="Game.Conditions.PartyAilmentTracker"/> uses to clear a
+    /// member's ailment chip when OUR cure spell lands on them. Each
+    /// configured cure spell (poison / disease / blindness / holds) is resolved
+    /// via the live spellbook → its game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/> →
+    /// a <see cref="Game.Spells.CasterMessageMatcher"/>. Confusion has no
+    /// cure spell, so it's never listed. Re-read on every call so
+    /// re-configuring a cure spell takes effect immediately.
+    /// </summary>
+    private IReadOnlyList<Game.Conditions.CureCastMatcher> CureCastMatchers()
+    {
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        List<Game.Conditions.CureCastMatcher> list = new(4);
+        Add(spells.CurePoisonSpell,    Models.GameData.MessageFlags.Poisoned);
+        Add(spells.CureDiseaseSpell,   Models.GameData.MessageFlags.Diseased);
+        Add(spells.CureBlindnessSpell, Models.GameData.MessageFlags.Blinded);
+        Add(spells.CureHoldsSpell,     Models.GameData.MessageFlags.MovementPrevented);
+        return list;
+
+        void Add(string? castCode, Models.GameData.MessageFlags ailment)
+        {
+            if (CureMatcherFor(castCode) is { } resolved)
+                list.Add(new Game.Conditions.CureCastMatcher(
+                    ailment, resolved.SpellName, resolved.Caster, resolved.Witness));
+        }
+    }
+
+    /// <summary>
+    /// Whether the player has a cure spell configured (a non-blank cast code
+    /// in <see cref="Models.Profile.SpellsSettings"/>) for
+    /// <paramref name="ailment"/>. The <see cref="Game.Conditions.AilmentSyncEngine"/>
+    /// say-announce gate consults this — if we can self-cure an ailment we
+    /// clear it silently rather than broadcasting <c>.@poisoned</c> /
+    /// <c>.@held</c> to the party. Confusion has no cure field, so it always
+    /// reports unconfigured.
+    /// </summary>
+    private bool HasCureConfigured(Models.GameData.MessageFlags ailment)
+    {
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        string? code = ailment switch
+        {
+            Models.GameData.MessageFlags.Poisoned          => spells.CurePoisonSpell,
+            Models.GameData.MessageFlags.Diseased          => spells.CureDiseaseSpell,
+            Models.GameData.MessageFlags.Blinded           => spells.CureBlindnessSpell,
+            Models.GameData.MessageFlags.MovementPrevented  => spells.CureHoldsSpell,
+            _ => null,
+        };
+        return !string.IsNullOrWhiteSpace(code);
+    }
+
+    /// <summary>
+    /// Resolve a cure spell's cast code to its game-data name plus the
+    /// <see cref="Game.Spells.CasterMessageMatcher"/>s built from the spell's
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/> (OUR cast) and
+    /// <see cref="Models.GameData.MessageRecord.WitnessMessage"/> (another
+    /// member's cast we see in the room). The name is carried so the tracker
+    /// confirms the spell slot, not just the target. The witness matcher is
+    /// <c>null</c> when the record has no witness template. Returns <c>null</c>
+    /// when the code is blank, unknown to the spellbook, has no message record,
+    /// or the caster message has no string capture (nothing to confirm against).
+    /// </summary>
+    private (string SpellName, Game.Spells.CasterMessageMatcher Caster, Game.Spells.CasterMessageMatcher? Witness)?
+        CureMatcherFor(string? castCode)
+    {
+        if (string.IsNullOrWhiteSpace(castCode)) return null;
+        string target = castCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            if (rec is null) return null;
+            return Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage) is { } caster
+                ? (s.Name, caster, Game.Spells.CasterMessageMatcher.TryCreate(rec.WitnessMessage))
+                : null;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Feature 5 buff-duration source: map a fired AppliedMessage
+    /// <see cref="Models.GameData.MessageRecord"/> back to the buff's
+    /// 4-letter cast code so a confirmed self-buff starts / clears its
+    /// duration timer. Resolves via the record's <c>Spells#N</c> link
+    /// first, then falls back to a name match against the live spellbook.
+    /// </summary>
+    private string? ShortFromAppliedRecord(Models.GameData.MessageRecord record)
+    {
+        if (record.Links is not null)
+            foreach (Models.GameData.GameDataLink link in record.Links)
+            {
+                if (!string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+                    if (s.Number == link.Number) return s.Short;
+            }
+
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+            if (string.Equals(s.Name.Trim(), record.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                return s.Short;
+        return null;
+    }
+
+    /// <summary>
+    /// Find the active set's <see cref="Models.GameData.MessageRecord"/>
+    /// for a spell — by <c>Spells#N</c> link first, then by name. Returns
+    /// <c>null</c> when the catalogue has no record for the spell.
+    /// </summary>
+    private Models.GameData.MessageRecord? FindSpellMessage(int spellNumber, string spellName)
+    {
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+        {
+            if (m.Links is null) continue;
+            foreach (Models.GameData.GameDataLink link in m.Links)
+                if (string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)
+                    && link.Number == spellNumber)
+                    return m;
+        }
+
+        string target = spellName.Trim();
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+            if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return m;
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve a single room "You notice ..." entry for
+    /// <see cref="AutoGetItems"/>: map the loose wording to an item
+    /// Number, read its verbatim Name, and resolve the per-character
+    /// <see cref="Models.GameData.ItemOverlay.AutoCollect"/> override
+    /// (Defaults seed → Global → BBS → Char). Returns <c>null</c> when
+    /// the entry isn't an item in the active set (cash, scenery), so the
+    /// engine skips it. AutoCollect defaults to <c>false</c> — pickup is
+    /// opt-in per item.
+    /// </summary>
+    private Game.Inventory.AutoGetItemsManager.ResolvedItem? ResolveAutoGetItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
+            "Items",
+            number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ItemOverlaySeed.GetOverlay(number));
+
+        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
     }
 
     /// <summary>
@@ -1413,7 +2698,7 @@ public sealed class AppServices
     {
         Models.Profile.TalkSettings dto = ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk");
         RemoteCommands.MasterDisable          = dto.DisallowAllRemoteCommands;
-        RemoteCommands.DisablePartyWhitelist  = dto.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisallowPartyDirectives = dto.DisallowPartyCommands;
         RemoteCommands.DisableTelepathChannel = dto.DisallowRemoteFromTelepaths;
         RemoteCommands.DisableGangpathChannel = dto.DisallowRemoteFromGangpaths;
         RemoteCommands.DisableLocalChannel    = dto.DisallowRemoteFromLocal;
@@ -1425,7 +2710,7 @@ public sealed class AppServices
     {
         Models.Profile.TalkSettings defaults = new();
         RemoteCommands.MasterDisable          = defaults.DisallowAllRemoteCommands;
-        RemoteCommands.DisablePartyWhitelist  = defaults.DisallowPartyCommandsFromLeader;
+        RemoteCommands.DisallowPartyDirectives = defaults.DisallowPartyCommands;
         RemoteCommands.DisableTelepathChannel = defaults.DisallowRemoteFromTelepaths;
         RemoteCommands.DisableGangpathChannel = defaults.DisallowRemoteFromGangpaths;
         RemoteCommands.DisableLocalChannel    = defaults.DisallowRemoteFromLocal;
@@ -1443,20 +2728,13 @@ public sealed class AppServices
     {
         Models.Profile.OtherSettings dto = ReadSection<Models.Profile.OtherSettings>(Profile.Current, "Other");
         RemoteCommands.MaxSuicideLivesThreshold = Math.Clamp(dto.MaxSuicideLivesThreshold, 0, 9);
-        // Game-menu commands — HangupHandler consumes ExitCommand
-        // synchronously on @hangup; the future cleanup-flow + first-
-        // login automation will consume both. Blank entries fall back
-        // to the DTO defaults (E / =x) so a misconfiguration can't
-        // leave the engine with empty wire-sends.
-        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(dto.GameEntryCommand)
-            ? new Models.Profile.OtherSettings().GameEntryCommand
-            : dto.GameEntryCommand;
-        GameCommands.ExitCommand  = string.IsNullOrWhiteSpace(dto.GameExitCommand)
-            ? new Models.Profile.OtherSettings().GameExitCommand
-            : dto.GameExitCommand;
         // @trap auto-disarm attempt caps.
         TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
+        // Leader-side @comeback backtrack budget.
+        PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
+        // Follower-side auto-@comeback toggle.
+        ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
         // Hop-timing calibration logger — off by default; user flips
         // on for a data-collection session.
         HopCalibrator.Enabled = dto.LogMovementHopTiming;
@@ -1466,10 +2744,10 @@ public sealed class AppServices
     {
         Models.Profile.OtherSettings defaults = new();
         RemoteCommands.MaxSuicideLivesThreshold = defaults.MaxSuicideLivesThreshold;
-        GameCommands.EntryCommand = defaults.GameEntryCommand;
-        GameCommands.ExitCommand  = defaults.GameExitCommand;
         TrapDisarm.MaxSearchAttempts = defaults.MaxTrapSearchAttempts;
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
+        PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
+        ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
     }
 
     /// <summary>
@@ -1554,7 +2832,7 @@ public sealed class AppServices
     /// </summary>
     public Models.Settings.BbsProfile? ResolveActiveBbs()
     {
-        string? name = Profile.Current?.BbsName;
+        string? name = Profile.CurrentBbsName;
         if (!string.IsNullOrEmpty(name))
         {
             Models.Settings.BbsProfile? pinned = Bbs.Get(name);
@@ -1587,6 +2865,19 @@ public sealed class AppServices
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;
         Display.TerminalRows = values.TerminalRows;
+
+        // Game-menu commands are BBS-tier too — HangupHandler consumes
+        // ExitCommand synchronously on @hangup; MainMenuEntryAutomation +
+        // the cleanup-logout flow consume both. Blank entries fall back to
+        // the DTO defaults (E / =x) so a misconfiguration can't leave the
+        // engine with empty wire-sends.
+        Models.Settings.BbsProfile defaults = new();
+        GameCommands.EntryCommand = string.IsNullOrWhiteSpace(values.GameEntryCommand)
+            ? defaults.GameEntryCommand
+            : values.GameEntryCommand;
+        GameCommands.ExitCommand = string.IsNullOrWhiteSpace(values.GameExitCommand)
+            ? defaults.GameExitCommand
+            : values.GameExitCommand;
     }
 
     private void ResetDisplayToDefaults()
@@ -1596,14 +2887,18 @@ public sealed class AppServices
         Display.ScrollbackLines = defaults.ScrollbackLines;
         Display.TerminalCols = defaults.TerminalCols;
         Display.TerminalRows = defaults.TerminalRows;
+        GameCommands.EntryCommand = defaults.GameEntryCommand;
+        GameCommands.ExitCommand = defaults.GameExitCommand;
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)
     {
-        if (Profile.CurrentProfileName is null) return;
-        if (Settings.Current.LastUsedProfileName == Profile.CurrentProfileName) return;
+        if (Profile.CurrentProfileName is null || Profile.CurrentBbsName is null) return;
 
-        Settings.Current.LastUsedProfileName = Profile.CurrentProfileName;
+        Models.Profile.ProfileRef loaded = new(Profile.CurrentBbsName, Profile.CurrentProfileName);
+        if (Settings.Current.LastUsedProfile == loaded) return;
+
+        Settings.Current.LastUsedProfile = loaded;
         Settings.Save();
     }
 }

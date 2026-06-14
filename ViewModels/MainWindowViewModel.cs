@@ -201,6 +201,36 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isDisconnecting;
 
+    // Phase 9 — live auto-engine toggles. Each mirrors the matching
+    // GeneralSettings.AutoMode flag on the active profile; the toolbar
+    // Toggle buttons, the Action-menu check items, and the Settings →
+    // General checkboxes all write here. The partial OnXxxChanged
+    // handlers persist to the profile and refresh the toolbar IsActive
+    // badge. AutoSearch is intentionally absent — no engine consumes it
+    // yet (IsAutoSearchWired => false), so it stays stubbed until the
+    // hidden-exit walker lands.
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoCombatActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoNukeActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHealRestActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoBlessActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoLightActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetItemsActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetCashActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSneakActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
+
+    /// <summary>
+    /// True when every wired auto-engine is off — drives the "Auto-All"
+    /// master toggle's depressed/checked state. Mirrors
+    /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
+    /// the live observables so the badge updates instantly. AutoSearch is
+    /// excluded (no engine yet), matching the controller's wired set.
+    /// </summary>
+    public bool IsAllAutoOff =>
+        !IsAutoCombatActive && !IsAutoNukeActive && !IsAutoHealRestActive
+        && !IsAutoBlessActive && !IsAutoLightActive && !IsAutoGetItemsActive
+        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive;
+
     public bool IsDisconnected => !IsConnected;
 
     /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
@@ -302,6 +332,15 @@ public partial class MainWindowViewModel : ObservableObject
             RefreshEngineActionChip();
         });
 
+    private void OnMovementControlStateChanged()
+        => Dispatcher.UIThread.Post(() =>
+        {
+            foreach (ToolbarButtonItem row in ToolbarItems)
+            {
+                if (row.IsButton) ApplyToolbarRowState(row);
+            }
+        });
+
     private void RefreshEngineActionChip()
     {
         OnPropertyChanged(nameof(EngineActionBadge));
@@ -356,6 +395,16 @@ public partial class MainWindowViewModel : ObservableObject
         /// post-entry stat/exp/i refresh doesn't spam the wire.
         /// </summary>
         HangupInitiated,
+        /// <summary>
+        /// Deliberate relog originated client-side — remote
+        /// <c>@relog</c> from a trusted player. The character gracefully
+        /// exits (<see cref="Services.GameCommands.ExitCommand"/>) and we
+        /// force an unconditional dial-back (ignoring the per-BBS
+        /// reconnect toggles), then let the normal login automation log
+        /// back in. Unlike <see cref="HangupInitiated"/> the entry latch
+        /// is NOT suppressed — the whole round-trip is automatic.
+        /// </summary>
+        RelogInitiated,
     }
 
     private DisconnectCause _lastDisconnectCause = DisconnectCause.None;
@@ -416,6 +465,11 @@ public partial class MainWindowViewModel : ObservableObject
         // Mirror RoomTracker into the status-bar location slot so the
         // bottom bar and the Navigation window's strip stay in sync.
         AppServices.Current.RoomTracker.StateChanged += OnRoomTrackerStateChanged;
+        // Swapping game-data sets (incl. clearing to none) reseeds the
+        // room graph; refresh the location slot so the "load a game data
+        // set" hint appears when the graph empties and clears when it fills.
+        AppServices.Current.RoomGraph.GraphReloaded +=
+            () => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
         // Engine-state chip — same shape as the Navigation window's
         // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
@@ -424,6 +478,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Walker.Event           += OnWalkerEngineEvent;
         AppServices.Current.LoopRunner.Event       += OnLoopRunnerEngineEvent;
         AppServices.Current.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        // Coalesced engine state drives the Start / Pause / Stop toolbar
+        // buttons' visibility + Pause↔Resume label; re-apply row state on
+        // every transition so the toolbar mirrors the running engine.
+        AppServices.Current.MovementControl.StateChanged += OnMovementControlStateChanged;
         // Name-learned prompt: fires when the tracker adopts a name
         // for a previously-unnamed room (typical of map-15 ganghouse
         // rooms in 1.x exports). Modeless yes/no asks whether to write
@@ -459,7 +517,14 @@ public partial class MainWindowViewModel : ObservableObject
         RebuildRecentProfiles();
         SyncProfileMenuState();
         AppServices.Current.Profile.ProfileLoaded += OnProfileLoadedForConnect;
-        AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); };
+        AppServices.Current.Profile.ProfileLoaded += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileMutated += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileSaving  += _ => SyncAutoEngineTogglesFromProfile();
+        AppServices.Current.Profile.ProfileClosed += () => { ClearQuickConnect(); SyncProfileMenuState(); RefreshBbsBindings(); SyncAutoEngineTogglesFromProfile(); };
+        // Seed at construction time so the toolbar IsActive badge is
+        // right on first paint (even with no profile, the engines'
+        // isEnabled delegates return false and the toggles render off).
+        SyncAutoEngineTogglesFromProfile();
         // ProfileMutated fires from BbsSectionViewModel.Apply after the
         // BBS pin has been stamped onto the profile — works for both
         // named profiles and unsaved drafts (Save no-ops on drafts but
@@ -542,12 +607,56 @@ public partial class MainWindowViewModel : ObservableObject
         // field onto AppServices.Current.PlayerStats; feeds
         // RemoteCommandManager.LivesProvider for the @suicide gate.
         AppServices.Current.Stats.AttachLineExtractor(Lines);
+        // SpellListParser — reads `spells` / `pow` output into the Spell
+        // Book's obtained set. App-level (survives reconnects), bound to
+        // the per-session extractor here like Stats above.
+        AppServices.Current.SpellList.AttachLineExtractor(Lines);
+        // TrainLearnParser — marks powers obtained the moment training lists
+        // them ("You learn the following Kai abilities:"). Same per-session
+        // binding as SpellList above.
+        AppServices.Current.TrainLearn.AttachLineExtractor(Lines);
         // DeathDetector — watches for the post-death
         // "You now have N lives remaining." line; fires
         // RoomTracker.NoteDeath which appends to
         // CharacterProfile.DeathHistory and transitions to
         // PendingRespawn ahead of the respawn-room display.
         AppServices.Current.Death.AttachLineExtractor(Lines);
+        // Phase 9 — MonsterDeathWatcher needs the raw line stream to
+        // match per-monster DeathLine patterns. Specific-match path
+        // removes the dead entity from RoomEntityClassifier so
+        // CombatManager re-picks correctly on the next arrival /
+        // re-display.
+        AppServices.Current.MonsterDeath.AttachLineExtractor(Lines);
+        // Phase 9 PR 9.D — ConditionTracker scans inbound lines
+        // against every game-data Messages record's AppliedMessage /
+        // AppliedEndsWith pair to surface live ActiveFlags.
+        AppServices.Current.Conditions.AttachLineExtractor(Lines);
+        // Party-buff confirmation — CastingDirector watches inbound lines
+        // for OUR caster echo ("You cast bless on Raijin!") to confirm a
+        // pending party-bless cast landed before it starts the buff's
+        // duration timer. Self-buff confirmation goes through the
+        // ConditionTracker AppliedMessage path instead.
+        AppServices.Current.CastDirector.AttachLineExtractor(Lines);
+        // Inbound ailment chip-clear — PartyAilmentTracker watches server
+        // lines for OUR cure spell landing on a party member (matched by the
+        // cure spell's CasterMessage template) and clears that member's
+        // ailment chip. The chip-set side rides ChatRouter, not the line feed.
+        AppServices.Current.PartyAilment.AttachLineExtractor(Lines);
+        // Multi-line "Also here:" wrap stitching — the server wraps
+        // long occupant lists at the 80-col boundary, so the regex
+        // pattern only sees the first row. AttachLineExtractor
+        // buffers continuations until the period.
+        AppServices.Current.RoomClassifier.AttachLineExtractor(Lines);
+        // Same shape for "You notice <list> here." — CashManager
+        // buffers wrapped rows to parse the full cash + item list.
+        AppServices.Current.Cash.AttachLineExtractor(Lines);
+        // Same survey line drives item auto-get — its own buffer
+        // stitches wrapped rows so the multi-line "You notice" parses.
+        AppServices.Current.AutoGetItems.AttachLineExtractor(Lines);
+        // Inventory parser reads the full `i` dump (carried currency,
+        // Wealth, Encumbrance) so CashManager's gate has live carry
+        // weight; it buffers the wrapped deposit echo too.
+        AppServices.Current.Inventory.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
@@ -589,12 +698,19 @@ public partial class MainWindowViewModel : ObservableObject
         // relay (uses the wire-sender directly, bypassing ctx.Reply).
         AppServices.Current.RemoteCommands.SetWireSender(engineSend);
         AppServices.Current.PartyEssentials.SetWireSender(engineSend);
+        // Settings → Talk auto-greet — needs the wire-sender to emit
+        // greet/look at newly-seen non-party players.
+        AppServices.Current.Greet.SetWireSender(engineSend);
         // Phase 6 PR 6.4 — poller needs the same wire-sender to send
         // @health round-trip requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(engineSend);
         // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
         // when we finish, so the party leader's pause-gate can react.
         AppServices.Current.PartyRest.SetWireSender(engineSend);
+        // Outbound ailment-sync — the say-announce (".@poisoned" etc.)
+        // rides the same engine sender; the @wait/@ok side routes through
+        // PartyRest's sender bound just above.
+        AppServices.Current.AilmentSync.SetWireSender(engineSend);
         // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
         // broadcasts go through PartyBroadcaster.
         AppServices.Current.PartyBroadcaster.SetWireSender(engineSend);
@@ -605,15 +721,57 @@ public partial class MainWindowViewModel : ObservableObject
         // HangupHandler — sends the configured GameExitCommand when
         // an authorised sender telepaths @hangup.
         AppServices.Current.Hangup.SetWireSender(engineSend);
+        // RelogHandler — same exit command, but arms RelogSignal so the
+        // Disconnected handler forces a reconnect-and-login cycle.
+        AppServices.Current.Relog.SetWireSender(engineSend);
+        // DivertHandler — repeats incoming telepaths to a target while
+        // @divert is active; rides the same gate-wrapped pipeline.
+        AppServices.Current.Divert.SetWireSender(engineSend);
+        // PR 6.2 — follower-side @comeback. Telepaths @comeback to the
+        // leader when a movement-failure line strands us as the party
+        // walks off; rides the same gate-wrapped pipeline.
+        AppServices.Current.ComebackRequest.SetWireSender(engineSend);
+        // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
+        // target pick via the same engine-send pipeline; the gate-
+        // wrapped sender prevents the swing command from landing
+        // mid-password-entry on a stale combat round.
+        AppServices.Current.Combat.SetWireSender(engineSend);
+        // Phase 9 PR 9.B — HealthManager sends rest / stand / pre- /
+        // post-rest commands via the same gate-wrapped engine pipeline.
+        AppServices.Current.Health.SetWireSender(engineSend);
+        // Phase 9 PR 9.C — CastCoordinator's `c <spell> [target]` emits
+        // ride the same gate-wrapped pipeline so spell commands respect
+        // the suicide-password / trainer-menu lockouts upstream.
+        AppServices.Current.Cast.SetWireSender(engineSend);
+        // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
+        // ride the gate-wrapped pipeline like the other engines.
+        AppServices.Current.Cash.SetWireSender(engineSend);
+        // Phase 9 PR 9.L — AutoGetItemsManager's `get <name>` commands
+        // ride the same gate-wrapped pipeline.
+        AppServices.Current.AutoGetItems.SetWireSender(engineSend);
+        // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
+        // commands ride the same gate-wrapped pipeline.
+        AppServices.Current.Stash.SetWireSender(engineSend);
+        // Phase 9 PR 9.E follow-up — auto-deposit reroute's bank `dep`
+        // command rides the same gate-wrapped pipeline.
+        AppServices.Current.AutoDeposit.SetWireSender(engineSend);
+        // Cluster 3 — StealthManager's auto-sneak / auto-hide commands.
+        AppServices.Current.Stealth.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
         // payload shouldn't be able to land mid-suicide-password entry.
         AppServices.Current.Do.SetWireSender(engineSend);
         // @trap auto-disarm — gate-wrapped (same reason).
         AppServices.Current.TrapDisarm.SetWireSender(engineSend);
+        // Party trap delegation — `look <name>` race probes + `.@trap <dir>`
+        // say broadcasts ride the same gate-wrapped pipeline.
+        AppServices.Current.TrapDelegation.SetWireSender(engineSend);
         // DoorOpenManager wire-sender — gate-wrapped so the bash/pick
         // sequence can't land in a password-entry prompt. Walker
         // routes door exits through Door.Enqueue at step-send time.
         AppServices.Current.Door.SetWireSender(engineSend);
+        // LeaderDoorAssistManager — same gate-wrapped sender so helping the
+        // leader force a door can't fire mid-password-prompt.
+        AppServices.Current.LeaderDoorAssist.SetWireSender(engineSend);
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
         AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
         // HiddenExitRevealManager — same gate-wrapped sender so the
@@ -626,17 +784,23 @@ public partial class MainWindowViewModel : ObservableObject
         // → keyword via TBInfoTeleportResolver against the active
         // TBInfoStore, and pre-broadcasts the keyword to followers via
         // `.@party <kw>` when the local character is party leader.
-        AppServices.Current.Walker.SetTeleportResolver(
+        // Shared by walker + loop runner so both cross teleport exits
+        // with the same keyword + follower-relay behavior.
+        Func<Game.Map.RoomKey, Game.Map.RoomKey, string?> teleportResolver =
             (source, dest) =>
             {
                 Game.Map.Room? src = AppServices.Current.RoomGraph.GetRoom(source);
                 if (src is null || src.Cmd <= 0) return null;
                 return Game.Map.TBInfoTeleportResolver.Resolve(
                     AppServices.Current.TBInfo, src.Cmd, dest);
-            });
-        AppServices.Current.Walker.SetPartyLeaderCheck(
+            };
+        Func<bool> isLeaderWithFollowers =
             () => AppServices.Current.Party.State.SelfIsLeader
-                && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf));
+                && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf);
+        AppServices.Current.Walker.SetTeleportResolver(teleportResolver);
+        AppServices.Current.Walker.SetPartyLeaderCheck(isLeaderWithFollowers);
+        AppServices.Current.LoopRunner.SetTeleportResolver(teleportResolver);
+        AppServices.Current.LoopRunner.SetPartyLeaderCheck(isLeaderWithFollowers);
         // Phase 7 walker + loop runner — gate-wrapped so a long walk
         // doesn't blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);
@@ -651,6 +815,22 @@ public partial class MainWindowViewModel : ObservableObject
         // LoginAutomator's LoggedIntoGame fires (only point in the
         // session where the entry command is allowed to auto-fire).
         AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
+
+        // CleanupLogoutOrchestrator — proactive log-off on the nightly
+        // shutdown warning. Safe = room clear of killable NPCs AND not
+        // mid-combat (the two signals CombatStateTracker owns). Gated on
+        // the active BBS's ReconnectAfterCleanup toggle (same switch the
+        // predictive reconnect scheduler reads), and uses the user-
+        // initiated disconnect path so the reconnect still arms afterward.
+        AppServices.Current.CleanupLogout.SetWireSender(engineSend);
+        AppServices.Current.CleanupLogout.SetSafePredicate(
+            () => !AppServices.Current.CombatTracker.HasEngageableHostiles
+                && !AppServices.Current.PlayerState.InCombat);
+        AppServices.Current.CleanupLogout.SetConnectedCheck(() => IsConnected);
+        AppServices.Current.CleanupLogout.SetAutoLogoutEnabledCheck(
+            () => ResolveActiveBbs()?.ReconnectAfterCleanup ?? false);
+        AppServices.Current.CleanupLogout.SetDisconnectCallback(
+            () => _ = DisconnectInternalAsync());
 
         // Refresh every menu's InputGesture text + the toolbar button
         // tooltips on rebind. Each gesture label property reads through
@@ -751,7 +931,17 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (e.PropertyName != nameof(IsConnected)
          && e.PropertyName != nameof(IsConnecting)
-         && e.PropertyName != nameof(IsDumping)) return;
+         && e.PropertyName != nameof(IsDumping)
+         && e.PropertyName != nameof(IsAutoCombatActive)
+         && e.PropertyName != nameof(IsAutoNukeActive)
+         && e.PropertyName != nameof(IsAutoHealRestActive)
+         && e.PropertyName != nameof(IsAutoBlessActive)
+         && e.PropertyName != nameof(IsAutoLightActive)
+         && e.PropertyName != nameof(IsAutoGetItemsActive)
+         && e.PropertyName != nameof(IsAutoGetCashActive)
+         && e.PropertyName != nameof(IsAutoSneakActive)
+         && e.PropertyName != nameof(IsAutoHideActive)
+         && e.PropertyName != nameof(IsAllAutoOff)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
         {
@@ -770,6 +960,58 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleCapture":
                 row.IsActive = IsDumping;
+                break;
+            case "ToggleAutoCombat":
+                row.IsActive = IsAutoCombatActive;
+                break;
+            case "ToggleAutoNuke":
+                row.IsActive = IsAutoNukeActive;
+                break;
+            case "ToggleAutoHealRest":
+                row.IsActive = IsAutoHealRestActive;
+                break;
+            case "ToggleAutoBless":
+                row.IsActive = IsAutoBlessActive;
+                break;
+            case "ToggleAutoLight":
+                row.IsActive = IsAutoLightActive;
+                break;
+            case "ToggleAutoGetItems":
+                row.IsActive = IsAutoGetItemsActive;
+                break;
+            case "ToggleAutoGetCash":
+                row.IsActive = IsAutoGetCashActive;
+                break;
+            case "ToggleAutoSneak":
+                row.IsActive = IsAutoSneakActive;
+                break;
+            case "ToggleAutoHide":
+                row.IsActive = IsAutoHideActive;
+                break;
+            case "ToggleAllAutoOff":
+                // Depressed = auto-responses running; inverse of "all off".
+                row.IsActive = !IsAllAutoOff;
+                break;
+            case "MovementStart":
+            {
+                // Always visible; enabled when idle (open Manage / run staged)
+                // or paused (doubles as Resume for the paused nav mode).
+                Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+                row.IsActionEnabled = ctl.IsIdle || ctl.IsPaused;
+                row.Tooltip = ctl.IsPaused
+                    ? "Resume movement"
+                    : "Start movement — run the staged loop, or open Manage to pick one";
+                break;
+            }
+            case "MovementPause":
+            {
+                // Pure pause: enabled only while an engine is actively running.
+                Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+                row.IsActionEnabled = ctl.IsActive && !ctl.IsPaused;
+                break;
+            }
+            case "MovementStop":
+                row.IsActionEnabled = AppServices.Current.MovementControl.IsActive;
                 break;
         }
     }
@@ -911,6 +1153,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         Game.Map.RoomState state = AppServices.Current.RoomTracker.State;
         Game.Map.Room? room = state.CurrentRoom;
+        // Without an active game-data set the room graph is empty, so the
+        // tracker can never locate us — every state reads "Lost", which
+        // misleads a fresh profile into thinking something broke. Surface
+        // the real cause instead and point the user at the fix. Clears
+        // automatically once a set loads (RoomGraph.GraphReloaded → here).
+        if (room is null && AppServices.Current.RoomGraph.RoomCount == 0)
+        {
+            LocationText = "Load a game data set to use navigation";
+            return;
+        }
         // Full room display name + key — TextTrimming on the status-bar
         // TextBlock clips long names down to the column's actual width
         // at render time. The VM stays a faithful mirror of game state.
@@ -1248,9 +1500,15 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Dispatcher.UIThread.Post(() =>
         {
-            WriteTerminalStatus(
-                $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]",
-                TerminalStatusKind.Notice);
+            // When ReconnectAfterCleanup is on the CleanupLogoutOrchestrator
+            // takes over: it waits for a safe room, exits to the menu, and
+            // drops the carrier for us — so the banner promises the managed
+            // flow rather than telling the user to quit manually.
+            bool autoLogout = ResolveActiveBbs()?.ReconnectAfterCleanup ?? false;
+            string banner = autoLogout
+                ? $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — WILL AUTO-LOG-OFF AT A SAFE ROOM, THEN RECONNECT.]"
+                : $"[CLEANUP WARNING — BBS GOES DOWN IN {warning.MinutesRemaining} MIN — QUIT AT A SAFE ROOM TO ARM AUTO-RECONNECT.]";
+            WriteTerminalStatus(banner, TerminalStatusKind.Notice);
             AppServices.Current.Log.Warn("Cleanup",
                 $"Server announced shutdown in {warning.MinutesRemaining} minute(s) at {warning.ObservedAt.LocalDateTime:HH:mm:ss}.");
         });
@@ -1591,6 +1849,48 @@ public partial class MainWindowViewModel : ObservableObject
         }, TaskScheduler.Default);
     }
 
+    /// <summary>
+    /// Force an unconditional dial-back after a remote <c>@relog</c>.
+    /// Unlike <see cref="TryScheduleReactiveReconnect"/> this ignores the
+    /// per-BBS reconnect toggles — the sender explicitly asked to relog,
+    /// so we always complete the cycle. A short <c>RedialPauseSeconds</c>
+    /// delay lets the carrier fully drop before re-dialing; the normal
+    /// login automation runs on the reconnect (relog never suppresses the
+    /// entry latch), so the character ends up back in-game.
+    /// </summary>
+    private void ScheduleRelogReconnect()
+    {
+        BbsProfile? bbs = ResolveActiveBbs();
+        TimeSpan delay = TimeSpan.FromSeconds(Math.Max(1, bbs?.RedialPauseSeconds ?? 5));
+
+        _cleanupReconnectCts?.Cancel();
+        _cleanupReconnectCts?.Dispose();
+        _cleanupReconnectCts = new CancellationTokenSource();
+        NotifyReconnectPendingChanged();
+        CancellationToken token = _cleanupReconnectCts.Token;
+
+        WriteTerminalStatus(
+            $"[RELOG REQUESTED — DIALING BACK IN {FormatDelay(delay)}.]",
+            TerminalStatusKind.Notice);
+        AppServices.Current.Log.Info("Reconnect",
+            $"Remote @relog — reconnecting in {FormatDelay(delay)}.");
+        StartReconnectCountdown(delay);
+
+        _ = Task.Delay(delay, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConnected || IsConnecting) return;
+                _cleanupReconnectCts?.Dispose();
+                _cleanupReconnectCts = null;
+                NotifyReconnectPendingChanged();
+                StopReconnectCountdown();
+                _ = ConnectWithRetriesAsync();
+            });
+        }, TaskScheduler.Default);
+    }
+
     /// <summary>Human-friendly delay rendering for the auto-reconnect banner / log.</summary>
     private static string FormatDelay(TimeSpan delay)
     {
@@ -1606,8 +1906,8 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Resolve which BBS the connect target reads off of. Preference order:
     /// <list type="number">
-    ///   <item><description>The pin on the loaded character profile
-    ///     (<c>CharacterProfile.BbsName</c>).</description></item>
+    ///   <item><description>The BBS the loaded character profile lives under
+    ///     (<c>ProfileService.CurrentBbsName</c>).</description></item>
     ///   <item><description>The first BBS in the global list (alphabetical),
     ///     so a user on a blank draft can still click Connect without
     ///     opening Settings first.</description></item>
@@ -1627,6 +1927,10 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanConnect));
         OnPropertyChanged(nameof(BbsWebsiteUrl));
         OnPropertyChanged(nameof(HasBbsWebsite));
+
+        // Mirror the title-bar identity onto the OS process name so
+        // multiple instances are distinguishable in ps / top / htop.
+        ProcessTitle.Set(AppServices.Current.Profile.CurrentProfileName, ResolveActiveBbs()?.Name);
     }
 
     /// <summary>
@@ -1743,12 +2047,19 @@ public partial class MainWindowViewModel : ObservableObject
                 // (StableConnectionWindowSeconds) that resets the
                 // counter only if the connection lasts that long.
                 AppServices.Current.Cleanup.Reset();
+                AppServices.Current.CleanupLogout.Reset();
                 CancelCleanupReconnect("connected");
                 ArmStableConnectionReset();
                 // Phase 8 PR 8.2 — let the EventScheduler reset its
                 // "are we in-game?" latch. The actual Logon fire
                 // happens on the first PromptObserved, not here.
                 AppServices.Current.EventScheduler.NotifyConnected();
+                // Re-enable any auto-actions the user opted into reviving on
+                // reconnect (Settings → Other). Only on a reconnect — a
+                // connect following a prior in-session disconnect — never on
+                // the first connect of the session.
+                if (_hadDisconnectThisSession)
+                    ReEnableAutoActionsOnReconnect();
             });
         };
         client.Disconnected += () =>
@@ -1759,6 +2070,12 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 bool wasConnected = IsConnected;
                 IsConnected = false;
+                // Mark the session as having dropped at least once so the
+                // next Connected counts as a reconnect (arms the Settings →
+                // Other "re-enable auto-actions on reconnect" flags). A
+                // failed connect attempt fires Disconnected with
+                // wasConnected=false and must NOT arm this.
+                if (wasConnected) _hadDisconnectThisSession = true;
                 // Cancel any pending stable-window reset — this drop
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
@@ -1766,6 +2083,14 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+
+                // Drop per-session condition + buff-duration state so a
+                // fresh login starts clean: any non-auto-clearing
+                // condition (no AppliedEndsWith) and any live buff timer
+                // must not survive the disconnect and suppress a recast
+                // on the next session.
+                AppServices.Current.Conditions.ClearAll();
+                AppServices.Current.CastDirector.ResetBuffTracking();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a
@@ -1784,16 +2109,31 @@ public partial class MainWindowViewModel : ObservableObject
                 {
                     _lastDisconnectCause = DisconnectCause.HangupInitiated;
                 }
+                else if (AppServices.Current.RelogSignal.ConsumeRelogIntent())
+                {
+                    _lastDisconnectCause = DisconnectCause.RelogInitiated;
+                }
                 else if (wasConnected)
                 {
                     _lastDisconnectCause = ClassifyServerSideDrop();
                 }
 
-                // Predictive scheduler first (cleanup warning gives a
-                // deterministic reconnect-at). Reactive only fires if
-                // predictive didn't arm anything.
-                TryScheduleCleanupReconnect();
-                if (_cleanupReconnectCts is null) TryScheduleReactiveReconnect();
+                // A remote @relog forces the dial-back unconditionally —
+                // the sender explicitly asked to relog, so we bypass the
+                // cleanup/reactive scheduling (which gates on per-BBS
+                // toggles) entirely.
+                if (_lastDisconnectCause == DisconnectCause.RelogInitiated)
+                {
+                    ScheduleRelogReconnect();
+                }
+                else
+                {
+                    // Predictive scheduler first (cleanup warning gives a
+                    // deterministic reconnect-at). Reactive only fires if
+                    // predictive didn't arm anything.
+                    TryScheduleCleanupReconnect();
+                    if (_cleanupReconnectCts is null) TryScheduleReactiveReconnect();
+                }
             });
         };
         // TelnetClient's Log event carries IAC negotiation trace lines;
@@ -2038,7 +2378,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         LogPaneWindow window = new()
         {
-            DataContext = new LogPaneViewModel(AppServices.Current.Log, Application.Current),
+            DataContext = new LogPaneViewModel(
+                AppServices.Current.Log,
+                Application.Current,
+                AppServices.Current.LogDiagnostics),
         };
         window.Closed += (_, _) => _logPane = null;
         _logPane = window;
@@ -2142,7 +2485,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// Rebuilt from <c>GlobalSettings</c> on startup and after every
     /// profile save.
     /// </summary>
-    public ObservableCollection<string> RecentProfiles { get; } = new();
+    public ObservableCollection<ProfileRef> RecentProfiles { get; } = new();
 
     // Indexed accessors so the File menu can lay out five fixed MenuItems
     // instead of a flyout submenu. Avalonia ItemsSource inside MenuItem
@@ -2161,20 +2504,19 @@ public partial class MainWindowViewModel : ObservableObject
     public string? Recent3 => RecentLabel(3);
     public string? Recent4 => RecentLabel(4);
 
-    // ProfileNameN parallel accessors — kept as the raw profile name
-    // for the click handler. Recent0..4 are display strings only.
-    public string? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
-    public string? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
-    public string? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
-    public string? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
-    public string? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
+    // ProfileNameN parallel accessors — the (bbs, char) ref for the click
+    // handler. Recent0..4 are display strings only.
+    public ProfileRef? ProfileName0 => RecentProfiles.Count > 0 ? RecentProfiles[0] : null;
+    public ProfileRef? ProfileName1 => RecentProfiles.Count > 1 ? RecentProfiles[1] : null;
+    public ProfileRef? ProfileName2 => RecentProfiles.Count > 2 ? RecentProfiles[2] : null;
+    public ProfileRef? ProfileName3 => RecentProfiles.Count > 3 ? RecentProfiles[3] : null;
+    public ProfileRef? ProfileName4 => RecentProfiles.Count > 4 ? RecentProfiles[4] : null;
 
     private string? RecentLabel(int index)
     {
         if (index < 0 || index >= RecentProfiles.Count) return null;
-        string name = RecentProfiles[index];
-        string? bbs = AppServices.Current.Profile.PeekBbs(name);
-        return string.IsNullOrEmpty(bbs) ? name : $"{name} - {bbs}";
+        ProfileRef recent = RecentProfiles[index];
+        return string.IsNullOrEmpty(recent.Bbs) ? recent.Name : $"{recent.Name} - {recent.Bbs}";
     }
 
     /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
@@ -2208,21 +2550,22 @@ public partial class MainWindowViewModel : ObservableObject
     {
         ProfileService profile = AppServices.Current.Profile;
         FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel vm =
-            new(profile.ListNames());
+            new(profile.ListAll());
 
-        string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
-            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, string>(vm);
-        if (string.IsNullOrEmpty(name)) return;
+        ProfileRef? picked = await AppServices.Current.Dialogs.OpenWindowAsync<
+            FujinTerm.ViewModels.Profile.ProfilePickerDialogViewModel, ProfileRef>(vm);
+        if (picked is null) return;
 
         try
         {
-            profile.Load(name);
-            PromoteRecent(name);
+            profile.Load(picked.Bbs, picked.Name);
+            PromoteRecent(picked);
             SyncProfileMenuState();
         }
         catch (Exception ex)
         {
-            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+            AppServices.Current.Log.Error("Profile",
+                $"Failed to load '{picked.Name}' on '{picked.Bbs}': {ex.Message}");
         }
     }
 
@@ -2254,52 +2597,66 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        // Profiles are BBS-scoped: Save As targets the currently-pinned BBS
+        // silently. A draft with no BBS pinned yet has nowhere to live — the
+        // user must pick a BBS (Settings → BBS) before naming the profile.
+        string? bbs = profile.CurrentBbsName;
+        if (string.IsNullOrWhiteSpace(bbs))
+        {
+            AppServices.Current.Log.Warn("Profile",
+                "Pick a BBS (Settings → BBS) before saving this profile.");
+            return;
+        }
+
         FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel vm = new(
             suggestedName: profile.CurrentProfileName ?? "character",
-            exists:        profile.Exists);
+            exists:        name => profile.Exists(bbs, name));
 
         string? name = await AppServices.Current.Dialogs.OpenWindowAsync<
             FujinTerm.ViewModels.Profile.ProfileNameInputDialogViewModel, string>(vm);
         if (string.IsNullOrWhiteSpace(name)) return;
 
-        profile.SaveAs(name);
-        PromoteRecent(name);
+        profile.SaveAs(bbs, name);
+        PromoteRecent(new ProfileRef(bbs, name));
         SyncProfileMenuState();
-        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}'.");
+        AppServices.Current.Log.Info("Profile", $"Saved profile '{name}' on '{bbs}'.");
     }
 
     [RelayCommand]
-    private void OpenRecentProfile(string? name)
+    private void OpenRecentProfile(ProfileRef? recent)
     {
-        if (string.IsNullOrWhiteSpace(name)) return;
-        if (!AppServices.Current.Profile.Exists(name))
+        if (recent is null) return;
+        ProfileService profile = AppServices.Current.Profile;
+        if (!profile.Exists(recent.Bbs, recent.Name))
         {
-            AppServices.Current.Log.Warn("Profile", $"Recent profile '{name}' no longer exists.");
-            RecentProfiles.Remove(name);
+            AppServices.Current.Log.Warn("Profile",
+                $"Recent profile '{recent.Name}' on '{recent.Bbs}' no longer exists.");
+            RecentProfiles.Remove(recent);
             return;
         }
         try
         {
-            AppServices.Current.Profile.Load(name);
-            PromoteRecent(name);
+            profile.Load(recent.Bbs, recent.Name);
+            PromoteRecent(recent);
             SyncProfileMenuState();
         }
         catch (Exception ex)
         {
-            AppServices.Current.Log.Error("Profile", $"Failed to load '{name}': {ex.Message}");
+            AppServices.Current.Log.Error("Profile",
+                $"Failed to load '{recent.Name}' on '{recent.Bbs}': {ex.Message}");
         }
     }
 
-    private void PromoteRecent(string profileName)
+    private void PromoteRecent(ProfileRef profileRef)
     {
         SettingsService settingsSvc = AppServices.Current.Settings;
         GlobalSettings settings = settingsSvc.Current;
         settings.RecentProfiles ??= new();
-        settings.RecentProfiles.Remove(profileName);
-        settings.RecentProfiles.Insert(0, profileName);
+        settings.RecentProfiles.RemoveAll(r => r == profileRef);
+        settings.RecentProfiles.Insert(0, profileRef);
         while (settings.RecentProfiles.Count > GlobalSettings.RecentProfilesLimit)
             settings.RecentProfiles.RemoveAt(settings.RecentProfiles.Count - 1);
-        settings.LastUsedProfileName = profileName;
+        settings.LastUsedProfile = profileRef;
         settingsSvc.Save();
         RebuildRecentProfiles();
     }
@@ -2307,9 +2664,9 @@ public partial class MainWindowViewModel : ObservableObject
     private void RebuildRecentProfiles()
     {
         RecentProfiles.Clear();
-        IList<string>? source = AppServices.Current.Settings.Current.RecentProfiles;
+        IList<ProfileRef>? source = AppServices.Current.Settings.Current.RecentProfiles;
         if (source is null) return;
-        foreach (string name in source) RecentProfiles.Add(name);
+        foreach (ProfileRef recent in source) RecentProfiles.Add(recent);
     }
 
     private void SyncProfileMenuState()
@@ -2328,6 +2685,45 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [RelayCommand]
     private void OpenEvents() => OpenSettingsAt("events");
+
+    /// <summary>Singleton handle to the Player Workshop window for the
+    /// toggle convention (re-press closes; deep-link to a section
+    /// activates).</summary>
+    private Views.CharacterWorkshop.CharacterWorkshopWindow? _workshop;
+
+    [RelayCommand]
+    private void OpenWorkshopDeath() => OpenWorkshopAt("death");
+
+    private void OpenWorkshopAt(string? sectionId)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_workshop is { } existing)
+        {
+            if (existing.DataContext is ViewModels.CharacterWorkshop.CharacterWorkshopViewModel vm
+                && sectionId is not null)
+            {
+                ViewModels.CharacterWorkshop.WorkshopSectionViewModel? section = vm.Sections
+                    .FirstOrDefault(s => string.Equals(s.Id, sectionId, StringComparison.OrdinalIgnoreCase));
+                if (section is not null) vm.SelectedSection = section;
+                existing.Activate();
+                return;
+            }
+            existing.Close();
+            return;
+        }
+
+        AppServices svc = AppServices.Current;
+        Views.CharacterWorkshop.CharacterWorkshopWindow window = new()
+        {
+            DataContext = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
+                svc.DeathRecovery, svc.Profile, sectionId),
+        };
+        window.Closed += (_, _) => _workshop = null;
+        _workshop = window;
+        window.Show(main);
+    }
 
     /// <summary>
     /// Singleton-ish handle to the Quick Connect window so re-press of
@@ -2641,6 +3037,41 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
+    /// <summary>
+    /// File → Game Data → Import loops (MegaMUD .mp)… — runs the exact
+    /// same <c>.mp</c> loop import as the Navigation Manage window's
+    /// "Import .mp" button. We spin up a transient manager view-model
+    /// purely to reuse its <c>ImportMp</c> command (file picker → parse →
+    /// anchor-resolve → LoopEditor), then dispose it via its Close command
+    /// so the LoopsChanged / SetupsChanged subscriptions it wires in its
+    /// constructor don't leak onto the long-lived managers.
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportMegaMudLoopsAsync()
+    {
+        var s = AppServices.Current;
+        ViewModels.Navigation.NavigationManagerDialogViewModel vm = new(
+            s.Loops,
+            s.Lairs,
+            s.LairTimers,
+            s.RoomGraph,
+            s.Confirm,
+            s.Dialogs,
+            runner: s.LoopRunner,
+            mpImporter: s.MpImporter,
+            log: s.Log);
+        try
+        {
+            await vm.ImportMpCommand.ExecuteAsync(null);
+        }
+        finally
+        {
+            // Drops the constructor's event subscriptions (no UI consumer
+            // is attached to CloseRequested on this transient instance).
+            vm.CloseCommand.Execute(null);
+        }
+    }
+
     /// <summary>Singleton handle for the live NavigationWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
     private Views.Navigation.NavigationWindow? _navigationWindow;
 
@@ -2665,18 +3096,98 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Guards against a second standalone Manage dialog opening while one is up.</summary>
+    private bool _manageDialogOpen;
+
+    /// <summary>
+    /// Toolbar Start, which doubles as Resume. If a nav mode is paused,
+    /// resume it. If idle and a loop is staged via the Manage dialog's Load
+    /// action, run it straight away — "start the staged loop without
+    /// reopening the map". Otherwise (idle, nothing staged) open the Manage
+    /// dialog so the user can pick / load / run one.
+    /// </summary>
+    [RelayCommand]
+    private async Task MovementStartAsync()
+    {
+        Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+        if (ctl.IsPaused)
+        {
+            ctl.Resume();
+            return;
+        }
+        if (!ctl.IsIdle) return;
+        if (AppServices.Current.LoopRunner.StagedLoop is { } staged)
+        {
+            AppServices.Current.LoopRunner.Start(staged);
+            return;
+        }
+        await OpenManagerStandaloneAsync();
+    }
+
+    /// <summary>Toolbar Pause — pauses the running engine (no-op if already paused / idle).</summary>
+    [RelayCommand]
+    private void MovementPause() => AppServices.Current.MovementControl.Pause();
+
+    /// <summary>Toolbar Stop — backs the running engine fully out to Idle.</summary>
+    [RelayCommand]
+    private void MovementStop() => AppServices.Current.MovementControl.Stop();
+
+    /// <summary>
+    /// Open the Navigation Manage dialog on its own (no map window) so the
+    /// user can browse / load / run saved loops + lairs. Guarded so a
+    /// second press while it's up is a no-op rather than stacking dialogs.
+    /// </summary>
+    private async Task OpenManagerStandaloneAsync()
+    {
+        if (_manageDialogOpen) return;
+        var s = AppServices.Current;
+        ViewModels.Navigation.NavigationManagerDialogViewModel vm = new(
+            s.Loops,
+            s.Lairs,
+            s.LairTimers,
+            s.RoomGraph,
+            s.Confirm,
+            s.Dialogs,
+            folders: s.NavFolders,
+            runner: s.LoopRunner,
+            mpImporter: s.MpImporter,
+            log: s.Log,
+            search: s.RoomSearch,
+            walker: s.Walker,
+            movement: s.MovementControl);
+        _manageDialogOpen = true;
+        try
+        {
+            await s.Dialogs
+                .OpenWindowAsync<ViewModels.Navigation.NavigationManagerDialogViewModel, bool>(vm);
+        }
+        finally
+        {
+            _manageDialogOpen = false;
+        }
+    }
+
+    /// <summary>Singleton handle for the live SpellBookWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private SpellBookWindow? _spellBook;
+
     [RelayCommand]
     private void OpenSpellBook()
-        => OpenPlaceholder(
-            id: "spell-book",
-            panelName: "Spell Book",
-            phaseTag: "Phase 9",
-            headline: "Click-to-cast spell list",
-            description:
-                "MegaMUD-parity columns: level / mana / code / name / abilities. " +
-                "Re-Check button to re-fetch from the server. Filterable. Driven by " +
-                "the active game-data set's Spells table merged with character " +
-                "overrides.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_spellBook is { } existing) { existing.Close(); return; }
+
+        SpellBookWindow window = new()
+        {
+            DataContext = new SpellBookViewModel(
+                AppServices.Current.Spellbook,
+                () => AppServices.Current.Profile.Current?.LastKnownStats?.Class),
+        };
+        window.Closed += (_, _) => _spellBook = null;
+        _spellBook = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenSessionStats()
@@ -2692,18 +3203,7 @@ public partial class MainWindowViewModel : ObservableObject
                 "sparkline. Counters reset on connect.");
 
     [RelayCommand]
-    private void OpenWorkshop()
-        => OpenPlaceholder(
-            id: "workshop",
-            panelName: "Character Workshop",
-            phaseTag: "Phase 9",
-            headline: "Unified character hub — six section groups",
-            description:
-                "STATS (Sheet / CP Alloc / Builds / Character Planner) — PROGRESS " +
-                "(Levels / EXP-CP / Spells) — EQUIP (Slots / Sets+Triggers / Find " +
-                "Items) — COMBAT (Preview) — QUESTS — DEATH. Absorbs the old Player " +
-                "Status panel into STATS → Status; View → Player Status (F4) opens " +
-                "Workshop on that section.");
+    private void OpenWorkshop() => OpenWorkshopAt(null);
 
     /// <summary>
     /// Tools → Wire Inspector. Singleton-ish: a second open activates the
@@ -2880,6 +3380,222 @@ public partial class MainWindowViewModel : ObservableObject
             Help → Licenses… lists every third-party component shipped in
             this build.
             """);
+
+    // ----- Phase 9 auto-engine toggle commands ------------------------
+    // ToolbarItemCatalogue routes its ToggleAutoCombat / ToggleAutoHealRest
+    // entries here by command-name reflection. The Settings → General
+    // checkboxes write directly to GeneralSettings.AutoMode; both paths
+    // converge on the same profile field.
+
+    /// <summary>Flip the live <see cref="IsAutoCombatActive"/> bit
+    /// (which the partial OnXxxChanged hook persists to
+    /// GeneralSettings.AutoMode.AutoCombat and refreshes the toolbar
+    /// IsActive badge). Bound from the toolbar ToggleAutoCombat button
+    /// + the menu hotkey.</summary>
+    [RelayCommand]
+    private void ToggleAutoCombat() => IsAutoCombatActive = !IsAutoCombatActive;
+
+    /// <summary>Flip the live <see cref="IsAutoNukeActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoNuke() => IsAutoNukeActive = !IsAutoNukeActive;
+
+    /// <summary>Flip the live <see cref="IsAutoHealRestActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoHealRest() => IsAutoHealRestActive = !IsAutoHealRestActive;
+
+    /// <summary>Flip the live <see cref="IsAutoBlessActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoBless() => IsAutoBlessActive = !IsAutoBlessActive;
+
+    /// <summary>Flip the live <see cref="IsAutoLightActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoLight() => IsAutoLightActive = !IsAutoLightActive;
+
+    /// <summary>Flip the live <see cref="IsAutoGetItemsActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoGetItems() => IsAutoGetItemsActive = !IsAutoGetItemsActive;
+
+    /// <summary>Flip the live <see cref="IsAutoGetCashActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoGetCash() => IsAutoGetCashActive = !IsAutoGetCashActive;
+
+    /// <summary>Flip the live <see cref="IsAutoSneakActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoSneak() => IsAutoSneakActive = !IsAutoSneakActive;
+
+    /// <summary>Flip the live <see cref="IsAutoHideActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
+
+    /// <summary>
+    /// Master "Auto-All" kill-switch. Delegates to the shared
+    /// <see cref="Game.AutoModeController"/> so the toolbar button, the
+    /// Action-menu item, and the <c>@auto-all</c> remote command all drive
+    /// one session snapshot. The controller's profile write fires
+    /// ProfileSaving, which reseeds the nine toggle observables (and
+    /// thereby <see cref="IsAllAutoOff"/>).
+    /// </summary>
+    [RelayCommand]
+    private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
+
+    private bool _suppressAutoEngineWriteback;
+
+    /// <summary>
+    /// Set true the first time a live connection drops in the current app
+    /// session. Gates <see cref="ReEnableAutoActionsOnReconnect"/> so the
+    /// re-enable only fires on an actual reconnect, never the first dial.
+    /// </summary>
+    private bool _hadDisconnectThisSession;
+
+    /// <summary>
+    /// Re-enable each auto-action whose Settings → Other "re-enable on
+    /// reconnect" flag is ticked, by flipping its
+    /// <see cref="Models.Profile.AutoActionDefaults"/> bit back ON in the
+    /// active profile. Engines read AutoMode live (per-tick), so the
+    /// persisted flip alone revives them; the two surfaced toggles
+    /// (Combat / Heal-Rest) additionally get their observable reseeded so
+    /// the toolbar badge matches. No-op when no profile is loaded or no
+    /// flag is ticked.
+    /// </summary>
+    private void ReEnableAutoActionsOnReconnect()
+    {
+        Models.Profile.GeneralSettings general =
+            AppServices.Current.Resolver.Resolve<Models.Profile.GeneralSettings>("General");
+
+        bool any = general.ReEnableAutoCombatOnReconnect
+                || general.ReEnableAutoNukeOnReconnect
+                || general.ReEnableAutoHealRestOnReconnect
+                || general.ReEnableAutoBlessOnReconnect
+                || general.ReEnableAutoLightOnReconnect
+                || general.ReEnableAutoGetItemsOnReconnect
+                || general.ReEnableAutoGetCashOnReconnect
+                || general.ReEnableAutoSneakOnReconnect
+                || general.ReEnableAutoHideOnReconnect
+                || general.ReEnableAutoSearchOnReconnect;
+        if (!any) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        Models.Profile.AutoActionDefaults am = dto.AutoMode;
+        if (general.ReEnableAutoCombatOnReconnect)   am.AutoCombat   = true;
+        if (general.ReEnableAutoNukeOnReconnect)     am.AutoNuke     = true;
+        if (general.ReEnableAutoHealRestOnReconnect) am.AutoHealRest = true;
+        if (general.ReEnableAutoBlessOnReconnect)    am.AutoBless    = true;
+        if (general.ReEnableAutoLightOnReconnect)    am.AutoLight    = true;
+        if (general.ReEnableAutoGetItemsOnReconnect) am.AutoGetItems = true;
+        if (general.ReEnableAutoGetCashOnReconnect)  am.AutoGetCash  = true;
+        if (general.ReEnableAutoSneakOnReconnect)    am.AutoSneak    = true;
+        if (general.ReEnableAutoHideOnReconnect)     am.AutoHide     = true;
+        if (general.ReEnableAutoSearchOnReconnect)   am.AutoSearch   = true;
+
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+
+        // Reseed the surfaced observables (toolbar badges) from the freshly
+        // persisted AutoMode. The other eight auto-actions have no live UI
+        // state — engines pick the flip up on their next tick.
+        SyncAutoEngineTogglesFromProfile();
+
+        AppServices.Current.Log.Info(
+            "Reconnect", "Re-enabled opted-in auto-actions after reconnect");
+    }
+
+    // Connecting with no game-data set loaded should immediately show the
+    // navigation hint rather than waiting for the first room transition
+    // (which never confidently resolves without a graph).
+    partial void OnIsConnectedChanged(bool value) => RefreshLocationSlot();
+
+    partial void OnIsAutoCombatActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoCombat = value);
+
+    partial void OnIsAutoNukeActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoNuke = value);
+
+    partial void OnIsAutoHealRestActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoHealRest = value);
+
+    partial void OnIsAutoBlessActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoBless = value);
+
+    partial void OnIsAutoLightActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoLight = value);
+
+    partial void OnIsAutoGetItemsActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoGetItems = value);
+
+    partial void OnIsAutoGetCashActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoGetCash = value);
+
+    partial void OnIsAutoSneakActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoSneak = value);
+
+    partial void OnIsAutoHideActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoHide = value);
+
+    private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
+    {
+        if (_suppressAutoEngineWriteback) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        mutator(dto.AutoMode);
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+    }
+
+    /// <summary>
+    /// On profile load (or close), reseed the toggle observables from
+    /// the persisted <see cref="Models.Profile.GeneralSettings.AutoMode"/>
+    /// so the toolbar IsActive badges match what the engines will
+    /// actually read. Suppress writeback during the reseed — otherwise
+    /// the partial OnXxxChanged hooks would re-persist what we just
+    /// read.
+    /// </summary>
+    private void SyncAutoEngineTogglesFromProfile()
+    {
+        _suppressAutoEngineWriteback = true;
+        try
+        {
+            Models.Profile.CharacterProfile? profile = AppServices.Current.Profile.Current;
+            Models.Profile.AutoActionDefaults am = profile is null
+                ? new Models.Profile.AutoActionDefaults()
+                : ReadGeneralFromProfile(profile).AutoMode;
+            IsAutoCombatActive   = am.AutoCombat;
+            IsAutoNukeActive     = am.AutoNuke;
+            IsAutoHealRestActive = am.AutoHealRest;
+            IsAutoBlessActive    = am.AutoBless;
+            IsAutoLightActive    = am.AutoLight;
+            IsAutoGetItemsActive = am.AutoGetItems;
+            IsAutoGetCashActive  = am.AutoGetCash;
+            IsAutoSneakActive    = am.AutoSneak;
+            IsAutoHideActive     = am.AutoHide;
+        }
+        finally
+        {
+            _suppressAutoEngineWriteback = false;
+        }
+    }
+
+    private static Models.Profile.GeneralSettings ReadGeneralFromProfile(
+        Models.Profile.CharacterProfile profile)
+    {
+        if (profile.Settings is null) return new Models.Profile.GeneralSettings();
+        if (!profile.Settings.TryGetValue("General", out System.Text.Json.JsonElement json))
+            return new Models.Profile.GeneralSettings();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Models.Profile.GeneralSettings>(
+                       json.GetRawText())
+                   ?? new Models.Profile.GeneralSettings();
+        }
+        catch
+        {
+            return new Models.Profile.GeneralSettings();
+        }
+    }
 
     /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>
     private readonly Dictionary<string, InfoDialog> _infoDialogs = new(StringComparer.Ordinal);

@@ -19,7 +19,10 @@ public sealed class PartyEssentialHandlersTests
     /// replies. <see cref="PartyEssentialHandlers"/>' own wire-sender is
     /// captured separately so we can assert on the @party-relay path.
     /// </summary>
-    private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup()
+    private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup(
+        FujinTerm.Game.Map.Room? currentRoom = null,
+        IReadOnlyList<FujinTerm.Game.Combat.RoomEntity>? roomEntities = null,
+        MovementStatus? movement = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
@@ -28,7 +31,10 @@ public sealed class PartyEssentialHandlersTests
         PlayerDatabase players = new();
         PlayerState player = new();
         RemoteCommandManager engine = new(chat, party, players);
-        PartyEssentialHandlers handlers = new(engine, player, party);
+        PartyEssentialHandlers handlers = new(engine, player, party,
+            readCurrentRoom: () => currentRoom,
+            readRoomEntities: () => roomEntities,
+            readMovement: () => movement ?? default);
         List<byte[]> relayCapture = new();
         handlers.SetWireSender(relayCapture.Add);
         return (engine, handlers, player, party, players, relayCapture);
@@ -56,12 +62,12 @@ public sealed class PartyEssentialHandlersTests
     // ===== Registration shape =====
 
     [Fact]
-    public void Ctor_RegistersAllTenCommands()
+    public void Ctor_RegistersAllCommands()
     {
         var (engine, _, _, _, _, _) = Setup();
-        // 10 commands: @version @health @status @where @party @wait @ok
-        // @lives @invite @join
-        Assert.Equal(10, engine.HandlerCount);
+        // 12 commands: @version @health @status @where @who @path @party
+        // @wait @ok @lives @invite @join
+        Assert.Equal(12, engine.HandlerCount);
     }
 
     [Fact]
@@ -309,14 +315,119 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Where_RepliesPlaceholder()
+    public void Where_WithoutRoom_RepliesLocationUnknown()
     {
-        // Phase 7 RoomTracker fills this in. PR 6.3 just acknowledges.
+        // No RoomTracker snapshot (Unknown / Lost, or no game data) → the
+        // accessor returns null and @where degrades to a plain message.
         var (engine, _, _, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
         engine.DispatchForTests(Telepath("Friend", "@where"));
 
         Assert.Contains("Location unknown", LastReply(engine));
+    }
+
+    [Fact]
+    public void Where_RepliesRoomNameExitsAndKey()
+    {
+        FujinTerm.Game.Map.Room room = new()
+        {
+            Key = new FujinTerm.Game.Map.RoomKey(5, 1141),
+            Name = "Town Square",
+            Exits = new Dictionary<FujinTerm.Game.Map.Direction, FujinTerm.Game.Map.RoomExit>
+            {
+                [FujinTerm.Game.Map.Direction.N] =
+                    new(new FujinTerm.Game.Map.RoomKey(5, 1140), FujinTerm.Game.Map.RoomExitHint.None, null),
+                [FujinTerm.Game.Map.Direction.E] =
+                    new(new FujinTerm.Game.Map.RoomKey(5, 1142), FujinTerm.Game.Map.RoomExitHint.None, null),
+            },
+        };
+        var (engine, _, _, _, players, _) = Setup(room);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@where"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Town Square", reply);
+        Assert.Contains("map 5", reply);
+        Assert.Contains("room 1141", reply);
+        Assert.Contains("north", reply);
+        Assert.Contains("east", reply);
+    }
+
+    [Fact]
+    public void Who_WithNoOccupants_RepliesNoOne()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@who"));
+
+        Assert.Contains("no one", LastReply(engine));
+    }
+
+    [Fact]
+    public void Who_RepliesResolvedOccupantNames()
+    {
+        var entities = new List<FujinTerm.Game.Combat.RoomEntity>
+        {
+            new("Raijin", "Raijin", FujinTerm.Game.Combat.EntityKind.Player, null),
+            new("Susanoo", "Susanoo", FujinTerm.Game.Combat.EntityKind.Player, null),
+            new("nasty giant rat", "giant rat", FujinTerm.Game.Combat.EntityKind.Monster, 42),
+        };
+        var (engine, _, _, _, players, _) = Setup(roomEntities: entities);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@who"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Raijin", reply);
+        Assert.Contains("Susanoo", reply);
+        Assert.Contains("giant rat", reply);
+        // Resolved (canonical) name, not the flavour-prefixed raw form.
+        Assert.DoesNotContain("nasty", reply);
+    }
+
+    [Fact]
+    public void Path_WhenIdle_RepliesNotMoving()
+    {
+        var (engine, _, _, _, players, _) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@path"));
+
+        Assert.Contains("not moving", LastReply(engine));
+    }
+
+    [Fact]
+    public void Path_WhenLooping_RepliesLoopNameRoomAndStep()
+    {
+        FujinTerm.Game.Map.Room room = new()
+        {
+            Key = new FujinTerm.Game.Map.RoomKey(9, 1012),
+            Name = "Sewer Tunnel",
+            Exits = new Dictionary<FujinTerm.Game.Map.Direction, FujinTerm.Game.Map.RoomExit>(),
+        };
+        MovementStatus mv = new(MovementKind.Loop, "Sewer farm", CurrentStep: 2, TotalSteps: 6);
+        var (engine, _, _, _, players, _) = Setup(currentRoom: room, movement: mv);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@path"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Sewer farm", reply);
+        Assert.Contains("Sewer Tunnel", reply);
+        Assert.Contains("map 9", reply);
+        Assert.Contains("room 1012", reply);
+        // 0-based CurrentStep 2 reports 1-based as step 3.
+        Assert.Contains("step 3/6", reply);
+    }
+
+    [Fact]
+    public void Path_WhenWalking_RepliesDestination()
+    {
+        MovementStatus mv = new(MovementKind.Walking, "5/1141", CurrentStep: 0, TotalSteps: 4);
+        var (engine, _, _, _, players, _) = Setup(movement: mv);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryLocation);
+        engine.DispatchForTests(Telepath("Friend", "@path"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("walking to 5/1141", reply);
+        Assert.Contains("step 1/4", reply);
     }
 
     // ===== @party <sub> whitelist (Say-channel sub-command dispatch) ====

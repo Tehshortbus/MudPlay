@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace FujinTerm.Models.Profile;
 
@@ -31,6 +32,18 @@ public sealed class LairSetup
     public string Name { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public List<LairMarker> Markers { get; set; } = new();
+
+    /// <summary>
+    /// Folder this setup lives under inside the BBS Loops directory,
+    /// relative to it, using <c>/</c> separators (e.g.
+    /// <c>"Sewers/Lower"</c>). Empty = the Loops root. Not serialised —
+    /// the on-disk subdirectory is the source of truth;
+    /// <see cref="Game.Map.LairManager"/> sets this from the file's
+    /// location on load and writes the file into the matching
+    /// subdirectory on save.
+    /// </summary>
+    [JsonIgnore]
+    public string Folder { get; set; } = string.Empty;
 
     public LairSetup() { }
 

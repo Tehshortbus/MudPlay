@@ -337,6 +337,111 @@ public sealed class RoomTooltipBuilderTests : IDisposable
 
         Assert.Contains("Needs 1 action: say 'Temar Eldanti' / say Temar Eldanti / speak Temar Eldanti", text);
         Assert.DoesNotContain("(MultiActionHidden)", text);
+        // Per-step breakdown beneath the exit line — names the trigger
+        // location (same room) + the alternative commands. Separate
+        // surface from the inline summary so a glance at the tooltip
+        // tells the user where to go without re-parsing the parens.
+        Assert.Contains("1. here: say 'Temar Eldanti' / say Temar Eldanti / speak Temar Eldanti", text);
+    }
+
+    [Fact]
+    public void Build_MultiActionHiddenExit_RemoteTrigger_NamesSourceRoom()
+    {
+        // When the action data lives in a DIFFERENT room than the
+        // exit it unlocks, the per-step breakdown should call that
+        // out so the user knows where to go and execute the command.
+        // E.g. a "pull lever" in room 9/870 unlocking 9/1012's east
+        // exit. The breakdown reads "at {dest name} ({key}): pull lever"
+        // rather than the same-room "here:" prefix.
+        const string remoteActionRooms = """
+            [
+              { "Map Number": 9, "Room Number": 1012, "Name": "Vault Door",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "0",
+                "E": "9/1013 (Hidden/Needs 1 Actions, any order)",
+                "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 870, "Name": "Lever Room",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "Action [on the E exit of room 9/1012]: pull lever",
+                "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1013, "Name": "Treasure Vault",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "9/1012",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), remoteActionRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(9, 1012))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        // Inline summary still names the action; remote breakdown lands
+        // on its own line with the source-room name + key.
+        Assert.Contains("Needs 1 action: pull lever", text);
+        Assert.Contains("1. at Lever Room (9/870): pull lever", text);
+    }
+
+    [Fact]
+    public void Build_MultiActionHiddenExit_TbInfoFallback_SurfacesKeywords()
+    {
+        // v1.11p map 9 / room 1012's north exit is "(Hidden/Needs 1
+        // Actions, any order)" but no Action#N cell pairs with it —
+        // the unlock keywords live in TBInfo CMD 1422 as a stack of
+        // `<keyword>:testskill ...:remoteaction ...` lines. The
+        // tooltip must fall back to those keywords so the user
+        // doesn't see a bare "(MultiActionHidden)".
+        const string fallbackRooms = """
+            [
+              { "Map Number": 9, "Room Number": 1012, "Name": "Crumbling Ruin, Entrance",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 1422,
+                "N": "9/1013 (Hidden/Needs 1 Actions, any order)",
+                "S": "9/1011", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1011, "Name": "Dirt Path",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "9/1012", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1013, "Name": "Crumbling Ruin",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "9/1012", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbInfoRows = """
+            [
+              { "Number": 1422,
+                "Action": "clear rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0\nmove rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0\npush rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0",
+                "Called From": "Room 9/1012" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  fallbackRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), tbInfoRows);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(9, 1012))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo: tbinfo);
+
+        // Inline summary should be "Needs 1 action" reparsed from the
+        // raw modifier, not the bare enum name.
+        Assert.Contains("Needs 1 action", text);
+        Assert.DoesNotContain("(MultiActionHidden)", text);
+        // TBInfo keyword fallback rendered as one indented line under
+        // the exit.
+        Assert.Contains("Try: clear rubble / move rubble / push rubble", text);
     }
 
     [Fact]
@@ -390,6 +495,77 @@ public sealed class RoomTooltipBuilderTests : IDisposable
 
         Assert.Contains("Room commands:", text);
         Assert.Contains("use chime / ring chime → Strange Mansion, Entrance (1/65)", text);
+    }
+
+    [Fact]
+    public void Build_LevelGatedExit_RendersFriendlyLabel()
+    {
+        // Form A — exit-direction gate "(Level: 40 to 0)" means Level 40+.
+        const string lvlRooms = """
+            [
+              { "Map Number": 1, "Room Number": 100, "Name": "Forbidden Stair",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 0,
+                "N": "1/101 (Level: 40 to 0)", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 101, "Name": "Upper Sanctum",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "1/100", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), lvlRooms);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 100))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache);
+
+        Assert.Contains("north → Upper Sanctum (1/101) (Level 40+)", text);
+    }
+
+    [Fact]
+    public void Build_RoomCmdTeleport_WithMinLevel_RendersGateOnCommandLine()
+    {
+        // Form B — CMD teleport with a "minlevel 20" gate (room 3/613
+        // "go vortex"). The "Room commands:" line surfaces "Level 20+".
+        const string cmdRooms = """
+            [
+              { "Map Number": 1, "Room Number": 613, "Name": "Swirling Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 9001,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 3, "Room Number": 669, "Name": "Vortex Landing",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string cmdTbinfo = """
+            [
+              { "Number": 9001, "LinkTo": 0,
+                "Action": "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 669 3:message 1221\n",
+                "Called From": "Room 1/613" }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  cmdRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), cmdTbinfo);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+
+        Room room = graph.GetRoom(new RoomKey(1, 613))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo);
+
+        Assert.Contains("go vortex → Vortex Landing (3/669) (Level 20+)", text);
     }
 
     [Fact]

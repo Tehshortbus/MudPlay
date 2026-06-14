@@ -100,6 +100,14 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
+    /// <summary>Rooms the user has marked as stash drops. Rendered
+    /// with a gold outline so the user can spot them at a glance.
+    /// <see cref="Game.Cash.StashRoomManager"/> reads the same set
+    /// from <see cref="Models.Profile.CharacterProfile.StashRooms"/>
+    /// and dispatches <c>hide N &lt;coin&gt;</c> on entry.</summary>
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> StashRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(StashRooms));
+
     public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LoopSequenceNumbersProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LoopSequenceNumbers));
 
@@ -157,6 +165,9 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<FujinTerm.Models.Profile.KeyChord> DownStepChordProperty =
         AvaloniaProperty.Register<MapControl, FujinTerm.Models.Profile.KeyChord>(nameof(DownStepChord),
             new FujinTerm.Models.Profile.KeyChord(Key.PageDown));
+
+    public static readonly StyledProperty<IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>?> CompassChordsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>?>(nameof(CompassChords));
 
     public RoomLayout? Layout
     {
@@ -234,6 +245,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AvoidedRoomsProperty);
         set => SetValue(AvoidedRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? StashRooms
+    {
+        get => GetValue(StashRoomsProperty);
+        set => SetValue(StashRoomsProperty, value);
     }
 
     public IReadOnlyDictionary<RoomKey, int>? LoopSequenceNumbers
@@ -315,6 +332,21 @@ public sealed class MapControl : Control
         set => SetValue(DownStepChordProperty, value);
     }
 
+    /// <summary>
+    /// Per-direction crawler chords derived from the user's N/S/E/W +
+    /// diagonal movement macros (Settings → Macros). When a direction
+    /// has a macro bound, the macro's key steps the crawler that way so
+    /// the same key that sends the direction in-game also drives the
+    /// map. Directions absent here fall through to the hardcoded numpad /
+    /// arrow defaults in <see cref="OnKeyDown"/>, so the crawler is never
+    /// left with no binding.
+    /// </summary>
+    public IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>? CompassChords
+    {
+        get => GetValue(CompassChordsProperty);
+        set => SetValue(CompassChordsProperty, value);
+    }
+
     // ----- view-state ------------------------------------------------
 
     /// <summary>World tile size in layout units. Multiplied by <see cref="_zoom"/> to get screen pixels.</summary>
@@ -381,6 +413,17 @@ public sealed class MapControl : Control
     private static readonly IPen   TileBorderPen = new Pen(new SolidColorBrush(Color.Parse("#2A2A2A")), 1.0);
     private static readonly IPen   ExitPen       = new Pen(new SolidColorBrush(Color.Parse("#C0C0C0")), 2.0);
     private static readonly IPen   TrapPen       = new Pen(new SolidColorBrush(Color.Parse("#DC3C3C")), 2.0);
+    // Dark magenta for exits that require one or more in-room actions
+    // before traversal (RoomExitHint.MultiActionHidden) — e.g. map
+    // 9 / room 1032's east exit on the v1.11p data set, which needs
+    // a lever pull elsewhere before the walker can step E. Distinct
+    // from trap red (more dangerous, takes precedence at render time).
+    private static readonly IPen   ActionPen     = new Pen(new SolidColorBrush(Color.Parse("#8B008B")), 2.0);
+    // Dark cyan for plain hidden exits revealed via `sea <dir>`
+    // (RoomExitHint.SearchableHidden) — e.g. map 9 / room 1031 on
+    // v1.11p. Distinct from action-magenta (no prerequisite action,
+    // just a search) and from trap-red.
+    private static readonly IPen   HiddenPen     = new Pen(new SolidColorBrush(Color.Parse("#008B8B")), 2.0);
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
@@ -478,7 +521,22 @@ public sealed class MapControl : Control
     // at 1.0 px was nearly invisible on lair pink and shop blue.
     private static readonly IPen TeleportHashPen
         = new Pen(new SolidColorBrush(Color.Parse("#FF50E6FF")), 1.5);
-    private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF6464")), 2.0)
+    // Brighter punch-red so the avoid markers read at a glance on
+    // dark + medium-fill room glyphs alike — the prior #FF6464 sat
+    // too close to the cell muted-red trap line and washed out on
+    // the darker palettes. Stroke bumped to 2.5 px so the cross
+    // strokes don't get lost on aliased small cells.
+    private static readonly IPen   AvoidXPen      = new Pen(new SolidColorBrush(Color.Parse("#FF2020")), 2.5)
+    {
+        LineCap = PenLineCap.Round,
+    };
+
+    /// <summary>Golden X for stash rooms — matches the shape of the
+    /// avoid-X so the two map markers read as a pair ("flagged room")
+    /// with colour carrying the action: red = avoid, gold = stash.
+    /// Distinct from the amber current-room ring + the white selection
+    /// ring so the user can scan for stashes at a glance.</summary>
+    private static readonly IPen   StashXPen      = new Pen(new SolidColorBrush(Color.Parse("#FFFFD24E")), 2.5)
     {
         LineCap = PenLineCap.Round,
     };
@@ -512,7 +570,7 @@ public sealed class MapControl : Control
             HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
-            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LoopSequenceNumbersProperty,
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty);
 
@@ -544,7 +602,12 @@ public sealed class MapControl : Control
         });
     }
 
-    public event Action<RoomKey, Point>? RoomRightClicked;
+    /// <summary>
+    /// Raised on right-click. The key is the hit room, or <c>null</c> when
+    /// the click landed on empty map space — so the context-menu target is
+    /// cleared instead of left pointing at a stale (off-screen) room.
+    /// </summary>
+    public event Action<RoomKey?, Point>? RoomRightClicked;
     public event Action<RoomKey, Point>? RoomLeftClicked;
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -588,14 +651,23 @@ public sealed class MapControl : Control
             return;
         }
 
-        if (point.Properties.IsRightButtonPressed
-            && TryHitTestRoom(point.Position, out RoomKey hit))
+        if (point.Properties.IsRightButtonPressed)
         {
-            // Mirror the crawler outline onto the right-clicked room
-            // so the user can see which square the context menu is
-            // attached to (the menu can move off-screen on small maps).
-            SelectedRoomKey = hit;
-            RoomRightClicked?.Invoke(hit, point.Position);
+            if (TryHitTestRoom(point.Position, out RoomKey hit))
+            {
+                // Mirror the crawler outline onto the right-clicked room
+                // so the user can see which square the context menu is
+                // attached to (the menu can move off-screen on small maps).
+                SelectedRoomKey = hit;
+                RoomRightClicked?.Invoke(hit, point.Position);
+            }
+            else
+            {
+                // Empty-space right-click: clear the context target so the
+                // menu doesn't keep showing the previous room's entries
+                // (teleports, etc.) after the map has shifted under it.
+                RoomRightClicked?.Invoke(null, point.Position);
+            }
             e.Handled = true;
         }
     }
@@ -705,6 +777,21 @@ public sealed class MapControl : Control
             }
             e.Handled = true;
             return;
+        }
+
+        // Macro-derived compass chords take precedence: the same key the
+        // user mapped to send a direction in-game steps the crawler that
+        // way. The hardcoded numpad / arrow switch below stays as the
+        // always-available fallback (and covers directions with no macro).
+        if (CompassChords is { } chords)
+        {
+            foreach ((Direction cd, FujinTerm.Models.Profile.KeyChord chord) in chords)
+            {
+                if (!ChordMatches(e, chord)) continue;
+                TryStepSelection(cd);
+                e.Handled = true;
+                return;
+            }
         }
 
         Direction? dir = e.Key switch
@@ -896,6 +983,9 @@ public sealed class MapControl : Control
             if (AvoidedRooms is not null && AvoidedRooms.Contains(kvp.Value))
                 DrawAvoidX(context, cell);
 
+            if (StashRooms is not null && StashRooms.Contains(kvp.Value))
+                DrawStashX(context, cell);
+
             if (LoopSequenceNumbers is not null
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
                 && tilePixels >= 16)
@@ -985,7 +1075,21 @@ public sealed class MapControl : Control
 
                 bool isTrap = IsTrapEdge(source, dir)
                            || IsTrapEdge(target, Opposite(dir));
-                IPen pen = isTrap ? TrapPen : ExitPen;
+                // Priority at render time: trap > action > hidden >
+                // plain. Trap-red is critical safety info ("don't
+                // walk here unless disarmed"); action-magenta is
+                // routing info ("needs a lever pulled first");
+                // hidden-cyan is reveal info ("needs sea <dir>").
+                bool isAction = !isTrap
+                    && (IsActionRequiredEdge(source, dir)
+                     || IsActionRequiredEdge(target, Opposite(dir)));
+                bool isHidden = !isTrap && !isAction
+                    && (IsHiddenEdge(source, dir)
+                     || IsHiddenEdge(target, Opposite(dir)));
+                IPen pen = isTrap   ? TrapPen
+                         : isAction ? ActionPen
+                         : isHidden ? HiddenPen
+                         : ExitPen;
 
                 if (Layout.CoordToRoom.ContainsKey(target))
                 {
@@ -1010,6 +1114,41 @@ public sealed class MapControl : Control
         if (Layout?.TrapEdgesFromCoord is null) return false;
         return Layout.TrapEdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? set)
             && set.Contains(dir);
+    }
+
+    /// <summary>
+    /// True when the exit at <paramref name="coord"/> heading
+    /// <paramref name="dir"/> is a <see cref="RoomExitHint.MultiActionHidden"/>
+    /// — i.e. one or more in-room actions (lever, switch, button …)
+    /// must execute before the walker can traverse. Queried at render
+    /// time rather than pre-computed because action-required edges are
+    /// sparse and the visible-viewport edge count is bounded; doing a
+    /// dictionary hop per edge is fine and avoids dragging another
+    /// pre-computed set through <see cref="RoomLayout"/>.
+    /// </summary>
+    private bool IsActionRequiredEdge((int X, int Y) coord, Direction dir)
+    {
+        if (Graph is null || Layout is null) return false;
+        if (!Layout.CoordToRoom.TryGetValue(coord, out RoomKey key)) return false;
+        if (Graph.GetRoom(key) is not { } room) return false;
+        if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return false;
+        return exit.Hint == RoomExitHint.MultiActionHidden;
+    }
+
+    /// <summary>
+    /// True when the exit at <paramref name="coord"/> heading
+    /// <paramref name="dir"/> is a <see cref="RoomExitHint.SearchableHidden"/>
+    /// — present but masked from "Obvious exits:" until the player
+    /// runs <c>sea &lt;dir&gt;</c>. Same lookup pattern as
+    /// <see cref="IsActionRequiredEdge"/>.
+    /// </summary>
+    private bool IsHiddenEdge((int X, int Y) coord, Direction dir)
+    {
+        if (Graph is null || Layout is null) return false;
+        if (!Layout.CoordToRoom.TryGetValue(coord, out RoomKey key)) return false;
+        if (Graph.GetRoom(key) is not { } room) return false;
+        if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return false;
+        return exit.Hint == RoomExitHint.SearchableHidden;
     }
 
     private static ((int X, int Y) A, (int X, int Y) B) SortPair((int X, int Y) a, (int X, int Y) b)
@@ -1064,14 +1203,24 @@ public sealed class MapControl : Control
     }
 
     private static void DrawAvoidX(DrawingContext ctx, Rect cell)
+        => DrawCellX(ctx, cell, AvoidXPen);
+
+    /// <summary>Golden cross-strokes for stash rooms. Same geometry
+    /// as the avoid X — the two markers share a shape so the user
+    /// recognises them as "flagged rooms" and the colour carries the
+    /// action (red = avoid, gold = stash).</summary>
+    private static void DrawStashX(DrawingContext ctx, Rect cell)
+        => DrawCellX(ctx, cell, StashXPen);
+
+    private static void DrawCellX(DrawingContext ctx, Rect cell, IPen pen)
     {
         double inset = cell.Width * 0.25;
         Point topLeft     = new(cell.X + inset, cell.Y + inset);
         Point topRight    = new(cell.Right - inset, cell.Y + inset);
         Point bottomLeft  = new(cell.X + inset, cell.Bottom - inset);
         Point bottomRight = new(cell.Right - inset, cell.Bottom - inset);
-        ctx.DrawLine(AvoidXPen, topLeft, bottomRight);
-        ctx.DrawLine(AvoidXPen, topRight, bottomLeft);
+        ctx.DrawLine(pen, topLeft, bottomRight);
+        ctx.DrawLine(pen, topRight, bottomLeft);
     }
 
     private void DrawSequenceNumber(DrawingContext ctx, Rect cell, int seq)

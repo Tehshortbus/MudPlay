@@ -120,27 +120,34 @@ public static class GlobalHotkeys
         }
     }
 
-    /// <summary>Map a <see cref="BuiltInAction"/> to the MainWindow VM command that fires it.</summary>
-    private static System.Windows.Input.ICommand? ResolveCommand(MainWindowViewModel vm, BuiltInAction action) => action switch
+    /// <summary>
+    /// Resolve the MainWindow VM command a <see cref="BuiltInAction"/>
+    /// fires. Toolbar/Action-menu actions go through the catalogue's
+    /// <see cref="ToolbarItemCatalogue.Entry.CommandName"/> — the same
+    /// dynamic command-name binding the live toolbar uses — so any
+    /// catalogue entry (including ones added later) becomes keybindable
+    /// with no change here. An unwired stub command (property absent on
+    /// the VM) resolves to <c>null</c>, making the chord a silent no-op
+    /// that matches how the live toolbar renders those buttons disabled.
+    /// File-menu actions aren't toolbar items, so they fall back to an
+    /// explicit name map.
+    /// </summary>
+    private static System.Windows.Input.ICommand? ResolveCommand(MainWindowViewModel vm, BuiltInAction action)
     {
-        BuiltInAction.OpenConversation     => vm.OpenConversationCommand,
-        BuiltInAction.OpenParty            => vm.OpenPartyCommand,
-        BuiltInAction.OpenWorkshop         => vm.OpenWorkshopCommand,
-        BuiltInAction.OpenNavigation       => vm.OpenNavigationCommand,
-        BuiltInAction.OpenSpellBook        => vm.OpenSpellBookCommand,
-        BuiltInAction.OpenLogPane          => vm.OpenLogPaneCommand,
-        BuiltInAction.OpenBackscroll       => vm.OpenBackscrollCommand,
-        BuiltInAction.OpenSessionStats     => vm.OpenSessionStatsCommand,
-        BuiltInAction.OpenSettings         => vm.OpenSettingsCommand,
-        BuiltInAction.OpenGameDataBrowser  => vm.OpenGameDataBrowserCommand,
-        BuiltInAction.OpenWireInspector    => vm.OpenWireInspectorCommand,
-        BuiltInAction.ToggleConnection     => vm.ToggleConnectionCommand,
-        BuiltInAction.ToggleCapture        => vm.ToggleDumpCommand,
-        BuiltInAction.NewProfile           => vm.NewProfileCommand,
-        BuiltInAction.OpenProfile          => vm.OpenProfileCommand,
-        BuiltInAction.SaveProfile          => vm.SaveProfileCommand,
-        BuiltInAction.SaveProfileAs        => vm.SaveProfileAsCommand,
-        BuiltInAction.Quit                 => vm.QuitCommand,
-        _                                  => null,
+        string? commandName = ToolbarItemCatalogue.Find(action.ToString())?.CommandName
+                              ?? FileMenuCommandName(action);
+        if (commandName is null) return null;
+        return vm.GetType().GetProperty(commandName)?.GetValue(vm) as System.Windows.Input.ICommand;
+    }
+
+    /// <summary>Command-property names for the File-menu actions that have no toolbar catalogue entry.</summary>
+    private static string? FileMenuCommandName(BuiltInAction action) => action switch
+    {
+        BuiltInAction.NewProfile    => "NewProfileCommand",
+        BuiltInAction.OpenProfile   => "OpenProfileCommand",
+        BuiltInAction.SaveProfile   => "SaveProfileCommand",
+        BuiltInAction.SaveProfileAs => "SaveProfileAsCommand",
+        BuiltInAction.Quit          => "QuitCommand",
+        _                           => null,
     };
 }

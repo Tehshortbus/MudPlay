@@ -216,6 +216,90 @@ public sealed class PartyManagerTests
         Assert.Null(p.State.LeaderName);
     }
 
+    // ===== WasRecentlyPartied — leader-side @comeback eligibility =====
+    // A left-behind follower is dropped from the party server-side, so the
+    // engine's IsActivePartyMember gate can't authorise their @comeback.
+    // WasRecentlyPartied bridges the grace window: true only for senders who
+    // departed (self-left / disconnected) inside DisconnectGraceWindow and
+    // were NOT deliberately uninvited.
+
+    [Fact]
+    public void WasRecentlyPartied_StoppedFollowing_WithinWindow_IsEligible()
+    {
+        DateTimeOffset t0 = new(2026, 6, 10, 0, 0, 0, TimeSpan.Zero);
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.NowProvider = () => t0;
+        router.Dispatch(Line("Raijin started to follow you."));
+
+        // Raijin gets left behind / self-departs — stamps the grace window.
+        router.Dispatch(Line("Raijin stops following you."));
+        Assert.DoesNotContain(p.State.Members,
+            m => m.Name.Equals("Raijin", StringComparison.OrdinalIgnoreCase));
+
+        Assert.True(p.WasRecentlyPartied("Raijin"));
+    }
+
+    [Fact]
+    public void WasRecentlyPartied_FamilyNameSenderMatchesGivenNameStamp()
+    {
+        DateTimeOffset t0 = new(2026, 6, 10, 0, 0, 0, TimeSpan.Zero);
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.NowProvider = () => t0;
+
+        // Follow/stop lines capture the given name only (the \w+ patterns
+        // never span the space), so the grace-window key is "Raijin".
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("Raijin stops following you."));
+
+        // The @comeback telepath, however, can arrive with the full
+        // "given family" name — WasRecentlyPartied pairs it via GivenNameOf.
+        Assert.True(p.WasRecentlyPartied("Raijin WuzHere"));
+    }
+
+    [Fact]
+    public void WasRecentlyPartied_PastWindow_IsNotEligible()
+    {
+        DateTimeOffset t0 = new(2026, 6, 10, 0, 0, 0, TimeSpan.Zero);
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.DisconnectGraceWindow = TimeSpan.FromSeconds(30);
+        p.NowProvider = () => t0;
+        router.Dispatch(Line("Raijin started to follow you."));
+        router.Dispatch(Line("Raijin stops following you."));
+
+        // Past the grace window → stale → not eligible.
+        p.NowProvider = () => t0.AddSeconds(31);
+        Assert.False(p.WasRecentlyPartied("Raijin"));
+    }
+
+    [Fact]
+    public void WasRecentlyPartied_DeliberatelyUninvited_IsNotEligible()
+    {
+        DateTimeOffset t0 = new(2026, 6, 10, 0, 0, 0, TimeSpan.Zero);
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        p.NowProvider = () => t0;
+        router.Dispatch(Line("Raijin started to follow you."));
+
+        // WE uninvited Raijin — "removed from your followers" does NOT
+        // stamp the grace window, so they're correctly rejected.
+        router.Dispatch(Line("Raijin has been removed from your followers."));
+
+        Assert.False(p.WasRecentlyPartied("Raijin"));
+    }
+
+    [Fact]
+    public void WasRecentlyPartied_NeverPartied_IsNotEligible()
+    {
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        Assert.False(p.WasRecentlyPartied("Stranger"));
+    }
+
+    [Fact]
+    public void WasRecentlyPartied_EmptySender_IsNotEligible()
+    {
+        var (_, p) = Setup(localCharacterName: "Fujin");
+        Assert.False(p.WasRecentlyPartied(""));
+    }
+
     [Fact]
     public void FullUninviteSequence_FollowerSide_LeavesEmptyParty()
     {
@@ -988,5 +1072,46 @@ public sealed class PartyManagerTests
         Assert.Equal(94, realMember.HpPercent);
         Assert.Equal(80, realMember.MpPercent);
         Assert.Equal(Models.Profile.PartyRank.Back, realMember.Rank);
+    }
+
+    // ===== SetMemberAilment (inbound chip set, find-only) =====
+
+    [Fact]
+    public void SetMemberAilment_PresentMember_SetsChip()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+
+        p.SetMemberAilment("Helper", Models.GameData.MessageFlags.Poisoned, true);
+
+        PartyMember helper = p.State.Members.Single(m => m.Name == "Helper");
+        Assert.True(helper.Poisoned);
+    }
+
+    [Fact]
+    public void SetMemberAilment_MatchesByGivenName()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+        PartyMember helper = p.State.Members.Single(m => m.Name == "Helper");
+        helper.Name = "Helper Lastname";
+
+        // Inbound say carries only the given name "Helper".
+        p.SetMemberAilment("Helper", Models.GameData.MessageFlags.Blinded, true);
+
+        Assert.True(helper.Blinded);
+    }
+
+    [Fact]
+    public void SetMemberAilment_AbsentMember_IsNoOp()
+    {
+        var (router, p) = Setup(localCharacterName: "Forged");
+        router.Dispatch(Line("Helper started to follow you."));
+
+        // Stranger isn't in the roster → nothing happens, no phantom added.
+        p.SetMemberAilment("Stranger", Models.GameData.MessageFlags.Diseased, true);
+
+        Assert.DoesNotContain(p.State.Members, m => m.Name == "Stranger");
+        Assert.All(p.State.Members, m => Assert.False(m.Diseased));
     }
 }

@@ -110,6 +110,16 @@ public sealed partial class PartyManager : IDisposable
     public string? LocalCharacterName { get; set; }
 
     /// <summary>
+    /// Fires with the joiner's name whenever a member confirms they are
+    /// following us (<c>"X started to follow you."</c>). Distinct from
+    /// the invite echo — this is the actual follow confirmation.
+    /// <c>PartyComebackManager</c> awaits this after re-inviting a
+    /// recovered follower so it knows when the follower is back under
+    /// our lead and the paused movement engine can resume.
+    /// </summary>
+    public event Action<string>? MemberFollowConfirmed;
+
+    /// <summary>
     /// par row regex — anchored on the real MajorMUD format observed on
     /// Playpen BBS:
     /// <code>
@@ -243,6 +253,26 @@ public sealed partial class PartyManager : IDisposable
         string given = GivenNameOf(playerGiven);
         if (string.IsNullOrEmpty(given)) return;
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {given}\r");
+        LastSentForTests.Add(bytes);
+        _wireSender?.Invoke(bytes);
+    }
+
+    /// <summary>
+    /// Re-invite a player to follow (<c>invite X</c>). Used by
+    /// <c>PartyComebackManager</c> to pull a stranded follower back into
+    /// the party after the leader walks back to re-collect them — the
+    /// server removes left-behind members from the party, so recovery
+    /// requires an explicit re-invite before the follower can resume
+    /// following. Addresses by given name only (family suffix stripped).
+    /// The leader-side <c>"You have invited X to follow you."</c> echo
+    /// still flows through <see cref="OnYouInvited"/> as usual.
+    /// </summary>
+    public void Invite(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        string given = GivenNameOf(name);
+        if (string.IsNullOrEmpty(given)) return;
+        byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {given}\r");
         LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
     }
@@ -388,6 +418,7 @@ public sealed partial class PartyManager : IDisposable
         // forces leaders to frontrank, and the server rejects the
         // rerank attempt. The follower path (OnYouFollowing) is the
         // only place LocalRankPreference matters.
+        MemberFollowConfirmed?.Invoke(name);
     }
 
     /// <summary>
@@ -705,6 +736,43 @@ public sealed partial class PartyManager : IDisposable
 
     /// <summary>Test seam — read-only view of the disconnect grace window.</summary>
     internal IReadOnlyDictionary<string, DateTimeOffset> RecentlyDisconnected => _recentlyDisconnected;
+
+    /// <summary>
+    /// Was <paramref name="sender"/> a party member of ours who departed
+    /// (got left behind / dropped / disconnected) inside the
+    /// <see cref="DisconnectGraceWindow"/> — and NOT one we deliberately
+    /// uninvited? Backs the leader-side authorisation of a stranded
+    /// follower's <c>@comeback</c>: a left-behind follower is dropped from
+    /// the party server-side (so <see cref="IsActivePartyMember"/> is
+    /// false), but they're still recoverable, so we honour their request.
+    /// </summary>
+    /// <remarks>
+    /// Self-departures ("X stops following you") and disconnects stamp the
+    /// grace window (<see cref="OnStopsFollowing"/>, the dissolution /
+    /// par-reconcile snapshots); deliberate uninvites
+    /// (<see cref="OnFollowerRemoved"/>) do NOT — so a player we kicked is
+    /// absent from the map and correctly rejected. Matches on the given
+    /// name so a <c>"Buddy"</c> telepath pairs with a stamped
+    /// <c>"Buddy Lastname"</c> entry. Stale entries past the window are a
+    /// non-match (read-only — expiry/removal stays with the auto-invite
+    /// path so this can be called from the auth hot-path without mutating).
+    /// </remarks>
+    public bool WasRecentlyPartied(string sender)
+    {
+        if (string.IsNullOrEmpty(sender)) return false;
+        string senderGiven = GivenNameOf(sender);
+        DateTimeOffset now = NowProvider();
+        foreach (KeyValuePair<string, DateTimeOffset> kv in _recentlyDisconnected)
+        {
+            if (now - kv.Value > DisconnectGraceWindow) continue;
+            if (kv.Key.Equals(sender, StringComparison.OrdinalIgnoreCase)
+                || GivenNameOf(kv.Key).Equals(senderGiven, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// <summary>
     /// End-of-par-block reconciliation — when we're leader, any member
@@ -1059,6 +1127,35 @@ public sealed partial class PartyManager : IDisposable
             m.BaselineMp = mpMax;
             m.HpPercent  = hpMax > 0 ? hpCur * 100 / hpMax : 0;
             m.MpPercent  = mpMax > 0 ? mpCur * 100 / mpMax : 0;
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Set or clear a party member's ailment chip by given name. Find-only —
+    /// does NOT create a roster row for an unknown speaker, so a non-party
+    /// player's <c>.@poisoned</c> say can't conjure a phantom member. No-op
+    /// when the named member isn't present or <paramref name="ailment"/> isn't
+    /// one of the surfaced ailment bits (Poisoned / Blinded / Confused /
+    /// Diseased / MovementPrevented). Routes the write through the manager so the
+    /// <see cref="OwnerAttribute"/>-marked <see cref="PartyMember"/> fields keep
+    /// a single writer (the Phase 3 PR 3.5 IL scan enforces this).
+    /// </summary>
+    public void SetMemberAilment(string name, Models.GameData.MessageFlags ailment, bool active)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        string given = GivenNameOf(name);
+        foreach (PartyMember m in State.Members)
+        {
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
+            switch (ailment)
+            {
+                case Models.GameData.MessageFlags.Poisoned: m.Poisoned = active; break;
+                case Models.GameData.MessageFlags.Blinded:  m.Blinded  = active; break;
+                case Models.GameData.MessageFlags.Confused: m.Confused = active; break;
+                case Models.GameData.MessageFlags.Diseased: m.Diseased = active; break;
+                case Models.GameData.MessageFlags.MovementPrevented: m.Held = active; break;
+            }
             return;
         }
     }

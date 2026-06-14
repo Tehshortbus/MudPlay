@@ -1,0 +1,711 @@
+using System.IO;
+using System.Text;
+using FujinTerm.Game.Combat;
+using FujinTerm.Game.Map;
+using FujinTerm.Models.GameData;
+using FujinTerm.Services;
+using FujinTerm.Services.Patterns;
+using FujinTerm.Terminal;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// PR 9.0b sub-B — <see cref="RoomEntityClassifier"/> Also-Here parsing,
+/// prefix-strip resolution against MonsterMessageStore, player lookup
+/// against PlayerDatabase, and the Unknown-entity Warn path with
+/// raw-line Context payload.
+/// </summary>
+public sealed class RoomEntityClassifierTests
+{
+    private sealed class Harness : IDisposable
+    {
+        public MessageRouter Router { get; }
+        public MonsterMessageStore Monsters { get; } = new();
+        public PlayerDatabase Players { get; } = new();
+        public LogService Log { get; } = new();
+        public RoomEntityClassifier Classifier { get; }
+        public List<LogEntry> LogEntries { get; } = new();
+        public List<RoomEntitiesObservation> Observations { get; } = new();
+
+        public Harness()
+        {
+            Router = new MessageRouter();
+            DefaultPatterns.Seed(Router);
+            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
+            Log.EntryAdded += LogEntries.Add;
+            Classifier.EntitiesObserved += Observations.Add;
+        }
+
+        public void AddMonster(int number, string name, bool allowNoPrefix, params string[] flavorPrefixes)
+        {
+            // Minimal MonsterMessageRecord for classifier purposes — the
+            // line patterns (HitYou, MissYou, etc.) aren't read by the
+            // classifier; empty lists keep the fixture small.
+            Monsters.Messages.Add(new MonsterMessageRecord(
+                Id: $"M{number}",
+                Name: name,
+                HitYou: Array.Empty<string>(),
+                HitOther: Array.Empty<string>(),
+                DeathLine: Array.Empty<string>(),
+                ArmorBlockYou: Array.Empty<string>(),
+                ArmorBlockOther: Array.Empty<string>(),
+                DodgeYou: Array.Empty<string>(),
+                DodgeOther: Array.Empty<string>(),
+                MissYou: Array.Empty<string>(),
+                MissOther: Array.Empty<string>(),
+                FlavorPrefixes: flavorPrefixes,
+                AllowNoPrefix: allowNoPrefix,
+                Links: new[] { new GameDataLink("Monsters", number) }));
+        }
+
+        public void AddPlayer(string givenName, string familyName = "")
+        {
+            Players.Players.Add(new PlayerRecord(
+                GivenName: givenName,
+                FamilyName: familyName,
+                Class: "Warrior",
+                Race: "Human",
+                Alignment: "Neutral",
+                Title: null,
+                Gang: null,
+                Role: null,
+                FirstSeenUtc: DateTime.UtcNow,
+                LastSeenUtc: DateTime.UtcNow));
+        }
+
+        public void Feed(string line)
+        {
+            LineExtractor.EmittedLine emitted = new(
+                line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false);
+            Router.Dispatch(emitted);
+        }
+
+        public void Dispose() => Classifier.Dispose();
+    }
+
+    // ----- basic shape -----------------------------------------------
+
+    [Fact]
+    public void Empty_BeforeAnyLine_CurrentIsNull()
+    {
+        using Harness h = new();
+        Assert.Null(h.Classifier.Current);
+    }
+
+    [Fact]
+    public void NonMatchingLine_NoEmit()
+    {
+        using Harness h = new();
+        h.Feed("Some random line not matching anything.");
+        Assert.Empty(h.Observations);
+        Assert.Null(h.Classifier.Current);
+    }
+
+    // ----- direct monster match (AllowNoPrefix) ----------------------
+
+    [Fact]
+    public void DirectMonsterMatch_AllowNoPrefix()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal("giant rat", ent.RawName);
+        Assert.Equal("giant rat", ent.ResolvedName);
+        Assert.Equal(EntityKind.Monster, ent.Kind);
+        Assert.Equal(1, ent.MonsterNumber);
+    }
+
+    [Fact]
+    public void DirectMonsterMatch_RequiresAllowNoPrefix()
+    {
+        // Same name but AllowNoPrefix=false — direct shouldn't match.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: false, "nasty");
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
+    }
+
+    [Fact]
+    public void DirectMonsterMatch_EmptyFlavorPrefixes_ImpliesNoPrefix()
+    {
+        // Live repro: 535 of 1100 v1.11p seed records (cave bear,
+        // shade, Colin, Lady Sentara, …) carry AllowNoPrefix=false
+        // AND FlavorPrefixes=[]. Without the empty-prefix fallback
+        // they're unreachable: direct match rejects (AllowNoPrefix
+        // false) and prefix-stripped match skips empty lists. So the
+        // entire record sits in the catalogue and the classifier still
+        // emits "unknown entity 'cave bear'". The fallback treats
+        // "no prefixes defined" as "bare name is the only form" and
+        // matches directly.
+        using Harness h = new();
+        h.AddMonster(80, "cave bear", allowNoPrefix: false);   // no flavor prefixes
+
+        h.Feed("Also here: cave bear.");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal(EntityKind.Monster, ent.Kind);
+        Assert.Equal("cave bear", ent.ResolvedName);
+        Assert.Equal(80, ent.MonsterNumber);
+    }
+
+    // ----- prefix-stripped monster match -----------------------------
+
+    [Fact]
+    public void PrefixStrippedMonsterMatch()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true,
+            "nasty", "angry", "fat");
+
+        h.Feed("Also here: nasty giant rat.");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal("nasty giant rat", ent.RawName);
+        Assert.Equal("giant rat", ent.ResolvedName);   // canonical base
+        Assert.Equal(EntityKind.Monster, ent.Kind);
+        Assert.Equal(1, ent.MonsterNumber);
+    }
+
+    [Fact]
+    public void PrefixMatch_CaseInsensitive()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "Giant Rat", allowNoPrefix: false, "Nasty");
+
+        h.Feed("Also here: NASTY giant rat.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[0].Kind);
+    }
+
+    [Fact]
+    public void UnknownPrefix_FallsToUnknown()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true, "nasty");
+
+        h.Feed("Also here: stinking giant rat.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
+    }
+
+    // ----- player lookup ---------------------------------------------
+
+    [Fact]
+    public void PlayerMatch_ByGivenName()
+    {
+        using Harness h = new();
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: Bob.");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal("Bob", ent.RawName);
+        Assert.Equal("Bob", ent.ResolvedName);
+        Assert.Equal(EntityKind.Player, ent.Kind);
+        Assert.Null(ent.MonsterNumber);
+    }
+
+    [Fact]
+    public void PlayerMatch_StripsParentheticalSuffix()
+    {
+        // "Raijin (sneaking)" → first-token "Raijin" against Players.
+        using Harness h = new();
+        h.AddPlayer("Raijin");
+
+        h.Feed("Also here: Raijin (sneaking).");
+
+        Assert.Single(h.Observations);
+        RoomEntity ent = h.Observations[0].Entities[0];
+        Assert.Equal("Raijin", ent.RawName);
+        Assert.Equal(EntityKind.Player, ent.Kind);
+    }
+
+    [Fact]
+    public void PlayerMatch_FamilyNameInDisplay_ResolvesByGivenOnly()
+    {
+        // "Forged Paradigm" — Also-Here shows family name; we still look
+        // up by the first whitespace token.
+        using Harness h = new();
+        h.AddPlayer("Forged", familyName: "Paradigm");
+
+        h.Feed("Also here: Forged Paradigm.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Player, h.Observations[0].Entities[0].Kind);
+    }
+
+    [Fact]
+    public void PlayerMatch_CaseInsensitiveOnGivenName()
+    {
+        using Harness h = new();
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: BOB.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Player, h.Observations[0].Entities[0].Kind);
+    }
+
+    // ----- Unknown fallback + Warn-with-Context emit -----------------
+
+    [Fact]
+    public void Unknown_EmitsWarnRowWithRawLineContext()
+    {
+        using Harness h = new();
+
+        h.Feed("Also here: foozle.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
+
+        LogEntry warn = h.LogEntries.Find(e =>
+            e.Source == RoomEntityClassifier.LogCategory &&
+            e.Severity == LogSeverity.Warn);
+        Assert.NotEqual(default, warn);
+        Assert.Contains("foozle", warn.Message);
+        Assert.Equal("Also here: foozle.", warn.Context);
+    }
+
+    [Fact]
+    public void Unknown_ClassifierWithoutLog_DoesNotThrow()
+    {
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        MonsterMessageStore monsters = new();
+        PlayerDatabase players = new();
+
+        using RoomEntityClassifier classifier = new(router, monsters, players, log: null);
+
+        LineExtractor.EmittedLine emitted = new(
+            "Also here: foozle.", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false);
+        router.Dispatch(emitted);
+
+        // Without a log service the Warn just goes nowhere — but the
+        // observation still fires + classifies as Unknown.
+        Assert.NotNull(classifier.Current);
+        Assert.Equal(EntityKind.Unknown, classifier.Current!.Value.Entities[0].Kind);
+    }
+
+    // ----- list-shape forms (commas, Oxford-and, mixed) --------------
+
+    [Fact]
+    public void TwoEntries_Comma()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: giant rat, Bob.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[0].Kind);
+        Assert.Equal(EntityKind.Player,  h.Observations[0].Entities[1].Kind);
+    }
+
+    [Fact]
+    public void ThreeEntries_OxfordAnd()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "goblin",    allowNoPrefix: true);
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: giant rat, goblin and Bob.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(3, h.Observations[0].Entities.Count);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[0].Kind);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[1].Kind);
+        Assert.Equal(EntityKind.Player,  h.Observations[0].Entities[2].Kind);
+    }
+
+    [Fact]
+    public void MixedKnownAndUnknown_ProducesPartialResults()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, foozle.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[0].Kind);
+        Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[1].Kind);
+
+        // One warn row carrying the same raw line.
+        LogEntry warn = h.LogEntries.Find(e =>
+            e.Source == RoomEntityClassifier.LogCategory &&
+            e.Severity == LogSeverity.Warn);
+        Assert.Equal("Also here: giant rat, foozle.", warn.Context);
+    }
+
+    // ----- precedence: monster before player -------------------------
+
+    [Fact]
+    public void MonsterBeforePlayer_WhenBothNamesCollide()
+    {
+        // Edge case: a player and a monster happen to share a name.
+        // The classifier checks Monsters first (the design assumes
+        // shopkeepers / quest-givers can collide with real names, and
+        // the Phase 9 plan resolves monster first).
+        using Harness h = new();
+        h.AddMonster(99, "Bob", allowNoPrefix: true);
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: Bob.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(EntityKind.Monster, h.Observations[0].Entities[0].Kind);
+    }
+
+    // ----- raw-line preservation -------------------------------------
+
+    [Fact]
+    public void RawAlsoHereLine_PreservedInObservation()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("Also here: giant rat.", h.Observations[0].RawAlsoHereLine);
+    }
+
+    // ----- RemoveDeadEntity --------------------------------------------
+
+    [Fact]
+    public void RemoveDeadEntity_DropsMatchingMonster_FiresObservation()
+    {
+        // The user's "kobold thief arrived but no attack" bug: after a
+        // mob dies, its entry must be removed from Current so
+        // CombatManager doesn't sit thinking it's still alive when an
+        // arrival event appends a new entity.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "kobold thief", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, kobold thief.");
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+
+        Assert.True(removed);
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Single(h.Observations[1].Entities);
+        Assert.Equal("kobold thief", h.Observations[1].Entities[0].ResolvedName);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_RemovesOnlyOne_OfMultipleSameName()
+    {
+        // Three giant rats — one dies. We remove ONE entry; the next
+        // room re-display corrects if our local count diverges.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, giant rat, giant rat.");
+        Assert.Equal(3, h.Observations[0].Entities.Count);
+
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+
+        Assert.True(removed);
+        Assert.Equal(2, h.Observations[1].Entities.Count);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_NoMatch_ReturnsFalse_NoEmit()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.Feed("Also here: giant rat.");
+        int observationsBefore = h.Observations.Count;
+
+        bool removed = h.Classifier.RemoveDeadEntity("goblin");
+
+        Assert.False(removed);
+        Assert.Equal(observationsBefore, h.Observations.Count);
+    }
+
+    [Fact]
+    public void RemoveDeadEntity_NullCurrent_ReturnsFalse()
+    {
+        using Harness h = new();
+        bool removed = h.Classifier.RemoveDeadEntity("giant rat");
+        Assert.False(removed);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_WipesCurrent_EmitsEmptyObservation()
+    {
+        // User's "wasted combat round on move" scenario: we have a
+        // target in the previous room; when the walker moves, the
+        // classifier wipes its observation so CombatManager clears
+        // its target before the next round fires.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Observations[0].Entities);
+        Assert.NotNull(h.Classifier.Current);
+
+        h.Classifier.NoteRoomChanged();
+
+        // Now two observations: the original Also-Here parse + the
+        // wipe. Wipe carries an empty entity list.
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(string.Empty, h.Observations[1].RawAlsoHereLine);
+
+        // Current reflects the wipe.
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Empty(h.Classifier.Current!.Value.Entities);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_ThenAlsoHere_RebuildsForNewRoom()
+    {
+        // After a wipe, the new room's Also-Here parse drives a fresh
+        // emit with the new entities.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "goblin",    allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Classifier.NoteRoomChanged();
+        h.Feed("Also here: goblin.");
+
+        Assert.Equal(3, h.Observations.Count);
+        Assert.Equal("giant rat", h.Observations[0].Entities[0].ResolvedName);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal("goblin",    h.Observations[2].Entities[0].ResolvedName);
+    }
+
+    [Fact]
+    public void Current_TracksLatestObservation()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddPlayer("Bob");
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("Also here: Bob.");
+
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Equal("Also here: Bob.", h.Classifier.Current!.Value.RawAlsoHereLine);
+        Assert.Equal(EntityKind.Player, h.Classifier.Current.Value.Entities[0].Kind);
+    }
+
+    // ----- Multi-line wrap (80-col server boundary) ------------------
+
+    /// <summary>
+    /// MajorMUD wraps occupant lists at the 80-col boundary mid-token,
+    /// so an Also Here line can span N rows until a period closes it.
+    /// The classifier buffers continuation rows via the LineExtractor
+    /// subscription and parses the joined text on close.
+    /// </summary>
+    [Fact]
+    public void Wrap_AcrossTwoLines_ParsesAllOccupants()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat",     allowNoPrefix: true, "angry");
+        h.AddMonster(2, "carrion beast", allowNoPrefix: true, "nasty");
+        h.AddMonster(3, "giant rat",     allowNoPrefix: true);
+        h.AddMonster(4, "acid slime",    allowNoPrefix: true);
+        h.AddMonster(5, "kobold thief",  allowNoPrefix: true, "short");
+
+        // Attach the extractor so the wrap-buffer path is live.
+        Terminal.LineExtractor lines = new(new FujinTerm.Terminal.TerminalEmulator(80, 24));
+        h.Classifier.AttachLineExtractor(lines);
+
+        // Feed wrapped rows in the order the server produces them.
+        FeedLine(lines, "Also here: angry giant rat, nasty carrion beast, giant rat, acid slime, short");
+        FeedLine(lines, "kobold thief.");
+
+        Assert.Single(h.Observations);
+        RoomEntitiesObservation obs = h.Observations[0];
+        Assert.Equal(5, obs.Entities.Count);
+        Assert.Equal("giant rat",     obs.Entities[0].ResolvedName);
+        Assert.Equal("carrion beast", obs.Entities[1].ResolvedName);
+        Assert.Equal("giant rat",     obs.Entities[2].ResolvedName);
+        Assert.Equal("acid slime",    obs.Entities[3].ResolvedName);
+        Assert.Equal("kobold thief",  obs.Entities[4].ResolvedName);
+    }
+
+    [Fact]
+    public void Wrap_AcrossThreeLines_ParsesAllOccupants()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat",    allowNoPrefix: true);
+        h.AddMonster(2, "acid slime",   allowNoPrefix: true);
+        h.AddMonster(3, "kobold thief", allowNoPrefix: true);
+
+        Terminal.LineExtractor lines = new(new FujinTerm.Terminal.TerminalEmulator(80, 24));
+        h.Classifier.AttachLineExtractor(lines);
+
+        FeedLine(lines, "Also here: giant rat,");
+        FeedLine(lines, "acid slime,");
+        FeedLine(lines, "kobold thief.");
+
+        Assert.Single(h.Observations);
+        Assert.Equal(3, h.Observations[0].Entities.Count);
+    }
+
+    // ----- RoomTracker-coupled move-confirm freshness guard ----------
+    //
+    // Mid-combat re-attack regression. Wire order in a room display is
+    // name → "Also here:" → "Obvious exits:", and RoomTracker only
+    // CONFIRMS a move on the exits line. So the new room's occupants are
+    // already parsed into Current by the time the move-confirming
+    // StateChanged fires. The classifier must NOT wipe a post-move
+    // observation — wiping nulls CombatManager's just-picked target and
+    // burns a second attack. It must STILL wipe a genuinely stale
+    // pre-move observation (monster from the prior room that didn't
+    // follow us in).
+
+    private sealed class TrackerHarness : IDisposable
+    {
+        private readonly string _root;
+        public MessageRouter Router { get; }
+        public MonsterMessageStore Monsters { get; } = new();
+        public PlayerDatabase Players { get; } = new();
+        public RoomTracker Tracker { get; }
+        public RoomEntityClassifier Classifier { get; }
+        public List<RoomEntitiesObservation> Observations { get; } = new();
+
+        public TrackerHarness()
+        {
+            _root = Path.Combine(
+                Path.GetTempPath(),
+                "fujinterm-classifier-tracker-tests-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+            File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+
+            GameDataCache cache = new(_root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+            Tracker = new RoomTracker(graph);
+
+            Router = new MessageRouter();
+            DefaultPatterns.Seed(Router);
+            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Tracker);
+            Classifier.EntitiesObserved += Observations.Add;
+        }
+
+        public void AddMonster(int number, string name)
+            => Monsters.Messages.Add(new MonsterMessageRecord(
+                Id: $"M{number}", Name: name,
+                HitYou: Array.Empty<string>(), HitOther: Array.Empty<string>(),
+                DeathLine: Array.Empty<string>(),
+                ArmorBlockYou: Array.Empty<string>(), ArmorBlockOther: Array.Empty<string>(),
+                DodgeYou: Array.Empty<string>(), DodgeOther: Array.Empty<string>(),
+                MissYou: Array.Empty<string>(), MissOther: Array.Empty<string>(),
+                FlavorPrefixes: Array.Empty<string>(), AllowNoPrefix: true,
+                Links: new[] { new GameDataLink("Monsters", number) }));
+
+        public void FeedAlsoHere(string line)
+            => Router.Dispatch(new LineExtractor.EmittedLine(
+                line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        public void Dispose()
+        {
+            Classifier.Dispose();
+            try { Directory.Delete(_root, recursive: true); }
+            catch (IOException) { /* best-effort temp cleanup */ }
+        }
+
+        private const string GraphJson = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Town Gates",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/3", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "North Square",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+    }
+
+    [Fact]
+    public void MoveConfirm_FreshNewRoomOccupants_NotWiped()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        // Located at Town Gates (exits N).
+        h.Tracker.NoteRoomObserved(new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        // Move sent (in the past), then the NEW room's occupants parse
+        // BEFORE the exits line confirms the move.
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Single(h.Observations);
+
+        // Exits line lands → tracker confirms Town Gates → North Square.
+        h.Tracker.NoteRoomObserved(new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // No wipe: the fresh post-move occupant survives.
+        Assert.Single(h.Observations);
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Single(h.Classifier.Current!.Value.Entities);
+        Assert.Equal("giant rat", h.Classifier.Current.Value.Entities[0].ResolvedName);
+    }
+
+    [Fact]
+    public void MoveConfirm_StalePreMoveOccupants_Wiped()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        // A monster observed in the PREVIOUS room, before we moved.
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Single(h.Observations);
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        // Move sent AFTER that observation → the observation is stale.
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+        h.Tracker.NoteRoomObserved(new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // Wipe fires: stale occupant cleared so combat drops the target.
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
+    }
+
+    private static void FeedLine(Terminal.LineExtractor lines, string text)
+    {
+        // The classifier's LineEmitted subscription is what we want
+        // to exercise; reflect into the private event invoke since
+        // LineExtractor.LineEmitted isn't a public test hook.
+        System.Reflection.FieldInfo? field = typeof(Terminal.LineExtractor)
+            .GetField("LineEmitted",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+        if (field?.GetValue(lines) is Action<Terminal.LineExtractor.EmittedLine> handler)
+        {
+            handler(new Terminal.LineExtractor.EmittedLine(
+                text, Array.Empty<CellAttributes>(),
+                DateTimeOffset.UtcNow, IsPromptLine: false));
+        }
+    }
+}

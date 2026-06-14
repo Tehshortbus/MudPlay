@@ -76,13 +76,16 @@ public sealed class SettingsResolver
 
         _profile.ProfileLoaded += OnProfileLoaded;
         _profile.ProfileClosed += OnProfileClosed;
+        // A draft pinning a BBS (Settings → BBS Apply) doesn't reload the
+        // profile, so refresh the active BBS off the pin signal too.
+        _profile.BbsPinApplied += _ => RefreshActiveBbs();
 
         // Pick up the active BBS now in case a profile was auto-loaded before
         // this resolver was constructed (AppServices wires Settings/Profile/Bbs
         // first, then the resolver).
         if (_profile.Current is not null)
         {
-            OnProfileLoaded(_profile.Current);
+            RefreshActiveBbs();
         }
     }
 
@@ -284,11 +287,19 @@ public sealed class SettingsResolver
 
     // ----- Active-BBS tracking -------------------------------------------
 
-    private void OnProfileLoaded(CharacterProfile profile)
+    private void OnProfileLoaded(CharacterProfile profile) => RefreshActiveBbs();
+
+    /// <summary>
+    /// Recompute the active BBS from <see cref="ProfileService.CurrentBbsName"/>
+    /// (the folder the loaded profile lives under, or a draft's pinned BBS).
+    /// Wired to both <see cref="ProfileService.ProfileLoaded"/> and
+    /// <see cref="ProfileService.BbsPinApplied"/> so a freshly-pinned draft
+    /// resolves BBS-tier overrides immediately, not only after a reload.
+    /// </summary>
+    private void RefreshActiveBbs()
     {
-        _activeBbs = string.IsNullOrWhiteSpace(profile.BbsName)
-            ? null
-            : _bbsStore.Get(profile.BbsName);
+        string? bbs = _profile.CurrentBbsName;
+        _activeBbs = string.IsNullOrWhiteSpace(bbs) ? null : _bbsStore.Get(bbs);
     }
 
     private void OnProfileClosed() => _activeBbs = null;
@@ -304,6 +315,37 @@ public sealed class SettingsResolver
     private string RequireActiveSet() => _activeSetProvider?.Invoke()
         ?? throw new InvalidOperationException(
             "Cannot write game-data override: no active game-data set.");
+
+    /// <summary>
+    /// Whether an override can currently be written at <paramref name="tier"/>
+    /// without throwing. <see cref="SettingsTier.Defaults"/> is always
+    /// read-only (the MDB / seed is the source); <see cref="SettingsTier.Global"/>
+    /// is always writable; <see cref="SettingsTier.Bbs"/> needs an active BBS
+    /// profile; <see cref="SettingsTier.Character"/> needs a named loaded
+    /// profile. Lets game-data edit dialogs offer only valid tiers instead of
+    /// letting <see cref="WriteGameDataAt"/> throw from the Save handler.
+    /// </summary>
+    public bool CanWriteAt(SettingsTier tier) => tier switch
+    {
+        SettingsTier.Global    => true,
+        SettingsTier.Bbs       => _activeBbs is not null,
+        SettingsTier.Character => _profile.CurrentProfileName is not null,
+        _                      => false,
+    };
+
+    /// <summary>
+    /// The tiers an override can currently be written at, most-specific first
+    /// (Character → BBS → Global). Excludes read-only Defaults and any tier
+    /// whose scope isn't active. Always contains at least Global.
+    /// </summary>
+    public IReadOnlyList<SettingsTier> WritableTiers()
+    {
+        List<SettingsTier> tiers = new(3);
+        if (CanWriteAt(SettingsTier.Character)) tiers.Add(SettingsTier.Character);
+        if (CanWriteAt(SettingsTier.Bbs))       tiers.Add(SettingsTier.Bbs);
+        tiers.Add(SettingsTier.Global);
+        return tiers;
+    }
 
     private string ResolveScopeName(SettingsTier tier) => tier switch
     {
@@ -329,16 +371,25 @@ public sealed class SettingsResolver
         // when no BBS is pinned, Char tier when no named profile).
         if (tier != SettingsTier.Global && string.IsNullOrEmpty(scope)) return null;
 
-        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        string path = AppPaths.OverrideFile(tier, scope, table, set, CharacterBbs(tier));
         Dictionary<string, JsonElement>? records = GetCachedOverrideFile(path);
         if (records is null) return null;
         return records.TryGetValue(recordId, out JsonElement v) ? v : null;
     }
 
+    /// <summary>
+    /// BBS the loaded profile lives under — required by
+    /// <see cref="AppPaths.OverrideFile"/> for the Character tier (profiles
+    /// nest at <c>BBS/{bbs}/profiles/{char}/</c>), <c>null</c> for any other
+    /// tier.
+    /// </summary>
+    private string? CharacterBbs(SettingsTier tier)
+        => tier == SettingsTier.Character ? _profile.CurrentBbsName : null;
+
     private Dictionary<string, JsonElement> LoadOverrideFile(
         SettingsTier tier, string scope, string table, string set)
     {
-        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        string path = AppPaths.OverrideFile(tier, scope, table, set, CharacterBbs(tier));
         return GetCachedOverrideFile(path) ?? new();
     }
 
@@ -346,7 +397,7 @@ public sealed class SettingsResolver
         SettingsTier tier, string scope, string table, string set,
         Dictionary<string, JsonElement> records)
     {
-        string path = AppPaths.OverrideFile(tier, scope, table, set);
+        string path = AppPaths.OverrideFile(tier, scope, table, set, CharacterBbs(tier));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         JsonStore.Save(path, records);
         // Stash the freshly-written contents so subsequent reads don't

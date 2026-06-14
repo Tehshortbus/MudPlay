@@ -29,10 +29,10 @@ public sealed class KeybindRegistryTests
     {
         KeybindingStore store = DefaultStore();
         Assert.True(KeybindRegistry.IsReserved(store, Key.F2, false, false, false, out string? action));
-        Assert.Equal("Open Conversation", action);
+        Assert.Equal("Conversation", action);
 
         Assert.True(KeybindRegistry.IsReserved(store, Key.G, true, false, false, out action));
-        Assert.Equal("Open Game Data Browser", action);
+        Assert.Equal("Game Data Browser", action);
 
         Assert.True(KeybindRegistry.IsReserved(store, Key.S, true, true, false, out action));
         Assert.Equal("Save profile as", action);
@@ -67,7 +67,7 @@ public sealed class KeybindRegistryTests
     {
         KeybindingStore store = DefaultStore();
         Assert.True(KeybindRegistry.IsForbidden(store, Key.F4, false, false, false, out string? reason));
-        Assert.Contains("Open Workshop", reason);
+        Assert.Contains("Player Workshop", reason);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FujinTerm.Game.GameData;
 using Xunit;
 
@@ -64,5 +65,48 @@ public sealed class AbilityNamesTests
     public void FormatId_NonPositiveCode_ReturnsUnknownLabel()
     {
         Assert.Equal("Unknown(0)", AbilityNames.FormatId(0));
+    }
+
+    // ----- HasTrapAbility -------------------------------------------------
+
+    private static JsonElement Row(params int[] abilCodes)
+    {
+        // Mirror the imported Classes / Races row shape: Abil-0..N int
+        // slots (with paired AbilVal-N the helper ignores).
+        var sb = new System.Text.StringBuilder("{");
+        for (int i = 0; i < abilCodes.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append($"\"Abil-{i}\":{abilCodes[i]},\"AbilVal-{i}\":0");
+        }
+        sb.Append('}');
+        return JsonDocument.Parse(sb.ToString()).RootElement.Clone();
+    }
+
+    [Theory]
+    [InlineData(40)]    // FindTraps — stock Traps-skill grant
+    [InlineData(41)]    // DisarmTraps — custom-set grant
+    [InlineData(1002)]  // GrantTraps — custom-set grant
+    public void HasTrapAbility_RowWithTrapGrant_ReturnsTrue(int code)
+    {
+        // Embed the grant among unrelated abilities to prove the scan
+        // hits any slot, not just the first.
+        Assert.True(AbilityNames.HasTrapAbility(Row(103, 37, code, 31)));
+    }
+
+    [Fact]
+    public void HasTrapAbility_RowWithoutTrapGrant_ReturnsFalse()
+    {
+        // Warrior-shaped row (Bash only) — no trap grant.
+        Assert.False(AbilityNames.HasTrapAbility(Row(31)));
+        // Picklocks (37) / Thievery (39) are thief-ish but not the Traps
+        // grant — must not count.
+        Assert.False(AbilityNames.HasTrapAbility(Row(103, 37, 39, 31)));
+    }
+
+    [Fact]
+    public void HasTrapAbility_EmptyRow_ReturnsFalse()
+    {
+        Assert.False(AbilityNames.HasTrapAbility(JsonDocument.Parse("{}").RootElement));
     }
 }

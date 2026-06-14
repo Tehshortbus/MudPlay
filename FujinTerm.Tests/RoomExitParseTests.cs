@@ -220,7 +220,7 @@ public sealed class RoomExitParseTests
     // ----- Restrictions (deferred — stay None + RawHint --------------
 
     [Theory]
-    [InlineData("5/55 (Level: 10-20)")]
+    [InlineData("5/55 (Level: 10-20)")]   // hyphen form — not the live "to" encoding, stays ungated
     [InlineData("5/55 (Class: 1 OK, 2 No)")]
     [InlineData("5/55 (Race: 3 OK)")]
     [InlineData("5/55 (Alignment: Good)")]
@@ -229,5 +229,31 @@ public sealed class RoomExitParseTests
         Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
         Assert.Equal(RoomExitHint.None, exit.Hint);
         Assert.False(string.IsNullOrEmpty(exit.RawHint));
+    }
+
+    // ----- Level gate (Form A — "(Level: MIN to MAX)") ---------------
+
+    [Theory]
+    [InlineData("5/55 (Level: 40 to 0)",   40, 0)]    // floor only (0 max = no cap)
+    [InlineData("5/55 (Level: 10 to 999)", 10, 0)]    // 999 max = no cap
+    [InlineData("5/55 (Level: 0 to 3)",     0, 3)]    // cap only (0 min = no floor)
+    [InlineData("5/55 (Level: 10 to 25)",  10, 25)]   // both bounds
+    public void LevelGate_ParsesWindow_StaysNoneHint(string wire, int min, int max)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.None, exit.Hint);   // still a plain cardinal step
+        Assert.True(exit.HasLevelGate);
+        Assert.Equal(min, exit.MinLevel);
+        Assert.Equal(max, exit.MaxLevel);
+    }
+
+    [Theory]
+    [InlineData(40, 0,  "Level 40+")]
+    [InlineData(0,  3,  "Level ≤3")]
+    [InlineData(10, 25, "Level 10–25")]
+    [InlineData(0,  0,  "")]
+    public void FormatLevelGate_RendersFriendlyLabel(int min, int max, string expected)
+    {
+        Assert.Equal(expected, RoomExit.FormatLevelGate(min, max));
     }
 }

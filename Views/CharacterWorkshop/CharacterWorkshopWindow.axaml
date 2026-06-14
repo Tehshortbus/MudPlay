@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="FujinTerm.Views.CharacterWorkshop.CharacterWorkshopWindow"
+        x:DataType="vm:CharacterWorkshopViewModel"
+        Title="Player Workshop"
+        Width="900" Height="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ChromeBgBrush}">
+
+    <Grid ColumnDefinitions="200,*">
+
+        <!-- Left rail — section navigation. -->
+        <Border Grid.Column="0" BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="0,0,1,0" Background="{StaticResource ChromeRailBgBrush}">
+            <ListBox ItemsSource="{Binding Sections}"
+                     SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
+                     Background="Transparent"
+                     BorderThickness="0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WorkshopSectionViewModel">
+                        <TextBlock Text="{Binding Title}"
+                                   Padding="14,8"
+                                   FontSize="{StaticResource FontSizeMd}"
+                                   Foreground="{StaticResource ChromeFgBrush}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <!-- Right pane — selected section's view. -->
+        <ContentControl Grid.Column="1"
+                        Content="{Binding SelectedSection.View}"
+                        Background="{StaticResource ChromeBgBrush}"/>
+    </Grid>
+</Window>

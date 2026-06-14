@@ -1,0 +1,177 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="600"
+             x:Class="FujinTerm.Views.Settings.CashSectionView"
+             x:DataType="vm:CashSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+
+        <Grid>
+            <!-- No-profile banner. -->
+            <Border IsVisible="{Binding !HasProfile}" Padding="22"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="Cash"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit cash policy."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22" Spacing="4"
+                        MaxWidth="720" HorizontalAlignment="Left">
+
+                <!-- ============ Per-currency policy ============ -->
+                <TextBlock Classes="SectionHeader" Text="Per-currency policy"/>
+
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Copper"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1"
+                              ItemsSource="{Binding PolicyChoices}"
+                              SelectedItem="{Binding CopperPolicy, Mode=TwoWay}"
+                              Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Silver"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding PolicyChoices}"
+                              SelectedItem="{Binding SilverPolicy, Mode=TwoWay}"
+                              Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Gold"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1"
+                              ItemsSource="{Binding PolicyChoices}"
+                              SelectedItem="{Binding GoldPolicy, Mode=TwoWay}"
+                              Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Platinum"/>
+                    <ComboBox Grid.Row="3" Grid.Column="1"
+                              ItemsSource="{Binding PolicyChoices}"
+                              SelectedItem="{Binding PlatinumPolicy, Mode=TwoWay}"
+                              Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Runic"/>
+                    <ComboBox Grid.Row="4" Grid.Column="1"
+                              ItemsSource="{Binding PolicyChoices}"
+                              SelectedItem="{Binding RunicPolicy, Mode=TwoWay}"
+                              Width="180" HorizontalAlignment="Left"/>
+                </Grid>
+
+                <!-- ============ Auto-Deposit and Stashing ============ -->
+                <TextBlock Classes="SectionHeader" Text="Auto-Deposit and Stashing"/>
+
+                <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel"
+                               Text="Auto-deposit if wealth exceeds"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding AutoDepositIfWealthExceeds, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="200" HorizontalAlignment="Left"
+                                   ToolTip.Tip="0 = disabled. Gate on total wealth VALUE (gold-equivalent). Either this or the coin-count gate firing triggers a deposit; re-arms only when both drop back below."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel"
+                               Text="Auto-deposit if coins exceed"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding AutoDepositIfCoinsExceed, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Width="200" HorizontalAlignment="Left"
+                                   ToolTip.Tip="0 = disabled. Gate on the COUNT of physical coins held across all denominations (regardless of value). Either this or the wealth gate firing triggers a deposit; re-arms only when both drop back below."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel"
+                               Text="Bank"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1"
+                              ItemsSource="{Binding BankChoices}"
+                              SelectedItem="{Binding SelectedBank, Mode=TwoWay}"
+                              DisplayMemberBinding="{Binding Display}"
+                              Width="420" HorizontalAlignment="Left"
+                              PlaceholderText="(banks from Shops + your marked stash rooms)"
+                              ToolTip.Tip="Populated from the active game-data Shops table where ShopType == 7 (banks), plus every room you've toggled as a stash on the Navigation map."/>
+                </Grid>
+
+                <!-- Per-currency keep-on-hand floor — honoured by BOTH the
+                     auto-deposit reroute and stash-room `hide N <coin>`. -->
+                <TextBlock Classes="FieldLabel" Margin="0,8,0,2"
+                           Text="Keep on hand (applies to depositing and stashing)"/>
+
+                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Keep copper"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding KeepCopperOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Keep silver"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding KeepSilverOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Keep gold"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                   Value="{Binding KeepGoldOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Keep platinum"/>
+                    <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                   Value="{Binding KeepPlatinumOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Keep runic"/>
+                    <NumericUpDown Grid.Row="4" Grid.Column="1"
+                                   Value="{Binding KeepRunicOnHand, Mode=TwoWay}"
+                                   Minimum="0" Maximum="100000000" Increment="1"
+                                   FormatString="0" ParsingNumberStyle="Integer"
+                                   Width="180" HorizontalAlignment="Left"/>
+                </Grid>
+
+                <!-- ============ Collection Rules ============ -->
+                <TextBlock Classes="SectionHeader" Text="Collection Rules"/>
+
+                <CheckBox Content="Don't collect if it makes you Light"
+                          IsChecked="{Binding SkipCollectIfMakesLight, Mode=TwoWay}"
+                          ToolTip.Tip="Skip pickups that would push the character into the Light bracket."/>
+                <CheckBox Content="Don't collect if it makes you Medium"
+                          IsChecked="{Binding SkipCollectIfMakesMedium, Mode=TwoWay}"
+                          IsEnabled="{Binding SkipMediumEnabled}"
+                          ToolTip.Tip="Skip pickups that would push past Light → Medium. Auto-checked + locked while the stricter Light gate is on."/>
+                <CheckBox Content="Don't collect if it makes you Heavy"
+                          IsChecked="{Binding SkipCollectIfMakesHeavy, Mode=TwoWay}"
+                          IsEnabled="{Binding SkipHeavyEnabled}"
+                          ToolTip.Tip="Skip pickups that would push past Medium → Heavy. Auto-checked + locked while a stricter gate (Light or Medium) is on."/>
+                <CheckBox Content="Collect after combat finished (Cash and Items)"
+                          IsChecked="{Binding CollectAfterCombatFinished, Mode=TwoWay}"
+                          ToolTip.Tip="Defer pickups until the room's combat is over before sending get commands. Shared by Cash auto-collect and the Items auto-get engine."/>
+                <CheckBox Content="Drop smaller currency to make room for larger Collect-flagged coin"
+                          IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
+                          ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>
+
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

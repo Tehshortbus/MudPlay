@@ -44,9 +44,6 @@ public static class AppPaths
     /// <summary>BBS-tier files (one per BBS).</summary>
     public static string BbsDir { get; }
 
-    /// <summary>Character profiles (one per character).</summary>
-    public static string ProfilesDir { get; }
-
     /// <summary>Debug logs from DebugLogWriter.</summary>
     public static string LogsDir { get; }
 
@@ -107,7 +104,6 @@ public static class AppPaths
         GameDataRoot       = Path.Combine(DataRoot, "game data");
         GlobalSettingsFile = Path.Combine(DataRoot, "Global", "global.json");
         BbsDir             = Path.Combine(DataRoot, "BBS");
-        ProfilesDir        = Path.Combine(DataRoot, "profiles");
         LogsDir            = Path.Combine(DataRoot, "Logs");
 
         string exeDir = AppContext.BaseDirectory;
@@ -121,7 +117,6 @@ public static class AppPaths
         Directory.CreateDirectory(GameDataRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(GlobalSettingsFile)!);
         Directory.CreateDirectory(BbsDir);
-        Directory.CreateDirectory(ProfilesDir);
         Directory.CreateDirectory(LogsDir);
     }
 
@@ -336,17 +331,27 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "room_blacklist.json");
 
     /// <summary>
-    /// Folder holding all files for one character — primary profile
-    /// JSON plus per-set override side-files and any future
-    /// per-character helper files (macros, triggers, equipment sets,
-    /// death history, etc.).
+    /// Per-BBS folder holding every character that connects to that BBS.
+    /// Profiles live UNDER the BBS folder because each MajorMUD server
+    /// allows only one character of a given name — so the same character
+    /// name on two different BBSes is two different people, and nesting
+    /// under the BBS keeps them from colliding on a flat profiles list.
     /// </summary>
-    public static string ProfileFolder(string characterName) =>
-        Path.Combine(ProfilesDir, characterName);
+    public static string BbsProfilesDir(string bbsName) =>
+        Path.Combine(BbsFolder(bbsName), "profiles");
+
+    /// <summary>
+    /// Folder holding all files for one character on a given BBS —
+    /// primary profile JSON plus per-set override side-files and any
+    /// future per-character helper files (macros, triggers, equipment
+    /// sets, death history, etc.).
+    /// </summary>
+    public static string ProfileFolder(string bbsName, string characterName) =>
+        Path.Combine(BbsProfilesDir(bbsName), characterName);
 
     /// <summary>Primary character profile file inside <see cref="ProfileFolder"/>.</summary>
-    public static string CharacterProfileFile(string characterName) =>
-        Path.Combine(ProfileFolder(characterName), "profile.json");
+    public static string CharacterProfileFile(string bbsName, string characterName) =>
+        Path.Combine(ProfileFolder(bbsName, characterName), "profile.json");
 
     /// <summary>
     /// Per-set game-data override side-file at the given tier. Routes
@@ -360,14 +365,16 @@ public static class AppPaths
     /// <param name="tierScopeName">For BBS / Character tiers: the BBS or profile name. Ignored for Global.</param>
     /// <param name="table">Game-data table the override applies to (e.g. <c>"Monsters"</c>, <c>"Messages"</c>).</param>
     /// <param name="setName">Active game-data set name (paired with the override file).</param>
-    public static string OverrideFile(SettingsTier tier, string? tierScopeName, string table, string setName)
+    /// <param name="characterBbs">For the Character tier only: the BBS the profile lives under
+    /// (profiles nest at <c>BBS/{bbs}/profiles/{char}/</c>). Ignored for other tiers.</param>
+    public static string OverrideFile(SettingsTier tier, string? tierScopeName, string table, string setName, string? characterBbs = null)
     {
         string folder = tier switch
         {
             SettingsTier.Defaults  => throw new InvalidOperationException("Defaults tier is read-only — no override side-file."),
             SettingsTier.Global    => Path.Combine(DataRoot, "Global"),
             SettingsTier.Bbs       => BbsFolder(RequireScope(tierScopeName, "BBS")),
-            SettingsTier.Character => ProfileFolder(RequireScope(tierScopeName, "Character")),
+            SettingsTier.Character => ProfileFolder(RequireScope(characterBbs, "Character BBS"), RequireScope(tierScopeName, "Character")),
             _ => throw new ArgumentOutOfRangeException(nameof(tier)),
         };
         return Path.Combine(folder, $"{table.ToLowerInvariant()}_overrides.{setName}.json");

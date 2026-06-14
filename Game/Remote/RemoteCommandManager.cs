@@ -111,13 +111,29 @@ public sealed class RemoteCommandManager : IDisposable
     public bool MasterDisable { get; set; }
 
     /// <summary>
-    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist. When
-    /// <c>true</c>, party-whitelist handlers (registered with
-    /// <see cref="PlayerRemoteControls.None"/>) deny even for active party
-    /// members. Pushed from
-    /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommandsFromLeader"/>.
+    /// Disallows the <c>@party &lt;sub&gt;</c> directive path only. When
+    /// <c>true</c>, an active party member's <c>@party attack / rest /
+    /// meditate / go / stat / i / par</c> is denied unless the sender
+    /// carries an explicit per-player grant. Does NOT affect the rest of
+    /// the party-whitelist (<c>@wait</c> / <c>@ok</c> / <c>@comeback</c> /
+    /// <c>@share</c>) — those stay allowed for active members regardless.
+    /// Pushed from
+    /// <see cref="Models.Profile.TalkSettings.DisallowPartyCommands"/>.
     /// </summary>
-    public bool DisablePartyWhitelist { get; set; }
+    public bool DisallowPartyDirectives { get; set; }
+
+    /// <summary>
+    /// Leader-side eligibility hook for a stranded follower's
+    /// <c>@comeback</c>. A left-behind follower is dropped from the party
+    /// server-side, so <see cref="IsActivePartyMember"/> can't authorise
+    /// them — yet they're still recoverable. <see cref="PartyComebackManager"/>
+    /// wires this to <see cref="PartyManager.WasRecentlyPartied"/>, which
+    /// returns true only for senders who departed inside the grace window
+    /// and were NOT deliberately uninvited. Consulted ONLY for
+    /// <c>@comeback</c> (see <see cref="IsAuthorised"/>); null = no extra
+    /// allowance, so the plain party-whitelist gate stands.
+    /// </summary>
+    public Func<string, bool>? ComebackEligibility { get; set; }
 
     /// <summary>Drop @-commands arriving on the Telepath channel.</summary>
     public bool DisableTelepathChannel { get; set; }
@@ -206,6 +222,30 @@ public sealed class RemoteCommandManager : IDisposable
     /// <summary>Test seam — drives the engine without going through ChatRouter.</summary>
     internal void DispatchForTests(ChatLogEntry entry) => OnChatEntry(entry);
 
+    /// <summary>
+    /// Enumerate the catalog commands <paramref name="sender"/> is
+    /// permitted to issue, given their merged per-player permission grant.
+    /// Backs the <c>@help</c> handler's reply. Party-whitelist commands
+    /// (those mapped to <see cref="PlayerRemoteControls.None"/> — @wait /
+    /// @ok / @kill / etc.) are excluded: they're gated by party membership
+    /// alone, not an explicit permission flag, so they don't belong in a
+    /// per-permission command list. Reuses <see cref="IsAuthorised"/> so the
+    /// answer always matches what the engine would actually allow. Result
+    /// follows the catalog's grouped enumeration order.
+    /// </summary>
+    public IReadOnlyList<string> GetPermittedCommands(string sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        List<string> permitted = new();
+        foreach (KeyValuePair<string, PlayerRemoteControls> entry in RemoteCommandCatalog.Map)
+        {
+            if (entry.Value == PlayerRemoteControls.None) continue; // party-whitelist, not flag-gated
+            if (IsAuthorised(sender, entry.Value, entry.Key))
+                permitted.Add(entry.Key);
+        }
+        return permitted;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -231,6 +271,13 @@ public sealed class RemoteCommandManager : IDisposable
         if (IsChannelDisabled(channel.Value)) return;
 
         if (string.IsNullOrEmpty(entry.Speaker)) return; // Self-echo / unknown sender.
+        // Defence-in-depth: a self-echo whose verb form leaks the literal
+        // "You" as the speaker (e.g. a classifier regex that captured it)
+        // must never be treated as an inbound command — the local
+        // character can't issue remote commands to itself. "You" is never a
+        // real player name, so this is a safe hard guard on top of the
+        // classifier emitting a null speaker for own-speech.
+        if (entry.Speaker.Equals("You", StringComparison.OrdinalIgnoreCase)) return;
         if (string.IsNullOrEmpty(entry.Message)) return;
         if (entry.Message[0] != '@') return;             // Not an @-command.
 
@@ -479,10 +526,20 @@ public sealed class RemoteCommandManager : IDisposable
     {
         // Special case: requiredCategory == None means "party whitelist —
         // allowed for any active party member". Used by @wait / @ok /
-        // @kill / @comeback / etc. Settings.Talk → Disallow @party
-        // commands flips this off even for active members.
+        // @comeback / @share. These are NOT affected by Disallow @party
+        // commands — that toggle narrows only the @party directive path
+        // (handled by the @party fallback branch below), per user spec.
         if (requiredCategory == PlayerRemoteControls.None)
-            return !DisablePartyWhitelist && IsActivePartyMember(sender);
+        {
+            if (IsActivePartyMember(sender)) return true;
+            // @comeback is the one whitelist command a left-behind follower
+            // can't satisfy via IsActivePartyMember — the server already
+            // dropped them from the party. Honour it only if they departed
+            // recently and we didn't uninvite them.
+            if (command.Equals("@comeback", StringComparison.OrdinalIgnoreCase))
+                return ComebackEligibility?.Invoke(sender) ?? false;
+            return false;
+        }
 
         // Per-player flag check. Look up the merged record (BBS observation
         // + Char customisation) and bitmask-test the required category.
@@ -504,10 +561,10 @@ public sealed class RemoteCommandManager : IDisposable
         // callers with that grant can reach the status-query path;
         // this fallback restores the party-whitelist semantics for
         // members who don't carry an explicit grant.
-        // DisablePartyWhitelist still kills the whitelist path,
-        // matching the None-tier rule.
+        // DisallowPartyDirectives kills this @party member-fallback path —
+        // it's the only command the toggle gates.
         if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)
-            && !DisablePartyWhitelist
+            && !DisallowPartyDirectives
             && IsActivePartyMember(sender))
         {
             return true;

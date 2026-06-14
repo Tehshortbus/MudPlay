@@ -229,6 +229,12 @@
                                 </Border>
                                 <Border Classes="StatusChip"
                                         Background="{StaticResource ChromeBgElevBrush}"
+                                        BorderBrush="{StaticResource AccentRedBrush}"
+                                        IsVisible="{Binding Held}">
+                                    <TextBlock Text="HELD" Foreground="{StaticResource AccentRedBrush}"/>
+                                </Border>
+                                <Border Classes="StatusChip"
+                                        Background="{StaticResource ChromeBgElevBrush}"
                                         BorderBrush="{StaticResource AccentPrimaryBrush}"
                                         IsVisible="{Binding IsWaiting}">
                                     <TextBlock Text="WAIT" Foreground="{StaticResource AccentPrimaryBrush}"/>

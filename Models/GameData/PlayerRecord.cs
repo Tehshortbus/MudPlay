@@ -27,6 +27,7 @@ namespace FujinTerm.Models.GameData;
 /// <param name="FirstSeenUtc">When this record was first created.</param>
 /// <param name="LastSeenUtc">When this record was last refreshed by a <c>who</c> observation.</param>
 /// <param name="Equipment">Most recent equipment loadout seen on <c>look &lt;player&gt;</c>. Empty list = explicit "Nothing"; <c>null</c> = never looked at.</param>
+/// <param name="LastGreetedUtc">When <see cref="Game.GreetManager"/> last auto-greeted this player, or <c>null</c> if never. Drives the once-per-local-day greet rule. Per-BBS, like every other observation field.</param>
 public sealed record PlayerObservation(
     string GivenName,
     string FamilyName,
@@ -38,7 +39,8 @@ public sealed record PlayerObservation(
     string? Role,
     DateTime FirstSeenUtc,
     DateTime LastSeenUtc,
-    IReadOnlyList<EquipmentItem>? Equipment = null)
+    IReadOnlyList<EquipmentItem>? Equipment = null,
+    DateTime? LastGreetedUtc = null)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.

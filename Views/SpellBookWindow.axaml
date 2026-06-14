@@ -1,0 +1,114 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="520"
+        x:Class="FujinTerm.Views.SpellBookWindow"
+        x:DataType="vm:SpellBookViewModel"
+        Title="Spell Book"
+        Width="640" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Control strip ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding HeaderText}"
+                           Foreground="{StaticResource ChromeFgBrush}"
+                           FontSize="13"
+                           VerticalAlignment="Center"/>
+                <CheckBox Grid.Column="1"
+                          IsChecked="{Binding ShowObtainedOnly}"
+                          Content="Known only"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"
+                          Margin="0,0,10,0"
+                          VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2" MinWidth="180"
+                         PlaceholderText="Search code / name…"
+                         Text="{Binding SearchText, Mode=TwoWay}"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Status footer ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,3">
+            <TextBlock Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       Text="{Binding StatusText}"/>
+        </Border>
+
+        <!-- ============ Spell rows ============ -->
+        <!-- DataGrid for user-adjustable columns (resize / reorder / sort).
+             ReflectionBinding: column bindings resolve against the row item
+             (SpellBookRowViewModel); the DataGrid's auto-wrapped collection
+             view defeats compiled-binding item-type inference, matching the
+             SpellCoverageReportWindow pattern. -->
+        <DataGrid ItemsSource="{Binding Rows}"
+                  Background="{StaticResource ChromeBgSunkenBrush}"
+                  BorderThickness="0"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="True"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="True"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header=""     Binding="{ReflectionBinding ObtainedGlyph}" SortMemberPath="IsObtained"
+                                    Width="34" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource SeverityInfoBrush}"/>
+                <DataGridTextColumn Header="Code" Binding="{ReflectionBinding Short}"        SortMemberPath="Short"
+                                    Width="72" FontFamily="{StaticResource FontMono}" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTextColumn Header="Name" Binding="{ReflectionBinding Name}"         SortMemberPath="Name"
+                                    Width="160" Foreground="{StaticResource ChromeFgBrush}"/>
+                <DataGridTemplateColumn Header="Lvl" SortMemberPath="ReqLevel" Width="72">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding ReqLevelText}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Mana" SortMemberPath="Mana" Width="72">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding ManaText}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontMono}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Effect" SortMemberPath="EffectText" Width="*" MinWidth="220">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:SpellBookRowViewModel">
+                            <TextBlock Text="{Binding EffectText}"
+                                       ToolTip.Tip="{Binding FormulaText}"
+                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       Margin="8,0"
+                                       VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+    </DockPanel>
+</Window>

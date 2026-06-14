@@ -289,6 +289,30 @@
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
                     </StackPanel>
 
+                    <!-- ===== Game-menu commands (per-BBS) =====
+                         The two main-menu picks for entering / leaving the
+                         realm. Stored on the BbsProfile because the menu key
+                         bindings belong to the realm / front-end, not the
+                         character — every character on the same BBS uses the
+                         same picks. Bind directly (no HasProfile gate): these
+                         live on the selected BBS, not the loaded character. -->
+                    <TextBlock Classes="GroupHeader" Text="Game-menu commands"/>
+
+                    <Grid ColumnDefinitions="180,Auto,*" RowDefinitions="Auto,Auto"
+                          Margin="0,6,0,0" ColumnSpacing="8" RowSpacing="4">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Game entry command"/>
+                        <TextBox   Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding GameEntryCommand, Mode=TwoWay}"
+                                   Width="120" FontFamily="{StaticResource FontMono}"
+                                   ToolTip.Tip="Sent at the MajorMUD main menu to enter the realm. Default 'E'."/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Game exit command"/>
+                        <TextBox   Grid.Row="1" Grid.Column="1"
+                                   Text="{Binding GameExitCommand, Mode=TwoWay}"
+                                   Width="120" FontFamily="{StaticResource FontMono}"
+                                   ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
+                    </Grid>
+
                     <!-- ===== Confirmations =====
                          Show-information / Show-data-being-sent /
                          Show-reason-for-running were removed entirely —

@@ -29,6 +29,11 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(25, dto.TerminalRows);
         Assert.Equal(16.0, dto.FontSize);
         Assert.Equal(10_000, dto.ScrollbackLines);
+
+        // Game-menu commands default to MajorMUD's standard picks:
+        // E to enter the realm, =x to log off from the main menu.
+        Assert.Equal("E",  dto.GameEntryCommand);
+        Assert.Equal("=x", dto.GameExitCommand);
     }
 
     [Fact]
@@ -52,6 +57,8 @@ public sealed class BbsProfileFieldsTests
             TerminalRows = 50,
             FontSize = 20.0,
             ScrollbackLines = 50_000,
+            GameEntryCommand = "enter",
+            GameExitCommand = "bye",
         };
 
         string json = JsonSerializer.Serialize(original);
@@ -74,6 +81,8 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(original.TerminalRows,             round.TerminalRows);
         Assert.Equal(original.FontSize,                 round.FontSize);
         Assert.Equal(original.ScrollbackLines,          round.ScrollbackLines);
+        Assert.Equal(original.GameEntryCommand,         round.GameEntryCommand);
+        Assert.Equal(original.GameExitCommand,          round.GameExitCommand);
     }
 
     [Fact]

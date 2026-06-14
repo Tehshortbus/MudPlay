@@ -18,4 +18,16 @@ namespace FujinTerm.Game.Map;
 public interface IRoomFilter
 {
     bool IsAvoided(RoomKey key);
+
+    /// <summary>
+    /// True when the exit's movement restriction (e.g. a Form-A
+    /// <c>(Level: MIN to MAX)</c> gate) excludes the player, making the
+    /// exit non-traversable for path planning. Default implementation
+    /// never blocks — only filters that know the player's level
+    /// (<see cref="Services.MovementFilter"/>) override it. BFS skips a
+    /// blocked exit the same way it skips an avoided room; the walker
+    /// can re-probe with gates ignored to tell "all routes level-gated"
+    /// apart from "graph-disconnected".
+    /// </summary>
+    bool IsExitBlocked(in RoomExit exit) => false;
 }

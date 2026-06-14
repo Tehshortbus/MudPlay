@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using FujinTerm.Controls;
@@ -48,6 +49,14 @@ public partial class NavigationWindow : Window
         // Building-loop ListBox — click row to remove, drag to reorder.
         if (this.FindControl<ListBox>("BuilderClicksList") is { } builderList)
             WireBuilderClicksList(builderList);
+
+        // Rail folder trees — drag a leaf row onto a folder node (or the
+        // empty tree area) to move it. GOTO favourites, Loops, and
+        // Auto-Lair setups each get the same leaf-drag → folder-drop
+        // wiring; the drop handler routes by leaf type to the matching
+        // VM move method.
+        if (this.FindControl<TreeView>("FavoriteTreeView") is { } favTree) WireRowDragDrop(favTree);
+        if (this.FindControl<TreeView>("NavTreeView")      is { } navTree) WireRowDragDrop(navTree);
 
         // Right-click → "Center on Player" routes through a VM event so
         // the command can sit on the VM (where the rest of the context-
@@ -161,7 +170,7 @@ public partial class NavigationWindow : Window
         popup.Opacity = 1;
     }
 
-    private void OnMapRoomRightClicked(Game.Map.RoomKey key, Point _)
+    private void OnMapRoomRightClicked(Game.Map.RoomKey? key, Point _)
     {
         if (DataContext is NavigationViewModel vm) vm.ContextRoomKey = key;
     }
@@ -232,5 +241,132 @@ public partial class NavigationWindow : Window
         if (DataContext is not NavigationViewModel vm) return;
         vm.RemoveBuilderClickAt(row.Index);
         e.Handled = true;
+    }
+
+    // ----- Rail folder drag-drop ------------------------------------
+    // Mirrors NavigationManagerDialog's drag-drop: a leaf row is the
+    // drag source, a folder node (or the empty tree area = root) is the
+    // drop target. The move routes through the VM's public Move methods
+    // so the store + on-disk layout stay the single source of truth.
+
+    // In-process object reference carried by the drag session. Avalonia
+    // 12's DataTransfer surface replaced the legacy string-keyed
+    // DataObject.
+    private static readonly DataFormat<object> RowFormat =
+        DataFormat.CreateInProcessFormat<object>("fujin-nav-rail-row");
+
+    // The leaf row under the press point, captured on pointer-down and
+    // promoted to a drag once the pointer moves past the threshold.
+    private object? _pressedRow;
+    private Point _pressOrigin;
+
+    // DoDragDropAsync requires the originating PointerPressedEventArgs as
+    // its trigger; we detect the drag in PointerMoved, so hold the press
+    // args.
+    private PointerPressedEventArgs? _pressArgs;
+
+    private void WireRowDragDrop(TreeView tree)
+    {
+        // Tunnel so we record the pressed row before inner controls
+        // (the Load / Run / ✎ / ✕ buttons) get a chance to handle it.
+        tree.AddHandler(PointerPressedEvent, OnRailRowPointerPressed, RoutingStrategies.Tunnel);
+        tree.AddHandler(PointerMovedEvent, OnRailRowPointerMoved, RoutingStrategies.Tunnel);
+        tree.AddHandler(DragDrop.DragOverEvent, OnRailDragOver);
+        tree.AddHandler(DragDrop.DropEvent, OnRailDrop);
+    }
+
+    private void OnRailRowPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // Left-button only — right-click is the context-menu gesture.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _pressedRow = null;
+            _pressArgs = null;
+            return;
+        }
+        _pressedRow = LeafRowOf(e.Source as StyledElement);
+        _pressOrigin = e.GetPosition(this);
+        _pressArgs = e;
+    }
+
+    private async void OnRailRowPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_pressedRow is null || _pressArgs is null) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _pressedRow = null;
+            _pressArgs = null;
+            return;
+        }
+        Point now = e.GetPosition(this);
+        if (Math.Abs(now.X - _pressOrigin.X) < 4 && Math.Abs(now.Y - _pressOrigin.Y) < 4)
+            return;
+
+        object row = _pressedRow;
+        PointerPressedEventArgs trigger = _pressArgs;
+        _pressedRow = null;
+        _pressArgs = null;
+
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(RowFormat, row));
+        await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move);
+    }
+
+    private void OnRailDragOver(object? sender, DragEventArgs e)
+        => e.DragEffects = e.DataTransfer.Contains(RowFormat)
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+
+    private void OnRailDrop(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not NavigationViewModel vm) return;
+        if (!e.DataTransfer.Contains(RowFormat)) return;
+
+        object? row = e.DataTransfer.TryGetValue(RowFormat);
+        string folder = TargetFolderOf(e.Source as StyledElement);
+        switch (row)
+        {
+            case FavoriteRowViewModel fav:   vm.MoveFavoriteToFolder(fav, folder); break;
+            case LoopRowViewModel loop:      vm.MoveLoopToFolder(loop, folder); break;
+            case LairSetupRowViewModel lair: vm.MoveSetupToFolder(lair, folder); break;
+        }
+    }
+
+    // Walk up the logical tree from the event source to the nearest
+    // leaf-row DataContext. A press that started on a folder node (or
+    // anywhere non-leaf) yields null so we don't drag folders.
+    private static object? LeafRowOf(StyledElement? src)
+    {
+        for (StyledElement? e = src; e is not null; e = e.Parent)
+        {
+            switch (e.DataContext)
+            {
+                case FavoriteRowViewModel:
+                case LoopRowViewModel:
+                case LairSetupRowViewModel:
+                    return e.DataContext;
+                case NavFolderNodeViewModel:
+                    return null;
+            }
+        }
+        return null;
+    }
+
+    // Resolve the destination folder from whatever sits under the drop
+    // point: a folder node → its path; a leaf → that leaf's folder (drop
+    // beside its siblings); empty tree area → root ("").
+    private static string TargetFolderOf(StyledElement? src)
+    {
+        for (StyledElement? e = src; e is not null; e = e.Parent)
+        {
+            switch (e.DataContext)
+            {
+                case NavFolderNodeViewModel folder: return folder.Path;
+                case FavoriteRowViewModel fav:      return fav.Folder;
+                case LoopRowViewModel loop:         return loop.Source.Folder;
+                case LairSetupRowViewModel lair:    return lair.Source.Folder;
+            }
+        }
+        return string.Empty;
     }
 }

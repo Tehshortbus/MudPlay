@@ -1,5 +1,8 @@
 using System.Text;
+using FujinTerm.Game.Combat;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
@@ -38,7 +41,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     /// <summary>Commands this consumer registers. Used by <see cref="Dispose"/> to clean up.</summary>
     private static readonly string[] RegisteredCommands =
     {
-        "@version", "@health", "@status", "@where",
+        "@version", "@health", "@status", "@where", "@who", "@path",
         "@party", "@wait", "@ok",
         "@lives", "@invite", "@join",
     };
@@ -46,6 +49,10 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly RemoteCommandManager _engine;
     private readonly PlayerState _player;
     private readonly PartyState _party;
+    private readonly Func<PartySettings>? _readPartySettings;
+    private readonly Func<Room?>? _readCurrentRoom;
+    private readonly Func<IReadOnlyList<RoomEntity>?>? _readRoomEntities;
+    private readonly Func<MovementStatus>? _readMovement;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -75,7 +82,11 @@ public sealed class PartyEssentialHandlers : IDisposable
     public PartyEssentialHandlers(
         RemoteCommandManager engine,
         PlayerState player,
-        PartyState party)
+        PartyState party,
+        Func<PartySettings>? readPartySettings = null,
+        Func<Room?>? readCurrentRoom = null,
+        Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null,
+        Func<MovementStatus>? readMovement = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -83,6 +94,10 @@ public sealed class PartyEssentialHandlers : IDisposable
         _engine = engine;
         _player = player;
         _party  = party;
+        _readPartySettings = readPartySettings;
+        _readCurrentRoom = readCurrentRoom;
+        _readRoomEntities = readRoomEntities;
+        _readMovement = readMovement;
 
         // Categories sourced from RemoteCommandCatalog — single source
         // of truth for every documented @-command's required permission
@@ -94,6 +109,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@health",  OnHealth);
         Register("@status",  OnStatus);
         Register("@where",   OnWhere);
+        Register("@who",     OnWho);
+        Register("@path",    OnPath);
         Register("@party",   OnParty);
         Register("@wait",    OnWait);
         Register("@ok",      OnOk);
@@ -221,13 +238,82 @@ public sealed class PartyEssentialHandlers : IDisposable
             : $"I'm leading: {string.Join(", ", followers)}");
     }
 
+    /// <summary>
+    /// <c>@where</c> — reply with the current room's name, exits, and
+    /// (Map, Room) key. Reads the live <see cref="RoomTracker"/> snapshot
+    /// through the injected <see cref="_readCurrentRoom"/> accessor; a
+    /// <c>null</c> room (tracker Unknown / Lost, or no game data loaded
+    /// yet) yields a "Location unknown" reply rather than an empty body.
+    /// The engine wraps the payload in <c>{ }</c> at SendReply time.
+    /// </summary>
     private void OnWhere(RemoteCommandContext ctx)
     {
-        // Room tracking ships in Phase 7 — emit a placeholder so the
-        // sender at least knows their request was received and the
-        // engine is alive. Phase 7 PR 7.1 (RoomTracker) replaces this
-        // body with a real lookup.
-        ctx.Reply("Location unknown (room tracker pending)");
+        Room? room = _readCurrentRoom?.Invoke();
+        if (room is null) { ctx.Reply("Location unknown"); return; }
+
+        // Stable enum order so a repeated query reads the same and exits
+        // come out N, S, E, W, NE, ... rather than dictionary order.
+        string exits = room.Exits.Count == 0
+            ? "none"
+            : string.Join(", ", room.Exits.Keys.OrderBy(d => (int)d).Select(d => d.ToLongName()));
+        ctx.Reply($"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room}); exits: {exits}");
+    }
+
+    /// <summary>
+    /// <c>@who</c> — reply with the other players and monsters sharing the
+    /// current room. Reads the live <see cref="RoomEntityClassifier"/>
+    /// occupant snapshot through the injected <see cref="_readRoomEntities"/>
+    /// accessor. The classifier's list is built from the wire's
+    /// <c>Also here:</c> line, which by game convention excludes the local
+    /// player — so no self-filtering is needed. An empty or null list
+    /// (room had no occupants, or none observed yet) replies "no one".
+    /// Each entity is named by its resolved (canonical) name: a player's
+    /// given name, a monster's base name without flavour prefix. The
+    /// engine wraps the payload in <c>{ }</c> at SendReply time, yielding
+    /// the spec's <c>{no one}</c> / <c>{Raijin, Susanoo, giant rat}</c>.
+    /// </summary>
+    private void OnWho(RemoteCommandContext ctx)
+    {
+        IReadOnlyList<RoomEntity>? entities = _readRoomEntities?.Invoke();
+        if (entities is null || entities.Count == 0) { ctx.Reply("no one"); return; }
+        ctx.Reply(string.Join(", ", entities.Select(e => e.ResolvedName)));
+    }
+
+    /// <summary>
+    /// <c>@path</c> — reply with what movement engine is running (loop
+    /// name / auto-lair / walking-to-destination), the current room name +
+    /// (Map, Room) key, and the walker's step progress as <c>step X/Y</c>.
+    /// Reads the live engine snapshot through <see cref="_readMovement"/>
+    /// and the room through <see cref="_readCurrentRoom"/>. When no engine
+    /// is running the reply is "not moving"; the engine wraps it in
+    /// <c>{ }</c> at SendReply time.
+    /// </summary>
+    private void OnPath(RemoteCommandContext ctx)
+    {
+        MovementStatus mv = _readMovement?.Invoke() ?? default;
+        if (mv.Kind == MovementKind.None) { ctx.Reply("not moving"); return; }
+
+        string engine = mv.Kind switch
+        {
+            MovementKind.Loop    => $"running loop '{mv.Label}'",
+            MovementKind.Lair    => "auto-lair",
+            MovementKind.Walking => $"walking to {mv.Label}",
+            _                    => "moving",
+        };
+
+        Room? room = _readCurrentRoom?.Invoke();
+        string where = room is null
+            ? "location unknown"
+            : $"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room})";
+
+        // CurrentStep is the 0-based next-step index; report it 1-based and
+        // clamp to TotalSteps for the tail where every step is sent but the
+        // walker is still awaiting the final arrival confirmation.
+        string step = mv.TotalSteps > 0
+            ? $"; step {Math.Min(mv.CurrentStep + 1, mv.TotalSteps)}/{mv.TotalSteps}"
+            : string.Empty;
+
+        ctx.Reply($"{engine}; {where}{step}");
     }
 
     // ----- @party (channel-aware: status query or sub-command dispatch) --
@@ -248,7 +334,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
     ///         <see cref="DispatchPartySubCommand"/>. Gated on
     ///         <see cref="IsActivePartyMember"/> +
-    ///         <see cref="RemoteCommandManager.DisablePartyWhitelist"/>
+    ///         <see cref="RemoteCommandManager.DisallowPartyDirectives"/>
     ///         because the engine's authorize tier for <c>@party</c> is
     ///         QueryHealthStatus (so a non-party caller with that
     ///         grant reaches this handler for the status form too) —
@@ -275,7 +361,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         // here because the engine-level authorize tier (QueryHealthStatus)
         // lets non-party players reach this handler for the status form;
         // the destructive verb path is party-member-only by design.
-        if (_engine.DisablePartyWhitelist) return;
+        if (_engine.DisallowPartyDirectives) return;
         if (!IsActivePartyMember(ctx.Sender)) return;
         DispatchPartySubCommand(ctx);
     }
@@ -411,11 +497,29 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     // ----- @wait / @ok receive (pause-gate consumes in PR 6.7) ----------
 
-    private void OnWait(RemoteCommandContext ctx)
+    private void OnWait(RemoteCommandContext ctx) => NotePause(ctx.Sender);
+
+    /// <summary>
+    /// Register <paramref name="member"/> as asking the party to pause and
+    /// raise the gate on the 0→1 transition. Shared by the <c>@wait</c>
+    /// telepath handler and the inbound <c>.@held</c> say path
+    /// (<see cref="Conditions.PartyAilmentTracker"/>): a held member's say
+    /// pauses the leader exactly as an explicit <c>@wait</c> would, and the
+    /// member's eventual <c>@ok</c> (sent by their own
+    /// <see cref="AilmentSyncEngine"/> on last-clear) releases it via
+    /// <see cref="OnOk"/>. Honours the leader-side
+    /// <see cref="PartySettings.IgnoreWaitWhenLeading"/> opt-out.
+    /// </summary>
+    public void NotePause(string member)
     {
+        // Leader-side opt-out: when we're leading and the user has set
+        // "ignore @wait when leading", a follower's @wait must not pause
+        // the leader's automation. Drop it before it reaches the gate.
+        if (_party.SelfIsLeader && _readPartySettings?.Invoke() is { IgnoreWaitWhenLeading: true })
+            return;
         bool wasPaused = IsPaused;
-        WaitingMembers.Add(ctx.Sender);
-        SetMemberWaitFlag(ctx.Sender, true);
+        WaitingMembers.Add(member);
+        SetMemberWaitFlag(member, true);
         if (!wasPaused && IsPaused) PauseGateChanged?.Invoke(true);
     }
 

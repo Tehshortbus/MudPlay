@@ -21,6 +21,12 @@ namespace FujinTerm.Tests;
 /// </summary>
 public sealed class EventManagerResumeTests : IDisposable
 {
+    // BBS name LoopManager.Save writes under. AppPaths roots are cached
+    // at static-init, so saved loops land in the real Data/BBS tree; the
+    // "test-" prefix lets TestSessionCleanup's module sweep reclaim the
+    // folder, and Dispose removes it eagerly on a clean run.
+    private const string TestBbs = "test-event-resume";
+
     private readonly string _root;
 
     public EventManagerResumeTests()
@@ -32,6 +38,8 @@ public sealed class EventManagerResumeTests : IDisposable
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); }
+        catch { /* best-effort */ }
+        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
         catch { /* best-effort */ }
     }
 
@@ -89,11 +97,12 @@ public sealed class EventManagerResumeTests : IDisposable
         LairTimerStore timers = new(cache, graph, tracker);
         AutoLairManager autoLair = new(walker, tracker, graph, bfs, timers);
         LoopManager loops = new(bfs, graph);
-        // LoopManager.Save no-ops unless a BBS context is set. Tests
-        // that want to add a saved loop need this; LoadAll("") seeds
-        // an empty in-memory collection bound to the BBS name without
-        // touching disk (no folder exists for the test guid).
-        loops.LoadAll("resume-test");
+        // LoopManager.Save no-ops unless a BBS context is set. LoadAll
+        // binds the catalogue to TestBbs (no folder yet, so it seeds an
+        // empty collection); the cascade tests that call Save then write
+        // a .loop file under AppPaths.BbsFolder(TestBbs), which Dispose
+        // reclaims.
+        loops.LoadAll(TestBbs);
         LairManager lairs = new();
 
         // EventManager via its full-engine ctor — parameterless ctor

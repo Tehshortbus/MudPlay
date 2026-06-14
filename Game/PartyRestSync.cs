@@ -33,6 +33,7 @@ namespace FujinTerm.Game;
 public sealed class PartyRestSync : IDisposable
 {
     private readonly PartyState _party;
+    private readonly HashSet<WaitReason> _waitReasons = new();
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -55,25 +56,46 @@ public sealed class PartyRestSync : IDisposable
     }
 
     /// <summary>
-    /// Engine-callable entry point — telepath <c>@wait</c> to the
-    /// party leader. No-ops when solo, when we're the leader, when
-    /// there's no leader yet, or when no wire-sender is bound. Idempotent
-    /// at the protocol level — the receiving leader's
+    /// Engine-callable entry point — register a wait <paramref name="reason"/>
+    /// and telepath <c>@wait</c> to the party leader on the 0→non-empty
+    /// transition. If another reason already holds the wait, this only
+    /// records the new reason and sends nothing (the leader is already
+    /// paused). No-ops on the wire when solo, when we're the leader, when
+    /// there's no leader yet, or when no wire-sender is bound — but the
+    /// reason is still tracked so a later <see cref="RequestOk"/> balances.
+    /// Idempotent at the protocol level — the receiving leader's
     /// <see cref="Remote.PartyEssentialHandlers.OnWait"/> dedupes via
     /// a HashSet so repeat sends don't double-count.
+    /// <para>
+    /// <paramref name="announce"/> <c>false</c> registers the reason silently
+    /// — no <c>@wait</c> telepath ever fires for it. Used by the held ailment,
+    /// whose pause is driven by the inbound <c>.@held</c> say on the leader's
+    /// side; the reason still participates in the balanced
+    /// <c>@ok</c>-on-last-clear so a held-and-poisoned player doesn't release
+    /// the wait while still poisoned.
+    /// </para>
     /// </summary>
-    public void RequestWait()
+    public void RequestWait(WaitReason reason, bool announce = true)
     {
+        bool wasEmpty = _waitReasons.Count == 0;
+        if (!_waitReasons.Add(reason)) return;
+        if (!announce) return;
+        if (!wasEmpty) return;
         if (!CanSignal()) return;
         Telepath(_party.LeaderName!, "@wait");
     }
 
     /// <summary>
-    /// Engine-callable entry point — telepath <c>@ok</c> to the party
-    /// leader. Same gates as <see cref="RequestWait"/>.
+    /// Engine-callable entry point — clear a wait <paramref name="reason"/>
+    /// and telepath <c>@ok</c> to the party leader only on the
+    /// non-empty→0 transition (the LAST reason clearing). While other
+    /// reasons still hold the wait, this records the release and sends
+    /// nothing. Same wire gates as <see cref="RequestWait"/>.
     /// </summary>
-    public void RequestOk()
+    public void RequestOk(WaitReason reason)
     {
+        if (!_waitReasons.Remove(reason)) return;
+        if (_waitReasons.Count > 0) return;
         if (!CanSignal()) return;
         Telepath(_party.LeaderName!, "@ok");
     }

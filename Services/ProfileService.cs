@@ -3,8 +3,12 @@ using FujinTerm.Models.Profile;
 namespace FujinTerm.Services;
 
 /// <summary>
-/// Owns <c>Data/profiles/{char-name}.json</c> — the Character tier of the
-/// settings hierarchy. Tracks at most one loaded profile at a time;
+/// Owns <c>Data/BBS/{bbs}/profiles/{char}/profile.json</c> — the Character
+/// tier of the settings hierarchy. Profiles nest under their BBS folder
+/// because each MajorMUD server allows only one character of a given name,
+/// so the same name on two BBSes is two different people. Tracks at most
+/// one loaded profile at a time (identified by the
+/// <see cref="CurrentBbsName"/> + <see cref="CurrentProfileName"/> pair);
 /// per-character services subscribe to <see cref="ProfileLoaded"/> /
 /// <see cref="ProfileClosed"/> to swap their per-char state.
 /// </summary>
@@ -26,6 +30,18 @@ public sealed class ProfileService
     /// two characters share a name across BBSes.
     /// </summary>
     public string? CurrentProfileName { get; private set; }
+
+    /// <summary>
+    /// BBS folder the loaded profile lives under — the authoritative link
+    /// between a character and its server (there is no longer a
+    /// <c>BbsName</c> field on the DTO; folder location is the source of
+    /// truth). For a named profile this is set from disk on
+    /// <see cref="Load"/>; for a blank draft it stays <c>null</c> until the
+    /// user pins a BBS via <see cref="PinDraftBbs"/> (Settings → BBS Apply).
+    /// Consumed by <see cref="SettingsResolver"/> and
+    /// <c>AppServices.ResolveActiveBbs</c> to decide the active BBS.
+    /// </summary>
+    public string? CurrentBbsName { get; private set; }
 
     /// <summary>True when <see cref="Current"/> is an unsaved blank draft (no name on disk yet).</summary>
     public bool IsBlankDraft => Current is not null && CurrentProfileName is null;
@@ -82,47 +98,27 @@ public sealed class ProfileService
     }
 
     /// <summary>
-    /// Load the profile stored at <c>Data/profiles/{name}.json</c> and fire
+    /// Load the profile stored at
+    /// <c>Data/BBS/{bbsName}/profiles/{profileName}/profile.json</c> and fire
     /// <see cref="ProfileLoaded"/>. If a different profile is already loaded
     /// it is closed first (<see cref="ProfileClosed"/> fires before the new
     /// load).
     /// </summary>
-    /// <param name="profileName">Filename of the profile to load, without the
-    /// <c>.json</c> extension.</param>
+    /// <param name="bbsName">BBS folder the profile lives under.</param>
+    /// <param name="profileName">Character folder name (the profile name).</param>
     /// <returns>The loaded profile.</returns>
     /// <exception cref="FileNotFoundException">No file at the expected path.</exception>
-    /// <summary>
-    /// Read a named profile's persisted <see cref="CharacterProfile.BbsName"/>
-    /// without mutating <see cref="Current"/>. Used by the
-    /// File → Recent profiles menu to label each slot with the BBS
-    /// it'll connect to. Returns <c>null</c> when the profile file
-    /// doesn't exist, can't be parsed, or has no pinned BBS.
-    /// </summary>
-    public string? PeekBbs(string profileName)
+    public CharacterProfile Load(string bbsName, string profileName)
     {
-        if (string.IsNullOrWhiteSpace(profileName)) return null;
-        string path = AppPaths.CharacterProfileFile(profileName);
-        if (!File.Exists(path)) return null;
-        try
-        {
-            CharacterProfile? p = JsonStore.Load<CharacterProfile>(path);
-            return string.IsNullOrEmpty(p?.BbsName) ? null : p.BbsName;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public CharacterProfile Load(string profileName)
-    {
+        if (string.IsNullOrWhiteSpace(bbsName))
+            throw new ArgumentException("BBS name is required.", nameof(bbsName));
         if (string.IsNullOrWhiteSpace(profileName))
             throw new ArgumentException("Profile name is required.", nameof(profileName));
 
-        string path = AppPaths.CharacterProfileFile(profileName);
+        string path = AppPaths.CharacterProfileFile(bbsName, profileName);
         CharacterProfile loaded = JsonStore.Load<CharacterProfile>(path)
             ?? throw new FileNotFoundException(
-                $"Character profile '{profileName}' not found.", path);
+                $"Character profile '{profileName}' on '{bbsName}' not found.", path);
 
         if (Current is not null)
         {
@@ -135,11 +131,13 @@ public sealed class ProfileService
             catch { /* swallow — Load shouldn't fail because the outgoing save did */ }
             Current = null;
             CurrentProfileName = null;
+            CurrentBbsName = null;
             ProfileClosed?.Invoke();
         }
 
         Current = loaded;
         CurrentProfileName = profileName;
+        CurrentBbsName = bbsName;
         ProfileLoaded?.Invoke(loaded);
         return loaded;
     }
@@ -172,8 +170,61 @@ public sealed class ProfileService
         CharacterProfile draft = new();
         Current = draft;
         CurrentProfileName = null;
+        CurrentBbsName = null;
         ProfileLoaded?.Invoke(draft);
         return draft;
+    }
+
+    /// <summary>
+    /// Pin a BBS onto the loaded blank draft so its credentials / overrides
+    /// have a home before the draft is named. No-op (and ignored) for a
+    /// named profile — those re-home via <see cref="ReHome"/> instead, since
+    /// the folder already exists on disk. Fires nothing; the Settings → BBS
+    /// Apply path that calls this also raises
+    /// <see cref="NotifyMutated"/> / <see cref="NotifyBbsPinApplied"/>.
+    /// </summary>
+    public void PinDraftBbs(string? bbsName)
+    {
+        if (CurrentProfileName is not null) return; // named profile → ReHome path owns this.
+        CurrentBbsName = string.IsNullOrWhiteSpace(bbsName) ? null : bbsName;
+    }
+
+    /// <summary>
+    /// Move the loaded named profile's folder from its current BBS (and
+    /// name) to <paramref name="newBbs"/> (and optionally
+    /// <paramref name="newName"/>), updating <see cref="CurrentBbsName"/> /
+    /// <see cref="CurrentProfileName"/> / <see cref="CharacterProfile.Name"/>
+    /// to match. Silent — mirrors the prompt-less rename the Settings → BBS
+    /// tab does for the no-clash case. Throws if no named profile is loaded
+    /// or the destination folder already exists (the caller resolves a name
+    /// clash first, then re-invokes with a clash-free <paramref name="newName"/>).
+    /// </summary>
+    public void ReHome(string newBbs, string? newName = null)
+    {
+        if (string.IsNullOrWhiteSpace(newBbs))
+            throw new ArgumentException("Destination BBS is required.", nameof(newBbs));
+        if (Current is null || CurrentProfileName is null || CurrentBbsName is null)
+            throw new InvalidOperationException("ReHome requires a loaded named profile.");
+
+        string targetName = string.IsNullOrWhiteSpace(newName) ? CurrentProfileName : newName;
+        if (string.Equals(newBbs, CurrentBbsName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(targetName, CurrentProfileName, StringComparison.Ordinal))
+            return; // no-op move.
+
+        string sourceFolder = AppPaths.ProfileFolder(CurrentBbsName, CurrentProfileName);
+        string destFolder = AppPaths.ProfileFolder(newBbs, targetName);
+        if (Directory.Exists(destFolder))
+            throw new IOException($"A profile already exists at '{destFolder}'.");
+
+        Directory.CreateDirectory(AppPaths.BbsProfilesDir(newBbs));
+        if (Directory.Exists(sourceFolder))
+            Directory.Move(sourceFolder, destFolder);
+        else
+            Directory.CreateDirectory(destFolder); // never-saved-yet edge: just stake the destination.
+
+        Current.Name = targetName;
+        CurrentProfileName = targetName;
+        CurrentBbsName = newBbs;
     }
 
     /// <summary>
@@ -189,11 +240,14 @@ public sealed class ProfileService
     /// "Backup profile when making changes" toggle.</param>
     public void Save(bool backup = false)
     {
-        if (Current is null || CurrentProfileName is null) return;
+        // A draft with no name (CurrentProfileName) or no pinned BBS
+        // (CurrentBbsName) has nowhere to write — drafts must be named +
+        // BBS-pinned via the File → Save As / Settings → BBS Apply flow first.
+        if (Current is null || CurrentProfileName is null || CurrentBbsName is null) return;
         ProfileSaving?.Invoke(Current);
 
-        Directory.CreateDirectory(AppPaths.ProfileFolder(CurrentProfileName));
-        string path = AppPaths.CharacterProfileFile(CurrentProfileName);
+        Directory.CreateDirectory(AppPaths.ProfileFolder(CurrentBbsName, CurrentProfileName));
+        string path = AppPaths.CharacterProfileFile(CurrentBbsName, CurrentProfileName);
         if (backup && File.Exists(path))
         {
             File.Copy(path, path + ".bak", overwrite: true);
@@ -207,18 +261,22 @@ public sealed class ProfileService
         if (Current is null) return;
         Current = null;
         CurrentProfileName = null;
+        CurrentBbsName = null;
         ProfileClosed?.Invoke();
     }
 
     /// <summary>
-    /// Save the in-memory profile under <paramref name="profileName"/>. Used
-    /// by File → New profile (to name a fresh blank), File → Save As, and the
-    /// "name your draft" path of File → Save when the loaded profile doesn't
-    /// have a name yet. Replaces an existing file at that name without
-    /// asking — the caller is responsible for the confirm-overwrite UX.
+    /// Save the in-memory profile as <paramref name="profileName"/> under
+    /// <paramref name="bbsName"/>. Used by File → New profile (to name a
+    /// fresh blank), File → Save As, and the "name your draft" path of
+    /// File → Save when the loaded profile doesn't have a name yet. Replaces
+    /// an existing file at that path without asking — the caller owns the
+    /// confirm-overwrite UX.
     /// </summary>
-    public void SaveAs(string profileName)
+    public void SaveAs(string bbsName, string profileName)
     {
+        if (string.IsNullOrWhiteSpace(bbsName))
+            throw new ArgumentException("BBS name is required.", nameof(bbsName));
         if (string.IsNullOrWhiteSpace(profileName))
             throw new ArgumentException("Profile name is required.", nameof(profileName));
         if (Current is null)
@@ -226,31 +284,40 @@ public sealed class ProfileService
 
         Current.Name = profileName;
         CurrentProfileName = profileName;
+        CurrentBbsName = bbsName;
         ProfileSaving?.Invoke(Current);
-        Directory.CreateDirectory(AppPaths.ProfileFolder(profileName));
-        JsonStore.Save(AppPaths.CharacterProfileFile(profileName), Current);
+        Directory.CreateDirectory(AppPaths.ProfileFolder(bbsName, profileName));
+        JsonStore.Save(AppPaths.CharacterProfileFile(bbsName, profileName), Current);
     }
 
     /// <summary>
-    /// Enumerate every profile that has a primary <c>profile.json</c>
-    /// on disk. The folder name (= profile name) is yielded. Folders
-    /// missing a primary file are skipped — they aren't fully
-    /// initialised yet.
+    /// Enumerate every profile across every BBS that has a primary
+    /// <c>profile.json</c> on disk, as <c>(bbs, char)</c> pairs. Folders
+    /// missing a primary file are skipped — they aren't fully initialised
+    /// yet. Drives the File → Open picker and the recent-profiles list.
     /// </summary>
-    public IEnumerable<string> ListNames()
+    public IEnumerable<ProfileRef> ListAll()
     {
-        if (!Directory.Exists(AppPaths.ProfilesDir)) yield break;
-        foreach (string folder in Directory.EnumerateDirectories(AppPaths.ProfilesDir))
+        if (!Directory.Exists(AppPaths.BbsDir)) yield break;
+        foreach (string bbsFolder in Directory.EnumerateDirectories(AppPaths.BbsDir))
         {
-            string name = Path.GetFileName(folder);
-            if (string.IsNullOrEmpty(name)) continue;
-            if (!File.Exists(AppPaths.CharacterProfileFile(name))) continue;
-            yield return name;
+            string bbs = Path.GetFileName(bbsFolder);
+            if (string.IsNullOrEmpty(bbs)) continue;
+            string profilesDir = AppPaths.BbsProfilesDir(bbs);
+            if (!Directory.Exists(profilesDir)) continue;
+            foreach (string charFolder in Directory.EnumerateDirectories(profilesDir))
+            {
+                string name = Path.GetFileName(charFolder);
+                if (string.IsNullOrEmpty(name)) continue;
+                if (!File.Exists(AppPaths.CharacterProfileFile(bbs, name))) continue;
+                yield return new ProfileRef(bbs, name);
+            }
         }
     }
 
-    /// <summary>True if a saved profile with the given name already exists.</summary>
-    public bool Exists(string profileName)
-        => !string.IsNullOrWhiteSpace(profileName)
-           && File.Exists(AppPaths.CharacterProfileFile(profileName));
+    /// <summary>True if a saved profile with the given name already exists under the BBS.</summary>
+    public bool Exists(string bbsName, string profileName)
+        => !string.IsNullOrWhiteSpace(bbsName)
+           && !string.IsNullOrWhiteSpace(profileName)
+           && File.Exists(AppPaths.CharacterProfileFile(bbsName, profileName));
 }

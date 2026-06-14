@@ -25,13 +25,6 @@ public sealed class CharacterProfile
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the BBS this character connects to. Matches a
-    /// <c>BbsProfile.Name</c> stored under <c>Data/BBS/</c>. <c>null</c> when
-    /// the user hasn't picked a BBS yet.
-    /// </summary>
-    public string? BbsName { get; set; }
-
-    /// <summary>
     /// Per-tab settings deltas at the Character tier — same shape as
     /// <see cref="Settings.GlobalSettings.Settings"/>. Anything the user
     /// pinned to "only for this character."
@@ -202,6 +195,16 @@ public sealed class CharacterProfile
     public List<FavoriteRoom>? Favorites { get; set; }
 
     /// <summary>
+    /// Folder paths in the GOTO tree that the user created but which
+    /// hold no favourites yet (empty folders the item list alone can't
+    /// reconstruct). Paths use <c>/</c> separators, same vocabulary as
+    /// <see cref="FavoriteRoom.Folder"/>. <c>null</c> or empty = no
+    /// empty folders to remember. Maintained by
+    /// <see cref="Services.FavoritesStore"/>.
+    /// </summary>
+    public List<string>? FavoriteFolders { get; set; }
+
+    /// <summary>
     /// Last room the character was known to be standing in. Hydrated
     /// from <see cref="Game.Map.RoomTracker"/> on a successful manual
     /// or auto locate; saved with the rest of the profile and used as
@@ -231,4 +234,22 @@ public sealed class CharacterProfile
     /// empty means no deaths yet (the lucky case).
     /// </summary>
     public List<DeathRecord>? DeathHistory { get; set; }
+
+    /// <summary>
+    /// When true, the DEATH-recovery flow grabs lost items (and re-equips
+    /// what was worn at death) automatically whenever the character
+    /// re-enters a room holding one of their own deathpiles — regardless
+    /// of the item's auto-get policy. Per-character. Defaults false.
+    /// The item-grab side is inert until the inventory tracker lands; the
+    /// toggle persists now so the preference survives that gap.
+    /// </summary>
+    public bool DeathAutoRecover { get; set; }
+
+    /// <summary>
+    /// When true, items recovered from a deathpile that were equipped at
+    /// the moment of death are automatically re-equipped after pickup.
+    /// Per-character. Defaults false. Inert until inventory tracking
+    /// records what was worn at death.
+    /// </summary>
+    public bool DeathAutoEquip { get; set; }
 }

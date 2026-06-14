@@ -23,7 +23,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// <c>MagicRes</c> is the magic-resist score, <c>AvgDmg</c> is the
 /// average per-round outgoing damage, <c>RegenTime</c> is respawn
 /// cadence in ticks. <c>Type</c> and <c>Align</c> render via
-/// <see cref="MmudEnums"/> ("Solo" / "Lawful Good" / etc.) and
+/// <see cref="LookupEnums"/> ("Solo" / "Lawful Good" / etc.) and
 /// <c>Undead</c> is a boolean from the MDB so it already arrives
 /// as <c>"true"</c> / <c>"false"</c>.
 /// </remarks>
@@ -68,8 +68,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Type"]  = MmudEnums.FormatMonType,
-            ["Align"] = MmudEnums.FormatMonAlignment,
+            ["Type"]  = LookupEnums.FormatMonType,
+            ["Align"] = LookupEnums.FormatMonAlignment,
         };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
@@ -125,22 +125,35 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             existingMessages = _monsterMessages.FindByMonsterNumber(wccNum);
 
         MonsterEditDialogViewModel vm = new(
-            wccNoStr:    wcc,
-            mdbName:     row.Get("Name") ?? string.Empty,
-            existing:    existing,
-            currentTier: row.SourceTier,
-            mdbInfo:     mdbInfo,
-            messages:    existingMessages);
+            wccNoStr:      wcc,
+            mdbName:       row.Get("Name") ?? string.Empty,
+            existing:      existing,
+            currentTier:   row.SourceTier,
+            mdbInfo:       mdbInfo,
+            messages:      existingMessages,
+            writableTiers: _resolverRef?.WritableTiers());
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;
 
-        // Defaults tier is read-only for monsters (MDB is the source).
-        // Pick Character as the safe fallback if the user accidentally
-        // chose Defaults — the resolver itself throws otherwise.
-        SettingsTier tier = result.Tier == SettingsTier.Defaults ? SettingsTier.Character : result.Tier;
-
-        _resolverRef?.WriteGameDataAt(tier, "Monsters", result.WccNoStr, result.Overlay);
+        // The dialog only offers writable tiers, but guard anyway: writing to
+        // a tier whose scope can't be resolved (Defaults read-only, Character
+        // with no profile loaded, BBS with no active BBS) throws from inside
+        // the Save handler and crashed the app. Fall back to the most-specific
+        // writable tier and note the redirect in the log instead.
+        if (_resolverRef is { } resolver)
+        {
+            SettingsTier tier = result.Tier;
+            if (!resolver.CanWriteAt(tier))
+            {
+                SettingsTier fallback = resolver.WritableTiers()[0];
+                AppServices.Current.Log.Warn("GameData/Monsters",
+                    $"Cannot save monster #{result.WccNoStr} at {tier} tier "
+                    + $"(scope not active); saved at {fallback} instead.");
+                tier = fallback;
+            }
+            resolver.WriteGameDataAt(tier, "Monsters", result.WccNoStr, result.Overlay);
+        }
 
         // Apply the messages edit when present. Id-keyed replace using
         // the original record's Id (so content edits that flip the
@@ -215,8 +228,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 AddRow(kv, "Game Limit",
                     regenTime == 0 ? $"{gameLimit} (no respawn)" : gameLimit.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-            AddRowIfPresent(kv, "Type",     MmudEnums.FormatMonType(ReadString(el, "Type")));
-            AddRowIfPresent(kv, "Alignment", MmudEnums.FormatMonAlignment(ReadString(el, "Align")));
+            AddRowIfPresent(kv, "Type",     LookupEnums.FormatMonType(ReadString(el, "Type")));
+            AddRowIfPresent(kv, "Alignment", LookupEnums.FormatMonAlignment(ReadString(el, "Align")));
 
             if (ReadInt(el, "Undead") == 1) AddRow(kv, "Undead", "Yes");
 

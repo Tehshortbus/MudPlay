@@ -46,12 +46,14 @@ public sealed class LogService
     /// entry's Source tag).
     /// </summary>
     private readonly Dictionary<string, Action> _detailHandlers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Action<LogEntry>> _entryHandlers = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Register a double-click handler for entries whose
+    /// Register a no-arg double-click handler for entries whose
     /// <see cref="LogEntry.Source"/> matches <paramref name="source"/>.
     /// Replaces any prior handler for that source (last one wins).
-    /// Idempotent at startup time.
+    /// Idempotent at startup time. Use when the handler doesn't need
+    /// the row's payload (e.g. opens a singleton detail window).
     /// </summary>
     public void RegisterDetailHandler(string source, Action handler)
     {
@@ -61,9 +63,23 @@ public sealed class LogService
     }
 
     /// <summary>
-    /// Invoke the detail handler for <paramref name="source"/>, or
-    /// return <c>false</c> if no handler is registered. The LogPane's
-    /// double-click handler is the only caller today.
+    /// Register an entry-aware double-click handler. Used when the
+    /// handler needs the row's <see cref="LogEntry.Context"/> or
+    /// <see cref="LogEntry.Message"/> — e.g. the Phase 9 RoomClassifier
+    /// unknown-entity fix dialog, which reads the raw "Also Here:"
+    /// line from Context and parses the unknown name out of Message.
+    /// Coexists with the no-arg variant; both fire on double-click.
+    /// </summary>
+    public void RegisterDetailHandler(string source, Action<LogEntry> handler)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+        ArgumentNullException.ThrowIfNull(handler);
+        lock (_entryHandlers) { _entryHandlers[source] = handler; }
+    }
+
+    /// <summary>
+    /// Invoke the no-arg detail handler for <paramref name="source"/>,
+    /// or return <c>false</c> if no handler is registered.
     /// </summary>
     public bool TryInvokeDetailHandler(string source)
     {
@@ -77,8 +93,36 @@ public sealed class LogService
         return true;
     }
 
+    /// <summary>
+    /// Invoke the entry-aware detail handler for
+    /// <paramref name="entry"/>'s source, or return <c>false</c> if no
+    /// entry-aware handler is registered. The LogPane fires both this
+    /// AND the no-arg overload on double-click so the two registration
+    /// styles can coexist.
+    /// </summary>
+    public bool TryInvokeDetailHandler(LogEntry entry)
+    {
+        if (string.IsNullOrEmpty(entry.Source)) return false;
+        Action<LogEntry>? handler;
+        lock (_entryHandlers)
+        {
+            if (!_entryHandlers.TryGetValue(entry.Source, out handler)) return false;
+        }
+        handler(entry);
+        return true;
+    }
+
     /// <summary>Maximum number of entries retained.</summary>
     public int Capacity { get; }
+
+    /// <summary>Live entries currently in the ring. Cheap (single
+    /// integer read under the gate) — readers that need the count
+    /// shouldn't call <see cref="Snapshot"/>, which allocates an
+    /// entire ring-sized array per call.</summary>
+    public int Count
+    {
+        get { lock (_gate) { return _count; } }
+    }
 
     /// <summary>Most recently appended entry, or <c>null</c> if nothing has been logged yet.</summary>
     public LogEntry? Latest
@@ -95,8 +139,22 @@ public sealed class LogService
 
     /// <summary>Append an entry. Stamps <see cref="LogEntry.Timestamp"/> at call time.</summary>
     public void Log(LogSeverity severity, string source, string message)
+        => Log(severity, source, message, context: null);
+
+    /// <summary>
+    /// Append an entry with an optional <paramref name="context"/> payload —
+    /// the raw wire line (or producer-supplied string) that the LogPane's
+    /// double-click handler copies to the clipboard. See
+    /// <see cref="LogEntry.Context"/> for the convention.
+    /// </summary>
+    public void Log(LogSeverity severity, string source, string message, string? context)
     {
-        LogEntry entry = new(DateTimeOffset.Now, severity, source ?? string.Empty, message ?? string.Empty);
+        LogEntry entry = new(
+            DateTimeOffset.Now,
+            severity,
+            source ?? string.Empty,
+            message ?? string.Empty,
+            context);
 
         lock (_gate)
         {
@@ -152,4 +210,26 @@ public sealed class LogService
     public void Error(string source, string message)   => Log(LogSeverity.Error,   source, message);
     public void GameMsg(string source, string message) => Log(LogSeverity.GameMsg, source, message);
     public void Cmd(string source, string message)     => Log(LogSeverity.Cmd,     source, message);
+
+    // ----- Convenience shorthands with context payload ----------------
+    // The Warn / Debug paths are the only ones that actually need it
+    // today (Phase 9 RoomClassifier emits Warn rows with the raw "Also
+    // Here" line carried in Context). Other severities can grow their
+    // own overload when a producer wants one.
+
+    /// <summary>
+    /// Append a <see cref="LogSeverity.Warn"/> entry with a
+    /// <see cref="LogEntry.Context"/> payload that the LogPane's
+    /// double-click handler copies to the clipboard. Phase 9
+    /// <c>RoomClassifier</c> uses this for Unknown-entity rows.
+    /// </summary>
+    public void Warn(string source, string message, string? context)
+        => Log(LogSeverity.Warn, source, message, context);
+
+    /// <summary>
+    /// Append a <see cref="LogSeverity.Debug"/> entry with a
+    /// <see cref="LogEntry.Context"/> payload.
+    /// </summary>
+    public void Debug(string source, string message, string? context)
+        => Log(LogSeverity.Debug, source, message, context);
 }

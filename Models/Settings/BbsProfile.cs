@@ -82,10 +82,36 @@ public sealed class BbsProfile
     public int NoResponseTimeoutSeconds { get; set; }
 
     /// <summary>
-    /// Reconnect automatically after the BBS kicks the session for cleanup
-    /// (see <see cref="CleanupPeriodMinutes"/>).
+    /// Manage the whole nightly-cleanup cycle for this BBS. Two halves:
+    /// (1) <b>proactive log-off</b> — when a shutdown warning is observed, the
+    /// <see cref="Game.CleanupLogoutOrchestrator"/> waits for a safe room, exits
+    /// the realm to MajorMUD's main menu, and drops the carrier before the BBS
+    /// yanks us; (2) <b>auto-redial</b> — reconnect after the cleanup window
+    /// (see <see cref="CleanupPeriodMinutes"/>). One toggle governs both.
     /// </summary>
     public bool ReconnectAfterCleanup { get; set; }
+
+    // ----- Game-menu commands -----
+    // The two commands the client sends at the MajorMUD main menu to
+    // enter / leave the realm. Stored per-BBS rather than per-character
+    // because the menu key bindings are a property of the realm /
+    // front-end, not the character — every character on the same BBS
+    // uses the same picks. Defaults are the standard MajorMUD picks
+    // ("E" = enter the realm, "=x" = log off from the main menu).
+
+    /// <summary>
+    /// Sent at the main menu to enter the realm. Default <c>"E"</c>.
+    /// Consumed by <see cref="Game.MainMenuEntryAutomation"/> when the
+    /// client detects the main menu after a (re)connect.
+    /// </summary>
+    public string GameEntryCommand { get; set; } = "E";
+
+    /// <summary>
+    /// Sent at the main menu to log off. Default <c>"=x"</c>. Fired by
+    /// <see cref="Game.Remote.HangupHandler"/> on a permitted
+    /// <c>@hangup</c> and by the cleanup-warning logout flow.
+    /// </summary>
+    public string GameExitCommand { get; set; } = "=x";
 
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 

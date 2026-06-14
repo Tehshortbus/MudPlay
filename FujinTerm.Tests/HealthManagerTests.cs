@@ -1,0 +1,1242 @@
+using System.Text;
+using FujinTerm.Game;
+using FujinTerm.Game.Health;
+using FujinTerm.Game.Map;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// PR 9.B — <see cref="HealthManager"/> threshold-driven gate
+/// assertions + rest / stand pacing + InCombat respect + pre-/post-rest
+/// chained commands.
+/// </summary>
+public sealed class HealthManagerTests
+{
+    private sealed class Harness : IDisposable
+    {
+        public PlayerState State { get; } = new();
+        public LogService Log { get; } = new();
+        public MovementCoordinator Coordinator { get; }
+        public HealthManager Health { get; }
+        public List<byte[]> Sent { get; } = new();
+        public HealthSettings Settings { get; set; } = new();
+        public bool AutoHealRestEnabled { get; set; } = true;
+
+        /// <summary>Char-tier General settings. Default instance has
+        /// AllowHangupInAllOffMode=false, so the all-off carve-out stays
+        /// dormant unless a test opts in.</summary>
+        public Models.Profile.GeneralSettings General { get; set; } = new();
+
+        /// <summary>User-configured hangup command (Settings → BBS →
+        /// Game-menu commands). Default <c>=x</c> matches the default
+        /// value shipped on <c>BbsProfile.GameExitCommand</c>. Set to
+        /// null to test the "not configured" branch.</summary>
+        public string? HangupCommand { get; set; } = "=x";
+
+        /// <summary>When true, HealthManager's rest-out branch skips —
+        /// mirrors CombatStateTracker.HasEngageableHostiles in app code.
+        /// Defaults false (room clear) so existing tests don't need to
+        /// touch it.</summary>
+        public bool HostilesPresent { get; set; }
+
+        public Harness(HealthSettings? settings = null)
+        {
+            Settings = settings ?? new HealthSettings();
+            Coordinator = new MovementCoordinator(Log);
+            Health = new HealthManager(State, Coordinator,
+                readSettings: () => Settings,
+                isEnabled: () => AutoHealRestEnabled,
+                readHangupCommand: () => HangupCommand ?? string.Empty,
+                getActiveMovementEngine: null,
+                getLastSentDirection: null,
+                readCombatSettings: null,
+                readGeneralSettings: () => General,
+                hasEngageableHostiles: () => HostilesPresent,
+                log: Log);
+            Health.SetWireSender(b => Sent.Add(b));
+        }
+
+        /// <summary>
+        /// Mirror <see cref="PromptParser"/>'s write order: values
+        /// first, HasPromptData last. Anything else and the engine
+        /// sees Hp=0 with HasPromptData=true and asserts spuriously
+        /// — same race a sloppy producer would hit in production.
+        /// </summary>
+        public void SetPrompt(int hp, int maxHp, int ma = 0, int maxMa = 0)
+        {
+            State.Hp = hp;
+            State.MaxHp = maxHp;
+            State.Ma = ma;
+            State.MaxMa = maxMa;
+            State.HasPromptData = true;
+        }
+
+        public bool HealthGateHeld =>
+            Coordinator.AssertedGates.Contains(MovementCoordinator.HealthRecoveryGate);
+        public bool ManaGateHeld =>
+            Coordinator.AssertedGates.Contains(MovementCoordinator.ManaRecoveryGate);
+
+        public string LastSent => Sent.Count == 0
+            ? string.Empty
+            : Encoding.Latin1.GetString(Sent[^1]).TrimEnd('\r');
+
+        public List<string> SentLines =>
+            Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+
+        public void Dispose() => Health.Dispose();
+    }
+
+    // ----- no prompt data yet → engine dormant -----------------------
+
+    [Fact]
+    public void NoPromptData_DoesNothing()
+    {
+        using Harness h = new();
+        // Default: HasPromptData=false, Hp=0, MaxHp=0 — must not assert.
+        h.Health.Evaluate();
+        Assert.False(h.HealthGateHeld);
+        Assert.False(h.ManaGateHeld);
+        Assert.Empty(h.Sent);
+    }
+
+    // ----- HP gate transitions ---------------------------------------
+
+    [Fact]
+    public void HpBelowTrigger_AssertsHealthRecovery()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 100;            // 50% — at default 60% trigger
+
+        Assert.True(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void HpAboveTrigger_DoesNotAssert()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 180;            // 90% > 60%
+
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void HpRecoversToTarget_ClearsGate()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 190;            // 95% target hit
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void HpRecoversPartially_GateStaysAsserted()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 100;            // 50% — past trigger but below 95% target
+        Assert.True(h.HealthGateHeld);
+    }
+
+    // ----- absolute threshold mode -----------------------------------
+
+    [Fact]
+    public void AbsoluteMode_AtTriggerValue_DoesNotAssert()
+    {
+        // "Rest if below 60" is strictly below — exactly 60 must NOT trigger.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            RestIfBelowHp   = 60,
+            RestMaxHp       = 195,
+        };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 60;             // exactly at 60 absolute → not below
+
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void AbsoluteMode_BelowTriggerValue_Asserts()
+    {
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            RestIfBelowHp   = 60,
+            RestMaxHp       = 195,
+        };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 59;             // strictly below 60 → trigger
+
+        Assert.True(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void ManaTriggerZero_AtZeroMana_DoesNotAssert()
+    {
+        // The reported repro: a level-2 mystic with 1 max KAI and rest-if-
+        // below 0 spends the KAI → MA 0. With strict-below, 0 is not below
+        // the 0 trigger, so no spurious mana-rest pause.
+        HealthSettings s = new()
+        {
+            MaThresholdMode = ThresholdMode.Absolute,
+            RestIfBelowMa   = 0,
+        };
+        using Harness h = new(s);
+        h.State.MaxMa = 1;
+        h.State.HasPromptData = true;
+        h.State.Ma = 0;
+
+        Assert.False(h.ManaGateHeld);
+    }
+
+    // ----- rest / stand pacing ---------------------------------------
+
+    [Fact]
+    public void GateAsserted_OutOfCombat_SendsRest()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.Contains("rest", h.SentLines);
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void GateAsserted_InCombat_DoesNotRest()
+    {
+        using Harness h = new();
+        h.State.InCombat = true;     // first so it doesn't trigger evaluate before threshold
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void GateAssertedInCombat_CombatEnds_ThenRest()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.InCombat = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+        Assert.False(h.Health.RestInFlight);
+
+        h.State.InCombat = false;    // combat just ended
+        Assert.True(h.Health.RestInFlight);
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void GateAsserted_HostilesInRoom_DoesNotRest()
+    {
+        // User direction: "if a room has hostiles it will break resting
+        // every combat round preventing you from resting, so you need
+        // to clear the room and then rest". Block the rest-out branch
+        // while CombatStateTracker says a hostile is here.
+        using Harness h = new() { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void GateAsserted_RoomCleared_ThenRest()
+    {
+        // We took damage while a hostile is alive — gate held but rest
+        // blocked. When CombatManager kills it (HasEngageableHostiles
+        // flips false), the next Evaluate tick fires rest.
+        using Harness h = new() { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+        Assert.False(h.Health.RestInFlight);
+
+        h.HostilesPresent = false;   // mob died → room cleared
+        h.Health.Evaluate();          // CombatStateTracker would call this via the
+                                       // standard property-changed plumbing; tests
+                                       // drive it explicitly.
+
+        Assert.True(h.Health.RestInFlight);
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void RestingAndHostileArrives_DoesNotReSpamRest()
+    {
+        // While resting, a new hostile walks in. The rest gets broken
+        // server-side; our latch drops via room-change or InCombat flip.
+        // Until CombatManager clears the new mob, we must NOT spam
+        // another rest.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Contains("rest", h.SentLines);
+        int firstRestCount = h.SentLines.Count(l => l == "rest");
+
+        // Mob arrived → CombatStateTracker flips HasEngageableHostiles
+        // true; our latch is still _restInFlight=true until rest breaks.
+        h.HostilesPresent = true;
+        // Server breaks rest because we took damage / position changed —
+        // simulate the position flip + Evaluate tick.
+        h.State.Position = PlayerPosition.Standing;
+        h.Health.Evaluate();
+
+        // No second rest while hostile is here.
+        int afterHostileRestCount = h.SentLines.Count(l => l == "rest");
+        Assert.Equal(firstRestCount, afterHostileRestCount);
+    }
+
+    [Fact]
+    public void Recovery_DoesNotSendStand_JustClearsInFlight()
+    {
+        // "stand" isn't a valid MajorMUD command. We clear the gate +
+        // the in-flight latch; the walker resuming (because the gate
+        // cleared) issues a move which the server auto-stands on.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.Health.RestInFlight);
+
+        h.State.Hp = 195;             // past 95% target
+        Assert.False(h.HealthGateHeld);
+        Assert.DoesNotContain("stand", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void RestSentOnce_NoSpamming()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        // Drop further → no extra rest emit while in flight.
+        h.State.Hp = 30;
+        int restCount = h.SentLines.Count(l => l == "rest");
+        Assert.Equal(1, restCount);
+    }
+
+    // ----- pre / post commands ---------------------------------------
+
+    [Fact]
+    public void PreRestCommand_SentBeforeRest()
+    {
+        HealthSettings s = new() { PreRestCommand = "peer" };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        int peerIdx = h.SentLines.IndexOf("peer");
+        int restIdx = h.SentLines.IndexOf("rest");
+        Assert.True(peerIdx >= 0);
+        Assert.True(restIdx >= 0);
+        Assert.True(peerIdx < restIdx);
+    }
+
+    [Fact]
+    public void PreRestCommand_Chained_SplitsOnSemicolon()
+    {
+        HealthSettings s = new() { PreRestCommand = "peer;look" };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.Contains("peer", h.SentLines);
+        Assert.Contains("look", h.SentLines);
+        // Both pre-rest commands precede rest.
+        int peer = h.SentLines.IndexOf("peer");
+        int look = h.SentLines.IndexOf("look");
+        int rest = h.SentLines.IndexOf("rest");
+        Assert.True(peer < rest);
+        Assert.True(look < rest);
+    }
+
+    [Fact]
+    public void PreRestCommand_Chained_SplitsOnCaretM()
+    {
+        HealthSettings s = new() { PreRestCommand = "peer^Mlook" };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.Contains("peer", h.SentLines);
+        Assert.Contains("look", h.SentLines);
+    }
+
+    [Fact]
+    public void PostRestCommand_SentOnRecovery()
+    {
+        HealthSettings s = new() { PostRestCommand = "look;exits" };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        int restIdx = h.SentLines.IndexOf("rest");
+        h.State.Hp = 195;
+
+        // No "stand"; post-rest commands fire after the recovery flip.
+        Assert.DoesNotContain("stand", h.SentLines);
+        int look   = h.SentLines.LastIndexOf("look");
+        int exits  = h.SentLines.LastIndexOf("exits");
+        Assert.True(look  > restIdx);
+        Assert.True(exits > restIdx);
+    }
+
+    // ----- NoteRoomChanged drops the in-flight latch -------------------
+
+    [Fact]
+    public void NoteRoomChanged_DropsRestInFlight()
+    {
+        // Server-side resting state auto-clears on move. Our latch
+        // must follow — otherwise the next threshold breach would
+        // see _restInFlight==true and skip the `rest` emit.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.Health.RestInFlight);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_NoLatch_NoOp()
+    {
+        // Calling NoteRoomChanged with nothing in flight is a no-op.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 180;    // above trigger — no rest started
+        Assert.False(h.Health.RestInFlight);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void NoteRoomChanged_GateStillAsserted_NextBreachReFiresRest()
+    {
+        // We rested, walker tugged us into a new room mid-recovery
+        // (HP still below target → gate still held). Latch dropped
+        // by NoteRoomChanged. Next Evaluate (any state change) AND
+        // out-of-combat AND gate still held → rest is re-sent.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+        int restCount1 = h.SentLines.Count(l => l == "rest");
+        Assert.Equal(1, restCount1);
+
+        h.Health.NoteRoomChanged();
+        Assert.False(h.Health.RestInFlight);
+        Assert.True(h.HealthGateHeld);     // still need recovery
+
+        // Drive any state change to re-evaluate (in real use the next
+        // HP/MA tick from PromptParser would do this naturally).
+        h.State.Hp = 60;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+    }
+
+    // ----- MA gate (independent of HP) -------------------------------
+
+    [Fact]
+    public void MaBelowTrigger_AssertsManaRecovery()
+    {
+        using Harness h = new();
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;             // 20% < 30% trigger
+
+        Assert.True(h.ManaGateHeld);
+    }
+
+    [Fact]
+    public void MaxMaZero_NoSpuriousAssert()
+    {
+        // Non-caster classes — MaxMa stays 0 forever. The threshold
+        // computation must not spuriously assert.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 0;
+        h.State.HasPromptData = true;
+        h.State.Ma = 0;
+
+        Assert.False(h.ManaGateHeld);
+    }
+
+    [Fact]
+    public void BothPoolsLow_BothGatesHeld_OneRest()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Ma = 20;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.True(h.ManaGateHeld);
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+    }
+
+    [Fact]
+    public void BothPoolsLow_OnlyHpRecovers_StaysResting()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Ma = 20;
+
+        h.State.Hp = 195;            // HP topped, MA still low
+        Assert.False(h.HealthGateHeld);
+        Assert.True(h.ManaGateHeld);
+        // No stand emit yet — MA gate still holds.
+        Assert.DoesNotContain("stand", h.SentLines);
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void BothPoolsRecover_ClearsGates_NoStand()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Ma = 20;
+
+        h.State.Hp = 195;
+        h.State.Ma = 95;
+
+        Assert.False(h.HealthGateHeld);
+        Assert.False(h.ManaGateHeld);
+        Assert.DoesNotContain("stand", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
+    // ----- run-if-below (flee) ---------------------------------------
+
+    [Fact]
+    public void HpBelowRunTrigger_InCombat_SendsFleeOnce()
+    {
+        // Default RunIfBelowHp=20% — set HP to 30 against MaxHp=200
+        // (15%) while in combat. Run-threshold detection latches
+        // _fledThisCombat=true; the wire emit is currently log-only
+        // because MajorMUD has no `flee` command and the right
+        // replacement (walker-driven retreat) ships with Cluster 5b.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.DoesNotContain("flee", h.SentLines);   // engine never sent the bogus command
+        Assert.True(h.Health.FledThisCombat);
+
+        // Drop further → still no spam.
+        h.State.Hp = 25;
+        Assert.DoesNotContain("flee", h.SentLines);
+    }
+
+    [Fact]
+    public void HpBelowRunTrigger_OutOfCombat_DoesNotLatchFlee()
+    {
+        // Out of combat, low HP just enters the normal rest cycle.
+        // Run-threshold detection is combat-specific.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;            // 15% — below run threshold
+
+        Assert.DoesNotContain("flee", h.SentLines);
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void FledThisCombat_ResetsWhenCombatEnds()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.True(h.Health.FledThisCombat);
+
+        h.State.InCombat = false;
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void FledThisCombat_ReArmsOnNextCombat()
+    {
+        // Latch flips in fight #1, clears when combat ends, re-arms
+        // for fight #2.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.True(h.Health.FledThisCombat);
+
+        h.State.InCombat = false;
+        h.State.Hp = 100;
+        Assert.False(h.Health.FledThisCombat);
+
+        h.State.InCombat = true;
+        h.State.Hp = 25;
+        Assert.True(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void MaBelowRunTrigger_NoLatch_HpOnlyTrigger()
+    {
+        // Per user direction: run-if-below is HP-only. Low MA with
+        // healthy HP must not latch the flee detection.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 150;
+        h.State.Ma = 5;
+
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void NonCasterMaxMaZero_NoFledFromMa()
+    {
+        // Non-caster — MA is 0/0 forever; must not latch from MA path.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 0;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 150;
+        h.State.Ma = 0;
+
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void RunLatchAndRest_BothHappen_AfterCombatEnds()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("rest", h.SentLines);
+
+        h.State.InCombat = false;
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    // ----- Multi-step flee + auto-resume (Cluster 5b foundation) ----
+
+    /// <summary>Fake engine for testing the flee dispatch — captures
+    /// every call instead of touching real walker plumbing.</summary>
+    private sealed class FakeFleeEngine : Game.Map.IRecoverableEngine
+    {
+        public string Name => "FakeWalker";
+        public List<Game.Map.Direction> SentBacktrackMoves { get; } = new();
+        public string? PausedReason { get; private set; }
+        public Game.Map.RoomKey? ResumedAtRoom { get; private set; }
+        public Game.Map.Direction? NextPlanned { get; set; }
+
+        public Game.Map.Direction? PeekNextPlannedDirection() => NextPlanned;
+        public void SendBacktrackMove(Game.Map.Direction d) => SentBacktrackMoves.Add(d);
+        public void PauseForRecovery(string reason) => PausedReason = reason;
+        public void ResumeAfterRecovery(Game.Map.RoomKey k) => ResumedAtRoom = k;
+        public void AbortFromRecoveryFailure(string _) { }
+    }
+
+    private sealed class FleeHarness : IDisposable
+    {
+        public PlayerState State { get; } = new();
+        public LogService Log { get; } = new();
+        public MovementCoordinator Coordinator { get; }
+        public HealthManager Health { get; }
+        public List<byte[]> Sent { get; } = new();
+        public HealthSettings HealthSettings { get; set; } = new();
+        public Models.Profile.CombatSettings Combat { get; set; } = new();
+        public FakeFleeEngine? Engine { get; set; } = new();
+        public Game.Map.Direction? LastSent { get; set; } = Game.Map.Direction.N;
+        public bool HostilesPresent { get; set; }
+
+        public FleeHarness()
+        {
+            Coordinator = new MovementCoordinator(Log);
+            Health = new HealthManager(State, Coordinator,
+                readSettings: () => HealthSettings,
+                isEnabled: () => true,
+                readHangupCommand: () => string.Empty,
+                getActiveMovementEngine: () => Engine,
+                getLastSentDirection: () => LastSent,
+                readCombatSettings: () => Combat,
+                readGeneralSettings: null,
+                hasEngageableHostiles: () => HostilesPresent,
+                log: Log);
+            Health.SetWireSender(b => Sent.Add(b));
+        }
+
+        public List<string> SentLines =>
+            Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+
+        public void Dispose() => Health.Dispose();
+    }
+
+    [Fact]
+    public void Flee_NoActiveEngine_NoBacktrack()
+    {
+        // Per user direction: "if you aren't running a movement
+        // engine, the flee-if-below wouldn't fire".
+        using FleeHarness h = new() { Engine = null };
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_BackwardMode_InvertsLastSentDirection()
+    {
+        using FleeHarness h = new();
+        h.Combat.RunDirection = Models.Profile.RunDirection.Backward;
+        h.Combat.BreakBeforeFleeing = true;
+        h.Combat.RunDistance = 1;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Single(h.Engine!.SentBacktrackMoves);
+        Assert.Equal(Game.Map.Direction.S, h.Engine.SentBacktrackMoves[0]);
+        Assert.Contains("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_ForwardMode_UsesEnginePlannedDirection()
+    {
+        using FleeHarness h = new();
+        h.Combat.RunDirection = Models.Profile.RunDirection.Forward;
+        h.Combat.BreakBeforeFleeing = false;
+        h.Combat.RunDistance = 1;
+        h.Engine!.NextPlanned = Game.Map.Direction.E;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Single(h.Engine.SentBacktrackMoves);
+        Assert.Equal(Game.Map.Direction.E, h.Engine.SentBacktrackMoves[0]);
+        Assert.DoesNotContain("break", h.SentLines);
+    }
+
+    [Fact]
+    public void Flee_MultiStep_SendsOnePerRoomChange()
+    {
+        // RunDistance=3 → first step on trigger; two more steps on
+        // subsequent NoteRoomChanged calls.
+        using FleeHarness h = new();
+        h.Combat.BreakBeforeFleeing = false;
+        h.Combat.RunDistance = 3;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        Assert.Single(h.Engine!.SentBacktrackMoves);
+
+        // Each room arrival advances one more step.
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));
+        Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
+
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 101));
+        Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);
+
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 102));
+        Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);    // stopped
+    }
+
+    [Fact]
+    public void Flee_AutoResume_OnHpRecovery()
+    {
+        using FleeHarness h = new();
+        h.Combat.RunDistance = 1;
+        h.LastSent = Game.Map.Direction.N;
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));   // record room
+        Assert.NotNull(h.Engine!.PausedReason);
+
+        // HP climbs back above 20% (default RunIfBelowHp).
+        h.State.Hp = 150;
+
+        Assert.NotNull(h.Engine.ResumedAtRoom);
+        Assert.Equal(new Game.Map.RoomKey(1, 100), h.Engine.ResumedAtRoom);
+    }
+
+    // ----- rest-interruption recovery (server breaks our rest) ----
+
+    [Fact]
+    public void Rest_ServerBreaksRest_OutOfCombat_ReRests()
+    {
+        // We rested; server confirmed (Resting). Then a monster enters
+        // and swings — server boots us back to (Standing). HP still
+        // below rest-target → on the next Evaluate tick we re-send
+        // `rest` (mirrors MudProxy's OnRestingStateChanged).
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        // Server prompt confirms we're resting.
+        h.State.Position = PlayerPosition.Resting;
+        Assert.True(h.Health.RestInFlight);
+
+        // Server breaks rest — position flips to Standing. We're not
+        // in combat (mob hit someone else in the room, didn't engage
+        // us directly — common party scenario).
+        h.State.Position = PlayerPosition.Standing;
+
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_ServerBreaksRest_InCombat_HoldsUntilCombatEnds()
+    {
+        // Server breaks rest because we got engaged. Don't fight the
+        // combat by re-sending rest mid-fight — wait for combat to
+        // clear, then rest goes out again.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        h.State.Position = PlayerPosition.Resting;
+        h.State.InCombat = true;
+        h.State.Position = PlayerPosition.Standing;     // server stood us up
+
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));  // not yet
+        Assert.False(h.Health.RestInFlight);                   // latch dropped
+
+        // Combat ends — next Evaluate tick re-rests.
+        h.State.InCombat = false;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_PositionStandingBeforeConfirm_NoSpuriousReRest()
+    {
+        // Race protection: we send rest, but an HP-changed tick fires
+        // BEFORE the server's (Resting) prompt arrives. Position is
+        // still Standing. We must NOT treat that as an interruption —
+        // we haven't confirmed the rest landed yet.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+
+        // HP drops further before the (Resting) prompt — Position
+        // hasn't transitioned to Resting yet.
+        h.State.Hp = 30;
+
+        Assert.Equal(1, h.SentLines.Count(l => l == "rest"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
+    [Fact]
+    public void Rest_RecoveryComplete_ClearsLatchAndConfirmFlag()
+    {
+        // After full recovery, both _restInFlight and the prompt-
+        // confirmed flag reset so the next low-HP cycle starts clean.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Position = PlayerPosition.Resting;
+        Assert.True(h.Health.RestInFlight);
+
+        h.State.Hp = 200;       // recovered — gate clears, post-rest path fires
+        Assert.False(h.Health.RestInFlight);
+
+        // Next low-HP must rest cleanly, not get tricked by stale
+        // confirm state.
+        h.State.Position = PlayerPosition.Standing;
+        h.State.Hp = 50;
+        Assert.Equal(2, h.SentLines.Count(l => l == "rest"));
+    }
+
+    // ----- Meditate vs Rest (Cluster 5c) -----------------------------
+
+    [Fact]
+    public void Meditate_OnlyMaGated_PrefersMeditate()
+    {
+        // Caster: MA dropped below trigger, HP at max → meditate.
+        HealthSettings s = new() { UseMeditateAbility = true };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;        // HP healthy first so HP gate stays clear
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;         // below default 30% trigger
+
+        Assert.Contains("meditate", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_UseMeditateOff_FallsBackToRest()
+    {
+        HealthSettings s = new() { UseMeditateAbility = false };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;
+
+        Assert.Contains("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_BothPoolsGated_MeditateBeforeRestingFlipsOrder()
+    {
+        HealthSettings s = new() { UseMeditateAbility = true, MeditateBeforeResting = true };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;        // below rest-trigger
+        h.State.Ma = 20;        // below rest-trigger
+
+        Assert.Contains("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Meditate_BothPoolsGated_DefaultOrderUsesRest()
+    {
+        // Default MeditateBeforeResting=false → rest covers both pools
+        // for non-Kai classes.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+        h.State.Ma = 20;
+
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    // ----- Hangup-on-emergency (Cluster 5c) -------------------------
+
+    [Fact]
+    public void Hangup_HpBelowTrigger_SendsDisconnect()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ZeroSetting_Disabled()
+    {
+        HealthSettings s = new() { HangIfBelowHp = 0 };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 1;        // would normally trigger
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_AboveThreshold_NoFire()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;        // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_SingleShot_DoesNotRefire()
+    {
+        // First crossing fires; subsequent property changes within
+        // the same low-HP window must not re-fire.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
+        int hangCount = h.SentLines.Count(l => l == "=x");
+        Assert.Equal(1, hangCount);
+
+        h.State.Hp = 3;        // even lower — still no second hang
+        Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
+    }
+
+    // ----- all-off-mode hangup carve-out ----------------------------
+
+    [Fact]
+    public void AllOff_HangupAllowed_HpBelowTrigger_StillHangs()
+    {
+        // Engine disabled but the opt-in keeps the emergency hangup live.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void AllOff_HangupNotAllowed_HpBelowTrigger_NoHang()
+    {
+        // Engine disabled and carve-out off (default) — fully dormant.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        // h.General left at default (AllowHangupInAllOffMode = false)
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void AllOff_HangupAllowed_AboveThreshold_NoHang()
+    {
+        // Carve-out on but HP healthy — no spurious hangup.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;       // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    // ----- party-role-aware recovery (PR 9.B role fix) ---------------
+
+    [Fact]
+    public void Follower_RecoversToFloorPlusOne_NotRestMax()
+    {
+        // Default trigger 60% of 200 = 120; default rest-max 95% = 190.
+        // As a follower the gate clears the moment HP climbs one past the
+        // floor (121), well before rest-max.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 121;            // one past the 120 floor
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Follower_AtFloor_GateStillHeld()
+    {
+        // Exactly at the floor is still "below or equal" — gate holds
+        // until strictly above.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 120;            // at floor, not past it
+        Assert.True(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Leader_RecoversToRestMax_NotFloor()
+    {
+        // Same wiring but role selector says leader → full topoff target.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 121;            // above floor but below 190 target
+        Assert.True(h.HealthGateHeld);
+
+        h.State.Hp = 190;            // rest-max
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void Follower_GateAssert_RequestsWait_GateClear_RequestsOk()
+    {
+        int waits = 0, oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+
+        h.State.Hp = 50;             // below floor → @wait
+        Assert.Equal(1, waits);
+        Assert.Equal(0, oks);
+
+        h.State.Hp = 121;            // above floor → @ok
+        Assert.Equal(1, waits);
+        Assert.Equal(1, oks);
+    }
+
+    [Fact]
+    public void Follower_WaitOk_FireOncePerCycle_NoSpam()
+    {
+        int waits = 0, oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+
+        h.State.Hp = 50;             // @wait
+        h.State.Hp = 40;             // still below — no second @wait
+        h.State.Hp = 30;
+        Assert.Equal(1, waits);
+
+        h.State.Hp = 121;            // @ok
+        h.State.Hp = 130;            // still above — no second @ok
+        Assert.Equal(1, oks);
+    }
+
+    [Fact]
+    public void Follower_DisabledMidRecovery_ReleasesOk()
+    {
+        int oks = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => oks++);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;             // @wait sent
+        Assert.Equal(0, oks);
+
+        h.AutoHealRestEnabled = false;
+        h.Health.Evaluate();         // engine toggled off mid-recovery
+        Assert.Equal(1, oks);        // leader released, not left hanging
+    }
+
+    [Fact]
+    public void NoRoleSync_RecoversToRestMax_NoSignals()
+    {
+        // Backward-compat: without SetPartyRoleSync the engine behaves as
+        // solo/leader — rest-max target, no party signals.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        h.State.Hp = 121;            // above floor but below rest-max
+        Assert.True(h.HealthGateHeld);
+        h.State.Hp = 190;
+        Assert.False(h.HealthGateHeld);
+    }
+
+    // ----- gate-history captures asserter --------------------------
+
+    [Fact]
+    public void GateHistoryRecordsAsserterAndReason()
+    {
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        GateTransitionEntry? hpAssert = h.Coordinator.History
+            .FirstOrDefault(e => e.Gate == MovementCoordinator.HealthRecoveryGate && e.Asserted);
+        Assert.NotNull(hpAssert);
+        Assert.Equal(HealthManager.AsserterName, hpAssert!.Value.Asserter);
+        Assert.Contains("HP", hpAssert.Value.Reason);
+    }
+}

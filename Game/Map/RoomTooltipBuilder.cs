@@ -71,7 +71,7 @@ public static class RoomTooltipBuilder
         }
 
         // 8. Exits — blank line above, per-direction with destination.
-        string exitsBlock = BuildExitsBlock(room, graph, data);
+        string exitsBlock = BuildExitsBlock(room, graph, data, tbinfo);
         if (exitsBlock.Length > 0)
         {
             sb.Append('\n').Append('\n').Append(exitsBlock);
@@ -176,7 +176,7 @@ public static class RoomTooltipBuilder
         Direction.U, Direction.D,
     };
 
-    private static string BuildExitsBlock(Room room, RoomGraphManager graph, GameDataCache? data)
+    private static string BuildExitsBlock(Room room, RoomGraphManager graph, GameDataCache? data, TBInfoStore? tbinfo)
     {
         if (room.Exits.Count == 0) return string.Empty;
 
@@ -194,8 +194,98 @@ public static class RoomTooltipBuilder
 
             string hintRender = FormatExitHint(exit, data);
             if (hintRender.Length > 0) sb.Append(" (").Append(hintRender).Append(')');
+
+            // Multi-line per-step breakdown for action-required exits.
+            // The inline hint above carries the summary ("Needs N
+            // actions"); this block names the trigger room + commands
+            // for each step so a glance at the tooltip is enough to
+            // know where to go (e.g. "go to room 9/870 and pull lever"
+            // for map 9 room 1012's east exit on v1.11p).
+            if (exit.Hint == RoomExitHint.MultiActionHidden)
+            {
+                if (exit.MultiAction is { Actions.Count: > 0 } maDetail)
+                {
+                    AppendMultiActionDetail(sb, room.Key, maDetail, graph);
+                }
+                else if (room.Cmd > 0 && tbinfo is not null)
+                {
+                    // No Action#N exit cells were attached, but the
+                    // room runs a TBInfo CMD chain. v1.11p encodes
+                    // many lever-style unlocks this way (e.g. map
+                    // 9 / room 1012 CMD 1422 — "clear rubble" /
+                    // "push mound" / etc., all firing the same
+                    // remoteaction). Surface those keywords as a
+                    // fallback so the tooltip still tells the user
+                    // what to type.
+                    AppendTbInfoActionFallback(sb, room.Cmd, tbinfo);
+                }
+            }
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Per-step breakdown rendered beneath a MultiActionHidden exit:
+    /// one indented line per <see cref="ExitAction"/> with the trigger
+    /// room (when the action lives in another room) plus its
+    /// alternative commands. Mirrors the format the walker actually
+    /// executes — the user sees the same routing the path expander
+    /// would do.
+    /// </summary>
+    private static void AppendMultiActionDetail(
+        StringBuilder sb, RoomKey hostRoom, MultiActionExitData ma, RoomGraphManager graph)
+    {
+        for (int i = 0; i < ma.Actions.Count; i++)
+        {
+            ExitAction step = ma.Actions[i];
+            sb.Append('\n').Append("    ");
+            // Step number — match the parser's #N for the user, so it
+            // lines up with the raw MDB cell if they ever look.
+            sb.Append(step.StepNumber).Append(". ");
+
+            // Trigger location: same room if RemoteSourceRoom is null
+            // (action runs from the exit's host room), or the named
+            // remote room otherwise. The remote-room name comes from
+            // the graph when available; fall back to the bare RoomKey
+            // when the room sits outside the active set.
+            if (step.RemoteSourceRoom is { } remote)
+            {
+                Room? at = graph.GetRoom(remote);
+                string name = at is not null ? at.DisplayName : remote.ToString();
+                sb.Append("at ").Append(name).Append(' ').Append('(').Append(remote).Append("): ");
+            }
+            else
+            {
+                sb.Append("here: ");
+            }
+            sb.Append(string.Join(" / ", step.Commands));
+        }
+    }
+
+    /// <summary>
+    /// TBInfo fallback for MultiActionHidden exits whose unlock lives
+    /// in a CMD chain rather than Action#N exit cells. Walks the
+    /// chain via <see cref="TBInfoActionResolver"/> and renders the
+    /// gathered keywords as a single indented "Try: kw1 / kw2 / …"
+    /// line. The keywords all run in the room being hovered (TBInfo
+    /// CMDs are local to their owning room), so no "here:" / "at X:"
+    /// prefix is needed.
+    /// </summary>
+    private static void AppendTbInfoActionFallback(
+        StringBuilder sb, int roomCmd, TBInfoStore tbinfo)
+    {
+        List<string> keywords = new();
+        foreach (string kw in TBInfoActionResolver.EnumerateRemoteActionKeywords(tbinfo, roomCmd))
+        {
+            // Preserve order but dedup — the same keyword appearing
+            // twice in a CMD chain (rare but possible) shouldn't
+            // bloat the tooltip.
+            if (!keywords.Contains(kw, StringComparer.OrdinalIgnoreCase))
+                keywords.Add(kw);
+        }
+        if (keywords.Count == 0) return;
+
+        sb.Append('\n').Append("    Try: ").Append(string.Join(" / ", keywords));
     }
 
     /// <summary>
@@ -248,7 +338,25 @@ public static class RoomTooltipBuilder
                 return $"Needs {ma.RequiredActionCount} {countLabel}{order}: {steps}";
             }
 
+            case RoomExitHint.MultiActionHidden:
+            {
+                // MultiAction data didn't attach to this exit (no
+                // Action#N exit cells — the unlock lives in a TBInfo
+                // CMD chain instead, see TBInfoActionResolver). Still
+                // synthesise the "Needs N actions" summary from the
+                // raw modifier so the inline hint is informative
+                // instead of just "(MultiActionHidden)". The per-step
+                // breakdown beneath the exit line carries the actual
+                // keyword candidates.
+                (int count, bool specific) = MultiActionExitData.ParseModifier(exit.RawHint ?? string.Empty);
+                string label = count == 1 ? "action" : "actions";
+                string order = specific ? " specific order" : "";
+                return $"Needs {count} {label}{order}";
+            }
+
             case RoomExitHint.None:
+                if (exit.HasLevelGate)
+                    return RoomExit.FormatLevelGate(exit.MinLevel, exit.MaxLevel);
                 return string.IsNullOrEmpty(exit.RawHint) ? string.Empty : exit.RawHint!;
 
             default:
@@ -281,12 +389,17 @@ public static class RoomTooltipBuilder
         // ("use chime" / "ring chime" both teleporting to 1/65) render
         // as one line instead of cluttering the tooltip.
         Dictionary<RoomKey, List<string>> byDest = new();
-        foreach ((string keyword, RoomKey dest)
+        Dictionary<RoomKey, int> minLevelByDest = new();
+        foreach ((string keyword, RoomKey dest, int minLevel)
                  in TBInfoTeleportResolver.EnumerateTeleports(tbinfo, room.Cmd))
         {
             if (!byDest.TryGetValue(dest, out List<string>? words))
                 byDest[dest] = words = new List<string>();
             if (!words.Contains(keyword)) words.Add(keyword);
+            // A destination reachable by several keywords keeps the
+            // highest level floor seen across them (conservative gate).
+            if (minLevel > minLevelByDest.GetValueOrDefault(dest))
+                minLevelByDest[dest] = minLevel;
         }
         if (byDest.Count == 0) return string.Empty;
 
@@ -301,6 +414,9 @@ public static class RoomTooltipBuilder
             sb.Append('\n').Append("  ")
               .Append(string.Join(" / ", entry.Value))
               .Append(" → ").Append(destName);
+            int ml = minLevelByDest.GetValueOrDefault(entry.Key);
+            if (ml > 0)
+                sb.Append(" (").Append(RoomExit.FormatLevelGate(ml, 0)).Append(')');
         }
         return sb.ToString();
     }

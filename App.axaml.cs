@@ -87,6 +87,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.FavoriteRenameDialogViewModel,
                 FujinTerm.Views.Navigation.FavoriteRenameDialog>();
 
+            // Folder name prompt — New / Rename folder on both the Manage
+            // dialog (loops + lairs) and the rail (gotos).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.NavFolderNameDialogViewModel,
+                FujinTerm.Views.Navigation.NavFolderNameDialog>();
+
             // File → Open profile / Save profile as — custom modeless dialogs
             // replacing the platform file pickers (the per-folder layout means
             // profiles live as subfolders, not flat .json files).
@@ -102,6 +108,16 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.RoomNameLearnedDialogViewModel,
                 FujinTerm.Views.RoomNameLearnedDialog>();
+
+            // Phase 9 PR 9.0a sub-G — Unknown-entity fix dialog. PR 9.0b's
+            // RoomEntityClassifier opens this when it emits a Warn row
+            // for an Also-Here name it can't resolve to a Monster or a
+            // Player; the dialog collects the user's intent (flavor
+            // prefix / player observation) and returns it for the
+            // classifier to commit at the active 4-tier scope.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.UnknownEntityFixDialogViewModel,
+                FujinTerm.Views.UnknownEntityFixDialog>();
 
             // Modify Room Blacklist (Game Data menu) — staged editor
             // over the per-BBS room blacklist.
@@ -199,8 +215,154 @@ public partial class App : Application
                     coverageWindow.Closed += (_, _) => coverageWindow = null;
                     coverageWindow.Show(desktop.MainWindow!);
                 });
+
+            // Phase 9 PR 9.0b sub-D — RoomClassifier unknown-entity
+            // click-to-fix. The classifier emits Warn rows with the
+            // raw "Also Here:" line carried as LogEntry.Context and the
+            // unknown name quoted in the Message. Double-click on such
+            // a row opens the fix dialog. The dialog returns Add-as-
+            // flavor-prefix / Add-as-player-observation / Cancel; the
+            // handler commits the latter directly via PlayerDatabase.
+            // The former just logs the intent for now — picking the
+            // target monster needs a UI affordance (search + selection)
+            // beyond the 9.0b foundation scope.
+            AppServices.Current.Log.RegisterDetailHandler(
+                FujinTerm.Game.Combat.RoomEntityClassifier.LogCategory,
+                async (entry) =>
+                {
+                    if (entry.Context is not { Length: > 0 } rawLine) return;
+                    string unknownName = ParseUnknownNameFromMessage(entry.Message);
+                    if (unknownName.Length == 0) return;
+
+                    var vm = new FujinTerm.ViewModels.UnknownEntityFixDialogViewModel(
+                        rawLine, unknownName);
+                    FujinTerm.ViewModels.UnknownEntityFixResult? result =
+                        await AppServices.Current.Dialogs
+                            .OpenWindowAsync<
+                                FujinTerm.ViewModels.UnknownEntityFixDialogViewModel,
+                                FujinTerm.ViewModels.UnknownEntityFixResult?>(vm);
+                    if (result is null) return;
+
+                    switch (result.Action)
+                    {
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddPlayerObservation:
+                            if (AppServices.Current.Players.AddManual(
+                                    result.EntityName, familyName: string.Empty,
+                                    nowUtc: DateTime.UtcNow))
+                            {
+                                AppServices.Current.Log.Info("RoomClassifier",
+                                    $"Added player observation: {result.EntityName}");
+                            }
+                            else
+                            {
+                                AppServices.Current.Log.Warn("RoomClassifier",
+                                    $"Player observation for '{result.EntityName}' already exists.");
+                            }
+                            break;
+
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddAsMonster:
+                            AddPlaceholderMonster(result.EntityName);
+                            break;
+
+                        case FujinTerm.ViewModels.UnknownEntityFixAction.AddFlavorPrefix:
+                            // Future PR: open a monster picker, then attach
+                            // the prefix to the selected MonsterMessageRecord.
+                            AppServices.Current.Log.Info("RoomClassifier",
+                                $"Flavor-prefix add for '{result.EntityName}' " +
+                                "queued — monster-picker UI ships in a follow-up PR.");
+                            break;
+                    }
+                });
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Extract the single-quoted name from a RoomClassifier Warn message
+    /// of the form <c>"unknown entity 'foozle' — double-click to fix"</c>.
+    /// Returns empty when the message doesn't carry a quoted name —
+    /// caller treats that as "nothing to fix".
+    /// </summary>
+    private static string ParseUnknownNameFromMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return string.Empty;
+        int open = message.IndexOf('\'');
+        if (open < 0) return string.Empty;
+        int close = message.IndexOf('\'', open + 1);
+        if (close <= open) return string.Empty;
+        return message.Substring(open + 1, close - open - 1);
+    }
+
+    /// <summary>
+    /// Insert a placeholder <see cref="FujinTerm.Models.GameData.MonsterMessageRecord"/>
+    /// for an unknown name into the active <see cref="MonsterMessageStore"/>.
+    /// AllowNoPrefix is true (the name alone is the matchable form);
+    /// every line list is empty (the user fills them in later via the
+    /// Monsters tab editor); Links is null (no MDB row to bind yet).
+    /// Skips when a record with the same case-insensitive name already
+    /// exists — that's the case the user just hit when cave bear was
+    /// already in the catalogue but unreachable, fixed at the
+    /// classifier layer in the same change set.
+    /// </summary>
+    private static void AddPlaceholderMonster(string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0) return;
+
+        FujinTerm.Services.MonsterMessageStore store = AppServices.Current.MonsterMessages;
+        foreach (FujinTerm.Models.GameData.MonsterMessageRecord existing in store.Messages)
+        {
+            if (string.Equals(existing.Name, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                AppServices.Current.Log.Warn("RoomClassifier",
+                    $"Monster record for '{trimmed}' already exists — not adding a duplicate.");
+                return;
+            }
+        }
+
+        // Id derivation matches the Monsters-tab editor's ComputeId
+        // scheme (SHA1 of name + canonical content blob, first 8 bytes
+        // hex). Empty list-content + AllowNoPrefix=true still produces
+        // a stable id so the record round-trips through Save / Load
+        // without churning the on-disk file.
+        string id = ComputeMonsterMessageId(trimmed);
+        FujinTerm.Models.GameData.MonsterMessageRecord placeholder = new(
+            Id:               id,
+            Name:             trimmed,
+            HitYou:           Array.Empty<string>(),
+            HitOther:         Array.Empty<string>(),
+            DeathLine:        Array.Empty<string>(),
+            ArmorBlockYou:    Array.Empty<string>(),
+            ArmorBlockOther:  Array.Empty<string>(),
+            DodgeYou:         Array.Empty<string>(),
+            DodgeOther:       Array.Empty<string>(),
+            MissYou:          Array.Empty<string>(),
+            MissOther:        Array.Empty<string>(),
+            FlavorPrefixes:   Array.Empty<string>(),
+            AllowNoPrefix:    true,
+            Links:            null);
+
+        store.Upsert(placeholder);
+        AppServices.Current.Log.Info("RoomClassifier",
+            $"Added placeholder monster record: '{trimmed}'. " +
+            "Open Game Data → Monsters to fill in hit / death / dodge lines.");
+    }
+
+    /// <summary>
+    /// Mirror of <c>MonsterEditDialogViewModel.ComputeId</c> for the
+    /// minimum case (empty content + AllowNoPrefix=true). Kept inline
+    /// rather than calling the VM method to avoid coupling App startup
+    /// to the Game Data editor namespace.
+    /// </summary>
+    private static string ComputeMonsterMessageId(string name)
+    {
+        string blob = name + "||1";
+        byte[] hash = System.Security.Cryptography.SHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(blob));
+        System.Text.StringBuilder sb = new(16);
+        for (int i = 0; i < 8; i++)
+            sb.Append(hash[i].ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        return sb.ToString();
     }
 }

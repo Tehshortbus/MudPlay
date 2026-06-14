@@ -31,58 +31,23 @@ public sealed class OtherSettings
     /// </remarks>
     public int MaxSuicideLivesThreshold { get; set; } = 5;
 
-    // ----- Ignored ailments ---------------------------------------------
-    // Per user direction: the four "Ignore X" toggles gate whether
-    // catching that ailment triggers an automatic @wait to the party
-    // leader (or, when we ARE the leader, makes our own engines pause
-    // until the affect is gone). Default UNCHECKED — most parties
-    // want to pause on every ailment by default; the toggle is for
-    // edge cases ("we're at the boss fight, don't pause for a poison
-    // tick"). Once the message-matching engine ships, these flags
-    // become the user-configurable input to WaitTriggerEngine.
-    // Always-on triggers (over-encumbered, MovementPrevented,
-    // Stunned = movement+attack prevented) bypass these flags.
-
-    /// <summary>Don't auto-cure / don't @wait for poison. Default false (pause).</summary>
-    public bool IgnorePoison    { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for blindness. Default false (pause).</summary>
-    public bool IgnoreBlindness { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for confusion. Default false (pause).</summary>
-    public bool IgnoreConfusion { get; set; }
-
-    /// <summary>Don't auto-cure / don't @wait for disease. Default false (pause).</summary>
-    public bool IgnoreDiseased  { get; set; }
-
-    // ----- Game-menu commands -------------------------------------------
-    // The two commands the client uses to enter / leave the realm from
-    // the MajorMUD main menu. Defaults are the standard menu picks
-    // ("E" = enter realm, "=x" = logoff from main menu). Persisted per
-    // character so different BBS dialects (alternate menu key bindings)
-    // can be overridden if needed.
+    // Note: the ailment-handling toggles (the four "Ignore X" @wait gates
+    // and the four "do not announce" say-suppression gates) graduated to
+    // SpellsSettings — they sit on the Spells tab next to the cure-spell
+    // picks they coordinate with. AilmentSyncEngine reads them from there.
 
     /// <summary>
-    /// Sent on profile's first session load or post-cleanup re-login
-    /// once the client detects the main menu. Default <c>"E"</c>
-    /// (Enter the Realm). The cleanup-warning / main-menu detection
-    /// + delayed send logic lands in a follow-up PR once the
-    /// message-matching engine + small scheduler exist; this field is
-    /// persisted-and-ready now so the user can pre-configure the
-    /// command per character.
+    /// Master gate for walker trap-disarming. When <c>true</c> (default)
+    /// the walker routes a trapped exit through the disarm machinery
+    /// before stepping through — but only when a disarm is actually
+    /// possible (the local character has the Traps skill, or — once the
+    /// party-delegation path lands — a party member does). When
+    /// <c>false</c> the walker walks straight through trapped exits with
+    /// no disarm attempt. Labeled "Utilize disarm traps if able" in
+    /// Settings → Other because the "if able" capability check rides on
+    /// top of this on/off switch.
     /// </summary>
-    public string GameEntryCommand { get; set; } = "E";
-
-    /// <summary>
-    /// Sent when an incoming <c>@hangup</c> with the
-    /// <see cref="Models.GameData.PlayerRemoteControls.HangupDisconnect"/>
-    /// permission is received, OR when the client observes a cleanup
-    /// warning and the X→wait→logoff sequence reaches the main menu.
-    /// Default <c>"=x"</c> (logoff from main menu). The full cleanup
-    /// automation flow ships in a follow-up; the @hangup direct
-    /// handler ships now and uses this verbatim.
-    /// </summary>
-    public string GameExitCommand  { get; set; } = "=x";
+    public bool UtilizeDisarmTrapsIfAble { get; set; } = true;
 
     /// <summary>
     /// Caps the search loop in the @trap handler — how many
@@ -146,4 +111,50 @@ public sealed class OtherSettings
     /// developer / data-collection knob, not a normal-play affordance.
     /// </summary>
     public bool LogMovementHopTiming { get; set; }
+
+    /// <summary>
+    /// Leader-side <c>@comeback</c> backtrack budget — when a stranded
+    /// follower sends a bare <c>@comeback</c> (no target room), the
+    /// leader pauses its active movement engine and walks backwards
+    /// along the path just taken, room by room, up to this many rooms
+    /// looking for the follower. If not recovered within the budget the
+    /// leader gives up and goes idle to let the player handle it.
+    /// Default 10, range 1..50. Ignored when the follower supplies an
+    /// explicit room (<c>@comeback 9/1012</c>) — that path walks
+    /// straight to the named room instead. Surfaced in Settings → Other.
+    /// </summary>
+    public int MaxComebackBacktrackRooms { get; set; } = 10;
+
+    /// <summary>
+    /// Follower-side auto-<c>@comeback</c>. When <c>true</c> (default) and
+    /// a movement-blocking condition (prevents-movement gamedata flag or
+    /// over-encumbrance) leaves us behind as the party leader walks off,
+    /// we automatically telepath <c>@comeback &lt;room&gt;</c> to the
+    /// leader so their party-recovery walk picks us up. When <c>false</c>,
+    /// the left-behind is still detected but no request is sent — the
+    /// player handles it manually. Defaults on: the request is a single
+    /// telepath that moves nothing on our side, so being stranded silently
+    /// is strictly the worse outcome. Char-tier setting; surfaced in
+    /// Settings → Other.
+    /// </summary>
+    public bool AutoRequestComebackWhenLeftBehind { get; set; } = true;
+
+    // Note: the former Phase 9 per-character verbose toggles
+    // (VerboseCombat / VerboseRoomClassifier / VerboseCasting /
+    // VerboseCash / VerboseStealth) + WriteCombatRoundTrace lived
+    // here briefly. They moved to the Log pane menu as a single
+    // "Combat diagnostics" umbrella switch (session-only, not
+    // persisted) — see Services/LogDiagnosticState.cs. Verbose tracing
+    // is a "while I'm debugging right now" affordance, not a per-
+    // character preference, and keeping it off the profile saves it
+    // from leaking on between sessions.
+
+    // Note: the run-away (flee) knobs (RunDirection / BreakBeforeFleeing)
+    // graduated to CombatSettings — they sit on the Combat tab next to the
+    // room thresholds + RunDistance they coordinate with. HealthManager's
+    // flee path reads them from there.
+
+    // Note: the party-bless gates (BlessWhileResting / BlessDuringCombat)
+    // graduated to PartySettings — they sit on the Party tab next to the
+    // bless slots they gate. CastingDirector reads them from there.
 }

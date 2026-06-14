@@ -21,7 +21,7 @@ public sealed class TalkSectionViewModelTests
         TalkSettings src = new()
         {
             DisallowAllRemoteCommands       = true,
-            DisallowPartyCommandsFromLeader = true,
+            DisallowPartyCommands           = true,
             DisallowRemoteFromTelepaths     = true,
             DisallowRemoteFromGangpaths     = true,
             DisallowRemoteFromLocal         = true,
@@ -34,7 +34,7 @@ public sealed class TalkSectionViewModelTests
 
         Assert.NotNull(back);
         Assert.True(back!.DisallowAllRemoteCommands);
-        Assert.True(back.DisallowPartyCommandsFromLeader);
+        Assert.True(back.DisallowPartyCommands);
         Assert.True(back.DisallowRemoteFromTelepaths);
         Assert.True(back.DisallowRemoteFromGangpaths);
         Assert.True(back.DisallowRemoteFromLocal);
@@ -56,7 +56,7 @@ public sealed class TalkSectionViewModelTests
         TalkSettings dto = new();
 
         Assert.False(dto.DisallowAllRemoteCommands);
-        Assert.False(dto.DisallowPartyCommandsFromLeader);
+        Assert.False(dto.DisallowPartyCommands);
         Assert.False(dto.DisallowRemoteFromTelepaths);
         Assert.False(dto.DisallowRemoteFromGangpaths);
         Assert.False(dto.DisallowRemoteFromLocal);

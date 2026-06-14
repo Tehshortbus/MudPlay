@@ -18,13 +18,14 @@ public sealed class MainMenuEntryAutomationTests
 {
     private static readonly DateTime Now = new(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
 
-    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands, HangupSignal signal) Setup()
+    private static (MainMenuEntryAutomation engine, MessageRouter router, GameCommands commands, HangupSignal signal) Setup(
+        Func<bool>? isAutoEnabled = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         GameCommands commands = new();   // defaults: "E" / "=x"
         HangupSignal signal = new();
-        MainMenuEntryAutomation engine = new(router, commands, signal)
+        MainMenuEntryAutomation engine = new(router, commands, signal, isAutoEnabled)
         {
             NowProvider = () => Now,
         };
@@ -37,6 +38,20 @@ public sealed class MainMenuEntryAutomationTests
         LineExtractor.EmittedLine line = new(
             "[E] . Enter the Realm",
             new CellAttributes[20],
+            DateTimeOffset.UnixEpoch,
+            IsPromptLine: false);
+        router.Dispatch(line);
+    }
+
+    /// <summary>
+    /// Dispatch an in-game room display's "Obvious exits:" line — the
+    /// signal that releases the post-entry stat/i refresh gate.
+    /// </summary>
+    private static void DispatchRoomLine(MessageRouter router)
+    {
+        LineExtractor.EmittedLine line = new(
+            "Obvious exits: north, south, east",
+            new CellAttributes[40],
             DateTimeOffset.UnixEpoch,
             IsPromptLine: false);
         router.Dispatch(line);
@@ -237,74 +252,149 @@ public sealed class MainMenuEntryAutomationTests
         Assert.Single(engine.LastSentForTests);
     }
 
-    // ===== Post-entry startup sequence ==================================
+    // ===== Master auto-responses gate ===================================
 
     [Fact]
-    public void EntryFires_QueuesStartupSequence_FirstStepIsBareCR()
+    public void Arm_AutoResponsesOff_SkipsEntry()
     {
-        // The MOTD between Enter and the in-game prompt can pause on
-        // a "press any key" pagination — a bare CR flushes it before
-        // we send the actual stat/exp/i refresh.
-        var (engine, router, _, _) = Setup();
+        // The master "All auto-responses" switch is off — auto-entry must
+        // stay silent even on a freshly-armed menu match (first connect or
+        // post-cleanup relog). The user types the entry command manually.
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => false);
         engine.Arm();
+
         DispatchMenuLine(router);
-        // Entry command in slot [0], no startup steps yet.
-        Assert.Equal("E\r", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
 
-        engine.TickStartupSequenceForTests();
-
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        // Step 1 = bare CR (empty string + the wire-sender's trailing \r).
-        Assert.Equal("\r", Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+        Assert.Empty(engine.LastSentForTests);
     }
 
     [Fact]
-    public void StartupSequence_OrderedCRStatExpI()
+    public void Arm_AutoResponsesOff_ConsumesLatch_NoLateFire()
     {
-        // The full four-step sequence, in order, ending with `i`. The
-        // exact list is the public StartupSequence read-only so future
-        // settings UI can introspect it.
+        // The latch is consumed on the suppressed match, so flipping
+        // auto-responses back on afterwards must NOT let a stale menu line
+        // re-fire — only a fresh Arm re-opens the window.
+        bool autoOn = false;
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => autoOn);
+        engine.Arm();
+        DispatchMenuLine(router);   // suppressed, latch consumed
+        Assert.Empty(engine.LastSentForTests);
+
+        autoOn = true;
+        DispatchMenuLine(router);   // no re-arm → still nothing
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void Arm_AutoResponsesOn_FiresNormally()
+    {
+        // Predicate returns true → behaves exactly as the default path.
+        var (engine, router, _, _) = Setup(isAutoEnabled: () => true);
+        engine.Arm();
+
+        DispatchMenuLine(router);
+
+        Assert.Equal("E\r", Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+    }
+
+    // ===== Post-entry startup sequence (room-gated) =====================
+
+    [Fact]
+    public void EntryAlone_DoesNotFireStartup_UntilRoomSeen()
+    {
+        // The entry command goes out, but stat/i must NOT fire
+        // until the first in-game room display confirms we landed in
+        // the realm. Before the room line the startup timer is idle —
+        // ticking it is a no-op.
         var (engine, router, _, _) = Setup();
         engine.Arm();
         DispatchMenuLine(router);
+        // Only the entry command on the wire so far.
+        Assert.Equal("E\r", Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+
+        engine.TickStartupSequenceForTests();   // no room yet → nothing
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void RoomDisplayAfterEntry_ReleasesStartup_OrderedStatI()
+    {
+        // Entry → first "Obvious exits:" line → the two-step refresh
+        // fires in order, ending with `i`.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        DispatchRoomLine(router);
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
             engine.TickStartupSequenceForTests();
 
-        // First slot is the entry command, then the 4 startup steps.
-        Assert.Equal(5, engine.LastSentForTests.Count);
+        // First slot is the entry command, then the 2 startup steps.
+        Assert.Equal(3, engine.LastSentForTests.Count);
         Assert.Equal("E\r",    Encoding.Latin1.GetString(engine.LastSentForTests[0]));
-        Assert.Equal("\r",     Encoding.Latin1.GetString(engine.LastSentForTests[1]));
-        Assert.Equal("stat\r", Encoding.Latin1.GetString(engine.LastSentForTests[2]));
-        Assert.Equal("exp\r",  Encoding.Latin1.GetString(engine.LastSentForTests[3]));
-        Assert.Equal("i\r",    Encoding.Latin1.GetString(engine.LastSentForTests[4]));
+        Assert.Equal("stat\r", Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+        Assert.Equal("i\r",    Encoding.Latin1.GetString(engine.LastSentForTests[2]));
+    }
+
+    [Fact]
+    public void RoomDisplay_BeforeEntry_DoesNotFireStartup()
+    {
+        // A room line with no prior entry-command send must not trip
+        // the refresh — the gate requires an entry first.
+        var (engine, router, _, _) = Setup();
+        DispatchRoomLine(router);
+        engine.TickStartupSequenceForTests();
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void RoomGate_IsOneShot_OnlyFirstRoomReleasesStartup()
+    {
+        // Once the first room releases the refresh, subsequent room
+        // displays (normal walking) must NOT re-fire stat/i.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);
+        DispatchRoomLine(router);
+        for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
+            engine.TickStartupSequenceForTests();
+        Assert.Equal(3, engine.LastSentForTests.Count);   // E + stat/i
+
+        // A second room display must not queue another refresh.
+        DispatchRoomLine(router);
+        for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count; i++)
+            engine.TickStartupSequenceForTests();
+        Assert.Equal(3, engine.LastSentForTests.Count);
     }
 
     [Fact]
     public void StartupSequence_DoesNotOverrun()
     {
-        // Once the four steps fire, ticking further must NOT send any
+        // Once the two steps fire, ticking further must NOT send any
         // additional commands — the sequence must terminate cleanly.
         var (engine, router, _, _) = Setup();
         engine.Arm();
         DispatchMenuLine(router);
+        DispatchRoomLine(router);
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count + 5; i++)
             engine.TickStartupSequenceForTests();
 
-        // Entry + 4 startup steps, no more.
-        Assert.Equal(5, engine.LastSentForTests.Count);
+        // Entry + 2 startup steps, no more.
+        Assert.Equal(3, engine.LastSentForTests.Count);
     }
 
     [Fact]
     public void HangupSuppressedEntry_DoesNotQueueStartupSequence()
     {
         // If the latch refused to arm because of a hangup intent, the
-        // startup sequence must ALSO not fire — the whole point of
-        // the suppression is to stop the wire-spam refresh while the
-        // user is in a dangerous spot.
+        // entry never fires, so even a room display must NOT release
+        // the refresh — the whole point of the suppression is to stop
+        // wire-spam while the user is in a dangerous spot.
         var (engine, router, _, signal) = Setup();
         signal.SignalHangup();
         engine.Arm();
         DispatchMenuLine(router);
+        DispatchRoomLine(router);
         for (int i = 0; i < MainMenuEntryAutomation.StartupSequence.Count + 1; i++)
             engine.TickStartupSequenceForTests();
 
@@ -312,15 +402,33 @@ public sealed class MainMenuEntryAutomationTests
     }
 
     [Fact]
-    public void StartupSequence_PublicListIsCRStatExpI()
+    public void Arm_ClearsStaleRoomGate_FromPriorUnroomedEntry()
+    {
+        // Entry fired on a prior connect but no room ever appeared
+        // (MOTD hang). A fresh Arm (new login) must clear the stale
+        // gate so a late room line can't fire the refresh out of band;
+        // only the new login's own entry re-arms it.
+        var (engine, router, _, _) = Setup();
+        engine.Arm();
+        DispatchMenuLine(router);   // entry fired, awaiting room
+        Assert.Single(engine.LastSentForTests);
+
+        engine.Arm();               // fresh login resets the gate
+
+        DispatchRoomLine(router);   // stale room line — must be ignored
+        engine.TickStartupSequenceForTests();
+        Assert.Single(engine.LastSentForTests);   // still just the entry
+    }
+
+    [Fact]
+    public void StartupSequence_PublicListIsStatI()
     {
         // Pins the public read-only list so a future "let me add `who`
         // to the startup" edit can't silently change semantics; the
-        // user-direction "CR, stat, exp, i" stays observable from tests.
+        // room-gated "stat, i" stays observable from tests. `exp` is
+        // intentionally absent — `stat` already carries Level + Exp.
         Assert.Collection(MainMenuEntryAutomation.StartupSequence,
-            s => Assert.Equal(string.Empty, s),   // bare CR
             s => Assert.Equal("stat", s),
-            s => Assert.Equal("exp", s),
             s => Assert.Equal("i", s));
     }
 }

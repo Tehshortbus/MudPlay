@@ -28,6 +28,13 @@ namespace FujinTerm.Game.Map;
 ///   <item><see cref="TextCommands"/> — comma-separated alternatives
 ///   on <see cref="RoomExitHint.Text"/> exits. Any one of them moves
 ///   the player.</item>
+///   <item><see cref="MinLevel"/> / <see cref="MaxLevel"/> — character
+///   level window on a level-gated exit ("(Level: 40 to 0)"). The exit
+///   is a plain cardinal step (<see cref="Hint"/> stays
+///   <see cref="RoomExitHint.None"/>); the window only constrains who
+///   may traverse it. <c>0</c> in either slot means "no bound on that
+///   side" (the MDB encodes both no-floor and no-cap as 0, and also
+///   uses 999 as a no-cap sentinel — normalised to 0 here).</item>
 /// </list>
 /// </remarks>
 public readonly partial record struct RoomExit(
@@ -40,8 +47,26 @@ public readonly partial record struct RoomExit(
     int TollGold = 0,
     IReadOnlyList<string>? TextCommands = null,
     MultiActionExitData? MultiAction = null,
-    int TrapDamage = 0)
+    int TrapDamage = 0,
+    int MinLevel = 0,
+    int MaxLevel = 0)
 {
+    /// <summary><c>true</c> when this exit carries a character-level
+    /// window (either a floor, a cap, or both).</summary>
+    public bool HasLevelGate => MinLevel > 0 || MaxLevel > 0;
+
+    /// <summary>
+    /// Render a level window as a friendly label: "Level 40+" (floor
+    /// only), "Level ≤3" (cap only), "Level 10–25" (both). Returns the
+    /// empty string when neither bound is set.
+    /// </summary>
+    public static string FormatLevelGate(int min, int max)
+    {
+        if (min > 0 && max > 0) return $"Level {min}–{max}";
+        if (min > 0)            return $"Level {min}+";
+        if (max > 0)            return $"Level ≤{max}";
+        return string.Empty;
+    }
     /// <summary>
     /// Parse a single MDB exit cell. Returns <c>false</c> for the
     /// <c>"0"</c> sentinel ("no exit"), for null/whitespace, and for
@@ -85,11 +110,14 @@ public readonly partial record struct RoomExit(
             out int keyItemId,
             out int toll,
             out IReadOnlyList<string>? textCommands,
-            out int trapDamage);
+            out int trapDamage,
+            out int minLevel,
+            out int maxLevel);
 
         exit = new RoomExit(key, hint, rawHint,
             statReq, canBash, keyItemId, toll, textCommands,
-            MultiAction: null, TrapDamage: trapDamage);
+            MultiAction: null, TrapDamage: trapDamage,
+            MinLevel: minLevel, MaxLevel: maxLevel);
         return true;
     }
 
@@ -101,7 +129,9 @@ public readonly partial record struct RoomExit(
         out int keyItemId,
         out int toll,
         out IReadOnlyList<string>? textCommands,
-        out int trapDamage)
+        out int trapDamage,
+        out int minLevel,
+        out int maxLevel)
     {
         hint = RoomExitHint.None;
         statReq = 0;
@@ -110,6 +140,8 @@ public readonly partial record struct RoomExit(
         toll = 0;
         textCommands = null;
         trapDamage = 0;
+        minLevel = 0;
+        maxLevel = 0;
 
         if (string.IsNullOrEmpty(raw)) return;
 
@@ -224,9 +256,25 @@ public readonly partial record struct RoomExit(
             return;
         }
 
-        // Level / Class / Race / Alignment / Ability / Cast / Timed
-        // restrictions: walker treats as None for now (path-time gates
-        // are a later concern); RawHint carries the detail forward.
+        // "(Level: MIN to MAX)" — a level-gated cardinal step. The
+        // movement stays a plain cardinal (hint = None); the window
+        // captures who may traverse it. 0 in the min slot = no floor;
+        // 0 or 999 in the max slot = no cap (both MDB no-cap sentinels).
+        if (raw.StartsWith("Level", StringComparison.OrdinalIgnoreCase))
+        {
+            Match m = LevelRangeRegex().Match(raw);
+            if (m.Success)
+            {
+                int.TryParse(m.Groups[1].ValueSpan, out minLevel);
+                int.TryParse(m.Groups[2].ValueSpan, out int rawMax);
+                maxLevel = rawMax is 0 or 999 ? 0 : rawMax;
+            }
+            return;  // hint stays None — movement is still a plain cardinal step
+        }
+
+        // Class / Race / Alignment / Ability / Cast / Timed restrictions:
+        // walker treats as None for now (path-time gates are a later
+        // concern); RawHint carries the detail forward.
     }
 
     /// <summary>
@@ -258,4 +306,8 @@ public readonly partial record struct RoomExit(
     /// <summary>Matches a trap-damage figure inside the trap modifier — "Trap, 36 damage".</summary>
     [GeneratedRegex(@"(\d+)\s+damage", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TrapDamageRegex();
+
+    /// <summary>Matches the level window in a "Level: MIN to MAX" modifier.</summary>
+    [GeneratedRegex(@"Level:\s*(\d+)\s+to\s+(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LevelRangeRegex();
 }

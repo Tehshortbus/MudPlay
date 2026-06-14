@@ -23,12 +23,14 @@ public sealed class TalkSettings
     public bool DisallowAllRemoteCommands { get; set; }
 
     /// <summary>
-    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist. Useful when
-    /// solo-questing inside a party where you don't want the leader's
-    /// <c>@party</c> directives steering this character. Default
-    /// <c>false</c> (whitelist active).
+    /// Overrides the base <c>@party &lt;sub&gt;</c> whitelist for every
+    /// party member, not just the leader — when <c>true</c> an inbound
+    /// <c>@party</c> is a no-op no matter who in the party sends it.
+    /// Useful when solo-questing inside a party where you don't want
+    /// party directives steering this character. Default <c>false</c>
+    /// (whitelist active).
     /// </summary>
-    public bool DisallowPartyCommandsFromLeader { get; set; }
+    public bool DisallowPartyCommands { get; set; }
 
     /// <summary>Drop @-commands arriving on telepaths / pages.</summary>
     public bool DisallowRemoteFromTelepaths { get; set; }
@@ -60,4 +62,15 @@ public sealed class TalkSettings
     /// here would double them.
     /// </summary>
     public string RemoteCommandFailureMessage { get; set; } = "command invalid or not allowed";
+
+    /// <summary>
+    /// When <c>true</c>, the first time we spot a non-party player in the
+    /// room each local-calendar day — whether from an <c>Also here:</c>
+    /// list or a live arrival line — the client sends <c>greet</c> then
+    /// <c>look</c> at them. Tracked per-BBS on the player observation
+    /// row, so re-meeting the same person later the same day is silent.
+    /// Self and current party members are always skipped. Default
+    /// <c>false</c> (opt-in). Wired to <see cref="Game.GreetManager"/>.
+    /// </summary>
+    public bool GreetPlayersWhenFirstMet { get; set; }
 }

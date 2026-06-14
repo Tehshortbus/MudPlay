@@ -172,13 +172,11 @@ public partial class MainWindow : Window
             Header  = "Import .mdb…",
             Command = vm.ImportMdbCommand,
         });
-        MenuItem loops = new()
+        GameDataMenu.Items.Add(new MenuItem
         {
-            Header    = "Import loops (MegaMUD .mp)…",
-            IsEnabled = false,
-        };
-        ToolTip.SetTip(loops, "Wired in Phase 7 (MpFileImporter)");
-        GameDataMenu.Items.Add(loops);
+            Header  = "Import loops (MegaMUD .mp)…",
+            Command = vm.ImportMegaMudLoopsCommand,
+        });
 
         GameDataMenu.Items.Add(new Separator());
         GameDataMenu.Items.Add(new MenuItem

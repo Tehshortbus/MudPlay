@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:spells="using:FujinTerm.Game.Spells"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="820"
@@ -72,16 +73,36 @@
                            ToolTip.Tip="Verbatim response — exactly as MegaMUD would display it. Use literal ^M (two characters) to separate commands; the runtime sends each as its own CR-terminated line."/>
             </Grid>
 
-            <!-- Live status / error line under the header block.
-                 Muted hint when valid (shows the projected Id);
-                 red when validation fails (missing Name / Message /
-                 duplicate identity). -->
-            <TextBlock Grid.Row="1"
-                       Margin="108,0,0,0"
-                       Text="{Binding StatusMessage}"
-                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                       FontSize="11" TextWrapping="Wrap"
-                       IsVisible="{Binding !HasError}"/>
+            <!-- Under the Response field: when the record is valid, show the
+                 placeholder-token legend so an author knows which bracket pins
+                 which capture slot (meaning on hover). When validation fails,
+                 the red error replaces it. -->
+            <StackPanel Grid.Row="1" Margin="108,0,0,0" Spacing="3"
+                        IsVisible="{Binding !HasError}">
+                <TextBlock Text="Placeholders for any line above (hover for meaning):"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11"/>
+                <ItemsControl ItemsSource="{Binding Placeholders}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="spells:MessagePlaceholder">
+                            <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                                    BorderThickness="1" CornerRadius="3"
+                                    Padding="6,2" Margin="0,0,6,4"
+                                    ToolTip.Tip="{Binding Meaning}">
+                                <TextBlock Text="{Binding Token}"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource ChromeFgBrush}"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
             <TextBlock Grid.Row="1"
                        Margin="108,0,0,0"
                        Text="{Binding StatusMessage}"

@@ -53,7 +53,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private bool _disallowAllRemoteCommands;
 
-    [ObservableProperty] private bool _disallowPartyCommandsFromLeader;
+    [ObservableProperty] private bool _disallowPartyCommands;
 
     [ObservableProperty] private bool _disallowRemoteFromTelepaths;
 
@@ -64,6 +64,9 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _warnOnInvalidRemoteCommand = true;
 
     [ObservableProperty] private string _remoteCommandFailureMessage = "command invalid or not allowed";
+
+    /// <summary>Settings → Talk "Greet players when first met". Char-tier; default off.</summary>
+    [ObservableProperty] private bool _greetPlayersWhenFirstMet;
 
     public TalkSectionViewModel() : this(AppServices.Current.Profile) { }
 
@@ -85,12 +88,13 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         TalkSettings dto = new()
         {
             DisallowAllRemoteCommands        = DisallowAllRemoteCommands,
-            DisallowPartyCommandsFromLeader  = DisallowPartyCommandsFromLeader,
+            DisallowPartyCommands            = DisallowPartyCommands,
             DisallowRemoteFromTelepaths      = DisallowRemoteFromTelepaths,
             DisallowRemoteFromGangpaths      = DisallowRemoteFromGangpaths,
             DisallowRemoteFromLocal          = DisallowRemoteFromLocal,
             WarnOnInvalidRemoteCommand       = WarnOnInvalidRemoteCommand,
             RemoteCommandFailureMessage      = RemoteCommandFailureMessage ?? string.Empty,
+            GreetPlayersWhenFirstMet         = GreetPlayersWhenFirstMet,
         };
 
         profile.Settings ??= new();
@@ -125,12 +129,13 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     {
         TalkSettings dto = ReadOrDefault();
         DisallowAllRemoteCommands       = dto.DisallowAllRemoteCommands;
-        DisallowPartyCommandsFromLeader = dto.DisallowPartyCommandsFromLeader;
+        DisallowPartyCommands           = dto.DisallowPartyCommands;
         DisallowRemoteFromTelepaths     = dto.DisallowRemoteFromTelepaths;
         DisallowRemoteFromGangpaths     = dto.DisallowRemoteFromGangpaths;
         DisallowRemoteFromLocal         = dto.DisallowRemoteFromLocal;
         WarnOnInvalidRemoteCommand      = dto.WarnOnInvalidRemoteCommand;
         RemoteCommandFailureMessage     = dto.RemoteCommandFailureMessage;
+        GreetPlayersWhenFirstMet        = dto.GreetPlayersWhenFirstMet;
 
         // Mirror loaded settings into the live engine so the user's
         // policy applies from first connection, not just after the
@@ -157,12 +162,14 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     {
         Game.Remote.RemoteCommandManager engine = AppServices.Current.RemoteCommands;
         engine.MasterDisable           = dto.DisallowAllRemoteCommands;
-        engine.DisablePartyWhitelist   = dto.DisallowPartyCommandsFromLeader;
+        engine.DisallowPartyDirectives = dto.DisallowPartyCommands;
         engine.DisableTelepathChannel  = dto.DisallowRemoteFromTelepaths;
         engine.DisableGangpathChannel  = dto.DisallowRemoteFromGangpaths;
         engine.DisableLocalChannel     = dto.DisallowRemoteFromLocal;
         engine.WarnOnDenial            = dto.WarnOnInvalidRemoteCommand;
         engine.FailureMessage          = dto.RemoteCommandFailureMessage ?? string.Empty;
+
+        AppServices.Current.Greet.Enabled = dto.GreetPlayersWhenFirstMet;
     }
 
     // ----- IsDirty plumbing -----
@@ -174,12 +181,13 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     }
 
     partial void OnDisallowAllRemoteCommandsChanged(bool value)       => MarkDirty();
-    partial void OnDisallowPartyCommandsFromLeaderChanged(bool value) => MarkDirty();
+    partial void OnDisallowPartyCommandsChanged(bool value)           => MarkDirty();
     partial void OnDisallowRemoteFromTelepathsChanged(bool value)     => MarkDirty();
     partial void OnDisallowRemoteFromGangpathsChanged(bool value)     => MarkDirty();
     partial void OnDisallowRemoteFromLocalChanged(bool value)         => MarkDirty();
     partial void OnWarnOnInvalidRemoteCommandChanged(bool value)      => MarkDirty();
     partial void OnRemoteCommandFailureMessageChanged(string value)   => MarkDirty();
+    partial void OnGreetPlayersWhenFirstMetChanged(bool value)        => MarkDirty();
 
     private void MarkDirty()
     {

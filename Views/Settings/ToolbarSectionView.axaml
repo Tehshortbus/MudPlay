@@ -4,7 +4,7 @@
              xmlns:svc="using:FujinTerm.Services"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="500"
+             mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="620"
              x:Class="FujinTerm.Views.Settings.ToolbarSectionView"
              x:DataType="vm:ToolbarSectionViewModel">
 
@@ -38,7 +38,44 @@
             <Setter Property="FontStyle" Value="Italic"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
+        <!-- Fixed-height rows so each list shows exactly 8 at a time
+             (28px × 8 = 224 → the Border height below). Predictable
+             height keeps the rail buttons from overlapping the way the
+             old proportional (2*/3*) sizing did when the window shrank. -->
+        <Style Selector="ListBox.RowList">
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        <Style Selector="ListBox.RowList ListBoxItem">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
     </UserControl.Styles>
+
+    <UserControl.Resources>
+        <!-- Shared row template — both the toolbar list and the shortcuts
+             list render [icon] [label] [(shortcut)]. Separators only appear
+             in the toolbar list. -->
+        <DataTemplate x:Key="RowTemplate" x:DataType="vm:ToolbarRowViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="2">
+                <Path Grid.Column="0"
+                      Classes="ToolbarRowIcon"
+                      Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                      IsVisible="{Binding IsButton}"
+                      Margin="2,0,8,0"/>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding DisplayLabel}"
+                           VerticalAlignment="Center"
+                           Classes.SeparatorRow="{Binding IsSeparator}"/>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding ShortcutHint}"
+                           Classes="RowShortcut"
+                           IsVisible="{Binding IsButton}"
+                           Margin="8,0,2,0"/>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <Grid>
 
@@ -48,21 +85,25 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
             <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
-                <TextBlock Text="Toolbar"
+                <TextBlock Text="Toolbar + Shortcuts"
                            Foreground="{StaticResource ChromeFgBrush}"
                            FontSize="{StaticResource FontSizeLg}"
                            FontWeight="SemiBold"/>
-                <TextBlock Text="Load or create a character profile to edit Toolbar settings — every settings tab lives on the active character."
+                <TextBlock Text="Load or create a character profile to edit Toolbar + Shortcuts — every settings tab lives on the active character."
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="{StaticResource FontSizeMd}"
                            TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
-        <!-- Editor — visible when a profile is loaded. -->
-        <Grid IsVisible="{Binding HasProfile}"
-              Margin="22"
-              RowDefinitions="Auto,Auto,*,Auto"
+        <!-- Editor — visible when a profile is loaded. Fixed (Auto) row
+             heights with 5-row lists; a ScrollViewer guards against the
+             window being too short to show the whole editor. -->
+        <ScrollViewer IsVisible="{Binding HasProfile}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="22"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnDefinitions="*,180">
 
             <!-- Visibility + orientation. ShowToolbar is the master gate;
@@ -90,116 +131,110 @@
                                  IsEnabled="{Binding VerticalSideEnabled}"
                                  ToolTip.Tip="Dock the vertical toolbar to the right edge."/>
                 </StackPanel>
+
+                <!-- Import another character's toolbar layout + keybinds,
+                     alongside the two default-reset actions. Layout changes
+                     stage into the pending list (Apply to keep); keybind
+                     changes apply live. -->
+                <StackPanel Spacing="6" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Import toolbar + Keybinds"
+                                Command="{Binding CopyFromProfileCommand}"
+                                ToolTip.Tip="Replace this character's toolbar layout + keybinds with another character's. The layout stages here (Apply to keep); keybinds apply immediately. Chords that clash with this profile's macros are skipped."/>
+                        <Button Content="Reset Toolbar to Default"
+                                Command="{Binding ResetToDefaultsCommand}"
+                                ToolTip.Tip="Restore the default set of toolbar buttons (which actions sit on the toolbar). Doesn't touch keybinds."/>
+                        <Button Content="Reset Keybinds to Default"
+                                Command="{Binding ResetAllKeybindsCommand}"
+                                ToolTip.Tip="Restore every keybind — across both the toolbar and shortcuts lists — to its default chord. Doesn't touch which buttons are on the toolbar."/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding CopyStatus}"
+                               IsVisible="{Binding CopyStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeSm}"
+                               TextWrapping="Wrap"
+                               MaxWidth="520"/>
+                </StackPanel>
             </StackPanel>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                        Classes="SectionHeader"
                        Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
-            <!-- Row list. SelectionMode=Single drives the Move/Delete commands. -->
+            <!-- Toolbar row list — fixed height for 8 rows; scrolls past that. -->
             <Border Grid.Row="2" Grid.Column="0"
+                    Height="234" VerticalAlignment="Top"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
-                <ListBox ItemsSource="{Binding Rows}"
+                <ListBox Classes="RowList"
+                         ItemsSource="{Binding Rows}"
                          SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                         ItemTemplate="{StaticResource RowTemplate}"
                          Background="Transparent"
-                         BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ToolbarRowViewModel">
-                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="2">
-                                <!-- Button row: icon -->
-                                <Path Grid.Column="0"
-                                      Classes="ToolbarRowIcon"
-                                      Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
-                                      IsVisible="{Binding IsButton}"
-                                      Margin="2,0,8,0"/>
-
-                                <!-- Button row: label / separator row: dashed text -->
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding DisplayLabel}"
-                                           VerticalAlignment="Center"
-                                           Classes.SeparatorRow="{Binding IsSeparator}"/>
-
-                                <!-- Button row: shortcut hint -->
-                                <TextBlock Grid.Column="2"
-                                           Text="{Binding ShortcutHint}"
-                                           Classes="RowShortcut"
-                                           IsVisible="{Binding IsButton}"
-                                           Margin="8,0,2,0"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                         BorderThickness="0"/>
             </Border>
 
-            <!-- Right rail: row actions + add controls + reset. -->
+            <!-- Toolbar rail: reorder / add separator / remove / keybind. -->
             <StackPanel Grid.Row="2" Grid.Column="1"
                         Margin="12,0,0,0"
+                        VerticalAlignment="Top"
                         Spacing="6">
-
                 <Button Content="Move up"
                         Command="{Binding MoveUpCommand}"
                         HorizontalAlignment="Stretch"/>
                 <Button Content="Move down"
                         Command="{Binding MoveDownCommand}"
                         HorizontalAlignment="Stretch"/>
-                <Button Content="Delete"
-                        Command="{Binding DeleteSelectedCommand}"
-                        HorizontalAlignment="Stretch"/>
-
-                <Border Height="1"
-                        Background="{StaticResource ChromeBorderBrush}"
-                        Margin="0,8"/>
-
-                <Button Content="Change keybind…"
-                        Command="{Binding ChangeKeybindCommand}"
+                <Button Content="Add separator"
+                        Command="{Binding AddSeparatorCommand}"
                         HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Rebind the shortcut for the selected toolbar action, or clear it to leave the action unbound. Disabled for separators and non-rebindable rows."/>
+                        ToolTip.Tip="Append a visual divider to the toolbar."/>
+                <Button Content="Remove"
+                        Command="{Binding RemoveFromToolbarCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Take the selected button off the toolbar (it stays available below as a shortcut). Separators are simply deleted."/>
+                <Button Content="Change keybind…"
+                        Command="{Binding ChangeToolbarKeybindCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Rebind the shortcut for the selected toolbar action, or clear it. Disabled for separators and non-rebindable rows."/>
+            </StackPanel>
 
-                <Border Height="1"
-                        Background="{StaticResource ChromeBorderBrush}"
-                        Margin="0,8"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                       Classes="SectionHeader"
+                       Text="Shortcuts — every action not on the toolbar; each can still hold a keybind"/>
 
-                <TextBlock Text="Add"
-                           Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="{StaticResource FontSizeSm}"/>
-                <ComboBox ItemsSource="{Binding AvailableActions}"
-                          SelectedItem="{Binding SelectedAvailable, Mode=TwoWay}"
-                          PlaceholderText="Pick an action"
-                          HorizontalAlignment="Stretch">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="svc:ToolbarItemCatalogue+Entry">
-                            <TextBlock Text="{Binding Label}"/>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+            <!-- Shortcuts list: the full pool of off-toolbar actions —
+                 fixed height for 8 rows; scrolls past that. -->
+            <Border Grid.Row="4" Grid.Column="0"
+                    Height="234" VerticalAlignment="Top"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    Background="{StaticResource ChromeBgSunkenBrush}">
+                <ListBox Classes="RowList"
+                         ItemsSource="{Binding ShortcutRows}"
+                         SelectedItem="{Binding SelectedShortcutRow, Mode=TwoWay}"
+                         ItemTemplate="{StaticResource RowTemplate}"
+                         Background="Transparent"
+                         BorderThickness="0"/>
+            </Border>
 
-                <!-- Visible only when the dropdown's "Custom command…"
-                     sentinel is picked. Stub for Phase 4 PR 4.8 — the
-                     Add button stays disabled for this path because the
-                     persistence model hasn't gained a CustomCommand
-                     field yet. Surface here so the eventual flow is
-                     obvious from day one. -->
-                <TextBox Text="{Binding CustomCommand, Mode=TwoWay}"
-                         IsEnabled="False"
-                         IsVisible="{Binding IsCustomCommandSelected}"
-                         PlaceholderText="e.g. peer^M"
-                         ToolTip.Tip="Stub (Phase 4 PR 4.8). Type the command this toolbar button should send; wires in a later PR."/>
-
-                <Button Content="Add"
-                        Command="{Binding AddButtonCommand}"
-                        HorizontalAlignment="Stretch"/>
-
-                <Border Height="1"
-                        Background="{StaticResource ChromeBorderBrush}"
-                        Margin="0,8"/>
-
-                <Button Content="Reset to defaults"
-                        Command="{Binding ResetToDefaultsCommand}"
-                        HorizontalAlignment="Stretch"/>
+            <!-- Shortcuts rail: promote to toolbar / keybind. -->
+            <StackPanel Grid.Row="4" Grid.Column="1"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Top"
+                        Spacing="6">
+                <Button Content="Add to toolbar"
+                        Command="{Binding AddToToolbarCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Promote the selected action to a toolbar button."/>
+                <Button Content="Change keybind…"
+                        Command="{Binding ChangeShortcutKeybindCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Rebind the shortcut for the selected action, or clear it."/>
             </StackPanel>
         </Grid>
+        </ScrollViewer>
 
     </Grid>
 </UserControl>

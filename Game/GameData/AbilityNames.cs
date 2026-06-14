@@ -206,13 +206,71 @@ public static class AbilityNames
 
             string? name = GetName(code);
             if (name is null) continue;
-            if (val == 0)
-                parts.Add(name);
-            else if (val > 0)
-                parts.Add($"{name} +{val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-            else
-                parts.Add($"{name} {val.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            parts.Add(FormatPart(name, val));
         }
         return string.Join(", ", parts);
     }
+
+    /// <summary>
+    /// Comma-joined summary of a sequence of <c>(ability code, value)</c>
+    /// pairs — the in-memory counterpart to the <c>JsonElement</c> overload,
+    /// for callers that already hold decoded ability slots (e.g. the Spell
+    /// Book's per-spell effect rollup). Same formatting: signed magnitude when
+    /// non-zero, name-only for flag-style abilities; zero codes and any
+    /// <paramref name="skipCodes"/> are omitted.
+    /// </summary>
+    public static string SummarizeAbilities(
+        IEnumerable<(int Code, int Value)> abilities,
+        IReadOnlyCollection<int>? skipCodes = null)
+    {
+        ArgumentNullException.ThrowIfNull(abilities);
+        List<string> parts = new();
+        foreach ((int code, int value) in abilities)
+        {
+            if (code == 0) continue;
+            if (skipCodes is not null && skipCodes.Contains(code)) continue;
+            string? name = GetName(code);
+            if (name is null) continue;
+            parts.Add(FormatPart(name, value));
+        }
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Ability codes that grant the in-game Traps skill — i.e. the
+    /// class / race can search for and disarm traps. In stock MajorMUD
+    /// data the grant is code <c>40</c> (FindTraps — the single "Traps"
+    /// skill governs both find and disarm); <c>41</c> (DisarmTraps) and
+    /// <c>1002</c> (GrantTraps) cover custom / ParaMUD sets that encode
+    /// the grant differently. A row carrying any of these can disarm.
+    /// </summary>
+    private static readonly System.Collections.Generic.HashSet<int> TrapGrantCodes = new() { 40, 41, 1002 };
+
+    /// <summary>
+    /// True when the JSON row (a Classes / Races record) carries any
+    /// trap-skill grant in its <c>Abil-0..9</c> slots — used by the
+    /// trap-delegation capability check to decide whether a party
+    /// member's class or race makes them worth firing <c>@trap</c> at.
+    /// </summary>
+    /// <param name="element">Source Classes / Races JSON object.</param>
+    /// <param name="slots">Number of <c>Abil-N</c> slots to scan; defaults to 10.</param>
+    public static bool HasTrapAbility(System.Text.Json.JsonElement element, int slots = 10)
+    {
+        for (int i = 0; i < slots; i++)
+        {
+            if (!element.TryGetProperty($"Abil-{i}", out System.Text.Json.JsonElement codeEl)) continue;
+            if (codeEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (codeEl.TryGetInt32(out int code) && TrapGrantCodes.Contains(code)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Render one decoded ability slot — <c>"AC +10"</c>,
+    /// <c>"Slowness -5"</c>, or <c>"RaceStealth"</c> (name only, value 0).</summary>
+    private static string FormatPart(string name, int value)
+        => value == 0
+            ? name
+            : value > 0
+                ? $"{name} +{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : $"{name} {value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 }

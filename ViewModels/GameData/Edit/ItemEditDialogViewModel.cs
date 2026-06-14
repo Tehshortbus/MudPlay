@@ -37,6 +37,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     [ObservableProperty] private bool _autoOpen;
     [ObservableProperty] private bool _autoBuy;
     [ObservableProperty] private bool _autoSell;
+    [ObservableProperty] private bool _autoStash;
     [ObservableProperty] private bool _cannotBeTaken;
     [ObservableProperty] private bool _mustHaveMinimum;
     [ObservableProperty] private bool _loyalItem;
@@ -92,6 +93,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         AutoOpen        = existing?.AutoOpen        ?? false;
         AutoBuy         = existing?.AutoBuy         ?? false;
         AutoSell        = existing?.AutoSell        ?? false;
+        AutoStash       = existing?.AutoStash       ?? false;
         CannotBeTaken   = existing?.CannotBeTaken   ?? false;
         MustHaveMinimum = existing?.MustHaveMinimum ?? false;
         LoyalItem       = existing?.LoyalItem       ?? false;
@@ -112,6 +114,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
             AutoOpen        = AutoOpen        ? true : null,
             AutoBuy         = AutoBuy         ? true : null,
             AutoSell        = AutoSell        ? true : null,
+            AutoStash       = AutoStash       ? true : null,
             CannotBeTaken   = CannotBeTaken   ? true : null,
             MustHaveMinimum = MustHaveMinimum ? true : null,
             LoyalItem       = LoyalItem       ? true : null,

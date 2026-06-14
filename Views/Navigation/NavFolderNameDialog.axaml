@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="170"
+        x:Class="FujinTerm.Views.Navigation.NavFolderNameDialog"
+        x:DataType="vm:NavFolderNameDialogViewModel"
+        Title="{Binding Title}"
+        Width="360"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <StackPanel Spacing="8">
+            <TextBlock Text="{Binding Title}"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding Prompt}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11"
+                       TextWrapping="Wrap"/>
+
+            <TextBox Name="NameBox"
+                     Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="Folder name (use / for nesting)"
+                     Margin="0,6,0,0"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Center" Margin="0,12,0,0">
+                <Button Content="Save" Width="100"
+                        Command="{Binding SaveCommand}"
+                        IsDefault="True"/>
+                <Button Content="Cancel" Width="100"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

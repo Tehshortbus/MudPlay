@@ -107,4 +107,25 @@ public sealed class DefaultPatternsTests
         Assert.Equal("Engaged", on.Groups[0]);
         Assert.Equal("Off",     off.Groups[0]);
     }
+
+    [Fact]
+    public void RerollRegex_MatchesSuicideLine()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.Reroll);
+        Assert.True(p.TryMatch(Line("After a LONG thought, you take your own life."), out _));
+        Assert.False(p.TryMatch(Line("You think for a moment."), out _));
+    }
+
+    [Fact]
+    public void LearnSpellRegex_CapturesSpellName()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.LearnSpell);
+
+        Assert.True(p.TryMatch(Line("You read scroll of cause harm and learn the spell harm."), out MatchResult r));
+        Assert.Equal("harm", r.Groups[0]);
+
+        // Multi-word spell name — lazy capture stops at the trailing period.
+        Assert.True(p.TryMatch(Line("You read a scroll and learn the spell minor heal."), out MatchResult r2));
+        Assert.Equal("minor heal", r2.Groups[0]);
+    }
 }

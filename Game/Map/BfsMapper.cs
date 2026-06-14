@@ -98,11 +98,13 @@ public sealed class BfsMapper
     /// </summary>
     /// <param name="filter">Optional avoided-rooms filter; null = no filtering. PR 7.6 supplies the profile-backed implementation.</param>
     /// <param name="returnEmptyWhenAtDestination">When true, source==destination returns an empty list instead of null.</param>
+    /// <param name="ignoreExitGates">When true, exit movement restrictions (Form-A level gates via <see cref="IRoomFilter.IsExitBlocked"/>) are NOT applied — only the avoid filter still cuts nodes. The walker uses this to re-probe a failed walk and tell "all routes are level-gated" apart from "graph-disconnected".</param>
     public IReadOnlyList<Direction>? FindPath(
         RoomKey source,
         RoomKey destination,
         IRoomFilter? filter = null,
-        bool returnEmptyWhenAtDestination = false)
+        bool returnEmptyWhenAtDestination = false,
+        bool ignoreExitGates = false)
     {
         if (_graph.GetRoom(source) is null) return null;
         if (_graph.GetRoom(destination) is null) return null;
@@ -131,6 +133,11 @@ public sealed class BfsMapper
                 // destination itself — walking *into* an avoided room
                 // is the thing the user wants to forbid.
                 if (filter is not null && filter.IsAvoided(next)) continue;
+
+                // Movement restriction on the exit itself (Form-A level
+                // gate) — non-traversable when the player doesn't meet
+                // it, unless the caller is probing with gates ignored.
+                if (!ignoreExitGates && filter is not null && filter.IsExitBlocked(exit)) continue;
 
                 // Destination room must still exist in the graph.
                 if (_graph.GetRoom(next) is null) continue;
@@ -185,6 +192,7 @@ public sealed class BfsMapper
                 RoomKey next = exit.Target;
                 if (dist.ContainsKey(next)) continue;
                 if (filter is not null && filter.IsAvoided(next)) continue;
+                if (filter is not null && filter.IsExitBlocked(exit)) continue;
                 if (_graph.GetRoom(next) is null) continue;
                 dist[next] = here_d + 1;
                 queue.Enqueue(next);

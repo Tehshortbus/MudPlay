@@ -108,7 +108,7 @@
                 <NumericUpDown Grid.Column="2"
                                Value="{Binding HopNone, Mode=TwoWay}"
                                Minimum="0.1" Maximum="60" Increment="0.1"
-                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                               FormatString="0.0" Width="120" ShowButtonSpinner="True"/>
                 <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
             </Grid>
             <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
@@ -117,7 +117,7 @@
                 <NumericUpDown Grid.Column="2"
                                Value="{Binding HopLight, Mode=TwoWay}"
                                Minimum="0.1" Maximum="60" Increment="0.1"
-                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                               FormatString="0.0" Width="120" ShowButtonSpinner="True"/>
                 <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
             </Grid>
             <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
@@ -126,7 +126,7 @@
                 <NumericUpDown Grid.Column="2"
                                Value="{Binding HopMedium, Mode=TwoWay}"
                                Minimum="0.1" Maximum="60" Increment="0.1"
-                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                               FormatString="0.0" Width="120" ShowButtonSpinner="True"/>
                 <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
             </Grid>
             <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
@@ -135,7 +135,7 @@
                 <NumericUpDown Grid.Column="2"
                                Value="{Binding HopHeavy, Mode=TwoWay}"
                                Minimum="0.1" Maximum="60" Increment="0.1"
-                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                               FormatString="0.0" Width="120" ShowButtonSpinner="True"/>
                 <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
             </Grid>
             <Grid ColumnDefinitions="32,120,Auto,Auto,*" Margin="0,2" ColumnSpacing="8"
@@ -144,7 +144,7 @@
                 <NumericUpDown Grid.Column="2"
                                Value="{Binding HopEncumbered, Mode=TwoWay}"
                                Minimum="0.1" Maximum="60" Increment="0.1"
-                               FormatString="0.0" Width="100" ShowButtonSpinner="True"/>
+                               FormatString="0.0" Width="120" ShowButtonSpinner="True"/>
                 <TextBlock Grid.Column="3" Classes="FieldSuffix" Text="seconds / hop"/>
             </Grid>
 

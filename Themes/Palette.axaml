@@ -52,6 +52,7 @@
     <Color x:Key="AccentYellowColor">#FFE0B040</Color>
     <Color x:Key="AccentGreenColor">#FF7AB870</Color>
     <Color x:Key="AccentMagentaColor">#FFB868B8</Color>
+    <Color x:Key="AccentVioletColor">#FF9D86E0</Color>
 
     <SolidColorBrush x:Key="AccentAmberBrush"      Color="{StaticResource AccentAmberColor}"/>
     <SolidColorBrush x:Key="AccentAmberSoftBrush"  Color="{StaticResource AccentAmberSoftColor}"/>
@@ -60,6 +61,7 @@
     <SolidColorBrush x:Key="AccentYellowBrush"     Color="{StaticResource AccentYellowColor}"/>
     <SolidColorBrush x:Key="AccentGreenBrush"      Color="{StaticResource AccentGreenColor}"/>
     <SolidColorBrush x:Key="AccentMagentaBrush"    Color="{StaticResource AccentMagentaColor}"/>
+    <SolidColorBrush x:Key="AccentVioletBrush"     Color="{StaticResource AccentVioletColor}"/>
 
     <!-- ============ Severity mapping ============ -->
     <!-- Used by LogService consumers (Phase 1 LogPane, status-bar latest).

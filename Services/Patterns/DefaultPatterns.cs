@@ -61,6 +61,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSneakInitiate, @"^Attempting to sneak\.\.\.$");
         yield return new RegexPattern(KnownPatterns.UserCantSneak,     @"^You may not sneak right now!");
 
+        // ----- Room light ------------------------------------------------ (source: docs/auto-engine-orchestration.md — MMUD Explorer)
+        // Only the two "can't see" lines; prefix-anchored so trailing
+        // punctuation / dash variants don't break the match.
+        yield return new RegexPattern(KnownPatterns.RoomPitchBlack, @"^The room is pitch black");
+        yield return new RegexPattern(KnownPatterns.RoomVeryDark,   @"^The room is very dark");
+
         // ----- Movement -------------------------------------------------- (source: classifier.js movement)
         // Megamind ships two regexes under direction-failed (no-exit + closed door/gate); combined via alternation.
         yield return new RegexPattern(KnownPatterns.DirectionFailed,
@@ -69,6 +75,16 @@ public static class DefaultPatterns
             @"^Your attempts to bash through fail!$");
         yield return new RegexPattern(KnownPatterns.HeardMovement,
             @"^You hear movement to the (?<direction>\w+)\.");
+        // Left-behind disambiguators (Phase 6 PR 6.2). "You can't seem to
+        // move anywhere!" fires when a prevents-movement gamedata flag
+        // blocks us; "...too heavy to move" fires when over-encumbered.
+        // The heavy form is anchored ^[^"]* so a quoted chat line (all
+        // MajorMUD player chat is quoted) carrying the phrase can never
+        // match — only the unquoted system line does.
+        yield return new RegexPattern(KnownPatterns.MovementFailedStuck,
+            @"^You can't seem to move anywhere!");
+        yield return new RegexPattern(KnownPatterns.MovementFailedHeavy,
+            @"^[^""]*too heavy to move");
 
         // ----- Failures -------------------------------------------------- (source: classifier.js failures)
         yield return new RegexPattern(KnownPatterns.CommandNoEffect, @"^Your command had no effect\.$");
@@ -102,6 +118,101 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
 
+        // Phase 9 PR 9.0d — local-player death. MajorMUD's canonical
+        // wording is "You have been slain by <killer>." — the killer
+        // is whatever last hit landed (monster name OR another player
+        // for PvP, even though FujinTerm scopes engines to PvE; we
+        // still observe the line so DeathRecoveryManager can fire).
+        // The trailing "." is captured tolerantly: some realms include
+        // a trailing "!" instead.
+        yield return new RegexPattern(KnownPatterns.UserSlain,
+            @"^You have been slain by (?<killer>[\w '-]+?)[.!]\s*$");
+
+        // "You don't see <X> here!" — target-gone signal. Lifted from
+        // MudProxy CombatManager:1269. Trailing punctuation tolerant —
+        // "!" canonical but some realms emit ".".
+        yield return new RegexPattern(KnownPatterns.TargetNotHere,
+            @"^You don't see (?<target>.+?) here[.!]\s*$");
+
+        // Weapon-no-effect signals. MudProxy CombatManager:384.
+        yield return new RegexPattern(KnownPatterns.WeaponNoEffect,
+            @"^Your weapon has no effect against this monster!");
+        yield return new RegexPattern(KnownPatterns.FistsNoEffect,
+            @"^Your fists have no effect against this monster!");
+
+        // ----- Spellcasting failures ------------------------------------
+        // Cast outcomes that block further casts for the current round.
+        // CastCoordinator subscribes to flag the engine's _castBlocked
+        // latch; CastingDirector waits for the next CombatTick before
+        // retrying. Lifted from MudProxy CastCoordinator regex set.
+        yield return new RegexPattern(KnownPatterns.CastFizzled,
+            @"^You attempt to cast (?<spell>.+?), but fail\.");
+        yield return new RegexPattern(KnownPatterns.CastNoMana,
+            @"^You do not have enough mana to cast that spell\.");
+        yield return new RegexPattern(KnownPatterns.CastAlreadyThisRound,
+            @"^You have already cast a spell this round!");
+        yield return new RegexPattern(KnownPatterns.CastInterrupted,
+            @"^You lost your concentration on the spell!");
+
+        // Attack-spell immunity. MudProxy CombatManager:408. Non-greedy
+        // capture stops at the first period (no `$` — Multiline `$` won't
+        // match before `\r`). CombatManager marks the species attack-
+        // spell-immune so the chooser skips the primary attack spell.
+        yield return new RegexPattern(KnownPatterns.SpellNoEffect,
+            @"^Your spell has no effect on (?<target>.+?)\.");
+
+        // ----- Cash ----------------------------------------------------
+        // Stock MajorMUD wording for cash on the ground. Singular form
+        // (1 coin) drops the count entirely ("There is a gold piece
+        // here."). Plural carries the count + currency word. Currency
+        // word capture so CashManager can dispatch per-currency policy
+        // without per-currency regexes.
+        yield return new RegexPattern(KnownPatterns.CashOnGround,
+            @"^There (?:is a (?<currency>\w+) piece|are (?<count>\d+) (?<currency2>\w+) pieces) here\.");
+        yield return new RegexPattern(KnownPatterns.CashPickedUp,
+            @"^You pick(?:ed)? up (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        yield return new RegexPattern(KnownPatterns.CashDropped,
+            @"^You drop(?:ped)? (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        yield return new RegexPattern(KnownPatterns.CashHidden,
+            @"^You hid (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+        // Corpse loot — "N <currency> drop to the ground." emitted
+        // after the kill announce. Verb agreement is `drop` for plural
+        // counts; tolerating `drops?` covers any singular-1 variant
+        // the server might emit. CashFromKill is a separate pattern
+        // (vs reusing CashOnGround) so each line shape stays
+        // observable / documented; the CashManager handler funnels
+        // both into the same policy dispatch.
+        yield return new RegexPattern(KnownPatterns.CashFromKill,
+            @"^(?<count>\d+) (?<currency>\w+) drops? to the ground\.");
+
+        // Realm-specific room survey — "You notice <list> here." with
+        // cash entries (always first) + items. The single-line case
+        // is matched here; multi-line wraps stitch back through
+        // CashManager.AttachLineExtractor.
+        yield return new RegexPattern(KnownPatterns.YouNoticeRoom,
+            @"^You notice (?<list>.+?) here\.\s*$");
+
+        // Phase 9 PR 9.A — party / room attack announce. Mirrors
+        // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
+        // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")
+        // OR a bare colon prefix that some realms emit before the
+        // name. Captures the announcer's name + the target.
+        yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
+            @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
+
+        // Phase 9 PR 9.A — room-entry arrival. Anchored on "into the
+        // room from" so a wide alternation of verbs (crawls, walks,
+        // slithers, teleports, materialises, …) is folded into a
+        // single \w+ capture. Direction tolerates hyphens for
+        // potential "north-east" variants alongside the canonical
+        // cardinals + "nowhere" (script spawn).
+        // Preposition tolerates `in` and `into` — verified server output
+        // for slow-creep verbs ("A carrion beast creeps in the room from
+        // nowhere.") which use the locative `in` rather than the
+        // directional `into` most other entry verbs do.
+        yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
+            @"^(?<name>.+?) \w+ in(?:to)? the room from (?<direction>[\w-]+)\.\s*$");
+
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the
         // user wants them filtered under the same Gossip toggle in the
@@ -125,8 +236,14 @@ public static class DefaultPatterns
         // Yell: combined own + others into one regex; player group empty for "You yell".
         yield return new RegexPattern(KnownPatterns.ConversationYell,
             @"^(?:(?<player>\w+) yells|You yell) ""(?<message>.+)""");
+        // Combined own + others, mirroring Yell: a third party emits
+        // "X says ""…""" (player captured); the local character's own echo
+        // is "You say ""…""" (player group empty → self). Splitting the
+        // verb forms keeps "You" out of the player group so downstream
+        // consumers (notably RemoteCommandManager) never treat the local
+        // character's own speech as an inbound @-command.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
-            @"^(?<player>\w+) says? ""(?<message>.+)""");
+            @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
         // user-emote (Megamind's regex keys off ANSI bytes the LineExtractor
         // strips). Omitted until attribute-aware matching ships — see remarks
         // on this class.
@@ -341,6 +458,18 @@ public static class DefaultPatterns
         // tweak shouldn't break commit suppression silently.
         yield return new RegexPattern(KnownPatterns.SuicidePasswordNotChanged,
             @"(?i)^Password NOT changed\b");
+        // Successful suicide → the character is rerolled (deleted, recreated
+        // fresh at level 1). The realm's own suicide password dies with the
+        // old character, so we wipe our stored copy; the Spell Book's
+        // obtained set is cleared too (a fresh character has learned nothing).
+        yield return new RegexPattern(KnownPatterns.Reroll,
+            @"(?i)^After a LONG thought, you take your own life");
+        // Learn-scroll signal — reading a spell scroll teaches its spell.
+        // Group 1 is the spell's full Name ("harm"), NOT the short cast
+        // code, so it resolves through SpellbookState.MarkObtainedByName.
+        // Lazy capture so the terminating period isn't swallowed.
+        yield return new RegexPattern(KnownPatterns.LearnSpell,
+            @"(?i)^You read .+ and learn the spell (.+?)\.\s*$");
 
         // ----- Trap-disarm flow ------------------------------------------
         // Direction capture is the LONG form (north / northeast / up /
@@ -387,6 +516,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.DoorKeyUnknown,
             @"\b(?:you have no |you don'?t have|nothing happens)\b",
             options: RegexOptions.IgnoreCase);
+
+        // "You see <name> attempt to bash the door to the <dir>." — another
+        // player (possibly our party leader) failing to force a door. Name
+        // is the actor's given name; direction is the full word.
+        yield return new RegexPattern(KnownPatterns.PlayerDoorBashAttempt,
+            @"^You see (?<name>.+?) attempt to bash the door to the (?<dir>north|south|east|west|northeast|northwest|southeast|southwest|up|down)\.");
     }
 
 }

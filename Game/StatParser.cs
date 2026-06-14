@@ -541,7 +541,12 @@ public sealed partial class StatParser : IDisposable
 
     [GeneratedRegex(@"\bName:\s+(\S[\w '\-]*?)(?=\s{2,}|$)",      RegexOptions.CultureInvariant)] private static partial Regex NameRx();
     [GeneratedRegex(@"\bRace:\s+(\S[\w '\-]*?)(?=\s{2,}|$)",      RegexOptions.CultureInvariant)] private static partial Regex RaceRx();
-    [GeneratedRegex(@"\bClass:\s+(\S[\w '\-]*?)(?=\s{2,}|$)",     RegexOptions.CultureInvariant)] private static partial Regex ClassRx();
+    // Class sits in a column whose next label can be only a SINGLE space
+    // away ("Class: Missionary Level: 2") on some realm layouts — unlike
+    // Name / Race, which always have a 2-space gutter. So the terminator
+    // also stops the value before the next `Label:` column, otherwise the
+    // 2-space-only lookahead silently drops Class on single-space layouts.
+    [GeneratedRegex(@"\bClass:\s+(\S[\w '\-]*?)(?=\s+\w+:|\s{2,}|$)", RegexOptions.CultureInvariant)] private static partial Regex ClassRx();
 
     // Paired N/M fields — Hits / Kai / Mana / Armour Class allow `*`
     // between the colon and digits to capture altered values

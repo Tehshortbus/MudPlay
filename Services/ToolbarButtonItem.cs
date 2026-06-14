@@ -29,7 +29,21 @@ public sealed partial class ToolbarButtonItem : ObservableObject
     /// </summary>
     public string? AlternateIconResourceKey { get; }
 
-    public string Tooltip { get; }
+    /// <summary>
+    /// Tooltip text (icon-only buttons use this as their label).
+    /// Observable so the movement Start button can re-label itself
+    /// "Resume" when the active nav mode is paused.
+    /// </summary>
+    [ObservableProperty] private string _tooltip;
+
+    /// <summary>
+    /// Whether the button is currently actionable. Default true; the
+    /// movement Start / Pause / Stop rows toggle it with engine state so
+    /// a button that would no-op renders disabled (greyed) instead of
+    /// firing. Bound to the toolbar button's <c>IsEnabled</c>.
+    /// </summary>
+    [ObservableProperty] private bool _isActionEnabled = true;
+
     public ICommand? Command { get; }
 
     /// <summary>Toolbar button's <c>Active</c> visual state (amber).</summary>
@@ -54,7 +68,7 @@ public sealed partial class ToolbarButtonItem : ObservableObject
         ActionId = actionId;
         Label = label;
         IconResourceKey = iconResourceKey;
-        Tooltip = tooltip;
+        _tooltip = tooltip;
         Command = command;
         AlternateIconResourceKey = alternateIconResourceKey;
     }

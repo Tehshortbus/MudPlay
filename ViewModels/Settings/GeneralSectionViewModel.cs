@@ -40,8 +40,14 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
+        "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",
         "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
+        "Allow hangup in all-off mode",
+        "Re-enable on reconnect", "Re-enable Auto-Combat", "Re-enable Auto-Nuke",
+        "Re-enable Auto-Heal/Rest", "Re-enable Auto-Bless", "Re-enable Auto-Light",
+        "Re-enable Auto-Get Items", "Re-enable Auto-Get Cash", "Re-enable Auto-Sneak",
+        "Re-enable Auto-Hide", "Re-enable Auto-Search",
     };
 
     public override Control View => _view ??= new GeneralSectionView { DataContext = this };
@@ -106,19 +112,12 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     /// </summary>
     public IReadOnlyList<string> AutoLairNames { get; } = Array.Empty<string>();
 
-    // ----- Manual-Mode defaults -----
-    [ObservableProperty] private bool _mmAutoCombat;
-    [ObservableProperty] private bool _mmAutoNuke;
-    [ObservableProperty] private bool _mmAutoHealRest;
-    [ObservableProperty] private bool _mmAutoBless;
-    [ObservableProperty] private bool _mmAutoLight;
-    [ObservableProperty] private bool _mmAutoGetItems;
-    [ObservableProperty] private bool _mmAutoGetCash;
-    [ObservableProperty] private bool _mmAutoSneak;
-    [ObservableProperty] private bool _mmAutoHide;
-    [ObservableProperty] private bool _mmAutoSearch;
-
-    // ----- Auto-Mode defaults -----
+    // ----- Auto-engine master switches -----
+    // Each AmXxx bool is the master on/off for the matching Phase 9+
+    // engine. Persisted to GeneralSettings.AutoMode and read live by
+    // each engine's gating delegate in AppServices. The XAML wires
+    // each CheckBox's IsEnabled to the matching IsXxxWired flag so the
+    // user can see which engines are actually live vs surface-only.
     [ObservableProperty] private bool _amAutoCombat;
     [ObservableProperty] private bool _amAutoNuke;
     [ObservableProperty] private bool _amAutoHealRest;
@@ -129,6 +128,44 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _amAutoSneak;
     [ObservableProperty] private bool _amAutoHide;
     [ObservableProperty] private bool _amAutoSearch;
+
+    // ----- Emergency hangup carve-out ---------------------------------
+    // Lets the HealthManager emergency-hangup branch fire even when every
+    // auto-engine is off. Sits next to the auto-engine switches because
+    // it's the one safety net that survives all-off mode.
+    [ObservableProperty] private bool _allowHangupInAllOffMode;
+
+    // ----- Re-enable auto-actions on reconnect ------------------------
+    // One flag per auto-action (1-to-1 with AutoMode above). On a
+    // reconnect, each action whose flag is on gets flipped back ON in
+    // AutoMode. Default off for every action.
+    [ObservableProperty] private bool _reEnableAutoCombatOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoNukeOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoHealRestOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoBlessOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoLightOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoGetItemsOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoGetCashOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoSneakOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoHideOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoSearchOnReconnect;
+
+    // ----- Wired-state flags ------------------------------------------
+    // Computed (return constants) — true when the matching engine is
+    // live, false when its skeleton hasn't landed yet. The view's
+    // CheckBox.IsEnabled binds to these so users see at a glance
+    // which toggles do anything. As later PRs wire each engine, flip
+    // the matching constant here.
+    public bool IsAutoCombatWired   => true;    // PR 9.A — CombatManager
+    public bool IsAutoHealRestWired => true;    // PR 9.B — HealthManager
+    public bool IsAutoNukeWired     => true;    // CombatSpellChooser multi-attack + debuff gate
+    public bool IsAutoBlessWired    => true;    // CastingDirector Buffing-category gate
+    public bool IsAutoLightWired    => true;    // PR 9.K — AutoLightManager
+    public bool IsAutoGetItemsWired => true;    // PR 9.L — AutoGetItemsManager
+    public bool IsAutoGetCashWired  => true;    // PR 9.E — CashManager + StashRoomManager (both gate here)
+    public bool IsAutoSneakWired    => true;    // PR 9.F Cluster 3 — StealthManager auto-sneak
+    public bool IsAutoHideWired     => true;    // PR 9.F Cluster 3 — StealthManager auto-hide
+    public bool IsAutoSearchWired   => false;   // future hidden-exit walker integration
 
     public GeneralSectionViewModel(ProfileService profile)
         : this(profile, AppServices.Current.Settings) { }
@@ -159,8 +196,18 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             DefaultAutoLairName = string.IsNullOrWhiteSpace(DefaultAutoLairName) ? null : DefaultAutoLairName,
             AutoConnect = AutoConnect,
             BackupOnSave = BackupOnSave,
-            ManualMode = SnapshotManual(),
             AutoMode   = SnapshotAuto(),
+            AllowHangupInAllOffMode         = AllowHangupInAllOffMode,
+            ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
+            ReEnableAutoNukeOnReconnect     = ReEnableAutoNukeOnReconnect,
+            ReEnableAutoHealRestOnReconnect = ReEnableAutoHealRestOnReconnect,
+            ReEnableAutoBlessOnReconnect    = ReEnableAutoBlessOnReconnect,
+            ReEnableAutoLightOnReconnect    = ReEnableAutoLightOnReconnect,
+            ReEnableAutoGetItemsOnReconnect = ReEnableAutoGetItemsOnReconnect,
+            ReEnableAutoGetCashOnReconnect  = ReEnableAutoGetCashOnReconnect,
+            ReEnableAutoSneakOnReconnect    = ReEnableAutoSneakOnReconnect,
+            ReEnableAutoHideOnReconnect     = ReEnableAutoHideOnReconnect,
+            ReEnableAutoSearchOnReconnect   = ReEnableAutoSearchOnReconnect,
         };
 
         profile.Settings ??= new();
@@ -202,18 +249,6 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         AutoConnect          = dto.AutoConnect;
         BackupOnSave         = dto.BackupOnSave;
 
-        AutoActionDefaults m = dto.ManualMode;
-        MmAutoCombat   = m.AutoCombat;
-        MmAutoNuke     = m.AutoNuke;
-        MmAutoHealRest = m.AutoHealRest;
-        MmAutoBless    = m.AutoBless;
-        MmAutoLight    = m.AutoLight;
-        MmAutoGetItems = m.AutoGetItems;
-        MmAutoGetCash  = m.AutoGetCash;
-        MmAutoSneak    = m.AutoSneak;
-        MmAutoHide     = m.AutoHide;
-        MmAutoSearch   = m.AutoSearch;
-
         AutoActionDefaults a = dto.AutoMode;
         AmAutoCombat   = a.AutoCombat;
         AmAutoNuke     = a.AutoNuke;
@@ -225,6 +260,18 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         AmAutoSneak    = a.AutoSneak;
         AmAutoHide     = a.AutoHide;
         AmAutoSearch   = a.AutoSearch;
+
+        AllowHangupInAllOffMode         = dto.AllowHangupInAllOffMode;
+        ReEnableAutoCombatOnReconnect   = dto.ReEnableAutoCombatOnReconnect;
+        ReEnableAutoNukeOnReconnect     = dto.ReEnableAutoNukeOnReconnect;
+        ReEnableAutoHealRestOnReconnect = dto.ReEnableAutoHealRestOnReconnect;
+        ReEnableAutoBlessOnReconnect    = dto.ReEnableAutoBlessOnReconnect;
+        ReEnableAutoLightOnReconnect    = dto.ReEnableAutoLightOnReconnect;
+        ReEnableAutoGetItemsOnReconnect = dto.ReEnableAutoGetItemsOnReconnect;
+        ReEnableAutoGetCashOnReconnect  = dto.ReEnableAutoGetCashOnReconnect;
+        ReEnableAutoSneakOnReconnect    = dto.ReEnableAutoSneakOnReconnect;
+        ReEnableAutoHideOnReconnect     = dto.ReEnableAutoHideOnReconnect;
+        ReEnableAutoSearchOnReconnect   = dto.ReEnableAutoSearchOnReconnect;
     }
 
     private GeneralSettings ReadOrDefault()
@@ -236,20 +283,6 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         return JsonSerializer.Deserialize<GeneralSettings>(json.GetRawText())
                ?? new GeneralSettings();
     }
-
-    private AutoActionDefaults SnapshotManual() => new()
-    {
-        AutoCombat   = MmAutoCombat,
-        AutoNuke     = MmAutoNuke,
-        AutoHealRest = MmAutoHealRest,
-        AutoBless    = MmAutoBless,
-        AutoLight    = MmAutoLight,
-        AutoGetItems = MmAutoGetItems,
-        AutoGetCash  = MmAutoGetCash,
-        AutoSneak    = MmAutoSneak,
-        AutoHide     = MmAutoHide,
-        AutoSearch   = MmAutoSearch,
-    };
 
     private AutoActionDefaults SnapshotAuto() => new()
     {
@@ -288,16 +321,6 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnDefaultAutoLairNameChanged(string? value) => Dirty();
     partial void OnAutoConnectChanged(bool value)            => Dirty();
     partial void OnBackupOnSaveChanged(bool value)           => Dirty();
-    partial void OnMmAutoCombatChanged(bool value)           => Dirty();
-    partial void OnMmAutoNukeChanged(bool value)             => Dirty();
-    partial void OnMmAutoHealRestChanged(bool value)         => Dirty();
-    partial void OnMmAutoBlessChanged(bool value)            => Dirty();
-    partial void OnMmAutoLightChanged(bool value)            => Dirty();
-    partial void OnMmAutoGetItemsChanged(bool value)         => Dirty();
-    partial void OnMmAutoGetCashChanged(bool value)          => Dirty();
-    partial void OnMmAutoSneakChanged(bool value)            => Dirty();
-    partial void OnMmAutoHideChanged(bool value)             => Dirty();
-    partial void OnMmAutoSearchChanged(bool value)           => Dirty();
     partial void OnAmAutoCombatChanged(bool value)           => Dirty();
     partial void OnAmAutoNukeChanged(bool value)             => Dirty();
     partial void OnAmAutoHealRestChanged(bool value)         => Dirty();
@@ -308,6 +331,17 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnAmAutoSneakChanged(bool value)            => Dirty();
     partial void OnAmAutoHideChanged(bool value)             => Dirty();
     partial void OnAmAutoSearchChanged(bool value)           => Dirty();
+    partial void OnAllowHangupInAllOffModeChanged(bool value)         => Dirty();
+    partial void OnReEnableAutoCombatOnReconnectChanged(bool value)   => Dirty();
+    partial void OnReEnableAutoNukeOnReconnectChanged(bool value)     => Dirty();
+    partial void OnReEnableAutoHealRestOnReconnectChanged(bool value) => Dirty();
+    partial void OnReEnableAutoBlessOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoLightOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoGetItemsOnReconnectChanged(bool value) => Dirty();
+    partial void OnReEnableAutoGetCashOnReconnectChanged(bool value)  => Dirty();
+    partial void OnReEnableAutoSneakOnReconnectChanged(bool value)    => Dirty();
+    partial void OnReEnableAutoHideOnReconnectChanged(bool value)     => Dirty();
+    partial void OnReEnableAutoSearchOnReconnectChanged(bool value)   => Dirty();
 
     /// <summary>
     /// Belt + braces on top of RadioButton.GroupName — the View's

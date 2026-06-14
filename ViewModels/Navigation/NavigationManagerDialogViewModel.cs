@@ -48,13 +48,29 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly RoomGraphManager _graph;
     private readonly ConfirmService _confirm;
     private readonly DialogService _dialogs;
+    private readonly NavFolderManager? _folders;
     private readonly LoopRunner? _runner;
     private readonly MpFileImporter? _mpImporter;
     private readonly LogService? _log;
+    private readonly RoomSearchService? _search;
+    private readonly AutoWalkManager? _walker;
+    private readonly MovementController? _movement;
     private readonly Action? _onDraftConsumed;
 
+    /// <summary>Flat backing rows for the Loops pane — source the tree is grouped from + drives <see cref="HasLoops"/>.</summary>
     public ObservableCollection<ManagerLoopRow> Loops { get; } = new();
+
+    /// <summary>Flat backing rows for the Auto-Lair pane — source the tree is grouped from + drives <see cref="HasLairSetups"/>.</summary>
     public ObservableCollection<ManagerLairSetupRow> LairSetups { get; } = new();
+
+    /// <summary>
+    /// Single folder-grouped tree mixing <see cref="NavFolderNodeViewModel"/>
+    /// folders with both <see cref="ManagerLairSetupRow"/> and
+    /// <see cref="ManagerLoopRow"/> leaves — loops and lairs share one
+    /// list (and one on-disk folder layout), so the manager shows them
+    /// together. Lairs sort ahead of loops within a folder (added first).
+    /// </summary>
+    public ObservableCollection<object> WalkTree { get; } = new();
 
     /// <summary>
     /// In-progress build session from the Navigation window, or null
@@ -74,6 +90,10 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     public bool HasLoops => Loops.Count > 0;
     public bool HasLairSetups => LairSetups.Count > 0;
+
+    /// <summary>True when the combined tree has any node (loop, lair, or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    public bool HasWalkTree => WalkTree.Count > 0;
+
     public bool HasDraft => Draft is not null;
 
     /// <summary>
@@ -91,11 +111,15 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         RoomGraphManager graph,
         ConfirmService confirm,
         DialogService dialogs,
+        NavFolderManager? folders = null,
         LoopBuilderSessionViewModel? draft = null,
         Action? onDraftConsumed = null,
         LoopRunner? runner = null,
         MpFileImporter? mpImporter = null,
-        LogService? log = null)
+        LogService? log = null,
+        RoomSearchService? search = null,
+        AutoWalkManager? walker = null,
+        MovementController? movement = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(lairSetups);
@@ -109,18 +133,35 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _graph = graph;
         _confirm = confirm;
         _dialogs = dialogs;
+        _folders = folders;
         _runner = runner;
         _mpImporter = mpImporter;
         _log = log;
+        _search = search;
+        _walker = walker;
+        _movement = movement;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
 
         _loops.LoopsChanged += RebuildLoops;
         _lairSetups.SetupsChanged += RebuildLairSetups;
+        // Empty-folder creation produces no loop/lair change, so both
+        // trees rebuild on the coordinator's own folder event too.
+        if (_folders is not null) _folders.FoldersChanged += OnFoldersChanged;
         RebuildLoops();
         RebuildLairSetups();
     }
+
+    private void OnFoldersChanged()
+    {
+        RebuildLoops();
+        RebuildLairSetups();
+    }
+
+    /// <summary>Empty + ancestor folders to seed both trees with, so user-created folders render before anything is filed under them.</summary>
+    private IEnumerable<string> FolderSeed =>
+        _folders?.AllFolders ?? Enumerable.Empty<string>();
 
     private void RebuildLoops()
     {
@@ -128,6 +169,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         foreach (Loop loop in _loops.Loops.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
             Loops.Add(new ManagerLoopRow(loop));
         OnPropertyChanged(nameof(HasLoops));
+        RebuildWalkTree();
     }
 
     private void RebuildLairSetups()
@@ -136,7 +178,36 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         foreach (LairSetup setup in _lairSetups.Setups)
             LairSetups.Add(new ManagerLairSetupRow(setup));
         OnPropertyChanged(nameof(HasLairSetups));
+        RebuildWalkTree();
     }
+
+    /// <summary>
+    /// Rebuild the single combined tree from both backing lists. Lairs
+    /// are added before loops so they sort ahead within each folder; the
+    /// TreeView picks a leaf DataTemplate by runtime row type.
+    /// </summary>
+    private void RebuildWalkTree()
+    {
+        var rows = new List<object>(LairSetups.Count + Loops.Count);
+        rows.AddRange(LairSetups);
+        rows.AddRange(Loops);
+        NavTreeBuilder.Sync<object>(WalkTree, rows, FolderOfWalkRow, NameOfWalkRow, FolderSeed);
+        OnPropertyChanged(nameof(HasWalkTree));
+    }
+
+    private static string FolderOfWalkRow(object row) => row switch
+    {
+        ManagerLoopRow l      => l.Source.Folder,
+        ManagerLairSetupRow s => s.Source.Folder,
+        _                     => string.Empty,
+    };
+
+    private static string NameOfWalkRow(object row) => row switch
+    {
+        ManagerLoopRow l      => l.Name,
+        ManagerLairSetupRow s => s.Name,
+        _                     => string.Empty,
+    };
 
     // ----- Loop row commands -----------------------------------------
 
@@ -153,6 +224,34 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         LoopEditorDialogViewModel vm = new(
             row.Source, _loops, _graph, _runner, _confirm);
         await _dialogs.OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
+    }
+
+    /// <summary>
+    /// Start the selected loop immediately via the shared runner — the
+    /// "run a saved loop without opening the map" path. The dialog is
+    /// modeless so it stays open (the user closes it explicitly); the
+    /// loop's progress surfaces on the toolbar movement buttons + the
+    /// Navigation window if it's open. No-op when no runner is wired.
+    /// </summary>
+    [RelayCommand]
+    private void RunLoop(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        _runner?.Start(row.Source);
+    }
+
+    /// <summary>
+    /// Stage the selected loop as the active one without starting
+    /// movement (<see cref="LoopRunner.Stage"/>). The toolbar Start
+    /// button picks the staged loop up when the user presses it, so
+    /// "Load" lets the user pre-select a loop here and begin it later
+    /// from the toolbar — no map needed. No-op when no runner is wired.
+    /// </summary>
+    [RelayCommand]
+    private void LoadLoop(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        _runner?.Stage(row.Source);
     }
 
     /// <summary>
@@ -388,13 +487,224 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     // dialog is CRUD-only (Edit + Delete) for saved setups, mirroring
     // how the Loops section works.
 
+    // ----- folder commands -------------------------------------------
+    // Folders are SHARED on-disk between loops and lairs (one Loops
+    // directory tree), so folder CRUD here mutates both panes at once
+    // via the coordinator. The move commands stay per-pane.
+
+    /// <summary>
+    /// Prompt for a name and create a new (empty) folder at the root,
+    /// or — when invoked on a folder node — nested under it. The new
+    /// directory shows immediately in both panes via
+    /// <see cref="NavFolderManager.FoldersChanged"/>.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        if (_folders is null) return;
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _folders.CreateFolder(full);
+    }
+
+    /// <summary>Rename a folder (and everything beneath it). No-op if the target name already exists.</summary>
+    [RelayCommand]
+    private async Task RenameFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (_folders is null || node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        // Rename swaps only the last segment unless the user typed a
+        // path; rebase onto the same parent so a bare name moves in place.
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _folders.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>
+    /// Delete a folder. Its loops / lairs / sub-folders are re-parented
+    /// one level up (nothing is destroyed); only the folder grouping
+    /// goes away.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (_folders is null || node is null) return;
+        bool ok = await _confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _folders.DeleteFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>Move a loop into the folder identified by <paramref name="folder"/> (empty = root). Used by drag-drop + context-menu move.</summary>
+    public void MoveLoopToFolder(ManagerLoopRow? row, string? folder)
+    {
+        if (row is null) return;
+        _loops.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move an Auto-Lair setup into the folder identified by <paramref name="folder"/> (empty = root).</summary>
+    public void MoveLairToFolder(ManagerLairSetupRow? row, string? folder)
+    {
+        if (row is null) return;
+        _lairSetups.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a loop — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLoopAsync(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move loop", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLoopToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for an Auto-Lair setup — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLairAsync(ManagerLairSetupRow? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move setup", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLairToFolder(row, folder);
+    }
+
+    private async Task<string?> PromptFolderNameAsync(string title, string prompt, string initial = "")
+    {
+        NavFolderNameDialogViewModel vm = new(title, prompt, initial);
+        return await _dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
+    }
+
+    // ----- walk-to search ------------------------------------------------
+
+    /// <summary>
+    /// Footer search box text. Mirrors the Navigation window's room
+    /// search — type a name / coordinate, pick a dropdown row, then Run
+    /// walks there and closes the dialog. Only wired when a
+    /// <see cref="RoomSearchService"/> + <see cref="AutoWalkManager"/>
+    /// were supplied (the live Manage flows); the transient import-only
+    /// instance leaves them null and the box stays hidden.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunSearchCommand))]
+    private string _searchQuery = string.Empty;
+
+    /// <summary>Current dropdown matches for <see cref="SearchQuery"/>.</summary>
+    public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
+
+    /// <summary>True while the dropdown has rows to show.</summary>
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    /// <summary>True when the footer search box should render (search + walker wired).</summary>
+    public bool HasWalkToSearch => _search is not null && _walker is not null;
+
+    /// <summary>
+    /// Destination locked in when the user picks a dropdown row, so Run
+    /// walks to the exact room they chose rather than re-resolving the
+    /// text. Cleared whenever the user edits the box again.
+    /// </summary>
+    private RoomKey? _queuedDestination;
+
+    /// <summary>Set while we write the chosen room name back into the box, to keep the dropdown from reopening.</summary>
+    private bool _suppressSearch;
+
+    private Avalonia.Threading.DispatcherTimer? _searchDebounce;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        if (_suppressSearch) return;
+        // Editing the text invalidates a previously-picked row.
+        _queuedDestination = null;
+        _searchDebounce ??= new Avalonia.Threading.DispatcherTimer { Interval = SearchDebounceDelay };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounceTick;
+        _searchDebounce.Tick += OnSearchDebounceTick;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounceTick(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        RebuildSearchResults(SearchQuery);
+    }
+
+    private void RebuildSearchResults(string query)
+    {
+        SearchResults.Clear();
+        string needle = query?.Trim() ?? string.Empty;
+        if (_search is null || needle.Length < 1)
+        {
+            OnPropertyChanged(nameof(HasSearchResults));
+            return;
+        }
+        foreach (RoomSearchResult m in _search.Search(needle, cap: 200).Take(50))
+            SearchResults.Add(m);
+        OnPropertyChanged(nameof(HasSearchResults));
+    }
+
+    /// <summary>
+    /// User clicked a dropdown row — lock its room in as the destination
+    /// and reflect the name in the box. Informational rows (a monster
+    /// with no recorded lair) carry no walkable target, so they no-op.
+    /// </summary>
+    [RelayCommand]
+    private void SelectSearchResult(RoomSearchResult? result)
+    {
+        if (result is null || result.IsInformational) return;
+        _queuedDestination = result.Key;
+        _suppressSearch = true;
+        SearchQuery = result.DisplayName;
+        _suppressSearch = false;
+        SearchResults.Clear();
+        OnPropertyChanged(nameof(HasSearchResults));
+        RunSearchCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanRunSearch => HasWalkToSearch && !string.IsNullOrWhiteSpace(SearchQuery);
+
+    /// <summary>
+    /// Walk to the searched room and close the dialog. Uses the row the
+    /// user picked if any; otherwise resolves the first walkable match of
+    /// the typed text. Stops any running loop / Auto-Lair first so the
+    /// explicit walk-to takes precedence over background automation.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunSearch))]
+    private void RunSearch()
+    {
+        if (_walker is null) return;
+
+        RoomKey? dest = _queuedDestination;
+        if (dest is null)
+        {
+            string needle = SearchQuery?.Trim() ?? string.Empty;
+            if (needle.Length == 0 || _search is null) return;
+            dest = _search.Search(needle, cap: 50)
+                          .FirstOrDefault(m => !m.IsInformational)?.Key;
+        }
+        if (dest is not { } target) return;
+
+        _movement?.Stop();
+        _walker.WalkTo(target);
+        Close();
+    }
+
     // ----- close -----------------------------------------------------
 
     [RelayCommand]
     private void Close()
     {
+        _searchDebounce?.Stop();
         _loops.LoopsChanged -= RebuildLoops;
         _lairSetups.SetupsChanged -= RebuildLairSetups;
+        if (_folders is not null) _folders.FoldersChanged -= OnFoldersChanged;
         CloseRequested?.Invoke(true);
     }
 }

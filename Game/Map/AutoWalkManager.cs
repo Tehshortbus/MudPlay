@@ -44,6 +44,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private readonly EngineRecoveryGate? _recovery;
     private Action<byte[]>? _wireSender;
     private Action<string, string, Action<string>>? _trapEnqueuer;
+    private Func<bool>? _shouldDisarmTrap;
+    private Action<string, Action<string>>? _trapDelegator;
+    private Func<bool>? _canDelegateTrap;
+    private Action? _trapDelegateStopAll;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
@@ -52,6 +56,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private bool _awaitingHiddenReveal;
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
+    private Action? _preMoveHook;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -139,7 +144,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // tracks its own progress against ExecutedSinceAnchor.
         _tracker.NoteMoveSent(direction);
         byte[] bytes = EncodeMove(direction);
-        WriteBytes(bytes, $"tier3 backtrack {direction}");
+        EmitMoveBytes(bytes, $"tier3 backtrack {direction}");
     }
 
     public void PauseForRecovery(string reason)
@@ -236,6 +241,62 @@ public sealed class AutoWalkManager : IRecoverableEngine
     }
 
     /// <summary>
+    /// Gate for trapped-exit handling. Returns <c>true</c> when the walker
+    /// should route a <see cref="RoomExitHint.Trap"/> exit through the trap
+    /// enqueuer — i.e. Settings → Other "Utilize disarm traps if able" is on
+    /// AND the local character has the Traps skill. Returns <c>false</c> to
+    /// walk straight through the trap without attempting a disarm. When left
+    /// unset the walker defaults to attempting the disarm (preserves the
+    /// pre-toggle behavior for any consumer that never wires a gate).
+    /// </summary>
+    public void SetTrapDisarmGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _shouldDisarmTrap = gate;
+    }
+
+    /// <summary>
+    /// Party-delegation enqueuer — the walker calls this when the local
+    /// character can't disarm a trap but a capable party member can. It
+    /// broadcasts <c>@trap &lt;dir&gt;</c> on say and resumes the walk on
+    /// the member's say reply via the same <see cref="OnTrapReply"/>
+    /// callback the local path uses. Bound to
+    /// <see cref="Game.TrapDelegationManager.Delegate"/>. The two paths
+    /// share the resume callback but keep their signal SOURCES distinct —
+    /// local keys on the game's first-person disarm signals, delegation on
+    /// the member's say reply.
+    /// </summary>
+    public void SetTrapDelegator(Action<string, Action<string>> delegator)
+    {
+        ArgumentNullException.ThrowIfNull(delegator);
+        _trapDelegator = delegator;
+    }
+
+    /// <summary>
+    /// Gate for the party-delegation branch. Returns <c>true</c> when the
+    /// "Utilize disarm traps if able" toggle is on, the LOCAL character
+    /// can't disarm, AND at least one party member can — i.e. the "if
+    /// able" clause is satisfied by party ability rather than our own.
+    /// </summary>
+    public void SetTrapDelegateGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _canDelegateTrap = gate;
+    }
+
+    /// <summary>
+    /// Delegation teardown — bound to
+    /// <see cref="Game.TrapDelegationManager.Cancel"/>. Called from
+    /// <see cref="Reset"/> when a walk is superseded mid-delegation so a
+    /// later stray say reply can't resume a dead walk.
+    /// </summary>
+    public void SetTrapDelegateStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _trapDelegateStopAll = stopAll;
+    }
+
+    /// <summary>
     /// Door-open enqueuer — the walker calls this when stepping toward
     /// a <see cref="RoomExitHint.Door"/> exit, passes the direction +
     /// the door's stat requirement + bashable flag, and resumes the
@@ -307,6 +368,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(check);
         _isLeaderWithFollowers = check;
+    }
+
+    /// <summary>
+    /// Pre-move stealth hook (PR 4.b) — invoked by the walker
+    /// immediately before each move's bytes go out, AFTER any
+    /// door / trap / hidden / multi-action pre-steps, so <c>sn</c> is
+    /// the last command before the move and the move itself is sneaked.
+    /// MainWindowVM / AppServices binds this to
+    /// <see cref="Game.Stealth.StealthManager.RequestPreMoveStealth"/>.
+    /// Non-blocking: the hook fires and the move bytes follow without
+    /// waiting for the sneak ACK (sneak carries through the move).
+    /// </summary>
+    public void SetPreMoveHook(Action hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        _preMoveHook = hook;
     }
 
     /// <summary>
@@ -390,7 +467,18 @@ public sealed class AutoWalkManager : IRecoverableEngine
         IReadOnlyList<Direction>? path = _bfs.FindPath(source.Key, destination, _filter);
         if (path is null || path.Count == 0)
         {
-            Raise(new WalkEvent(WalkEventKind.Failed, "no path", destination));
+            // Distinguish "all routes blocked by a level requirement"
+            // from a genuinely disconnected target: re-probe with the
+            // exit-level gates ignored. A path that appears only when
+            // gates are off means every route there is level-gated
+            // beyond the player — surface that reason so the user
+            // understands why we won't move.
+            IReadOnlyList<Direction>? ungated =
+                _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
+            string reason = ungated is { Count: > 0 }
+                ? "all routes blocked by a level requirement"
+                : "no path";
+            Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
             return false;
         }
 
@@ -482,13 +570,40 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // reply; the actual move bytes are sent from OnTrapReply.
         if (exit.Hint == RoomExitHint.Trap && _trapEnqueuer is not null)
         {
-            _awaitingTrapDisarm = true;
             string dirWord = DirectionWord(step.Direction);
-            Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
-                $"trap on {dirWord}", _destination));
-            _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: disarm trap {dirWord}");
-            _trapEnqueuer(dirWord, "walker", OnTrapReply);
-            return;
+            if (_shouldDisarmTrap?.Invoke() ?? true)
+            {
+                // Local character has the Traps skill — disarm it ourselves.
+                // The self path keys on the game's first-person disarm
+                // signals (via TrapDisarmManager), never on say replies.
+                _awaitingTrapDisarm = true;
+                Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
+                    $"trap on {dirWord}", _destination));
+                _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: disarm trap {dirWord}");
+                _trapEnqueuer(dirWord, "walker", OnTrapReply);
+                return;
+            }
+
+            // Local can't disarm — delegate to a capable party member when
+            // one exists (the "if able" clause includes party ability). The
+            // delegator broadcasts @trap on say and resumes us on the
+            // member's say reply.
+            if (_trapDelegator is not null && (_canDelegateTrap?.Invoke() ?? false))
+            {
+                _awaitingTrapDisarm = true;
+                Raise(new WalkEvent(WalkEventKind.DisarmingTrap,
+                    $"delegating trap on {dirWord} to party", _destination));
+                _log?.Info("Walker",
+                    $"step {_index + 1}/{_path!.Count}: delegate trap {dirWord} to party");
+                _trapDelegator(dirWord, OnTrapReply);
+                return;
+            }
+
+            // Disarm gated off (toggle disabled or nobody able) — step
+            // through the trapped exit without a disarm attempt. Falls
+            // through to the normal move emit below.
+            _log?.Info("Walker",
+                $"step {_index + 1}/{_path!.Count}: trap on {dirWord} — walking through (disarm disabled or unable)");
         }
 
         // Door / KeyLocked exits — route through DoorOpenManager to
@@ -512,7 +627,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] preBytes = EncodeMove(step.Direction);
-                WriteBytes(preBytes, $"move {step.Direction} (door pre-open)");
+                EmitMoveBytes(preBytes, $"move {step.Direction} (door pre-open)");
                 return;
             }
             _awaitingDoorOpen = true;
@@ -526,95 +641,24 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return;
         }
 
-        // MultiActionHidden — `(Hidden, Needs N Actions, ...)`. Execute
-        // the prerequisite commands in StepNumber order, then send the
-        // cardinal move. Same-room actions only for v1; cross-row
-        // remote-action data fails the walk with a clear reason
-        // (cross-room expander is a follow-up — the data parser
-        // already preserves RemoteSourceRoom so the future expander
-        // can route through it).
-        if (exit.Hint == RoomExitHint.MultiActionHidden && exit.MultiAction is { } maData)
+        // Synchronous special exits — MultiActionHidden (same-room),
+        // Text `(Text: ...)`, and Teleport `(Item: N)` — share one
+        // emission path with the loop runner via SpecialExitDispatch so
+        // both engines cross them identically. The async door/hidden
+        // hints are NOT covered here; they fall through to their own
+        // FSMs below.
+        SpecialExitSend sync = SpecialExitDispatch.TrySendSynchronous(
+            exit, step.Direction, _tracker.State.CurrentRoom,
+            _tracker, _recovery,
+            emitMove: EmitMoveBytes,
+            writeAux: WriteBytes,
+            _teleportResolver, _isLeaderWithFollowers,
+            out string? syncFail);
+        if (sync == SpecialExitSend.Sent) return;
+        if (sync == SpecialExitSend.Failed)
         {
-            if (maData.HasRemoteActions)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    "multi-action exit requires actions in a different room — cross-room expander not yet wired",
-                    _destination));
-                Reset();
-                return;
-            }
-            if (maData.Actions.Count < maData.RequiredActionCount)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    $"multi-action exit needs {maData.RequiredActionCount} action(s) but data has {maData.Actions.Count}",
-                    _destination));
-                Reset();
-                return;
-            }
-
-            // Fire each action's first alternative in order, then
-            // send the cardinal move. Each command goes out
-            // immediately; no per-command response wait. The
-            // server's verb-by-verb echo provides the round-robin.
-            foreach (ExitAction action in maData.Actions)
-            {
-                if (action.Commands.Count == 0) continue;
-                string cmd = action.Commands[0];
-                byte[] cmdBytes = Encoding.Latin1.GetBytes(cmd + "\r");
-                WriteBytes(cmdBytes, $"multi-action #{action.StepNumber}: '{cmd}'");
-            }
-            _tracker.NoteMoveSent(step.Direction);
-                _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] moveBytes = EncodeMove(step.Direction);
-            WriteBytes(moveBytes, $"move {step.Direction} (post-multi-action)");
-            return;
-        }
-
-        // Text exits — `(Text: cmd1, cmd2, ...)` modifier. Any one of
-        // the alternatives moves the player (no follow-up cardinal).
-        // We send the first; future PRs may choose smarter (e.g.
-        // shortest, or last-known-good).
-        if (exit.Hint == RoomExitHint.Text && exit.TextCommands is { Count: > 0 } cmds)
-        {
-            string textCmd = cmds[0];
-            _tracker.NoteMoveSent(textCmd, cardinal: step.Direction);
-            _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] textBytes = Encoding.Latin1.GetBytes(textCmd + "\r");
-            WriteBytes(textBytes, $"text-exit '{textCmd}' → {exit.Target}");
-            return;
-        }
-
-        // Teleport exits — `(Item: N)` modifier on a room whose CMD
-        // is non-zero. The CMD indexes a TBInfo Action chain whose
-        // matching `teleport <room> <map>` directive identifies the
-        // keyword(s) the player types. Party-breaking — leader
-        // broadcasts via `.@party <keyword>` so followers come along
-        // before the leader teleports.
-        if (exit.Hint == RoomExitHint.Teleport)
-        {
-            Room? source = _tracker.State.CurrentRoom;
-            string? keyword = (source is not null && _teleportResolver is not null)
-                ? _teleportResolver(source.Key, exit.Target)
-                : null;
-            if (keyword is null)
-            {
-                Raise(new WalkEvent(WalkEventKind.Failed,
-                    "no teleport keyword resolved (TBInfo entry missing or not for this destination)",
-                    _destination));
-                Reset();
-                return;
-            }
-
-            if (_isLeaderWithFollowers?.Invoke() == true)
-            {
-                byte[] partyBytes = Encoding.Latin1.GetBytes($".@party {keyword}\r");
-                WriteBytes(partyBytes, $"teleport party-relay '.@party {keyword}'");
-            }
-
-            _tracker.NoteMoveSent(keyword, cardinal: step.Direction);
-            _recovery?.NoteEngineStepSent(step.Direction);
-            byte[] tpBytes = Encoding.Latin1.GetBytes(keyword + "\r");
-            WriteBytes(tpBytes, $"teleport '{keyword}' → {exit.Target}");
+            Raise(new WalkEvent(WalkEventKind.Failed, syncFail!, _destination));
+            Reset();
             return;
         }
 
@@ -638,7 +682,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _recovery?.NoteEngineStepSent(step.Direction);
 
         byte[] bytes = EncodeMove(step.Direction);
-        WriteBytes(bytes, $"move {step.Direction} → {exit.Target}");
+        EmitMoveBytes(bytes, $"move {step.Direction} → {exit.Target}");
     }
 
     private void OnHiddenRevealReply(HiddenSearchResult result)
@@ -667,7 +711,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
-                WriteBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
+                EmitMoveBytes(bytes, $"move {step.Direction} (post-hidden-reveal)");
                 return;
 
             case HiddenSearchResult.Failed failed:
@@ -704,7 +748,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
                 byte[] bytes = EncodeMove(step.Direction);
-                WriteBytes(bytes, $"move {step.Direction} (post-door)");
+                EmitMoveBytes(bytes, $"move {step.Direction} (post-door)");
                 return;
 
             case DoorOpenResult.Failed failed:
@@ -763,7 +807,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
         byte[] bytes = EncodeMove(step.Direction);
-        WriteBytes(bytes, $"move {step.Direction} (post-disarm)");
+        EmitMoveBytes(bytes, $"move {step.Direction} (post-disarm)");
     }
 
     private static string DirectionWord(Direction dir) => dir switch
@@ -788,6 +832,20 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         byte[] bytes = Encoding.Latin1.GetBytes(step.Command + "\r");
         WriteBytes(bytes, $"command '{step.Command}'");
+    }
+
+    /// <summary>
+    /// Emit a move (cardinal direction, text-exit command, or teleport
+    /// keyword) — fires the pre-move stealth hook (so <c>sn</c> is the
+    /// last command before the move) then writes the move bytes. Every
+    /// move-byte send routes through here so the choke point stays
+    /// single; non-move sends (multi-action prerequisites, the teleport
+    /// <c>.@party</c> relay) call <see cref="WriteBytes"/> directly.
+    /// </summary>
+    private void EmitMoveBytes(byte[] bytes, string reasonForLog)
+    {
+        _preMoveHook?.Invoke();
+        WriteBytes(bytes, reasonForLog);
     }
 
     private void WriteBytes(byte[] bytes, string reasonForLog)
@@ -1050,6 +1108,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // skip the late reply that arrives after StopAll.
         if (_awaitingDoorOpen)      _doorStopAll?.Invoke();
         if (_awaitingHiddenReveal)  _hiddenSearchStopAll?.Invoke();
+        // Drop a pending party-delegation watch so a stray say reply can't
+        // resume a superseded walk. Harmless when the trap was local-only.
+        if (_awaitingTrapDisarm)    _trapDelegateStopAll?.Invoke();
 
         _path = null;
         _index = 0;

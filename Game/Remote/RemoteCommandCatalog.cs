@@ -22,10 +22,11 @@ namespace FujinTerm.Game.Remote;
 /// Categories follow the 12-checkbox grid in the Game Data Browser →
 /// Players edit dialog:
 /// <list type="bullet">
-///   <item><b>QueryVersion</b> — version / fingerprint introspection.</item>
+///   <item><b>QueryVersion</b> — version / fingerprint introspection + @help.</item>
 ///   <item><b>QueryExperience</b> — exp / level numbers.</item>
 ///   <item><b>QueryHealthStatus</b> — health / mana / state flags / lives.</item>
-///   <item><b>QueryLocation</b> — room / path / who-saw-whom.</item>
+///   <item><b>QueryLocation</b> — @where / @path / @who (room, route
+///         progress, who's in the room).</item>
 ///   <item><b>QueryInventory</b> — items / cash / encumbrance / have-checks.</item>
 ///   <item><b>RequestInvite</b> — party invite / join / leave signals.</item>
 ///   <item><b>MovePlayer</b> — goto / loop / roam / stop / rego.</item>
@@ -48,12 +49,25 @@ namespace FujinTerm.Game.Remote;
 /// </list>
 /// </para>
 /// <para>
-/// Party-coordination commands (@wait / @ok / @comeback / @blind /
-/// @diseased / @held / @party / @kill / @share / @panic) map to
-/// <see cref="PlayerRemoteControls.None"/> — they're gated by the engine's
-/// party-whitelist branch instead of the per-player flag check. Any
-/// active party member can issue them by default; the user disables them
-/// wholesale via Settings.Talk → Disallow @party commands.
+/// Party-coordination commands (@wait / @ok / @comeback / @share) map
+/// to <see cref="PlayerRemoteControls.None"/> — they're gated by the
+/// engine's party-whitelist branch instead of the per-player flag check.
+/// Any active party member can issue them by default. Settings.Talk →
+/// Disallow @party commands narrows ONLY the <c>@party &lt;sub&gt;</c>
+/// directive path (attack / rest / meditate / go / …); it does not touch
+/// these coordination signals. <c>@kill</c> is NOT in this family — it's
+/// an action request ("attack this target on my behalf") and sits at
+/// <see cref="PlayerRemoteControls.ExecuteCommands"/> alongside @do / @heal.
+/// </para>
+/// <para>
+/// The ailment / status broadcast tokens (<c>@poisoned</c> / <c>@blind</c>
+/// / <c>@confused</c> / <c>@diseased</c> / <c>@held</c>) are deliberately
+/// NOT in this catalog. They're not permission-gated remote commands —
+/// they're say-channel state announcements emitted by
+/// <see cref="Conditions.AilmentSyncEngine"/> and observed by
+/// <see cref="Conditions.PartyAilmentTracker"/> to mirror a member's
+/// condition on the party window. Their suppression lives in the cure /
+/// ailment settings, not the per-player remote-control grid.
 /// </para>
 /// <para>
 /// <c>@heal</c> is the exception in that family: it's
@@ -87,8 +101,8 @@ public static class RemoteCommandCatalog
             ["@lives"]        = PlayerRemoteControls.QueryHealthStatus,
             ["@where"]        = PlayerRemoteControls.QueryLocation,
             ["@path"]         = PlayerRemoteControls.QueryLocation,
-            ["@seen"]         = PlayerRemoteControls.QueryLocation,
             ["@who"]          = PlayerRemoteControls.QueryLocation,
+            ["@help"]         = PlayerRemoteControls.QueryVersion,
             ["@what"]         = PlayerRemoteControls.QueryInventory,
             ["@wealth"]       = PlayerRemoteControls.QueryInventory,
             ["@enc"]          = PlayerRemoteControls.QueryInventory,
@@ -103,6 +117,11 @@ public static class RemoteCommandCatalog
             ["@equip-all"]    = PlayerRemoteControls.ExecuteCommands,
             ["@deposit-all"]  = PlayerRemoteControls.ExecuteCommands,
             ["@do"]           = PlayerRemoteControls.ExecuteCommands,
+            // @kill <target> asks a party member to attack a named target
+            // on the sender's behalf — an action request, not a party
+            // coordination signal, so it's per-player ExecuteCommands-gated
+            // rather than party-whitelist. Handler lives in KillHandler.cs.
+            ["@kill"]         = PlayerRemoteControls.ExecuteCommands,
             // @trap <dir> asks a Traps-skilled character to search +
             // disarm a trap on the sender's behalf; @trap stop aborts.
             // Soft-gated on Stats.Traps > 0 inside the handler; the
@@ -123,11 +142,17 @@ public static class RemoteCommandCatalog
             ["@rego"]         = PlayerRemoteControls.MovePlayer,
 
             // ===== Toggle Settings =====
-            ["@attack-last"]  = PlayerRemoteControls.AlterSettings,
+            // @atkprio / @atkorder split the legacy @attack-last verb: one
+            // sets the priority target, the other the target-ordering mode.
+            // No-arg form queries the current value; an arg sets it. Handler
+            // lives in AtkConfigHandler.cs, writes CombatSettings.
+            ["@atkprio"]      = PlayerRemoteControls.AlterSettings,
+            ["@atkorder"]     = PlayerRemoteControls.AlterSettings,
             ["@auto-all"]     = PlayerRemoteControls.AlterSettings,
             ["@auto-combat"]  = PlayerRemoteControls.AlterSettings,
             ["@auto-nuke"]    = PlayerRemoteControls.AlterSettings,
             ["@auto-heal"]    = PlayerRemoteControls.AlterSettings,
+            ["@auto-rest"]    = PlayerRemoteControls.AlterSettings,
             ["@auto-bless"]   = PlayerRemoteControls.AlterSettings,
             ["@auto-light"]   = PlayerRemoteControls.AlterSettings,
             ["@auto-cash"]    = PlayerRemoteControls.AlterSettings,
@@ -146,6 +171,7 @@ public static class RemoteCommandCatalog
             ["@wait"]         = PlayerRemoteControls.None,
             ["@ok"]           = PlayerRemoteControls.None,
             ["@comeback"]     = PlayerRemoteControls.None,
+            // (@kill moved to ExecuteCommands — see Basic Commands above.)
             // @heal sits at ExecuteCommands rather than None: it's an
             // action request ("cast heal on me"), not a coordination
             // signal. A sender may legitimately need it even when the
@@ -153,9 +179,6 @@ public static class RemoteCommandCatalog
             // them up (settings mismatch between healer and target).
             // Phase 12 CastingDirector wires the handler.
             ["@heal"]         = PlayerRemoteControls.ExecuteCommands,
-            ["@blind"]        = PlayerRemoteControls.None,
-            ["@diseased"]     = PlayerRemoteControls.None,
-            ["@held"]         = PlayerRemoteControls.None,
             // @party at QueryHealthStatus — non-party players with that
             // grant can use the no-args form as a status query
             // ("are you solo / leading / following?"). The engine
@@ -165,27 +188,27 @@ public static class RemoteCommandCatalog
             // when the sender has no per-player grant. The destructive
             // sub-command dispatch path (Local channel + args) lives
             // in PartyEssentialHandlers.OnParty and gates on
-            // IsActivePartyMember + !DisablePartyWhitelist itself.
+            // IsActivePartyMember + !DisallowPartyDirectives itself.
             // Hard-blocks (@party suicide, @party reroll) bypass both
             // at engine level via IsHardBlocked.
             ["@party"]        = PlayerRemoteControls.QueryHealthStatus,
-            ["@kill"]         = PlayerRemoteControls.None,
             ["@share"]        = PlayerRemoteControls.None,
-            ["@panic"]        = PlayerRemoteControls.None,  // wiki form is `@panic!`; match the bang-stripped command name
         };
 
     /// <summary>
     /// Look up the required category for a command. Returns <c>false</c>
     /// for unknown commands so the caller can decide whether to register
     /// the handler anyway (Phase 5 user-defined triggers, future
-    /// extension points). Lookup is case-insensitive; trailing bangs
-    /// (<c>@panic!</c>) are stripped so the wiki form matches.
+    /// extension points). Lookup is case-insensitive; a trailing bang on
+    /// the wire form (e.g. an emphatic <c>@stop!</c>) is stripped so it
+    /// matches the bare command name.
     /// </summary>
     public static bool TryGetCategory(string command, out PlayerRemoteControls category)
     {
         if (string.IsNullOrEmpty(command)) { category = default; return false; }
         string key = command;
-        // Strip trailing `!` so `@panic!` matches `@panic` in the catalog.
+        // Strip a trailing `!` so an emphatic wire form matches the bare
+        // command name in the catalog.
         if (key[^1] == '!') key = key[..^1];
         return Map.TryGetValue(key, out category);
     }

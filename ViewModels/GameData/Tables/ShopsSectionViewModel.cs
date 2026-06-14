@@ -17,7 +17,7 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 /// Column names mirror the MajorMUD MDB schema verbatim. <c>Markup%</c>
 /// is the buy/sell multiplier, <c>ClassRest</c> is a class-bitmask
 /// restriction, <c>MinLVL</c> / <c>MaxLVL</c> are the customer-level
-/// gates. <c>ShopType</c> renders via <see cref="MmudEnums"/>
+/// gates. <c>ShopType</c> renders via <see cref="LookupEnums"/>
 /// ("Weapons" / "Armour" / "Bank" / "Tavern" / etc.).
 ///
 /// Double-click hops to the Rooms tab and selects the room this shop
@@ -57,7 +57,7 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["ShopType"] = MmudEnums.FormatShopType,
+            ["ShopType"] = LookupEnums.FormatShopType,
         };
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }

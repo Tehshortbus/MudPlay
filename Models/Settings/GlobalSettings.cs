@@ -21,18 +21,19 @@ public sealed class GlobalSettings
     public int SchemaVersion { get; set; } = 1;
 
     /// <summary>
-    /// Filename (without path or extension) of the most recently loaded
-    /// character profile. Used at startup to auto-load the last session;
-    /// <c>null</c> on first run.
+    /// (BBS, character) reference of the most recently loaded profile. Used
+    /// at startup to auto-load the last session; <c>null</c> on first run.
+    /// Profiles are BBS-scoped now, so the bare character name is no longer a
+    /// unique key.
     /// </summary>
-    public string? LastUsedProfileName { get; set; }
+    public Profile.ProfileRef? LastUsedProfile { get; set; }
 
     /// <summary>
-    /// Up to <see cref="RecentProfilesLimit"/> profile filenames the user
-    /// has loaded recently, ordered most-recent-first. Drives the
-    /// File → Recent profiles submenu.
+    /// Up to <see cref="RecentProfilesLimit"/> profiles the user has loaded
+    /// recently, ordered most-recent-first. Each entry is a (BBS, character)
+    /// reference. Drives the File → Recent profiles submenu.
     /// </summary>
-    public List<string>? RecentProfiles { get; set; }
+    public List<Profile.ProfileRef>? RecentProfiles { get; set; }
 
     /// <summary>Cap on <see cref="RecentProfiles"/> retention.</summary>
     public const int RecentProfilesLimit = 5;

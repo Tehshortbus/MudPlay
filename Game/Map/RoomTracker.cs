@@ -92,6 +92,18 @@ public sealed class RoomTracker
     private DateTimeOffset? _suppressObservationUntil;
     private const int LookSuppressWindowMs = 3000;
 
+    /// <summary>
+    /// Wall-clock time the most recent move command was enqueued, or
+    /// <c>null</c> before the first move this session. Lets observers
+    /// tell a post-move room display ("the room we just walked into")
+    /// apart from a pre-move stale observation — the
+    /// <see cref="RoomEntityClassifier"/> uses it to avoid wiping the
+    /// new room's freshly-parsed occupants on the move-confirming
+    /// transition (the occupants line arrives before the exits line
+    /// that confirms the move).
+    /// </summary>
+    public DateTimeOffset? LastMoveSentAt { get; private set; }
+
     /// <summary>The state class itself — bound by the UI, mutated only by this tracker.</summary>
     public RoomState State { get; } = new();
 
@@ -120,6 +132,22 @@ public sealed class RoomTracker
         _graph = graph;
         _log = log;
         State.LastUpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
+    /// Snapshot of the rolling confirmed-position history, newest-first.
+    /// <c>[0]</c> is the most recently confirmed room (typically the
+    /// current room); <c>[1]</c> the one before it, and so on, capped at
+    /// the internal history window. Used by <c>PartyComebackManager</c>
+    /// to walk the leader backwards along the path just taken when a
+    /// stranded follower sends <c>@comeback</c> without a target room.
+    /// </summary>
+    public IReadOnlyList<RoomKey> GetHistory()
+    {
+        List<RoomKey> snapshot = new(_history.Count);
+        foreach (HistoryEntry entry in _history)
+            snapshot.Add(entry.Room);
+        return snapshot;
     }
 
     /// <summary>
@@ -363,12 +391,17 @@ public sealed class RoomTracker
 
         if (_profile is not null)
         {
+            _profile.DeathHistory ??= new List<DeathRecord>();
             var record = new DeathRecord(
                 when,
                 died is null ? null : new RoomRef(died.Key.Map, died.Key.Room),
                 livesRemaining,
-                messageText);
-            _profile.DeathHistory ??= new List<DeathRecord>();
+                messageText)
+            {
+                RecordNumber = _profile.DeathHistory.Count + 1,
+                RoomName = died?.Name,
+                Status = DeathRecoveryStatus.Active,
+            };
             _profile.DeathHistory.Add(record);
             _log?.Log(LogSeverity.Info, "RoomTracker",
                 $"Death recorded at {(died?.Key.ToString() ?? "(unknown room)")}; {livesRemaining} lives remaining.");
@@ -829,6 +862,7 @@ public sealed class RoomTracker
 
     private void EnqueuePending(PendingMove move)
     {
+        LastMoveSentAt = move.SentAt;
         _pending.Enqueue(move);
         // Bounded queue — drain oldest entries past the cap.
         while (_pending.Count > PendingQueueCap && _pending.TryDequeue(out _)) { /* drop */ }

@@ -208,6 +208,25 @@ public sealed class SuicidePasswordTrackerTests
     }
 
     [Fact]
+    public void RerollLine_WipesStoredPassword()
+    {
+        var (tracker, router, gate, profile, protector, tmp) = Setup();
+        try
+        {
+            profile.Current!.EncryptedSuicidePassword = protector.Protect("doomed");
+
+            // Successful suicide → the character is rerolled; the realm's
+            // stored password dies with it, so our cached copy is wiped.
+            Dispatch(router, "After a LONG thought, you take your own life.");
+
+            Assert.Null(profile.Current.EncryptedSuicidePassword);
+            Assert.False(gate.IsLocked);
+            Assert.Equal(SuicidePasswordTracker.FlowState.Idle, tracker.State);
+        }
+        finally { Directory.Delete(tmp, recursive: true); }
+    }
+
+    [Fact]
     public void IdleState_ObserveOutbound_IsNoOp()
     {
         // Defensive: outbound bytes outside an active flow must never

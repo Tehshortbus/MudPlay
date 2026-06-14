@@ -229,31 +229,31 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void PartyFallback_DisablePartyWhitelist_RevokesMemberFallback()
+    public void PartyFallback_DisallowPartyDirectives_RevokesMemberFallback()
     {
         var (engine, party, _) = Setup();
         SeedPartyMember(party, "Buddy");
-        engine.DisablePartyWhitelist = true;
+        engine.DisallowPartyDirectives = true;
 
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
         engine.DispatchForTests(Telepath("Buddy", "@party"));
 
-        // No per-player grant + whitelist disabled = engine denies.
+        // No per-player grant + @party directives disallowed = engine denies.
         Assert.False(fired);
     }
 
     [Fact]
-    public void PartyFallback_DisablePartyWhitelist_DoesNotBlockExplicitGrant()
+    public void PartyFallback_DisallowPartyDirectives_DoesNotBlockExplicitGrant()
     {
-        // DisablePartyWhitelist only kills the party-member-without-grant
-        // path; a sender (party member or not) who DOES carry the
+        // DisallowPartyDirectives only kills the party-member-without-grant
+        // @party path; a sender (party member or not) who DOES carry the
         // per-player QueryHealthStatus grant is still admitted.
         var (engine, party, players) = Setup();
         SeedPartyMember(party, "Buddy");
         SeedPlayer(players, "Buddy", PlayerRemoteControls.QueryHealthStatus);
-        engine.DisablePartyWhitelist = true;
+        engine.DisallowPartyDirectives = true;
 
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
@@ -261,6 +261,29 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Telepath("Buddy", "@party"));
 
         Assert.True(fired);
+    }
+
+    [Fact]
+    public void DisallowPartyDirectives_LeavesCoordinationWhitelistIntact()
+    {
+        // The toggle narrows ONLY the @party directive path. The party
+        // coordination signals (@wait / @ok / @comeback / @share) ride the
+        // None-tier whitelist and still fire for an active member with no
+        // per-player grant, even while @party directives are disallowed.
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        engine.DisallowPartyDirectives = true;
+
+        int fired = 0;
+        foreach (string cmd in new[] { "@wait", "@ok", "@comeback", "@share" })
+            engine.RegisterHandler(cmd, PlayerRemoteControls.None, _ => fired++);
+
+        engine.DispatchForTests(Telepath("Buddy", "@wait"));
+        engine.DispatchForTests(Telepath("Buddy", "@ok"));
+        engine.DispatchForTests(Telepath("Buddy", "@comeback"));
+        engine.DispatchForTests(Telepath("Buddy", "@share"));
+
+        Assert.Equal(4, fired);
     }
 
     [Fact]
@@ -703,14 +726,14 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void DisablePartyWhitelist_DeniesPartyHandlerEvenForActiveMember()
+    public void DisallowPartyDirectives_DeniesPartyHandlerEvenForActiveMember()
     {
         var (engine, party, _) = Setup();
         SeedPartyMember(party, "Buddy");
-        engine.DisablePartyWhitelist = true;
+        engine.DisallowPartyDirectives = true;
 
         bool fired = false;
-        engine.RegisterHandler("@party", PlayerRemoteControls.None,
+        engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus,
             _ => fired = true);
 
         engine.DispatchForTests(Telepath("Buddy", "@party rest"));

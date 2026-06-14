@@ -14,12 +14,22 @@ public sealed class FavoriteRoom
     public int Room { get; set; }
     public string? Label { get; set; }
 
+    /// <summary>
+    /// Folder path this favourite lives under in the GOTO tree, using
+    /// <c>/</c> as the separator (e.g. <c>"Cities/Silvermere"</c>).
+    /// Null or empty = the tree root. This mirrors a filesystem folder
+    /// layout while still being stored inside the character profile —
+    /// the GOTO tree splits the path on <c>/</c> to build its nodes.
+    /// </summary>
+    public string? Folder { get; set; }
+
     public FavoriteRoom() { }
 
-    public FavoriteRoom(int map, int room, string? label = null)
+    public FavoriteRoom(int map, int room, string? label = null, string? folder = null)
     {
         Map = map;
         Room = room;
         Label = label;
+        Folder = folder;
     }
 }

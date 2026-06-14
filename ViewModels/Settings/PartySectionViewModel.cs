@@ -1,5 +1,9 @@
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -8,20 +12,20 @@ using FujinTerm.Views.Settings;
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Party" tab — bespoke layout. PR 6.9 wires the three knobs that map
-/// onto live Phase 6 services (par poll cadence, auto-invite reconnecting
-/// member, reset statistics on loop start), persists per character as
-/// the <c>"Party"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// The spell-picker / bless-slot / heal-threshold controls stay
-/// disabled-stubs because their consumer (<c>CastingDirector</c> in
-/// Phase 12) doesn't exist yet — locking the schema before that lands
-/// would force an awkward migration.
+/// "Party" tab — bespoke layout. PR 6.9 wires the knobs that map onto
+/// live Phase 6 services (par poll cadence, auto-invite reconnecting
+/// member, reset statistics on loop start); the party-heal pickers +
+/// thresholds + AOE-member count, and the 10 party-bless slots, feed
+/// <c>CastingDirector</c>'s party-cast path. Persists per character as the
+/// <c>"Party"</c> entry in <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Party";
 
     private readonly ProfileService _profile;
+    private readonly Game.Spells.SpellbookState _spellbook;
+    private readonly GameDataCache _gameData;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -33,17 +37,25 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
     public bool HasProfile => _profile.Current is not null;
 
+    /// <summary>Known-spell suggestions for the party heal / bless typeahead
+    /// boxes — the current class's learnable list (level gate ignored), ordered
+    /// by name + distinct by cast-code, from
+    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
+    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code.
+    /// Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
+    public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
+
     public override Control View => _view ??= new PartySectionView { DataContext = this };
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "Party", "Rank", "Front", "Mid", "Back",
-        "Minor heal", "Major heal", "Request healing",
-        "Bless", "Auto-share cash", "Help leader bash doors",
+        "Party heal", "Minor heal", "Major heal", "Single-target", "Party AOE",
+        "Use AOE", "Request healing",
+        "Bless", "Bless while resting", "Bless during combat",
+        "Auto-share cash", "Help leader bash doors",
         "Auto-invite", "Auto-Exp-Reset", "par frequency",
         "Wait for members", "Max monsters", "Max monster experience",
-        "Attack last in party", "Attack in reverse order",
-        "Attack what other members attack",
         "Ignore party when following", "Auto-collect when following",
         "Say emote", "Go @panic when injured",
     };
@@ -75,18 +87,78 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     //       and free-text entry for non-multiples of 10. Default 90.
     [ObservableProperty] private int _ifLeadingWaitTotalSec = 90;
 
+    // ----- Party-cast heal pickers (consumed by CastingDirector) -----
+    // Each Minor / Major slot owns a single-target spell AND an AOE / party
+    // spell sharing one threshold; CastingDirector picks single vs AOE at
+    // cast time based on how many members are below it (AoeMinMembers).
+    [ObservableProperty] private string? _minorPartyHealSpell;
+    [ObservableProperty] private string? _minorPartyHealAoeSpell;
+    [ObservableProperty] private string? _majorPartyHealSpell;
+    [ObservableProperty] private string? _majorPartyHealAoeSpell;
+    [ObservableProperty] private int _minorHealMemberThresholdPercent = 70;
+    [ObservableProperty] private int _majorHealMemberThresholdPercent = 40;
+    [ObservableProperty] private int _aoeMinMembers = 2;
+
+    // ----- Capacity (consumed by CombatManager) ----------------------
+    /// <summary>Party-scoped max-monsters cap; overrides the Combat-tab
+    /// upper bound while in an active party. 1..20.</summary>
+    [ObservableProperty] private int _maxMonstersWhenPartying = 20;
+
+    // ----- Vitals gate (consumed by PartyVitalsWatcher) --------------
+    /// <summary>Hold the party action loop while any other member's HP%
+    /// is below this value. 0 disables. 0..100.</summary>
+    [ObservableProperty] private int _waitIfMemberBelowPercent;
+
+    // ----- Leader behaviour (consumed by PartyEssentialHandlers) -----
+    /// <summary>When leading, drop incoming <c>@wait</c> broadcasts so the
+    /// leader's automation keeps running.</summary>
+    [ObservableProperty] private bool _ignoreWaitWhenLeading;
+
+    /// <summary>Pitch in when the party leader fails to bash a door we can
+    /// see — bashes / picks the same door per the Other-tab preference.
+    /// Consumed by <see cref="Game.Map.LeaderDoorAssistManager"/>.</summary>
+    [ObservableProperty] private bool _helpLeaderOpenDoors;
+
+    // ----- Party bless gating (consumed by CastingDirector) ----------
+    // Two coarse gates the party-bless path honors before casting a
+    // beneficial spell on a member. Both default ON.
+    [ObservableProperty] private bool _blessWhileResting = true;
+    [ObservableProperty] private bool _blessDuringCombat = true;
+
+    // ----- Party bless slots (consumed by CastingDirector) -----------
+    // 10 fixed rows; each pairs a spell short-code with the set of class
+    // numbers it targets. Rebuilt from the active set's Classes table on
+    // load + ActiveSetChanged so the per-class checkboxes track whatever
+    // classes the imported gamedata defines.
+
+    /// <summary>The 10 editable party-bless rows. Always 10 entries so
+    /// the UI binds one-to-one with the persisted slots.</summary>
+    public ObservableCollection<PartyBlessSlotViewModel> BlessSlots { get; } = new();
+
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
 
     public PartySectionViewModel(ProfileService profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
+        _spellbook = AppServices.Current.Spellbook;
+        _gameData = AppServices.Current.GameData;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        _spellbook.Changed += OnSpellbookChanged;
+        _gameData.ActiveSetChanged += OnActiveSetChanged;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
     }
+
+    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
+
+    // Class roster changed (game-data set swap) — rebuild the bless rows
+    // preserving the user's current spell + checked-class edits. Marshalled
+    // because the cache fires this from its load path.
+    private void OnActiveSetChanged(string? _) =>
+        Dispatcher.UIThread.Post(() => RebuildBlessSlots(SnapshotBlessSlots()));
 
     public override void Apply()
     {
@@ -104,6 +176,21 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
             JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
             IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
+
+            MinorPartyHealSpell    = NullIfBlank(MinorPartyHealSpell),
+            MinorPartyHealAoeSpell = NullIfBlank(MinorPartyHealAoeSpell),
+            MajorPartyHealSpell    = NullIfBlank(MajorPartyHealSpell),
+            MajorPartyHealAoeSpell = NullIfBlank(MajorPartyHealAoeSpell),
+            MinorHealMemberThresholdPercent = Math.Clamp(MinorHealMemberThresholdPercent, 0, 100),
+            MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
+            AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
+            MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
+            WaitIfMemberBelowPercent = Math.Clamp(WaitIfMemberBelowPercent, 0, 100),
+            IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
+            HelpLeaderOpenDoors    = HelpLeaderOpenDoors,
+            BlessWhileResting      = BlessWhileResting,
+            BlessDuringCombat      = BlessDuringCombat,
+            BlessSlots             = SnapshotBlessSlots(),
         };
 
         profile.Settings ??= new();
@@ -151,10 +238,93 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
         IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
 
+        MinorPartyHealSpell    = dto.MinorPartyHealSpell;
+        MinorPartyHealAoeSpell = dto.MinorPartyHealAoeSpell;
+        MajorPartyHealSpell    = dto.MajorPartyHealSpell;
+        MajorPartyHealAoeSpell = dto.MajorPartyHealAoeSpell;
+        MinorHealMemberThresholdPercent = dto.MinorHealMemberThresholdPercent;
+        MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
+        AoeMinMembers          = dto.AoeMinMembers;
+        MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
+        WaitIfMemberBelowPercent = dto.WaitIfMemberBelowPercent;
+        IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
+        HelpLeaderOpenDoors    = dto.HelpLeaderOpenDoors;
+        BlessWhileResting      = dto.BlessWhileResting;
+        BlessDuringCombat      = dto.BlessDuringCombat;
+        RebuildBlessSlots(NormalizeSlots(dto.BlessSlots));
+
         // Mirror loaded settings into the live services so they reflect
         // the profile from first connection, not just after the user
         // visits this tab and clicks Apply.
         ApplyToServices(dto);
+    }
+
+    private static string? NullIfBlank(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // ----- Bless-slot rebuild / snapshot -----------------------------
+
+    /// <summary>Snapshot the current bless rows to persistable DTOs.
+    /// Always 10 entries — falls back to fresh empties before any row
+    /// VM has been built (e.g. when Apply runs with no profile UI).</summary>
+    private List<PartyBlessSlot> SnapshotBlessSlots() =>
+        BlessSlots.Count == 0
+            ? PartySettings.NewBlessSlots()
+            : BlessSlots.Select(s => s.ToDto()).ToList();
+
+    /// <summary>Pad / trim a deserialized slot list to exactly 10 entries
+    /// so the UI always renders the full set even if an older profile
+    /// stored fewer.</summary>
+    private static List<PartyBlessSlot> NormalizeSlots(List<PartyBlessSlot>? slots)
+    {
+        List<PartyBlessSlot> result = new(PartySettings.PartyBlessSlotCount);
+        for (int i = 0; i < PartySettings.PartyBlessSlotCount; i++)
+            result.Add(slots is not null && i < slots.Count ? slots[i] : new PartyBlessSlot());
+        return result;
+    }
+
+    /// <summary>Rebuild the 10 row VMs against the active set's class
+    /// roster, seeding each from <paramref name="slots"/>. Suppresses
+    /// dirty during the swap so a profile load / set swap doesn't mark
+    /// the tab dirty.</summary>
+    private void RebuildBlessSlots(List<PartyBlessSlot> slots)
+    {
+        bool wasSuppressed = _suppressDirty;
+        _suppressDirty = true;
+        try
+        {
+            IReadOnlyList<(int Number, string Name)> classes = ReadClasses();
+            BlessSlots.Clear();
+            for (int i = 0; i < PartySettings.PartyBlessSlotCount; i++)
+                BlessSlots.Add(new PartyBlessSlotViewModel(i + 1, classes, slots[i], MarkDirty));
+        }
+        finally
+        {
+            _suppressDirty = wasSuppressed;
+        }
+    }
+
+    /// <summary>Read the active set's <c>Classes</c> table as
+    /// (Number, Name) pairs, ordered by Number. Empty when no set is
+    /// loaded — the bless rows then render with no class checkboxes.</summary>
+    private IReadOnlyList<(int Number, string Name)> ReadClasses()
+    {
+        List<(int Number, string Name)> classes = new();
+        JsonDocument? doc = _gameData.GetRawTable("Classes");
+        if (doc is null) return classes;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out JsonElement numEl) ||
+                !numEl.TryGetInt32(out int number))
+                continue;
+            string name = row.TryGetProperty("Name", out JsonElement nameEl)
+                ? nameEl.GetString() ?? $"Class {number}"
+                : $"Class {number}";
+            classes.Add((number, name));
+        }
+        classes.Sort(static (a, b) => a.Number.CompareTo(b.Number));
+        return classes;
     }
 
     private PartySettings ReadOrDefault()
@@ -204,6 +374,19 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
     partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
     partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
+    partial void OnMinorPartyHealSpellChanged(string? value)    => MarkDirty();
+    partial void OnMinorPartyHealAoeSpellChanged(string? value) => MarkDirty();
+    partial void OnMajorPartyHealSpellChanged(string? value)    => MarkDirty();
+    partial void OnMajorPartyHealAoeSpellChanged(string? value) => MarkDirty();
+    partial void OnMinorHealMemberThresholdPercentChanged(int value) => MarkDirty();
+    partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
+    partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
+    partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
+    partial void OnWaitIfMemberBelowPercentChanged(int value)   => MarkDirty();
+    partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();
+    partial void OnHelpLeaderOpenDoorsChanged(bool value)       => MarkDirty();
+    partial void OnBlessWhileRestingChanged(bool value)         => MarkDirty();
+    partial void OnBlessDuringCombatChanged(bool value)         => MarkDirty();
 
     private void MarkDirty()
     {

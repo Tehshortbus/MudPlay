@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="180"
+             x:Class="FujinTerm.Views.Settings.PriorityRankingView"
+             x:DataType="vm:PriorityRankingViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.PriorityLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.PriorityArrow">
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="3,0,0,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ItemsControl ItemsSource="{Binding Items}">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:PriorityItemViewModel">
+                <Grid ColumnDefinitions="28,Auto,Auto,Auto" Margin="0,0,0,3"
+                      ToolTip.Tip="{Binding Tip}">
+                    <Border Grid.Column="0" Width="28" Height="26"
+                            Background="{StaticResource ChromeBgElevBrush}"
+                            CornerRadius="3" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Rank}"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Button Grid.Column="1" Classes="PriorityArrow"
+                            Content="&#x25B2;"
+                            IsEnabled="{Binding CanMoveUp}"
+                            ToolTip.Tip="Move earlier (lower number)"
+                            Command="{Binding $parent[ItemsControl].((vm:PriorityRankingViewModel)DataContext).MoveUpCommand}"
+                            CommandParameter="{Binding}"/>
+                    <Button Grid.Column="2" Classes="PriorityArrow"
+                            Content="&#x25BC;"
+                            IsEnabled="{Binding CanMoveDown}"
+                            ToolTip.Tip="Move later (higher number)"
+                            Command="{Binding $parent[ItemsControl].((vm:PriorityRankingViewModel)DataContext).MoveDownCommand}"
+                            CommandParameter="{Binding}"/>
+                    <TextBlock Grid.Column="3" Classes="PriorityLabel"
+                               Text="{Binding Label}" Margin="10,0,0,0"/>
+                </Grid>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

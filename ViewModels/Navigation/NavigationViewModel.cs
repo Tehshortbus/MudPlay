@@ -48,22 +48,24 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Event += OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged += OnAvoidedChanged;
         OnAvoidedChanged();
+        _services.Movement.StashChanged   += OnStashChanged;
+        OnStashChanged();
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  += OnAutoLairPhaseChanged;
         _services.AutoLair.PausedChanged += OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   += OnBlacklistChanged;
         _services.Lairs.SetupsChanged    += OnSetupsChanged;
+        _services.NavFolders.FoldersChanged += OnNavFoldersChanged;
         OnAutoLairMarkedChanged();
         IsAutoLairing = _services.AutoLair.IsActive;
-        RefreshSetups();
+        RefreshLoopsAndLairs();
         Graph = _services.RoomGraph;
         EnsureLairTickRunning();
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
         RefreshFromWalker();
         RefreshLayout();
-        RefreshLoops();
         RefreshFavorites();
         RefreshCrawlerChords();
         RefreshTeleportRooms();
@@ -89,14 +91,21 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.Changed -= OnFavoritesChanged;
         _services.LoopRunner.Event -= OnLoopRunnerEvent;
         _services.Movement.AvoidedChanged -= OnAvoidedChanged;
+        _services.Movement.StashChanged   -= OnStashChanged;
         _services.AutoLair.MarkedChanged -= OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged -= OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  -= OnAutoLairPhaseChanged;
         _services.AutoLair.PausedChanged -= OnAutoLairPausedChanged;
         _services.RoomBlacklist.Changed   -= OnBlacklistChanged;
         _services.Lairs.SetupsChanged    -= OnSetupsChanged;
+        _services.NavFolders.FoldersChanged -= OnNavFoldersChanged;
         _services.Macros.Macros.CollectionChanged -= OnMacrosCollectionChanged;
     }
+
+    // Loops + lairs share the on-disk folder tree; a folder add / rename /
+    // delete from either the rail or the Manage dialog rebuilds both trees
+    // so an empty folder (or a moved-contents reparent) shows up at once.
+    private void OnNavFoldersChanged() => RefreshLoopsAndLairs();
 
     private void OnMacrosCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         => RefreshCrawlerChords();
@@ -109,6 +118,28 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // has SOMETHING bound for floor stepping.
         UpStepChord   = FindChordForDirectionCommand("u") ?? new(Avalonia.Input.Key.PageUp);
         DownStepChord = FindChordForDirectionCommand("d") ?? new(Avalonia.Input.Key.PageDown);
+
+        // The 8 compass directions mirror the user's movement macros too:
+        // a macro sending a bare "n" / "se" / etc. binds its key as the
+        // crawler chord for that direction. Directions with no macro are
+        // omitted and fall through to MapControl's numpad / arrow
+        // defaults, so the crawler is never left unbound.
+        Dictionary<Direction, FujinTerm.Models.Profile.KeyChord> compass = new();
+        AddCompassChord(compass, Direction.N,  "n");
+        AddCompassChord(compass, Direction.S,  "s");
+        AddCompassChord(compass, Direction.E,  "e");
+        AddCompassChord(compass, Direction.W,  "w");
+        AddCompassChord(compass, Direction.NE, "ne");
+        AddCompassChord(compass, Direction.NW, "nw");
+        AddCompassChord(compass, Direction.SE, "se");
+        AddCompassChord(compass, Direction.SW, "sw");
+        CompassChords = compass.Count > 0 ? compass : null;
+    }
+
+    private void AddCompassChord(Dictionary<Direction, FujinTerm.Models.Profile.KeyChord> map,
+        Direction dir, string command)
+    {
+        if (FindChordForDirectionCommand(command) is { } chord) map[dir] = chord;
     }
 
     private FujinTerm.Models.Profile.KeyChord? FindChordForDirectionCommand(string direction)
@@ -365,6 +396,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // directly and flushes its own distance cache.
     }
 
+    private void OnStashChanged()
+    {
+        HashSet<RoomKey> next = new(_services.Movement.Stash);
+        _services.Log?.Debug("Navigation",
+            $"stash set changed — count={next.Count}");
+        StashRooms = next;
+    }
+
     private void OnLoopRunnerEvent(LoopEvent _)
     {
         OnPropertyChanged(nameof(IsLoopRunning));
@@ -505,6 +544,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopApproachPreviewPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
+
+    /// <summary>Rooms the user has flagged as stash drops. Bound to
+    /// the MapControl's StashRooms property — each room renders with
+    /// a gold outline. Refreshed on
+    /// <see cref="OnStashChanged"/>.</summary>
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _stashRooms;
+
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
 
@@ -539,6 +585,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         = new(Avalonia.Input.Key.PageUp);
     [ObservableProperty] private FujinTerm.Models.Profile.KeyChord _downStepChord
         = new(Avalonia.Input.Key.PageDown);
+    [ObservableProperty] private IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>? _compassChords;
 
     // ----- Search ---------------------------------------------------
 
@@ -696,44 +743,65 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         SearchQuery = string.Empty;
     }
 
-    // ----- Loops list (PR 7.13) -------------------------------------
+    // ----- Loops + Auto-Lair setups (combined, PR 7.13 / 7.20) ------
 
-    /// <summary>Loops in the active BBS, ordered by LoopManager (alphabetical).</summary>
+    /// <summary>Loops in the active BBS (flat backing list).</summary>
     public ObservableCollection<LoopRowViewModel> Loops { get; } = new();
 
-    public bool HasLoops => Loops.Count > 0;
+    /// <summary>
+    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active BBS
+    /// (flat backing list).
+    /// </summary>
+    public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
 
-    private void OnLoopsChanged() => RefreshLoops();
+    /// <summary>
+    /// Folder-grouped tree mixing <see cref="NavFolderNodeViewModel"/>
+    /// folders with both loop (<see cref="LoopRowViewModel"/>) and
+    /// Auto-Lair (<see cref="LairSetupRowViewModel"/>) leaves. Loops and
+    /// lairs share one on-disk Loops directory, so the rail renders them
+    /// together as a single combined list under one header.
+    /// </summary>
+    public ObservableCollection<object> NavTree { get; } = new();
 
-    private void RefreshLoops()
+    /// <summary>True when the combined tree has any node (leaf or empty folder).</summary>
+    public bool HasNavTree => NavTree.Count > 0;
+
+    private void OnLoopsChanged() => RefreshLoopsAndLairs();
+
+    private void OnSetupsChanged() => RefreshLoopsAndLairs();
+
+    private void RefreshLoopsAndLairs()
     {
         Loops.Clear();
         foreach (Loop loop in _services.Loops.Loops)
             Loops.Add(new LoopRowViewModel(loop));
-        OnPropertyChanged(nameof(HasLoops));
-    }
-
-    // ----- Auto-Lair Setups list (PR 7.20) --------------------------
-
-    /// <summary>
-    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active
-    /// BBS — rendered alongside <see cref="Loops"/> in the rail's
-    /// "LOOPS + AUTO-LAIRS" section. Ordered alphabetically by
-    /// <see cref="LairManager.Setups"/>.
-    /// </summary>
-    public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
-
-    public bool HasSetups => Setups.Count > 0;
-
-    private void OnSetupsChanged() => RefreshSetups();
-
-    private void RefreshSetups()
-    {
         Setups.Clear();
         foreach (Models.Profile.LairSetup s in _services.Lairs.Setups)
             Setups.Add(new LairSetupRowViewModel(s));
-        OnPropertyChanged(nameof(HasSetups));
+
+        // Both leaf kinds feed one tree keyed off the shared
+        // NavFolderManager folder set; NavTreeBuilder orders folders
+        // first then leaves alphabetically by type-aware sort key.
+        var rows = new List<object>(Setups.Count + Loops.Count);
+        rows.AddRange(Setups);
+        rows.AddRange(Loops);
+        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, NameOfNavRow, _services.NavFolders.AllFolders);
+        OnPropertyChanged(nameof(HasNavTree));
     }
+
+    private static string FolderOfNavRow(object row) => row switch
+    {
+        LoopRowViewModel l => l.Source.Folder,
+        LairSetupRowViewModel s => s.Source.Folder,
+        _ => string.Empty,
+    };
+
+    private static string NameOfNavRow(object row) => row switch
+    {
+        LoopRowViewModel l => l.Name,
+        LairSetupRowViewModel s => s.Name,
+        _ => string.Empty,
+    };
 
     /// <summary>
     /// Run a saved setup — wipes <see cref="AutoLairManager"/>'s current
@@ -963,10 +1031,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- GOTO / Favorites pane ------------------------------------
 
-    /// <summary>Per-character favourite-room bookmarks. Click to walk.</summary>
+    /// <summary>Per-character favourite-room bookmarks (flat backing list — source the folder tree is grouped from).</summary>
     public ObservableCollection<FavoriteRowViewModel> Favorites { get; } = new();
 
+    /// <summary>Folder-grouped GOTO tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="FavoriteRowViewModel"/>), bound by the rail's TreeView.</summary>
+    public ObservableCollection<object> FavoriteTree { get; } = new();
+
     public bool HasFavorites => Favorites.Count > 0;
+
+    /// <summary>True when the GOTO tree has any node (favourite or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    public bool HasFavoriteTree => FavoriteTree.Count > 0;
 
     private void OnFavoritesChanged() => RefreshFavorites();
 
@@ -985,11 +1059,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 : _services.RoomGraph.GetRoom(key) is { } r
                     ? r.Name
                     : key.ToString();
-            entries.Add(new FavoriteRowViewModel(key, label));
+            entries.Add(new FavoriteRowViewModel(key, label, _services.Favorites.FolderOf(key)));
         }
         entries.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
         foreach (FavoriteRowViewModel e in entries) Favorites.Add(e);
+        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, r => r.Label, _services.Favorites.AllFolders);
         OnPropertyChanged(nameof(HasFavorites));
+        OnPropertyChanged(nameof(HasFavoriteTree));
     }
 
     /// <summary>Click a favourite → walk there (stops loop/lair first).</summary>
@@ -1159,6 +1235,144 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         LoopPath = keys.Count >= 2 ? keys : null;
     }
 
+    // ----- Rail folder commands --------------------------------------
+    // Two folder namespaces back the rail: GOTO folders live in the
+    // character profile (FavoritesStore), while Loops + Lairs share one
+    // on-disk Loops directory tree (NavFolderManager). The move commands
+    // are per-section; folder CRUD is per-namespace.
+
+    /// <summary>New folder for Loops/Lairs (shared on-disk tree). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    [RelayCommand]
+    private async Task NewLoopFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _services.NavFolders.CreateFolder(full);
+    }
+
+    /// <summary>Rename a Loops/Lairs folder (and everything beneath it).</summary>
+    [RelayCommand]
+    private async Task RenameLoopFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _services.NavFolders.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>Delete a Loops/Lairs folder — its loops / lairs / sub-folders re-parent one level up.</summary>
+    [RelayCommand]
+    private async Task DeleteLoopFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _services.NavFolders.DeleteFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>New GOTO folder (profile-backed). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    [RelayCommand]
+    private async Task NewGotoFolderAsync(NavFolderNodeViewModel? parent)
+    {
+        string? name = await PromptFolderNameAsync(
+            "New folder", "Name the new folder (use / to nest).");
+        if (string.IsNullOrEmpty(name)) return;
+        string full = parent is null ? name : NavFolders.Combine(parent.Path, name);
+        _services.Favorites.AddFolder(full);
+    }
+
+    /// <summary>Rename a GOTO folder (and every favourite / sub-folder beneath it).</summary>
+    [RelayCommand]
+    private async Task RenameGotoFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        string? name = await PromptFolderNameAsync(
+            "Rename folder", "New name for this folder.", node.Name);
+        if (string.IsNullOrEmpty(name)) return;
+        string target = name.Contains(NavFolders.Separator)
+            ? name
+            : NavFolders.Combine(NavFolders.Parent(node.Path), name);
+        _services.Favorites.RenameFolder(node.Path, target);
+    }
+
+    /// <summary>Delete a GOTO folder — its favourites / sub-folders re-parent one level up.</summary>
+    [RelayCommand]
+    private async Task DeleteGotoFolderAsync(NavFolderNodeViewModel? node)
+    {
+        if (node is null) return;
+        bool ok = await _services.Confirm.ConfirmDeleteAsync(
+            $"folder \"{node.Name}\" (its contents move up one level)");
+        if (!ok) return;
+        _services.Favorites.RemoveFolder(node.Path, moveContentsToParent: true);
+    }
+
+    /// <summary>Move a loop into <paramref name="folder"/> (empty = root). Used by drag-drop + context-menu move.</summary>
+    public void MoveLoopToFolder(LoopRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Loops.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move an Auto-Lair setup into <paramref name="folder"/> (empty = root).</summary>
+    public void MoveSetupToFolder(LairSetupRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Lairs.Move(row.Source.Name, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Move a GOTO favourite into <paramref name="folder"/> (empty = root).</summary>
+    public void MoveFavoriteToFolder(FavoriteRowViewModel? row, string? folder)
+    {
+        if (row is null) return;
+        _services.Favorites.MoveFavorite(row.Key, NavFolders.Normalize(folder));
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a loop — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveLoopToFolderPromptAsync(LoopRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move loop", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveLoopToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for an Auto-Lair setup — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveSetupToFolderPromptAsync(LairSetupRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move setup", "Destination folder (blank = root).", row.Source.Folder);
+        if (folder is null) return;
+        MoveSetupToFolder(row, folder);
+    }
+
+    /// <summary>Context-menu "Move to folder…" for a GOTO favourite — prompts for a destination path.</summary>
+    [RelayCommand]
+    private async Task MoveFavoriteToFolderPromptAsync(FavoriteRowViewModel? row)
+    {
+        if (row is null) return;
+        string? folder = await PromptFolderNameAsync(
+            "Move favourite", "Destination folder (blank = root).", row.Folder);
+        if (folder is null) return;
+        MoveFavoriteToFolder(row, folder);
+    }
+
+    private async Task<string?> PromptFolderNameAsync(string title, string prompt, string initial = "")
+    {
+        NavFolderNameDialogViewModel vm = new(title, prompt, initial);
+        return await _services.Dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
+    }
+
     private IReadOnlyList<RoomKey> WalkLoopSteps(RoomKey from, IReadOnlyList<LoopStep> steps)
     {
         var seq = new List<RoomKey>(steps.Count + 1) { from };
@@ -1191,11 +1405,84 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ContextIsAvoided));
         OnPropertyChanged(nameof(ContextIsStash));
         OnPropertyChanged(nameof(ContextIsFavorite));
+        RebuildContextTeleports(value);
     }
 
     public bool ContextIsAvoided => ContextRoomKey is { } k && _services.Movement.IsAvoided(k);
     public bool ContextIsStash   => ContextRoomKey is { } k && _services.Movement.IsStash(k);
     public bool ContextIsFavorite => ContextRoomKey is { } k && _services.Favorites.IsFavorite(k);
+
+    // ----- "Use Teleport" (right-click a CMD/teleport room) ----------
+    // A CMD room's TBInfo Action chain teleports to one room (the common
+    // case) or several distinct rooms. "Use Teleport" just shifts the map
+    // view to where you'd land — the actual traversal command is
+    // irrelevant here. One destination → a flat "Use Teleport" item; many
+    // → one flat "Use Teleport → <room>" entry each, rendered directly in
+    // the context menu via indexed slots (mirrors the File-menu
+    // Recent0..4 pattern — no submenu/flyout).
+    private const int MaxTeleportSlots = 5;
+
+    private readonly List<RoomKey> _contextTeleportDests = new();
+    private readonly TeleportDestinationItem?[] _teleportSlots =
+        new TeleportDestinationItem?[MaxTeleportSlots];
+
+    /// <summary>True when the context room teleports to exactly one room — show the flat "Use Teleport" item.</summary>
+    public bool ContextTeleportSingle => _contextTeleportDests.Count == 1;
+
+    /// <summary>Indexed flat "Use Teleport → room" entries, populated only when the room has multiple distinct destinations.</summary>
+    public TeleportDestinationItem? Teleport0 => _teleportSlots[0];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport1 => _teleportSlots[1];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport2 => _teleportSlots[2];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport3 => _teleportSlots[3];
+    /// <inheritdoc cref="Teleport0"/>
+    public TeleportDestinationItem? Teleport4 => _teleportSlots[4];
+
+    private void RebuildContextTeleports(RoomKey? value)
+    {
+        _contextTeleportDests.Clear();
+        Array.Clear(_teleportSlots);
+        if (value is { } k && Graph?.GetRoom(k) is { Cmd: > 0 } room)
+        {
+            foreach ((string _, RoomKey dest, int _) in
+                     TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd))
+            {
+                if (!_contextTeleportDests.Contains(dest)) _contextTeleportDests.Add(dest);
+            }
+            // Only the multi-destination case needs per-room entries — a
+            // single destination is served by the flat UseTeleport command.
+            if (_contextTeleportDests.Count > 1)
+            {
+                for (int i = 0; i < _contextTeleportDests.Count && i < MaxTeleportSlots; i++)
+                {
+                    RoomKey dest = _contextTeleportDests[i];
+                    string name = Graph.GetRoom(dest)?.Name ?? "(unknown)";
+                    _teleportSlots[i] = new TeleportDestinationItem(
+                        $"Use Teleport → {name}  ({dest})",
+                        new RelayCommand(() => OnFloorChangeRequested(dest)));
+                }
+            }
+        }
+        OnPropertyChanged(nameof(ContextTeleportSingle));
+        OnPropertyChanged(nameof(Teleport0));
+        OnPropertyChanged(nameof(Teleport1));
+        OnPropertyChanged(nameof(Teleport2));
+        OnPropertyChanged(nameof(Teleport3));
+        OnPropertyChanged(nameof(Teleport4));
+    }
+
+    /// <summary>
+    /// Single-destination "Use Teleport": shift the map to the one room
+    /// the teleport leads to. Multi-destination rooms use the per-room
+    /// <see cref="Teleport0"/>..<see cref="Teleport4"/> entries instead.
+    /// </summary>
+    [RelayCommand]
+    private void UseTeleport()
+    {
+        if (_contextTeleportDests.Count > 0) OnFloorChangeRequested(_contextTeleportDests[0]);
+    }
 
     [RelayCommand]
     private void WalkToContextRoom()
@@ -1257,9 +1544,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleContextRoomStash()
     {
-        if (ContextRoomKey is not { } k) return;
-        if (_services.Movement.IsStash(k)) _services.Movement.UnmarkStash(k);
+        if (ContextRoomKey is not { } k)
+        {
+            _services.Log?.Debug("Navigation", "stash toggle aborted — no ContextRoomKey");
+            return;
+        }
+        bool wasStash = _services.Movement.IsStash(k);
+        if (wasStash) _services.Movement.UnmarkStash(k);
         else _services.Movement.MarkStash(k);
+        _services.Log?.Info("Navigation",
+            $"stash toggled key={k} {(wasStash ? "unmarked" : "marked")} profile-loaded={_services.Profile.Current is not null}");
         OnPropertyChanged(nameof(ContextIsStash));
     }
 
@@ -1488,6 +1782,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.RoomGraph,
             _services.Confirm,
             _services.Dialogs,
+            folders: _services.NavFolders,
             draft: LoopBuilder,
             onDraftConsumed: () =>
             {
@@ -1495,7 +1790,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             },
             runner: _services.LoopRunner,
             mpImporter: _services.MpImporter,
-            log: _services.Log);
+            log: _services.Log,
+            search: _services.RoomSearch,
+            walker: _services.Walker,
+            movement: _services.MovementControl);
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
@@ -1596,7 +1894,27 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnWalkerEvent(WalkEvent _) => RefreshFromWalker();
+    private void OnWalkerEvent(WalkEvent e)
+    {
+        // A failed walk leaves the engine Idle; stash the reason so the
+        // top-bar status + CURRENT NAV header can explain why we didn't
+        // move (e.g. "all routes blocked by a level requirement"). Any
+        // forward progress or a fresh start clears it.
+        switch (e.Kind)
+        {
+            case WalkEventKind.Failed:
+                EngineError = e.Detail;
+                break;
+            case WalkEventKind.Started:
+            case WalkEventKind.Resumed:
+            case WalkEventKind.StepCompleted:
+            case WalkEventKind.Finished:
+            case WalkEventKind.Stopped:
+                EngineError = null;
+                break;
+        }
+        RefreshFromWalker();
+    }
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 
     private void RefreshFromTracker()
@@ -1667,7 +1985,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         foreach (Room room in Graph.Rooms)
         {
             if (room.Cmd <= 0) continue;
-            using IEnumerator<(string, RoomKey)> e =
+            using IEnumerator<(string, RoomKey, int)> e =
                 TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd).GetEnumerator();
             if (e.MoveNext()) set.Add(room.Key);
         }
@@ -1768,6 +2086,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private NavigationEngineKind _engineActionKind = NavigationEngineKind.Idle;
 
+    /// <summary>
+    /// Reason the last navigation attempt failed, surfaced in the
+    /// top-bar status text + CURRENT NAV header while the engine is
+    /// Idle. Null when there's nothing to report. Set by
+    /// <see cref="OnWalkerEvent"/> on a Failed event; cleared on any
+    /// Started / progress / Stopped event.
+    /// </summary>
+    [ObservableProperty] private string? _engineError;
+
     /// <summary>True when any movement engine is actively driving the player.</summary>
     public bool IsAnyExecuting =>
         EngineActionKind != NavigationEngineKind.Idle;
@@ -1853,6 +2180,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 }
                 default:
                 {
+                    if (EngineError is { Length: > 0 } err) return $"⚠ {err}";
                     Room? here = _services.RoomTracker.State.CurrentRoom;
                     return here is null ? "—" : FormatRoomRef(here.Key);
                 }
@@ -2340,7 +2668,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                         : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
                 NavigationEngineKind.Looping  => BuildLoopHeader(),
                 NavigationEngineKind.AutoLair => "Cycling marked lairs",
-                _ => "No Active Navigation",
+                _ => EngineError is { Length: > 0 } err
+                    ? $"⚠ {err}"
+                    : "No Active Navigation",
             };
         }
     }
