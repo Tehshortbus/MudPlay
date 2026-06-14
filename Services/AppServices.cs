@@ -1348,6 +1348,12 @@ public sealed class AppServices
         // to re-fire `invite` for any party member that the trainer-
         // menu round-trip dropped from the follower's view.
         TrainerMenu = new Game.TrainerMenuTracker(Router, PartyState, Log);
+        // Full-screen forms (trainer stats / char creation) want
+        // character-at-a-time input with server echo, not client-side
+        // line buffering. Flip LocalInputBuffer into character-mode on
+        // menu entry and back to line-mode on exit.
+        TrainerMenu.MenuEntered += () => InputBuffer.CharacterMode = true;
+        TrainerMenu.MenuExited  += () => InputBuffer.CharacterMode = false;
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // Suicide-password observer + engine-gate consumer. Drives
         // EngineGate.IsLocked during password-entry prompts so

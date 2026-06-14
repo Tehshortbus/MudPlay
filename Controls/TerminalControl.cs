@@ -259,11 +259,16 @@ public sealed class TerminalControl : Control
         string? overlayText = null;
         int overlayStartCol = screen.CursorX;
         int overlayStartRow = screen.CursorY;
-        if (InputBuffer is { Length: > 0 } buffer)
+        // Character-mode (full-screen forms) suppresses the overlay
+        // entirely — the server renders its own form + echo, so the
+        // caret simply tracks the server cursor. Both overlay branches
+        // gate on it so neither the live buffer nor a pending flush paints.
+        bool charMode = InputBuffer is { CharacterMode: true };
+        if (!charMode && InputBuffer is { Length: > 0 } buffer)
         {
             overlayText = buffer.Text;
         }
-        else if (_pendingFlushText is not null)
+        else if (!charMode && _pendingFlushText is not null)
         {
             overlayText = _pendingFlushText;
             overlayStartCol = _pendingFlushCol;
@@ -408,8 +413,10 @@ public sealed class TerminalControl : Control
         // Escape) pass straight through via MapKey because they're
         // meaningful to the server immediately (login prompts, menu
         // navigation) and aren't part of any "line" the user is
-        // composing.
-        if (InputBuffer is { } buf)
+        // composing. In character-mode (full-screen forms) the buffer is
+        // bypassed entirely — Enter/Backspace fall through to MapKey so
+        // the server's form reads each keystroke as it lands.
+        if (InputBuffer is { CharacterMode: false } buf)
         {
             if (e.Key == Key.Enter)
             {
@@ -455,16 +462,19 @@ public sealed class TerminalControl : Control
         // instead of straight to the wire. The render overlay paints
         // the buffer at the cursor on the next invalidation. Capped
         // silently at LocalInputBuffer.MaxLength (254 — MUD wire-level
-        // line cap); chars past the cap are dropped.
-        if (InputBuffer is { } buf)
+        // line cap); chars past the cap are dropped. In character-mode
+        // (full-screen forms) we fall through to the straight-to-wire
+        // path so the server echoes each char itself.
+        if (InputBuffer is { CharacterMode: false } buf)
         {
             buf.Append(e.Text);
             e.Handled = true;
             return;
         }
-        // Char-mode fallback for callers that haven't bound a buffer.
-        // BBSes expect Latin-1 / 8-bit bytes, not UTF-8. Encoding here keeps
-        // accented characters legible to older servers.
+        // Char-mode path (no buffer bound, OR LocalInputBuffer suspended
+        // for a full-screen form). BBSes expect Latin-1 / 8-bit bytes,
+        // not UTF-8. Encoding here keeps accented characters legible to
+        // older servers.
         var bytes = System.Text.Encoding.Latin1.GetBytes(e.Text);
         UserInput?.Invoke(bytes);
         e.Handled = true;

@@ -68,6 +68,13 @@ public sealed class TrainerMenuTracker : IDisposable
     public IReadOnlyList<string> RosterAtMenuEntry => _rosterSnapshot;
 
     /// <summary>
+    /// Fires once when the trainer-stats marker confirms entry into the
+    /// full-screen menu. Lets subscribers (e.g. the terminal's
+    /// character-mode input switch) react to the excursion start.
+    /// </summary>
+    public event Action? MenuEntered;
+
+    /// <summary>
     /// Fires once when the in-game prompt returns after an armed menu
     /// session — the user has exited the trainer screen.
     /// </summary>
@@ -125,6 +132,7 @@ public sealed class TrainerMenuTracker : IDisposable
             .ToList();
         _log?.Log(LogSeverity.Info, "TrainerMenu",
             $"Entered trainer menu — snapshot {_rosterSnapshot.Count} non-self member(s).");
+        MenuEntered?.Invoke();
     }
 
     private void OnPrompt(MatchResult _)

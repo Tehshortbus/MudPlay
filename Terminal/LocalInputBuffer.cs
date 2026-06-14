@@ -32,6 +32,15 @@ namespace FujinTerm.Terminal;
 /// server immediately (login prompts, menu navigation) and aren't part
 /// of a "line" anyone is composing.
 /// </para>
+/// <para>
+/// <see cref="CharacterMode"/> suspends the line-mode model for the
+/// duration of MajorMUD's full-screen forms (character creation /
+/// <c>train stats</c>), which want character-at-a-time input with
+/// server echo. While it's set the TerminalControl bypasses the buffer
+/// entirely — every keystroke goes straight to the wire and the
+/// local-echo overlay is suppressed so the server's own form rendering
+/// is the only thing on screen.
+/// </para>
 /// </remarks>
 public sealed class LocalInputBuffer
 {
@@ -45,6 +54,28 @@ public sealed class LocalInputBuffer
     public const int MaxLength = 254;
 
     private readonly StringBuilder _buf = new(MaxLength);
+    private bool _characterMode;
+
+    /// <summary>
+    /// When true, line-mode is suspended: callers send each keystroke
+    /// straight to the wire and skip the local-echo overlay. Flipped on
+    /// entry to / exit from MajorMUD's full-screen forms (trainer stats,
+    /// character creation) via <see cref="FujinTerm.Game.TrainerMenuTracker"/>.
+    /// Setting it to true also drops any in-progress buffered text so a
+    /// stale overlay can't linger behind the server's form. Re-raising
+    /// <see cref="Changed"/> lets the control repaint immediately.
+    /// </summary>
+    public bool CharacterMode
+    {
+        get => _characterMode;
+        set
+        {
+            if (_characterMode == value) return;
+            _characterMode = value;
+            if (value) _buf.Length = 0;
+            Changed?.Invoke();
+        }
+    }
 
     /// <summary>Current buffered text (the chars between the last Enter and the user's caret).</summary>
     public string Text => _buf.ToString();
