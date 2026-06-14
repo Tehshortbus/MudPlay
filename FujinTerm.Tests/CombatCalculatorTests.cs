@@ -1,0 +1,309 @@
+using FujinTerm.Game;
+using FujinTerm.Game.Calculators;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+/// <summary>
+/// Realm-branch coverage for <see cref="CombatCalculator"/>: hit floor/cap,
+/// dodge soft/hard caps, magic resist, backstab, accuracy, swings, and the
+/// Quick &amp; Deadly bonus. Focused on the Stock vs ParaMUD divergences and
+/// the clamp boundaries the formulas must honor.
+/// </summary>
+public sealed class CombatCalculatorTests
+{
+    // ----- Hit chance caps -------------------------------------------------
+
+    [Fact]
+    public void CalculateHitChance_ZeroAC_IsAlwaysHundredBeforeDodge()
+    {
+        HitCalcResult r = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 100, defenderAC: 0, defenderDodge: 0,
+            realmType: RealmType.ParaMud);
+        Assert.Equal(100, r.HitPercent);
+    }
+
+    [Fact]
+    public void CalculateHitChance_HighAC_ClampsToRealmFloor()
+    {
+        // Overwhelming AC vs weak accuracy floors the hit chance.
+        HitCalcResult stock = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 10, defenderAC: 500, defenderDodge: 0,
+            realmType: RealmType.Stock);
+        HitCalcResult para = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 10, defenderAC: 500, defenderDodge: 0,
+            realmType: RealmType.ParaMud);
+
+        Assert.Equal(CombatCalculator.STOCK_HIT_MIN, stock.HitPercent);
+        Assert.Equal(CombatCalculator.PARAMUD_HIT_MIN, para.HitPercent);
+        Assert.Equal(CombatCalculator.STOCK_HIT_MIN, stock.HitMinCap);
+        Assert.Equal(CombatCalculator.PARAMUD_HIT_MIN, para.HitMinCap);
+    }
+
+    [Fact]
+    public void CalculateHitChance_ParaMudLightArmour_LowersFloorByOne()
+    {
+        HitCalcResult heavy = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 10, defenderAC: 500, defenderDodge: 0,
+            defenderArmourType: 10, realmType: RealmType.ParaMud);
+        HitCalcResult light = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 10, defenderAC: 500, defenderDodge: 0,
+            defenderArmourType: 5, realmType: RealmType.ParaMud);
+
+        Assert.Equal(CombatCalculator.PARAMUD_HIT_MIN, heavy.HitMinCap);
+        Assert.Equal(CombatCalculator.PARAMUD_HIT_MIN - 1, light.HitMinCap);
+    }
+
+    [Fact]
+    public void CalculateHitChance_CapsDifferByRealm()
+    {
+        HitCalcResult stock = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 9999, defenderAC: 1, defenderDodge: 0,
+            realmType: RealmType.Stock);
+        HitCalcResult para = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 9999, defenderAC: 1, defenderDodge: 0,
+            realmType: RealmType.ParaMud);
+
+        Assert.Equal(CombatCalculator.STOCK_HIT_CAP, stock.HitMaxCap);
+        Assert.Equal(CombatCalculator.PARAMUD_HIT_CAP, para.HitMaxCap);
+    }
+
+    // ----- Dodge -----------------------------------------------------------
+
+    [Fact]
+    public void CalcDodgeVSAccuracy_ZeroRawDodge_IsZero()
+    {
+        Assert.Equal(0, CombatCalculator.CalcDodgeVSAccuracy(0, 100, RealmType.ParaMud));
+        Assert.Equal(0, CombatCalculator.CalcDodgeVSAccuracy(0, 100, RealmType.Stock));
+    }
+
+    [Fact]
+    public void CalcDodgeVSAccuracy_StockLowAccuracy_NoDodge()
+    {
+        // Stock requires accuracy > 8.
+        Assert.Equal(0, CombatCalculator.CalcDodgeVSAccuracy(50, 8, RealmType.Stock));
+    }
+
+    [Fact]
+    public void CalcDodgeVSAccuracy_ParaMudClampsToHardCap()
+    {
+        int dodge = CombatCalculator.CalcDodgeVSAccuracy(9999, 1, RealmType.ParaMud);
+        Assert.True(dodge <= CombatCalculator.PARAMUD_DODGE_CAP);
+    }
+
+    [Fact]
+    public void CalcDodgeVSAccuracy_StockClampsToCap()
+    {
+        // Low accuracy (just above the floor of 8) keeps the divisor at 1, so a
+        // huge raw dodge overflows the cap.
+        int dodge = CombatCalculator.CalcDodgeVSAccuracy(9999, 9, RealmType.Stock);
+        Assert.Equal(CombatCalculator.STOCK_DODGE_CAP, dodge);
+    }
+
+    [Fact]
+    public void CalcDodge_LowEncumbranceAddsBonus()
+    {
+        int noEncum = CombatCalculator.CalcDodge(50, 100, 100, 0);
+        int lowEncum = CombatCalculator.CalcDodge(50, 100, 100, 0, currentEncum: 10, maxEncum: 100);
+        Assert.True(lowEncum > noEncum);
+    }
+
+    // ----- Diminishing returns ---------------------------------------------
+
+    [Fact]
+    public void ParaMudDiminishingReturns_IsSignPreserving()
+    {
+        Assert.Equal(-CombatCalculator.ParaMud_DiminishingReturns(40, 4),
+                      CombatCalculator.ParaMud_DiminishingReturns(-40, 4), 6);
+    }
+
+    [Fact]
+    public void ParaMudDiminishingReturns_NonPositiveScale_PassesThrough()
+    {
+        Assert.Equal(42.0, CombatCalculator.ParaMud_DiminishingReturns(42, 0));
+    }
+
+    // ----- Magic resist ----------------------------------------------------
+
+    [Fact]
+    public void CalcMR_WeightsWillpowerTriple()
+    {
+        // (INT + WIL*3)/4 + mods. INT 100, WIL 100 → 400/4 = 100.
+        Assert.Equal(100, CombatCalculator.CalcMR(100, 100));
+        Assert.Equal(110, CombatCalculator.CalcMR(100, 100, 10));
+    }
+
+    // ----- Backstab --------------------------------------------------------
+
+    [Fact]
+    public void CalcBSDamage_ReturnsOrderedRange()
+    {
+        BSDamageResult r = CombatCalculator.CalcBSDamage(
+            level: 50, stealth: 200, strength: 150,
+            weaponMin: 10, weaponMax: 30,
+            bsMinBonus: 0, bsMaxBonus: 0, maxDmgBonus: 0,
+            hasClassStealth: true, realmType: RealmType.ParaMud);
+
+        Assert.True(r.MinDamage <= r.MaxDamage);
+        Assert.Equal((r.MinDamage + r.MaxDamage) / 2.0, r.AvgDamage);
+    }
+
+    [Fact]
+    public void CalcBSDamage_StockDoublesMinStrBonus()
+    {
+        // Stock doubles the (STR-100)/10 min strength bonus, so for high STR
+        // the Stock min damage exceeds the ParaMUD min (level-scaling aside,
+        // the bonus enters before scaling for both).
+        BSDamageResult stock = CombatCalculator.CalcBSDamage(
+            50, 200, 200, 10, 30, 0, 0, 0, true, RealmType.Stock);
+        BSDamageResult para = CombatCalculator.CalcBSDamage(
+            50, 200, 200, 10, 30, 0, 0, 0, true, RealmType.ParaMud);
+
+        Assert.True(stock.MinDamage > 0);
+        Assert.True(para.MinDamage > 0);
+    }
+
+    [Fact]
+    public void CalcBackstabAccuracy_RealmFormulasDiffer()
+    {
+        int para = CombatCalculator.CalcBackstabAccuracy(
+            stealth: 200, agility: 100, level: 50, strength: 100,
+            weaponStrReq: 0, plusBSAccuracy: 0, plusNormalAccuracy: 0,
+            hasClassStealth: true, realmType: RealmType.ParaMud);
+        int stock = CombatCalculator.CalcBackstabAccuracy(
+            stealth: 200, agility: 100, level: 50, strength: 100,
+            weaponStrReq: 0, plusBSAccuracy: 0, plusNormalAccuracy: 0,
+            hasClassStealth: true, realmType: RealmType.Stock);
+
+        Assert.NotEqual(para, stock);
+    }
+
+    [Fact]
+    public void CalcBackstabAccuracy_ParaMudStrReqPenalty()
+    {
+        int meets = CombatCalculator.CalcBackstabAccuracy(
+            200, 100, 50, 100, 50, 0, 0, true, RealmType.ParaMud);
+        int fails = CombatCalculator.CalcBackstabAccuracy(
+            200, 100, 50, 40, 50, 0, 0, true, RealmType.ParaMud);
+        Assert.Equal(meets - 15, fails);
+    }
+
+    // ----- Base accuracy ---------------------------------------------------
+
+    [Fact]
+    public void CalcBaseAccuracy_NonPositiveLevel_IsZero()
+    {
+        Assert.Equal((0, 0), CombatCalculator.CalcBaseAccuracy(0, 5, RealmType.ParaMud));
+    }
+
+    [Fact]
+    public void CalcBaseAccuracy_StockSqrtCorrection()
+    {
+        // For a perfect square the parts agree; the correction loop only
+        // matters where Math.Sqrt rounds low — assert sqrtPart is the floor.
+        var (sqrtPart, _) = CombatCalculator.CalcBaseAccuracy(100, 0, RealmType.Stock);
+        Assert.Equal(10, sqrtPart);
+    }
+
+    // ----- Accuracy by attack type -----------------------------------------
+
+    [Fact]
+    public void CalcAccuracy_BashAndSmashApplyPenalties()
+    {
+        int normal = CombatCalculator.CalcAccuracy(
+            MudAttackType.Normal, RealmType.Stock, 50, 5,
+            strength: 100, agility: 100, intellect: 100, charm: 100,
+            totalWornAccy: 20, maxSingleAbil22: 0,
+            currentEncum: 0, maxEncum: 100);
+        int bash = CombatCalculator.CalcAccuracy(
+            MudAttackType.Bash, RealmType.Stock, 50, 5,
+            100, 100, 100, 100, 20, 0, 0, 100);
+
+        Assert.Equal(normal - 15, bash);
+    }
+
+    [Fact]
+    public void CalcAccuracy_ParaMudSmashMultiplierExceedsNormal()
+    {
+        int normal = CombatCalculator.CalcAccuracy(
+            MudAttackType.Normal, RealmType.ParaMud, 50, 5,
+            150, 100, 100, 100, 40, 0, 0, 100);
+        int smash = CombatCalculator.CalcAccuracy(
+            MudAttackType.Smash, RealmType.ParaMud, 50, 5,
+            150, 100, 100, 100, 40, 0, 0, 100);
+
+        // Smash gets a 1.5x multiplier (then -25); for a healthy base it still
+        // lands above the normal accuracy.
+        Assert.True(smash > normal);
+    }
+
+    // ----- Swings ----------------------------------------------------------
+
+    [Fact]
+    public void CalcEnergyUsed_StrengthUnderRequirement_RaisesEnergy()
+    {
+        // Slow weapon + low level keeps base energy large enough that the
+        // strength-penalty multiplier is visible.
+        int meets = CombatCalculator.CalcEnergyUsed(1, 10, 200, 50, strength: 100, weaponStrReq: 50);
+        int under = CombatCalculator.CalcEnergyUsed(1, 10, 200, 50, strength: 40, weaponStrReq: 50);
+        Assert.True(under > meets);
+    }
+
+    [Fact]
+    public void CalcSwings_RawSwingsCappedAtMax()
+    {
+        SwingCalcResult r = CombatCalculator.CalcSwings(
+            combatLevel: 10, level: 100, attackSpeed: 1, agility: 200,
+            strength: 200, weaponStrReq: 0, currentEncum: 0, maxEncum: 100,
+            realmType: RealmType.ParaMud);
+
+        Assert.True(r.RawSwings <= CombatCalculator.MAX_SWINGS);
+        Assert.Equal(10, r.SwingsPerRound.Length);
+        Assert.All(r.SwingsPerRound, s => Assert.True(s <= CombatCalculator.MAX_SWINGS));
+    }
+
+    [Fact]
+    public void CalcSwings_BashingDoublesEnergyPerSwing()
+    {
+        // Slow weapon + low level so per-swing energy stays well above 1 and
+        // the ×2 bashing factor isn't masked by the floor clamp.
+        SwingCalcResult normal = CombatCalculator.CalcSwings(
+            1, 10, 200, 50, 100, 0, 0, 100, isBashing: false, realmType: RealmType.ParaMud);
+        SwingCalcResult bashing = CombatCalculator.CalcSwings(
+            1, 10, 200, 50, 100, 0, 0, 100, isBashing: true, realmType: RealmType.ParaMud);
+
+        Assert.Equal(normal.EnergyPerSwing * 2, bashing.EnergyPerSwing);
+    }
+
+    // ----- Quick & Deadly --------------------------------------------------
+
+    [Fact]
+    public void CalcQuickAndDeadly_ZeroAtHighEnergy()
+    {
+        Assert.Equal(0, CombatCalculator.CalcQuickAndDeadlyBonus(100, 200, 0, RealmType.ParaMud));
+        Assert.Equal(0, CombatCalculator.CalcQuickAndDeadlyBonus(100, 250, 0, RealmType.Stock));
+    }
+
+    [Fact]
+    public void CalcQuickAndDeadly_StockZeroAboveHeavyEncum()
+    {
+        Assert.Equal(0, CombatCalculator.CalcQuickAndDeadlyBonus(100, 50, 70, RealmType.Stock));
+    }
+
+    [Fact]
+    public void CalcQuickAndDeadly_RealmFormulasDiffer()
+    {
+        int para = CombatCalculator.CalcQuickAndDeadlyBonus(100, 50, 0, RealmType.ParaMud);
+        int stock = CombatCalculator.CalcQuickAndDeadlyBonus(100, 50, 0, RealmType.Stock);
+        Assert.True(para > 0);
+        Assert.True(stock > 0);
+        Assert.NotEqual(para, stock);
+    }
+
+    [Fact]
+    public void CalcQuickAndDeadly_StockCapsAtTwenty()
+    {
+        int bonus = CombatCalculator.CalcQuickAndDeadlyBonus(999, 1, 0, RealmType.Stock);
+        Assert.True(bonus <= 20);
+    }
+}

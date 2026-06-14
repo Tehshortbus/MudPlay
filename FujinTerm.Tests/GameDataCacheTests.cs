@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game;
 using FujinTerm.Services;
 using Xunit;
 
@@ -206,5 +207,60 @@ public sealed class GameDataCacheTests : IDisposable
         Assert.Equal("not-yet-imported", cache.ActiveSet);
         Assert.Single(fired);
         Assert.Null(cache.GetRawTable("Monsters"));
+    }
+
+    // ----- ActiveRealm (Info.Legit derivation, MMUD Explorer parity) -------
+
+    [Fact]
+    public void ActiveRealm_Legit2_IsParaMud()
+    {
+        // MMUD Explorer: tabInfo.Fields("Legit") = 2 → bGreaterMUD = True.
+        SeedSet("para", ("Info", "[{\"Legit\":2}]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("para");
+
+        Assert.Equal(RealmType.ParaMud, cache.ActiveRealm);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void ActiveRealm_LegitNot2_IsStock(int legit)
+    {
+        SeedSet("stock", ("Info", $"[{{\"Legit\":{legit}}}]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("stock");
+
+        Assert.Equal(RealmType.Stock, cache.ActiveRealm);
+    }
+
+    [Fact]
+    public void ActiveRealm_MissingInfoTable_DefaultsToStock()
+    {
+        SeedSet("noinfo", ("Monsters", "[]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("noinfo");
+
+        Assert.Equal(RealmType.Stock, cache.ActiveRealm);
+    }
+
+    [Fact]
+    public void ActiveRealm_MissingLegitField_DefaultsToStock()
+    {
+        SeedSet("nolegit", ("Info", "[{\"Name\":\"SomeRealm\"}]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("nolegit");
+
+        Assert.Equal(RealmType.Stock, cache.ActiveRealm);
+    }
+
+    [Fact]
+    public void ActiveRealm_NoActiveSet_DefaultsToStock()
+    {
+        SeedSet("para", ("Info", "[{\"Legit\":2}]"));
+        GameDataCache cache = NewCache();
+
+        Assert.Equal(RealmType.Stock, cache.ActiveRealm);
     }
 }

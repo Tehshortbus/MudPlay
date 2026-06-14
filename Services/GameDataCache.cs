@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game;
 
 namespace FujinTerm.Services;
 
@@ -57,6 +58,39 @@ public sealed class GameDataCache
 
     /// <summary>Name of the active set, or <c>null</c> when nothing is selected.</summary>
     public string? ActiveSet { get; private set; }
+
+    /// <summary>
+    /// Formula family the active set targets, derived from its <c>Info</c>
+    /// table the same way MMUD Explorer does: <c>Legit == 2</c> →
+    /// <see cref="RealmType.ParaMud"/> (GreaterMUD / Paradigm), anything
+    /// else → <see cref="RealmType.Stock"/>. Returns <see cref="RealmType.Stock"/>
+    /// when no set is active or the <c>Info</c> table is missing / malformed
+    /// (Stock is the safe default — most realms are Stock-derived).
+    /// </summary>
+    /// <remarks>
+    /// Reads through <see cref="GetRawTable"/>, so the first access lazily
+    /// loads (and caches) <c>Info.json</c>. The realm only changes when the
+    /// active set changes, so callers can read this per-calculation cheaply;
+    /// the <c>Info</c> table is tiny.
+    /// </remarks>
+    public RealmType ActiveRealm
+    {
+        get
+        {
+            JsonDocument? doc = GetRawTable("Info");
+            if (doc is null || doc.RootElement.ValueKind != JsonValueKind.Array) return RealmType.Stock;
+            foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            {
+                if (row.TryGetProperty("Legit", out JsonElement legit)
+                    && legit.ValueKind == JsonValueKind.Number
+                    && legit.TryGetInt32(out int code))
+                {
+                    return code == 2 ? RealmType.ParaMud : RealmType.Stock;
+                }
+            }
+            return RealmType.Stock;
+        }
+    }
 
     /// <summary>
     /// Fires whenever <see cref="ActiveSet"/> changes — including the
