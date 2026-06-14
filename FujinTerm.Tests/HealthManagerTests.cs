@@ -155,7 +155,25 @@ public sealed class HealthManagerTests
     // ----- absolute threshold mode -----------------------------------
 
     [Fact]
-    public void AbsoluteMode_TriggerExactValue()
+    public void AbsoluteMode_AtTriggerValue_DoesNotAssert()
+    {
+        // "Rest if below 60" is strictly below — exactly 60 must NOT trigger.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            RestIfBelowHp   = 60,
+            RestMaxHp       = 195,
+        };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 60;             // exactly at 60 absolute → not below
+
+        Assert.False(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void AbsoluteMode_BelowTriggerValue_Asserts()
     {
         HealthSettings s = new()
         {
@@ -166,9 +184,28 @@ public sealed class HealthManagerTests
         using Harness h = new(s);
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
-        h.State.Hp = 60;             // exactly at 60 absolute → trigger
+        h.State.Hp = 59;             // strictly below 60 → trigger
 
         Assert.True(h.HealthGateHeld);
+    }
+
+    [Fact]
+    public void ManaTriggerZero_AtZeroMana_DoesNotAssert()
+    {
+        // The reported repro: a level-2 mystic with 1 max KAI and rest-if-
+        // below 0 spends the KAI → MA 0. With strict-below, 0 is not below
+        // the 0 trigger, so no spurious mana-rest pause.
+        HealthSettings s = new()
+        {
+            MaThresholdMode = ThresholdMode.Absolute,
+            RestIfBelowMa   = 0,
+        };
+        using Harness h = new(s);
+        h.State.MaxMa = 1;
+        h.State.HasPromptData = true;
+        h.State.Ma = 0;
+
+        Assert.False(h.ManaGateHeld);
     }
 
     // ----- rest / stand pacing ---------------------------------------

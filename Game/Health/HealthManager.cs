@@ -378,12 +378,16 @@ public sealed class HealthManager : IDisposable
             ? Math.Min(hpRestTrigger + 1, _state.MaxHp)
             : ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
 
-        if (!_hpGateAsserted && _state.MaxHp > 0 && _state.Hp <= hpRestTrigger)
+        // Strictly below — "rest if below N" rests only when the pool is
+        // under N, never AT N. (Equal-or-less traps a level-2 mystic: 1 max
+        // KAI, trigger 0, spend the KAI → MA 0 == trigger 0 would pause for
+        // mana forever.)
+        if (!_hpGateAsserted && _state.MaxHp > 0 && _state.Hp < hpRestTrigger)
         {
             _hpGateAsserted = true;
             _coordinator.AssertGate(MovementCoordinator.HealthRecoveryGate,
                 AsserterName,
-                $"HP {_state.Hp}/{_state.MaxHp} <= rest-trigger={hpRestTrigger}");
+                $"HP {_state.Hp}/{_state.MaxHp} < rest-trigger={hpRestTrigger}");
         }
         else if (_hpGateAsserted && _state.Hp >= hpRestTarget)
         {
@@ -399,12 +403,13 @@ public sealed class HealthManager : IDisposable
             ? Math.Min(maRestTrigger + 1, _state.MaxMa)
             : ResolveThreshold(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
 
-        if (!_maGateAsserted && _state.Ma <= maRestTrigger && _state.MaxMa > 0)
+        // Strictly below (see HP gate above) — the mystic-at-level-2 case.
+        if (!_maGateAsserted && _state.Ma < maRestTrigger && _state.MaxMa > 0)
         {
             _maGateAsserted = true;
             _coordinator.AssertGate(MovementCoordinator.ManaRecoveryGate,
                 AsserterName,
-                $"MA {_state.Ma}/{_state.MaxMa} <= rest-trigger={maRestTrigger}");
+                $"MA {_state.Ma}/{_state.MaxMa} < rest-trigger={maRestTrigger}");
         }
         else if (_maGateAsserted && _state.Ma >= maRestTarget)
         {
