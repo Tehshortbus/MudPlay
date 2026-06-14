@@ -18,21 +18,19 @@ public static class NavTreeBuilder
     /// <summary>
     /// Build the top-level node list for <paramref name="rows"/>.
     /// Folders sort before leaves; both alphabetical
-    /// (case-insensitive). <paramref name="folderOf"/> returns a row's
-    /// stored folder (empty = root); <paramref name="nameOf"/> is its
-    /// sort/display key. <paramref name="allFolders"/> seeds folders
+    /// (case-insensitive, via <see cref="SortKeyOf"/>).
+    /// <paramref name="folderOf"/> returns a row's stored folder
+    /// (empty = root). <paramref name="allFolders"/> seeds folders
     /// that have no rows yet (empty folders the user created) so they
     /// still render.
     /// </summary>
     public static List<object> Build<TRow>(
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
-        Func<TRow, string> nameOf,
         IEnumerable<string> allFolders)
     {
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentNullException.ThrowIfNull(folderOf);
-        ArgumentNullException.ThrowIfNull(nameOf);
         ArgumentNullException.ThrowIfNull(allFolders);
 
         var folders = new Dictionary<string, NavFolderNodeViewModel>(StringComparer.OrdinalIgnoreCase);
@@ -83,14 +81,13 @@ public static class NavTreeBuilder
         ObservableCollection<object> target,
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
-        Func<TRow, string> nameOf,
         IEnumerable<string> allFolders)
     {
         ArgumentNullException.ThrowIfNull(target);
         var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectCollapsed(target, expanded);
 
-        List<object> built = Build(rows, folderOf, nameOf, allFolders);
+        List<object> built = Build(rows, folderOf, allFolders);
         RestoreCollapsed(built, expanded);
 
         target.Clear();

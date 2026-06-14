@@ -191,7 +191,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         var rows = new List<object>(LairSetups.Count + Loops.Count);
         rows.AddRange(LairSetups);
         rows.AddRange(Loops);
-        NavTreeBuilder.Sync<object>(WalkTree, rows, FolderOfWalkRow, NameOfWalkRow, FolderSeed);
+        NavTreeBuilder.Sync<object>(WalkTree, rows, FolderOfWalkRow, FolderSeed);
         OnPropertyChanged(nameof(HasWalkTree));
     }
 
@@ -199,13 +199,6 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     {
         ManagerLoopRow l      => l.Source.Folder,
         ManagerLairSetupRow s => s.Source.Folder,
-        _                     => string.Empty,
-    };
-
-    private static string NameOfWalkRow(object row) => row switch
-    {
-        ManagerLoopRow l      => l.Name,
-        ManagerLairSetupRow s => s.Name,
         _                     => string.Empty,
     };
 

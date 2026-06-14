@@ -785,7 +785,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         var rows = new List<object>(Setups.Count + Loops.Count);
         rows.AddRange(Setups);
         rows.AddRange(Loops);
-        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, NameOfNavRow, _services.NavFolders.AllFolders);
+        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, _services.NavFolders.AllFolders);
         OnPropertyChanged(nameof(HasNavTree));
     }
 
@@ -793,13 +793,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         LoopRowViewModel l => l.Source.Folder,
         LairSetupRowViewModel s => s.Source.Folder,
-        _ => string.Empty,
-    };
-
-    private static string NameOfNavRow(object row) => row switch
-    {
-        LoopRowViewModel l => l.Name,
-        LairSetupRowViewModel s => s.Name,
         _ => string.Empty,
     };
 
@@ -1063,7 +1056,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
         entries.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
         foreach (FavoriteRowViewModel e in entries) Favorites.Add(e);
-        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, r => r.Label, _services.Favorites.AllFolders);
+        NavTreeBuilder.Sync(FavoriteTree, Favorites, r => r.Folder, _services.Favorites.AllFolders);
         OnPropertyChanged(nameof(HasFavorites));
         OnPropertyChanged(nameof(HasFavoriteTree));
     }
