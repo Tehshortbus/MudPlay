@@ -132,19 +132,28 @@
                                  ToolTip.Tip="Dock the vertical toolbar to the right edge."/>
                 </StackPanel>
 
-                <!-- Wholesale copy from another character: layout stages into
-                     the pending list (Apply to keep); keybinds apply live. -->
-                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
-                    <Button Content="Copy from profile…"
-                            Command="{Binding CopyFromProfileCommand}"
-                            ToolTip.Tip="Replace this character's toolbar layout + keybinds with another character's. The layout stages here (Apply to keep); keybinds apply immediately. Chords that clash with this profile's macros are skipped."/>
+                <!-- Import another character's toolbar layout + keybinds,
+                     alongside the two default-reset actions. Layout changes
+                     stage into the pending list (Apply to keep); keybind
+                     changes apply live. -->
+                <StackPanel Spacing="6" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Import toolbar + Keybinds"
+                                Command="{Binding CopyFromProfileCommand}"
+                                ToolTip.Tip="Replace this character's toolbar layout + keybinds with another character's. The layout stages here (Apply to keep); keybinds apply immediately. Chords that clash with this profile's macros are skipped."/>
+                        <Button Content="Reset Toolbar to Default"
+                                Command="{Binding ResetToDefaultsCommand}"
+                                ToolTip.Tip="Restore the default set of toolbar buttons (which actions sit on the toolbar). Doesn't touch keybinds."/>
+                        <Button Content="Reset Keybinds to Default"
+                                Command="{Binding ResetAllKeybindsCommand}"
+                                ToolTip.Tip="Restore every keybind — across both the toolbar and shortcuts lists — to its default chord. Doesn't touch which buttons are on the toolbar."/>
+                    </StackPanel>
                     <TextBlock Text="{Binding CopyStatus}"
                                IsVisible="{Binding CopyStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Foreground="{StaticResource ChromeFgSecBrush}"
                                FontSize="{StaticResource FontSizeSm}"
                                TextWrapping="Wrap"
-                               VerticalAlignment="Center"
-                               MaxWidth="340"/>
+                               MaxWidth="520"/>
                 </StackPanel>
             </StackPanel>
 
@@ -166,7 +175,7 @@
                          BorderThickness="0"/>
             </Border>
 
-            <!-- Toolbar rail: reorder / add separator / remove / keybind / reset. -->
+            <!-- Toolbar rail: reorder / add separator / remove / keybind. -->
             <StackPanel Grid.Row="2" Grid.Column="1"
                         Margin="12,0,0,0"
                         VerticalAlignment="Top"
@@ -189,10 +198,6 @@
                         Command="{Binding ChangeToolbarKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Rebind the shortcut for the selected toolbar action, or clear it. Disabled for separators and non-rebindable rows."/>
-                <Button Content="Reset Toolbar to Default"
-                        Command="{Binding ResetToDefaultsCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore the default set of toolbar buttons (which actions sit on the toolbar). Doesn't touch keybinds."/>
             </StackPanel>
 
             <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
@@ -214,7 +219,7 @@
                          BorderThickness="0"/>
             </Border>
 
-            <!-- Shortcuts rail: promote to toolbar / keybind / reset-all. -->
+            <!-- Shortcuts rail: promote to toolbar / keybind. -->
             <StackPanel Grid.Row="4" Grid.Column="1"
                         Margin="12,0,0,0"
                         VerticalAlignment="Top"
@@ -227,10 +232,6 @@
                         Command="{Binding ChangeShortcutKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Rebind the shortcut for the selected action, or clear it."/>
-                <Button Content="Reset Keybinds to Default"
-                        Command="{Binding ResetAllKeybindsCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore every keybind — across both the toolbar and shortcuts lists — to its default chord. Doesn't touch which buttons are on the toolbar."/>
             </StackPanel>
         </Grid>
         </ScrollViewer>
