@@ -332,6 +332,15 @@ public partial class MainWindowViewModel : ObservableObject
             RefreshEngineActionChip();
         });
 
+    private void OnMovementControlStateChanged()
+        => Dispatcher.UIThread.Post(() =>
+        {
+            foreach (ToolbarButtonItem row in ToolbarItems)
+            {
+                if (row.IsButton) ApplyToolbarRowState(row);
+            }
+        });
+
     private void RefreshEngineActionChip()
     {
         OnPropertyChanged(nameof(EngineActionBadge));
@@ -469,6 +478,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Walker.Event           += OnWalkerEngineEvent;
         AppServices.Current.LoopRunner.Event       += OnLoopRunnerEngineEvent;
         AppServices.Current.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
+        // Coalesced engine state drives the Start / Pause / Stop toolbar
+        // buttons' visibility + Pause↔Resume label; re-apply row state on
+        // every transition so the toolbar mirrors the running engine.
+        AppServices.Current.MovementControl.StateChanged += OnMovementControlStateChanged;
         // Name-learned prompt: fires when the tracker adopts a name
         // for a previously-unnamed room (typical of map-15 ganghouse
         // rooms in 1.x exports). Modeless yes/no asks whether to write
@@ -896,9 +909,16 @@ public partial class MainWindowViewModel : ObservableObject
             string tooltip = entry.Tooltip
                           ?? (liveHint is null ? entry.Label : $"{entry.Label} ({liveHint})");
 
-            // Connect button is the one row with a dual-icon (plug / unplug)
-            // visual; everything else uses a single static glyph.
-            string? alt = entry.ActionId == "ToggleConnection" ? "IconUnplug" : null;
+            // Dual-icon rows: the Connect button swaps plug / unplug; the
+            // movement Pause button swaps pause / play (the play glyph reads
+            // as "Resume" while the engine is paused). Everything else uses
+            // a single static glyph.
+            string? alt = entry.ActionId switch
+            {
+                "ToggleConnection" => "IconUnplug",
+                "MovementPause"    => "IconPlay",
+                _                  => null,
+            };
 
             ToolbarButtonItem row = new(
                 ToolbarItemKind.Button, entry.ActionId,
@@ -978,6 +998,27 @@ public partial class MainWindowViewModel : ObservableObject
             case "ToggleAllAutoOff":
                 // Depressed = auto-responses running; inverse of "all off".
                 row.IsActive = !IsAllAutoOff;
+                break;
+            case "MovementStart":
+                // Start is the idle-only affordance — it runs the staged
+                // loop or opens Manage to pick one.
+                row.IsVisible = AppServices.Current.MovementControl.IsIdle;
+                break;
+            case "MovementPause":
+            {
+                // Shown only while an engine runs; swaps to a Play glyph +
+                // "Resume" tooltip when paused so the one button toggles
+                // Pause ↔ Resume.
+                Game.Map.MovementController ctl = AppServices.Current.MovementControl;
+                row.IsVisible = ctl.IsActive;
+                row.ShowAlternate = ctl.IsPaused;
+                row.Tooltip = ctl.IsPaused
+                    ? "Resume the paused engine"
+                    : "Pause the running engine (click again to resume)";
+                break;
+            }
+            case "MovementStop":
+                row.IsVisible = AppServices.Current.MovementControl.IsActive;
                 break;
         }
     }
@@ -3060,6 +3101,66 @@ public partial class MainWindowViewModel : ObservableObject
         };
         _navigationWindow = window;
         window.Show(main);
+    }
+
+    /// <summary>Guards against a second standalone Manage dialog opening while one is up.</summary>
+    private bool _manageDialogOpen;
+
+    /// <summary>
+    /// Toolbar Start (idle only). If a loop is staged via the Manage
+    /// dialog's Load action, run it straight away — "start the staged
+    /// loop without reopening the map". Otherwise open the Manage dialog
+    /// so the user can pick / load / run one.
+    /// </summary>
+    [RelayCommand]
+    private async Task MovementStartAsync()
+    {
+        if (AppServices.Current.LoopRunner.StagedLoop is { } staged)
+        {
+            AppServices.Current.LoopRunner.Start(staged);
+            return;
+        }
+        await OpenManagerStandaloneAsync();
+    }
+
+    /// <summary>Toolbar Pause / Resume — toggles the running engine's pause gate.</summary>
+    [RelayCommand]
+    private void MovementPause() => AppServices.Current.MovementControl.TogglePause();
+
+    /// <summary>Toolbar Stop — backs the running engine fully out to Idle.</summary>
+    [RelayCommand]
+    private void MovementStop() => AppServices.Current.MovementControl.Stop();
+
+    /// <summary>
+    /// Open the Navigation Manage dialog on its own (no map window) so the
+    /// user can browse / load / run saved loops + lairs. Guarded so a
+    /// second press while it's up is a no-op rather than stacking dialogs.
+    /// </summary>
+    private async Task OpenManagerStandaloneAsync()
+    {
+        if (_manageDialogOpen) return;
+        var s = AppServices.Current;
+        ViewModels.Navigation.NavigationManagerDialogViewModel vm = new(
+            s.Loops,
+            s.Lairs,
+            s.LairTimers,
+            s.RoomGraph,
+            s.Confirm,
+            s.Dialogs,
+            folders: s.NavFolders,
+            runner: s.LoopRunner,
+            mpImporter: s.MpImporter,
+            log: s.Log);
+        _manageDialogOpen = true;
+        try
+        {
+            await s.Dialogs
+                .OpenWindowAsync<ViewModels.Navigation.NavigationManagerDialogViewModel, bool>(vm);
+        }
+        finally
+        {
+            _manageDialogOpen = false;
+        }
     }
 
     /// <summary>Singleton handle for the live SpellBookWindow — re-press toggles closed (CLAUDE.md window rule).</summary>

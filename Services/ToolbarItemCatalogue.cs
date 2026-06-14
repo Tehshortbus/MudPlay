@@ -44,6 +44,19 @@ public static class ToolbarItemCatalogue
             "OpenSettingsCommand",     ShortcutHint: "Ctrl+,"),
         new("OpenNavigation",     "Navigation",           "IconMap",
             "OpenNavigationCommand",   ShortcutHint: "F5"),
+        // Movement engine controls. Only one of Start / Pause is shown at a
+        // time (the rows flip IsVisible with the engine state via
+        // ApplyToolbarRowState); Stop appears whenever an engine is active.
+        // Start opens the Manage dialog (or runs the staged loop) when idle.
+        new("MovementStart",      "Start movement",       "IconPlay",
+            "MovementStartCommand",
+            Tooltip: "Start movement — run the staged loop, or open Manage to pick one"),
+        new("MovementPause",      "Pause movement",       "IconPause",
+            "MovementPauseCommand",
+            Tooltip: "Pause the running engine (click again to resume)"),
+        new("MovementStop",       "Stop movement",        "IconStop",
+            "MovementStopCommand",
+            Tooltip: "Stop — back fully out of the running engine"),
         new("OpenBackscroll",     "Backscroll",           "IconHistory",
             "OpenBackscrollCommand",   ShortcutHint: "F10"),
         new("ToggleCapture",      "Capture",              "IconRecord",
