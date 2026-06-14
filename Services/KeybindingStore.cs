@@ -155,6 +155,19 @@ public sealed class KeybindingStore
             [BuiltInAction.Quit]                = new(Key.Q,        Ctrl: true),
         };
 
+    /// <summary>
+    /// Reset every binding back to its <see cref="DefaultBindings"/>
+    /// chord (actions with no default become unbound). Persists once and
+    /// fires <see cref="BindingsReloaded"/> once — cheaper than rebinding
+    /// each action individually. Drives the "Reset all shortcuts" button
+    /// on the Toolbar + Shortcuts settings tab.
+    /// </summary>
+    public void ResetAllToDefaults()
+    {
+        SeedDefaults();
+        _profile?.Save();
+    }
+
     // ----- Profile sync --------------------------------------------------
 
     private void SeedDefaults()

@@ -30,11 +30,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private Control? _view;
 
     public override string Id => "toolbar";
-    public override string Title => "Toolbar";
+    public override string Title => "Toolbar + Shortcuts";
     public override bool IsDirty => _dirty;
 
     public override IEnumerable<string> SearchableLabels =>
-        ToolbarItemCatalogue.AllEntries.Select(e => e.Label).Prepend("Toolbar");
+        ToolbarItemCatalogue.AllEntries.Select(e => e.Label)
+            .Prepend("Shortcuts")
+            .Prepend("Toolbar + Shortcuts");
 
     public override Control View => _view ??= new ToolbarSectionView { DataContext = this };
 
@@ -81,58 +83,32 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     public bool VerticalSideEnabled => VerticalToolbar;
 
     /// <summary>
-    /// Currently-selected row in the editor — the Up / Down / Delete
-    /// commands act on this one.
+    /// Currently-selected row in the toolbar list — the Move / Remove /
+    /// keybind commands for the toolbar section act on this one.
     /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
-    [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ChangeKeybindCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveFromToolbarCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ChangeToolbarKeybindCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetToolbarKeybindCommand))]
     private ToolbarRowViewModel? _selectedRow;
 
     /// <summary>
-    /// Catalogue entries the user has not already placed on the toolbar.
-    /// Drives the "Add Button" dropdown picker.
+    /// Actions not currently on the toolbar, rendered as the lower
+    /// "Shortcuts" list. Each is still keybindable — an action can own a
+    /// shortcut whether or not it has a toolbar button. Promoting one
+    /// (Add to toolbar) moves it up into <see cref="Rows"/>; removing a
+    /// toolbar button drops it back here.
     /// </summary>
-    public ObservableCollection<ToolbarItemCatalogue.Entry> AvailableActions { get; } = new();
+    public ObservableCollection<ToolbarRowViewModel> ShortcutRows { get; } = new();
 
-    /// <summary>Selected entry in the Add-button dropdown.</summary>
+    /// <summary>Currently-selected row in the Shortcuts list.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddButtonCommand))]
-    [NotifyPropertyChangedFor(nameof(IsCustomCommandSelected))]
-    private ToolbarItemCatalogue.Entry? _selectedAvailable;
-
-    /// <summary>
-    /// Free-text typed by the user when <see cref="IsCustomCommandSelected"/>
-    /// is true. Stub — Phase 4 PR 4.8 lets the textbox appear so the
-    /// eventual UX is visible, but Add stays disabled until a later PR
-    /// extends the persistence model.
-    /// </summary>
-    [ObservableProperty] private string _customCommand = string.Empty;
-
-    /// <summary>True when the user picked the <c>Custom command…</c> sentinel from the dropdown.</summary>
-    public bool IsCustomCommandSelected
-        => SelectedAvailable is { ActionId: CustomCommandActionId };
-
-    // Synthetic dropdown entries: the editor exposes "── Add separator ──"
-    // and "Custom command…" alongside the real catalogue picks so the
-    // user has one Add flow instead of three. Action ids are sentinels —
-    // they never appear in the live catalogue, and the live toolbar
-    // render-time lookup (ToolbarItemCatalogue.Find) returns null for
-    // them so unknown rows are simply skipped.
-    private const string SeparatorActionId     = "__separator__";
-    private const string CustomCommandActionId = "__customcommand__";
-
-    private static readonly ToolbarItemCatalogue.Entry SeparatorSentinel = new(
-        SeparatorActionId, "── Add separator ──", "IconMinus", string.Empty,
-        Tooltip: "Inserts a separator at the end of the layout.",
-        InDefaultLayout: false);
-
-    private static readonly ToolbarItemCatalogue.Entry CustomCommandSentinel = new(
-        CustomCommandActionId, "Custom command…", "IconTools", string.Empty,
-        Tooltip: "Adds a button that sends an arbitrary command — wires in a later PR.",
-        InDefaultLayout: false);
+    [NotifyCanExecuteChangedFor(nameof(AddToToolbarCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ChangeShortcutKeybindCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetShortcutKeybindCommand))]
+    private ToolbarRowViewModel? _selectedShortcutRow;
 
     public ToolbarSectionViewModel(
         ProfileService profile,
@@ -153,7 +129,8 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         // Live-refresh the per-row shortcut hint when any built-in
         // binding moves — the catalogue's hardcoded ShortcutHint is a
         // seed, not the source of truth once the user starts rebinding.
-        _keybindings.BindingChanged += OnBindingChanged;
+        _keybindings.BindingChanged  += OnBindingChanged;
+        _keybindings.BindingsReloaded += RefreshAllShortcutHints;
 
         LoadFromProfile();
         _suppressDirty = false;
@@ -162,10 +139,23 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private void OnBindingChanged(BuiltInAction action)
     {
         foreach (ToolbarRowViewModel row in Rows)
-        {
             if (row.BoundAction == action)
                 row.RefreshShortcutHint(_keybindings.Get(action));
-        }
+        foreach (ToolbarRowViewModel row in ShortcutRows)
+            if (row.BoundAction == action)
+                row.RefreshShortcutHint(_keybindings.Get(action));
+    }
+
+    // Reset-all-shortcuts (BindingsReloaded) doesn't carry a single
+    // action, so re-pull every row's live chord.
+    private void RefreshAllShortcutHints()
+    {
+        foreach (ToolbarRowViewModel row in Rows)
+            if (row.BoundAction is BuiltInAction a)
+                row.RefreshShortcutHint(_keybindings.Get(a));
+        foreach (ToolbarRowViewModel row in ShortcutRows)
+            if (row.BoundAction is BuiltInAction a)
+                row.RefreshShortcutHint(_keybindings.Get(a));
     }
 
     public override void Apply()
@@ -222,7 +212,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         ShowToolbar     = dto.Visible;
         VerticalToolbar = dto.Vertical;
         VerticalSide    = dto.Side;
-        RefreshAvailableActions();
+        RefreshShortcutRows();
     }
 
     private ToolbarSettings ReadDtoOrDefault()
@@ -240,56 +230,79 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    private void RefreshAvailableActions()
+    /// <summary>
+    /// Rebuild the lower "Shortcuts" list: every catalogue action whose
+    /// button isn't currently placed on the toolbar. These stay
+    /// keybindable even with no toolbar button — that's the whole point
+    /// of the unified pool. Preserves the current selection by action id
+    /// so a rebuild (after add/remove) doesn't clear the highlight.
+    /// </summary>
+    private void RefreshShortcutRows()
     {
         HashSet<string> placed = new(
             Rows.Where(r => r.Kind == ToolbarItemKind.Button && r.ActionId is not null)
                 .Select(r => r.ActionId!),
             StringComparer.OrdinalIgnoreCase);
 
-        AvailableActions.Clear();
+        string? keepSelected = SelectedShortcutRow?.ActionId;
+        ShortcutRows.Clear();
         foreach (ToolbarItemCatalogue.Entry e in ToolbarItemCatalogue.AllEntries)
         {
             if (placed.Contains(e.ActionId)) continue;
-            AvailableActions.Add(e);
+            ToolbarRowViewModel row = new(ToolbarItemKind.Button, e.ActionId);
+            if (row.BoundAction is BuiltInAction a)
+                row.RefreshShortcutHint(_keybindings.Get(a));
+            ShortcutRows.Add(row);
         }
-        // Sentinels are always available — separators can be added many times,
-        // and a Custom command can be added many times.
-        AvailableActions.Add(SeparatorSentinel);
-        AvailableActions.Add(CustomCommandSentinel);
+        if (keepSelected is not null)
+            SelectedShortcutRow = ShortcutRows.FirstOrDefault(
+                r => string.Equals(r.ActionId, keepSelected, StringComparison.OrdinalIgnoreCase));
     }
 
     // ----- Commands -----
 
-    [RelayCommand(CanExecute = nameof(CanAddButton))]
-    private void AddButton()
+    /// <summary>Promote the selected Shortcuts-list action to a toolbar button.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddToToolbar))]
+    private void AddToToolbar()
     {
-        if (SelectedAvailable is null) return;
-
-        if (SelectedAvailable.ActionId == SeparatorActionId)
-        {
-            Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Separator, null));
-            SelectedRow = Rows[^1];
-            Dirty();
-            return;
-        }
-
-        // Custom command — stub for Phase 4 PR 4.8 (no persistence shape yet).
-        // CanAddButton blocks this branch from firing today; left as a guard.
-        if (SelectedAvailable.ActionId == CustomCommandActionId) return;
-
-        ToolbarRowViewModel newRow = new(ToolbarItemKind.Button, SelectedAvailable.ActionId);
+        if (SelectedShortcutRow?.ActionId is not { } actionId) return;
+        ToolbarRowViewModel newRow = new(ToolbarItemKind.Button, actionId);
         if (newRow.BoundAction is BuiltInAction a)
             newRow.RefreshShortcutHint(_keybindings.Get(a));
         Rows.Add(newRow);
-        SelectedRow = Rows[^1];
-        RefreshAvailableActions();
+        SelectedRow = newRow;
+        RefreshShortcutRows();   // the promoted action leaves the shortcuts list
         Dirty();
     }
 
-    private bool CanAddButton()
-        => SelectedAvailable is not null
-        && SelectedAvailable.ActionId != CustomCommandActionId;
+    private bool CanAddToToolbar() => SelectedShortcutRow is not null;
+
+    /// <summary>Append a separator to the toolbar (separators are toolbar-only).</summary>
+    [RelayCommand]
+    private void AddSeparator()
+    {
+        Rows.Add(new ToolbarRowViewModel(ToolbarItemKind.Separator, null));
+        SelectedRow = Rows[^1];
+        Dirty();
+    }
+
+    /// <summary>
+    /// Remove the selected toolbar row. A button drops back into the
+    /// Shortcuts list (still keybindable); a separator is just deleted.
+    /// No confirm prompt — the move is non-destructive and revertible via
+    /// the section's Cancel/Discard.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveFromToolbar))]
+    private void RemoveFromToolbar()
+    {
+        if (SelectedRow is null) return;
+        Rows.Remove(SelectedRow);
+        SelectedRow = null;
+        RefreshShortcutRows();
+        Dirty();
+    }
+
+    private bool CanRemoveFromToolbar() => SelectedRow is not null;
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
     private void MoveUp()
@@ -326,22 +339,6 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private bool CanMoveDown() => SelectedRow is not null && Rows.IndexOf(SelectedRow) < Rows.Count - 1;
 
-    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    private async Task DeleteSelectedAsync()
-    {
-        if (SelectedRow is null) return;
-        string what = SelectedRow.IsSeparator
-            ? "this separator"
-            : $"the toolbar row '{SelectedRow.DisplayLabel}'";
-        if (!await AppServices.Current.Confirm.ConfirmDeleteAsync(what)) return;
-        Rows.Remove(SelectedRow);
-        SelectedRow = null;
-        RefreshAvailableActions();
-        Dirty();
-    }
-
-    private bool CanDeleteSelected() => SelectedRow is not null;
-
     [RelayCommand]
     private void ResetToDefaults()
     {
@@ -354,23 +351,20 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             Rows.Add(row);
         }
         SelectedRow = null;
-        RefreshAvailableActions();
+        RefreshShortcutRows();
         Dirty();
     }
 
     /// <summary>
-    /// Open the keybind editor for the currently-selected row. The
-    /// dialog handles both rebinding and clearing — conflict detection
-    /// inside the dialog blocks Save when the chosen combo collides
-    /// with another toolbar button or any user macro. No-ops for
-    /// separator rows and for button rows whose action isn't
-    /// rebindable (toolbar entries like ToggleCapture, ActionGetAll,
-    /// or any non-<see cref="BuiltInAction"/>).
+    /// Open the keybind editor for <paramref name="row"/>. The dialog
+    /// handles both rebinding and clearing — conflict detection inside
+    /// it blocks Save when the chosen combo collides with another
+    /// built-in action or any user macro. No-ops for rows whose action
+    /// isn't rebindable (separators, or any non-<see cref="BuiltInAction"/>).
     /// </summary>
-    [RelayCommand(CanExecute = nameof(CanChangeKeybind))]
-    private async Task ChangeKeybindAsync()
+    private async Task ChangeKeybindForRowAsync(ToolbarRowViewModel? row)
     {
-        if (SelectedRow?.BoundAction is not BuiltInAction action) return;
+        if (row?.BoundAction is not BuiltInAction action) return;
 
         ViewModels.Keybind.KeybindEditDialogViewModel vm =
             new(action, _keybindings, _macros);
@@ -380,7 +374,35 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             _keybindings.Rebind(action, chord);
     }
 
-    private bool CanChangeKeybind() => SelectedRow?.BoundAction is not null;
+    [RelayCommand(CanExecute = nameof(CanChangeToolbarKeybind))]
+    private Task ChangeToolbarKeybind() => ChangeKeybindForRowAsync(SelectedRow);
+
+    private bool CanChangeToolbarKeybind() => SelectedRow?.BoundAction is not null;
+
+    [RelayCommand(CanExecute = nameof(CanChangeShortcutKeybind))]
+    private Task ChangeShortcutKeybind() => ChangeKeybindForRowAsync(SelectedShortcutRow);
+
+    private bool CanChangeShortcutKeybind() => SelectedShortcutRow?.BoundAction is not null;
+
+    /// <summary>Restore <paramref name="row"/>'s action to its seed chord (or unbind if it had none).</summary>
+    private void ResetKeybindForRow(ToolbarRowViewModel? row)
+    {
+        if (row?.BoundAction is not BuiltInAction action) return;
+        KeyChord def = KeybindingStore.DefaultBindings.TryGetValue(action, out KeyChord d)
+            ? d : KeyChord.Empty;
+        if (!def.Equals(_keybindings.Get(action)))
+            _keybindings.Rebind(action, def);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangeToolbarKeybind))]
+    private void ResetToolbarKeybind() => ResetKeybindForRow(SelectedRow);
+
+    [RelayCommand(CanExecute = nameof(CanChangeShortcutKeybind))]
+    private void ResetShortcutKeybind() => ResetKeybindForRow(SelectedShortcutRow);
+
+    /// <summary>Reset every built-in chord back to its default in one shot.</summary>
+    [RelayCommand]
+    private void ResetAllKeybinds() => _keybindings.ResetAllToDefaults();
 
     // Auto-generated PropertyChanged hooks for the visibility / orientation
     // observables — re-route into the shared Dirty() helper so the Apply
