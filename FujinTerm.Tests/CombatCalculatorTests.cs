@@ -321,6 +321,104 @@ public sealed class CombatCalculatorTests
         Assert.True(smash.MaxDamage > bash.MaxDamage);
     }
 
+    // ----- Martial arts (Mystic) -------------------------------------------
+
+    [Fact]
+    public void CalcMartialArtsDamage_NoSkillYieldsZeroRange()
+    {
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, level: 20, martialArtsSkill: 0,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(0, r.MinDamage);
+        Assert.Equal(0, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_PunchMatchesStockFormula()
+    {
+        // skill 21, level 20 (nTemp=20), STR 50 (no strength bonus):
+        //   min = 21*20/8 + 2       = 52 + 2  = 54
+        //   max = 21*(20+3)/4 + 6   = 120 + 6 = 126
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, level: 20, martialArtsSkill: 21,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(54, r.MinDamage);
+        Assert.Equal(126, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_KickAppliesStockPrerollMultiplier()
+    {
+        // skill 21, level 20, STR 50: base min 54, kick max = 21*20/6 + 7 = 77.
+        // Stock kick pre-roll ×1.33 (truncated): min Fix(54*1.33)=71, max Fix(77*1.33)=102.
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Kick, RealmType.Stock, level: 20, martialArtsSkill: 21,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(71, r.MinDamage);
+        Assert.Equal(102, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_PrerollOrderingHoldsAcrossAttacks()
+    {
+        MeleeDamageResult punch = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, 50, 0, 0);
+        MeleeDamageResult kick = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Kick, RealmType.Stock, 20, 21, 50, 0, 0);
+        MeleeDamageResult jump = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Jumpkick, RealmType.Stock, 20, 21, 50, 0, 0);
+
+        // Kick/jumpkick share a base max formula; the higher jumpkick pre-roll
+        // (×1.66 vs ×1.33) makes its max strictly larger.
+        Assert.True(jump.MaxDamage > kick.MaxDamage);
+        // The pre-roll multipliers lift the (shared) base min floor in order:
+        // punch (no multiplier) < kick (×1.33) < jumpkick (×1.66).
+        Assert.True(kick.MinDamage > punch.MinDamage);
+        Assert.True(jump.MinDamage > kick.MinDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_LevelCapsSkillMultiplierAt20()
+    {
+        // nTemp = min(level, 20), so level 20 and level 99 are identical.
+        MeleeDamageResult atCap = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, 50, 0, 0);
+        MeleeDamageResult overCap = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 99, 21, 50, 0, 0);
+
+        Assert.Equal(atCap.MinDamage, overCap.MinDamage);
+        Assert.Equal(atCap.MaxDamage, overCap.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_ItemMaBonusAddsToBothBounds()
+    {
+        MeleeDamageResult plain = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, 50, plusMaxDamage: 0, maPlusDamage: 0);
+        MeleeDamageResult withBonus = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, 50, plusMaxDamage: 0, maPlusDamage: 5);
+
+        // Punch has no pre-roll multiplier, so the +5 lands raw on both bounds.
+        Assert.Equal(plain.MinDamage + 5, withBonus.MinDamage);
+        Assert.Equal(plain.MaxDamage + 5, withBonus.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_StrengthFoldsIntoRange()
+    {
+        // STR 200 (Stock): max bonus (200-50)/10 = 15; min bonus (200-100)/10*2 = 20.
+        MeleeDamageResult baseline = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+        MeleeDamageResult strong = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.Stock, 20, 21, strength: 200, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(baseline.MinDamage + 20, strong.MinDamage);
+        Assert.Equal(baseline.MaxDamage + 15, strong.MaxDamage);
+    }
+
     // ----- Swings ----------------------------------------------------------
 
     [Fact]

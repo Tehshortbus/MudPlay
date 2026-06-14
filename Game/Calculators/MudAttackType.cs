@@ -7,6 +7,9 @@ namespace FujinTerm.Game.Calculators;
 /// </summary>
 public enum MudAttackType
 {
+    Punch = 1,
+    Kick = 2,
+    Jumpkick = 3,
     Normal = 5,
     Bash = 6,
     Smash = 7,

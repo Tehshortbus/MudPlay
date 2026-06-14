@@ -99,6 +99,16 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// <summary>Backstab row visible only when the character has innate (race or class) stealth.</summary>
     [ObservableProperty] private bool _showBackstab;
 
+    // Martial-arts attacks (Mystic). Punch / Kick / Jumpkick accuracy + damage.
+    [ObservableProperty] private string _punchAccuracy = "—";
+    [ObservableProperty] private string _punchDamage = "—";
+    [ObservableProperty] private string _kickAccuracy = "—";
+    [ObservableProperty] private string _kickDamage = "—";
+    [ObservableProperty] private string _jumpKickAccuracy = "—";
+    [ObservableProperty] private string _jumpKickDamage = "—";
+    /// <summary>Punch/Kick/Jumpkick rows visible only for Stock characters with a positive Martial Arts skill.</summary>
+    [ObservableProperty] private bool _showMartialArts;
+
     // ----- Box A: alignment standing -------------------------------------
     // Rendered on the last row of Box A (where the game prints "You are
     // <standing>."). Alignment is really a numeric "evil points" stat; the title is just the
@@ -317,7 +327,47 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             BackstabDamage = string.Empty;
         }
 
+        // Martial-arts attacks — Mystic special attacks. Gated on the Stock
+        // realm (only the Stock MA damage formula is modelled) and a positive
+        // Martial Arts skill, matching how MME surfaces punch/kick/jumpkick.
+        int maSkill = _stats.MartialArts;
+        bool showMa = realm == RealmType.Stock && maSkill > 0;
+        ShowMartialArts = showMa;
+        if (showMa && level > 0 && nCombatLevel > 0)
+        {
+            // MA accuracy is the normal-attack accuracy with weapon-hand accy
+            // excluded — MME doesn't fold the wielded weapon's accy into a
+            // martial-arts strike — plus the per-attack item accy bonus.
+            int maWornAccy = t.TotalWornAccy - t.WeaponHandAccy - t.OffHandAccy;
+            if (maWornAccy < 0) maWornAccy = 0;
+            int maBaseAccy = CombatCalculator.CalcAccuracy(
+                MudAttackType.Normal, realm, level, nCombatLevel,
+                str, agi, intel, chm, maWornAccy, effectiveAbil22,
+                encumCur, encumMax, weaponStrReq: 0);
+
+            PunchAccuracy = (maBaseAccy + t.PlusPunchAccy).ToString(CultureInfo.InvariantCulture);
+            KickAccuracy = (maBaseAccy + t.PlusKickAccy).ToString(CultureInfo.InvariantCulture);
+            JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy).ToString(CultureInfo.InvariantCulture);
+
+            PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
+            KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
+            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
+        }
+        else
+        {
+            PunchAccuracy = KickAccuracy = JumpKickAccuracy = "—";
+            PunchDamage = KickDamage = JumpKickDamage = "—";
+        }
+
         CapturePlayerMatchupInputs(t, realm, level, nCombatLevel, str, agi, intel, chm, encumCur, encumMax);
+    }
+
+    private static string MARange(MudAttackType type, RealmType realm, int level, int maSkill, int str,
+                                  int plusMaxDamage, int maPlusDamage)
+    {
+        MeleeDamageResult d = CombatCalculator.CalcMartialArtsDamage(
+            type, realm, level, maSkill, str, plusMaxDamage, maPlusDamage);
+        return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
     }
 
     // Snapshot the player-side numbers the monster matchup needs so Box D can

@@ -381,6 +381,77 @@ public static class CombatCalculator
     }
 
     /// <summary>
+    /// Per-hit damage range for a Mystic martial-arts attack (Punch / Kick /
+    /// Jumpkick), modelling MMUD's <c>CalculateAttack</c> Stock
+    /// (<c>bGreaterMUD = False</c>) branch — the only branch recovered. Requires
+    /// a positive <paramref name="martialArtsSkill"/>; returns a zero range
+    /// otherwise (the engine takes no attack without the skill). The base range
+    /// scales with the martial-arts skill and the level capped at 20:
+    /// <c>min = skill*nTemp/8 + 2</c>; <c>punch max = skill*(nTemp+3)/4 + 6</c>,
+    /// <c>kick max = skill*nTemp/6 + 7</c>, <c>jumpkick max = skill*nTemp/6 + 8</c>.
+    /// Strength then folds in exactly as <see cref="CalcMeleeDamage"/> does
+    /// (max gets <c>(STR-50)/10</c>, min gets <c>(STR-100)/10</c> doubled in
+    /// Stock, floored at 0). After the range is clamped, the item martial-arts
+    /// damage bonus (<paramref name="maPlusDamage"/>, Abil 92/93/94) is added to
+    /// both bounds, then the Stock pre-roll multiplier (kick ×1.33, jumpkick
+    /// ×1.66, truncated via <c>Fix</c>). <paramref name="plusMaxDamage"/> is the
+    /// item +max-damage ability sum (Abil 4); strength is added internally, so
+    /// callers pass the item-only value.
+    /// </summary>
+    public static MeleeDamageResult CalcMartialArtsDamage(MudAttackType attackType, RealmType realmType,
+                                                          int level, int martialArtsSkill, int strength,
+                                                          int plusMaxDamage, int maPlusDamage)
+    {
+        if (martialArtsSkill <= 0)
+            return new MeleeDamageResult(0, 0);
+
+        int nTemp = Math.Min(level, 20);
+
+        int min = (martialArtsSkill * nTemp) / 8 + 2;
+        int max = attackType switch
+        {
+            MudAttackType.Punch => (martialArtsSkill * (nTemp + 3)) / 4 + 6,
+            MudAttackType.Kick => (martialArtsSkill * nTemp) / 6 + 7,
+            MudAttackType.Jumpkick => (martialArtsSkill * nTemp) / 6 + 8,
+            _ => 0,
+        };
+
+        int strMaxBonus = (strength - 50) / 10;
+        if (realmType == RealmType.ParaMud && strMaxBonus < 0)
+            strMaxBonus = 0;                  // GreaterMUD has no negative-strength penalty
+
+        int strMinBonus = (strength - 100) / 10;
+        if (realmType == RealmType.Stock)
+            strMinBonus *= 2;
+        strMinBonus = Math.Max(strMinBonus, 0);
+
+        min += strMinBonus;
+        max += strMaxBonus + plusMaxDamage;
+        if (min > max) min = max;
+        if (min < 0) min = 0;
+        if (max < 0) max = 0;
+
+        // Item martial-arts damage bonus applies after the range is settled.
+        min += maPlusDamage;
+        max += maPlusDamage;
+
+        // Stock pre-roll multiplier, truncated to match the game's Fix.
+        double mult = attackType switch
+        {
+            MudAttackType.Kick => 1.33,
+            MudAttackType.Jumpkick => 1.66,
+            _ => 1.0,
+        };
+        if (mult > 1.0)
+        {
+            min = (int)(min * mult);
+            max = (int)(max * mult);
+        }
+
+        return new MeleeDamageResult(min, max);
+    }
+
+    /// <summary>
     /// Backstab accuracy. ParaMUD:
     /// <c>(Stealth/3) + ((AGI-50+LVL)/2) + 15 + PlusBSAccy + NormAccy</c>,
     /// minus 15 when STR is under the weapon requirement. Stock:

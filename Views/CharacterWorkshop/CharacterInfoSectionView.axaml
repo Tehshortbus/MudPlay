@@ -160,7 +160,7 @@
                     <!-- Box C: Derived Combat -->
                     <Border Classes="Box">
                         <StackPanel Spacing="2">
-                            <Grid ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                 <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldLabel" Text="Accy" Margin="0,0,16,4"/>
                                 <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Dmg" Margin="0,0,0,4"/>
 
@@ -185,6 +185,27 @@
                                            IsVisible="{Binding ShowBackstab}"/>
                                 <TextBlock Grid.Row="4" Grid.Column="2" Classes="FieldValue" Text="{Binding BackstabDamage}" Margin="0,0,0,3"
                                            IsVisible="{Binding ShowBackstab}"/>
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Punch" Margin="0,0,18,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Classes="FieldValue" Text="{Binding PunchAccuracy}" Margin="0,0,16,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="5" Grid.Column="2" Classes="FieldValue" Text="{Binding PunchDamage}" Margin="0,0,0,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Kick" Margin="0,0,18,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="6" Grid.Column="1" Classes="FieldValue" Text="{Binding KickAccuracy}" Margin="0,0,16,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="6" Grid.Column="2" Classes="FieldValue" Text="{Binding KickDamage}" Margin="0,0,0,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Jumpkick" Margin="0,0,18,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="7" Grid.Column="1" Classes="FieldValue" Text="{Binding JumpKickAccuracy}" Margin="0,0,16,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
+                                <TextBlock Grid.Row="7" Grid.Column="2" Classes="FieldValue" Text="{Binding JumpKickDamage}" Margin="0,0,0,3"
+                                           IsVisible="{Binding ShowMartialArts}"/>
                             </Grid>
                         </StackPanel>
                     </Border>
