@@ -41,81 +41,93 @@
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
 
-                <!-- ===== Box A: Base Stats ===== -->
+                <!-- ===== Box A: Base Stats (mirrors the in-game `stat` screen) =====
+                     Three columns, same grouping the game prints: identity + vitals +
+                     prime stats on the left two columns, the skill block on the right,
+                     and the alignment standing on its own line at the bottom (where the
+                     game prints "You are <standing>."). -->
                 <Border Grid.Column="0" Classes="Box" VerticalAlignment="Top">
-                    <StackPanel Spacing="2">
-                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name" Margin="0,0,12,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Name}" Margin="0,0,0,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Race" Margin="0,0,12,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Race}" Margin="0,0,0,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Class" Margin="0,0,12,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding CharClass}" Margin="0,0,0,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Level" Margin="0,0,12,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding Level}" Margin="0,0,0,2"/>
-                        </Grid>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                          RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
 
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8,0,0">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Exp" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Exp}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="CP" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Cp}" Margin="0,0,0,2"/>
+                        <!-- Row 0: Name (spans the two left columns) | Lives/CP -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Classes="FieldValue" Text="{Binding Name}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="0" Grid.Column="4" Classes="FieldLabel" Text="Lives/CP" Margin="0,0,8,3"/>
+                        <StackPanel Grid.Row="0" Grid.Column="5" Orientation="Horizontal" Margin="0,0,0,3">
+                            <TextBlock Classes="FieldValue" Text="{Binding Lives}"/>
+                            <TextBlock Classes="FieldValue" Text="/"/>
+                            <TextBlock Classes="FieldValue" Text="{Binding Cp}"/>
+                        </StackPanel>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Lives" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Lives}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="AC" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding ArmourClass}" Margin="0,0,0,2"/>
+                        <!-- Row 1: Race | Exp | Perception -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Race" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Race}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="Exp" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding Exp}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="4" Classes="FieldLabel" Text="Perception" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="5" Classes="FieldValue" Text="{Binding Perception}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Hits" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Hits}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="{Binding ManaLabel}" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding ManaValue}" Margin="0,0,0,2"/>
-                        </Grid>
+                        <!-- Row 2: Class | Level | Stealth -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Class" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding CharClass}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="Level" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Level}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="4" Classes="FieldLabel" Text="Stealth" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="5" Classes="FieldValue" Text="{Binding Stealth}" Margin="0,0,0,3"/>
 
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8,0,0">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Strength}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Agility" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Agility}" Margin="0,0,0,2"/>
+                        <!-- Row 3: Hits | Armour Class | Thievery -->
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Hits" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding Hits}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldLabel" Text="Armour Class" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldValue" Text="{Binding ArmourClass}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="4" Classes="FieldLabel" Text="Thievery" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="5" Classes="FieldValue" Text="{Binding Thievery}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Intellect" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Intellect}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="Health" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding Health}" Margin="0,0,0,2"/>
+                        <!-- Row 4: Mana/Kai | Traps -->
+                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="{Binding ManaLabel}" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding ManaValue}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="4" Grid.Column="4" Classes="FieldLabel" Text="Traps" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="4" Grid.Column="5" Classes="FieldValue" Text="{Binding Traps}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Willpower" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Willpower}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="Charm" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Charm}" Margin="0,0,0,2"/>
-                        </Grid>
+                        <!-- Row 5: (left blank) | Picklocks -->
+                        <TextBlock Grid.Row="5" Grid.Column="4" Classes="FieldLabel" Text="Picklocks" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="5" Grid.Column="5" Classes="FieldValue" Text="{Binding Picklocks}" Margin="0,0,0,3"/>
 
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0,8,0,0">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Perception" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Perception}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Stealth" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Stealth}" Margin="0,0,0,2"/>
+                        <!-- Row 6: Strength | Agility | Tracking -->
+                        <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Classes="FieldValue" Text="{Binding Strength}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="6" Grid.Column="2" Classes="FieldLabel" Text="Agility" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="6" Grid.Column="3" Classes="FieldValue" Text="{Binding Agility}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="6" Grid.Column="4" Classes="FieldLabel" Text="Tracking" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="6" Grid.Column="5" Classes="FieldValue" Text="{Binding Tracking}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Thievery" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Thievery}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="Traps" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding Traps}" Margin="0,0,0,2"/>
+                        <!-- Row 7: Intellect | Health | Martial Arts -->
+                        <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Intellect" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="7" Grid.Column="1" Classes="FieldValue" Text="{Binding Intellect}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="7" Grid.Column="2" Classes="FieldLabel" Text="Health" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="7" Grid.Column="3" Classes="FieldValue" Text="{Binding Health}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="7" Grid.Column="4" Classes="FieldLabel" Text="Martial Arts" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="7" Grid.Column="5" Classes="FieldValue" Text="{Binding MartialArts}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Picklocks" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Picklocks}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="Tracking" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Tracking}" Margin="0,0,0,2"/>
+                        <!-- Row 8: Willpower | Charm | Magic Res -->
+                        <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Willpower" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="8" Grid.Column="1" Classes="FieldValue" Text="{Binding Willpower}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="8" Grid.Column="2" Classes="FieldLabel" Text="Charm" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="8" Grid.Column="3" Classes="FieldValue" Text="{Binding Charm}" Margin="0,0,20,3"/>
+                        <TextBlock Grid.Row="8" Grid.Column="4" Classes="FieldLabel" Text="Magic Res" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="8" Grid.Column="5" Classes="FieldValue" Text="{Binding MagicRes}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Martial Arts" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding MartialArts}" Margin="0,0,14,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldLabel" Text="Magic Res" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldValue" Text="{Binding MagicRes}" Margin="0,0,0,2"/>
+                        <!-- Row 9: (left blank) | Spellcasting -->
+                        <TextBlock Grid.Row="9" Grid.Column="4" Classes="FieldLabel" Text="Spellcasting" Margin="0,0,8,3"/>
+                        <TextBlock Grid.Row="9" Grid.Column="5" Classes="FieldValue" Text="{Binding Spellcasting}" Margin="0,0,0,3"/>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Spellcasting" Margin="0,0,10,2"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding Spellcasting}" Margin="0,0,14,2"/>
-                        </Grid>
-                    </StackPanel>
+                        <!-- Row 10: Alignment standing (the game's "You are <standing>." line) -->
+                        <TextBlock Grid.Row="10" Grid.Column="0" Classes="FieldLabel" Text="Alignment" Margin="0,10,8,0"/>
+                        <TextBlock Grid.Row="10" Grid.Column="1" Grid.ColumnSpan="5" Classes="FieldValue" Text="{Binding Alignment}" Margin="0,10,0,0"/>
+                    </Grid>
                 </Border>
 
                 <!-- ===== Right column: Box B + Box C ===== -->
@@ -192,22 +204,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Box D: Alignment -->
-                    <Border Classes="Box">
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="Alignment"
-                                       Foreground="{StaticResource ChromeFgBrush}"
-                                       FontSize="{StaticResource FontSizeMd}"
-                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
-
-                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto">
-                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Standing" Margin="0,0,12,2"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Alignment}" Margin="0,0,0,2"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Box E: Monster Matchup -->
+                    <!-- Box D: Monster Matchup -->
                     <Border Classes="Box">
                         <StackPanel Spacing="2">
                             <TextBlock Text="Monster Matchup"

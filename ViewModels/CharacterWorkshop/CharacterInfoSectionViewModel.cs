@@ -45,7 +45,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     public override string Title => "Character Info";
     public override Control View => _view ??= new CharacterInfoSectionView { DataContext = this };
 
-    // ----- Box A: base stats ---------------------------------------------
+    // ----- Box A: base stats (mirrors the in-game `stat` grid) -----------
     [ObservableProperty] private string _name = "—";
     [ObservableProperty] private string _race = "—";
     [ObservableProperty] private string _charClass = "—";
@@ -99,8 +99,9 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// <summary>Backstab row visible only when the character has innate (race or class) stealth.</summary>
     [ObservableProperty] private bool _showBackstab;
 
-    // ----- Box D: alignment ----------------------------------------------
-    // Alignment is really a numeric "evil points" stat; the title is just the
+    // ----- Box A: alignment standing -------------------------------------
+    // Rendered on the last row of Box A (where the game prints "You are
+    // <standing>."). Alignment is really a numeric "evil points" stat; the title is just the
     // band `who` reports for it. We can't read exact EP in Stock, so we echo
     // the observed title verbatim (it's realm-specific via a modified helpfile,
     // so no fixed word ladder is hardcoded). Item alignment restrictions are a
@@ -109,7 +110,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// <summary>Alignment title from our own <c>who</c> observation, or "—" when unseen.</summary>
     [ObservableProperty] private string _alignment = "—";
 
-    // ----- Box E: monster matchup ----------------------------------------
+    // ----- Box D: monster matchup ----------------------------------------
     /// <summary>
     /// Typeahead source — one entry per monster, labelled <c>"name (#number)"</c>
     /// so duplicate-named monsters stay distinguishable and the user can read off
@@ -120,7 +121,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private readonly Dictionary<string, int> _monsterNumberByLabel = new(StringComparer.Ordinal);
     /// <summary>The label the user picked; null/empty clears the matchup readout.</summary>
     [ObservableProperty] private string? _selectedMonsterName;
-    /// <summary>True once a valid monster row is resolved — gates the whole Box E readout.</summary>
+    /// <summary>True once a valid monster row is resolved — gates the whole Box D readout.</summary>
     [ObservableProperty] private bool _hasMatchup;
     // Player → monster.
     [ObservableProperty] private string _matchupPlayerHit = "—";
@@ -319,7 +320,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         CapturePlayerMatchupInputs(t, realm, level, nCombatLevel, str, agi, intel, chm, encumCur, encumMax);
     }
 
-    // Snapshot the player-side numbers the monster matchup needs so Box E can
+    // Snapshot the player-side numbers the monster matchup needs so Box D can
     // recompute against any selected monster without re-aggregating gear.
     private void CapturePlayerMatchupInputs(EquipmentStatSummary t, RealmType realm,
                                             int level, int nCombatLevel,
@@ -460,7 +461,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         return sb.ToString();
     }
 
-    // ----- Box D ----------------------------------------------------------
+    // ----- Box A: alignment standing --------------------------------------
 
     // Our own character shows up in our own `who` output, so PlayerDatabase
     // already carries our alignment word — no new parsing needed here.
@@ -487,7 +488,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         Alignment = string.IsNullOrEmpty(word) ? "—" : word;
     }
 
-    // ----- Box E ----------------------------------------------------------
+    // ----- Box D: monster matchup -----------------------------------------
 
     // Populate the typeahead list once from the active set. Cheap to retry if
     // the set wasn't loaded at construction (no monsters yet).
