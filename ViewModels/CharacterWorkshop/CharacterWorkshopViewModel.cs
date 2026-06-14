@@ -18,10 +18,6 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject
 
     [ObservableProperty] private WorkshopSectionViewModel? _selectedSection;
 
-    /// <summary>Raised when the shell wants the host window to close
-    /// (Cancel / re-press toggle path).</summary>
-    public event Action? CloseRequested;
-
     public CharacterWorkshopViewModel(
         DeathRecoveryManager recovery,
         ProfileService profile,
@@ -65,13 +61,4 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject
               ?? Sections.FirstOrDefault()
             : Sections.FirstOrDefault();
     }
-
-    /// <summary>Close the window without committing pending edits (none
-    /// exist in v1 — Workshop is observe-only — but the toggle policy
-    /// expects the API).</summary>
-    public void DiscardAndClose() => CloseRequested?.Invoke();
-
-    /// <summary>Close path triggered by toggle re-press. Same as
-    /// <see cref="DiscardAndClose"/> in v1.</summary>
-    public void ApplyAndClose() => CloseRequested?.Invoke();
 }
