@@ -169,13 +169,17 @@
 
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Attack" Margin="0,0,18,3"/>
                                 <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding AttackAccuracy}" Margin="0,0,16,3"/>
+                                <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldValue" Text="{Binding AttackDamage}" Margin="0,0,0,3"/>
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Bash" Margin="0,0,18,3"/>
                                 <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding BashAccuracy}" Margin="0,0,16,3"/>
+                                <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldValue" Text="{Binding BashDamage}" Margin="0,0,0,3"/>
 
                                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Smash" Margin="0,0,18,3"
                                            IsVisible="{Binding ShowSmash}"/>
                                 <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding SmashAccuracy}" Margin="0,0,16,3"
+                                           IsVisible="{Binding ShowSmash}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldValue" Text="{Binding SmashDamage}" Margin="0,0,0,3"
                                            IsVisible="{Binding ShowSmash}"/>
 
                                 <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Backstab" Margin="0,0,18,3"

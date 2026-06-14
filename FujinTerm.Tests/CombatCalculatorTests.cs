@@ -237,6 +237,60 @@ public sealed class CombatCalculatorTests
         Assert.True(smash > normal);
     }
 
+    // ----- Melee damage ----------------------------------------------------
+
+    [Fact]
+    public void CalcMeleeDamage_NormalFoldsStrengthIntoRange()
+    {
+        // STR 100 → max bonus (100-50)/10 = 5, min bonus (100-100)/10 = 0.
+        MeleeDamageResult r = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.ParaMud,
+            strength: 100, weaponMin: 10, weaponMax: 30, plusMaxDamage: 0);
+
+        Assert.Equal(10, r.MinDamage);
+        Assert.Equal(35, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMeleeDamage_StockDoublesMinStrBonus()
+    {
+        // STR 200 → min bonus (200-100)/10 = 10, doubled to 20 in Stock.
+        MeleeDamageResult stock = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.Stock, 200, 10, 30, 0);
+        MeleeDamageResult para = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.ParaMud, 200, 10, 30, 0);
+
+        Assert.Equal(30, stock.MinDamage);   // 10 + 20
+        Assert.Equal(20, para.MinDamage);    // 10 + 10
+    }
+
+    [Fact]
+    public void CalcMeleeDamage_ParaMudFloorsNegativeMaxStrBonus()
+    {
+        // STR 30 → (30-50)/10 = -2; ParaMUD floors at 0, Stock keeps it.
+        MeleeDamageResult stock = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.Stock, 30, 10, 30, 0);
+        MeleeDamageResult para = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.ParaMud, 30, 10, 30, 0);
+
+        Assert.Equal(28, stock.MaxDamage);   // 30 + (-2)
+        Assert.Equal(30, para.MaxDamage);    // 30 + 0
+    }
+
+    [Fact]
+    public void CalcMeleeDamage_BashAndSmashExceedNormal()
+    {
+        MeleeDamageResult normal = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, RealmType.Stock, 100, 10, 30, 0);
+        MeleeDamageResult bash = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Bash, RealmType.Stock, 100, 10, 30, 0);
+        MeleeDamageResult smash = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Smash, RealmType.Stock, 100, 10, 30, 0);
+
+        Assert.True(bash.MaxDamage > normal.MaxDamage);
+        Assert.True(smash.MaxDamage > bash.MaxDamage);
+    }
+
     // ----- Swings ----------------------------------------------------------
 
     [Fact]

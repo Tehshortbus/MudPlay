@@ -323,6 +323,59 @@ public static class CombatCalculator
         return result;
     }
 
+    // ----- Melee damage (Normal / Bash / Smash) ----------------------------
+
+    /// <summary>
+    /// Per-hit weapon damage range for a Normal / Bash / Smash attack, matching
+    /// MMUD's <c>CalculateAttack</c>. Strength folds into the base range — max
+    /// gets <c>(STR-50)/10</c> (Stock allows negative; ParaMUD floors at 0),
+    /// min gets <c>(STR-100)/10</c> (doubled in Stock, floored at 0). Then by
+    /// type: Bash pre-rolls ×1.1 and multiplies ×3 (Stock) / ×2.5–3 (ParaMUD);
+    /// Smash pre-rolls ×1.2 and multiplies ×5. Both truncations match the game's
+    /// integer <c>Fix</c>. No defender DR is modelled (this is the raw range
+    /// before mitigation). <paramref name="plusMaxDamage"/> is the item +max
+    /// damage ability sum (Abil 4); strength is added on top here, so callers
+    /// pass the item-only value to avoid double-counting.
+    /// </summary>
+    public static MeleeDamageResult CalcMeleeDamage(MudAttackType attackType, RealmType realmType,
+                                                    int strength, int weaponMin, int weaponMax,
+                                                    int plusMaxDamage, int plusMinDamage = 0)
+    {
+        int strMaxBonus = (strength - 50) / 10;
+        if (realmType == RealmType.ParaMud && strMaxBonus < 0)
+            strMaxBonus = 0;                  // GreaterMUD has no negative-strength penalty
+
+        int strMinBonus = (strength - 100) / 10;
+        if (realmType == RealmType.Stock)
+            strMinBonus *= 2;
+        strMinBonus = Math.Max(strMinBonus, 0);
+
+        int min = weaponMin + strMinBonus + plusMinDamage;
+        int max = weaponMax + strMaxBonus + plusMaxDamage;
+        if (min > max) min = max;
+        if (min < 0) min = 0;
+        if (max < 0) max = 0;
+
+        (double preRoll, double multMin, double multMax) = attackType switch
+        {
+            MudAttackType.Bash => (1.1, realmType == RealmType.ParaMud ? 2.5 : 3.0, 3.0),
+            MudAttackType.Smash => (1.2, 5.0, 5.0),
+            _ => (1.0, 1.0, 1.0),
+        };
+
+        // Pre-roll multiplier is applied first and truncated, then the type
+        // multiplier — the same order MMUD uses (Fix at each step).
+        if (preRoll > 1.0)
+        {
+            min = (int)(min * preRoll);
+            max = (int)(max * preRoll);
+        }
+        min = (int)(min * multMin);
+        max = (int)(max * multMax);
+
+        return new MeleeDamageResult(min, max);
+    }
+
     /// <summary>
     /// Backstab accuracy. ParaMUD:
     /// <c>(Stealth/3) + ((AGI-50+LVL)/2) + 15 + PlusBSAccy + NormAccy</c>,

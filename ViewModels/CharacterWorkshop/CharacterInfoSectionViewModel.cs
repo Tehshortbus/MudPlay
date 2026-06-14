@@ -83,6 +83,12 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _bashAccuracy = "—";
     [ObservableProperty] private string _smashAccuracy = "—";
     [ObservableProperty] private string _backstabAccuracy = "—";
+    /// <summary>Normal-attack damage range ("min-max") for the equipped weapon; em-dash when unarmed.</summary>
+    [ObservableProperty] private string _attackDamage = "—";
+    /// <summary>Bash damage range ("min-max") for the equipped weapon; em-dash when unarmed.</summary>
+    [ObservableProperty] private string _bashDamage = "—";
+    /// <summary>Smash damage range ("min-max") for the equipped weapon; em-dash when unarmed or not smash-capable.</summary>
+    [ObservableProperty] private string _smashDamage = "—";
     /// <summary>Backstab damage range ("min-max") for the equipped weapon; empty when not stealth-capable.</summary>
     [ObservableProperty] private string _backstabDamage = string.Empty;
     /// <summary>Smash row visible only for smash-capable classes.</summary>
@@ -208,6 +214,19 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             AttackAccuracy = BashAccuracy = SmashAccuracy = "—";
         }
 
+        // Weapon damage ranges. Only meaningful with a weapon equipped — the
+        // unarmed / martial-arts damage path is out of scope for this panel.
+        if (t.WeaponMax > 0)
+        {
+            AttackDamage = MeleeRange(MudAttackType.Normal, realm, str, t);
+            BashDamage = MeleeRange(MudAttackType.Bash, realm, str, t);
+            SmashDamage = canSmash ? MeleeRange(MudAttackType.Smash, realm, str, t) : "—";
+        }
+        else
+        {
+            AttackDamage = BashDamage = SmashDamage = "—";
+        }
+
         bool hasClassStealth = ClassCapabilities.ClassHasStealth(classRow);
         bool hasRaceStealth = ClassCapabilities.RaceHasStealth(raceRow);
         bool canBackstab = hasClassStealth || hasRaceStealth;
@@ -248,6 +267,13 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22,
             encumCur, encumMax, t.WeaponStrReq);
         return v.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string MeleeRange(MudAttackType type, RealmType realm, int str, EquipmentStatSummary t)
+    {
+        MeleeDamageResult d = CombatCalculator.CalcMeleeDamage(
+            type, realm, str, t.WeaponMin, t.WeaponMax, t.PlusMaxDamage);
+        return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
     }
 
     private void RebuildBonusRows(EquipmentStatBreakdown b)
