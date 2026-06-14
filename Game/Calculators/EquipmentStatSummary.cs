@@ -73,6 +73,7 @@ public sealed class EquipmentStatSummary
     public int WeaponMin { get; set; }           // Min damage from Weapon Hand item (0 = unarmed)
     public int WeaponMax { get; set; }           // Max damage from Weapon Hand item (0 = unarmed)
     public int WeaponType { get; set; }          // WeaponType from Weapon Hand item
+    public int WeaponSpeed { get; set; }         // Speed field from Weapon Hand item (drives swings/round; 0 = unarmed)
     public int MaxSingleAbil22 { get; set; }     // Highest single abil 22/105/106 value across all sources (Stock accuracy)
 
     // Martial arts (Mystic).

@@ -252,6 +252,7 @@ public static class CharacterCalculator
                 totals.WeaponMin = GetInt(itemData, "Min");
                 totals.WeaponMax = GetInt(itemData, "Max");
                 totals.WeaponType = GetInt(itemData, "WeaponType");
+                totals.WeaponSpeed = GetInt(itemData, "Speed");
             }
             else if (item.Slot == "Off-Hand")
             {

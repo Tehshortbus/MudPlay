@@ -191,6 +191,23 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- Box D: Alignment -->
+                    <Border Classes="Box">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Alignment"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       FontSize="{StaticResource FontSizeMd}"
+                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Standing" Margin="0,0,12,2"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Alignment}" Margin="0,0,0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Bucket" Margin="0,0,12,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding AlignmentBucket}" Margin="0,0,0,2"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

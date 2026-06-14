@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.Text;
@@ -10,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Views.CharacterWorkshop;
 
@@ -36,6 +38,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private readonly PlayerStats _stats;
     private readonly GameDataCache _gameData;
     private readonly InventoryManager _inventory;
+    private readonly PlayerDatabase _playerDb;
     private Control? _view;
 
     public override string Id => "characterinfo";
@@ -96,17 +99,26 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// <summary>Backstab row visible only when the character has innate (race or class) stealth.</summary>
     [ObservableProperty] private bool _showBackstab;
 
-    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory)
+    // ----- Box D: alignment ----------------------------------------------
+    /// <summary>The 9-word ladder alignment from our own <c>who</c> observation, or "—" when unseen.</summary>
+    [ObservableProperty] private string _alignment = "—";
+    /// <summary>Three-bucket reduction (Good / Neutral / Evil) the Equipment Manager alignment filter consumes.</summary>
+    [ObservableProperty] private string _alignmentBucket = "—";
+
+    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
+        ArgumentNullException.ThrowIfNull(playerDb);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
+        _playerDb = playerDb;
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
+        _playerDb.Players.CollectionChanged += OnPlayersChanged;
         Refresh();
     }
 
@@ -116,6 +128,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     {
         RefreshBaseStats();
         RefreshDerived();
+        RefreshAlignment();
     }
 
     // ----- Box A ----------------------------------------------------------
@@ -367,6 +380,44 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         return sb.ToString();
     }
 
+    // ----- Box D ----------------------------------------------------------
+
+    // Our own character shows up in our own `who` output, so PlayerDatabase
+    // already carries our alignment word — no new parsing needed here.
+    private void RefreshAlignment()
+    {
+        if (string.IsNullOrEmpty(_stats.Name))
+        {
+            Alignment = AlignmentBucket = "—";
+            return;
+        }
+
+        (string given, _) = PlayerRecord.SplitName(_stats.Name);
+        PlayerRecord? self = null;
+        foreach (PlayerRecord r in _playerDb.Players)
+        {
+            if (string.Equals(r.GivenName, given, StringComparison.OrdinalIgnoreCase))
+            {
+                self = r;
+                break;
+            }
+        }
+
+        string? word = self?.Alignment;
+        Alignment = string.IsNullOrEmpty(word) ? "—" : word;
+        AlignmentBucket = string.IsNullOrEmpty(word) ? "—" : ReduceAlignment(word);
+    }
+
+    // Standard MajorMUD ladder→bucket split: Good = {Saint, Lawful, Good},
+    // Evil = {Outlaw, Criminal, Villain, Fiend}, Neutral = everything else
+    // (the blank "Neutral" rung plus the shady-but-not-evil "Seedy").
+    private static string ReduceAlignment(string word) => word switch
+    {
+        "Saint" or "Lawful" or "Good" => "Good",
+        "Outlaw" or "Criminal" or "Villain" or "Fiend" => "Evil",
+        _ => "Neutral",
+    };
+
     private static string Display(string value) => string.IsNullOrEmpty(value) ? "—" : value;
 
     private static int GetInt(JsonElement? row, string property)
@@ -378,4 +429,5 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
 
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
     private void OnInventoryChanged() => RefreshDerived();
+    private void OnPlayersChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshAlignment();
 }
