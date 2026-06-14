@@ -380,4 +380,86 @@ public sealed class InventoryManagerTests
         Assert.Equal(99, c.Platinum);
         Assert.Equal(990000, c.TotalCopperValue);
     }
+
+    // ----- incremental equip / remove ----------------------------------
+
+    // A baseline 'i' dump that includes a worn weapon + gloves, so the patches
+    // below have a real loadout to edit.
+    private static void FeedEquippedBaseline(Harness h)
+    {
+        h.Feed("You are carrying quarterstaff (Weapon Hand), padded gloves (Hands), "
+             + "5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+    }
+
+    private static IReadOnlyList<EquippedItem> Worn(Harness h) => h.Inv.Snapshot.EquippedItems;
+
+    [Fact]
+    public void Equip_WeaponSwap_ReplacesWeaponHand()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);
+
+        h.Feed("You are now holding dagger.");
+
+        IReadOnlyList<EquippedItem> worn = Worn(h);
+        Assert.Single(worn, e => e.Slot == "Weapon Hand");
+        Assert.Contains(worn, e => e is { Name: "dagger", Slot: "Weapon Hand" });
+        Assert.DoesNotContain(worn, e => e.Name == "quarterstaff");
+        // gloves untouched
+        Assert.Contains(worn, e => e.Name == "padded gloves");
+    }
+
+    [Fact]
+    public void Remove_WeaponReadied_ClearsWeaponHand()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);
+
+        h.Feed("You now have no weapon readied.");
+
+        IReadOnlyList<EquippedItem> worn = Worn(h);
+        Assert.DoesNotContain(worn, e => e.Slot == "Weapon Hand");
+        Assert.Contains(worn, e => e.Name == "padded gloves");
+    }
+
+    [Fact]
+    public void Remove_Armor_DropsItemByName()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);
+
+        h.Feed("You have removed padded gloves.");
+
+        Assert.DoesNotContain(Worn(h), e => e.Name == "padded gloves");
+    }
+
+    [Fact]
+    public void Equip_ArmorSwap_RemovesOldThenWearsNew()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);
+
+        // Wearing into an occupied slot prints the removal first, then the wear.
+        h.Feed("You have removed padded gloves.");
+        h.Feed("You are now wearing cotton gloves.");
+
+        IReadOnlyList<EquippedItem> worn = Worn(h);
+        Assert.DoesNotContain(worn, e => e.Name == "padded gloves");
+        Assert.Contains(worn, e => e.Name == "cotton gloves");
+    }
+
+    [Fact]
+    public void Equip_BeforeBaseline_IsIgnored()
+    {
+        using Harness h = new();
+
+        // No 'i' parsed yet — patching an empty set would misrepresent the
+        // loadout, so the line is consumed but not applied.
+        h.Feed("You are now holding dagger.");
+
+        Assert.False(h.Inv.IsLoaded);
+        Assert.Empty(Worn(h));
+    }
 }

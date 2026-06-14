@@ -202,6 +202,55 @@ public sealed partial class InventoryManager : IDisposable
 
     private void ProcessIncremental(string line)
     {
+        // Equip / remove lines patch the worn set between full 'i' dumps, so the
+        // Character Workshop updates live instead of only on the next inventory
+        // pull. The game prints a single line for a weapon swap ("You are now
+        // holding X.") but two for an armor swap into an occupied slot ("You have
+        // removed <old>." then "You are now wearing <new>."), so a weapon equip
+        // must vacate the hand itself while armor relies on the explicit removal.
+        Match held = HeldWeaponRegex().Match(line);
+        if (held.Success)
+        {
+            string name = held.Groups[1].Value.TrimEnd();
+            PatchEquipped(list =>
+            {
+                list.RemoveAll(e => e.Slot == "Weapon Hand");
+                list.Add(new EquippedItem(name, "Weapon Hand"));
+                return true;
+            });
+            return;
+        }
+
+        Match worn = WornItemRegex().Match(line);
+        if (worn.Success)
+        {
+            string name = worn.Groups[1].Value.TrimEnd();
+            // Slot stays generic — only Weapon Hand / Off-Hand are special-cased
+            // downstream, and AC / ability bonuses sum regardless of slot. The
+            // next full 'i' dump restores the exact 21-slot placement.
+            PatchEquipped(list =>
+            {
+                list.Add(new EquippedItem(name, "Worn"));
+                return true;
+            });
+            return;
+        }
+
+        Match removed = RemovedItemRegex().Match(line);
+        if (removed.Success)
+        {
+            string name = removed.Groups[1].Value.TrimEnd();
+            PatchEquipped(list =>
+                list.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)) > 0);
+            return;
+        }
+
+        if (NoWeaponReadiedRegex().IsMatch(line))
+        {
+            PatchEquipped(list => list.RemoveAll(e => e.Slot == "Weapon Hand") > 0);
+            return;
+        }
+
         Match pickedUp = PickedUpCurrencyRegex().Match(line);
         if (pickedUp.Success)
         {
@@ -411,6 +460,28 @@ public sealed partial class InventoryManager : IDisposable
         _log?.Debug(LogCategory,
             $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}");
         Changed?.Invoke();
+    }
+
+    // Apply an in-place edit to the worn set, publishing only if it changed.
+    // Gated on a loaded baseline: patching an empty set would imply the
+    // character wears nothing but the piece just equipped — misleading until
+    // the first full 'i' establishes the real loadout.
+    private void PatchEquipped(Func<List<EquippedItem>, bool> mutate)
+    {
+        bool changed = false;
+        lock (_lock)
+        {
+            if (_loaded)
+            {
+                var list = new List<EquippedItem>(_equipped);
+                if (mutate(list))
+                {
+                    _equipped = list;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) Changed?.Invoke();
     }
 
     // The capture buffer holds the "You are carrying ..." rows plus the Keys /
@@ -650,4 +721,17 @@ public sealed partial class InventoryManager : IDisposable
     // folded by NormalizeSlot.
     [GeneratedRegex(@"^(.*?)\s+\((Head|Ears|Eyes|Face|Neck|Back|Torso|Arms|Wrist|Hands|Finger|Waist|Legs|Feet|Worn|Off-Hand|Weapon Hand|Two handed)\)$")]
     private static partial Regex EquippedSlotRegex();
+
+    // Incremental equip / remove lines (single item, between full 'i' dumps).
+    [GeneratedRegex(@"^You are now holding (.+)\.$")]
+    private static partial Regex HeldWeaponRegex();
+
+    [GeneratedRegex(@"^You are now wearing (.+)\.$")]
+    private static partial Regex WornItemRegex();
+
+    [GeneratedRegex(@"^You have removed (.+)\.$")]
+    private static partial Regex RemovedItemRegex();
+
+    [GeneratedRegex(@"^You now have no weapon readied\.$")]
+    private static partial Regex NoWeaponReadiedRegex();
 }
