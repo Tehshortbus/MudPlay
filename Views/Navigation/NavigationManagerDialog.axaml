@@ -251,7 +251,7 @@
                                     <!-- Loop leaf. -->
                                     <DataTemplate DataType="vm:ManagerLoopRow">
                                         <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
-                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" MinWidth="0">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6" MinWidth="0">
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}"
                                                                FontWeight="SemiBold"
@@ -265,12 +265,20 @@
                                                     </TextBlock>
                                                 </StackPanel>
                                                 <Button Grid.Column="1"
+                                                        Content="Run"
+                                                        FontSize="10"
+                                                        Padding="8,2"
+                                                        Foreground="{StaticResource AccentGreenBrush}"
+                                                        ToolTip.Tip="Run this loop now (no map needed)"
+                                                        Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RunLoopCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Grid.Column="2"
                                                         Content="Edit"
                                                         FontSize="10"
                                                         Padding="8,2"
                                                         Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
                                                         CommandParameter="{Binding}"/>
-                                                <Button Grid.Column="2"
+                                                <Button Grid.Column="3"
                                                         Content="✕"
                                                         FontSize="10"
                                                         Padding="6,2"
@@ -281,6 +289,9 @@
                                             </Grid>
                                             <Border.ContextMenu>
                                                 <ContextMenu>
+                                                    <MenuItem Header="Run now"
+                                                              Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).RunLoopCommand}"
+                                                              CommandParameter="{Binding}"/>
                                                     <MenuItem Header="Edit…"
                                                               Command="{Binding $parent[TreeView].((vm:NavigationManagerDialogViewModel)DataContext).EditLoopCommand}"
                                                               CommandParameter="{Binding}"/>

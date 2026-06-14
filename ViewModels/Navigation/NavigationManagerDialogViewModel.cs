@@ -218,6 +218,20 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     }
 
     /// <summary>
+    /// Start the selected loop immediately via the shared runner — the
+    /// "run a saved loop without opening the map" path. The dialog is
+    /// modeless so it stays open (the user closes it explicitly); the
+    /// loop's progress surfaces on the toolbar movement buttons + the
+    /// Navigation window if it's open. No-op when no runner is wired.
+    /// </summary>
+    [RelayCommand]
+    private void RunLoop(ManagerLoopRow? row)
+    {
+        if (row is null) return;
+        _runner?.Start(row.Source);
+    }
+
+    /// <summary>
     /// Open the LoopEditor dialog on a fresh empty loop. The editor
     /// flips its title to "Create Loop" via the
     /// <see cref="LoopEditorDialogViewModel.DialogTitle"/> binding;
