@@ -189,14 +189,10 @@
                         Command="{Binding ChangeToolbarKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Rebind the shortcut for the selected toolbar action, or clear it. Disabled for separators and non-rebindable rows."/>
-                <Button Content="Reset keybind"
-                        Command="{Binding ResetToolbarKeybindCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore the selected action's shortcut to its default."/>
-                <Button Content="Reset layout"
+                <Button Content="Reset Toolbar to Default"
                         Command="{Binding ResetToDefaultsCommand}"
                         HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore the default toolbar button layout."/>
+                        ToolTip.Tip="Restore the default set of toolbar buttons (which actions sit on the toolbar). Doesn't touch keybinds."/>
             </StackPanel>
 
             <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
@@ -231,14 +227,10 @@
                         Command="{Binding ChangeShortcutKeybindCommand}"
                         HorizontalAlignment="Stretch"
                         ToolTip.Tip="Rebind the shortcut for the selected action, or clear it."/>
-                <Button Content="Reset keybind"
-                        Command="{Binding ResetShortcutKeybindCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore the selected action's shortcut to its default."/>
-                <Button Content="Reset all shortcuts"
+                <Button Content="Reset Keybinds to Default"
                         Command="{Binding ResetAllKeybindsCommand}"
                         HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore every shortcut across all actions to its default chord."/>
+                        ToolTip.Tip="Restore every keybind — across both the toolbar and shortcuts lists — to its default chord. Doesn't touch which buttons are on the toolbar."/>
             </StackPanel>
         </Grid>
         </ScrollViewer>

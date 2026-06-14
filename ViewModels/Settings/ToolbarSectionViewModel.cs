@@ -91,7 +91,6 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveFromToolbarCommand))]
     [NotifyCanExecuteChangedFor(nameof(ChangeToolbarKeybindCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ResetToolbarKeybindCommand))]
     private ToolbarRowViewModel? _selectedRow;
 
     /// <summary>
@@ -107,7 +106,6 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddToToolbarCommand))]
     [NotifyCanExecuteChangedFor(nameof(ChangeShortcutKeybindCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ResetShortcutKeybindCommand))]
     private ToolbarRowViewModel? _selectedShortcutRow;
 
     /// <summary>
@@ -396,23 +394,12 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private bool CanChangeShortcutKeybind() => SelectedShortcutRow?.BoundAction is not null;
 
-    /// <summary>Restore <paramref name="row"/>'s action to its seed chord (or unbind if it had none).</summary>
-    private void ResetKeybindForRow(ToolbarRowViewModel? row)
-    {
-        if (row?.BoundAction is not BuiltInAction action) return;
-        KeyChord def = KeybindingStore.DefaultBindings.TryGetValue(action, out KeyChord d)
-            ? d : KeyChord.Empty;
-        if (!def.Equals(_keybindings.Get(action)))
-            _keybindings.Rebind(action, def);
-    }
-
-    [RelayCommand(CanExecute = nameof(CanChangeToolbarKeybind))]
-    private void ResetToolbarKeybind() => ResetKeybindForRow(SelectedRow);
-
-    [RelayCommand(CanExecute = nameof(CanChangeShortcutKeybind))]
-    private void ResetShortcutKeybind() => ResetKeybindForRow(SelectedShortcutRow);
-
-    /// <summary>Reset every built-in chord back to its default in one shot.</summary>
+    /// <summary>
+    /// Reset every built-in chord — across both the toolbar and shortcuts
+    /// lists — back to its default in one shot. Drives the "Reset Keybinds
+    /// to Default" button; per-row keybind resets fold into this single
+    /// affordance (no separate per-row reset button).
+    /// </summary>
     [RelayCommand]
     private void ResetAllKeybinds() => _keybindings.ResetAllToDefaults();
 
