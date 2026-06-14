@@ -16,10 +16,10 @@ public sealed class OtherSettings
 {
     /// <summary>
     /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
-    /// lives are at or below this threshold. Default 3 per the Phase 6
-    /// spec — protects players who haven't yet built up a comfortable
-    /// lives buffer. Setting to <c>0</c> allows forced suicide through
-    /// all lives. Pushed into
+    /// lives are at or below this threshold. Default 5 — protects players
+    /// who haven't yet built up a comfortable lives buffer. Setting to
+    /// <c>0</c> allows forced suicide through all lives. Max lives in
+    /// MajorMUD is 9, so the UI clamps this to 0..9. Pushed into
     /// <see cref="Game.Remote.RemoteCommandManager.MaxSuicideLivesThreshold"/>.
     /// </summary>
     /// <remarks>
