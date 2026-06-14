@@ -164,6 +164,36 @@ public sealed class CombatCalculatorTests
     }
 
     [Fact]
+    public void CalcBSDamage_RacialOnlyHasNoLevelScaling()
+    {
+        // Engine: racial-only stealth scales by a flat 75% with no (level+100)
+        // term, identically in both realms. Manual: minDamage 10, maxDamage
+        // 30 + (100-50)/10 = 35. min temp = 100+20+20 = 140 → 105;
+        // max temp = 100+20+70 = 190 → 142.
+        BSDamageResult stock = CombatCalculator.CalcBSDamage(
+            level: 50, stealth: 200, strength: 100,
+            weaponMin: 10, weaponMax: 30,
+            bsMinBonus: 0, bsMaxBonus: 0, maxDmgBonus: 0,
+            hasClassStealth: false, realmType: RealmType.Stock);
+
+        Assert.Equal(105, stock.MinDamage);
+        Assert.Equal(142, stock.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcBSDamage_IncludesStrengthMaxBonus()
+    {
+        // Higher strength raises the max bound via (STR-50)/10, even with no
+        // item +max-damage ability.
+        BSDamageResult low = CombatCalculator.CalcBSDamage(
+            50, 200, 100, 10, 30, 0, 0, 0, true, RealmType.ParaMud);
+        BSDamageResult high = CombatCalculator.CalcBSDamage(
+            50, 200, 200, 10, 30, 0, 0, 0, true, RealmType.ParaMud);
+
+        Assert.True(high.MaxDamage > low.MaxDamage);
+    }
+
+    [Fact]
     public void CalcBackstabAccuracy_RealmFormulasDiffer()
     {
         int para = CombatCalculator.CalcBackstabAccuracy(

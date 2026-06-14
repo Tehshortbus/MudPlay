@@ -274,12 +274,16 @@ public static class CombatCalculator
     // ----- Backstab damage -------------------------------------------------
 
     /// <summary>
-    /// Backstab damage range. Core per bound:
-    /// <c>(level*2) + (stealth/10) + (damage*2) + bsDmgMod</c>, with
-    /// non-class-stealth scaled to 75% and a level scaling applied under
-    /// class-stealth or Stock. Min strength bonus is <c>(STR-100)/10</c>
-    /// (doubled in Stock), floored at 0; the max strength bonus is folded into
-    /// <paramref name="maxDmgBonus"/> by the caller.
+    /// Backstab damage range, matching the game engine's <c>CalcBSDamage</c>.
+    /// Core per bound: <c>(level*2) + (stealth/10) + (damage*2) + bsDmgMod</c>,
+    /// then class-stealth scales by <c>(level+100)/100</c> while racial-only
+    /// stealth scales by 75% with no level term (no realm branch — the realm
+    /// difference lives in the strength folding). <paramref name="weaponMin"/> /
+    /// <paramref name="weaponMax"/> are the raw weapon bounds; strength folds in
+    /// here — min gets <c>(STR-100)/10</c> (doubled in Stock, floored at 0), max
+    /// gets <c>(STR-50)/10</c> (ParaMUD floors at 0). <paramref name="maxDmgBonus"/>
+    /// is the item +max-damage ability sum (Abil 4) only; the strength max bonus
+    /// is computed internally, so callers pass the item-only value.
     /// </summary>
     public static BSDamageResult CalcBSDamage(int level, int stealth, int strength,
                                                int weaponMin, int weaponMax,
@@ -292,11 +296,15 @@ public static class CombatCalculator
             minStrBonus *= 2;
         minStrBonus = Math.Max(minStrBonus, 0);
 
-        int minDamage = weaponMin + minStrBonus;
-        int maxDamage = weaponMax + maxDmgBonus;
+        int maxStrBonus = (strength - 50) / 10;
+        if (realmType == RealmType.ParaMud && maxStrBonus < 0)
+            maxStrBonus = 0;                  // GreaterMUD has no negative-strength penalty
 
-        int minBS = CalcBSDamageSingle(level, stealth, minDamage, bsMinBonus, hasClassStealth, realmType);
-        int maxBS = CalcBSDamageSingle(level, stealth, maxDamage, bsMaxBonus, hasClassStealth, realmType);
+        int minDamage = weaponMin + minStrBonus;
+        int maxDamage = weaponMax + maxStrBonus + maxDmgBonus;
+
+        int minBS = CalcBSDamageSingle(level, stealth, minDamage, bsMinBonus, hasClassStealth);
+        int maxBS = CalcBSDamageSingle(level, stealth, maxDamage, bsMaxBonus, hasClassStealth);
 
         // bsMinBonus / bsMaxBonus come from independent ability IDs (117/118),
         // so a high min bonus can push the computed min above max — swap so
@@ -308,19 +316,15 @@ public static class CombatCalculator
     }
 
     private static int CalcBSDamageSingle(int level, int stealth, int damage,
-                                           int bsDmgMod, bool hasClassStealth,
-                                           RealmType realmType)
+                                           int bsDmgMod, bool hasClassStealth)
     {
         int result = (level * 2) + (stealth / 10) + (damage * 2) + bsDmgMod;
 
-        if (!hasClassStealth)
-            result = result * 75 / 100;
-
-        // VB6: If bClassStealth Or Not bGreaterMUD Then — level scaling.
-        if (hasClassStealth || realmType == RealmType.Stock)
-            result = (level + 100) * result / 100;
-
-        return result;
+        // Engine: class-stealth scales by (level+100)/100; racial-only stealth
+        // scales by a flat 75% with no level term.
+        return hasClassStealth
+            ? (level + 100) * result / 100
+            : result * 75 / 100;
     }
 
     // ----- Melee damage (Normal / Bash / Smash) ----------------------------
