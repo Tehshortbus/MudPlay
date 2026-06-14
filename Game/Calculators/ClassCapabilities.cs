@@ -9,7 +9,7 @@ namespace FujinTerm.Game.Calculators;
 /// Class / race capability lookups resolved from game data: which classes can
 /// learn Smash, and whether a class or race grants innate stealth. Ported from
 /// MMUD Explorer / MudProxy. The smash set is discovered by scanning the
-/// <c>TextBlocks</c> quest table for chains that pair <c>giveability 32 1</c>
+/// <c>TBInfo</c> quest/textblock table for chains that pair <c>giveability 32 1</c>
 /// (Smash, step 1) with a <c>class N</c> restriction; stealth is a direct
 /// <c>Abil-0..9</c> scan (race ability 102 = RaceStealth, class ability 103 =
 /// ClassStealth). All methods read through <see cref="GameDataCache"/> and are
@@ -27,7 +27,7 @@ public static class ClassCapabilities
     /// Class names that can learn Smash, or <c>null</c> meaning "assume every
     /// class can" — no class-restricted smash chain exists in the active set, so
     /// hiding the row would risk hiding it from a genuinely capable class. A
-    /// TextBlocks <c>Action</c> chain qualifies when it contains
+    /// TBInfo <c>Action</c> chain qualifies when it contains
     /// <c>giveability 32 1</c> AND one or more <c>class N</c> steps; those class
     /// IDs map to names via the Classes table's <c>Number</c> → <c>Name</c>. Any
     /// such chain makes the collected set authoritative.
@@ -36,7 +36,9 @@ public static class ClassCapabilities
     {
         ArgumentNullException.ThrowIfNull(cache);
 
-        JsonDocument? textBlocks = cache.GetRawTable("TextBlocks");
+        // The quest/textblock table imports as TBInfo.json (MDB "TBInfo"), not
+        // "TextBlocks" — reading the wrong name silently disables smash gating.
+        JsonDocument? textBlocks = cache.GetRawTable("TBInfo");
         if (textBlocks is null) return null;
 
         Dictionary<int, string> classIdToName = BuildClassIdToNameMap(cache);

@@ -9,7 +9,7 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// <see cref="ClassCapabilities"/> resolves smash / stealth capability straight
-/// from game-data tables. Smash scans <c>TextBlocks</c> <c>Action</c> chains for
+/// from game-data tables. Smash scans <c>TBInfo</c> <c>Action</c> chains for
 /// a <c>giveability 32 1</c> step paired with a <c>class N</c> restriction in the
 /// same chain; stealth is a direct <c>Abil-0..9</c> scan (race 102, class 103).
 /// These tests seed an isolated set and assert each lookup.
@@ -58,7 +58,7 @@ public sealed class ClassCapabilitiesTests : IDisposable
                 Row(("Number", 1), ("Name", "Warrior")),
                 Row(("Number", 2), ("Name", "Mage")),
             }),
-            ("TextBlocks", new[]
+            ("TBInfo", new[]
             {
                 Row(("Action", "class 1:giveability 32 1")),
             }));
@@ -77,7 +77,7 @@ public sealed class ClassCapabilitiesTests : IDisposable
         // not "everyone can smash" — null means "assume every class can".
         GameDataCache cache = CacheWith(
             ("Classes", new[] { Row(("Number", 1), ("Name", "Warrior")) }),
-            ("TextBlocks", new[] { Row(("Action", "giveability 32 1")) }));
+            ("TBInfo", new[] { Row(("Action", "giveability 32 1")) }));
 
         Assert.Null(ClassCapabilities.GetSmashCapableClasses(cache));
     }
@@ -88,7 +88,7 @@ public sealed class ClassCapabilitiesTests : IDisposable
         // giveability for a non-smash ability (id != 32) must not register.
         GameDataCache cache = CacheWith(
             ("Classes", new[] { Row(("Number", 1), ("Name", "Warrior")) }),
-            ("TextBlocks", new[] { Row(("Action", "class 1:giveability 40 1")) }));
+            ("TBInfo", new[] { Row(("Action", "class 1:giveability 40 1")) }));
 
         Assert.Null(ClassCapabilities.GetSmashCapableClasses(cache));
     }
