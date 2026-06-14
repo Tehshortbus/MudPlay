@@ -1405,4 +1405,60 @@ public sealed class CombatManagerTests
 
         Assert.Single(h.Sent);     // resume disarmed by Engaged
     }
+
+    // ----- engage-verification safety net ------------------------------
+
+    /// <summary>Backdate the private engage-wait timestamp so the next
+    /// tick sees the confirmation window as elapsed — lets the test
+    /// exercise the timeout path without sleeping the real clock.</summary>
+    private static void ExpireEngageWindow(CombatManager combat)
+    {
+        System.Reflection.FieldInfo f = typeof(CombatManager).GetField(
+            "_awaitingEngageSince",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!;
+        Assert.NotNull(f.GetValue(combat));   // must actually be awaiting
+        f.SetValue(combat, DateTimeOffset.Now - TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public void AttackUnconfirmed_AfterWindow_FiresRoomRefreshCr()
+    {
+        // Report 2 repro: a movement was in flight, so the swing we sent
+        // landed on a stale room view. The server never confirms
+        // *Combat Engaged*; after the window the tick must drop the stale
+        // target and fire a bare CR to force a fresh room display.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+
+        ExpireEngageWindow(h.Combat);
+        h.Combat.OnCombatTick();
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        Assert.Null(h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void AttackConfirmed_NoRoomRefreshCr()
+    {
+        // The server acknowledged the swing — the engage-verify net must
+        // stay disarmed; no spurious CR even once the window would lapse.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("*Combat Engaged*");          // server confirms
+        h.Combat.OnCombatTick();
+
+        Assert.Single(h.Sent);               // no extra CR
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+    }
 }

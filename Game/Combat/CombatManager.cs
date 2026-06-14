@@ -118,6 +118,13 @@ public sealed partial class CombatManager : IDisposable
     /// a flurry of miss/hit lines from spamming the server.</summary>
     private static readonly TimeSpan RoomRefreshCooldown = TimeSpan.FromSeconds(3);
 
+    /// <summary>How long to wait for the server's <c>*Combat Engaged*</c>
+    /// after sending a fresh attack before assuming the attack hit a stale
+    /// room view and firing a CR re-display. One combat round — a real
+    /// engage prints the line well within a round, so a full round with no
+    /// confirmation means the named target isn't actually here.</summary>
+    private static readonly TimeSpan EngageConfirmWindow = TimeSpan.FromSeconds(5);
+
     private Action<byte[]>? _wireSender;
     private Func<bool>? _isSneaking;
     private Func<int, bool>? _hasSeeHidden;
@@ -157,6 +164,30 @@ public sealed partial class CombatManager : IDisposable
     /// <c>Engaged</c>.
     /// </summary>
     private bool _combatOff;
+
+    /// <summary>
+    /// Server-confirmed engagement, driven ONLY by the wire
+    /// <c>*Combat Engaged*</c> / <c>*Combat Off*</c> lines — unlike
+    /// <see cref="_combatOff"/> (optimistically cleared on every attack
+    /// send), this stays a faithful mirror of what the server actually
+    /// told us. The engage-verification safety net keys off this: an
+    /// attack we sent that the server never acknowledged with
+    /// <c>*Combat Engaged*</c> means we swung at a target that isn't in
+    /// the room we can currently see (stale room view — a movement was in
+    /// flight, or the named mob walked out / was replaced).
+    /// </summary>
+    private bool _engageConfirmed;
+
+    /// <summary>
+    /// When non-null, the moment a fresh attack went out for which we are
+    /// still waiting on <c>*Combat Engaged*</c>. Armed by
+    /// <see cref="NoteAttackSent"/>, disarmed on confirmation (or on the
+    /// room going empty). Once <see cref="EngageConfirmWindow"/> elapses
+    /// with no confirmation, <see cref="VerifyEngagement"/> drops the
+    /// stale target and fires a bare CR to force a room re-display so we
+    /// re-pick from what's actually here.
+    /// </summary>
+    private DateTimeOffset? _awaitingEngageSince;
 
     // ----- Weapon-swap shadow state -----------------------------------
     // No `inv`/`eq` parse — we shadow-track what we last sent to the
@@ -464,6 +495,10 @@ public sealed partial class CombatManager : IDisposable
                     $"no-monster-number={noNumberCount} friendly={friendlyCount})");
             }
             _currentTarget = null;
+            // Room genuinely empty — no pending swing can be confirmed, so
+            // disarm the engage-verify net (otherwise the next tick would
+            // fire a spurious CR into an empty room).
+            _awaitingEngageSince = null;
             OnRoomCleared(settings);
             return;
         }
@@ -1083,9 +1118,18 @@ public sealed partial class CombatManager : IDisposable
         if (match.Groups.Count == 0) return;
         string status = match.Groups[0];
         if (string.Equals(status, "Off", StringComparison.OrdinalIgnoreCase))
+        {
             _combatOff = true;
+            _engageConfirmed = false;
+        }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
+        {
             _combatOff = false;
+            // Server acknowledged the swing — disarm the engage-verify
+            // safety net; our attack landed on a real, present target.
+            _engageConfirmed = true;
+            _awaitingEngageSince = null;
+        }
     }
 
     private bool HasEngageable(RoomEntitiesObservation obs)
@@ -1142,6 +1186,7 @@ public sealed partial class CombatManager : IDisposable
         _lastAttackCommand = line;
         if (_wireSender is null) return;
         _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
+        NoteAttackSent();
     }
 
     private void SendAttack(string command, string target, bool refire, string refireReason)
@@ -1156,6 +1201,55 @@ public sealed partial class CombatManager : IDisposable
         _lastAttackCommand = line;
         if (_wireSender is null) return;
         _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
+        NoteAttackSent();
+    }
+
+    /// <summary>
+    /// Arm the engage-verification timer after a fresh attack goes out.
+    /// No-op once the server has confirmed engagement (subsequent rounds
+    /// of an already-acknowledged fight don't re-arm — only the first
+    /// unconfirmed swing matters). <see cref="VerifyEngagement"/> consumes
+    /// the timestamp on the combat tick.
+    /// </summary>
+    private void NoteAttackSent()
+    {
+        if (_engageConfirmed) return;
+        _awaitingEngageSince ??= DateTimeOffset.Now;
+    }
+
+    /// <summary>
+    /// Engage-verification safety net, run on every combat tick. If we
+    /// sent an attack and the server never answered with
+    /// <c>*Combat Engaged*</c> within <see cref="EngageConfirmWindow"/>,
+    /// the named target isn't in the room we can actually see (a movement
+    /// was in flight when we swung, or the mob walked out / was replaced).
+    /// Drop the stale target and fire a bare CR to force a fresh room
+    /// display so <see cref="OnEntitiesObserved"/> re-picks from what's
+    /// really here. Shares the <see cref="RoomRefreshCooldown"/> debounce
+    /// with the other CR-refresh paths.
+    /// </summary>
+    private void VerifyEngagement()
+    {
+        if (_awaitingEngageSince is not { } since) return;
+        if (!_isEnabled()) { _awaitingEngageSince = null; return; }
+        if (_engageConfirmed) { _awaitingEngageSince = null; return; }
+        if (DateTimeOffset.Now - since < EngageConfirmWindow) return;
+
+        // Window elapsed with no server confirmation — the swing hit a
+        // stale room view. Disarm regardless so we don't loop on the same
+        // unanswered attack.
+        _awaitingEngageSince = null;
+        _log?.Info(LogCategory,
+            $"attack unconfirmed after {EngageConfirmWindow.TotalSeconds:0}s " +
+            $"(target={_currentTarget ?? _castingSpellTarget ?? "?"}) — CR re-display");
+        _currentTarget = null;
+        _castingSpellTarget = null;
+
+        if (_wireSender is null) return;
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
     public void Dispose()

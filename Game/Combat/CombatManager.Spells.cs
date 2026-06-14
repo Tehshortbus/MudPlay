@@ -190,6 +190,10 @@ public sealed partial class CombatManager
                     _spellChooser.MarkCast(decision, picked.RawName);
                     _lastCastAction = decision.Action;
                     _combatOff = false;
+                    // A cast is an attack for engage-verify purposes — if the
+                    // server never confirms *Combat Engaged*, the spell hit a
+                    // stale room view and the CR-reverify net must recover.
+                    NoteAttackSent();
                 }
                 _currentTarget = picked.RawName;
                 break;
@@ -210,6 +214,12 @@ public sealed partial class CombatManager
     public void OnCombatTick()
     {
         if (_disposed) return;
+
+        // Engage-verification runs on every tick regardless of spell
+        // wiring — a pure-weapon build still needs the stale-room CR
+        // recovery. Must precede the CombatSpellsWired gate below.
+        VerifyEngagement();
+
         if (!CombatSpellsWired) return;
         if (!_isEnabled()) return;
         if (_combatOff) return;                         // round interrupted; resume path owns re-engage
