@@ -182,6 +182,24 @@ public sealed partial class CombatManager : IDisposable
     private static readonly TimeSpan ResumePacing = TimeSpan.FromMilliseconds(2500);
 
     /// <summary>
+    /// When a between-round CastingDirector cast was last sent (armed by
+    /// <see cref="NoteBetweenRoundCast"/>). The <c>*Combat Off*</c> the
+    /// server fires in response arrives within
+    /// <see cref="CastInterruptResumeWindow"/> of this stamp; that lets
+    /// <see cref="OnCombatStatus"/> attribute the Off to OUR cast and resume
+    /// the weapon attack immediately, instead of idling a full round. A
+    /// per-strike Off from a non-sustaining attack (KAI pummel) lands well
+    /// outside the window, so it never trips this path.
+    /// </summary>
+    private DateTimeOffset _betweenRoundCastAt = DateTimeOffset.MinValue;
+
+    /// <summary>How recent a between-round cast must be for the next
+    /// <c>*Combat Off*</c> to count as that cast's interrupt. Generous
+    /// enough to cover send→Off network latency, far shorter than a round
+    /// so a later pummel Off can't be misattributed.</summary>
+    private static readonly TimeSpan CastInterruptResumeWindow = TimeSpan.FromSeconds(3);
+
+    /// <summary>
     /// Server-confirmed engagement, driven ONLY by the wire
     /// <c>*Combat Engaged*</c> / <c>*Combat Off*</c> lines — unlike
     /// <see cref="_combatOff"/> (optimistically cleared on every attack
@@ -1155,6 +1173,15 @@ public sealed partial class CombatManager : IDisposable
     }
 
     /// <summary>
+    /// Signal from <see cref="Spells.CastingDirector.CastFired"/> that a
+    /// between-round cast (self-heal / cure / buff / debuff) just went to the
+    /// server. Arms <see cref="OnCombatStatus"/> to attribute the imminent
+    /// <c>*Combat Off*</c> to that cast and resume the weapon attack promptly
+    /// (see <see cref="_betweenRoundCastAt"/>).
+    /// </summary>
+    public void NoteBetweenRoundCast() => _betweenRoundCastAt = DateTimeOffset.Now;
+
+    /// <summary>
     /// Track <c>*Combat On*/*Combat Off*</c>. <c>Off</c> arms the
     /// resume-after-interrupt path (see <see cref="_combatOff"/>);
     /// <c>Engaged</c> means the server is swinging for us again, so we
@@ -1168,6 +1195,24 @@ public sealed partial class CombatManager : IDisposable
         {
             _combatOff = true;
             _engageConfirmed = false;
+
+            // If this Off is the server's response to a between-round cast
+            // we just fired (self-heal / cure / buff), re-issue the weapon
+            // attack now rather than waiting for the mob's next swing or the
+            // next combat tick — the "used a heal mid-fight, then stood idle
+            // a full round" symptom. Attributed strictly to our own cast
+            // (armed by NoteBetweenRoundCast) so a non-sustaining attack's
+            // per-strike Off (KAI pummel) is never misread. Weapon mode only;
+            // a live target must still be present; TryResumeEngage's pacing
+            // is the backstop against any double-fire with the tick resume.
+            if (DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
+                && _castingSpellTarget is null
+                && _currentTarget is not null
+                && _classifier.Current is { } live
+                && HasEngageable(live))
+            {
+                TryResumeEngage(live);
+            }
         }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
         {

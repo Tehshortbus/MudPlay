@@ -2008,6 +2008,10 @@ public sealed class AppServices
         // Combat.OnCombatTick, so the debuff is offered before the combat
         // heartbeat re-issues the round's combat action.
         CastDirector.SetCombatDebuffSource(Combat.PickInBetweenDebuff, Combat.CommitInBetweenDebuff);
+        // A between-round survival cast stops our auto-attack; let the combat
+        // engine resume the weapon attack on the resulting *Combat Off*
+        // instead of idling until the next round.
+        CastDirector.CastFired += Combat.NoteBetweenRoundCast;
         Tick.CombatTickElapsed += Combat.OnCombatTick;
 
         // Phase 9 PR 9.F — StealthManager state tracker + auto-sneak /

@@ -187,6 +187,18 @@ public sealed class CastingDirector : IDisposable
     public void OnCombatTick() => Evaluate();
 
     /// <summary>
+    /// Raised the instant a between-round cast (self-heal / cure / buff /
+    /// debuff) is sent to the server. The combat engine listens so it can
+    /// attribute the <c>*Combat Off*</c> the server fires in response to
+    /// THIS cast — and re-issue the weapon attack the moment that line
+    /// arrives, instead of waiting a full round. Without this signal a
+    /// bare <c>*Combat Off*</c> is ambiguous (a non-sustaining attack like
+    /// KAI pummel emits one after every strike), so the engine can't safely
+    /// resume on it alone.
+    /// </summary>
+    public event Action? CastFired;
+
+    /// <summary>
     /// Wire a stealth-state predicate so the Buff slot can skip
     /// candidate casts that would break stealth. Typically pointed
     /// at <c>StealthManager.IsStealthed</c>. Optional — when unset
@@ -468,6 +480,9 @@ public sealed class CastingDirector : IDisposable
             _log?.Info(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+            // Tell the combat engine a between-round cast went out so it can
+            // resume our weapon attack on the *Combat Off* this cast triggers.
+            CastFired?.Invoke();
             return cand.Spell;
         }
 

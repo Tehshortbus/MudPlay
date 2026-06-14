@@ -1395,6 +1395,29 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void BetweenRoundCast_ThenCombatOff_ResumesImmediately()
+    {
+        // The reported case: a between-round CastingDirector self-heal fires
+        // mid-fight. NoteBetweenRoundCast arms the engine; the *Combat Off*
+        // the cast triggers is then attributed to it and the weapon attack
+        // resumes on that very line — no full-round idle, no mob-swing wait.
+        using Harness h = new();
+        h.AddMonster(1, "cave bear", killable: false);
+
+        h.Feed("Also here: cave bear.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a cave bear", h.LastSent);
+
+        // CastingDirector sent a heal; the server stops our auto-attack.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        Assert.Equal(2, h.Sent.Count);     // resumed on the Off line itself
+        Assert.Equal("a cave bear", h.LastSent);
+        Assert.Equal("cave bear", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void NoCombatOff_MobLine_DoesNotReswing()
     {
         // Guard: a mob line while combat is live (server still swinging
