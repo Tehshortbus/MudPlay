@@ -107,29 +107,24 @@ public sealed class KeybindingStore
         return null;
     }
 
-    /// <summary>Friendly label for the action — used in conflict messages + future Settings → Keyboard panel.</summary>
-    public static string ActionLabel(BuiltInAction action) => action switch
-    {
-        BuiltInAction.OpenConversation     => "Open Conversation",
-        BuiltInAction.OpenParty            => "Open Party",
-        BuiltInAction.OpenWorkshop         => "Open Workshop",
-        BuiltInAction.OpenNavigation       => "Open Navigation",
-        BuiltInAction.OpenSpellBook        => "Open Spell Book",
-        BuiltInAction.OpenLogPane          => "Open Program Log",
-        BuiltInAction.OpenBackscroll       => "Open Backscroll",
-        BuiltInAction.OpenSessionStats     => "Open Session Stats",
-        BuiltInAction.OpenSettings         => "Open Settings",
-        BuiltInAction.OpenGameDataBrowser  => "Open Game Data Browser",
-        BuiltInAction.OpenWireInspector    => "Open Wire Inspector",
-        BuiltInAction.ToggleConnection     => "Connect / Disconnect",
-        BuiltInAction.ToggleCapture        => "Toggle session capture",
-        BuiltInAction.NewProfile           => "New profile",
-        BuiltInAction.OpenProfile          => "Open profile",
-        BuiltInAction.SaveProfile          => "Save profile",
-        BuiltInAction.SaveProfileAs        => "Save profile as",
-        BuiltInAction.Quit                 => "Quit",
-        _                                  => action.ToString(),
-    };
+    /// <summary>
+    /// Friendly label for the action — used in conflict messages and the
+    /// Settings → Toolbar + Shortcuts panel. Toolbar/Action-menu actions
+    /// pull their label from <see cref="ToolbarItemCatalogue"/> (single
+    /// source of truth, no drift); File-menu actions, which have no
+    /// catalogue entry, fall back to the explicit map below.
+    /// </summary>
+    public static string ActionLabel(BuiltInAction action)
+        => ToolbarItemCatalogue.Find(action.ToString())?.Label
+           ?? action switch
+           {
+               BuiltInAction.NewProfile    => "New profile",
+               BuiltInAction.OpenProfile   => "Open profile",
+               BuiltInAction.SaveProfile   => "Save profile",
+               BuiltInAction.SaveProfileAs => "Save profile as",
+               BuiltInAction.Quit          => "Quit",
+               _                           => action.ToString(),
+           };
 
     /// <summary>
     /// Hardcoded seed chords — mirror the chords that used to live

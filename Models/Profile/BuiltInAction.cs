@@ -32,4 +32,28 @@ public enum BuiltInAction
     SaveProfile,
     SaveProfileAs,
     Quit,
+
+    // ---- Movement engine (toolbar) ----
+    MovementStart,
+    MovementPause,
+    MovementStop,
+
+    // ---- Bulk one-shot actions (toolbar / Action menu) ----
+    ActionGetAll,
+    ActionDropAll,
+    ActionEquipAll,
+    ActionDepositAll,
+
+    // ---- Auto-response toggles (toolbar / Action menu) ----
+    ToggleAllAutoOff,
+    ToggleAutoCombat,
+    ToggleAutoNuke,
+    ToggleAutoHealRest,
+    ToggleAutoBless,
+    ToggleAutoLight,
+    ToggleAutoGetItems,
+    ToggleAutoGetCash,
+    ToggleAutoSneak,
+    ToggleAutoHide,
+    ToggleAutoSearch,
 }
