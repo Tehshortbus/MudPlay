@@ -100,10 +100,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private bool _showBackstab;
 
     // ----- Box D: alignment ----------------------------------------------
-    /// <summary>The 9-word ladder alignment from our own <c>who</c> observation, or "—" when unseen.</summary>
+    // Alignment is really a numeric "evil points" stat; the title is just the
+    // band `who` reports for it. We can't read exact EP in Stock, so we echo
+    // the observed title verbatim (it's realm-specific via a modified helpfile,
+    // so no fixed word ladder is hardcoded). Item alignment restrictions are a
+    // richer flag set (good-only / no-good / neutral-only / evil-only / no-evil
+    // / Abil-98 EP-range) handled by the Equipment Manager filter, not here.
+    /// <summary>Alignment title from our own <c>who</c> observation, or "—" when unseen.</summary>
     [ObservableProperty] private string _alignment = "—";
-    /// <summary>Three-bucket reduction (Good / Neutral / Evil) the Equipment Manager alignment filter consumes.</summary>
-    [ObservableProperty] private string _alignmentBucket = "—";
 
     // ----- Box E: monster matchup ----------------------------------------
     /// <summary>Typeahead source — every monster name in the active game-data set.</summary>
@@ -458,7 +462,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     {
         if (string.IsNullOrEmpty(_stats.Name))
         {
-            Alignment = AlignmentBucket = "—";
+            Alignment = "—";
             return;
         }
 
@@ -475,18 +479,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
 
         string? word = self?.Alignment;
         Alignment = string.IsNullOrEmpty(word) ? "—" : word;
-        AlignmentBucket = string.IsNullOrEmpty(word) ? "—" : ReduceAlignment(word);
     }
-
-    // Standard MajorMUD ladder→bucket split: Good = {Saint, Lawful, Good},
-    // Evil = {Outlaw, Criminal, Villain, Fiend}, Neutral = everything else
-    // (the blank "Neutral" rung plus the shady-but-not-evil "Seedy").
-    private static string ReduceAlignment(string word) => word switch
-    {
-        "Saint" or "Lawful" or "Good" => "Good",
-        "Outlaw" or "Criminal" or "Villain" or "Fiend" => "Evil",
-        _ => "Neutral",
-    };
 
     // ----- Box E ----------------------------------------------------------
 
