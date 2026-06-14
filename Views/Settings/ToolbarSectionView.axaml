@@ -39,8 +39,8 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <!-- Fixed-height rows so each list shows exactly 5 at a time
-             (28px × 5 = 140 → the Border height below). Predictable
+        <!-- Fixed-height rows so each list shows exactly 8 at a time
+             (28px × 8 = 224 → the Border height below). Predictable
              height keeps the rail buttons from overlapping the way the
              old proportional (2*/3*) sizing did when the window shrank. -->
         <Style Selector="ListBox.RowList">
@@ -152,9 +152,9 @@
                        Classes="SectionHeader"
                        Text="Toolbar layout — top to bottom here ≡ left to right on the toolbar"/>
 
-            <!-- Toolbar row list — fixed height for 5 rows; scrolls past that. -->
+            <!-- Toolbar row list — fixed height for 8 rows; scrolls past that. -->
             <Border Grid.Row="2" Grid.Column="0"
-                    Height="150" VerticalAlignment="Top"
+                    Height="234" VerticalAlignment="Top"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
@@ -204,9 +204,9 @@
                        Text="Shortcuts — every action not on the toolbar; each can still hold a keybind"/>
 
             <!-- Shortcuts list: the full pool of off-toolbar actions —
-                 fixed height for 5 rows; scrolls past that. -->
+                 fixed height for 8 rows; scrolls past that. -->
             <Border Grid.Row="4" Grid.Column="0"
-                    Height="150" VerticalAlignment="Top"
+                    Height="234" VerticalAlignment="Top"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1"
                     Background="{StaticResource ChromeBgSunkenBrush}">
