@@ -329,6 +329,39 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void FullParse_HarvestsWornItemsWithSlots()
+    {
+        using Harness h = new();
+
+        // Worn items carry a trailing "(Slot)"; carried-but-unworn don't.
+        h.Feed("You are carrying padded vest (Torso), padded pants (Legs), "
+             + "padded gloves (Hands), quarterstaff (Two handed), padded helm, "
+             + "padded boots, 5 copper farthings.");
+        h.Feed("You have no keys.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    20/2880  -  None  [0%]");
+
+        IReadOnlyList<EquippedItem> eq = h.Inv.Snapshot.EquippedItems;
+        Assert.Equal(4, eq.Count);
+        Assert.Contains(new EquippedItem("padded vest", "Torso"), eq);
+        Assert.Contains(new EquippedItem("padded pants", "Legs"), eq);
+        Assert.Contains(new EquippedItem("padded gloves", "Hands"), eq);
+        // "Two handed" normalizes to "Weapon Hand".
+        Assert.Contains(new EquippedItem("quarterstaff", "Weapon Hand"), eq);
+        // Unworn items + currency are not equipped.
+        Assert.DoesNotContain(eq, i => i.Name == "padded helm");
+        Assert.DoesNotContain(eq, i => i.Name == "padded boots");
+    }
+
+    [Fact]
+    public void FullParse_NoWornItems_EmptyEquippedList()
+    {
+        using Harness h = new();
+        FeedFullInventory(h);
+        Assert.Empty(h.Inv.Snapshot.EquippedItems);
+    }
+
+    [Fact]
     public void FullParse_OverridesIncrementalDrift()
     {
         using Harness h = new();

@@ -1,17 +1,24 @@
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text.Json;
+using FujinTerm.Game.Inventory;
+using FujinTerm.Services;
+
 namespace FujinTerm.Game.Calculators;
 
 /// <summary>
 /// Pure character-stat formulas (CP, HP, mana/kai regen) ported from the
-/// MMUD Explorer VB6 source. Every method takes primitive inputs and returns
-/// a result — no UI, no game-data, no manager dependencies. Realm-dependent
-/// formulas branch on <see cref="RealmType"/>; callers resolve the active
-/// realm from <see cref="Services.GameDataCache.ActiveRealm"/>.
+/// MMUD Explorer VB6 source. Most methods take primitive inputs and return a
+/// result — no UI, no manager dependencies. Realm-dependent formulas branch on
+/// <see cref="RealmType"/>; callers resolve the active realm from
+/// <see cref="Services.GameDataCache.ActiveRealm"/>.
 /// </summary>
 /// <remarks>
 /// Experience-curve math lives in <see cref="ExperienceTableCalculator"/>;
-/// combat math lives in <see cref="CombatCalculator"/>. Equipment stat
-/// aggregation (ability-slot scanning) is deferred until the equipment model
-/// exists in a later Workshop PR.
+/// combat math lives in <see cref="CombatCalculator"/>. The equipment-stat
+/// aggregation here (<see cref="AggregateEquipmentStats"/>) is the one method
+/// that reads game data — it resolves each worn item against
+/// <see cref="GameDataCache"/> to sum ability bonuses.
 /// </remarks>
 public static class CharacterCalculator
 {
@@ -187,5 +194,214 @@ public static class CharacterCalculator
         }
 
         return regen;
+    }
+
+    // ----- equipment stat aggregation --------------------------------------
+
+    // MajorMUD items carry up to 20 ability slots (Abil-0..Abil-19); race /
+    // class records use the first 10. Both are scanned the same way.
+    private const int MaxItemAbilSlots = 20;
+    private const int MaxRecordAbilSlots = 10;
+
+    /// <summary>
+    /// Sum the equipment-stat bonuses of every worn item, resolving each one
+    /// against <paramref name="cache"/>'s <c>Items</c> table. Each item's base
+    /// AC/DR and its <c>Abil-0..Abil-19</c> slots are folded into an
+    /// <see cref="EquipmentStatBreakdown"/> (totals + per-stat item sources for
+    /// tooltips). Items not found in game data are skipped silently — a custom
+    /// realm may rename items the active set doesn't carry.
+    /// </summary>
+    public static EquipmentStatBreakdown AggregateEquipmentStats(
+        IReadOnlyList<EquippedItem> equippedItems, GameDataCache cache)
+    {
+        ArgumentNullException.ThrowIfNull(equippedItems);
+        ArgumentNullException.ThrowIfNull(cache);
+
+        var result = new EquipmentStatBreakdown();
+        EquipmentStatSummary totals = result.Totals;
+
+        foreach (EquippedItem item in equippedItems)
+        {
+            JsonElement? row = cache.FindRowByName("Items", item.Name);
+            if (row is not JsonElement itemData) continue;
+
+            // Base AC/DR are stored ×10 in game data — divide for the real value.
+            double baseAC = GetInt(itemData, "ArmourClass") / 10.0;
+            double baseDR = GetInt(itemData, "DamageResist") / 10.0;
+            if (baseAC != 0 || baseDR != 0)
+            {
+                totals.PlusAC += baseAC;
+                totals.PlusDR += baseDR;
+                AddContribution(result, "Armour Class", item.Name,
+                    string.Create(CultureInfo.InvariantCulture, $"{baseAC:0.#}/{baseDR:0.#}"));
+            }
+
+            // Per-item Accy folds into the worn-accuracy total for every item;
+            // the weapon / off-hand pieces also surface their own accuracy.
+            int itemAccy = GetInt(itemData, "Accy");
+            totals.TotalWornAccy += itemAccy;
+            if (itemAccy != 0)
+                AddContribution(result, "Accuracy", item.Name,
+                    itemAccy.ToString("+0;-0", CultureInfo.InvariantCulture));
+
+            bool isWeaponHand = item.Slot == "Weapon Hand";
+            if (isWeaponHand)
+            {
+                totals.WeaponHandAccy = itemAccy;
+                totals.WeaponStrReq = GetInt(itemData, "StrReq");
+            }
+            else if (item.Slot == "Off-Hand")
+            {
+                totals.OffHandAccy = itemAccy;
+            }
+
+            for (int i = 0; i < MaxItemAbilSlots; i++)
+            {
+                int abilId = GetInt(itemData, $"Abil-{i}");
+                int abilVal = GetInt(itemData, $"AbilVal-{i}");
+                if (abilId <= 0 || abilVal == 0) continue;
+
+                if (abilId is 22 or 105 or 106 && abilVal > totals.MaxSingleAbil22)
+                    totals.MaxSingleAbil22 = abilVal;
+
+                // Hit Magic (28/142): every item adds to the running total, but
+                // only a Weapon-Hand piece contributes to weapon hit-magic and
+                // shows up in the breakdown — handled before MapAbilityToStat.
+                if (abilId is 28 or 142)
+                {
+                    totals.PlusHitMagic += abilVal;
+                    if (isWeaponHand)
+                    {
+                        totals.WeaponHitMagic += abilVal;
+                        AddContribution(result, "Hit Magic", item.Name,
+                            abilVal.ToString("+0;-0", CultureInfo.InvariantCulture));
+                    }
+                    continue;
+                }
+
+                MapAbilityToStat(result, totals, item.Name, abilId, abilVal);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Fold a race or class record's <c>Abil-0..Abil-9</c> bonuses into an
+    /// existing <paramref name="breakdown"/>. These contribute to AC/DR and the
+    /// other derived stats exactly like item abilities, so the Workshop can show
+    /// innate racial / class bonuses alongside worn gear.
+    /// </summary>
+    public static void ApplyAbilityBonuses(
+        EquipmentStatBreakdown breakdown, JsonElement data, string sourceName)
+    {
+        ArgumentNullException.ThrowIfNull(breakdown);
+        EquipmentStatSummary totals = breakdown.Totals;
+        for (int i = 0; i < MaxRecordAbilSlots; i++)
+        {
+            int abilId = GetInt(data, $"Abil-{i}");
+            int abilVal = GetInt(data, $"AbilVal-{i}");
+            if (abilId <= 0 || abilVal == 0) continue;
+
+            if (abilId is 22 or 105 or 106 && abilVal > totals.MaxSingleAbil22)
+                totals.MaxSingleAbil22 = abilVal;
+
+            MapAbilityToStat(breakdown, totals, sourceName, abilId, abilVal);
+        }
+    }
+
+    // Maps a single ability ID + value onto the matching summary field and
+    // records the per-item contribution. Ported from MMUD Explorer's
+    // GetAbilityStatSlot dispatch.
+    private static void MapAbilityToStat(EquipmentStatBreakdown result, EquipmentStatSummary totals,
+                                         string itemName, int abilId, int abilVal)
+    {
+        string? statKey = null;
+        string? tag = null;
+
+        switch (abilId)
+        {
+            case 2: totals.PlusAC += abilVal; statKey = "Armour Class"; break;
+            case 10: totals.PlusAC += abilVal; statKey = "Armour Class"; tag = "[BLUR]"; break;
+            case 7: totals.PlusDR += abilVal / 10.0; statKey = "Damage Resist"; break;
+
+            case 46: totals.PlusStrength += abilVal; statKey = "Strength"; break;
+            case 44: totals.PlusIntellect += abilVal; statKey = "Intellect"; break;
+            case 45: totals.PlusWillpower += abilVal; statKey = "Willpower"; break;
+            case 48: totals.PlusAgility += abilVal; statKey = "Agility"; break;
+            case 47: totals.PlusHealth += abilVal; statKey = "Health"; break;
+            case 49: totals.PlusCharm += abilVal; statKey = "Charm"; break;
+
+            case 88: totals.PlusMaxHp += abilVal; statKey = "Max HP"; break;
+            case 69: totals.PlusMaxMana += abilVal; statKey = "Max Mana"; break;
+            case 123: totals.HpRegenPercent += abilVal; statKey = "HP Regen"; break;
+            case 145: totals.MpRegenPercent += abilVal; statKey = "Mana Regen"; break;
+
+            case 58: totals.PlusCrits += abilVal; statKey = "Crits"; break;
+            case 22: case 105: case 106: totals.PlusAccuracy += abilVal; statKey = "Accuracy"; break;
+            case 4: totals.PlusMaxDamage += abilVal; statKey = "Max Damage"; break;
+            case 165: totals.SpellDamageBonus += abilVal; statKey = "Spell Damage"; break;
+
+            case 34: totals.PlusDodge += abilVal; statKey = "Dodge"; break;
+            case 36: totals.PlusMagicResist += abilVal; statKey = "Magic Resist"; break;
+
+            case 116: totals.PlusBSAccuracy += abilVal; statKey = "BS Accuracy"; break;
+            case 117: totals.PlusBSMin += abilVal; statKey = "BS Min Dmg"; break;
+            case 118: totals.PlusBSMax += abilVal; statKey = "BS Max Dmg"; break;
+
+            case 27: totals.PlusStealth += abilVal; statKey = "Stealth"; break;
+            case 77: totals.PlusPerception += abilVal; statKey = "Perception"; break;
+            case 70: totals.PlusSpellcasting += abilVal; statKey = "Spellcasting"; break;
+            case 96: totals.PlusEncumbrance += abilVal; statKey = "Encumbrance"; break;
+            case 40: case 179: totals.PlusTraps += abilVal; statKey = "Traps"; break;
+            case 37: case 180: totals.PlusPicklocks += abilVal; statKey = "Picklocks"; break;
+            case 13: case 14: totals.PlusIlluminate += abilVal; statKey = "Illuminate"; break;
+            case 67: totals.PlusQuickness += abilVal; statKey = "Quickness"; break;
+
+            case 3: totals.PlusColdResist += abilVal; statKey = "Cold Resist"; break;
+            case 5: totals.PlusFireResist += abilVal; statKey = "Fire Resist"; break;
+            case 65: totals.PlusStoneResist += abilVal; statKey = "Stone Resist"; break;
+            case 66: totals.PlusLightningResist += abilVal; statKey = "Lightning Resist"; break;
+            case 147: totals.PlusWaterResist += abilVal; statKey = "Water Resist"; break;
+
+            case 24: totals.PlusProtEvil += abilVal; statKey = "Prot Evil"; break;
+            case 25: totals.PlusProtGood += abilVal; statKey = "Prot Good"; break;
+
+            case 92: totals.PlusPunchDmg += abilVal; statKey = "Punch Dmg"; break;
+            case 89: totals.PlusPunchAccy += abilVal; statKey = "Punch Accy"; break;
+            case 93: totals.PlusKickDmg += abilVal; statKey = "Kick Dmg"; break;
+            case 90: totals.PlusKickAccy += abilVal; statKey = "Kick Accy"; break;
+            case 94: totals.PlusJumpKickDmg += abilVal; statKey = "JumpKick Dmg"; break;
+            case 91: totals.PlusJumpKickAccy += abilVal; statKey = "JumpKick Accy"; break;
+        }
+
+        if (statKey is null) return;
+
+        // DR (ability 7) is stored ×10 — show the divided value; everything
+        // else shows the raw signed integer.
+        string displayVal = abilId == 7
+            ? string.Create(CultureInfo.InvariantCulture, $"{abilVal / 10.0:+0.#;-0.#}")
+            : abilVal.ToString("+0;-0", CultureInfo.InvariantCulture);
+        AddContribution(result, statKey, itemName, displayVal, tag);
+    }
+
+    private static void AddContribution(EquipmentStatBreakdown result, string statKey,
+                                        string itemName, string displayValue, string? tag = null)
+    {
+        if (!result.PerStatSources.TryGetValue(statKey, out List<StatContribution>? sources))
+        {
+            sources = new List<StatContribution>();
+            result.PerStatSources[statKey] = sources;
+        }
+        sources.Add(new StatContribution(itemName, displayValue, tag));
+    }
+
+    // Safe numeric read of an Abil-N / base field off a game-data row: missing
+    // or non-numeric properties read as 0.
+    private static int GetInt(JsonElement row, string property)
+    {
+        if (row.ValueKind != JsonValueKind.Object) return 0;
+        if (!row.TryGetProperty(property, out JsonElement el)) return 0;
+        return el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out int v) ? v : 0;
     }
 }

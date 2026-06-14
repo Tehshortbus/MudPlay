@@ -65,6 +65,7 @@ public sealed class StashRoomManagerTests
         return new InventorySnapshot(
             new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
             EncumbranceReading.Empty,
+            Array.Empty<EquippedItem>(),
             DateTimeOffset.UtcNow);
     }
 

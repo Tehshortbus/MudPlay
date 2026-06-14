@@ -69,6 +69,7 @@ public sealed partial class InventoryManager : IDisposable
     private EncumbranceLevel _category = EncumbranceLevel.Unknown;
     private bool _loaded;
     private DateTimeOffset _lastUpdated = DateTimeOffset.MinValue;
+    private IReadOnlyList<EquippedItem> _equipped = Array.Empty<EquippedItem>();
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
     private bool _capturing;
@@ -104,6 +105,7 @@ public sealed partial class InventoryManager : IDisposable
                 return new InventorySnapshot(
                     new CurrencyHoldings(_copper, _silver, _gold, _platinum, _runic, _wealthCopper),
                     new EncumbranceReading(_curWeight, _maxWeight, _percentage, _category),
+                    _equipped,
                     _lastUpdated);
             }
         }
@@ -334,6 +336,7 @@ public sealed partial class InventoryManager : IDisposable
         itemsText = itemsText.TrimEnd('.', ' ');
 
         int copper = 0, silver = 0, gold = 0, platinum = 0, runic = 0;
+        var equipped = new List<EquippedItem>();
         if (itemsText.Length > 0)
         {
             foreach (string token in itemsText.Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -349,6 +352,19 @@ public sealed partial class InventoryManager : IDisposable
                         case "copper": copper = count; break;
                     }
                     currencyTokens.Add(token);
+                    continue;
+                }
+
+                // Worn items carry a trailing "(<Slot>)" suffix; carried-but-
+                // unworn items don't. Harvest the worn ones for equipment-bonus
+                // aggregation in the Character Workshop.
+                Match eq = EquippedSlotRegex().Match(token);
+                if (eq.Success)
+                {
+                    string name = eq.Groups[1].Value.TrimEnd();
+                    string slot = NormalizeSlot(eq.Groups[2].Value);
+                    if (name.Length > 0)
+                        equipped.Add(new EquippedItem(name, slot));
                 }
             }
         }
@@ -387,12 +403,13 @@ public sealed partial class InventoryManager : IDisposable
             _maxWeight = maxWeight;
             _percentage = percentage;
             _category = category;
+            _equipped = equipped;
             _loaded = true;
             _lastUpdated = DateTimeOffset.Now;
         }
 
         _log?.Debug(LogCategory,
-            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%]");
+            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}");
         Changed?.Invoke();
     }
 
@@ -504,6 +521,12 @@ public sealed partial class InventoryManager : IDisposable
         if (percentage <= 66) return EncumbranceLevel.Medium;
         return EncumbranceLevel.Heavy;
     }
+
+    // The game labels a two-handed weapon "(Two handed)" in your own inventory
+    // but "(Weapon Hand)" in player listings; fold both to one slot so callers
+    // see a single weapon slot regardless of where the line came from.
+    private static string NormalizeSlot(string slot) =>
+        slot.Equals("Two handed", StringComparison.Ordinal) ? "Weapon Hand" : slot;
 
     /// <summary>
     /// True when <paramref name="token"/> is exactly one currency entry
@@ -621,4 +644,10 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"(\d+)\s+(runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)")]
     private static partial Regex PriceSegmentRegex();
+
+    // Worn-item suffix. 21-slot model plus the weapon/off-hand labels; the two
+    // weapon spellings ("Weapon Hand" / "Two handed") both land here and are
+    // folded by NormalizeSlot.
+    [GeneratedRegex(@"^(.*?)\s+\((Head|Ears|Eyes|Face|Neck|Back|Torso|Arms|Wrist|Hands|Finger|Waist|Legs|Feet|Worn|Off-Hand|Weapon Hand|Two handed)\)$")]
+    private static partial Regex EquippedSlotRegex();
 }

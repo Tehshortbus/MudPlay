@@ -1,0 +1,208 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="620"
+             x:Class="FujinTerm.Views.CharacterWorkshop.CharacterInfoSectionView"
+             x:DataType="vm:CharacterInfoSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+        </Style>
+        <Style Selector="Border.Box">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22" RowDefinitions="Auto,*">
+
+        <!-- Title + refresh controls -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
+            <TextBlock Grid.Column="0" Text="Character Info"
+                       Foreground="{StaticResource ChromeFgBrush}"
+                       FontSize="{StaticResource FontSizeLg}"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="Reset" Margin="0,0,6,0"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="Re-pull the live stat snapshot, re-aggregate worn gear, and recompute combat accuracy."/>
+            <Button Grid.Column="2" Content="Refresh"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="Re-read the current inventory and recompute equipment bonuses + combat accuracy."/>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+
+                <!-- ===== Box A: Base Stats ===== -->
+                <Border Grid.Column="0" Classes="Box" VerticalAlignment="Top">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Base Stats"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="{StaticResource FontSizeMd}"
+                                   FontWeight="SemiBold" Margin="0,0,0,4"/>
+
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name" Margin="0,0,12,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Name}" Margin="0,0,0,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Race" Margin="0,0,12,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Race}" Margin="0,0,0,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Class" Margin="0,0,12,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding CharClass}" Margin="0,0,0,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Level" Margin="0,0,12,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding Level}" Margin="0,0,0,2"/>
+                        </Grid>
+
+                        <TextBlock Classes="SectionHeader" Text="RESOURCES"/>
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Exp" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Exp}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="CP" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Cp}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Lives" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Lives}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="AC" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding ArmourClass}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Hits" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Hits}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="{Binding ManaLabel}" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding ManaValue}" Margin="0,0,0,2"/>
+                        </Grid>
+
+                        <TextBlock Classes="SectionHeader" Text="ATTRIBUTES"/>
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Strength}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Agility" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Agility}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Intellect" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Intellect}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="Health" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding Health}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Willpower" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Willpower}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="Charm" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Charm}" Margin="0,0,0,2"/>
+                        </Grid>
+
+                        <TextBlock Classes="SectionHeader" Text="SKILLS"/>
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Perception" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Perception}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Stealth" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldValue" Text="{Binding Stealth}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Thievery" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding Thievery}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Classes="FieldLabel" Text="Traps" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldValue" Text="{Binding Traps}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Picklocks" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding Picklocks}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel" Text="Tracking" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Tracking}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Martial Arts" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding MartialArts}" Margin="0,0,14,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldLabel" Text="Magic Res" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldValue" Text="{Binding MagicRes}" Margin="0,0,0,2"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Spellcasting" Margin="0,0,10,2"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding Spellcasting}" Margin="0,0,14,2"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== Right column: Box B + Box C ===== -->
+                <StackPanel Grid.Column="1" Spacing="14">
+
+                    <!-- Box B: Equipment Bonuses -->
+                    <Border Classes="Box">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Equipment Bonuses"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       FontSize="{StaticResource FontSizeMd}"
+                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <TextBlock Classes="FieldLabel"
+                                       Text="No worn item contributes a bonus."
+                                       IsVisible="{Binding !HasBonuses}"/>
+
+                            <ItemsControl ItemsSource="{Binding BonusRows}"
+                                          IsVisible="{Binding HasBonuses}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:EquipBonusRow">
+                                        <Grid ColumnDefinitions="*,Auto"
+                                              ToolTip.Tip="{Binding Tooltip}">
+                                            <TextBlock Grid.Column="0" Classes="FieldLabel"
+                                                       Text="{Binding Stat}" Margin="0,0,12,2"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Value}"
+                                                       Foreground="{StaticResource AccentRedBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="{StaticResource FontSizeMd}"
+                                                       Margin="0,0,0,2"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Box C: Derived Combat -->
+                    <Border Classes="Box">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Combat Accuracy"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       FontSize="{StaticResource FontSizeMd}"
+                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Attack" Margin="0,0,12,3"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding AttackAccuracy}" Margin="0,0,0,3"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Bash" Margin="0,0,12,3"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding BashAccuracy}" Margin="0,0,0,3"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Smash" Margin="0,0,12,3"
+                                           IsVisible="{Binding ShowSmash}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding SmashAccuracy}" Margin="0,0,0,3"
+                                           IsVisible="{Binding ShowSmash}"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Backstab" Margin="0,0,12,3"
+                                           IsVisible="{Binding ShowBackstab}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabAccuracy}" Margin="0,0,0,3"
+                                           IsVisible="{Binding ShowBackstab}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

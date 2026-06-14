@@ -101,6 +101,7 @@ public sealed class AutoDepositManagerTests : IDisposable
             Snapshot = new InventorySnapshot(
                 new CurrencyHoldings(copper, silver, gold, platinum, runic, totalCopperValue),
                 EncumbranceReading.Empty,
+                Array.Empty<EquippedItem>(),
                 DateTimeOffset.UtcNow);
             Cash.OnInventoryChanged();
         }

@@ -2722,7 +2722,7 @@ public partial class MainWindowViewModel : ObservableObject
         Views.CharacterWorkshop.CharacterWorkshopWindow window = new()
         {
             DataContext = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
-                svc.DeathRecovery, svc.Profile, sectionId),
+                svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, sectionId),
         };
         window.Closed += (_, _) => _workshop = null;
         _workshop = window;

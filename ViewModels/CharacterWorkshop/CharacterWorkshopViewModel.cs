@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Recovery;
 using FujinTerm.Services;
 
@@ -9,9 +11,9 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Shell view-model for the Character Workshop window. Mirrors MudProxy's
 /// <c>CharacterStatusDialog</c> shape: a flat tab strip across the six
 /// Phase-10 tabs — Character Info / Death Recovery / Level Projection /
-/// CP Allocation / Quest Status / Equipment Manager. Death Recovery is
-/// wired to <see cref="DeathRecoveryManager"/>; the other five are stub
-/// placeholders until their tab ships in later Phase-10 PRs.
+/// CP Allocation / Quest Status / Equipment Manager. Character Info and
+/// Death Recovery are wired; the other four are stub placeholders until
+/// their tab ships in later Phase-10 PRs.
 /// </summary>
 public sealed partial class CharacterWorkshopViewModel : ObservableObject
 {
@@ -22,19 +24,20 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject
     public CharacterWorkshopViewModel(
         DeathRecoveryManager recovery,
         ProfileService profile,
+        PlayerStats playerStats,
+        GameDataCache gameData,
+        InventoryManager inventory,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(playerStats);
+        ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(inventory);
 
-        // Tab order matches the Phase-10 plan's nav order. Death Recovery
-        // is the one wired tab; the rest are stubs until their PR lands.
-        Sections.Add(new StubWorkshopSectionViewModel(
-            "characterinfo", "Character Info",
-            "Phase 10 — PR 10.3–10.4",
-            "Live stat sheet (base + equipment bonuses + computed combat accuracy), a " +
-            "monster matchup showing hit chance in both directions, and the current-alignment " +
-            "readout. Wires when the Character Info tab ships."));
+        // Tab order matches the Phase-10 plan's nav order. Character Info and
+        // Death Recovery are wired; the rest are stubs until their PR lands.
+        Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory));
 
         // The one wired tab.
         Sections.Add(new DeathSectionViewModel(recovery, profile));

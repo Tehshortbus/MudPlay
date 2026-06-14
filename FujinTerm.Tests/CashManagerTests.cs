@@ -549,6 +549,7 @@ public sealed class CashManagerTests
         return new InventorySnapshot(
             new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
             new EncumbranceReading(currentWeight, maxWeight, 0, EncumbranceLevel.None),
+            Array.Empty<EquippedItem>(),
             DateTimeOffset.UtcNow);
     }
 
@@ -563,6 +564,7 @@ public sealed class CashManagerTests
         return new InventorySnapshot(
             new CurrencyHoldings(copper, silver, gold, platinum, runic, wealthValue),
             EncumbranceReading.Empty,
+            Array.Empty<EquippedItem>(),
             DateTimeOffset.UtcNow);
     }
 
