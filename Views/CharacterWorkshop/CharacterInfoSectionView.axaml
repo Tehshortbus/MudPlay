@@ -8,12 +8,6 @@
              x:DataType="vm:CharacterInfoSectionViewModel">
 
     <UserControl.Styles>
-        <Style Selector="TextBlock.SectionHeader">
-            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,12,0,4"/>
-        </Style>
         <Style Selector="TextBlock.FieldLabel">
             <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
@@ -57,11 +51,6 @@
                 <!-- ===== Box A: Base Stats ===== -->
                 <Border Grid.Column="0" Classes="Box" VerticalAlignment="Top">
                     <StackPanel Spacing="2">
-                        <TextBlock Text="Base Stats"
-                                   Foreground="{StaticResource ChromeFgBrush}"
-                                   FontSize="{StaticResource FontSizeMd}"
-                                   FontWeight="SemiBold" Margin="0,0,0,4"/>
-
                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name" Margin="0,0,12,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Name}" Margin="0,0,0,2"/>
@@ -73,8 +62,7 @@
                             <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding Level}" Margin="0,0,0,2"/>
                         </Grid>
 
-                        <TextBlock Classes="SectionHeader" Text="RESOURCES"/>
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8,0,0">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Exp" Margin="0,0,10,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Exp}" Margin="0,0,14,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="CP" Margin="0,0,10,2"/>
@@ -91,8 +79,7 @@
                             <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding ManaValue}" Margin="0,0,0,2"/>
                         </Grid>
 
-                        <TextBlock Classes="SectionHeader" Text="ATTRIBUTES"/>
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8,0,0">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,0,10,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Strength}" Margin="0,0,14,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Agility" Margin="0,0,10,2"/>
@@ -109,8 +96,7 @@
                             <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldValue" Text="{Binding Charm}" Margin="0,0,0,2"/>
                         </Grid>
 
-                        <TextBlock Classes="SectionHeader" Text="SKILLS"/>
-                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0,8,0,0">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Perception" Margin="0,0,10,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding Perception}" Margin="0,0,14,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Stealth" Margin="0,0,10,2"/>
