@@ -105,6 +105,18 @@ public partial class NavigationManagerDialog : Window
         await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move);
     }
 
+    // Routes a walk-to dropdown click back into the VM. Same minimal
+    // code-behind pattern as the Navigation window's search dropdown —
+    // a ListBox.ItemTemplate row can't host an ICommand without an extra
+    // binding helper, so a pointer handler keeps the wiring lean.
+    private void OnWalkToResultClicked(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: RoomSearchResult result }) return;
+        if (DataContext is not NavigationManagerDialogViewModel vm) return;
+        vm.SelectSearchResultCommand.Execute(result);
+        e.Handled = true;
+    }
+
     private void OnDragOver(object? sender, DragEventArgs e)
         => e.DragEffects = e.DataTransfer.Contains(RowFormat)
             ? DragDropEffects.Move

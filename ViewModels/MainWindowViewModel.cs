@@ -3151,7 +3151,10 @@ public partial class MainWindowViewModel : ObservableObject
             folders: s.NavFolders,
             runner: s.LoopRunner,
             mpImporter: s.MpImporter,
-            log: s.Log);
+            log: s.Log,
+            search: s.RoomSearch,
+            walker: s.Walker,
+            movement: s.MovementControl);
         _manageDialogOpen = true;
         try
         {

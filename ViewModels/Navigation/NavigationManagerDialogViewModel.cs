@@ -52,6 +52,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private readonly LoopRunner? _runner;
     private readonly MpFileImporter? _mpImporter;
     private readonly LogService? _log;
+    private readonly RoomSearchService? _search;
+    private readonly AutoWalkManager? _walker;
+    private readonly MovementController? _movement;
     private readonly Action? _onDraftConsumed;
 
     /// <summary>Flat backing rows for the Loops pane — source the tree is grouped from + drives <see cref="HasLoops"/>.</summary>
@@ -113,7 +116,10 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         Action? onDraftConsumed = null,
         LoopRunner? runner = null,
         MpFileImporter? mpImporter = null,
-        LogService? log = null)
+        LogService? log = null,
+        RoomSearchService? search = null,
+        AutoWalkManager? walker = null,
+        MovementController? movement = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(lairSetups);
@@ -131,6 +137,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _runner = runner;
         _mpImporter = mpImporter;
         _log = log;
+        _search = search;
+        _walker = walker;
+        _movement = movement;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
@@ -573,11 +582,126 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         return await _dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
     }
 
+    // ----- walk-to search ------------------------------------------------
+
+    /// <summary>
+    /// Footer search box text. Mirrors the Navigation window's room
+    /// search — type a name / coordinate, pick a dropdown row, then Run
+    /// walks there and closes the dialog. Only wired when a
+    /// <see cref="RoomSearchService"/> + <see cref="AutoWalkManager"/>
+    /// were supplied (the live Manage flows); the transient import-only
+    /// instance leaves them null and the box stays hidden.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunSearchCommand))]
+    private string _searchQuery = string.Empty;
+
+    /// <summary>Current dropdown matches for <see cref="SearchQuery"/>.</summary>
+    public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
+
+    /// <summary>True while the dropdown has rows to show.</summary>
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    /// <summary>True when the footer search box should render (search + walker wired).</summary>
+    public bool HasWalkToSearch => _search is not null && _walker is not null;
+
+    /// <summary>
+    /// Destination locked in when the user picks a dropdown row, so Run
+    /// walks to the exact room they chose rather than re-resolving the
+    /// text. Cleared whenever the user edits the box again.
+    /// </summary>
+    private RoomKey? _queuedDestination;
+
+    /// <summary>Set while we write the chosen room name back into the box, to keep the dropdown from reopening.</summary>
+    private bool _suppressSearch;
+
+    private Avalonia.Threading.DispatcherTimer? _searchDebounce;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        if (_suppressSearch) return;
+        // Editing the text invalidates a previously-picked row.
+        _queuedDestination = null;
+        _searchDebounce ??= new Avalonia.Threading.DispatcherTimer { Interval = SearchDebounceDelay };
+        _searchDebounce.Stop();
+        _searchDebounce.Tick -= OnSearchDebounceTick;
+        _searchDebounce.Tick += OnSearchDebounceTick;
+        _searchDebounce.Start();
+    }
+
+    private void OnSearchDebounceTick(object? sender, EventArgs e)
+    {
+        _searchDebounce?.Stop();
+        RebuildSearchResults(SearchQuery);
+    }
+
+    private void RebuildSearchResults(string query)
+    {
+        SearchResults.Clear();
+        string needle = query?.Trim() ?? string.Empty;
+        if (_search is null || needle.Length < 1)
+        {
+            OnPropertyChanged(nameof(HasSearchResults));
+            return;
+        }
+        foreach (RoomSearchResult m in _search.Search(needle, cap: 200).Take(50))
+            SearchResults.Add(m);
+        OnPropertyChanged(nameof(HasSearchResults));
+    }
+
+    /// <summary>
+    /// User clicked a dropdown row — lock its room in as the destination
+    /// and reflect the name in the box. Informational rows (a monster
+    /// with no recorded lair) carry no walkable target, so they no-op.
+    /// </summary>
+    [RelayCommand]
+    private void SelectSearchResult(RoomSearchResult? result)
+    {
+        if (result is null || result.IsInformational) return;
+        _queuedDestination = result.Key;
+        _suppressSearch = true;
+        SearchQuery = result.DisplayName;
+        _suppressSearch = false;
+        SearchResults.Clear();
+        OnPropertyChanged(nameof(HasSearchResults));
+        RunSearchCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanRunSearch => HasWalkToSearch && !string.IsNullOrWhiteSpace(SearchQuery);
+
+    /// <summary>
+    /// Walk to the searched room and close the dialog. Uses the row the
+    /// user picked if any; otherwise resolves the first walkable match of
+    /// the typed text. Stops any running loop / Auto-Lair first so the
+    /// explicit walk-to takes precedence over background automation.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunSearch))]
+    private void RunSearch()
+    {
+        if (_walker is null) return;
+
+        RoomKey? dest = _queuedDestination;
+        if (dest is null)
+        {
+            string needle = SearchQuery?.Trim() ?? string.Empty;
+            if (needle.Length == 0 || _search is null) return;
+            dest = _search.Search(needle, cap: 50)
+                          .FirstOrDefault(m => !m.IsInformational)?.Key;
+        }
+        if (dest is not { } target) return;
+
+        _movement?.Stop();
+        _walker.WalkTo(target);
+        Close();
+    }
+
     // ----- close -----------------------------------------------------
 
     [RelayCommand]
     private void Close()
     {
+        _searchDebounce?.Stop();
         _loops.LoopsChanged -= RebuildLoops;
         _lairSetups.SetupsChanged -= RebuildLairSetups;
         if (_folders is not null) _folders.FoldersChanged -= OnFoldersChanged;

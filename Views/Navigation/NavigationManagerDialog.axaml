@@ -374,15 +374,67 @@
                 </Grid>
             </Border>
 
-            <!-- Footer -->
-            <StackPanel Grid.Row="2"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Spacing="8">
-                <Button Content="Close"
+            <!-- Footer — walk-to search box + Run on the left, Close on
+                 the right. Type / pick a room, hit Run: the dialog closes
+                 and the walker heads there. The dropdown floats above the
+                 box (its own Grid.Row="1" overlay anchored bottom) so it
+                 doesn't shove the footer around. -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0"
+                         Name="WalkToBox"
+                         Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsVisible="{Binding HasWalkToSearch}"
+                         PlaceholderText="Walk to room — search name or map/room…"
+                         FontSize="11"
+                         VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1"
+                        Content="Run"
+                        IsVisible="{Binding HasWalkToSearch}"
+                        Foreground="{StaticResource AccentGreenBrush}"
+                        Command="{Binding RunSearchCommand}"
+                        ToolTip.Tip="Walk to the searched room and close this window"
+                        MinWidth="70"/>
+                <Button Grid.Column="2"
+                        Content="Close"
                         Command="{Binding CloseCommand}"
                         IsCancel="True" MinWidth="80"/>
-            </StackPanel>
+            </Grid>
+
+            <!-- Walk-to search dropdown — floats over the body, anchored to
+                 the footer's left edge. Hidden until matches exist. -->
+            <Border Grid.Row="1"
+                    IsVisible="{Binding HasSearchResults}"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="0,0,0,2"
+                    Background="{StaticResource ChromeBgElevBrush}"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Width="320" MaxHeight="260">
+                <ListBox ItemsSource="{Binding SearchResults}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RoomSearchResult">
+                            <Border Padding="8,5"
+                                    PointerPressed="OnWalkToResultClicked"
+                                    Background="Transparent">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PrimaryLine}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SecondaryLine}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding SecondaryLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
         </Grid>
     </Border>
 </Window>

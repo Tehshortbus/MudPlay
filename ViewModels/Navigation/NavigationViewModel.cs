@@ -1790,7 +1790,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             },
             runner: _services.LoopRunner,
             mpImporter: _services.MpImporter,
-            log: _services.Log);
+            log: _services.Log,
+            search: _services.RoomSearch,
+            walker: _services.Walker,
+            movement: _services.MovementControl);
         await _services.Dialogs
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
