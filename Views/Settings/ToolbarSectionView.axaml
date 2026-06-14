@@ -114,6 +114,21 @@
                                  IsEnabled="{Binding VerticalSideEnabled}"
                                  ToolTip.Tip="Dock the vertical toolbar to the right edge."/>
                 </StackPanel>
+
+                <!-- Wholesale copy from another character: layout stages into
+                     the pending list (Apply to keep); keybinds apply live. -->
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                    <Button Content="Copy from profile…"
+                            Command="{Binding CopyFromProfileCommand}"
+                            ToolTip.Tip="Replace this character's toolbar layout + keybinds with another character's. The layout stages here (Apply to keep); keybinds apply immediately. Chords that clash with this profile's macros are skipped."/>
+                    <TextBlock Text="{Binding CopyStatus}"
+                               IsVisible="{Binding CopyStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeSm}"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"
+                               MaxWidth="340"/>
+                </StackPanel>
             </StackPanel>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"

@@ -110,6 +110,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [NotifyCanExecuteChangedFor(nameof(ResetShortcutKeybindCommand))]
     private ToolbarRowViewModel? _selectedShortcutRow;
 
+    /// <summary>
+    /// Inline result notice for the most recent "Copy from profile" run —
+    /// surfaced in the tab (never as a system toast). Lists keybinds that
+    /// were skipped because they clash with this profile's macros.
+    /// </summary>
+    [ObservableProperty] private string? _copyStatus;
+
     public ToolbarSectionViewModel(
         ProfileService profile,
         KeybindingStore keybindings,
@@ -194,7 +201,9 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         LoadFromProfile();
         _suppressDirty = false;
         ClearDirty();
+        CopyStatus = null;
         OnPropertyChanged(nameof(HasProfile));
+        CopyFromProfileCommand.NotifyCanExecuteChanged();
     }
 
     private void LoadFromProfile()
@@ -216,9 +225,12 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     }
 
     private ToolbarSettings ReadDtoOrDefault()
+        => _profile.Current is { } profile ? ReadDtoFrom(profile) : new ToolbarSettings();
+
+    /// <summary>Pull the Toolbar settings DTO out of any profile, defaulting on absence / malformed JSON.</summary>
+    private static ToolbarSettings ReadDtoFrom(CharacterProfile profile)
     {
-        CharacterProfile? profile = _profile.Current;
-        if (profile?.Settings is null) return new ToolbarSettings();
+        if (profile.Settings is null) return new ToolbarSettings();
         if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new ToolbarSettings();
         try
         {
@@ -403,6 +415,124 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     /// <summary>Reset every built-in chord back to its default in one shot.</summary>
     [RelayCommand]
     private void ResetAllKeybinds() => _keybindings.ResetAllToDefaults();
+
+    /// <summary>
+    /// Copy another character's toolbar layout + keybinds wholesale.
+    /// Per the staged-layout / live-keybind split: the source's layout
+    /// loads into the pending <see cref="Rows"/> (committed on Apply,
+    /// reverted on Cancel), while its keybinds apply immediately through
+    /// <see cref="KeybindingStore.Rebind"/> — mirroring the per-row Change
+    /// keybind path. Chords that clash with one of THIS profile's macros
+    /// are skipped (a keybind can never share a chord with a macro) and
+    /// reported inline via <see cref="CopyStatus"/>.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasProfile))]
+    private async Task CopyFromProfileAsync()
+    {
+        if (_profile.Current is null) return;
+
+        List<ProfileRef> candidates = _profile.ListAll()
+            .Where(r => !(string.Equals(r.Bbs,  _profile.CurrentBbsName,     StringComparison.OrdinalIgnoreCase)
+                       && string.Equals(r.Name, _profile.CurrentProfileName, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            CopyStatus = "No other saved profiles to copy from.";
+            return;
+        }
+
+        ViewModels.Profile.ProfilePickerDialogViewModel picker = new(
+            candidates,
+            windowTitle: "Copy toolbar + shortcuts",
+            prompt: "Copy the toolbar layout and keybinds from another character. "
+                  + "This replaces the current toolbar, shortcuts, and keybinds.",
+            confirmLabel: "Copy");
+
+        ProfileRef? picked = await _dialogs
+            .OpenWindowAsync<ViewModels.Profile.ProfilePickerDialogViewModel, ProfileRef>(picker);
+        if (picked is null) return;
+
+        CharacterProfile? source;
+        try
+        {
+            source = JsonStore.Load<CharacterProfile>(AppPaths.CharacterProfileFile(picked.Bbs, picked.Name));
+        }
+        catch (Exception ex)
+        {
+            CopyStatus = $"Couldn't read '{picked.Name}': {ex.Message}";
+            return;
+        }
+        if (source is null)
+        {
+            CopyStatus = $"Couldn't read '{picked.Name}'.";
+            return;
+        }
+
+        ApplyCopiedLayout(source);
+        ApplyCopiedKeybinds(source, out List<string> skipped);
+
+        CopyStatus = skipped.Count == 0
+            ? $"Copied toolbar + shortcuts from {picked.Name}. Apply to keep the layout."
+            : $"Copied from {picked.Name}. Skipped {skipped.Count} keybind(s) that clash with this "
+              + $"profile's macros: {string.Join(", ", skipped)}. Apply to keep the layout.";
+    }
+
+    /// <summary>Load the source profile's toolbar layout + orientation into the pending <see cref="Rows"/>.</summary>
+    private void ApplyCopiedLayout(CharacterProfile source)
+    {
+        ToolbarSettings dto = ReadDtoFrom(source);
+        List<ToolbarItem> items = dto.Layout is { Count: > 0 } layout ? layout : ToolbarDefaults.Build();
+        Rows.Clear();
+        foreach (ToolbarItem item in items)
+        {
+            ToolbarRowViewModel row = new(item.Kind, item.ActionId);
+            if (row.BoundAction is BuiltInAction a)
+                row.RefreshShortcutHint(_keybindings.Get(a));
+            Rows.Add(row);
+        }
+        // These setters route through Dirty() via the OnXChanged partials.
+        ShowToolbar     = dto.Visible;
+        VerticalToolbar = dto.Vertical;
+        VerticalSide    = dto.Side;
+        SelectedRow = null;
+        RefreshShortcutRows();
+        Dirty();
+    }
+
+    /// <summary>
+    /// Rebind every built-in action to the source profile's effective chord
+    /// (its sparse override, else the seed default). Skips — and reports —
+    /// any chord already owned by one of this profile's macros. Internal
+    /// built-in conflicts can't arise: the source set was already
+    /// conflict-free when authored.
+    /// </summary>
+    private void ApplyCopiedKeybinds(CharacterProfile source, out List<string> skipped)
+    {
+        skipped = new();
+        Dictionary<BuiltInAction, KeyChord> overrides = source.BuiltInKeybindings ?? new();
+
+        HashSet<BuiltInAction> actions = new(KeybindingStore.DefaultBindings.Keys);
+        foreach (BuiltInAction a in overrides.Keys) actions.Add(a);
+
+        foreach (BuiltInAction action in actions)
+        {
+            KeyChord target = overrides.TryGetValue(action, out KeyChord ov)
+                ? ov
+                : KeybindingStore.DefaultBindings.TryGetValue(action, out KeyChord def) ? def : KeyChord.Empty;
+
+            if (target.Equals(_keybindings.Get(action))) continue;
+
+            if (!target.IsEmpty
+                && _macros.FindMatch(target.Key.ToString(), target.Ctrl, target.Shift, target.Alt) is not null)
+            {
+                skipped.Add(KeybindingStore.ActionLabel(action));
+                continue;
+            }
+
+            _keybindings.Rebind(action, target);
+        }
+    }
 
     // Auto-generated PropertyChanged hooks for the visibility / orientation
     // observables — re-route into the shared Dirty() helper so the Apply

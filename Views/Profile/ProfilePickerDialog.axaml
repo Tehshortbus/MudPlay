@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="380" d:DesignHeight="420"
         x:Class="FujinTerm.Views.Profile.ProfilePickerDialog"
         x:DataType="vm:ProfilePickerDialogViewModel"
-        Title="Open profile"
+        Title="{Binding WindowTitle}"
         Width="380" Height="420"
         WindowStartupLocation="CenterOwner">
 
@@ -15,9 +15,10 @@
         <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
 
             <TextBlock Grid.Row="0"
-                       Text="Pick a character profile to load."
+                       Text="{Binding Prompt}"
                        Foreground="{StaticResource ChromeFgMutedBrush}"
-                       FontSize="11"/>
+                       FontSize="11"
+                       TextWrapping="Wrap"/>
 
             <Border Grid.Row="1"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
@@ -38,7 +39,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <TextBlock Text="No saved profiles yet — use File → Save profile as… to create one."
+                    <TextBlock Text="{Binding EmptyMessage}"
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                FontSize="11" TextWrapping="Wrap"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -48,7 +49,7 @@
             </Border>
 
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                <Button Content="Open"   Command="{Binding OpenCommand}"
+                <Button Content="{Binding ConfirmLabel}" Command="{Binding OpenCommand}"
                         IsEnabled="{Binding HasSelection}"
                         IsDefault="True" MinWidth="80"/>
                 <Button Content="Cancel" Command="{Binding CancelCommand}"
