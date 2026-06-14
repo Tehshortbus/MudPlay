@@ -1058,11 +1058,7 @@ public sealed partial class CombatManager : IDisposable
             && _classifier.Current is { } live
             && HasEngageable(live))
         {
-            _combatOff = false;
-            _log?.Info(LogCategory,
-                "combat resumed after interrupt — re-engaging room");
-            _currentTarget = null;     // force a fresh pick + equip
-            OnEntitiesObserved(live);
+            ResumeEngage(live);
             return;
         }
 
@@ -1108,6 +1104,23 @@ public sealed partial class CombatManager : IDisposable
     }
 
     /// <summary>
+    /// Re-engage the room after an interrupt turned our auto-attack off
+    /// (an in-between self-heal / buff cast, a stun, etc.) while an
+    /// engageable mob is still present. Disarms the interrupt flag, drops
+    /// the stale target so <see cref="OnEntitiesObserved"/> re-picks and
+    /// re-equips cleanly, then re-issues the round's action. Shared by the
+    /// mob-swing resume (<see cref="OnCombatLine"/>) and the immediate
+    /// combat-off resume (<see cref="OnCombatStatus"/>).
+    /// </summary>
+    private void ResumeEngage(RoomEntitiesObservation live)
+    {
+        _combatOff = false;
+        _log?.Info(LogCategory, "combat resumed after interrupt — re-engaging room");
+        _currentTarget = null;     // force a fresh pick + equip
+        OnEntitiesObserved(live);
+    }
+
+    /// <summary>
     /// Track <c>*Combat On*/*Combat Off*</c>. <c>Off</c> arms the
     /// resume-after-interrupt path (see <see cref="_combatOff"/>);
     /// <c>Engaged</c> means the server is swinging for us again, so we
@@ -1121,6 +1134,29 @@ public sealed partial class CombatManager : IDisposable
         {
             _combatOff = true;
             _engageConfirmed = false;
+
+            // Resume immediately when an in-between cast (self-heal / buff
+            // from CastingDirector) interrupted a weapon swing: the server
+            // stopped attacking for us, but we still hold a target and the
+            // mob is in the room, so re-issue now instead of waiting for the
+            // mob's next combat line — that wait is up to a full round and
+            // shows as a long pause before re-attack. Gated on:
+            //   • _isEnabled  — don't drive combat while the engine is off.
+            //   • _currentTarget != null — a *Combat Off* that follows a kill
+            //     finds the target already cleared by the death watcher, so
+            //     we never swing at a corpse.
+            //   • _castingSpellTarget == null — in spell mode the spell IS the
+            //     round's action; the OnCombatTick heartbeat re-issues it, so
+            //     leave that flow untouched (only weapon attackers resume here).
+            //   • HasEngageable(live) — a mob remains to fight.
+            if (_isEnabled()
+                && _currentTarget is not null
+                && _castingSpellTarget is null
+                && _classifier.Current is { } live
+                && HasEngageable(live))
+            {
+                ResumeEngage(live);
+            }
         }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
         {

@@ -1340,15 +1340,16 @@ public sealed class CombatManagerTests
     // ----- combat-off interrupt resume ---------------------------------
 
     [Fact]
-    public void CombatOff_ThenMobLine_ResumesAttack()
+    public void CombatOff_ResumesAttackImmediately()
     {
         // Live repro: fighting an acid slime (empty DeathLine, like 152
-        // stock monsters), the user manually casts a buff mid-round.
+        // stock monsters), an in-between self-heal / buff casts mid-round.
         // The cast emits *Combat Off* — the server stops swinging for us
-        // but the slime is still alive and keeps attacking. Without the
-        // resume path, _currentTarget stays set, OnEntitiesObserved
-        // short-circuits ("server still swinging"), and combat goes
-        // silent. The next mob swing after *Combat Off* must re-engage.
+        // but the slime is still alive. We must re-issue the attack on the
+        // *Combat Off* line itself, not wait for the slime's next swing
+        // (up to a full round away — the "long pause before re-attack"
+        // symptom). _currentTarget is live and we're not in spell mode, so
+        // the resume fires now.
         using Harness h = new();
         h.AddMonster(1, "acid slime", killable: false);
 
@@ -1357,16 +1358,17 @@ public sealed class CombatManagerTests
         Assert.Equal("a acid slime", h.LastSent);
         Assert.Equal("acid slime", h.Combat.CurrentTarget);
 
-        // Manual buff cast turns combat off; no room re-display.
+        // In-between cast turns combat off; no room re-display. We resume
+        // the swing immediately rather than waiting for the next mob line.
         h.Feed("*Combat Off*");
-        Assert.Single(h.Sent);     // no swing on the status line itself
-
-        // The slime keeps attacking — first mob line re-engages.
-        h.Feed("The acid slime claws you for 5 damage!");
-
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("a acid slime", h.LastSent);
         Assert.Equal("acid slime", h.Combat.CurrentTarget);
+
+        // The slime's subsequent swing must NOT add a redundant attack —
+        // SendAttack already disarmed the interrupt flag.
+        h.Feed("The acid slime claws you for 5 damage!");
+        Assert.Equal(2, h.Sent.Count);
     }
 
     [Fact]
@@ -1388,11 +1390,12 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void CombatOff_ThenEngaged_DisarmsResume()
+    public void CombatOff_ThenEngaged_NoRedundantReswing()
     {
-        // *Combat Off* then *Combat Engaged* (server resumed swinging on
-        // its own) disarms the resume — a following mob line must not
-        // fire a redundant attack.
+        // *Combat Off* resumes the swing immediately (send #2); the server
+        // then confirms with *Combat Engaged*. A following mob line must
+        // NOT fire a third, redundant attack — the resume's own SendAttack
+        // already disarmed the interrupt flag, and Engaged set the confirm.
         using Harness h = new();
         h.AddMonster(1, "acid slime", killable: false);
 
@@ -1400,10 +1403,12 @@ public sealed class CombatManagerTests
         Assert.Single(h.Sent);
 
         h.Feed("*Combat Off*");
+        Assert.Equal(2, h.Sent.Count);     // immediate resume
+
         h.Feed("*Combat Engaged*");
         h.Feed("The acid slime claws you for 5 damage!");
 
-        Assert.Single(h.Sent);     // resume disarmed by Engaged
+        Assert.Equal(2, h.Sent.Count);     // no redundant third swing
     }
 
     // ----- engage-verification safety net ------------------------------
