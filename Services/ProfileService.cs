@@ -119,6 +119,7 @@ public sealed class ProfileService
         CharacterProfile loaded = JsonStore.Load<CharacterProfile>(path)
             ?? throw new FileNotFoundException(
                 $"Character profile '{profileName}' on '{bbsName}' not found.", path);
+        NormalizeForLoad(loaded);
 
         if (Current is not null)
         {
@@ -140,6 +141,29 @@ public sealed class ProfileService
         CurrentBbsName = bbsName;
         ProfileLoaded?.Invoke(loaded);
         return loaded;
+    }
+
+    /// <summary>
+    /// Normalize a freshly-deserialized profile's BBS-keyed lookups to be
+    /// case-insensitive. BBS names are case-insensitive (they're folder names
+    /// on a case-insensitive filesystem), but <see cref="CharacterProfile.BbsCredentials"/>
+    /// may have been keyed with different casing than the BBS profile's
+    /// <c>Name</c> (e.g. a <c>"Playpen"</c> credential key for a <c>"playpen"</c>
+    /// BBS), which a default case-sensitive dictionary fails to resolve.
+    /// Rebuilds the dictionary with <see cref="StringComparer.OrdinalIgnoreCase"/>
+    /// (last-wins on any case-duplicate key). Internal for test access.
+    /// </summary>
+    internal static void NormalizeForLoad(CharacterProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (profile.BbsCredentials is { Count: > 0 } creds
+            && !ReferenceEquals(creds.Comparer, StringComparer.OrdinalIgnoreCase))
+        {
+            var normalized = new Dictionary<string, BbsCredentials>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, BbsCredentials> kv in creds)
+                normalized[kv.Key] = kv.Value;
+            profile.BbsCredentials = normalized;
+        }
     }
 
     /// <summary>

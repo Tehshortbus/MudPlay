@@ -399,7 +399,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     /// </summary>
     private void CommitCredentials(string bbs, CharacterProfile character)
     {
-        character.BbsCredentials ??= new();
+        // Case-insensitive: BBS names are folder names on a case-insensitive
+        // FS, so a 'Playpen' credential must resolve for a 'playpen' BBS.
+        character.BbsCredentials ??= new(StringComparer.OrdinalIgnoreCase);
         if (!character.BbsCredentials.TryGetValue(bbs, out BbsCredentials? cred))
         {
             cred = new BbsCredentials();
