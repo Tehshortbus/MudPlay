@@ -115,4 +115,10 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
 
     private void OnRecoveryChanged(object? sender, PropertyChangedEventArgs _) => Refresh();
     private void OnProfileChanged(CharacterProfile _) => Refresh();
+
+    public override void Dispose()
+    {
+        _recovery.PropertyChanged -= OnRecoveryChanged;
+        _profile.ProfileLoaded -= OnProfileChanged;
+    }
 }

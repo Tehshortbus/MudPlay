@@ -131,7 +131,10 @@ public static class ExperienceTableCalculator
             {
                 double expMul, expDiv;
 
-                if (i <= 26)
+                // VB6 source boundary is `If i <= 27` — level 27 takes the
+                // GetExpModifiers "Case Else" 23/20 step (value-equivalent to
+                // the 115/100 bracket, but kept exact to the source).
+                if (i <= 27)
                 {
                     (expMul, expDiv) = GetExpModifiers_Stock(i);
                 }

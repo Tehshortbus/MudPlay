@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Game;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Recovery;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
@@ -11,15 +12,25 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Shell view-model for the Character Workshop window. Mirrors MudProxy's
 /// <c>CharacterStatusDialog</c> shape: a flat tab strip across the six
 /// Phase-10 tabs — Character Info / Death Recovery / Level Projection /
-/// CP Allocation / Quest Status / Equipment Manager. Character Info and
-/// Death Recovery are wired; the other four are stub placeholders until
-/// their tab ships in later Phase-10 PRs.
+/// CP Allocation / Quest Status / Equipment Manager. Character Info, Death
+/// Recovery, and Level Projection are wired; the remaining three are stub
+/// placeholders until their tab ships in later Phase-10 PRs.
 /// </summary>
-public sealed partial class CharacterWorkshopViewModel : ObservableObject
+public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisposable
 {
+    private readonly ProfileService _profile;
+    private readonly GameDataCache _gameData;
+
     public ObservableCollection<WorkshopSectionViewModel> Sections { get; } = new();
 
     [ObservableProperty] private WorkshopSectionViewModel? _selectedSection;
+
+    /// <summary>
+    /// Window title — <c>"Player Workshop - {character} - {bbs} - {realm}"</c>.
+    /// Recomputed live as the profile / pinned BBS / active game-data set
+    /// (realm) change while the window is open.
+    /// </summary>
+    [ObservableProperty] private string _windowTitle = "Player Workshop";
 
     public CharacterWorkshopViewModel(
         DeathRecoveryManager recovery,
@@ -36,20 +47,17 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(players);
+        _profile = profile;
+        _gameData = gameData;
 
         // Tab order matches the Phase-10 plan's nav order. Character Info and
         // Death Recovery are wired; the rest are stubs until their PR lands.
         Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players));
 
-        // The one wired tab.
         Sections.Add(new DeathSectionViewModel(recovery, profile));
 
-        Sections.Add(new StubWorkshopSectionViewModel(
-            "levelprojection", "Level Projection",
-            "Phase 10 — PR 10.6",
-            "Per-level exp curve with HP / MP ranges and regen projection across a target " +
-            "level range, realm-aware, reflecting the planned CP build. Wires when the Level " +
-            "Projection tab ships."));
+        Sections.Add(new LevelProjectionSectionViewModel(playerStats, gameData));
+
         Sections.Add(new StubWorkshopSectionViewModel(
             "cpallocation", "CP Allocation",
             "Phase 10 — PR 10.7–10.9",
@@ -73,5 +81,36 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject
             ? Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase))
               ?? Sections.FirstOrDefault()
             : Sections.FirstOrDefault();
+
+        UpdateTitle();
+        _profile.ProfileLoaded += OnProfileTitleChanged;
+        _profile.BbsPinApplied += OnProfileTitleChanged;
+        _gameData.ActiveSetChanged += OnSetTitleChanged;
+    }
+
+    private void OnProfileTitleChanged(CharacterProfile _) => UpdateTitle();
+    private void OnSetTitleChanged(string? _) => UpdateTitle();
+
+    private void UpdateTitle()
+    {
+        string character = _profile.CurrentProfileName ?? "{default}";
+        string bbs = _profile.CurrentBbsName ?? "{No BBS}";
+        string realm = _gameData.ActiveRealm == RealmType.ParaMud ? "ParaMUD" : "Stock";
+        WindowTitle = $"Player Workshop - {character} - {bbs} - {realm}";
+    }
+
+    /// <summary>
+    /// Dispose every section so they detach from long-lived service events,
+    /// and unsubscribe the title's own hooks. Called from the Workshop window's
+    /// <c>Closed</c> handler — the window (and these view-models) are rebuilt on
+    /// each open.
+    /// </summary>
+    public void Dispose()
+    {
+        _profile.ProfileLoaded -= OnProfileTitleChanged;
+        _profile.BbsPinApplied -= OnProfileTitleChanged;
+        _gameData.ActiveSetChanged -= OnSetTitleChanged;
+        foreach (WorkshopSectionViewModel section in Sections)
+            section.Dispose();
     }
 }

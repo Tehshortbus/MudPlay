@@ -2732,12 +2732,26 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         AppServices svc = AppServices.Current;
-        Views.CharacterWorkshop.CharacterWorkshopWindow window = new()
+        // Pull the loaded profile's stored stats into PlayerStats before the
+        // Workshop reads them, so every tab opens populated from the profile.
+        // Only when the live stats are blank (no `stat` parsed this session, or
+        // the profile was loaded before its first capture) — a live snapshot
+        // stays authoritative and isn't clobbered.
+        if (string.IsNullOrEmpty(svc.PlayerStats.Name)
+            && svc.Profile.Current?.LastKnownStats is { } storedStats)
         {
-            DataContext = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
-                svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players, sectionId),
+            svc.Stats.Hydrate(storedStats);
+        }
+        var workshopVm = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
+            svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players, sectionId);
+        Views.CharacterWorkshop.CharacterWorkshopWindow window = new() { DataContext = workshopVm };
+        // The Workshop VM + its sections are rebuilt on every open, so dispose
+        // them on close to detach their long-lived service-event subscriptions.
+        window.Closed += (_, _) =>
+        {
+            workshopVm.Dispose();
+            _workshop = null;
         };
-        window.Closed += (_, _) => _workshop = null;
         _workshop = window;
         window.Show(main);
     }

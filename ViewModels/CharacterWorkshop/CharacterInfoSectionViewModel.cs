@@ -688,4 +688,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         RefreshMatchup();
     }
     private void OnPlayersChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshAlignment();
+
+    public override void Dispose()
+    {
+        _stats.PropertyChanged -= OnStatsChanged;
+        _inventory.Changed -= OnInventoryChanged;
+        _playerDb.Players.CollectionChanged -= OnPlayersChanged;
+    }
 }

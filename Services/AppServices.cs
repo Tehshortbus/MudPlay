@@ -1388,7 +1388,15 @@ public sealed class AppServices
 
         Stats.ScreenParsed += snapshot =>
         {
-            if (Profile.Current is { } p) p.LastKnownStats = snapshot;
+            if (Profile.Current is { } p)
+            {
+                p.LastKnownStats = snapshot;
+                // Persist immediately so the next profile load hydrates these
+                // stats into PlayerStats (and the Character Workshop reads them)
+                // — without this the snapshot lived only in memory and was lost
+                // on reload, leaving the Workshop blank. No-op on unnamed drafts.
+                Profile.Save();
+            }
             SeedSpellbook(snapshot);
         };
         // Restore the snapshot back into live PlayerStats whenever a
