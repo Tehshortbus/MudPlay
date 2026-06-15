@@ -537,4 +537,52 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(1, profile.LastKnownRoom!.Map);
         Assert.Equal(3, profile.LastKnownRoom!.Room);
     }
+
+    // ----- death capture (PR 10.5) -----------------------------------
+
+    [Fact]
+    public void NoteDeath_CapturesDeathpileFromInventorySnapshot()
+    {
+        RoomTracker tracker = NewTracker();
+        var profile = new FujinTerm.Models.Profile.CharacterProfile();
+        tracker.Hydrate(profile);
+
+        var snapshot = new FujinTerm.Game.Inventory.InventorySnapshot(
+            FujinTerm.Game.Inventory.CurrencyHoldings.Empty,
+            FujinTerm.Game.Inventory.EncumbranceReading.Empty,
+            new[] { new FujinTerm.Game.Inventory.EquippedItem("rusty dagger", "Weapon Hand") },
+            new[] { "torch", "ration" },
+            DateTimeOffset.UtcNow);
+        tracker.AttachInventorySnapshot(() => snapshot);
+
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));  // die at 1/1
+        tracker.NoteDeath(2, "You now have 2 lives remaining.");
+
+        FujinTerm.Models.Profile.DeathRecord rec = Assert.Single(profile.DeathHistory!);
+        Assert.Equal(1, rec.Room!.Map);
+        Assert.Equal(1, rec.Room!.Room);
+
+        FujinTerm.Models.Profile.DeathItem worn = Assert.Single(rec.EquippedAtDeath!);
+        Assert.Equal("rusty dagger", worn.Name);
+        Assert.True(worn.IsHeld);
+
+        Assert.Equal(2, rec.LostItems!.Count);
+        Assert.Contains(rec.LostItems!, i => i.Name == "torch");
+        Assert.Contains(rec.LostItems!, i => i.Name == "ration");
+    }
+
+    [Fact]
+    public void NoteDeath_NoSnapshotProvider_LeavesItemListsNull()
+    {
+        RoomTracker tracker = NewTracker();
+        var profile = new FujinTerm.Models.Profile.CharacterProfile();
+        tracker.Hydrate(profile);
+
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
+        tracker.NoteDeath(2, "You now have 2 lives remaining.");
+
+        FujinTerm.Models.Profile.DeathRecord rec = Assert.Single(profile.DeathHistory!);
+        Assert.Null(rec.EquippedAtDeath);
+        Assert.Null(rec.LostItems);
+    }
 }

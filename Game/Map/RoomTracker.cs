@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
@@ -80,6 +81,15 @@ public sealed class RoomTracker
     /// runs in memory but doesn't touch any profile.
     /// </summary>
     private CharacterProfile? _profile;
+
+    /// <summary>
+    /// Optional live-inventory snapshot provider. When set,
+    /// <see cref="NoteDeath"/> records the deathpile contents (worn +
+    /// carried items) on the death record. Bound by <c>AppServices</c>
+    /// once the <c>InventoryManager</c> exists; null in tests / before
+    /// wiring, in which case death records simply carry no item lists.
+    /// </summary>
+    private Func<InventorySnapshot>? _inventorySnapshot;
 
     /// <summary>
     /// Look-direction suppression deadline. While the wall clock is at
@@ -233,6 +243,18 @@ public sealed class RoomTracker
     public void OnProfileClosed()
     {
         _profile = null;
+    }
+
+    /// <summary>
+    /// Bind the live inventory snapshot provider so <see cref="NoteDeath"/>
+    /// can capture the deathpile contents onto the death record. Set by
+    /// <see cref="AppServices"/> once the <c>InventoryManager</c> is built;
+    /// optional — unbound, death records carry no item lists.
+    /// </summary>
+    public void AttachInventorySnapshot(Func<InventorySnapshot> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _inventorySnapshot = provider;
     }
 
     // ----- inputs -----------------------------------------------------
@@ -402,9 +424,17 @@ public sealed class RoomTracker
                 RoomName = died?.Name,
                 Status = DeathRecoveryStatus.Active,
             };
+            if (_inventorySnapshot is { } provider)
+            {
+                (List<DeathItem> equipped, List<DeathItem> lost) =
+                    DeathLootCapture.FromSnapshot(provider());
+                record.EquippedAtDeath = equipped;
+                record.LostItems = lost;
+            }
             _profile.DeathHistory.Add(record);
             _log?.Log(LogSeverity.Info, "RoomTracker",
-                $"Death recorded at {(died?.Key.ToString() ?? "(unknown room)")}; {livesRemaining} lives remaining.");
+                $"Death recorded at {(died?.Key.ToString() ?? "(unknown room)")}; {livesRemaining} lives remaining; " +
+                $"deathpile worn={record.EquippedAtDeath?.Count ?? 0}, carried={record.LostItems?.Count ?? 0}.");
         }
 
         while (_pending.TryDequeue(out _)) { /* drain */ }

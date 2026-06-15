@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace FujinTerm.Models.Profile;
@@ -23,12 +24,12 @@ namespace FujinTerm.Models.Profile;
 /// custom realm phrasings round-trip without lossy normalization.
 /// </para>
 /// <para>
-/// Capturing the <i>items lost</i> at death (and what was equipped at
-/// the time, for re-equip on recovery) is deferred until the inventory
-/// tracker exists — there is no <c>LostItems</c> field yet, so the
-/// DEATH section renders an Items-Lost placeholder and the
-/// <see cref="DeathRecoveryStatus.Partial"/> distinction can only be
-/// reached manually for now.
+/// <see cref="EquippedAtDeath"/> and <see cref="LostItems"/> capture
+/// the deathpile contents at the moment of death from the inventory
+/// tracker's last-known snapshot — the worn half (re-equippable on
+/// recovery) and the carried-but-unworn half respectively. Either may
+/// be <c>null</c> on records written before inventory tracking landed,
+/// or when no <c>i</c> dump had been observed yet.
 /// </para>
 /// </remarks>
 public sealed class DeathRecord
@@ -66,6 +67,22 @@ public sealed class DeathRecord
     public string? RecoveryMessage { get; set; }
 
     /// <summary>
+    /// Items worn at the moment of death, captured from the inventory
+    /// tracker's last-known snapshot. Each carries its slot so auto-equip
+    /// can pick the right re-equip verb (<c>hold</c> vs <c>wear</c>).
+    /// <c>null</c> when inventory tracking hadn't observed an <c>i</c> dump
+    /// (or on pre-tracking records).
+    /// </summary>
+    public List<DeathItem>? EquippedAtDeath { get; set; }
+
+    /// <summary>
+    /// Carried-but-unworn items lost into the deathpile, captured from the
+    /// inventory tracker's last-known snapshot. <c>null</c> under the same
+    /// conditions as <see cref="EquippedAtDeath"/>.
+    /// </summary>
+    public List<DeathItem>? LostItems { get; set; }
+
+    /// <summary>
     /// <c>"{Map}/{Room}"</c> for the DEATH grid's map/room column, or
     /// <c>"—"</c> when the death room was unknown. Display-only — not
     /// persisted.
@@ -81,6 +98,27 @@ public sealed class DeathRecord
     /// </summary>
     [JsonIgnore]
     public string DiedText => At == default ? "—" : At.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+
+    /// <summary>
+    /// Newline-joined worn-item names for the DEATH detail panel's
+    /// "Equipped at death" column, or a placeholder when none were
+    /// recorded. Display-only — not persisted.
+    /// </summary>
+    [JsonIgnore]
+    public string EquippedAtDeathText => DescribeItems(EquippedAtDeath);
+
+    /// <summary>
+    /// Newline-joined carried-item names for the DEATH detail panel's
+    /// "Inventory lost" column, or a placeholder when none were recorded.
+    /// Display-only — not persisted.
+    /// </summary>
+    [JsonIgnore]
+    public string LostItemsText => DescribeItems(LostItems);
+
+    private static string DescribeItems(List<DeathItem>? items) =>
+        items is { Count: > 0 }
+            ? string.Join("\n", items.Select(i => i.Name))
+            : "None recorded.";
 
     public DeathRecord() { }
 

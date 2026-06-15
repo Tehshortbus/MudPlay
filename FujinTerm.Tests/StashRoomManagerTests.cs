@@ -66,6 +66,7 @@ public sealed class StashRoomManagerTests
             new CurrencyHoldings(copper, silver, gold, platinum, runic, 0),
             EncumbranceReading.Empty,
             Array.Empty<EquippedItem>(),
+            Array.Empty<string>(),
             DateTimeOffset.UtcNow);
     }
 

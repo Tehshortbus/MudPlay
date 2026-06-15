@@ -1,8 +1,13 @@
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Game.Combat;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
+using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Recovery;
 
@@ -48,7 +53,21 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     private readonly RoomTracker _roomTracker;
     private readonly LogService? _log;
     private AutoWalkManager? _walker;
+    private Action<byte[]>? _wireSender;
+    private LineExtractor? _lines;
+    private Func<InventorySnapshot>? _inventorySnapshot;
     private bool _disposed;
+
+    // In-progress recovery context — one deathpile at a time (you stand in one
+    // room). _activeRecovery is the record we're recovering; _remaining holds
+    // the pile item names not yet seen picked up; _recoveryTotal is the pile
+    // size when recovery began. _pendingRecoverNow is a record the user pressed
+    // "Recover Now" on while away — it forces a grab on arrival even when
+    // Auto-Recover is off.
+    private DeathRecord? _activeRecovery;
+    private DeathRecord? _pendingRecoverNow;
+    private readonly HashSet<string> _remaining = new(StringComparer.OrdinalIgnoreCase);
+    private int _recoveryTotal;
 
     [ObservableProperty]
     [field: Owner(typeof(DeathRecoveryManager))]
@@ -82,6 +101,9 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 
         _deathWatcher.PlayerDied += OnPlayerDied;
         _profile.ProfileLoaded += OnProfileLoaded;
+        // Re-entering a room that holds one of our deathpiles drives the
+        // Active → Partial → Recovered transitions (and the auto-grab).
+        _roomTracker.StateChanged += OnRoomChanged;
 
         // Seed observables from whatever profile is already loaded
         // (handles late-construction order — engine wired AFTER
@@ -133,6 +155,44 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     /// <see cref="AppServices"/>.
     /// </summary>
     public void AttachWalker(AutoWalkManager walker) => _walker = walker;
+
+    /// <summary>
+    /// Bind the gate-wrapped wire sender so auto-recover can send
+    /// <c>get</c> / <c>wear</c> / <c>hold</c> commands. Bound by
+    /// <c>MainWindowViewModel</c> on connect; unbound, the grab + re-equip
+    /// are no-ops (status transitions still follow observed pickups).
+    /// </summary>
+    public void SetWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _wireSender = sender;
+    }
+
+    /// <summary>
+    /// Bind the per-session <see cref="LineExtractor"/> so the manager can
+    /// watch for <c>You pick up ...</c> confirmations that drive the
+    /// Partial → Recovered transition (and the per-item re-equip). Bound by
+    /// <c>MainWindowViewModel</c> on connect.
+    /// </summary>
+    public void AttachLineExtractor(LineExtractor lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (ReferenceEquals(_lines, lines)) return;
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = lines;
+        _lines.LineEmitted += OnLine;
+    }
+
+    /// <summary>
+    /// Bind the live inventory snapshot provider so <see cref="SimulateDeath"/>
+    /// captures a realistic deathpile. Real deaths capture via
+    /// <see cref="RoomTracker.NoteDeath"/>; this is only for the test button.
+    /// </summary>
+    public void AttachInventorySnapshot(Func<InventorySnapshot> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _inventorySnapshot = provider;
+    }
 
     /// <summary>
     /// The loaded profile's death history (oldest → newest). Empty when
@@ -224,12 +284,11 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Demand signal to recover a deathpile. If we're already standing
-    /// in the death room, grab every matching pile item we can in place;
-    /// otherwise start walking there and recover on arrival. The actual
-    /// item grab + re-equip is deferred until inventory tracking records
-    /// what was lost / worn at death — for now the in-room branch logs
-    /// the intent and the walk branch just routes the walker.
+    /// Demand signal to recover a deathpile. If we're already standing in
+    /// the death room, grab every recorded pile item in place (and re-equip
+    /// the worn ones when Auto-Equip is on); otherwise start walking there
+    /// and grab on arrival. The grab is forced regardless of the Auto-Recover
+    /// toggle — the user asked for it explicitly.
     /// </summary>
     public bool RecoverNow(DeathRecord record)
     {
@@ -242,16 +301,176 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 
         if (inRoom)
         {
-            _log?.Info(LogCategory,
-                $"recover-now: in death room {where} — grabbing pile (item grab deferred until inventory tracking lands)");
+            _log?.Info(LogCategory, $"recover-now: in death room {where} — grabbing pile");
+            BeginRecovery(record, autoGrab: true);
             return true;
         }
 
+        // Walking back: arm a one-shot force-grab so arrival recovers even
+        // when Auto-Recover is off.
+        _pendingRecoverNow = record;
         bool walking = WalkToDeathRoom(record);
         if (walking)
             _log?.Info(LogCategory, $"recover-now: walking to {where} then recovering");
+        else
+            _pendingRecoverNow = null;
         return walking;
     }
+
+    // ----- recovery state machine -------------------------------------
+
+    /// <summary>
+    /// Fires on every room transition. On entering (Confirmed) a room that
+    /// holds an un-recovered deathpile, begin recovery; on leaving the pile
+    /// we were recovering, drop the in-progress tracker (the record stays
+    /// Partial until we return and finish).
+    /// </summary>
+    private void OnRoomChanged(RoomTransition t)
+    {
+        Room? room = t.NewRoom;
+
+        if (_activeRecovery is { Room: { } ar }
+            && (room is null || ar.Map != room.Key.Map || ar.Room != room.Key.Room))
+        {
+            _activeRecovery = null;
+            _remaining.Clear();
+        }
+
+        if (room is null || t.NewConfidence != RoomConfidence.Confirmed) return;
+
+        DeathRecord? rec = FindRecoverableAt(room.Key);
+        if (rec is null || ReferenceEquals(_activeRecovery, rec)) return;
+
+        bool force = ReferenceEquals(_pendingRecoverNow, rec);
+        if (force) _pendingRecoverNow = null;
+        BeginRecovery(rec, autoGrab: AutoRecover || force);
+    }
+
+    /// <summary>Newest un-recovered record whose death room matches <paramref name="key"/>.</summary>
+    private DeathRecord? FindRecoverableAt(RoomKey key)
+    {
+        if (_profile.Current?.DeathHistory is not { } list) return null;
+        DeathRecord? best = null;
+        foreach (DeathRecord r in list)
+        {
+            if (r.Status == DeathRecoveryStatus.Recovered) continue;
+            if (r.Room is not { } room || room.Map != key.Map || room.Room != key.Room) continue;
+            if (best is null || r.RecordNumber > best.RecordNumber) best = r;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Start (or restart) recovering a deathpile: mark the record Partial,
+    /// arm the per-item tracker, and — when <paramref name="autoGrab"/> — send
+    /// a <c>get</c> for every pile item. Active → Partial → Recovered then
+    /// follows observed <c>You pick up ...</c> lines. A known-empty pile
+    /// (nothing was lost) jumps straight to Recovered.
+    /// </summary>
+    private void BeginRecovery(DeathRecord record, bool autoGrab)
+    {
+        _activeRecovery = record;
+        _remaining.Clear();
+        AddNames(_remaining, record.EquippedAtDeath);
+        AddNames(_remaining, record.LostItems);
+        _recoveryTotal = _remaining.Count;
+
+        bool known = record.EquippedAtDeath is not null || record.LostItems is not null;
+        if (known && _recoveryTotal == 0)
+        {
+            FinalizeRecovered(record, "Nothing was lost at death.");
+            return;
+        }
+
+        if (record.Status == DeathRecoveryStatus.Active)
+            SetStatus(record, DeathRecoveryStatus.Partial, "Returned to the death room — recovering.");
+
+        if (!autoGrab) return;
+        foreach (string name in _remaining)
+        {
+            _log?.Info(LogCategory, $"auto-recover: get {name}");
+            Send($"get {name}");
+        }
+    }
+
+    /// <summary>
+    /// Watch for <c>You pick up &lt;item&gt;.</c> confirmations while a
+    /// recovery is in progress. Each matched pile item is cleared from the
+    /// remaining set (and re-equipped when Auto-Equip is on and it was worn
+    /// at death); the record flips to Recovered once the set empties.
+    /// </summary>
+    private void OnLine(LineExtractor.EmittedLine line)
+    {
+        if (line.IsPromptLine || _activeRecovery is null || _remaining.Count == 0) return;
+
+        Match m = PickUpRegex().Match(line.Text);
+        if (!m.Success) return;
+        string picked = m.Groups[1].Value;
+
+        // The pickup wording may carry an article ("You pick up a torch.")
+        // while the recorded name is bare ("torch"), so match by containment.
+        List<string>? hits = null;
+        foreach (string name in _remaining)
+        {
+            if (picked.Contains(name, StringComparison.OrdinalIgnoreCase))
+                (hits ??= new()).Add(name);
+        }
+        if (hits is null) return;
+
+        DeathRecord record = _activeRecovery;
+        foreach (string name in hits)
+        {
+            _remaining.Remove(name);
+            ReequipIfWorn(record, name);
+        }
+
+        if (_remaining.Count == 0)
+            FinalizeRecovered(record, $"Recovered {_recoveryTotal} item(s).");
+    }
+
+    private void ReequipIfWorn(DeathRecord record, string name)
+    {
+        if (!AutoEquip || record.EquippedAtDeath is not { } worn) return;
+        DeathItem? item = worn.FirstOrDefault(i =>
+            string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (item is null) return;
+        string verb = item.IsHeld ? "hold" : "wear";
+        _log?.Info(LogCategory, $"auto-equip: {verb} {name}");
+        Send($"{verb} {name}");
+    }
+
+    private void FinalizeRecovered(DeathRecord record, string message)
+    {
+        _activeRecovery = null;
+        _remaining.Clear();
+        SetStatus(record, DeathRecoveryStatus.Recovered, message);
+    }
+
+    private void SetStatus(DeathRecord record, DeathRecoveryStatus status, string message)
+    {
+        if (record.Status == status) return;
+        record.Status = status;
+        record.RecoveryMessage = message;
+        _profile.Save();
+        OnPropertyChanged(nameof(Records));
+    }
+
+    private static void AddNames(HashSet<string> set, List<DeathItem>? items)
+    {
+        if (items is null) return;
+        foreach (DeathItem i in items)
+            if (!string.IsNullOrWhiteSpace(i.Name)) set.Add(i.Name);
+    }
+
+    private void Send(string text)
+    {
+        if (_wireSender is null) return;
+        _wireSender(Encoding.Latin1.GetBytes(text + "\r"));
+    }
+
+    /// <summary>Test seam — feed a plain inbound line to the pickup parser.</summary>
+    internal void FeedTestLine(string text, DateTimeOffset? when = null)
+        => OnLine(new LineExtractor.EmittedLine(text, [], when ?? DateTimeOffset.UtcNow, false));
 
     /// <summary>
     /// Append a synthetic death record (the "Simulate Death" button) so
@@ -273,6 +492,13 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
             RoomName = here?.Name,
             Status = DeathRecoveryStatus.Active,
         };
+        if (_inventorySnapshot is { } provider)
+        {
+            (List<DeathItem> equipped, List<DeathItem> lost) =
+                DeathLootCapture.FromSnapshot(provider());
+            record.EquippedAtDeath = equipped;
+            record.LostItems = lost;
+        }
         p.DeathHistory.Add(record);
         _profile.Save();
         SyncFromProfile();
@@ -285,5 +511,15 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         _disposed = true;
         _deathWatcher.PlayerDied -= OnPlayerDied;
         _profile.ProfileLoaded -= OnProfileLoaded;
+        _roomTracker.StateChanged -= OnRoomChanged;
+        if (_lines is not null) _lines.LineEmitted -= OnLine;
+        _lines = null;
     }
+
+    // "You pick up <item>." — the get-confirmation MajorMUD prints when an
+    // item leaves the ground and enters inventory. A realm that phrases this
+    // differently simply leaves the record Partial (the user can Mark
+    // Recovered); no false transition occurs.
+    [GeneratedRegex(@"^You pick up (.+?)\.$", RegexOptions.CultureInvariant)]
+    private static partial Regex PickUpRegex();
 }

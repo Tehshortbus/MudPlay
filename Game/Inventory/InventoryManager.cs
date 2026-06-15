@@ -70,6 +70,11 @@ public sealed partial class InventoryManager : IDisposable
     private bool _loaded;
     private DateTimeOffset _lastUpdated = DateTimeOffset.MinValue;
     private IReadOnlyList<EquippedItem> _equipped = Array.Empty<EquippedItem>();
+    // Carried-but-unworn item names from the last full 'i' dump. Unlike the
+    // worn set, this is NOT patched incrementally between dumps — death-recovery
+    // reads it as a best-effort "last-known" deathpile snapshot, and the worn
+    // half (which IS patched) is deduped against it at capture time.
+    private IReadOnlyList<string> _carried = Array.Empty<string>();
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
     private bool _capturing;
@@ -106,6 +111,7 @@ public sealed partial class InventoryManager : IDisposable
                     new CurrencyHoldings(_copper, _silver, _gold, _platinum, _runic, _wealthCopper),
                     new EncumbranceReading(_curWeight, _maxWeight, _percentage, _category),
                     _equipped,
+                    _carried,
                     _lastUpdated);
             }
         }
@@ -386,6 +392,7 @@ public sealed partial class InventoryManager : IDisposable
 
         int copper = 0, silver = 0, gold = 0, platinum = 0, runic = 0;
         var equipped = new List<EquippedItem>();
+        var carried = new List<string>();
         if (itemsText.Length > 0)
         {
             foreach (string token in itemsText.Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -406,7 +413,8 @@ public sealed partial class InventoryManager : IDisposable
 
                 // Worn items carry a trailing "(<Slot>)" suffix; carried-but-
                 // unworn items don't. Harvest the worn ones for equipment-bonus
-                // aggregation in the Character Workshop.
+                // aggregation in the Character Workshop; the unworn ones feed
+                // death-recovery's "inventory lost" capture.
                 Match eq = EquippedSlotRegex().Match(token);
                 if (eq.Success)
                 {
@@ -414,6 +422,10 @@ public sealed partial class InventoryManager : IDisposable
                     string slot = NormalizeSlot(eq.Groups[2].Value);
                     if (name.Length > 0)
                         equipped.Add(new EquippedItem(name, slot));
+                }
+                else if (token.Length > 0)
+                {
+                    carried.Add(token);
                 }
             }
         }
@@ -453,12 +465,13 @@ public sealed partial class InventoryManager : IDisposable
             _percentage = percentage;
             _category = category;
             _equipped = equipped;
+            _carried = carried;
             _loaded = true;
             _lastUpdated = DateTimeOffset.Now;
         }
 
         _log?.Debug(LogCategory,
-            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}");
+            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}");
         Changed?.Invoke();
     }
 

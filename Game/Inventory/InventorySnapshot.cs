@@ -12,6 +12,12 @@ namespace FujinTerm.Game.Inventory;
 /// Worn items harvested from the last full <c>i</c> dump (those with a trailing
 /// <c>(&lt;Slot&gt;)</c> suffix). Empty until the first dump is parsed.
 /// </param>
+/// <param name="CarriedItems">
+/// Carried-but-unworn item names harvested from the last full <c>i</c> dump
+/// (those <i>without</i> a slot suffix), currency tokens excluded. Empty until
+/// the first dump is parsed. Used by death-recovery to record the "inventory
+/// lost" half of a deathpile (the worn half comes from <see cref="EquippedItems"/>).
+/// </param>
 /// <param name="LastUpdated">
 /// When this snapshot was last refreshed.
 /// <see cref="System.DateTimeOffset.MinValue"/> means never observed —
@@ -22,6 +28,7 @@ public readonly record struct InventorySnapshot(
     CurrencyHoldings Currency,
     EncumbranceReading Encumbrance,
     System.Collections.Generic.IReadOnlyList<EquippedItem> EquippedItems,
+    System.Collections.Generic.IReadOnlyList<string> CarriedItems,
     System.DateTimeOffset LastUpdated)
 {
     /// <summary>Never-observed snapshot.</summary>
@@ -29,5 +36,6 @@ public readonly record struct InventorySnapshot(
         CurrencyHoldings.Empty,
         EncumbranceReading.Empty,
         System.Array.Empty<EquippedItem>(),
+        System.Array.Empty<string>(),
         System.DateTimeOffset.MinValue);
 }

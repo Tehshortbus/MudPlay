@@ -2104,6 +2104,12 @@ public sealed class AppServices
         // character's first gate evaluation waits for a fresh `i`.
         Inventory = new Game.Inventory.InventoryManager(Log);
         Profile.ProfileLoaded += _ => Inventory.MarkStale();
+        // PR 10.5 — death-recovery deathpile capture. RoomTracker.NoteDeath
+        // records the worn + carried items from the last-known `i` snapshot
+        // onto the death record; DeathRecoveryManager.SimulateDeath captures
+        // the same way for the test button.
+        RoomTracker.AttachInventorySnapshot(() => Inventory.Snapshot);
+        DeathRecovery.AttachInventorySnapshot(() => Inventory.Snapshot);
 
         // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches

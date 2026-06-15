@@ -33,11 +33,11 @@
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,8">
             <CheckBox Grid.Column="0" Content="Auto-Recover Deathpiles"
                       IsChecked="{Binding AutoRecover, Mode=TwoWay}"
-                      ToolTip.Tip="On re-entering a room holding your deathpile, grab the lost items (ignoring per-item auto-get policy). Item grab is inert until inventory tracking lands; the preference persists now."/>
+                      ToolTip.Tip="On re-entering a room holding your deathpile, grab the recorded pile items (ignoring per-item auto-get policy)."/>
             <CheckBox Grid.Column="1" Content="Auto-Equip After Recovery"
                       Margin="16,0,0,0"
                       IsChecked="{Binding AutoEquip, Mode=TwoWay}"
-                      ToolTip.Tip="Re-equip items that were worn at death after recovering them. Inert until inventory tracking records what was equipped at death."/>
+                      ToolTip.Tip="Re-equip items that were worn at death as they are recovered from the deathpile."/>
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <TextBlock Classes="FieldLabel" Text="Lives:" VerticalAlignment="Center"/>
                 <TextBlock Classes="FieldValue" Text="{Binding LivesRemaining}" VerticalAlignment="Center"/>
@@ -48,7 +48,7 @@
         <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
             <Button Content="Recover Now" Margin="0,0,6,6"
                     Command="{Binding RecoverNowCommand}"
-                    ToolTip.Tip="Recover this deathpile: grab the matching items in place if you're standing in the death room, otherwise walk there first. Item grab is inert until inventory tracking lands."/>
+                    ToolTip.Tip="Recover this deathpile: grab the recorded items in place if you're standing in the death room, otherwise walk there first and grab on arrival."/>
             <Button Content="Mark Recovered" Margin="0,0,6,6"
                     Command="{Binding MarkRecoveredCommand}"/>
             <Button Content="View Entry" Margin="0,0,6,6"
@@ -129,18 +129,19 @@
                     </StackPanel>
 
                     <!-- Equipped vs inventory item loss, split MudProxy-style.
-                         Both lists are placeholders until inventory tracking
-                         records what was worn / carried at death. -->
+                         Captured from the inventory tracker's last-known
+                         snapshot at death (one item per line; "None recorded."
+                         when the snapshot was empty or pre-tracking). -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                         <StackPanel Grid.Column="0" Spacing="4">
                             <TextBlock Classes="SectionHeader" Text="Equipped at death" Margin="0,0,0,2"/>
-                            <TextBlock Classes="FieldLabel" TextWrapping="Wrap"
-                                       Text="Recorded once inventory tracking lands."/>
+                            <TextBlock Classes="FieldValue" TextWrapping="Wrap" FontWeight="Normal"
+                                       Text="{Binding SelectedRecord.EquippedAtDeathText, FallbackValue='—'}"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="4">
                             <TextBlock Classes="SectionHeader" Text="Inventory lost" Margin="0,0,0,2"/>
-                            <TextBlock Classes="FieldLabel" TextWrapping="Wrap"
-                                       Text="Recorded once inventory tracking lands."/>
+                            <TextBlock Classes="FieldValue" TextWrapping="Wrap" FontWeight="Normal"
+                                       Text="{Binding SelectedRecord.LostItemsText, FallbackValue='—'}"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>

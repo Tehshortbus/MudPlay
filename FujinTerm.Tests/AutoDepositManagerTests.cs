@@ -102,6 +102,7 @@ public sealed class AutoDepositManagerTests : IDisposable
                 new CurrencyHoldings(copper, silver, gold, platinum, runic, totalCopperValue),
                 EncumbranceReading.Empty,
                 Array.Empty<EquippedItem>(),
+                Array.Empty<string>(),
                 DateTimeOffset.UtcNow);
             Cash.OnInventoryChanged();
         }

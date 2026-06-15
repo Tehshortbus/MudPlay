@@ -657,6 +657,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Wealth, Encumbrance) so CashManager's gate has live carry
         // weight; it buffers the wrapped deposit echo too.
         AppServices.Current.Inventory.AttachLineExtractor(Lines);
+        // PR 10.5 — death-recovery watches for `You pick up ...` confirmations
+        // to drive the deathpile Partial → Recovered transition + re-equip.
+        AppServices.Current.DeathRecovery.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
         // wrapper. The wrapper short-circuits while
         // EngineGate.IsLocked is true (today: while
@@ -731,6 +734,9 @@ public partial class MainWindowViewModel : ObservableObject
         // leader when a movement-failure line strands us as the party
         // walks off; rides the same gate-wrapped pipeline.
         AppServices.Current.ComebackRequest.SetWireSender(engineSend);
+        // PR 10.5 — death-recovery auto-grab (`get`) + auto-equip (`wear` /
+        // `hold`) ride the same gate-wrapped pipeline as the other engines.
+        AppServices.Current.DeathRecovery.SetWireSender(engineSend);
         // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
         // target pick via the same engine-send pipeline; the gate-
         // wrapped sender prevents the swing command from landing
@@ -2597,14 +2603,16 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        // Profiles are BBS-scoped: Save As targets the currently-pinned BBS
-        // silently. A draft with no BBS pinned yet has nowhere to live — the
-        // user must pick a BBS (Settings → BBS) before naming the profile.
-        string? bbs = profile.CurrentBbsName;
+        // Profiles are BBS-scoped. Prefer the explicitly-pinned BBS, but fall
+        // back to the active BBS shown in the title bar (ResolveActiveBbs) so a
+        // fresh {default} draft can be named against the BBS the user is looking
+        // at — hitting Save on an unnamed draft should reach the name prompt,
+        // not silently no-op. Only a truly BBS-less install has nowhere to save.
+        string? bbs = profile.CurrentBbsName ?? ResolveActiveBbs()?.Name;
         if (string.IsNullOrWhiteSpace(bbs))
         {
-            AppServices.Current.Log.Warn("Profile",
-                "Pick a BBS (Settings → BBS) before saving this profile.");
+            ShowInfoDialog("Save profile",
+                "Add a BBS first (Settings → BBS). Profiles are saved under a BBS.");
             return;
         }
 
@@ -2617,6 +2625,11 @@ public partial class MainWindowViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
 
         profile.SaveAs(bbs, name);
+        // SaveAs changes the loaded profile's identity (CurrentProfileName) but
+        // fires no ProfileLoaded/Mutated event, so the title bar + OS process
+        // title would otherwise keep showing the pre-save name ({default} for a
+        // freshly-named draft). Refresh the chrome explicitly.
+        RefreshBbsBindings();
         PromoteRecent(new ProfileRef(bbs, name));
         SyncProfileMenuState();
         AppServices.Current.Log.Info("Profile", $"Saved profile '{name}' on '{bbs}'.");

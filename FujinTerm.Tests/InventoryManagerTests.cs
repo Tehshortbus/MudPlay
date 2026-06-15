@@ -362,6 +362,36 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void FullParse_HarvestsCarriedUnwornItems()
+    {
+        using Harness h = new();
+
+        // padded vest is worn (slot suffix); padded helm / padded boots are
+        // carried-but-unworn; the trailing coins are currency.
+        h.Feed("You are carrying padded vest (Torso), padded helm, padded boots, "
+             + "5 copper farthings.");
+        h.Feed("You have no keys.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    20/2880  -  None  [0%]");
+
+        IReadOnlyList<string> carried = h.Inv.Snapshot.CarriedItems;
+        Assert.Contains("padded helm", carried);
+        Assert.Contains("padded boots", carried);
+        // Worn items + currency stay out of the carried list.
+        Assert.DoesNotContain("padded vest", carried);
+        Assert.DoesNotContain(carried, c => c.Contains("copper"));
+    }
+
+    [Fact]
+    public void FullParse_NoCarriedItems_EmptyCarriedList()
+    {
+        using Harness h = new();
+        // FeedFullInventory carries only currency — no unworn items.
+        FeedFullInventory(h);
+        Assert.Empty(h.Inv.Snapshot.CarriedItems);
+    }
+
+    [Fact]
     public void FullParse_OverridesIncrementalDrift()
     {
         using Harness h = new();
