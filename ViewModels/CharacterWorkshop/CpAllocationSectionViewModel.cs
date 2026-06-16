@@ -100,6 +100,16 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _inventory.Changed += OnInventoryChanged;
         _profile.ProfileLoaded += OnProfileLoaded;
         _trainerWalk.StateChanged += OnAutoTrainStateChanged;
+        _trainerWalk.PlanApplied += OnPlanApplied;
+    }
+
+    // Auto-train applied (and removed) a level's CP row — reload the grid so the
+    // consumed row disappears from the displayed plan.
+    private void OnPlanApplied()
+    {
+        LoadPlanFromProfile();
+        RefreshBaseline();
+        SyncAutoTrain();
     }
 
     // ----- commands -------------------------------------------------------
@@ -290,5 +300,6 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _inventory.Changed -= OnInventoryChanged;
         _profile.ProfileLoaded -= OnProfileLoaded;
         _trainerWalk.StateChanged -= OnAutoTrainStateChanged;
+        _trainerWalk.PlanApplied -= OnPlanApplied;
     }
 }

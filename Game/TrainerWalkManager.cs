@@ -71,6 +71,9 @@ public sealed class TrainerWalkManager : IDisposable
     /// <summary>Raised when <see cref="IsBusy"/> / <see cref="CanTrainNow"/> may have changed.</summary>
     public event Action? StateChanged;
 
+    /// <summary>Raised after a level's CP plan row is applied + removed — the CP tab reloads.</summary>
+    public event Action? PlanApplied;
+
     public TrainerWalkManager(PlayerStats stats, StatParser statParser, GameDataCache gameData,
                               ProfileService profile, RoomTracker tracker, BfsMapper bfs,
                               AutoWalkManager walker, LoopRunner loopRunner, AutoLairManager autoLair,
@@ -203,17 +206,9 @@ public sealed class TrainerWalkManager : IDisposable
         _attainedLevel = level;
         _log?.Info("AutoTrain", $"Trained to level {level}.");
 
-        // Manual Train Now always applies the plan; the armed path needs the
-        // Auto-train-stats toggle. Either way, only if there's a row to apply.
-        bool wantStats = !_armedRun || ReadSettings().AutoTrainStats;
-        bool hasPlan = _profile.Current?.CharacterPlan?.Any(e => e.Level == level) ?? false;
-        if (!wantStats || !hasPlan)
-        {
-            Finish(null);
-            return;
-        }
-
-        // Level + CP both lag the train line — refresh before applying the plan.
+        // Always refresh after a level-up so PlayerStats (Level / Exp / CP) is
+        // current — that re-anchors the Level Projection's top row and feeds the
+        // CP-apply decision (both Level and CP lag the train line).
         int session = _sessionId;
         _phase = Phase.RefreshingStats;
         _wire.Send("stat");
@@ -231,8 +226,13 @@ public sealed class TrainerWalkManager : IDisposable
     private void OnStatScreenParsed(LastKnownStats snapshot)
     {
         _liveExp = snapshot.Exp;   // authoritative resync of the running total
+        if (_phase != Phase.RefreshingStats || snapshot.Level != _attainedLevel) return;
 
-        if (_phase == Phase.RefreshingStats && snapshot.Level == _attainedLevel)
+        // Manual Train Now always applies the plan; the armed path needs the
+        // Auto-train-stats toggle. Only when there's a row for the new level.
+        bool wantStats = !_armedRun || ReadSettings().AutoTrainStats;
+        bool hasPlan = _profile.Current?.CharacterPlan?.Any(e => e.Level == _attainedLevel) ?? false;
+        if (wantStats && hasPlan)
         {
             _log?.Info("AutoTrain", $"Applying CP plan for level {_attainedLevel}.");
             _autoTrain.TrainNow();
@@ -240,22 +240,38 @@ public sealed class TrainerWalkManager : IDisposable
             {
                 _phase = Phase.ApplyingCp;
                 StateChanged?.Invoke();
+                return;
             }
-            else
-            {
-                Finish(null);   // nothing affordable to apply — done
-            }
+            // Nothing affordable to apply — leave the plan row in place.
         }
+
+        // Levelled up but applied no CP — keep the plan row (per spec); the
+        // refreshed level still re-anchors the projection.
+        Finish(null);
     }
 
     private void OnAutoTrainStateChanged()
     {
         if (_phase == Phase.ApplyingCp && !_autoTrain.IsBusy)
         {
+            RemoveAppliedPlanRow();   // CP committed → consume that level's plan row
             Finish(null);
             return;
         }
         StateChanged?.Invoke();
+    }
+
+    // CP for _attainedLevel has been applied (the train-stats screen committed) —
+    // drop that level's row from the saved plan so it isn't re-applied, and tell
+    // the CP Allocation tab to reload. A level-up that applied no CP keeps its row.
+    private void RemoveAppliedPlanRow()
+    {
+        if (_profile.Current is not { CharacterPlan: { } plan }) return;
+        if (plan.RemoveAll(e => e.Level == _attainedLevel) == 0) return;
+        if (plan.Count == 0) _profile.Current.CharacterPlan = null;
+        _profile.Save();
+        _log?.Info("AutoTrain", $"Applied + cleared CP plan row for level {_attainedLevel}.");
+        PlanApplied?.Invoke();
     }
 
     // "You gain N experience." — keep the running total live so the armed run

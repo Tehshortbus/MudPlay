@@ -46,6 +46,9 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     // routine stat refreshes (HP/exp) and only re-sync when race/class change.
     private string? _lastCharRace;
     private string? _lastCharClass;
+    // Last character level we anchored to — a level-up re-anchors the top row
+    // (next level), dropping the just-achieved level's row.
+    private int _lastCharLevel;
 
     public override string Id => "levelprojection";
     public override string Title => "Level Projection";
@@ -93,9 +96,10 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
             EnsureOptionLists();
             SelectedRace = !string.IsNullOrEmpty(_stats.Race) ? _stats.Race : RaceOptions.FirstOrDefault();
             SelectedClass = !string.IsNullOrEmpty(_stats.Class) ? _stats.Class : ClassOptions.FirstOrDefault();
-            // Characters start at level 1 with 0 exp, so the projection begins at
-            // level 2 (the first level that costs anything to reach).
-            int level = Math.Max(2, _stats.Level);
+            // Project from the NEXT level: the current level is already achieved,
+            // so the top row is the level you can train to next (floored at 2 —
+            // level 1 costs nothing to reach).
+            int level = Math.Max(2, _stats.Level + 1);
             FromLevel = level;
             ToLevel = level + 15;
         }
@@ -103,6 +107,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
 
         _lastCharRace = _stats.Race;
         _lastCharClass = _stats.Class;
+        _lastCharLevel = _stats.Level;
         if (!string.IsNullOrEmpty(SelectedClass)) _seeded = true;
         Rebuild();
     }
@@ -125,6 +130,27 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
             SyncToCharacter();
             return;
         }
+        // A level-up (train) advances the top row to the new next level — drop
+        // the just-achieved level's row instead of leaving it at "Exp to level 0".
+        if (_stats.Level != _lastCharLevel)
+        {
+            _lastCharLevel = _stats.Level;
+            ReanchorFromLevel();
+            return;
+        }
+        Rebuild();
+    }
+
+    // Re-anchor the projected range to the next level after a level change.
+    private void ReanchorFromLevel()
+    {
+        _suppress = true;
+        try
+        {
+            FromLevel = Math.Max(2, _stats.Level + 1);
+            ToLevel = FromLevel + 15;
+        }
+        finally { _suppress = false; }
         Rebuild();
     }
 
