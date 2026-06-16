@@ -35,7 +35,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
     private readonly InventoryManager _inventory;
     private readonly ProfileService _profile;
     private readonly CpPlanState _planState;
-    private readonly AutoTrainManager _autoTrain;
+    private readonly TrainerWalkManager _trainerWalk;
     private Control? _view;
     private bool _suppress;
     // The cell most recently edited by the user, so an overspend trims that cell
@@ -77,20 +77,20 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     public CpAllocationSectionViewModel(PlayerStats stats, GameDataCache gameData,
                                         InventoryManager inventory, ProfileService profile,
-                                        CpPlanState planState, AutoTrainManager autoTrain)
+                                        CpPlanState planState, TrainerWalkManager trainerWalk)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(planState);
-        ArgumentNullException.ThrowIfNull(autoTrain);
+        ArgumentNullException.ThrowIfNull(trainerWalk);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _profile = profile;
         _planState = planState;
-        _autoTrain = autoTrain;
+        _trainerWalk = trainerWalk;
 
         LoadPlanFromProfile();
         RefreshBaseline();
@@ -99,7 +99,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _profile.ProfileLoaded += OnProfileLoaded;
-        _autoTrain.StateChanged += OnAutoTrainStateChanged;
+        _trainerWalk.StateChanged += OnAutoTrainStateChanged;
     }
 
     // ----- commands -------------------------------------------------------
@@ -167,19 +167,19 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     private bool HasRows() => Rows.Count > 0;
 
-    /// <summary>Run the saved plan against the live trainer now (manual trigger).</summary>
+    /// <summary>Walk to the nearest allowed trainer and train + apply the plan.</summary>
     [RelayCommand(CanExecute = nameof(CanRunTrain))]
-    private void TrainNow() => _autoTrain.TrainNow();
+    private void TrainNow() => _trainerWalk.TrainNow();
 
     private bool CanRunTrain() => CanTrainNow && !AutoTrainBusy;
 
     private void OnAutoTrainStateChanged() => SyncAutoTrain();
 
-    // Mirror the manager's live state into the bound properties + command.
+    // Mirror the coordinator's live state into the bound properties + command.
     private void SyncAutoTrain()
     {
-        CanTrainNow = _autoTrain.CanTrainNow;
-        AutoTrainBusy = _autoTrain.IsBusy;
+        CanTrainNow = _trainerWalk.CanTrainNow;
+        AutoTrainBusy = _trainerWalk.IsBusy;
         TrainNowCommand.NotifyCanExecuteChanged();
     }
 
@@ -289,6 +289,6 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _stats.PropertyChanged -= OnStatsChanged;
         _inventory.Changed -= OnInventoryChanged;
         _profile.ProfileLoaded -= OnProfileLoaded;
-        _autoTrain.StateChanged -= OnAutoTrainStateChanged;
+        _trainerWalk.StateChanged -= OnAutoTrainStateChanged;
     }
 }

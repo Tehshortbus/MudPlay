@@ -74,6 +74,40 @@ public static class TrainerCatalog
         return trainers;
     }
 
+    /// <summary>
+    /// Pick the nearest trainer that can serve the character: serves
+    /// <paramref name="level"/>, is universal or matches
+    /// <paramref name="classNumber"/>, isn't in <paramref name="disabled"/>, has
+    /// a resolvable room, and is reachable per <paramref name="distance"/> (which
+    /// returns the path length to a trainer's room, or null when unreachable).
+    /// Returns null when nothing qualifies — e.g. a quest-gated level with no
+    /// matching trainer. Pure: the caller supplies the distance metric (BFS).
+    /// </summary>
+    public static TrainerShop? SelectNearest(
+        IReadOnlyList<TrainerShop> trainers, int level, int classNumber,
+        IReadOnlyCollection<int> disabled, Func<TrainerShop, int?> distance)
+    {
+        ArgumentNullException.ThrowIfNull(trainers);
+        ArgumentNullException.ThrowIfNull(disabled);
+        ArgumentNullException.ThrowIfNull(distance);
+
+        TrainerShop? best = null;
+        int bestDist = int.MaxValue;
+        foreach (TrainerShop t in trainers)
+        {
+            if (!t.HasRoom) continue;
+            if (!t.ServesLevel(level)) continue;
+            if (t.ClassRest != 0 && t.ClassRest != classNumber) continue;
+            if (disabled.Contains(t.Number)) continue;
+            if (distance(t) is { } dist && dist < bestDist)
+            {
+                best = t;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
     private static int GetInt(JsonElement el, string prop) =>
         el.TryGetProperty(prop, out JsonElement v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n)
             ? n : 0;

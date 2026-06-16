@@ -40,7 +40,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         InventoryManager inventory,
         PlayerDatabase players,
         AlignmentTracker alignment,
-        AutoTrainManager autoTrain,
+        TrainerWalkManager trainerWalk,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -50,7 +50,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(alignment);
-        ArgumentNullException.ThrowIfNull(autoTrain);
+        ArgumentNullException.ThrowIfNull(trainerWalk);
         _profile = profile;
         _gameData = gameData;
 
@@ -65,7 +65,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         var planState = new CpPlanState();
         Sections.Add(new LevelProjectionSectionViewModel(playerStats, gameData, planState));
 
-        Sections.Add(new CpAllocationSectionViewModel(playerStats, gameData, inventory, profile, planState, autoTrain));
+        Sections.Add(new CpAllocationSectionViewModel(playerStats, gameData, inventory, profile, planState, trainerWalk));
 
         Sections.Add(new StubWorkshopSectionViewModel(
             "queststatus", "Quest Status",
