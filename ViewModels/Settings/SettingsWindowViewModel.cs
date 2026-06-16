@@ -239,6 +239,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));
         Sections.Add(new TalkSectionViewModel());
         Sections.Add(new AutoLairSectionViewModel());
+        Sections.Add(new AutoTrainerSectionViewModel());
         Sections.Add(new OtherSectionViewModel());
         Sections.Add(new EventsSectionViewModel());
         Sections.Add(new SoundsSectionViewModel());

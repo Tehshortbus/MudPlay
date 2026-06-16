@@ -122,19 +122,13 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (n.GetInt32() != shopNumber) continue;
             if (!el.TryGetProperty("Assigned To", out JsonElement assignedEl)) return (0, 0);
             if (assignedEl.ValueKind != JsonValueKind.String) return (0, 0);
-            string assigned = assignedEl.GetString() ?? string.Empty;
 
-            // Take just the FIRST "Room M/R" token from a comma-separated
-            // list. Multi-branch shops (Bank of Godfrey is "Room 1/297,
-            // Room 6/1334") would otherwise fail the int.TryParse.
-            string firstToken = assigned.Split(',', 2)[0].Trim();
-            if (!firstToken.StartsWith("Room ", StringComparison.Ordinal)) return (0, 0);
-            string remainder = firstToken[5..].Trim();
-            int slash = remainder.IndexOf('/');
-            if (slash <= 0) return (0, 0);
-            if (!int.TryParse(remainder[..slash], out int mapNo)) return (0, 0);
-            if (!int.TryParse(remainder[(slash + 1)..], out int roomNo)) return (0, 0);
-            return (mapNo, roomNo);
+            // Take just the FIRST "Room M/R" token from a comma-separated list.
+            // Multi-branch shops (Bank of Godfrey is "Room 1/297, Room 6/1334")
+            // would otherwise fail the parse. Shared with the auto-train catalogue.
+            return Game.GameData.ShopRoomParser.TryParseFirstRoom(assignedEl.GetString(), out int mapNo, out int roomNo)
+                ? (mapNo, roomNo)
+                : (0, 0);
         }
         return (0, 0);
     }

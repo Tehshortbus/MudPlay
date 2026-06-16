@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="620"
+             x:Class="FujinTerm.Views.Settings.AutoTrainerSectionView"
+             x:DataType="vm:AutoTrainerSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasProfile}">
+
+        <!-- Toggles -->
+        <StackPanel Grid.Row="0" Spacing="4">
+            <CheckBox Content="Auto-train"
+                      IsChecked="{Binding AutoTrain, Mode=TwoWay}"
+                      ToolTip.Tip="When running a loop / auto-lair and a level-up is available, detour to an allowed trainer and train."/>
+            <CheckBox Content="Auto-train stats" Margin="20,0,0,0"
+                      IsChecked="{Binding AutoTrainStats, Mode=TwoWay}"
+                      IsEnabled="{Binding AutoTrain}"
+                      ToolTip.Tip="After training a level, apply the CP plan's row for the new level via the train-stats screen."/>
+        </StackPanel>
+
+        <!-- Header + view filters. Both unchecked = all discovered trainers;
+             both checked = the trainers usable at your current level + class. -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
+            <TextBlock Grid.Column="0" Classes="SectionHeader" Text="DISCOVERED TRAINERS"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                <CheckBox Content="Usable at my level" IsChecked="{Binding OnlyUsableLevel, Mode=TwoWay}"
+                          ToolTip.Tip="Show only trainers whose level range covers your current level."/>
+                <CheckBox Content="My class only" IsChecked="{Binding OnlyMyClass, Mode=TwoWay}"
+                          ToolTip.Tip="Show only universal trainers or ones restricted to your class."/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Discovered trainers (ShopType 8, MaxLVL != 999), with a per-trainer
+             Allow toggle gating whether auto-train may route to it. -->
+        <DataGrid Grid.Row="2"
+                  ItemsSource="{Binding Trainers}"
+                  IsVisible="{Binding HasTrainers}"
+                  Background="{StaticResource ChromeBgSunkenBrush}"
+                  BorderThickness="1" BorderBrush="{StaticResource ChromeBorderBrush}"
+                  IsReadOnly="False"
+                  AutoGenerateColumns="False"
+                  CanUserSortColumns="False"
+                  CanUserResizeColumns="True"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal"
+                  VerticalScrollBarVisibility="Auto">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Header="Allow" Width="60"
+                                        Binding="{ReflectionBinding Allowed, Mode=TwoWay}"/>
+                <DataGridTextColumn Header="Trainer" Width="*"
+                                    Binding="{ReflectionBinding Name}" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Map/Room" Width="110"
+                                    Binding="{ReflectionBinding MapRoom}" IsReadOnly="True"
+                                    FontFamily="{StaticResource FontMono}"/>
+                <DataGridTextColumn Header="Levels" Width="90"
+                                    Binding="{ReflectionBinding LevelRange}" IsReadOnly="True"
+                                    FontFamily="{StaticResource FontMono}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Empty-state: no game-data set loaded, or it has no usable trainers. -->
+        <TextBlock Grid.Row="2"
+                   IsVisible="{Binding !HasTrainers}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Text="No trainers found in the active game-data set. Load a set with a Shops table to see discovered trainers here."/>
+    </Grid>
+</UserControl>

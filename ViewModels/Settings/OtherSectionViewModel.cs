@@ -188,8 +188,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     {
         new StubGroup("Walker behaviour", new[]
         {
-            new StubField("Auto-train",                      StubFieldKind.Check, "Phase 13 — auto-spend CP at a trainer when allocations are pending."),
-            new StubField("Auto-train stats",                StubFieldKind.Check, "Phase 13 — auto-spend stat points at a trainer when allocations are pending. Paired with Auto-train above."),
+            // Auto-train / Auto-train stats graduated to their own Settings →
+            // Auto-Trainer tab (toggles + the discovered-trainers allow table).
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
             // "Allow hangup in all-off mode" graduated to a wired checkbox on

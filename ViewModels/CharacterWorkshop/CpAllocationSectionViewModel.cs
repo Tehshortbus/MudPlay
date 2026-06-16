@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -36,6 +35,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
     private readonly InventoryManager _inventory;
     private readonly ProfileService _profile;
     private readonly CpPlanState _planState;
+    private readonly AutoTrainManager _autoTrain;
     private Control? _view;
     private bool _suppress;
     // The cell most recently edited by the user, so an overspend trims that cell
@@ -53,6 +53,22 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
     /// <summary>False when no race/class resolves (no character / game data) — gates the grid.</summary>
     [ObservableProperty] private bool _hasCharacter;
 
+    /// <summary>The grid row the user has selected — drives <see cref="RemoveRowCommand"/>.</summary>
+    [ObservableProperty] private CpPlanRowViewModel? _selectedRow;
+    /// <summary>Transient inline error (e.g. trying to remove a middle row); cleared on the next valid action.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRemoveError))]
+    private string? _removeError;
+
+    /// <summary>True when a <see cref="RemoveError"/> is showing — drives its visibility.</summary>
+    public bool HasRemoveError => !string.IsNullOrEmpty(RemoveError);
+
+    // ----- auto-train (PR 10.8) ------------------------------------------
+    /// <summary>True when the saved plan has an affordable raise to apply at the current level.</summary>
+    [ObservableProperty] private bool _canTrainNow;
+    /// <summary>True while a train run is in flight — disables the Train Now button.</summary>
+    [ObservableProperty] private bool _autoTrainBusy;
+
     // Captured on RefreshBaseline; inputs to the recalc.
     private CpPlanEntry _baseline = new();
     private CpPlanEntry _raceMin = new();
@@ -61,25 +77,29 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     public CpAllocationSectionViewModel(PlayerStats stats, GameDataCache gameData,
                                         InventoryManager inventory, ProfileService profile,
-                                        CpPlanState planState)
+                                        CpPlanState planState, AutoTrainManager autoTrain)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(planState);
+        ArgumentNullException.ThrowIfNull(autoTrain);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _profile = profile;
         _planState = planState;
+        _autoTrain = autoTrain;
 
         LoadPlanFromProfile();
         RefreshBaseline();
+        SyncAutoTrain();
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _profile.ProfileLoaded += OnProfileLoaded;
+        _autoTrain.StateChanged += OnAutoTrainStateChanged;
     }
 
     // ----- commands -------------------------------------------------------
@@ -91,17 +111,34 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         int level = Rows.Count > 0 ? Rows[^1].Level + 1 : Math.Max(2, _stats.Level + 1);
         CpPlanEntry seed = Rows.Count > 0 ? Rows[^1].ToEntry() : _baseline;
         _lastEditedStat = null;
+        RemoveError = null;
         Rows.Add(NewRow(level, seed));
         RecalcGrid();
     }
 
-    /// <summary>Drop the last planned level.</summary>
+    /// <summary>
+    /// Remove the selected row — but only the top or bottom one, so the plan
+    /// stays a contiguous level run (removing a middle level would orphan the
+    /// rows above/below it). A middle selection sets <see cref="RemoveError"/>.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(HasRows))]
-    private void RemoveLast()
+    private void RemoveRow()
     {
         if (Rows.Count == 0) return;
+        if (SelectedRow is null)
+        {
+            RemoveError = "Select the top or bottom row to remove.";
+            return;
+        }
+        int idx = Rows.IndexOf(SelectedRow);
+        if (idx != 0 && idx != Rows.Count - 1)
+        {
+            RemoveError = "You can only remove the top or bottom row of the plan.";
+            return;
+        }
+        RemoveError = null;
         _lastEditedStat = null;
-        Rows.RemoveAt(Rows.Count - 1);
+        Rows.RemoveAt(idx);
         RecalcGrid();
     }
 
@@ -110,9 +147,13 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
     private void Reset()
     {
         _lastEditedStat = null;
+        RemoveError = null;
         Rows.Clear();
         RecalcGrid();
     }
+
+    // Clearing / changing the selection dismisses a stale remove error.
+    partial void OnSelectedRowChanged(CpPlanRowViewModel? value) => RemoveError = null;
 
     /// <summary>Persist the current plan to the loaded profile.</summary>
     [RelayCommand]
@@ -121,41 +162,39 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         if (_profile.Current is not { } p) return;
         p.CharacterPlan = Rows.Count == 0 ? null : Rows.Select(r => r.ToEntry()).ToList();
         _profile.Save();
+        SyncAutoTrain();   // the saved plan drives auto-train — refresh "can train now"
     }
 
     private bool HasRows() => Rows.Count > 0;
+
+    /// <summary>Run the saved plan against the live trainer now (manual trigger).</summary>
+    [RelayCommand(CanExecute = nameof(CanRunTrain))]
+    private void TrainNow() => _autoTrain.TrainNow();
+
+    private bool CanRunTrain() => CanTrainNow && !AutoTrainBusy;
+
+    private void OnAutoTrainStateChanged() => SyncAutoTrain();
+
+    // Mirror the manager's live state into the bound properties + command.
+    private void SyncAutoTrain()
+    {
+        CanTrainNow = _autoTrain.CanTrainNow;
+        AutoTrainBusy = _autoTrain.IsBusy;
+        TrainNowCommand.NotifyCanExecuteChanged();
+    }
 
     // ----- baseline + recalc ---------------------------------------------
 
     private void RefreshBaseline()
     {
-        JsonElement? raceOpt = _gameData.FindRowByName("Races", _stats.Race);
-        if (raceOpt is not JsonElement race || string.IsNullOrEmpty(_stats.Race))
-        {
-            HasCharacter = false;
-            return;
-        }
-        HasCharacter = true;
-        _realm = _gameData.ActiveRealm;
+        CharacterPlanContext ctx = CharacterPlanContext.Resolve(_stats, _gameData, _inventory);
+        HasCharacter = ctx.HasCharacter;
+        if (!ctx.HasCharacter) return;
 
-        _raceMin = new CpPlanEntry(0,
-            GetInt(race, "mSTR"), GetInt(race, "mINT"), GetInt(race, "mWIL"),
-            GetInt(race, "mAGL"), GetInt(race, "mHEA"), GetInt(race, "mCHM"));
-        _raceMax = new CpPlanEntry(0,
-            GetInt(race, "xSTR"), GetInt(race, "xINT"), GetInt(race, "xWIL"),
-            GetInt(race, "xAGL"), GetInt(race, "xHEA"), GetInt(race, "xCHM"));
-
-        // Raw base = live stats minus equipment bonuses (the `stat` screen shows
-        // gear-boosted values), floored at the race minimum.
-        EquipmentStatSummary eq = CharacterCalculator
-            .AggregateEquipmentStats(_inventory.Snapshot.EquippedItems, _gameData).Totals;
-        _baseline = new CpPlanEntry(_stats.Level,
-            RawBase(_stats.Strength, eq.PlusStrength, _raceMin.Strength),
-            RawBase(_stats.Intellect, eq.PlusIntellect, _raceMin.Intellect),
-            RawBase(_stats.Willpower, eq.PlusWillpower, _raceMin.Willpower),
-            RawBase(_stats.Agility, eq.PlusAgility, _raceMin.Agility),
-            RawBase(_stats.Health, eq.PlusHealth, _raceMin.Health),
-            RawBase(_stats.Charm, eq.PlusCharm, _raceMin.Charm));
+        _baseline = ctx.Baseline;
+        _raceMin = ctx.RaceMin;
+        _raceMax = ctx.RaceMax;
+        _realm = ctx.Realm;
 
         UnspentCp = _stats.Cp;
         _lastEditedStat = null;   // baseline-driven recompute, not a cell edit
@@ -191,7 +230,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         }
         finally { _suppress = false; }
 
-        RemoveLastCommand.NotifyCanExecuteChanged();
+        RemoveRowCommand.NotifyCanExecuteChanged();
         ResetCommand.NotifyCanExecuteChanged();
 
         // Publish the (clamped) plan so the Level Projection tab can apply the
@@ -236,22 +275,13 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
             Rows.Add(NewRow(e.Level, e));
     }
 
-    private static int RawBase(int live, int equipBonus, int raceMin) =>
-        Math.Max(raceMin, live - equipBonus);
-
-    private static int GetInt(JsonElement row, string property)
-    {
-        if (row.ValueKind != JsonValueKind.Object) return 0;
-        if (!row.TryGetProperty(property, out JsonElement v)) return 0;
-        return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
-    }
-
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => RefreshBaseline();
     private void OnInventoryChanged() => RefreshBaseline();
     private void OnProfileLoaded(CharacterProfile _)
     {
         LoadPlanFromProfile();
         RefreshBaseline();
+        SyncAutoTrain();
     }
 
     public override void Dispose()
@@ -259,5 +289,6 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _stats.PropertyChanged -= OnStatsChanged;
         _inventory.Changed -= OnInventoryChanged;
         _profile.ProfileLoaded -= OnProfileLoaded;
+        _autoTrain.StateChanged -= OnAutoTrainStateChanged;
     }
 }

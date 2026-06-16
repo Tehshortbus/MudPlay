@@ -737,6 +737,9 @@ public partial class MainWindowViewModel : ObservableObject
         // PR 10.5 — death-recovery auto-grab (`get`) + auto-equip (`wear` /
         // `hold`) ride the same gate-wrapped pipeline as the other engines.
         AppServices.Current.DeathRecovery.SetWireSender(engineSend);
+        // PR 10.8 — auto-train drives the `train stats` screen (the command +
+        // each Enter-driven keystroke) through the same gate-wrapped pipeline.
+        AppServices.Current.AutoTrain.SetWireSender(engineSend);
         // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
         // target pick via the same engine-send pipeline; the gate-
         // wrapped sender prevents the swing command from landing
@@ -2743,7 +2746,8 @@ public partial class MainWindowViewModel : ObservableObject
             svc.Stats.Hydrate(storedStats);
         }
         var workshopVm = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
-            svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players, svc.Alignment, sectionId);
+            svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players,
+            svc.Alignment, svc.AutoTrain, sectionId);
         Views.CharacterWorkshop.CharacterWorkshopWindow window = new() { DataContext = workshopVm };
         // The Workshop VM + its sections are rebuilt on every open, so dispose
         // them on close to detach their long-lived service-event subscriptions.

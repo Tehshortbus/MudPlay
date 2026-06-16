@@ -113,6 +113,24 @@ public sealed class CpPlanCalculatorTests
     }
 
     [Fact]
+    public void ClampRowToBudget_TrimsToAvailableCp_AutoTrainPath()
+    {
+        // The auto-train engine budgets a single level's row against live unspent
+        // CP directly (no level-gain added). STR 40→60 costs 30 but only 10 CP is
+        // available → STR clamps to 50 (cost 10), used == 10.
+        int[] prev = { 40, 40, 40, 40, 40, 40 };
+        int[] target = { 60, 40, 40, 40, 40, 40 };
+        int[] min = { 40, 40, 40, 40, 40, 40 };
+        int[] max = { 100, 100, 100, 100, 100, 100 };
+
+        int[] clamped = CpPlanCalculator.ClampRowToBudget(
+            prev, target, min, max, available: 10, RealmType.Stock, preferredTrim: null, out int used);
+
+        Assert.Equal(50, clamped[0]);
+        Assert.Equal(10, used);
+    }
+
+    [Fact]
     public void InitialCp_SeedsEarnedTotal()
     {
         IReadOnlyList<CpRowResult> rows = CpPlanCalculator.Compute(

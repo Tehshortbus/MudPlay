@@ -623,6 +623,12 @@ public sealed class AppServices
     public Game.AlignmentTracker Alignment { get; }
 
     /// <summary>
+    /// Drives the <c>train stats</c> screen to apply the saved CP plan — armed
+    /// auto-fire on level-up, or the CP Allocation tab's manual Train Now.
+    /// </summary>
+    public Game.AutoTrainManager AutoTrain { get; }
+
+    /// <summary>
     /// Loaded character's <see cref="Models.GameData.Macro"/> store.
     /// Surfaced by the Game Data Browser → Macros tab; the Phase 10
     /// MacroManager engine intercepts keystrokes and dispatches from
@@ -2130,6 +2136,13 @@ public sealed class AppServices
         // the same way for the test button.
         RoomTracker.AttachInventorySnapshot(() => Inventory.Snapshot);
         DeathRecovery.AttachInventorySnapshot(() => Inventory.Snapshot);
+
+        // PR 10.8 — auto-train. Drives the `train stats` screen to apply the CP
+        // plan (Workshop CP Allocation tab) when armed + a level-up enables it.
+        // Needs Inventory (raw-base = live - gear) + TrainerMenu (screen enter/
+        // exit gating, already wired to char-mode). Wire-sender bound in
+        // MainWindowViewModel.
+        AutoTrain = new Game.AutoTrainManager(PlayerStats, GameData, Inventory, Profile, TrainerMenu, Log);
 
         // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches

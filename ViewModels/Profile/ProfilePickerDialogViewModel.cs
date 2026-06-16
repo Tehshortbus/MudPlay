@@ -24,7 +24,12 @@ public sealed partial class ProfilePickerDialogViewModel : ObservableObject, IDi
 
     public ObservableCollection<ProfileRef> Profiles { get; } = new();
 
-    /// <summary>Window title — defaults to the Open-profile wording.</summary>
+    /// <summary>
+    /// Window title — the caller's base wording plus the absolute folder the
+    /// list is read from (<see cref="AppPaths.BbsDir"/>), e.g.
+    /// <c>"Open profile - C:\Users\…\FujinTerm\Data\BBS"</c>, so it's obvious at
+    /// a glance which data directory the app is actually using.
+    /// </summary>
     public string WindowTitle { get; }
 
     /// <summary>Prompt line above the list — defaults to the Open-profile wording.</summary>
@@ -51,7 +56,7 @@ public sealed partial class ProfilePickerDialogViewModel : ObservableObject, IDi
         string confirmLabel = "Open",
         string emptyMessage = "No saved profiles yet — use File → Save profile as… to create one.")
     {
-        WindowTitle  = windowTitle;
+        WindowTitle  = $"{windowTitle} - {AppPaths.BbsDir}";
         Prompt       = prompt;
         ConfirmLabel = confirmLabel;
         EmptyMessage = emptyMessage;

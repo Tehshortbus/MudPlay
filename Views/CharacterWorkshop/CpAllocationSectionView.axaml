@@ -7,22 +7,42 @@
              x:Class="FujinTerm.Views.CharacterWorkshop.CpAllocationSectionView"
              x:DataType="vm:CpAllocationSectionViewModel">
 
-    <Grid Margin="22" RowDefinitions="Auto,*">
+    <Grid Margin="22" RowDefinitions="Auto,Auto,*">
 
-        <!-- Plan actions. -->
-        <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+        <!-- Plan actions. Train now is the manual trigger to walk to the
+             nearest allowed, level-appropriate trainer and train (+ apply the
+             plan); the auto-train toggles live on the Settings → Auto-Trainer
+             tab. "Can train now" lights when this level has an affordable raise. -->
+        <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
             <Button Content="Add level" Margin="0,0,6,6" Command="{Binding AddLevelCommand}"/>
-            <Button Content="Remove last" Margin="0,0,6,6" Command="{Binding RemoveLastCommand}"/>
+            <Button Content="Remove row" Margin="0,0,6,6" Command="{Binding RemoveRowCommand}"
+                    ToolTip.Tip="Remove the selected row — only the top or bottom row of the plan."/>
             <Button Content="Reset" Margin="0,0,18,6" Command="{Binding ResetCommand}"/>
             <Button Content="Save plan" Margin="0,0,6,6" Command="{Binding SaveCommand}"
                     ToolTip.Tip="Persist this CP plan to the character profile."/>
+            <Button Content="Train now" Margin="0,0,12,6" Command="{Binding TrainNowCommand}"
+                    IsVisible="{Binding HasCharacter}"
+                    ToolTip.Tip="Walk to the nearest allowed, level-appropriate trainer and train, applying the plan."/>
+            <TextBlock Text="● Can train now" VerticalAlignment="Center" Margin="0,0,0,6"
+                       IsVisible="{Binding CanTrainNow}"
+                       Foreground="{StaticResource AccentAmberBrush}"/>
+            <TextBlock Text="Training…" VerticalAlignment="Center" Margin="0,0,0,6" FontStyle="Italic"
+                       IsVisible="{Binding AutoTrainBusy}"
+                       Foreground="{StaticResource ChromeFgSecBrush}"/>
         </WrapPanel>
+
+        <!-- Row-removal error (own line so it doesn't crowd the action row). -->
+        <TextBlock Grid.Row="1" Text="{Binding RemoveError}" Margin="0,0,0,8"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasRemoveError}"
+                   Foreground="{StaticResource AccentAmberBrush}"/>
 
         <!-- Editable per-level grid. Stat cells are editable; CP columns recompute.
              A stat that would overspend is auto-clamped to the highest affordable
              value, so CP Left never drops below 0. -->
-        <DataGrid Grid.Row="1"
+        <DataGrid Grid.Row="2"
                   ItemsSource="{Binding Rows}"
+                  SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                   IsVisible="{Binding HasCharacter}"
                   Background="{StaticResource ChromeBgSunkenBrush}"
                   BorderThickness="1" BorderBrush="{StaticResource ChromeBorderBrush}"
@@ -61,7 +81,7 @@
         </DataGrid>
 
         <!-- Empty-state. -->
-        <TextBlock Grid.Row="1"
+        <TextBlock Grid.Row="2"
                    IsVisible="{Binding !HasCharacter}"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    TextWrapping="Wrap" MaxWidth="380" TextAlignment="Center"

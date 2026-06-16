@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using FujinTerm.Terminal;
@@ -50,6 +52,12 @@ public sealed class SelectableTranscript : SelectableTextBlock
     // coalescing each fire walks every row in the buffer (up to 10k) to
     // rebuild the inline runs — quadratic on screen-update bursts.
     private bool _rebuildScheduled;
+    // True while the user is dragging out a selection (pointer down). A live
+    // rebuild reassigns the whole Inlines collection, which re-lays-out the
+    // text and resets the in-progress selection — so we hold rebuilds while
+    // the user is selecting (or has a live selection) and flush once idle.
+    private bool _pointerDown;
+    private bool _pendingRebuild;
 
     static SelectableTranscript()
     {
@@ -92,8 +100,46 @@ public sealed class SelectableTranscript : SelectableTextBlock
         Dispatcher.UIThread.Post(() =>
         {
             _rebuildScheduled = false;
+            // Don't blow away an in-progress / live selection — hold the latest
+            // content and rebuild once the user finishes (see FlushPendingRebuild).
+            if (IsInteracting) { _pendingRebuild = true; return; }
             Rebuild();
         });
+    }
+
+    // The user is mid-interaction when the pointer is down or a non-empty
+    // selection exists; rebuilding under either resets the selection.
+    private bool IsInteracting => _pointerDown || SelectionStart != SelectionEnd;
+
+    private void FlushPendingRebuild()
+    {
+        if (_pendingRebuild && !IsInteracting)
+        {
+            _pendingRebuild = false;
+            Rebuild();
+        }
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        _pointerDown = true;
+        base.OnPointerPressed(e);
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _pointerDown = false;
+        FlushPendingRebuild();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        // When a selection collapses (e.g. a single click, or Go-to-live) flush
+        // any content that arrived while the selection was held.
+        if (change.Property == SelectionStartProperty || change.Property == SelectionEndProperty)
+            FlushPendingRebuild();
     }
 
     private void Rebuild()
@@ -165,16 +211,28 @@ public sealed class SelectableTranscript : SelectableTextBlock
             ? AnsiPalette.ResolveForeground(bgColor, bold)
             : AnsiPalette.ResolveBackground(bgColor);
 
-        run.Foreground = concealed
-            ? new SolidColorBrush(Color.FromArgb(0, 0, 0, 0))
-            : new SolidColorBrush(ToColor(fgArgb));
+        run.Foreground = concealed ? BrushFor(0u) : BrushFor(fgArgb);
 
         if (bgArgb != AnsiPalette.DefaultBackgroundArgb)
-            run.Background = new SolidColorBrush(ToColor(bgArgb));
+            run.Background = BrushFor(bgArgb);
 
         if (bold) run.FontWeight = FontWeight.Bold;
         if (underline) run.TextDecorations = Avalonia.Media.TextDecorations.Underline;
         return run;
+    }
+
+    // Brushes are immutable here, and a transcript rebuild creates a run per
+    // colour-contiguous span across up to 10k rows — caching by ARGB collapses
+    // tens of thousands of per-rebuild allocations down to the ~handful of
+    // distinct palette colours. UI-thread only, so no locking needed.
+    private static readonly Dictionary<uint, IBrush> _brushCache = new();
+
+    private static IBrush BrushFor(uint argb)
+    {
+        if (_brushCache.TryGetValue(argb, out IBrush? brush)) return brush;
+        brush = new SolidColorBrush(ToColor(argb));
+        _brushCache[argb] = brush;
+        return brush;
     }
 
     private static Color ToColor(uint argb)

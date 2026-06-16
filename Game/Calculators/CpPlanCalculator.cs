@@ -70,25 +70,14 @@ public static class CpPlanCalculator
 
         foreach (CpPlanEntry row in rows)
         {
-            int[] target = ToArray(row);
-            for (int i = 0; i < StatCount; i++)
-                target[i] = Clamp(target[i], prev[i], max[i]);
-
             int gained = CharacterCalculator.CalcCpGainedAtLevel(row.Level);
             int available = carryover + gained;
 
-            // Can't overspend: trim the edited cell (or most-raised) until it fits.
-            while (RowCost(target, prev, min, realm) > available)
-            {
-                int s = ChooseTrim(target, prev, preferredTrim);
-                if (s < 0) break;   // nothing left to reduce (shouldn't happen — prev costs 0)
-                target[s]--;
-            }
-
-            int used = RowCost(target, prev, min, realm);
+            int[] target = ClampRowToBudget(
+                prev, ToArray(row), min, max, available, realm, preferredTrim, out int used);
             earnedTotal += gained;
             carryover = available - used;
-            if (carryover < 0) carryover = 0;   // safety; the trim loop keeps used <= available
+            if (carryover < 0) carryover = 0;   // safety; the trim keeps used <= available
 
             results.Add(new CpRowResult(
                 row.Level, target[0], target[1], target[2], target[3], target[4], target[5],
@@ -98,6 +87,34 @@ public static class CpPlanCalculator
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Clamp one level's <paramref name="rowTargets"/> to a spendable result: each
+    /// stat to <c>[prev, raceMax]</c> (can't untrain, can't exceed race max), then
+    /// trimmed point-by-point (edited cell first via <paramref name="preferredTrim"/>,
+    /// else the most-raised stat) until the row's CP cost fits
+    /// <paramref name="available"/>. <paramref name="used"/> returns the final cost.
+    /// Shared by <see cref="Compute"/> (per plan row) and the auto-train engine
+    /// (the current level's row, budgeted against live unspent CP).
+    /// </summary>
+    internal static int[] ClampRowToBudget(
+        int[] prev, int[] rowTargets, int[] min, int[] max,
+        int available, RealmType realm, CpStat? preferredTrim, out int used)
+    {
+        int[] target = new int[StatCount];
+        for (int i = 0; i < StatCount; i++)
+            target[i] = Clamp(rowTargets[i], prev[i], max[i]);
+
+        while (RowCost(target, prev, min, realm) > available)
+        {
+            int s = ChooseTrim(target, prev, preferredTrim);
+            if (s < 0) break;   // nothing left to reduce (shouldn't happen — prev costs 0)
+            target[s]--;
+        }
+
+        used = RowCost(target, prev, min, realm);
+        return target;
     }
 
     private static int RowCost(int[] target, int[] prev, int[] min, RealmType realm)

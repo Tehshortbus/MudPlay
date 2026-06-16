@@ -1,0 +1,232 @@
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Linq;
+using System.Text.Json;
+using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game;
+using FujinTerm.Game.GameData;
+using FujinTerm.Models.Profile;
+using FujinTerm.Services;
+using FujinTerm.Views.Settings;
+
+namespace FujinTerm.ViewModels.Settings;
+
+/// <summary>
+/// Settings → Auto-Trainer tab. Holds the master <see cref="AutoTrain"/> +
+/// cascading <see cref="AutoTrainStats"/> toggles, and a table of every
+/// training shop discovered in the active game-data set (via
+/// <see cref="TrainerCatalog"/>) — name, host map/room, served level range,
+/// and a per-trainer Allow toggle deciding whether auto-train may route to it.
+/// Trainers with the 999 <c>MaxLVL</c> sentinel (unreachable placeholders) are
+/// never listed. Persists to <see cref="AutoTrainerSettings"/>.
+/// </summary>
+public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewModel
+{
+    private const string TabKey = "AutoTrainer";
+
+    private readonly ProfileService _profile;
+    private readonly GameDataCache _gameData;
+    private readonly PlayerStats _stats;
+    // Every discovered trainer (allow-state preserved across filter toggles);
+    // Trainers is the filtered view bound by the grid.
+    private readonly List<AutoTrainerRowViewModel> _allRows = new();
+    private Control? _view;
+    private bool _suppressDirty;
+    private bool _dirty;
+
+    public override string Id => "autotrainer";
+    public override string Title => "Auto-Trainer";
+    public override bool IsDirty => _dirty;
+
+    public override Control View => _view ??= new AutoTrainerSectionView { DataContext = this };
+
+    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>False when the active set yields no trainers at all — drives the empty-state.</summary>
+    public bool HasTrainers => _allRows.Count > 0;
+
+    /// <summary>Master auto-train toggle (level-up at the trainer during loop/auto-lair).</summary>
+    [ObservableProperty] private bool _autoTrain;
+    /// <summary>Cascading toggle — apply the CP plan via <c>train stats</c> after each train.</summary>
+    [ObservableProperty] private bool _autoTrainStats;
+
+    // View filters (not persisted). Both off = show every discovered trainer;
+    // both on = "usable now" (serves my level + my class / universal).
+    /// <summary>Show only trainers whose level range serves the character's current level.</summary>
+    [ObservableProperty] private bool _onlyUsableLevel;
+    /// <summary>Show only universal trainers or ones restricted to the character's class.</summary>
+    [ObservableProperty] private bool _onlyMyClass;
+
+    /// <summary>Discovered trainers in the active set, ascending by level range.</summary>
+    public ObservableCollection<AutoTrainerRowViewModel> Trainers { get; } = new();
+
+    public override IEnumerable<string> SearchableLabels => new[]
+    {
+        Title, "Auto-train", "Auto-train stats", "trainer", "train", "guild", "level up",
+    };
+
+    public AutoTrainerSectionViewModel()
+        : this(AppServices.Current.Profile, AppServices.Current.GameData, AppServices.Current.PlayerStats) { }
+
+    public AutoTrainerSectionViewModel(ProfileService profile, GameDataCache gameData, PlayerStats stats)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(stats);
+        _profile = profile;
+        _gameData = gameData;
+        _stats = stats;
+
+        _profile.ProfileLoaded += OnProfileChanged;
+        _profile.ProfileClosed += OnProfileClosedExternally;
+        _gameData.ActiveSetChanged += OnActiveSetChanged;
+
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+    }
+
+    public override void Apply()
+    {
+        if (_profile.Current is not { } profile) return;
+
+        // Build from _allRows (every trainer), not the filtered view — a hidden
+        // row's allow-state must survive a Save while a filter is active.
+        List<int> disabled = _allRows.Where(t => !t.Allowed)
+            .Select(t => t.ShopNumber)
+            .OrderBy(n => n)
+            .ToList();
+
+        AutoTrainerSettings dto = new()
+        {
+            AutoTrain = AutoTrain,
+            AutoTrainStats = AutoTrain && AutoTrainStats,   // cascade — never store stats-on without train-on
+            DisabledTrainers = disabled.Count == 0 ? null : disabled,
+        };
+
+        profile.Settings ??= new();
+        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+        _profile.Save();
+        ClearDirty();
+    }
+
+    public override void Discard()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+    }
+
+    private void OnProfileChanged(CharacterProfile _) => ReloadAfterSwap();
+    private void OnProfileClosedExternally() => ReloadAfterSwap();
+    private void OnActiveSetChanged(string? _) => ReloadAfterSwap();
+
+    private void ReloadAfterSwap()
+    {
+        _suppressDirty = true;
+        LoadFromProfile();
+        _suppressDirty = false;
+        ClearDirty();
+        OnPropertyChanged(nameof(HasProfile));
+    }
+
+    private void LoadFromProfile()
+    {
+        AutoTrainerSettings dto = ReadOrDefault();
+        AutoTrain = dto.AutoTrain;
+        AutoTrainStats = dto.AutoTrain && dto.AutoTrainStats;
+        RebuildTrainers(dto.DisabledTrainers);
+    }
+
+    private void RebuildTrainers(IReadOnlyCollection<int>? disabled)
+    {
+        _allRows.Clear();
+        HashSet<int> off = disabled is { Count: > 0 }
+            ? new HashSet<int>(disabled)
+            : new HashSet<int>();
+
+        foreach (TrainerShop t in TrainerCatalog.Enumerate(_gameData)
+                     .OrderBy(t => t.MinLevel).ThenBy(t => t.MaxLevel).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            string mapRoom = t.HasRoom
+                ? string.Create(CultureInfo.InvariantCulture, $"{t.Map}/{t.Room}")
+                : "—";
+            string range = string.Create(CultureInfo.InvariantCulture, $"{t.MinLevel}–{t.MaxLevel}");
+            _allRows.Add(new AutoTrainerRowViewModel(t, mapRoom, range, allowed: !off.Contains(t.Number), MarkDirty));
+        }
+        ApplyFilter();
+    }
+
+    // Rebuild the bound (filtered) view from _allRows. Filters are view-only —
+    // they never mark dirty or persist.
+    private void ApplyFilter()
+    {
+        int level = _stats.Level;
+        int myClass = ResolveClassNumber();
+
+        Trainers.Clear();
+        foreach (AutoTrainerRowViewModel row in _allRows)
+        {
+            if (OnlyUsableLevel && !row.ServesLevel(level)) continue;
+            if (OnlyMyClass && row.ClassRest != 0 && row.ClassRest != myClass) continue;
+            Trainers.Add(row);
+        }
+        OnPropertyChanged(nameof(HasTrainers));
+    }
+
+    // Resolve the live class name → Classes.Number for the "my class only"
+    // filter. 0 (unresolved) leaves only universal trainers passing that filter.
+    private int ResolveClassNumber()
+    {
+        if (string.IsNullOrEmpty(_stats.Class)) return 0;
+        if (_gameData.FindRowByName("Classes", _stats.Class) is not JsonElement row) return 0;
+        return row.TryGetProperty("Number", out JsonElement n) && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v)
+            ? v : 0;
+    }
+
+    partial void OnOnlyUsableLevelChanged(bool value) => ApplyFilter();
+    partial void OnOnlyMyClassChanged(bool value) => ApplyFilter();
+
+    private AutoTrainerSettings ReadOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new AutoTrainerSettings();
+        if (!profile.Settings.TryGetValue(TabKey, out JsonElement json)) return new AutoTrainerSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<AutoTrainerSettings>(json) ?? new AutoTrainerSettings();
+        }
+        catch
+        {
+            return new AutoTrainerSettings();
+        }
+    }
+
+    // Turning the master toggle off disables the stats cascade too, so the UI
+    // never shows "apply stats" enabled without "train" behind it.
+    partial void OnAutoTrainChanged(bool value)
+    {
+        if (!value) AutoTrainStats = false;
+        MarkDirty();
+    }
+
+    partial void OnAutoTrainStatsChanged(bool value) => MarkDirty();
+
+    private void ClearDirty()
+    {
+        _dirty = false;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressDirty) return;
+        if (_dirty) return;
+        _dirty = true;
+        OnPropertyChanged(nameof(IsDirty));
+    }
+}
