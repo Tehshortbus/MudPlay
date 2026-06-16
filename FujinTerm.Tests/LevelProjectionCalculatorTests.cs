@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using Xunit;
@@ -126,32 +125,18 @@ public sealed class LevelProjectionCalculatorTests
     }
 
     [Fact]
-    public void Project_ReturnsAscendingRowsAcrossRange()
+    public void ProjectLevel_HigherHealth_RaisesHpAndRegen()
     {
-        IReadOnlyList<LevelProjection> rows = LevelProjectionCalculator.Project(
-            fromLevel: 5, toLevel: 10, Chart, Health, 40, 40, 40,
-            MinHits, MaxHits, RaceHpPerLevel, mageryType: 0, mageryLevel: 0, RealmType.Stock);
-
-        Assert.Equal(6, rows.Count);
-        Assert.Equal(5, rows[0].Level);
-        Assert.Equal(10, rows[^1].Level);
-        for (int i = 1; i < rows.Count; i++)
-            Assert.Equal(rows[i - 1].Level + 1, rows[i].Level);
-    }
-
-    [Fact]
-    public void Project_ClampsFromBelowOne_AndCollapsesInvertedRange()
-    {
-        IReadOnlyList<LevelProjection> clamped = LevelProjectionCalculator.Project(
-            fromLevel: -3, toLevel: 2, Chart, Health, 40, 40, 40,
+        // The CP-plan integration feeds a higher HEA at higher levels; the same
+        // level with more HEA must project more HP and faster HP regen.
+        LevelProjection lo = LevelProjectionCalculator.ProjectLevel(
+            level: 20, Chart, health: 60, 40, 40, 40,
             MinHits, MaxHits, RaceHpPerLevel, 0, 0, RealmType.Stock);
-        Assert.Equal(1, clamped[0].Level);
-        Assert.Equal(2, clamped[^1].Level);
-
-        IReadOnlyList<LevelProjection> inverted = LevelProjectionCalculator.Project(
-            fromLevel: 10, toLevel: 3, Chart, Health, 40, 40, 40,
+        LevelProjection hi = LevelProjectionCalculator.ProjectLevel(
+            level: 20, Chart, health: 90, 40, 40, 40,
             MinHits, MaxHits, RaceHpPerLevel, 0, 0, RealmType.Stock);
-        Assert.Single(inverted);
-        Assert.Equal(10, inverted[0].Level);
+
+        Assert.True(hi.HpMax > lo.HpMax);
+        Assert.True(hi.HpRegen >= lo.HpRegen);
     }
 }

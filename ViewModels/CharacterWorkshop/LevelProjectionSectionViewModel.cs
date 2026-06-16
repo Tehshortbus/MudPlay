@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -25,9 +24,12 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// </summary>
 /// <remarks>
 /// Built on the PR 10.2 calculators via <see cref="LevelProjectionCalculator"/>.
-/// The what-if swaps the class/race table coefficients but holds the character's
-/// current attributes (HEA/INT/WIL/CHM) flat — quest HP/MP bonuses and CP-plan
-/// stat deltas fold in once those tabs ship (PR 10.10 / 10.7).
+/// The what-if swaps the class/race table coefficients. HP / HP-regen / MP-regen
+/// reflect the CP Allocation plan: each level layers that level's planned stat
+/// increase (from the shared <see cref="CpPlanState"/>) on top of the live
+/// attributes, so rows at/below the current level match the character and rows
+/// above show the planned build. Quest HP/MP bonuses fold in once that tab ships
+/// (PR 10.10).
 /// </remarks>
 public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionViewModel
 {
@@ -36,6 +38,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
 
     private readonly PlayerStats _stats;
     private readonly GameDataCache _gameData;
+    private readonly CpPlanState _planState;
     private Control? _view;
     private bool _suppress;
     private bool _seeded;
@@ -59,17 +62,24 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     /// <summary>False when no class/race resolves — drives the empty-state hint.</summary>
     [ObservableProperty] private bool _hasProjection;
 
-    public LevelProjectionSectionViewModel(PlayerStats stats, GameDataCache gameData)
+    public LevelProjectionSectionViewModel(PlayerStats stats, GameDataCache gameData, CpPlanState planState)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(planState);
         _stats = stats;
         _gameData = gameData;
+        _planState = planState;
 
         SeedFromCurrent();
         _stats.PropertyChanged += OnStatsChanged;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
+        _planState.Changed += OnPlanChanged;
     }
+
+    // The CP plan changed (a cell edit on the CP Allocation tab) — re-project so
+    // HP / HP-regen / MP-regen reflect the planned stat increases.
+    private void OnPlanChanged() => Rebuild();
 
     /// <summary>Re-seed Race / Class + the level range from the live character.</summary>
     [RelayCommand]
@@ -206,14 +216,33 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
         int to = Math.Max(from, ToLevel);
         if (to - from > MaxRowSpan) to = from + MaxRowSpan;
 
-        IReadOnlyList<LevelProjection> projections = LevelProjectionCalculator.Project(
-            from, to, chart, _stats.Health, _stats.Intellect, _stats.Willpower, _stats.Charm,
-            minHits, maxHits, raceHpPerLevel, mageryType, mageryLevel, realm);
-
         int currentLevel = _stats.Level;
         long currentExp = _stats.Exp;   // 0 when no profile/live exp → remaining == total
-        foreach (LevelProjection p in projections)
-            Rows.Add(new LevelProjectionRow(p, currentExp, p.Level == currentLevel, isCaster));
+
+        bool hasPlan = _planState.HasData;
+        var planBase = _planState.Baseline;   // raw-base stats the plan deltas are measured from
+
+        for (int lvl = from; lvl <= to; lvl++)
+        {
+            // Layer the CP-plan's planned stat increase (target minus the plan's
+            // raw-base baseline) on top of the live attributes. Below the plan the
+            // delta is 0, so those rows match the current character exactly; the
+            // projection only consumes HEA (HP) and INT/WIL/CHM (MP regen).
+            int hea = _stats.Health, intel = _stats.Intellect, wil = _stats.Willpower, chm = _stats.Charm;
+            if (hasPlan)
+            {
+                var s = _planState.StatsAtLevel(lvl);
+                hea += s.Health - planBase.Health;
+                intel += s.Intellect - planBase.Intellect;
+                wil += s.Willpower - planBase.Willpower;
+                chm += s.Charm - planBase.Charm;
+            }
+
+            LevelProjection p = LevelProjectionCalculator.ProjectLevel(
+                lvl, chart, hea, intel, wil, chm,
+                minHits, maxHits, raceHpPerLevel, mageryType, mageryLevel, realm);
+            Rows.Add(new LevelProjectionRow(p, currentExp, lvl == currentLevel, isCaster));
+        }
 
         HasProjection = Rows.Count > 0;
     }
@@ -222,6 +251,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     {
         _stats.PropertyChanged -= OnStatsChanged;
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
+        _planState.Changed -= OnPlanChanged;
     }
 
     private static int GetInt(JsonElement row, string property)

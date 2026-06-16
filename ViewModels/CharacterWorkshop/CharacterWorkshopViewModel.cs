@@ -12,9 +12,9 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Shell view-model for the Character Workshop window. Mirrors MudProxy's
 /// <c>CharacterStatusDialog</c> shape: a flat tab strip across the six
 /// Phase-10 tabs — Character Info / Death Recovery / Level Projection /
-/// CP Allocation / Quest Status / Equipment Manager. Character Info, Death
-/// Recovery, and Level Projection are wired; the remaining three are stub
-/// placeholders until their tab ships in later Phase-10 PRs.
+/// CP Allocation / Quest Status / Equipment Manager. The first four are wired;
+/// Quest Status and Equipment Manager remain stub placeholders until their tab
+/// ships in later Phase-10 PRs.
 /// </summary>
 public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisposable
 {
@@ -56,14 +56,13 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
 
         Sections.Add(new DeathSectionViewModel(recovery, profile));
 
-        Sections.Add(new LevelProjectionSectionViewModel(playerStats, gameData));
+        // The CP Allocation tab (writer) and Level Projection tab (reader) share
+        // one plan state so the projection's HP / regen reflect planned training.
+        var planState = new CpPlanState();
+        Sections.Add(new LevelProjectionSectionViewModel(playerStats, gameData, planState));
 
-        Sections.Add(new StubWorkshopSectionViewModel(
-            "cpallocation", "CP Allocation",
-            "Phase 10 — PR 10.7–10.9",
-            "Editable per-level character-point plan that drives auto-train and the @train " +
-            "remote command, and tracks the level-up training window. Wires when the CP " +
-            "Allocation tab ships."));
+        Sections.Add(new CpAllocationSectionViewModel(playerStats, gameData, inventory, profile, planState));
+
         Sections.Add(new StubWorkshopSectionViewModel(
             "queststatus", "Quest Status",
             "Phase 10 — PR 10.10–10.11",

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace FujinTerm.Game.Calculators;
 
 /// <summary>
@@ -13,10 +11,10 @@ namespace FujinTerm.Game.Calculators;
 /// <remarks>
 /// The projection is gear-independent (base race/class progression), so the
 /// equipment <c>+MaxHP</c> / regen-% inputs are passed as 0 and the HP/MP regens
-/// are the non-resting, non-meditating per-tick base. Quest HP/MP bonuses and
-/// CP-plan stat deltas fold in once the Quest Status (PR 10.10) and CP
-/// Allocation (PR 10.7) tabs ship; today the supplied stats are held flat across
-/// the range.
+/// are the non-resting, non-meditating per-tick base. Each call projects a single
+/// level from the stats supplied for it, so the caller varies HEA/INT/WIL/CHM per
+/// level to layer in the CP Allocation plan. Quest HP/MP bonuses fold in once the
+/// Quest Status tab ships (PR 10.10).
 /// </remarks>
 public static class LevelProjectionCalculator
 {
@@ -47,29 +45,5 @@ public static class LevelProjectionCalculator
             mageryType, mageryLevel, mpRegenPercent: 0, isMeditating: false, realm);
 
         return new LevelProjection(level, total, hpMin, hpMax, hpRegen, mana, mpRegen);
-    }
-
-    /// <summary>
-    /// Project every level in <c>[fromLevel, toLevel]</c> (inclusive). A
-    /// <paramref name="fromLevel"/> below 1 clamps to 1; a
-    /// <paramref name="toLevel"/> below the start collapses to a single row.
-    /// </summary>
-    public static IReadOnlyList<LevelProjection> Project(
-        int fromLevel, int toLevel, int chart,
-        int health, int intellect, int willpower, int charm,
-        int minHitsPerLevel, int maxHitsPerLevel, int raceHpPerLevel,
-        int mageryType, int mageryLevel,
-        RealmType realm)
-    {
-        if (fromLevel < 1) fromLevel = 1;
-        if (toLevel < fromLevel) toLevel = fromLevel;
-
-        var rows = new List<LevelProjection>(toLevel - fromLevel + 1);
-        for (int level = fromLevel; level <= toLevel; level++)
-        {
-            rows.Add(ProjectLevel(level, chart, health, intellect, willpower, charm,
-                minHitsPerLevel, maxHitsPerLevel, raceHpPerLevel, mageryType, mageryLevel, realm));
-        }
-        return rows;
     }
 }

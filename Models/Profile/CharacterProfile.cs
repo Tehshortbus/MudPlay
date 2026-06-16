@@ -252,4 +252,12 @@ public sealed class CharacterProfile
     /// records what was worn at death.
     /// </summary>
     public bool DeathAutoEquip { get; set; }
+
+    /// <summary>
+    /// The editable per-level CP-allocation plan (Workshop CP Allocation tab) —
+    /// the target stats at each planned level above the current one, oldest →
+    /// newest. Drives the CP grid now and auto-train / <c>@train</c> in later
+    /// Phase-10 PRs. <c>null</c> / empty means no plan saved.
+    /// </summary>
+    public List<CpPlanEntry>? CharacterPlan { get; set; }
 }
