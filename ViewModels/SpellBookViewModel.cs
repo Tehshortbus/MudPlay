@@ -43,6 +43,14 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
     /// <summary>When true, hide spells the character hasn't obtained yet.</summary>
     [ObservableProperty] private bool _showObtainedOnly;
 
+    /// <summary>
+    /// When false (default), the list is level-gated — only spells the character
+    /// is high enough to have (<c>ReqLevel &lt;= Level</c>). When true, the full
+    /// class list shows regardless of level, so the Lvl column doubles as an
+    /// unlock-projection. The gate is skipped while the level is unknown (0).
+    /// </summary>
+    [ObservableProperty] private bool _showAllSpells;
+
     /// <summary>Window title-strip header: class + level.</summary>
     public string HeaderText
     {
@@ -70,6 +78,7 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 
     partial void OnSearchTextChanged(string value) => Rebuild();
     partial void OnShowObtainedOnlyChanged(bool value) => Rebuild();
+    partial void OnShowAllSpellsChanged(bool value) => Rebuild();
 
     private void OnBookChanged()
     {
@@ -104,6 +113,9 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         {
             bool obtained = _book.IsObtained(spell.Number);
             if (ShowObtainedOnly && !obtained) continue;
+            // Level gate (default): hide above-level spells unless Show-all is on.
+            // Skipped when the level is unknown (0) so a fresh book isn't empty.
+            if (!ShowAllSpells && _book.Level > 0 && spell.ReqLevel > _book.Level) continue;
             if (filter.Length > 0 && !Matches(spell, filter)) continue;
             Rows.Add(new SpellBookRowViewModel(
                 spell, obtained, _book.Level, ResolveChain, _book.ResolveSpellName, ResolveTextblockCasts));

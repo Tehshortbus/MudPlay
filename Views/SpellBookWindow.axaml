@@ -19,20 +19,28 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6">
-            <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" VerticalAlignment="Center">
                 <TextBlock Grid.Column="0"
                            Text="{Binding HeaderText}"
                            Foreground="{StaticResource ChromeFgBrush}"
                            FontSize="13"
                            VerticalAlignment="Center"/>
                 <CheckBox Grid.Column="1"
+                          IsChecked="{Binding ShowAllSpells}"
+                          Content="Show all"
+                          ToolTip.Tip="Show the full class list regardless of level (the Lvl column shows when each unlocks)."
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"
+                          Margin="0,0,10,0"
+                          VerticalAlignment="Center"/>
+                <CheckBox Grid.Column="2"
                           IsChecked="{Binding ShowObtainedOnly}"
                           Content="Known only"
                           Foreground="{StaticResource ChromeFgSecBrush}"
                           FontSize="11"
                           Margin="0,0,10,0"
                           VerticalAlignment="Center"/>
-                <TextBox Grid.Column="2" MinWidth="180"
+                <TextBox Grid.Column="3" MinWidth="180"
                          PlaceholderText="Search code / name…"
                          Text="{Binding SearchText, Mode=TwoWay}"/>
             </Grid>

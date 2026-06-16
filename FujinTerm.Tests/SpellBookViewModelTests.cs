@@ -63,10 +63,25 @@ public sealed class SpellBookViewModelTests : IDisposable
     public void Rows_MirrorAvailableList_SortedByLevel()
     {
         SpellbookState book = NewBook(classNumber: 12, level: 5);
-        using SpellBookViewModel vm = new(book);
+        using SpellBookViewModel vm = new(book) { ShowAllSpells = true };
 
-        Assert.Equal(3, vm.Rows.Count); // level gate ignored for Available
+        Assert.Equal(3, vm.Rows.Count); // Show-all = the full class list
         Assert.Equal(new[] { "starlight", "high arc", "gated" }, vm.Rows.Select(r => r.Name));
+    }
+
+    [Fact]
+    public void LevelGate_HidesAboveLevelSpells_UnlessShowAll()
+    {
+        SpellbookState book = NewBook(classNumber: 12, level: 5);
+        using SpellBookViewModel vm = new(book);   // default: level-gated
+
+        // "gated" (ReqLevel 20) is hidden at level 5; req-2 + req-5 spells show.
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.DoesNotContain(vm.Rows, r => r.Name == "gated");
+
+        vm.ShowAllSpells = true;
+        Assert.Equal(3, vm.Rows.Count);
+        Assert.Contains(vm.Rows, r => r.Name == "gated");
     }
 
     [Fact]
@@ -98,7 +113,7 @@ public sealed class SpellBookViewModelTests : IDisposable
     public void Search_FiltersByNameAndShort()
     {
         SpellbookState book = NewBook(classNumber: 12, level: 5);
-        using SpellBookViewModel vm = new(book);
+        using SpellBookViewModel vm = new(book) { ShowAllSpells = true };
 
         vm.SearchText = "high";   // matches name "high arc"
         Assert.Single(vm.Rows);
@@ -138,7 +153,7 @@ public sealed class SpellBookViewModelTests : IDisposable
     {
         SpellbookState book = NewBook(classNumber: 12, level: 5);
         book.SetObtainedByNames(new[] { "starlight" });
-        using SpellBookViewModel vm = new(book);
+        using SpellBookViewModel vm = new(book) { ShowAllSpells = true };
 
         Assert.Equal("1 of 3 learned", vm.StatusText);
     }
