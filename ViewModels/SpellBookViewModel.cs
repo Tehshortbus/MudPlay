@@ -23,6 +23,7 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 {
     private readonly SpellbookState _book;
     private readonly Func<string?>? _classNameProvider;
+    private IReadOnlyList<ClassCastItem> _allCastItems = System.Array.Empty<ClassCastItem>();
     private bool _disposed;
 
     public SpellBookViewModel(SpellbookState book, Func<string?>? classNameProvider = null)
@@ -31,11 +32,25 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         _book = book;
         _classNameProvider = classNameProvider;
         _book.Changed += OnBookChanged;
+        _allCastItems = _book.GetCastItems();
         Rebuild();
     }
 
     /// <summary>The rendered, filtered spell rows.</summary>
     public ObservableCollection<SpellBookRowViewModel> Rows { get; } = new();
+
+    /// <summary>
+    /// The class's cast-on-use items (wands / scrolls / potions), filtered by
+    /// the search box. Rendered in a section below the spell grid. Empty for a
+    /// class with no usable cast items.
+    /// </summary>
+    public ObservableCollection<SpellBookItemRowViewModel> CastItems { get; } = new();
+
+    /// <summary>True when the cast-item section has anything to show (drives its visibility).</summary>
+    public bool HasCastItems => CastItems.Count > 0;
+
+    /// <summary>Header for the cast-item section, with the shown count.</summary>
+    public string CastItemsHeader => $"Cast-on-use items ({CastItems.Count})";
 
     /// <summary>Free-text filter over Short code + Name (case-insensitive).</summary>
     [ObservableProperty] private string _searchText = string.Empty;
@@ -82,6 +97,9 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 
     private void OnBookChanged()
     {
+        // The class can change (reroll) — re-pull the cast-item set, which only
+        // depends on class, not the per-keystroke search filter.
+        _allCastItems = _book.GetCastItems();
         Rebuild();
         OnPropertyChanged(nameof(HeaderText));
     }
@@ -121,7 +139,22 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
                 spell, obtained, _book.Level, ResolveChain, _book.ResolveSpellName, ResolveTextblockCasts));
         }
 
+        // Cast-on-use items: a separate section, filtered by the same search
+        // box (item name or cast-spell name) but unaffected by the spell-only
+        // level gate / obtained filter.
+        CastItems.Clear();
+        foreach (ClassCastItem item in _allCastItems)
+        {
+            if (filter.Length > 0
+                && !item.ItemName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                && !item.SpellName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                continue;
+            CastItems.Add(new SpellBookItemRowViewModel(item));
+        }
+
         OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(HasCastItems));
+        OnPropertyChanged(nameof(CastItemsHeader));
     }
 
     private static bool Matches(in KnownSpell spell, string filter)

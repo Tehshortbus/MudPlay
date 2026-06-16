@@ -102,6 +102,14 @@ public sealed class SpellbookState
         return null;
     }
 
+    /// <summary>
+    /// The cast-on-use items the active class can use (wands / scrolls /
+    /// potions carrying an Items code-43 <c>CastsSp</c> ability) — delegates to
+    /// <see cref="KnownSpellCatalog.GetClassCastItems"/>. The Spell Book lists
+    /// these alongside learnable spells. Empty when no class is set yet.
+    /// </summary>
+    public IReadOnlyList<ClassCastItem> GetCastItems() => _catalog.GetClassCastItems(ClassNumber);
+
     /// <summary>True when the character has learned the spell with this <c>Spells.Number</c>.</summary>
     public bool IsObtained(int spellNumber) => _obtained.Contains(spellNumber);
 

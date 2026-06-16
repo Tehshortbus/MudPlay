@@ -44,12 +44,14 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellRow(103, "gated", "lvlg", magery: 1, mageryLvl: 1, reqLevel: 20),
     ];
 
-    private SpellbookState NewBook(int classNumber, int level)
+    private SpellbookState NewBook(int classNumber, int level, object[]? items = null)
     {
         string dir = Path.Combine(_root, "set");
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "Spells.json"), JsonSerializer.Serialize(_spells));
         File.WriteAllText(Path.Combine(dir, "Classes.json"), JsonSerializer.Serialize(_classes));
+        if (items is not null)
+            File.WriteAllText(Path.Combine(dir, "Items.json"), JsonSerializer.Serialize(items));
 
         GameDataCache cache = new(_root);
         cache.SwitchSet("set");
@@ -169,7 +171,120 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Equal("This class has no spell book.", vm.StatusText);
     }
 
+    // ----- cast-on-use item section --------------------------------------
+
+    private static readonly object[] _items =
+    [
+        // Mage-only (ClassRest 12), casts starlight (100), unlimited (UseCount 0).
+        ItemRow(200, "Wand of Stars", castSpell: 100, useCount: 0, 12),
+        // Unrestricted (no ClassRest entries), casts high arc (101), 3 uses.
+        ItemRow(201, "Scroll of Arc", castSpell: 101, useCount: 3),
+        // Warrior-only (ClassRest 1), casts starlight — excluded for the Mage.
+        ItemRow(202, "Warrior Wand", castSpell: 100, useCount: 5, 1),
+        // Mage-only but no CastsSp ability — excluded (not a spell source).
+        PlainItemRow(203, "Plain Dagger", 12),
+        // Mage-only, casts starlight, single charge — exercises singular "use".
+        ItemRow(204, "Single Charge Rod", castSpell: 100, useCount: 1, 12),
+    ];
+
+    [Fact]
+    public void CastItems_SurfaceClassUsableCastOnUseItems()
+    {
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: _items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        // Mage can use 200 / 201 / 204; the warrior-only 202 and the
+        // non-casting 203 are excluded. Sorted by item name.
+        Assert.True(vm.HasCastItems);
+        Assert.Equal(new[] { "Scroll of Arc", "Single Charge Rod", "Wand of Stars" },
+            vm.CastItems.Select(r => r.ItemName));
+
+        SpellBookItemRowViewModel wand = vm.CastItems.Single(r => r.ItemName == "Wand of Stars");
+        Assert.Equal("casts starlight", wand.CastsText);
+        Assert.Equal("∞", wand.ChargesText);
+
+        Assert.Equal("3 uses", vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").ChargesText);
+        Assert.Equal("1 use", vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").ChargesText);
+    }
+
+    [Fact]
+    public void CastItems_RespectClassRestriction_ForNonMageryClass()
+    {
+        // A Warrior (non-magery, empty spell book) still surfaces the cast
+        // items it can use: the unrestricted scroll + the warrior-only wand.
+        SpellbookState book = NewBook(classNumber: 1, level: 5, items: _items);
+        using SpellBookViewModel vm = new(book, () => "Warrior");
+
+        Assert.Empty(vm.Rows); // no spells for this class
+        Assert.Equal(new[] { "Scroll of Arc", "Warrior Wand" },
+            vm.CastItems.Select(r => r.ItemName));
+    }
+
+    [Fact]
+    public void CastItems_FilteredBySearchText()
+    {
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: _items);
+        using SpellBookViewModel vm = new(book) { ShowAllSpells = true };
+
+        vm.SearchText = "scroll"; // matches the item name only
+        Assert.Single(vm.CastItems);
+        Assert.Equal("Scroll of Arc", vm.CastItems[0].ItemName);
+
+        vm.SearchText = "starlight"; // matches the cast-spell name on 200 + 204
+        Assert.Equal(new[] { "Single Charge Rod", "Wand of Stars" },
+            vm.CastItems.Select(r => r.ItemName));
+    }
+
+    [Fact]
+    public void CastItems_EmptyWhenNoItemsTable()
+    {
+        SpellbookState book = NewBook(classNumber: 12, level: 5); // no Items.json seeded
+        using SpellBookViewModel vm = new(book);
+
+        Assert.False(vm.HasCastItems);
+        Assert.Empty(vm.CastItems);
+    }
+
     // ----- synthetic-row builders (mirror SpellListParserTests) ----------
+
+    private static Dictionary<string, object> ItemRow(
+        int number, string name, int castSpell, int useCount, params int[] classRest)
+    {
+        Dictionary<string, object> row = new()
+        {
+            ["Number"] = number,
+            ["Name"] = name,
+            ["UseCount"] = useCount,
+        };
+        for (int i = 0; i < 10; i++)
+            row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
+        // 20 ability slots; slot 0 = CastsSp (43) → the cast spell number.
+        for (int i = 0; i < 20; i++)
+        {
+            row[$"Abil-{i}"] = i == 0 ? 43 : 0;
+            row[$"AbilVal-{i}"] = i == 0 ? castSpell : 0;
+        }
+        return row;
+    }
+
+    private static Dictionary<string, object> PlainItemRow(int number, string name, params int[] classRest)
+    {
+        Dictionary<string, object> row = new()
+        {
+            ["Number"] = number,
+            ["Name"] = name,
+            ["UseCount"] = 0,
+        };
+        for (int i = 0; i < 10; i++)
+            row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
+        for (int i = 0; i < 20; i++)
+        {
+            row[$"Abil-{i}"] = 0;
+            row[$"AbilVal-{i}"] = 0;
+        }
+        return row;
+    }
+
 
     private static Dictionary<string, object> ClassRow(int number, string name, int magery, int mageryLvl)
         => new()

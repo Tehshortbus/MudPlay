@@ -280,6 +280,106 @@ public sealed class KnownSpellCatalog
     private static readonly IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> EmptyCastIndex
         = new Dictionary<int, IReadOnlyList<KnownSpell>>();
 
+    // MajorMUD ability code for a cast-on-use spell ("CastsSp"): the slot's
+    // AbilVal is the Spells.Number the item casts when used.
+    private const int CastsSpAbilityCode = 43;
+
+    // Items carry 20 ability slots (Abil-0..19) vs the 10 on Spells / Classes.
+    private const int ItemAbilSlots = 20;
+
+    // Items denormalise their class restriction into 10 ClassRest-N slots,
+    // each a Classes.Number that may use the item.
+    private const int ItemClassRestSlots = 10;
+
+    /// <summary>
+    /// Every cast-on-use item the class can use — an Items row that both
+    /// (a) is usable by <paramref name="classNumber"/> via its
+    /// <c>ClassRest-0..9</c> restriction (no entries ⇒ universal) and
+    /// (b) carries a <c>CastsSp</c> ability (code 43) naming a spell. Each
+    /// result resolves the cast <c>Spells.Name</c> and the item's
+    /// <c>UseCount</c> charges (0 = unlimited). Sorted by item name then
+    /// spell name. Empty when no class is set, the set has no Items table, or
+    /// nothing matches.
+    /// </summary>
+    public IReadOnlyList<ClassCastItem> GetClassCastItems(int classNumber)
+    {
+        List<ClassCastItem> results = new();
+        if (classNumber < 1) return results;
+
+        JsonDocument? items = _cache.GetRawTable("Items");
+        if (items is null) return results;
+
+        Dictionary<int, string>? spellNames = null; // built lazily on first cast item
+        foreach (JsonElement row in items.RootElement.EnumerateArray())
+        {
+            if (!ItemUsableByClass(row, classNumber)) continue;
+
+            // First CastsSp (code 43) slot wins — an item casts a single use-spell.
+            int spellNumber = 0;
+            for (int i = 0; i < ItemAbilSlots; i++)
+            {
+                if (ReadInt(row, $"Abil-{i}") != CastsSpAbilityCode) continue;
+                spellNumber = ReadInt(row, $"AbilVal-{i}");
+                break;
+            }
+            if (spellNumber <= 0) continue;
+
+            string itemName = ReadString(row, "Name")?.Trim() ?? string.Empty;
+            if (itemName.Length == 0) continue;
+
+            spellNames ??= BuildSpellNameMap();
+            string spellName = spellNames.TryGetValue(spellNumber, out string? sn) ? sn : string.Empty;
+
+            results.Add(new ClassCastItem(
+                ItemNumber: ReadInt(row, "Number"),
+                ItemName: itemName,
+                SpellNumber: spellNumber,
+                SpellName: spellName,
+                UseCount: ReadInt(row, "UseCount")));
+        }
+
+        results.Sort(static (a, b) =>
+        {
+            int byItem = string.Compare(a.ItemName, b.ItemName, StringComparison.OrdinalIgnoreCase);
+            return byItem != 0 ? byItem : string.Compare(a.SpellName, b.SpellName, StringComparison.OrdinalIgnoreCase);
+        });
+        return results;
+    }
+
+    /// <summary>
+    /// Item class-usability three-state mirroring MMUD Explorer's class walk:
+    /// an item with no non-zero <c>ClassRest-N</c> slot is universal (usable by
+    /// every class); otherwise it's restricted to the listed class numbers.
+    /// </summary>
+    private static bool ItemUsableByClass(JsonElement row, int classNumber)
+    {
+        bool anyRestriction = false;
+        for (int i = 0; i < ItemClassRestSlots; i++)
+        {
+            int c = ReadInt(row, $"ClassRest-{i}");
+            if (c == 0) continue;
+            anyRestriction = true;
+            if (c == classNumber) return true;
+        }
+        return !anyRestriction;
+    }
+
+    /// <summary>One-pass <c>Spells.Number</c> → <c>Name</c> map for resolving
+    /// cast-item spells without a per-item table scan.</summary>
+    private Dictionary<int, string> BuildSpellNameMap()
+    {
+        Dictionary<int, string> map = new();
+        JsonDocument? spells = _cache.GetRawTable("Spells");
+        if (spells is null) return map;
+        foreach (JsonElement row in spells.RootElement.EnumerateArray())
+        {
+            int number = ReadInt(row, "Number");
+            if (number <= 0) continue;
+            if (ReadString(row, "Name") is { } name) map[number] = name.Trim();
+        }
+        return map;
+    }
+
     // "Casted By" lists each source as "Textblock #<number>" (comma-joined).
     // \d+ captures the full number so "#291" never partial-matches "#2910".
     private static readonly Regex CastedByTextblock =

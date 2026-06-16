@@ -57,6 +57,53 @@
                        Text="{Binding StatusText}"/>
         </Border>
 
+        <!-- ============ Cast-on-use items ============ -->
+        <!-- Class-usable wands / scrolls / potions that cast a spell on use
+             (Items code-43 CastsSp), listed below the spell grid with a
+             charges indicator. Collapses entirely when the class has none. -->
+        <Border DockPanel.Dock="Bottom"
+                IsVisible="{Binding HasCastItems}"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="{Binding CastItemsHeader}"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="11"
+                           Margin="0,0,0,4"/>
+                <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding CastItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:SpellBookItemRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding ItemName}"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding CastsText}"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ChargesText}"
+                                               ToolTip.Tip="{Binding ChargesTip}"
+                                               Foreground="{StaticResource SeverityInfoBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <!-- ============ Spell rows ============ -->
         <!-- DataGrid for user-adjustable columns (resize / reorder / sort).
              ReflectionBinding: column bindings resolve against the row item
