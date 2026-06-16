@@ -68,6 +68,14 @@ public sealed class PlayerDatabase
     /// <summary>Backing store for the merged view — observable so views can react to updates.</summary>
     public ObservableCollection<PlayerRecord> Players { get; } = new();
 
+    /// <summary>
+    /// Raised after a <c>who</c> / manual observation is recorded, carrying the
+    /// player's GIVEN name. <see cref="Game.AlignmentTracker"/> uses it to clear
+    /// the local character's stale-alignment flag once our own row is
+    /// re-observed by a <c>who</c>.
+    /// </summary>
+    public event Action<string>? ObservationRecorded;
+
     // ----- Construction --------------------------------------------------
 
     /// <summary>Parameterless ctor for tests and in-memory-only scenarios — no disk persistence.</summary>
@@ -157,6 +165,7 @@ public sealed class PlayerDatabase
 
         Rebuild();
         SaveObservations();
+        ObservationRecorded?.Invoke(given);
     }
 
     /// <summary>

@@ -244,6 +244,16 @@ public static class KnownPatterns
     public const string PartyMemberRankChanged    = "party.member-rank-changed";    // "X just moved to the {front|back} rank in your group." / "X just moved to the middle of your group."
     public const string PartySelfRankChanged      = "party.self-rank-changed";      // "You have moved to the {front|middle|back} ranks of your group." — self's own rerank confirmation
 
+    // ----- Alignment -----------------------------------------------------
+    /// <summary>
+    /// "A dark cloud passes over you" — MajorMUD's signal that the local
+    /// character's alignment just shifted toward evil (an evil-point gain).
+    /// The displayed alignment word doesn't update until the next <c>who</c>,
+    /// so <see cref="Game.AlignmentTracker"/> flags it stale on this line and
+    /// clears the flag once our own row is re-observed.
+    /// </summary>
+    public const string AlignmentDarkCloud = "alignment.dark-cloud";
+
     // ----- Main menu -----------------------------------------------------
     // BBSes customise the banner version + realm name + prompt text, but
     // the menu options themselves are stable across customisations.

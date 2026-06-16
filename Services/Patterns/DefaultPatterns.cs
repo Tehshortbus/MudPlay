@@ -522,6 +522,15 @@ public static class DefaultPatterns
         // is the actor's given name; direction is the full word.
         yield return new RegexPattern(KnownPatterns.PlayerDoorBashAttempt,
             @"^You see (?<name>.+?) attempt to bash the door to the (?<dir>north|south|east|west|northeast|northwest|southeast|southwest|up|down)\.");
+
+        // ----- Alignment -------------------------------------------------
+        // "A dark cloud passes over you" — the local character's alignment
+        // shifted toward evil (an evil-point gain). Prefix-anchored so a
+        // quoted chat line carrying the phrase can't trigger it.
+        // AlignmentTracker flags the Character Workshop's alignment stale
+        // until the next `who` refresh.
+        yield return new RegexPattern(KnownPatterns.AlignmentDarkCloud,
+            @"^A dark cloud passes over you");
     }
 
 }

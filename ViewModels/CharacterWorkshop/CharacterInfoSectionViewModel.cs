@@ -39,6 +39,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private readonly GameDataCache _gameData;
     private readonly InventoryManager _inventory;
     private readonly PlayerDatabase _playerDb;
+    private readonly AlignmentTracker _alignmentTracker;
     private Control? _view;
 
     public override string Id => "characterinfo";
@@ -119,6 +120,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     // / Abil-98 EP-range) handled by the Equipment Manager filter, not here.
     /// <summary>Alignment title from our own <c>who</c> observation, or "—" when unseen.</summary>
     [ObservableProperty] private string _alignment = "—";
+    /// <summary>
+    /// True after "A dark cloud passes over you" (alignment dropped) until the
+    /// next <c>who</c> refresh — drives the "(stale)" hint next to Alignment.
+    /// </summary>
+    [ObservableProperty] private bool _alignmentStale;
 
     // ----- Box D: monster matchup ----------------------------------------
     /// <summary>
@@ -160,20 +166,23 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private int _mProtGood;
     private int _mDamageResist;
 
-    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb)
+    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(playerDb);
+        ArgumentNullException.ThrowIfNull(alignmentTracker);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _playerDb = playerDb;
+        _alignmentTracker = alignmentTracker;
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _playerDb.Players.CollectionChanged += OnPlayersChanged;
+        _alignmentTracker.StaleChanged += OnAlignmentStaleChanged;
         EnsureMonsterNames();
         Refresh();
     }
@@ -517,6 +526,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     // already carries our alignment word — no new parsing needed here.
     private void RefreshAlignment()
     {
+        AlignmentStale = _alignmentTracker.IsStale;
+
         if (string.IsNullOrEmpty(_stats.Name))
         {
             Alignment = "—";
@@ -688,11 +699,15 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         RefreshMatchup();
     }
     private void OnPlayersChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshAlignment();
+    // Dark-cloud line fired (or a `who` cleared it) — just sync the flag; the
+    // alignment word itself refreshes on the PlayerDatabase update.
+    private void OnAlignmentStaleChanged() => AlignmentStale = _alignmentTracker.IsStale;
 
     public override void Dispose()
     {
         _stats.PropertyChanged -= OnStatsChanged;
         _inventory.Changed -= OnInventoryChanged;
         _playerDb.Players.CollectionChanged -= OnPlayersChanged;
+        _alignmentTracker.StaleChanged -= OnAlignmentStaleChanged;
     }
 }

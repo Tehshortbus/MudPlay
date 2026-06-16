@@ -39,6 +39,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         GameDataCache gameData,
         InventoryManager inventory,
         PlayerDatabase players,
+        AlignmentTracker alignment,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -47,12 +48,13 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(players);
+        ArgumentNullException.ThrowIfNull(alignment);
         _profile = profile;
         _gameData = gameData;
 
         // Tab order matches the Phase-10 plan's nav order. Character Info and
         // Death Recovery are wired; the rest are stubs until their PR lands.
-        Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players));
+        Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players, alignment));
 
         Sections.Add(new DeathSectionViewModel(recovery, profile));
 

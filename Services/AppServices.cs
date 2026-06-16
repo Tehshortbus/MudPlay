@@ -616,6 +616,13 @@ public sealed class AppServices
     public PlayerDatabase Players { get; }
 
     /// <summary>
+    /// Flags the local character's displayed alignment stale when the game
+    /// prints "A dark cloud passes over you", clearing on the next <c>who</c>.
+    /// Read by the Character Workshop's Character Info tab.
+    /// </summary>
+    public Game.AlignmentTracker Alignment { get; }
+
+    /// <summary>
     /// Loaded character's <see cref="Models.GameData.Macro"/> store.
     /// Surfaced by the Game Data Browser → Macros tab; the Phase 10
     /// MacroManager engine intercepts keystrokes and dispatches from
@@ -1313,6 +1320,11 @@ public sealed class AppServices
         {
             if (m.Groups.Count > 0) Spellbook.MarkObtainedByName(m.Groups[0]);
         });
+        // Alignment staleness — "A dark cloud passes over you" flags the
+        // Character Workshop's displayed alignment stale until the next `who`
+        // re-observes our own row. Long-lived so the line is caught even when
+        // the Workshop is closed.
+        Alignment = new Game.AlignmentTracker(Router, PlayerStats, Players);
         // Phase 6 PR 6.3 — first consumer; registers the party-essential
         // handler set against the engine.
         // readCurrentRoom / readRoomEntities defer to the live RoomTracker
