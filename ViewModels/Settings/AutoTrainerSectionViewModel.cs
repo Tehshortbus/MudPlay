@@ -35,6 +35,8 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
+    // Guards the re-entrant revert when Auto-train stats is forced off (no plan).
+    private bool _forcingStatsOff;
 
     public override string Id => "autotrainer";
     public override string Title => "Auto-Trainer";
@@ -48,6 +50,9 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     /// <summary>False when the active set yields no trainers at all — drives the empty-state.</summary>
     public bool HasTrainers => _allRows.Count > 0;
 
+    /// <summary>True when the loaded profile has a saved CP allocation plan (needed for Auto-train stats).</summary>
+    private bool HasCpPlan => _profile.Current?.CharacterPlan is { Count: > 0 };
+
     /// <summary>Master auto-train toggle (level-up at the trainer during loop/auto-lair).</summary>
     [ObservableProperty] private bool _autoTrain;
     /// <summary>Cascading toggle — apply the CP plan via <c>train stats</c> after each train.</summary>
@@ -59,6 +64,17 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     [ObservableProperty] private bool _onlyUsableLevel;
     /// <summary>Show only universal trainers or ones restricted to the character's class.</summary>
     [ObservableProperty] private bool _onlyMyClass;
+
+    /// <summary>
+    /// Set when the user tries to enable Auto-train stats with no saved CP plan —
+    /// the checkbox reverts and this explains why. Null = hidden.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAutoTrainStatsWarning))]
+    private string? _autoTrainStatsWarning;
+
+    /// <summary>Drives the Auto-train-stats warning's visibility.</summary>
+    public bool HasAutoTrainStatsWarning => !string.IsNullOrEmpty(AutoTrainStatsWarning);
 
     /// <summary>Discovered trainers in the active set, ascending by level range.</summary>
     public ObservableCollection<AutoTrainerRowViewModel> Trainers { get; } = new();
@@ -214,7 +230,25 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         MarkDirty();
     }
 
-    partial void OnAutoTrainStatsChanged(bool value) => MarkDirty();
+    partial void OnAutoTrainStatsChanged(bool value)
+    {
+        if (_forcingStatsOff) return;   // re-entry from the revert below
+
+        // Auto-train stats needs a saved CP plan to apply — without one, revert
+        // the box and tell the user where to set the plan up.
+        if (value && !HasCpPlan)
+        {
+            AutoTrainStatsWarning =
+                "Set up and save a CP allocation plan in the Player Workshop (CP Allocation tab) before enabling Auto-train stats.";
+            _forcingStatsOff = true;
+            try { AutoTrainStats = false; }
+            finally { _forcingStatsOff = false; }
+            return;
+        }
+
+        AutoTrainStatsWarning = null;
+        MarkDirty();
+    }
 
     private void ClearDirty()
     {

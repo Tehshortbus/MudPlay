@@ -27,6 +27,10 @@
                       IsChecked="{Binding AutoTrainStats, Mode=TwoWay}"
                       IsEnabled="{Binding AutoTrain}"
                       ToolTip.Tip="After training a level, apply the CP plan's row for the new level via the train-stats screen."/>
+            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap" MaxWidth="540"
+                       IsVisible="{Binding HasAutoTrainStatsWarning}"
+                       Text="{Binding AutoTrainStatsWarning}"
+                       Foreground="{StaticResource AccentAmberBrush}"/>
         </StackPanel>
 
         <!-- Header + view filters. Both unchecked = all discovered trainers;
