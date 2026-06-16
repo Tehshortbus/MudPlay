@@ -531,6 +531,13 @@ public static class DefaultPatterns
         // until the next `who` refresh.
         yield return new RegexPattern(KnownPatterns.AlignmentDarkCloud,
             @"^A dark cloud passes over you");
+
+        // ----- Training --------------------------------------------------
+        // "You hand over 1 gold crown and you receive training to attain
+        // level 3." — `train` level-up confirmation; group 1 = attained level.
+        // Auto-train uses this to detect the level-up + drive the CP plan.
+        yield return new RegexPattern(KnownPatterns.TrainAttainLevel,
+            @"^You hand over .+ and you receive training to attain level (?<level>\d+)");
     }
 
 }

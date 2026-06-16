@@ -254,6 +254,15 @@ public static class KnownPatterns
     /// </summary>
     public const string AlignmentDarkCloud = "alignment.dark-cloud";
 
+    // ----- Training ------------------------------------------------------
+    /// <summary>
+    /// "You hand over &lt;cost&gt; and you receive training to attain level N." —
+    /// the server's confirmation that a <c>train</c> levelled the character up.
+    /// Group 1 captures the attained level. Drives auto-train's level-up
+    /// detection and the Level Projection / CP-plan level sync.
+    /// </summary>
+    public const string TrainAttainLevel = "train.attain-level";
+
     // ----- Main menu -----------------------------------------------------
     // BBSes customise the banner version + realm name + prompt text, but
     // the menu options themselves are stable across customisations.
