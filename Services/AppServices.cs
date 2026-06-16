@@ -383,6 +383,12 @@ public sealed class AppServices
     public Game.Remote.TrapHandler TrapRemote { get; }
 
     /// <summary>
+    /// <c>@train</c> handler — trains in place (no walk) on a permitted party
+    /// member's request, applying the CP plan when Auto-train-stats is on.
+    /// </summary>
+    public Game.Remote.TrainHandler TrainRemote { get; }
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
     /// Authorised callers (Elevated-Commands permission, lives above
     /// the suicide threshold) trigger the suicide round-trip; on
@@ -2376,6 +2382,8 @@ public sealed class AppServices
         // both route through it. Wire-sender bound in MainWindowViewModel.
         TrainerWalk = new Game.TrainerWalkManager(PlayerStats, Stats, GameData, Profile,
             RoomTracker, Bfs, Walker, LoopRunner, AutoLair, AutoTrain, Router, Log);
+        // @train remote: trains in place (no walk) via the coordinator.
+        TrainRemote = new Game.Remote.TrainHandler(RemoteCommands, TrainerWalk);
 
         AutoDeposit = new Game.Cash.AutoDepositManager(
             Cash,

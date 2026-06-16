@@ -42,6 +42,7 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@deposit-all")]
     [InlineData("@do")]
     [InlineData("@trap")]
+    [InlineData("@train")]
     public void ExecuteCommands_BulkActionsAndDo(string cmd)
         => Assert.Equal(PlayerRemoteControls.ExecuteCommands, Lookup(cmd));
 

@@ -122,6 +122,21 @@ public sealed class TrainerWalkManager : IDisposable
     /// <summary>Manual trigger (CP Allocation tab) — walk to a trainer and train + apply the plan.</summary>
     public void TrainNow() => Begin(armed: false);
 
+    /// <summary>
+    /// Remote <c>@train</c> trigger — train where we are (no walk; assumes we're
+    /// already at a trainer). Sends <c>train</c>, then applies the CP plan only
+    /// when Auto-train-stats is on + a plan row exists (the armed-style gate).
+    /// No engine detour — a remote train is used while parked, not mid-loop.
+    /// </summary>
+    public void TrainInPlace()
+    {
+        if (IsBusy || !_wire.IsBound) return;
+        _armedRun = true;     // CP step follows the Auto-train-stats toggle
+        _target = null;       // no walk target — we're assumed to be at the trainer
+        _resume = default;    // and not detouring a running engine
+        SendTrain(++_sessionId);
+    }
+
     private void Begin(bool armed)
     {
         if (IsBusy || !_wire.IsBound) return;

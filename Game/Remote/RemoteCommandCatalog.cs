@@ -128,6 +128,10 @@ public static class RemoteCommandCatalog
             // permission tier covers the "do something on my behalf"
             // semantic.
             ["@trap"]         = PlayerRemoteControls.ExecuteCommands,
+            // @train asks us to train (level up) and, if Auto-train-stats is on,
+            // spend the CP plan — assuming we're already at a trainer (no walk).
+            // "Do something on my behalf", so ExecuteCommands like @do / @kill.
+            ["@train"]        = PlayerRemoteControls.ExecuteCommands,
 
             // ===== Movement / Loops =====
             // @looponce / @roam from the upstream MegaMUD catalog don't
