@@ -2254,14 +2254,6 @@ public sealed class AppServices
         // StealthManager prevents a double-send when both paths fire.
         Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
 
-        // PR 10.8 — trainer-walk coordinator: resolve the nearest allowed,
-        // level-appropriate trainer → walk there → `train` → apply the CP plan
-        // for the new level. Manual Train Now (CP tab) + the armed auto-train
-        // both go through it. Needs Walker / Bfs / RoomTracker (built above) +
-        // AutoTrain. Wire-sender bound in MainWindowViewModel.
-        TrainerWalk = new Game.TrainerWalkManager(PlayerStats, Stats, GameData, Profile,
-            RoomTracker, Bfs, Walker, AutoTrain, Router, Log);
-
         // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
         // BBS-change signals so the catalogue reloads on profile load
         // and on explicit BBS pin from Settings → BBS Apply.
@@ -2377,6 +2369,14 @@ public sealed class AppServices
         // detour walk itself (same reasoning as PartyComebackManager). The
         // wire sender for the bank `dep` is bound by MainWindowViewModel
         // after telnet connects, alongside the Cash / Stash senders.
+        // PR 10.8 — trainer-walk coordinator. Built here (after the movement
+        // engines) so it can snapshot / stop / restart the running Loop or
+        // Auto-Lair for a train detour, same as AutoDeposit. Manual Train Now
+        // (CP tab) + the armed auto-train (live-exp threshold during a loop)
+        // both route through it. Wire-sender bound in MainWindowViewModel.
+        TrainerWalk = new Game.TrainerWalkManager(PlayerStats, Stats, GameData, Profile,
+            RoomTracker, Bfs, Walker, LoopRunner, AutoLair, AutoTrain, Router, Log);
+
         AutoDeposit = new Game.Cash.AutoDepositManager(
             Cash,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),

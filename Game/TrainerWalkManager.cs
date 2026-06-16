@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using FujinTerm.Game.Calculators;
 using FujinTerm.Game.GameData;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
@@ -12,24 +13,32 @@ using FujinTerm.Services.Patterns;
 namespace FujinTerm.Game;
 
 /// <summary>
-/// The manual / auto entry point for "go train". Resolves the nearest allowed,
-/// level-appropriate trainer from <see cref="TrainerCatalog"/>, walks there with
-/// <see cref="AutoWalkManager"/>, sends <c>train</c> on arrival, and — once the
-/// "attain level N" line confirms the level-up — refreshes stats and hands off
-/// to <see cref="AutoTrainManager"/> to apply the CP plan for the new level.
+/// The manual / armed entry point for "go train". Resolves the nearest allowed,
+/// level-appropriate trainer (<see cref="TrainerCatalog.SelectNearest"/> + BFS
+/// distance), detours a running loop / auto-lair to it, sends <c>train</c> on
+/// arrival, and — once the "attain level N" line confirms the level-up —
+/// refreshes stats and hands off to <see cref="AutoTrainManager"/> to apply the
+/// CP plan, then resumes the engine.
 /// </summary>
 /// <remarks>
-/// The level-up line + a fresh <c>stat</c> are the load-bearing signals:
-/// <see cref="PlayerStats"/>'s Level and CP both lag the <c>train</c> until the
-/// next stat screen, so the engine waits for <see cref="StatParser.ScreenParsed"/>
-/// before applying CP. Sessions are id-tagged so a late timeout can't disturb a
-/// newer run. A level with no matching trainer (a quest-gated gap) stops with a
-/// log line rather than flailing. Wraps <see cref="AutoTrainManager"/> so the CP
-/// Allocation tab can talk to one object (Train Now / busy / can-train).
+/// <para><b>Can-level detection without polling.</b> We keep a running exp total:
+/// seeded from the current <see cref="PlayerStats.Exp"/>, re-synced on every
+/// <see cref="StatParser.ScreenParsed"/>, and incremented by each captured
+/// <c>UserGainExperience</c> line. "Can train" is that total meeting the next
+/// level's cumulative threshold (<see cref="ExperienceTableCalculator.CalcExpNeeded"/>)
+/// — exactly the top Level-Projection row's <i>Exp to level</i> hitting 0. A kill
+/// that crosses the threshold fires the armed run immediately; no <c>exp</c> poll.</para>
+/// <para><b>Engine detour</b> mirrors <c>AutoDepositManager</c>: snapshot the
+/// running Loop / Auto-Lair, stop it (stop-and-restart, not a gate, so the detour
+/// walk owns the wire), train, then restart it. Manual Train Now does the same
+/// when an engine is running; with none it just walks + trains. The armed path
+/// also gates the CP-apply on the Auto-train-stats toggle; manual always applies.</para>
 /// </remarks>
 public sealed class TrainerWalkManager : IDisposable
 {
-    private enum Phase { Idle, Walking, Training, RefreshingStats }
+    private enum Phase { Idle, Walking, Training, RefreshingStats, ApplyingCp }
+    private enum ResumeKind { None, Loop, Lair }
+    private readonly record struct ResumeTarget(ResumeKind Kind, Loop? Loop);
 
     private readonly PlayerStats _stats;
     private readonly StatParser _statParser;
@@ -38,15 +47,21 @@ public sealed class TrainerWalkManager : IDisposable
     private readonly RoomTracker _tracker;
     private readonly BfsMapper _bfs;
     private readonly AutoWalkManager _walker;
+    private readonly LoopRunner _loopRunner;
+    private readonly AutoLairManager _autoLair;
     private readonly AutoTrainManager _autoTrain;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
     private readonly IDisposable _trainSub;
+    private readonly IDisposable _expSub;
 
     private Phase _phase = Phase.Idle;
     private int _sessionId;
     private int _attainedLevel;
+    private bool _armedRun;
     private TrainerShop? _target;
+    private ResumeTarget _resume;
+    private long _liveExp;   // baseline (stat/exp) + captured gains since
 
     /// <summary>How long to wait for the "attain level" line after sending <c>train</c>.</summary>
     public TimeSpan TrainConfirmTimeout { get; set; } = TimeSpan.FromSeconds(8);
@@ -58,8 +73,8 @@ public sealed class TrainerWalkManager : IDisposable
 
     public TrainerWalkManager(PlayerStats stats, StatParser statParser, GameDataCache gameData,
                               ProfileService profile, RoomTracker tracker, BfsMapper bfs,
-                              AutoWalkManager walker, AutoTrainManager autoTrain,
-                              MessageRouter router, LogService? log = null)
+                              AutoWalkManager walker, LoopRunner loopRunner, AutoLairManager autoLair,
+                              AutoTrainManager autoTrain, MessageRouter router, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(statParser);
@@ -68,6 +83,8 @@ public sealed class TrainerWalkManager : IDisposable
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(bfs);
         ArgumentNullException.ThrowIfNull(walker);
+        ArgumentNullException.ThrowIfNull(loopRunner);
+        ArgumentNullException.ThrowIfNull(autoLair);
         ArgumentNullException.ThrowIfNull(autoTrain);
         ArgumentNullException.ThrowIfNull(router);
         _stats = stats;
@@ -77,11 +94,15 @@ public sealed class TrainerWalkManager : IDisposable
         _tracker = tracker;
         _bfs = bfs;
         _walker = walker;
+        _loopRunner = loopRunner;
+        _autoLair = autoLair;
         _autoTrain = autoTrain;
         _log = log;
+        _liveExp = stats.Exp;
 
         _walker.Event += OnWalkEvent;
         _trainSub = router.Subscribe(KnownPatterns.TrainAttainLevel, OnTrained);
+        _expSub = router.Subscribe(KnownPatterns.UserGainExperience, OnExpGain);
         _statParser.ScreenParsed += OnStatScreenParsed;
         _autoTrain.StateChanged += OnAutoTrainStateChanged;
     }
@@ -92,18 +113,13 @@ public sealed class TrainerWalkManager : IDisposable
     /// <summary>True while a walk/train run (or the CP-apply it hands off) is in flight.</summary>
     public bool IsBusy => _phase != Phase.Idle || _autoTrain.IsBusy;
 
-    /// <summary>
-    /// True when Train Now would do something: a CP plan is applicable now, or
-    /// the character has enough experience to train a level.
-    /// </summary>
-    public bool CanTrainNow => _autoTrain.CanTrainNow || (_stats.Level > 0 && _stats.ExpToNext == 0);
+    /// <summary>True when Train Now would do something: a CP plan is applicable, or we can level.</summary>
+    public bool CanTrainNow => _autoTrain.CanTrainNow || CanLevelNow();
 
-    /// <summary>
-    /// Begin a manual train run: walk to the nearest allowed, level-appropriate
-    /// trainer and train (then apply the CP plan for the new level). No-op when
-    /// busy, no wire is bound, our location is unknown, or no trainer qualifies.
-    /// </summary>
-    public void TrainNow()
+    /// <summary>Manual trigger (CP Allocation tab) — walk to a trainer and train + apply the plan.</summary>
+    public void TrainNow() => Begin(armed: false);
+
+    private void Begin(bool armed)
     {
         if (IsBusy || !_wire.IsBound) return;
         if (_tracker.State.CurrentRoom is not { } cur)
@@ -120,10 +136,13 @@ public sealed class TrainerWalkManager : IDisposable
             return;
         }
 
+        _armedRun = armed;
         _target = t;
+        _resume = SnapshotEngine();
+        StopEngine();   // free the wire for the detour (no-op when nothing's running)
+
         int session = ++_sessionId;
         var room = new RoomKey(t.Map, t.Room);
-
         if (cur.Key == room)
         {
             SendTrain(session);
@@ -136,15 +155,9 @@ public sealed class TrainerWalkManager : IDisposable
         }
         else
         {
-            _log?.Info("AutoTrain", $"No path to trainer {t.Name} ({t.Map}/{t.Room}).");
-            _target = null;
+            Finish($"No path to trainer {t.Name} ({t.Map}/{t.Room}).");
         }
     }
-
-    private TrainerShop? SelectNearest(RoomKey from) =>
-        TrainerCatalog.SelectNearest(
-            TrainerCatalog.Enumerate(_gameData), _stats.Level, ResolveClassNumber(), ReadDisabledTrainers(),
-            t => _bfs.DistanceBetween(from, new RoomKey(t.Map, t.Room)));
 
     private void OnWalkEvent(WalkEvent e)
     {
@@ -154,11 +167,11 @@ public sealed class TrainerWalkManager : IDisposable
             if (_target is { } t && _tracker.State.CurrentRoom?.Key == new RoomKey(t.Map, t.Room))
                 SendTrain(_sessionId);
             else
-                Reset("Walk finished but not at the trainer room — aborting train.");
+                Finish("Walk finished away from the trainer — aborting.");
         }
         else if (e.Kind == WalkEventKind.Failed)
         {
-            Reset("Couldn't reach the trainer — aborting train.");
+            Finish("Couldn't reach the trainer — aborting.");
         }
     }
 
@@ -175,27 +188,28 @@ public sealed class TrainerWalkManager : IDisposable
     {
         await Task.Delay(TrainConfirmTimeout);
         if (_sessionId == session && _phase == Phase.Training)
-            Reset("No training confirmation (not enough experience, or wrong trainer).");
+            Finish("No training confirmation (not enough experience, or wrong trainer).");
     }
 
-    // "...you receive training to attain level N." — the level-up confirmation.
+    // "...you receive training to attain level N." — level-up confirmation.
     private void OnTrained(MatchResult m)
     {
         if (_phase != Phase.Training) return;
         if (m.Groups.Count == 0 || !int.TryParse(m.Groups[0], out int level))
         {
-            Reset("Couldn't parse the trained level.");
+            Finish("Couldn't parse the trained level.");
             return;
         }
         _attainedLevel = level;
         _log?.Info("AutoTrain", $"Trained to level {level}.");
 
-        // Only chase the train-stats screen when the plan has a row for the new
-        // level; otherwise we've done our job (levelled up).
+        // Manual Train Now always applies the plan; the armed path needs the
+        // Auto-train-stats toggle. Either way, only if there's a row to apply.
+        bool wantStats = !_armedRun || ReadSettings().AutoTrainStats;
         bool hasPlan = _profile.Current?.CharacterPlan?.Any(e => e.Level == level) ?? false;
-        if (!hasPlan)
+        if (!wantStats || !hasPlan)
         {
-            Reset(null);
+            Finish(null);
             return;
         }
 
@@ -211,59 +225,146 @@ public sealed class TrainerWalkManager : IDisposable
     {
         await Task.Delay(StatRefreshTimeout);
         if (_sessionId == session && _phase == Phase.RefreshingStats)
-            Reset("Stat refresh didn't arrive — apply CP from the CP Allocation tab.");
+            Finish("Stat refresh didn't arrive — apply CP from the CP Allocation tab.");
     }
 
     private void OnStatScreenParsed(LastKnownStats snapshot)
     {
+        _liveExp = snapshot.Exp;   // authoritative resync of the running total
+
         if (_phase == Phase.RefreshingStats && snapshot.Level == _attainedLevel)
         {
-            // Stats are fresh (Level + CP). Hand off to the train-stats engine,
-            // then we're done — it owns the screen from here.
-            _phase = Phase.Idle;
-            _target = null;
             _log?.Info("AutoTrain", $"Applying CP plan for level {_attainedLevel}.");
-            StateChanged?.Invoke();
             _autoTrain.TrainNow();
+            if (_autoTrain.IsBusy)
+            {
+                _phase = Phase.ApplyingCp;
+                StateChanged?.Invoke();
+            }
+            else
+            {
+                Finish(null);   // nothing affordable to apply — done
+            }
         }
     }
 
-    private void OnAutoTrainStateChanged() => StateChanged?.Invoke();
-
-    private void Reset(string? reason)
+    private void OnAutoTrainStateChanged()
     {
-        if (reason is not null) _log?.Info("AutoTrain", reason);
-        _phase = Phase.Idle;
-        _target = null;
+        if (_phase == Phase.ApplyingCp && !_autoTrain.IsBusy)
+        {
+            Finish(null);
+            return;
+        }
         StateChanged?.Invoke();
     }
 
-    private int ResolveClassNumber()
+    // "You gain N experience." — keep the running total live so the armed run
+    // fires the instant a kill crosses the next-level threshold (no exp poll).
+    private void OnExpGain(MatchResult m)
     {
-        if (string.IsNullOrEmpty(_stats.Class)) return 0;
-        if (_gameData.FindRowByName("Classes", _stats.Class) is not JsonElement row) return 0;
-        return row.TryGetProperty("Number", out JsonElement n) && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v)
-            ? v : 0;
+        if (m.Groups.Count > 0 && long.TryParse(m.Groups[0], out long gained))
+            _liveExp += gained;
+
+        if (!IsBusy && EngineActive && ReadSettings().AutoTrain && CanLevelNow())
+            Begin(armed: true);
+        else
+            StateChanged?.Invoke();
+    }
+
+    private void Finish(string? reason)
+    {
+        if (reason is not null) _log?.Info("AutoTrain", reason);
+        ResumeTarget resume = _resume;
+        _phase = Phase.Idle;
+        _target = null;
+        _resume = default;
+        _armedRun = false;
+        StateChanged?.Invoke();
+        ResumeEngine(resume);
+    }
+
+    // ----- engine detour (mirrors AutoDepositManager) --------------------
+
+    private bool EngineActive => _loopRunner.State != LoopState.Idle || _autoLair.IsActive;
+
+    private ResumeTarget SnapshotEngine()
+    {
+        if (_autoLair.IsActive) return new ResumeTarget(ResumeKind.Lair, null);
+        if (_loopRunner.State != LoopState.Idle && _loopRunner.CurrentLoop is { } loop)
+            return new ResumeTarget(ResumeKind.Loop, loop);
+        return new ResumeTarget(ResumeKind.None, null);
+    }
+
+    private void StopEngine()
+    {
+        if (_autoLair.IsActive) _autoLair.Stop("trainer detour");
+        if (_loopRunner.State != LoopState.Idle) _loopRunner.Stop("trainer detour");
+    }
+
+    private void ResumeEngine(ResumeTarget resume)
+    {
+        switch (resume.Kind)
+        {
+            case ResumeKind.Lair:
+                _autoLair.Start();
+                break;
+            case ResumeKind.Loop:
+                if (resume.Loop is { } loop) _loopRunner.Start(loop);
+                break;
+        }
+    }
+
+    // ----- resolution / detection ----------------------------------------
+
+    private TrainerShop? SelectNearest(RoomKey from) =>
+        TrainerCatalog.SelectNearest(
+            TrainerCatalog.Enumerate(_gameData), _stats.Level, ResolveClassNumber(), ReadDisabledTrainers(),
+            t => _bfs.DistanceBetween(from, new RoomKey(t.Map, t.Room)));
+
+    // The top Level-Projection row's "Exp to level" reaching 0: the running exp
+    // total already meets the next level's cumulative threshold.
+    private bool CanLevelNow()
+    {
+        if (_stats.Level <= 0) return false;
+        int chart = ExperienceTableCalculator.CalcExpChart(
+            GetInt(_gameData.FindRowByName("Classes", _stats.Class), "ExpTable"),
+            GetInt(_gameData.FindRowByName("Races", _stats.Race), "ExpTable"));
+        if (chart <= 0) return false;
+        return _liveExp >= ExperienceTableCalculator.CalcExpNeeded(_stats.Level + 1, chart, _gameData.ActiveRealm);
+    }
+
+    private int ResolveClassNumber() => GetInt(_gameData.FindRowByName("Classes", _stats.Class), "Number");
+
+    private AutoTrainerSettings ReadSettings()
+    {
+        if (_profile.Current?.Settings is { } settings && settings.TryGetValue("AutoTrainer", out JsonElement json))
+        {
+            try { return JsonSerializer.Deserialize<AutoTrainerSettings>(json) ?? new AutoTrainerSettings(); }
+            catch { /* malformed settings → defaults */ }
+        }
+        return new AutoTrainerSettings();
     }
 
     private HashSet<int> ReadDisabledTrainers()
     {
         var disabled = new HashSet<int>();
-        if (_profile.Current?.Settings is not { } settings) return disabled;
-        if (!settings.TryGetValue("AutoTrainer", out JsonElement json)) return disabled;
-        try
-        {
-            if (JsonSerializer.Deserialize<AutoTrainerSettings>(json)?.DisabledTrainers is { } list)
-                foreach (int n in list) disabled.Add(n);
-        }
-        catch { /* malformed settings → treat as none disabled */ }
+        if (ReadSettings().DisabledTrainers is { } list)
+            foreach (int n in list) disabled.Add(n);
         return disabled;
+    }
+
+    private static int GetInt(JsonElement? rowOpt, string prop)
+    {
+        if (rowOpt is not JsonElement row || row.ValueKind != JsonValueKind.Object) return 0;
+        if (!row.TryGetProperty(prop, out JsonElement v)) return 0;
+        return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
     }
 
     public void Dispose()
     {
         _walker.Event -= OnWalkEvent;
         _trainSub.Dispose();
+        _expSub.Dispose();
         _statParser.ScreenParsed -= OnStatScreenParsed;
         _autoTrain.StateChanged -= OnAutoTrainStateChanged;
     }
