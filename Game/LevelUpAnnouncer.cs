@@ -99,9 +99,12 @@ public sealed class LevelUpAnnouncer : IDisposable
     }
 
     // An authoritative stat/exp poll re-anchored the total — re-seed the high-water
-    // mark to whatever's reachable now, silently. Exp only ever climbs in play (death
-    // costs a life, never experience), so this normally moves up or holds; it can drop
-    // only to correct a live counter that over-counted a gain line.
+    // mark to whatever's reachable now, silently. Exp climbs during normal play, so
+    // this usually moves the mark up or holds it. It moves DOWN only when the total
+    // genuinely shrank: a character remade after losing all lives / rerolling keeps
+    // just a fraction of earned exp, and re-anchoring then lets levels announce again
+    // as the remade character re-earns them. (It can also drop to correct a live
+    // counter that over-counted a gain line.)
     private void OnScreenParsed(LastKnownStats snapshot) =>
         SeedBaseline(snapshot.Level, snapshot.Exp, snapshot.Class, snapshot.Race);
 
