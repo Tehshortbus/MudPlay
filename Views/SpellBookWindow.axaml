@@ -77,17 +77,25 @@
                     <ItemsControl ItemsSource="{Binding CastItems}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:SpellBookItemRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="{Binding ItemName}"
-                                                   Foreground="{StaticResource ChromeFgBrush}"
-                                                   FontSize="12"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding CastsText}"
-                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
-                                                   FontFamily="{StaticResource FontMono}"
-                                                   FontSize="11"
-                                                   VerticalAlignment="Center"/>
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                    <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="1">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding ItemName}"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       FontSize="12"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding CastsText}"
+                                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <SelectableTextBlock Text="{Binding BuffToken}"
+                                                             IsVisible="{Binding HasBuffToken}"
+                                                             ToolTip.Tip="{Binding BuffTokenTip}"
+                                                             Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                             FontFamily="{StaticResource FontMono}"
+                                                             FontSize="10"/>
                                     </StackPanel>
                                     <TextBlock Grid.Column="1"
                                                Text="{Binding ChargesText}"

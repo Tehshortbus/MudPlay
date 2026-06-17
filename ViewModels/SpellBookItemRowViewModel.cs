@@ -30,4 +30,19 @@ public sealed class SpellBookItemRowViewModel
     public string ChargesTip => _item.Unlimited
         ? "Unlimited uses"
         : $"{_item.UseCount} charge{(_item.UseCount == 1 ? "" : "s")} before the item is consumed";
+
+    /// <summary>
+    /// The buff-slot token to paste into a Bless slot for auto-use, or empty
+    /// for a limited-charge item (those aren't safe to recast on a buff loop,
+    /// so only unlimited-use items get a token).
+    /// </summary>
+    public string BuffToken => _item.Unlimited ? ItemCastToken.Format(_item.ItemName) : string.Empty;
+
+    /// <summary>True when this item exposes a buff-slot token (unlimited-use).</summary>
+    public bool HasBuffToken => BuffToken.Length > 0;
+
+    /// <summary>Hover text explaining what the buff token does.</summary>
+    public string BuffTokenTip =>
+        "Paste this into a Bless slot on the Settings → Spells tab to auto-use this " +
+        "item as a buff (equip → use → re-equip), recast on its buff timer.";
 }

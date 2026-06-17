@@ -144,6 +144,17 @@ public sealed class CastCoordinator : IDisposable
         if (string.IsNullOrWhiteSpace(spellName)) return false;
         if (_wireSender is null) return false;
 
+        // Item-casts (#-prefixed buff-slot tokens) never go through the raw
+        // cast path — they need an equip → use → re-equip sequence owned by the
+        // item-cast engine. Reject here so a misrouted token can't be typed to
+        // the wire as a bogus cast command.
+        if (ItemCastToken.IsToken(spellName))
+        {
+            _log?.Debug(LogCategory, $"ignored item-cast token via TryCast: {spellName.Trim()}");
+            CastFailed?.Invoke(CastFailureReason.Blocked, "item-cast-token");
+            return false;
+        }
+
         DateTimeOffset now = DateTimeOffset.Now;
         if (IsCastBlocked)
         {

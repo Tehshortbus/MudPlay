@@ -80,6 +80,20 @@ public sealed class CastCoordinatorTests
     }
 
     [Fact]
+    public void TryCast_ItemCastToken_RejectedNotSentToWire()
+    {
+        using Harness h = new();
+        // A '#'-prefixed item-cast token must never reach the wire as a raw
+        // cast — it needs the equip/use/re-equip sequence instead.
+        bool ok = h.Cast.TryCast("#emerald tipped crozier");
+
+        Assert.False(ok);
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Casts);
+        Assert.Contains(h.Failures, f => f.Detail == "item-cast-token");
+    }
+
+    [Fact]
     public void TryCast_NoWireSender_NoOp()
     {
         using Harness h = new();

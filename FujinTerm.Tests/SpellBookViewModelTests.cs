@@ -205,6 +205,13 @@ public sealed class SpellBookViewModelTests : IDisposable
 
         Assert.Equal("3 uses", vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").ChargesText);
         Assert.Equal("1 use", vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").ChargesText);
+
+        // Only unlimited-use items expose a buff-slot token (limited ones would
+        // burn out on a recast loop, so they get none).
+        Assert.True(wand.HasBuffToken);
+        Assert.Equal("#Wand of Stars", wand.BuffToken);
+        Assert.False(vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").HasBuffToken);
+        Assert.False(vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").HasBuffToken);
     }
 
     [Fact]
