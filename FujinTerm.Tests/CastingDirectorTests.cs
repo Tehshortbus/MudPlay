@@ -750,6 +750,66 @@ public sealed class CastingDirectorTests
         Assert.Empty(h.CastsSent);
     }
 
+    // ----- Item-cast buffs (PR 10.18 #token Bless slot) --------------
+
+    [Fact]
+    public void ItemCastBuff_FiresSequence_BypassesRawCast_AndKeysRecastByToken()
+    {
+        using CureHarness h = new();
+        const string token = "#emerald tipped crozier";
+        h.Spells.Bless1Spell = token;
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        int executed = 0;
+        h.Director.SetItemCastSource(
+            durationOf: t => t == token ? 600L : null,
+            execute: _ => { executed++; return true; });
+
+        h.Director.Evaluate();
+
+        Assert.Equal(1, executed);
+        Assert.Empty(h.CastsSent); // item-cast bypasses the raw cast path
+
+        // Recast timer keyed by the token: still active → not re-fired.
+        h.Cast.OnCombatTick();     // clear the round cooldown
+        h.Director.Evaluate();
+        Assert.Equal(1, executed);
+
+        // Past the buff duration → due again.
+        h.Cast.OnCombatTick();
+        h.Now = h.Now.AddSeconds(601);
+        h.Director.Evaluate();
+        Assert.Equal(2, executed);
+    }
+
+    [Fact]
+    public void ItemCastBuff_NonBuffItem_NotFired()
+    {
+        using CureHarness h = new();
+        const string token = "#wand of fire";
+        h.Spells.Bless1Spell = token;
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        int executed = 0;
+        // A damage wand has no duration → unresolvable → never fired.
+        h.Director.SetItemCastSource(
+            durationOf: _ => null,
+            execute: _ => { executed++; return true; });
+
+        h.Director.Evaluate();
+
+        Assert.Equal(0, executed);
+        Assert.Empty(h.CastsSent);
+    }
+
     // ----- Utility (regen buffs + idle-fallback) --------------------
 
     [Fact]

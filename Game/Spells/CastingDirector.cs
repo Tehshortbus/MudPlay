@@ -93,6 +93,8 @@ public sealed class CastingDirector : IDisposable
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
     private Func<bool>? _autoBlessEnabled;
+    private Func<string, long?>? _itemCastDuration;
+    private Func<string, bool>? _executeItemCast;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -258,6 +260,25 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isEnabled);
         _autoBlessEnabled = isEnabled;
+    }
+
+    /// <summary>
+    /// Wire the item-cast buff bridge. A Bless slot may hold an
+    /// <see cref="ItemCastToken"/> (<c>#&lt;item name&gt;</c>) instead of a
+    /// cast-code; when picked, the buff is produced by equipping + using an
+    /// item rather than a direct cast. <paramref name="durationOf"/> resolves a
+    /// token to the cast spell's effect duration in seconds (the recast clock),
+    /// returning <c>null</c> for an unresolvable token or a non-buff spell (no
+    /// duration) so it's never fired; <paramref name="execute"/> runs the
+    /// equip → use → re-equip sequence and returns whether the lines were sent.
+    /// Optional — until wired, an item-cast Bless slot is skipped.
+    /// </summary>
+    public void SetItemCastSource(Func<string, long?> durationOf, Func<string, bool> execute)
+    {
+        ArgumentNullException.ThrowIfNull(durationOf);
+        ArgumentNullException.ThrowIfNull(execute);
+        _itemCastDuration = durationOf;
+        _executeItemCast = execute;
     }
 
     /// <summary>
@@ -450,6 +471,15 @@ public sealed class CastingDirector : IDisposable
             if (pick is not { } cand) continue;
             if (string.IsNullOrWhiteSpace(cand.Spell)) continue;
 
+            // Item-cast buff (#-token in a Bless slot): bypass the raw cast path
+            // entirely — run the equip → use → re-equip sequence and key the
+            // recast timer by the token. Only buff slots carry tokens.
+            if (category == SpellCategory.Buffing && ItemCastToken.IsToken(cand.Spell))
+            {
+                if (TryFireItemCast(cand.Spell)) return cand.Spell;
+                continue; // unresolved / non-buff item — let a later category try
+            }
+
             // Don't attempt a cast we can't pay for. Combat (offensive /
             // debuff) casts are gated by the Combat tab's MinManaPerCast
             // threshold, so the game-data affordability check applies only to
@@ -491,6 +521,28 @@ public sealed class CastingDirector : IDisposable
 
     private static CastCandidate? Wrap(string? spell) =>
         string.IsNullOrWhiteSpace(spell) ? null : new CastCandidate(spell, Target: null);
+
+    /// <summary>
+    /// Fire an item-cast buff: resolve its recast duration, run the
+    /// equip → use → re-equip sequence, then start the round cooldown + the
+    /// token-keyed recast timer. Returns <c>false</c> (so a later category can
+    /// try) when the token doesn't resolve to a real buff or the sequence
+    /// didn't send. The timer is set proactively from the cast spell's
+    /// computed duration rather than awaiting an AppliedMessage, since the
+    /// landing buff confirms under the spell's own cast code, not the token.
+    /// </summary>
+    private bool TryFireItemCast(string token)
+    {
+        if (_itemCastDuration is null || _executeItemCast is null) return false;
+        if (_itemCastDuration(token) is not { } durationSec || durationSec <= 0) return false;
+        if (!_executeItemCast(token)) return false;
+
+        _cast.NotifyExternalCastSent();
+        _activeUntil[("", token)] = _now().AddSeconds(durationSec);
+        _log?.Info(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
+        CastFired?.Invoke();
+        return true;
+    }
 
     /// <summary>Categories in priority order (lowest int first, ties
     /// broken by category enum order for determinism).</summary>

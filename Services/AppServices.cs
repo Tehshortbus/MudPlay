@@ -831,6 +831,13 @@ public sealed class AppServices
     public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
 
     /// <summary>
+    /// PR 10.18 — runs the equip → use → re-equip wire sequence for an
+    /// item-cast Bless slot (a <see cref="Game.Spells.ItemCastToken"/>). Driven
+    /// by <see cref="CastDirector"/>; wire-sender bound in the main VM.
+    /// </summary>
+    public Game.Spells.ItemCastSequencer ItemCast { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.D — condition tracker driven by the game-data
     /// Messages tab. Subscribes to inbound lines, matches against
     /// every <see cref="Models.GameData.MessageRecord.AppliedMessage"/>
@@ -2150,6 +2157,15 @@ public sealed class AppServices
         RoomTracker.AttachInventorySnapshot(() => Inventory.Snapshot);
         DeathRecovery.AttachInventorySnapshot(() => Inventory.Snapshot);
 
+        // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
+        // unlimited-use cast item (surfaced in the Spell Book); the director
+        // fires it by wielding + using the item, then re-wielding the displaced
+        // weapon (read from Inventory's last `i` dump). Duration drives the
+        // recast clock. Wire-sender bound in MainWindowViewModel.
+        ItemCast = new Game.Spells.ItemCastSequencer(
+            () => Spellbook.GetCastItems(), () => Inventory.Snapshot, Log);
+        CastDirector.SetItemCastSource(ItemCastDurationOf, ItemCast.Execute);
+
         // PR 10.8 — auto-train. Drives the `train stats` screen to apply the CP
         // plan (Workshop CP Allocation tab) when armed + a level-up enables it.
         // Needs Inventory (raw-base = live - gear) + TrainerMenu (screen enter/
@@ -2518,6 +2534,26 @@ public sealed class AppServices
     /// <c>null</c> for an unknown code, a code with no game-data message
     /// record, or a record with no caster line.
     /// </summary>
+    /// <summary>
+    /// PR 10.18 item-cast recast clock: resolve a Bless-slot
+    /// <see cref="Game.Spells.ItemCastToken"/> to the cast item's spell effect
+    /// duration in seconds (<see cref="Game.Spells.SpellCalculator.Duration"/>
+    /// at the live <see cref="Game.Spells.SpellbookState.Level"/>). Returns
+    /// <c>null</c> when the token doesn't resolve to a class cast item or the
+    /// cast spell has no duration (i.e. it isn't a buff) — the director then
+    /// won't fire it.
+    /// </summary>
+    private long? ItemCastDurationOf(string token)
+    {
+        if (!Game.Spells.ItemCastToken.TryResolve(token, Spellbook.GetCastItems(),
+                out Game.Spells.ClassCastItem item))
+            return null;
+        if (SpellCatalog.GetFormulaByNumber(item.SpellNumber) is not { } formula)
+            return null;
+        long dur = Game.Spells.SpellCalculator.Duration(formula, Spellbook.Level);
+        return dur > 0 ? dur : null;
+    }
+
     private (string Caster, long DurationSec)? BuffInfoByShort(string castCode)
     {
         if (string.IsNullOrWhiteSpace(castCode)) return null;

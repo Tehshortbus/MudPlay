@@ -754,6 +754,9 @@ public partial class MainWindowViewModel : ObservableObject
         // ride the same gate-wrapped pipeline so spell commands respect
         // the suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
+        // PR 10.18 — item-cast buff sequencer's wield/use/wield commands ride
+        // the same gate-wrapped pipeline as the other engines.
+        AppServices.Current.ItemCast.SetWireSender(engineSend);
         // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
         // ride the gate-wrapped pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);
