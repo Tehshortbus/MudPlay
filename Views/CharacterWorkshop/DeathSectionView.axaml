@@ -47,8 +47,6 @@
                     ToolTip.Tip="Recover this deathpile: grab the recorded items in place if you're standing in the death room, otherwise walk there first and grab on arrival."/>
             <Button Content="Mark Recovered" Margin="0,0,6,6"
                     Command="{Binding MarkRecoveredCommand}"/>
-            <Button Content="View Entry" Margin="0,0,6,6"
-                    Command="{Binding ViewEntryCommand}"/>
             <Button Content="Clear Selected" Margin="0,0,6,6"
                     Command="{Binding ClearSelectedCommand}"/>
             <Button Content="Clear All Recovered" Margin="0,0,18,6"
@@ -60,7 +58,6 @@
 
         <!-- Deathpile grid -->
         <DataGrid Grid.Row="2"
-                  DoubleTapped="OnRecordDoubleTapped"
                   ItemsSource="{Binding Records}"
                   SelectedItem="{Binding SelectedRecord, Mode=TwoWay}"
                   Background="{StaticResource ChromeBgSunkenBrush}"
@@ -100,14 +97,13 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <!-- Detail panel for the selected record (double-click a row /
-             View Entry). Bounded height + scroll so long item lists don't
-             stretch the section. -->
+        <!-- Detail panel — always visible, reflecting the selected grid
+             row. Bounded height + scroll so long item lists don't stretch
+             the section. -->
         <Border Grid.Row="3" Margin="0,10,0,0" Padding="12"
                 Background="{StaticResource ChromeBgElevBrush}"
                 BorderBrush="{StaticResource ChromeBorderBrush}"
-                BorderThickness="1" CornerRadius="4"
-                IsVisible="{Binding DetailsVisible}">
+                BorderThickness="1" CornerRadius="4">
             <ScrollViewer MaxHeight="200"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">

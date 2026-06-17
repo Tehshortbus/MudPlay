@@ -32,12 +32,8 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RecoverNowCommand))]
     [NotifyCanExecuteChangedFor(nameof(MarkRecoveredCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ViewEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ClearSelectedCommand))]
     private DeathRecord? _selectedRecord;
-
-    /// <summary>When true the detail panel under the grid is shown for the selected record.</summary>
-    [ObservableProperty] private bool _detailsVisible;
 
     public DeathSectionViewModel(DeathRecoveryManager recovery, ProfileService profile)
     {
@@ -89,9 +85,6 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
 
     [RelayCommand(CanExecute = nameof(CanMarkRecovered))]
     private void MarkRecovered() { if (SelectedRecord is { } r) _recovery.MarkRecovered(r); }
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void ViewEntry() => DetailsVisible = true;
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void ClearSelected() { if (SelectedRecord is { } r) _recovery.ClearSelected(r); }
