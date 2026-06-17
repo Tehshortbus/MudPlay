@@ -200,18 +200,22 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
 
-        // Phase 9 PR 9.A — room-entry arrival. Anchored on "into the
-        // room from" so a wide alternation of verbs (crawls, walks,
-        // slithers, teleports, materialises, …) is folded into a
-        // single \w+ capture. Direction tolerates hyphens for
-        // potential "north-east" variants alongside the canonical
-        // cardinals + "nowhere" (script spawn).
-        // Preposition tolerates `in` and `into` — verified server output
-        // for slow-creep verbs ("A carrion beast creeps in the room from
-        // nowhere.") which use the locative `in` rather than the
-        // directional `into` most other entry verbs do.
+        // Phase 9 PR 9.A — room-entry arrival. Anchored on "in… from <dir>"
+        // so a wide alternation of verbs (crawls, walks, slithers, lumbers,
+        // teleports, materialises, …) is folded into a single \w+ capture.
+        // Direction tolerates hyphens for "north-east" variants alongside the
+        // canonical cardinals + "nowhere" (script spawn).
+        // Tolerated phrasing variants, all verified in server output:
+        //  • Preposition `in` or `into` — slow-creep verbs ("creeps in the
+        //    room from nowhere.") use the locative `in` rather than `into`.
+        //  • Optional " the room" — most lines carry it, but per-monster greet
+        //    text (the GreetTXT field) drops it: "A cave bear lumbers in from
+        //    the south!".
+        //  • Optional "the " before the direction — greet-text arrivals say
+        //    "from the south" where canonical lines say bare "from east".
+        //  • Terminator `.` or `!` — greet-text arrivals end on a bang.
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
-            @"^(?<name>.+?) \w+ in(?:to)? the room from (?<direction>[\w-]+)\.\s*$");
+            @"^(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
         // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
         // Auction lines share gossip's shape ("X auctions: ...") and the

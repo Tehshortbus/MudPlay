@@ -171,6 +171,25 @@ public sealed class RoomEntryWatcherTests
     }
 
     [Fact]
+    public void KnownMonster_GreetTextArrival_NoRoomBangTerminated_Parses()
+    {
+        // Per-monster greet text (GreetTXT) drops " the room", adds a
+        // "the" before the direction, and ends on a bang:
+        // "A cave bear lumbers in from the south!". Verified live — this
+        // form previously slipped past the arrival regex, so the cave bear
+        // never entered the combat gate and was never attacked.
+        using Harness h = new();
+        h.AddMonster(1, "cave bear");
+
+        h.Feed("A cave bear lumbers in from the south!");
+
+        Assert.Single(h.Arrivals);
+        Assert.Equal(EntityKind.Monster, h.Arrivals[0].Kind);
+        Assert.Equal("cave bear", h.Arrivals[0].Name);
+        Assert.Equal("south", h.Arrivals[0].Direction);
+    }
+
+    [Fact]
     public void KnownPlayer_AddedAsPlayer()
     {
         using Harness h = new();

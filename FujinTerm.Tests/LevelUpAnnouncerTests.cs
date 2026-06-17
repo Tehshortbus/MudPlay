@@ -153,18 +153,21 @@ public sealed class LevelUpAnnouncerTests
         Assert.Equal(new[] { "gang I can now train to level: 6" }, h.Sent);
     }
 
+    // gangpath / gossip are word-verbs (trailing space before the message);
+    // yell / say are punctuation-prefixed channels in MajorMUD ('"' yells, '.'
+    // says to the room) with no separating space.
     [Theory]
-    [InlineData(AnnounceChannel.Gangpath, "gang")]
-    [InlineData(AnnounceChannel.Gossip, "gos")]
-    [InlineData(AnnounceChannel.Yell, "yell")]
-    [InlineData(AnnounceChannel.Say, "say")]
-    public void AnnounceChannel_MapsToWireVerb(AnnounceChannel channel, string verb)
+    [InlineData(AnnounceChannel.Gangpath, "gang ")]
+    [InlineData(AnnounceChannel.Gossip, "gos ")]
+    [InlineData(AnnounceChannel.Yell, "\"")]
+    [InlineData(AnnounceChannel.Say, ".")]
+    public void AnnounceChannel_MapsToWireForm(AnnounceChannel channel, string prefix)
     {
         using var h = new Harness(level: 5, exp: Threshold(6) - 1, announce: true, channel: channel);
 
         h.Gain(1);
 
-        Assert.Equal(new[] { $"{verb} I can now train to level: 6" }, h.Sent);
+        Assert.Equal(new[] { $"{prefix}I can now train to level: 6" }, h.Sent);
     }
 
     [Fact]

@@ -145,11 +145,16 @@ public sealed class LevelUpAnnouncer : IDisposable
     private void Announce(int level, AnnounceChannel channel)
     {
         string msg = $"I can now train to level: {level}";
+        // MajorMUD chat channels: gossip / gangpath are word-verbs, but say and
+        // yell are punctuation-prefixed (a leading '.' speaks to the room, a
+        // leading '"' yells) — there is no `say`/`yell` keyword, so prefixing
+        // one just speaks the literal text. See AliasEngine.NameConflictReason
+        // for the same channel-prefix table.
         string wire = channel switch
         {
             AnnounceChannel.Gossip => $"gos {msg}",
-            AnnounceChannel.Yell   => $"yell {msg}",
-            AnnounceChannel.Say    => $"say {msg}",
+            AnnounceChannel.Yell   => $"\"{msg}",
+            AnnounceChannel.Say    => $".{msg}",
             _                      => $"gang {msg}",   // Gangpath (default)
         };
         _wire.Send(wire);
