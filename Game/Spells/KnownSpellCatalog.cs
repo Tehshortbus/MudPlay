@@ -309,7 +309,7 @@ public sealed class KnownSpellCatalog
         JsonDocument? items = _cache.GetRawTable("Items");
         if (items is null) return results;
 
-        Dictionary<int, string>? spellNames = null; // built lazily on first cast item
+        Dictionary<int, (string Name, int ManaCost)>? spellInfo = null; // built lazily on first cast item
         foreach (JsonElement row in items.RootElement.EnumerateArray())
         {
             if (!ItemUsableByClass(row, classNumber)) continue;
@@ -327,14 +327,17 @@ public sealed class KnownSpellCatalog
             string itemName = ReadString(row, "Name")?.Trim() ?? string.Empty;
             if (itemName.Length == 0) continue;
 
-            spellNames ??= BuildSpellNameMap();
-            string spellName = spellNames.TryGetValue(spellNumber, out string? sn) ? sn : string.Empty;
+            spellInfo ??= BuildSpellInfoMap();
+            (string spellName, int manaCost) = spellInfo.TryGetValue(spellNumber, out (string Name, int ManaCost) info)
+                ? info
+                : (string.Empty, 0);
 
             results.Add(new ClassCastItem(
                 ItemNumber: ReadInt(row, "Number"),
                 ItemName: itemName,
                 SpellNumber: spellNumber,
                 SpellName: spellName,
+                ManaCost: manaCost,
                 UseCount: ReadInt(row, "UseCount")));
         }
 
@@ -364,18 +367,20 @@ public sealed class KnownSpellCatalog
         return !anyRestriction;
     }
 
-    /// <summary>One-pass <c>Spells.Number</c> → <c>Name</c> map for resolving
-    /// cast-item spells without a per-item table scan.</summary>
-    private Dictionary<int, string> BuildSpellNameMap()
+    /// <summary>One-pass <c>Spells.Number</c> → (<c>Name</c>, <c>ManaCost</c>) map
+    /// for resolving cast-item spells (display name + whether using the item
+    /// draws mana) without a per-item table scan.</summary>
+    private Dictionary<int, (string Name, int ManaCost)> BuildSpellInfoMap()
     {
-        Dictionary<int, string> map = new();
+        Dictionary<int, (string Name, int ManaCost)> map = new();
         JsonDocument? spells = _cache.GetRawTable("Spells");
         if (spells is null) return map;
         foreach (JsonElement row in spells.RootElement.EnumerateArray())
         {
             int number = ReadInt(row, "Number");
             if (number <= 0) continue;
-            if (ReadString(row, "Name") is { } name) map[number] = name.Trim();
+            string name = ReadString(row, "Name")?.Trim() ?? string.Empty;
+            map[number] = (name, ReadInt(row, "ManaCost"));
         }
         return map;
     }

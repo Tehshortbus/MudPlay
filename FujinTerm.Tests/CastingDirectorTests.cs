@@ -810,6 +810,60 @@ public sealed class CastingDirectorTests
         Assert.Empty(h.CastsSent);
     }
 
+    [Fact]
+    public void ItemCastBuff_Free_FiresBelowManaFloor()
+    {
+        using CureHarness h = new();
+        const string token = "#emerald tipped crozier";
+        h.Spells.Bless1Spell = token;
+        // MA below the bless floor: a mana-drawing buff would be suppressed.
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 10;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        int executed = 0;
+        h.Director.SetItemCastSource(
+            durationOf: t => t == token ? 600L : null,
+            execute: _ => { executed++; return true; });
+        h.Director.SetItemCastManaCost(_ => 0); // free use-spell
+
+        h.Director.Evaluate();
+
+        // Free item-cast bypasses the mana floor entirely.
+        Assert.Equal(1, executed);
+    }
+
+    [Fact]
+    public void ItemCastBuff_Paid_HeldUntilAffordable()
+    {
+        using CureHarness h = new();
+        const string token = "#shimmering greatsword";
+        h.Spells.Bless1Spell = token;
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        int executed = 0;
+        h.Director.SetItemCastSource(
+            durationOf: t => t == token ? 600L : null,
+            execute: _ => { executed++; return true; });
+        h.Director.SetItemCastManaCost(_ => 8); // paid use-spell (8 mana)
+
+        // Below the bless floor → held even though 8 mana is affordable.
+        h.State.Ma = 10;
+        h.Director.Evaluate();
+        Assert.Equal(0, executed);
+
+        // Above the floor and enough to pay → fires.
+        h.Cast.OnCombatTick(); // clear any round cooldown
+        h.State.Ma = 80;
+        h.Director.Evaluate();
+        Assert.Equal(1, executed);
+    }
+
     // ----- Utility (regen buffs + idle-fallback) --------------------
 
     [Fact]

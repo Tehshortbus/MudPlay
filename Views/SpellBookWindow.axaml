@@ -89,6 +89,11 @@
                                                        FontFamily="{StaticResource FontMono}"
                                                        FontSize="11"
                                                        VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ManaText}"
+                                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <SelectableTextBlock Text="{Binding BuffToken}"
                                                              IsVisible="{Binding HasBuffToken}"

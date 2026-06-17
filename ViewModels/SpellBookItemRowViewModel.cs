@@ -26,6 +26,16 @@ public sealed class SpellBookItemRowViewModel
     /// <summary>Compact charges indicator: "∞" for unlimited, else "N use(s)".</summary>
     public string ChargesText => _item.Unlimited ? "∞" : $"{_item.UseCount} use{(_item.UseCount == 1 ? "" : "s")}";
 
+    /// <summary>
+    /// Mana the cast draws when the item is used: "N mana" for a paid use-spell
+    /// (e.g. a shimmering greatsword), or "free" when the cast costs nothing
+    /// (most charge wands / proc gear, e.g. an emerald tipped crozier).
+    /// </summary>
+    public string ManaText => _item.CostsMana ? $"{_item.ManaCost} mana" : "free";
+
+    /// <summary>True when using the item draws mana (drives the mana-label emphasis).</summary>
+    public bool CostsMana => _item.CostsMana;
+
     /// <summary>Hover text spelling out the charges indicator.</summary>
     public string ChargesTip => _item.Unlimited
         ? "Unlimited uses"

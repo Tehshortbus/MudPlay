@@ -40,7 +40,7 @@ public sealed class SpellBookViewModelTests : IDisposable
     private static readonly object[] _spells =
     [
         SpellRow(100, "starlight", "star", magery: 1, mageryLvl: 1, reqLevel: 2),
-        SpellRow(101, "high arc", "high", magery: 1, mageryLvl: 3, reqLevel: 5),
+        SpellRow(101, "high arc", "high", magery: 1, mageryLvl: 3, reqLevel: 5, manaCost: 8),
         SpellRow(103, "gated", "lvlg", magery: 1, mageryLvl: 1, reqLevel: 20),
     ];
 
@@ -206,6 +206,14 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Equal("3 uses", vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").ChargesText);
         Assert.Equal("1 use", vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").ChargesText);
 
+        // Mana cost comes from the cast spell: starlight (100) is free, while
+        // high arc (101 → Scroll of Arc) costs 8 mana.
+        Assert.False(wand.CostsMana);
+        Assert.Equal("free", wand.ManaText);
+        SpellBookItemRowViewModel scroll = vm.CastItems.Single(r => r.ItemName == "Scroll of Arc");
+        Assert.True(scroll.CostsMana);
+        Assert.Equal("8 mana", scroll.ManaText);
+
         // Only unlimited-use items expose a buff-slot token (limited ones would
         // burn out on a recast loop, so they get none).
         Assert.True(wand.HasBuffToken);
@@ -303,7 +311,8 @@ public sealed class SpellBookViewModelTests : IDisposable
         };
 
     private static Dictionary<string, object> SpellRow(
-        int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel)
+        int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel,
+        int manaCost = 0)
     {
         Dictionary<string, object> row = new()
         {
@@ -327,7 +336,7 @@ public sealed class SpellBookViewModelTests : IDisposable
             ["DurIncLVLs"] = 0,
             ["Cap"] = 0,
             ["EnergyCost"] = 0,
-            ["ManaCost"] = 0,
+            ["ManaCost"] = manaCost,
         };
         for (int x = 0; x < 10; x++)
         {

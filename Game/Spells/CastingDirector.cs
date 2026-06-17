@@ -95,6 +95,7 @@ public sealed class CastingDirector : IDisposable
     private Func<bool>? _autoBlessEnabled;
     private Func<string, long?>? _itemCastDuration;
     private Func<string, bool>? _executeItemCast;
+    private Func<string, int?>? _itemCastManaCost;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<HealthSettings> _readHealth;
     private readonly Func<PartySettings>? _readPartySettings;
@@ -279,6 +280,22 @@ public sealed class CastingDirector : IDisposable
         ArgumentNullException.ThrowIfNull(execute);
         _itemCastDuration = durationOf;
         _executeItemCast = execute;
+    }
+
+    /// <summary>
+    /// Wire the item-cast mana-cost resolver. Maps a Bless-slot
+    /// <see cref="ItemCastToken"/> to the cast spell's <c>Spells.ManaCost</c> —
+    /// the mana using the item draws. A <b>free</b> item-cast (most charge wands
+    /// / proc gear, cost 0) bypasses the buff mana-floor and recasts regardless;
+    /// a <b>paid</b> item-cast (e.g. a shimmering greatsword) is held until we
+    /// both clear the floor and can pay. Returns <c>null</c> for an unresolvable
+    /// token. Optional — until wired (or when it returns <c>null</c>), an
+    /// item-cast buff is treated as free and never mana-gated.
+    /// </summary>
+    public void SetItemCastManaCost(Func<string, int?> manaCostOf)
+    {
+        ArgumentNullException.ThrowIfNull(manaCostOf);
+        _itemCastManaCost = manaCostOf;
     }
 
     /// <summary>
@@ -772,17 +789,39 @@ public sealed class CastingDirector : IDisposable
     /// </remarks>
     private CastCandidate? PickBuff(SpellsSettings spells, HealthSettings health, PartySettings? party)
     {
-        if (_state.MaxMa <= 0) return null;
-        int maPct = (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa);
-        if (maPct < health.BlessIfAboveMa) return null;
-
-        // Stealth gate: any cast breaks sneak / hide; suppress buffs entirely
-        // while stealthed so a backstab window stays open.
+        // Stealth gate: any cast — or an item-cast's equip/use/re-equip — breaks
+        // sneak / hide; suppress buffs entirely while stealthed so a backstab
+        // window stays open.
         if (_isStealthedFunc?.Invoke() == true) return null;
 
+        // Mana-floor gate applies to *mana-drawing* buffs only ("don't burn buff
+        // mana when we'll need it for heals soon"). It is NOT a whole-category
+        // early-out: a free item-cast buff (a charge wand / proc item whose
+        // use-spell costs 0 mana) recasts regardless, so the floor + per-cast
+        // affordability are applied per-slot below via IsBuffAffordable. MA
+        // unknown (MaxMa 0) blocks mana-drawing buffs but not free item-casts.
+        bool manaBuffsAllowed = _state.MaxMa > 0
+            && (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa) >= health.BlessIfAboveMa;
+
         // Self buffs first (rows 1–10 + regen + when-full), then party buffs.
-        if (PickSelfBuff(spells) is { } self) return self;
-        return PickPartyBuff(party);
+        if (PickSelfBuff(spells, manaBuffsAllowed) is { } self) return self;
+        return PickPartyBuff(party, manaBuffsAllowed);
+    }
+
+    /// <summary>
+    /// Per-slot buff affordability for the buff pickers. A regular spell buff is
+    /// allowed only when mana-drawing buffs clear the <see cref="HealthSettings.BlessIfAboveMa"/>
+    /// floor (the specific cast's cost is re-checked at dispatch); an item-cast
+    /// token is allowed when its use-spell is free (cost 0 / unresolved — recast
+    /// regardless of mana) or, when it draws mana, only if we both clear the
+    /// floor and can pay the cost from the current pool.
+    /// </summary>
+    private bool IsBuffAffordable(string slot, bool manaBuffsAllowed)
+    {
+        if (!ItemCastToken.IsToken(slot)) return manaBuffsAllowed;
+        int? cost = _itemCastManaCost?.Invoke(slot);
+        if (cost is not > 0) return true; // free / unresolved item-cast: never mana-gated
+        return manaBuffsAllowed && _state.Ma >= cost.Value;
     }
 
     /// <summary>
@@ -791,7 +830,7 @@ public sealed class CastingDirector : IDisposable
     /// recast on us. Hard-gated to out-of-combat — self buffs are expensive
     /// and shouldn't burn a combat round.
     /// </summary>
-    private CastCandidate? PickSelfBuff(SpellsSettings spells)
+    private CastCandidate? PickSelfBuff(SpellsSettings spells, bool manaBuffsAllowed)
     {
         if (_state.InCombat) return null;
 
@@ -819,6 +858,7 @@ public sealed class CastingDirector : IDisposable
         {
             if (!eligible) continue;
             if (string.IsNullOrWhiteSpace(slot)) continue;
+            if (!IsBuffAffordable(slot, manaBuffsAllowed)) continue;
             if (!IsRecastDue("", slot)) continue;
             return new CastCandidate(slot, Target: null);
         }
@@ -837,7 +877,7 @@ public sealed class CastingDirector : IDisposable
     /// Gated by the Other-tab "bless party while resting" / "bless party during
     /// combat" toggles (default open until wired).
     /// </summary>
-    private CastCandidate? PickPartyBuff(PartySettings? party)
+    private CastCandidate? PickPartyBuff(PartySettings? party, bool manaBuffsAllowed)
     {
         if (_party is null) return null;
         if (party is null) return null;
@@ -851,6 +891,7 @@ public sealed class CastingDirector : IDisposable
         foreach (PartyBlessSlot slot in party.BlessSlots)
         {
             if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
+            if (!IsBuffAffordable(slot.Spell, manaBuffsAllowed)) continue;
 
             // Party-wide buff — one cast covers everyone, so class checkboxes
             // (which member to target) don't apply. Recast keyed to self ("")

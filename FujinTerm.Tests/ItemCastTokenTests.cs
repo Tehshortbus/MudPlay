@@ -44,8 +44,8 @@ public sealed class ItemCastTokenTests
     {
         IReadOnlyList<ClassCastItem> items = new[]
         {
-            new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0),
-            new ClassCastItem(2, "Wand of Stars", 100, "starlight", 0),
+            new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0, 0),
+            new ClassCastItem(2, "Wand of Stars", 100, "starlight", 0, 0),
         };
 
         Assert.True(ItemCastToken.TryResolve("#emerald tipped crozier", items, out ClassCastItem match));
@@ -58,7 +58,7 @@ public sealed class ItemCastTokenTests
     {
         IReadOnlyList<ClassCastItem> items = new[]
         {
-            new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0),
+            new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0, 0),
         };
 
         Assert.False(ItemCastToken.TryResolve("#nonexistent", items, out _));

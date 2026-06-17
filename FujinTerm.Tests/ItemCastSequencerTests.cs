@@ -17,8 +17,8 @@ public sealed class ItemCastSequencerTests
 {
     private static readonly IReadOnlyList<ClassCastItem> Items = new[]
     {
-        new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0), // unlimited
-        new ClassCastItem(2, "Scroll of Light", 60, "light", 3),        // limited
+        new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0, 0), // unlimited, free
+        new ClassCastItem(2, "Scroll of Light", 60, "light", 0, 3),        // limited
     };
 
     private static InventorySnapshot InvWith(params EquippedItem[] equipped)

@@ -2165,6 +2165,7 @@ public sealed class AppServices
         ItemCast = new Game.Spells.ItemCastSequencer(
             () => Spellbook.GetCastItems(), () => Inventory.Snapshot, Log);
         CastDirector.SetItemCastSource(ItemCastDurationOf, ItemCast.Execute);
+        CastDirector.SetItemCastManaCost(ItemCastManaCostOf);
 
         // PR 10.8 — auto-train. Drives the `train stats` screen to apply the CP
         // plan (Workshop CP Allocation tab) when armed + a level-up enables it.
@@ -2553,6 +2554,20 @@ public sealed class AppServices
         long dur = Game.Spells.SpellCalculator.Duration(formula, Spellbook.Level);
         return dur > 0 ? dur : null;
     }
+
+    /// <summary>
+    /// Mana the item-cast buff named by <paramref name="token"/> draws on use —
+    /// the cast spell's <c>Spells.ManaCost</c>, surfaced on the resolved
+    /// <see cref="Game.Spells.ClassCastItem"/>. Drives the director's per-slot
+    /// buff affordability: a free item-cast (cost 0) recasts regardless of mana;
+    /// a paid one waits until the pool can cover it. Returns <c>null</c> when the
+    /// token doesn't resolve to a class cast item (treated as free / never gated).
+    /// </summary>
+    private int? ItemCastManaCostOf(string token)
+        => Game.Spells.ItemCastToken.TryResolve(token, Spellbook.GetCastItems(),
+                out Game.Spells.ClassCastItem item)
+            ? item.ManaCost
+            : null;
 
     private (string Caster, long DurationSec)? BuffInfoByShort(string castCode)
     {
