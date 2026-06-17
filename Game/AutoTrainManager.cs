@@ -47,11 +47,11 @@ public sealed class AutoTrainManager : IDisposable
     private IReadOnlyList<string> _sequence = Array.Empty<string>();
 
     /// <summary>Delay between keystrokes so the server's form redraw keeps pace.</summary>
-    public int KeystrokeDelayMs { get; set; } = 200;
+    public int KeystrokeDelayMs { get; } = 200;
     /// <summary>How long to wait for the trainer screen after sending <c>train stats</c>.</summary>
-    public TimeSpan MenuEntryTimeout { get; set; } = TimeSpan.FromSeconds(6);
+    public TimeSpan MenuEntryTimeout { get; } = TimeSpan.FromSeconds(6);
     /// <summary>Grace after the final keystroke before force-releasing the latch if no exit prompt arrives.</summary>
-    public TimeSpan ExitGrace { get; set; } = TimeSpan.FromSeconds(4);
+    public TimeSpan ExitGrace { get; } = TimeSpan.FromSeconds(4);
 
     /// <summary>Raised when <see cref="CanTrainNow"/> / <see cref="IsBusy"/> may have changed.</summary>
     public event Action? StateChanged;

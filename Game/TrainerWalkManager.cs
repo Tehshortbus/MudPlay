@@ -64,9 +64,9 @@ public sealed class TrainerWalkManager : IDisposable
     private long _liveExp;   // baseline (stat/exp) + captured gains since
 
     /// <summary>How long to wait for the "attain level" line after sending <c>train</c>.</summary>
-    public TimeSpan TrainConfirmTimeout { get; set; } = TimeSpan.FromSeconds(8);
+    public TimeSpan TrainConfirmTimeout { get; } = TimeSpan.FromSeconds(8);
     /// <summary>How long to wait for the post-train <c>stat</c> refresh before giving up on CP.</summary>
-    public TimeSpan StatRefreshTimeout { get; set; } = TimeSpan.FromSeconds(8);
+    public TimeSpan StatRefreshTimeout { get; } = TimeSpan.FromSeconds(8);
 
     /// <summary>Raised when <see cref="IsBusy"/> / <see cref="CanTrainNow"/> may have changed.</summary>
     public event Action? StateChanged;

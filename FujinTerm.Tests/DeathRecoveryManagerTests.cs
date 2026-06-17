@@ -282,6 +282,25 @@ public sealed class DeathRecoveryManagerTests
     }
 
     [Fact]
+    public void Pickup_MatchesWholeWordsOnly_NotSubstrings()
+    {
+        using GraphHarness h = new();
+        h.EnterGates();
+        h.Snapshot = SnapWith(Array.Empty<EquippedItem>(), new[] { "war" });
+        h.Tracker.NoteDeath(2, "You now have 2 lives remaining.");
+        h.EnterGates();
+
+        // A "warhammer" pickup must NOT clear the recorded "war" item — a plain
+        // substring check would, a word-boundary check won't.
+        h.Recovery.FeedTestLine("You pick up a warhammer.");
+        Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
+
+        // The real "war" pickup (with an article) clears it → Recovered.
+        h.Recovery.FeedTestLine("You pick up a war.");
+        Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
+    }
+
+    [Fact]
     public void ReEntry_KnownEmptyDeathpile_RecoveredImmediately()
     {
         using GraphHarness h = new();

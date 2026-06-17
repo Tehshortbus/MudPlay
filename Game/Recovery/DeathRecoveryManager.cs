@@ -408,11 +408,13 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         string picked = m.Groups[1].Value;
 
         // The pickup wording may carry an article ("You pick up a torch.")
-        // while the recorded name is bare ("torch"), so match by containment.
+        // while the recorded name is bare ("torch"), so match by containment —
+        // but bounded to whole words so a recorded "war" doesn't get marked
+        // recovered when we pick up a "warhammer".
         List<string>? hits = null;
         foreach (string name in _remaining)
         {
-            if (picked.Contains(name, StringComparison.OrdinalIgnoreCase))
+            if (ContainsWord(picked, name))
                 (hits ??= new()).Add(name);
         }
         if (hits is null) return;
@@ -426,6 +428,21 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 
         if (_remaining.Count == 0)
             FinalizeRecovered(record, $"Recovered {_recoveryTotal} item(s).");
+    }
+
+    /// <summary>
+    /// Whole-word containment (case-insensitive): true when
+    /// <paramref name="needle"/> appears in <paramref name="haystack"/> not
+    /// flanked by word characters on either side. Lookarounds rather than
+    /// <c>\b</c> so a needle that starts / ends with a non-word char (e.g. a
+    /// "+2"-suffixed item) still matches. Prevents a recorded "war" matching a
+    /// picked-up "warhammer" that a plain substring check would.
+    /// </summary>
+    private static bool ContainsWord(string haystack, string needle)
+    {
+        if (string.IsNullOrEmpty(needle)) return false;
+        return Regex.IsMatch(haystack, $@"(?<!\w){Regex.Escape(needle)}(?!\w)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private void ReequipIfWorn(DeathRecord record, string name)

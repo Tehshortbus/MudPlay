@@ -52,6 +52,12 @@
                   CanUserResizeColumns="True"
                   HorizontalScrollBarVisibility="Auto"
                   VerticalScrollBarVisibility="Auto">
+            <!-- ReflectionBinding (not compiled {Binding}) on every column:
+                 DataGridTextColumn.Binding lives on the column object, which
+                 isn't in the visual/logical tree and so doesn't inherit the
+                 grid's x:DataType. Compiled bindings can't resolve the row-item
+                 (CpAllocationRow) members at compile time here, so these resolve
+                 by reflection against the row item at runtime. -->
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Lvl" Binding="{ReflectionBinding Level}" IsReadOnly="True"
                                     Width="55" FontFamily="{StaticResource FontMono}"

@@ -41,7 +41,6 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     private readonly CpPlanState _planState;
     private Control? _view;
     private bool _suppress;
-    private bool _seeded;
     // Last character race/class we synced to — lets a what-if pick survive
     // routine stat refreshes (HP/exp) and only re-sync when race/class change.
     private string? _lastCharRace;
@@ -108,7 +107,6 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
         _lastCharRace = _stats.Race;
         _lastCharClass = _stats.Class;
         _lastCharLevel = _stats.Level;
-        if (!string.IsNullOrEmpty(SelectedClass)) _seeded = true;
         Rebuild();
     }
 
@@ -189,7 +187,6 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
 
         _lastCharRace = _stats.Race;
         _lastCharClass = _stats.Class;
-        _seeded = !string.IsNullOrEmpty(_stats.Class);
         Rebuild();
     }
 
