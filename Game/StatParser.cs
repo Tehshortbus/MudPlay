@@ -80,6 +80,17 @@ public sealed partial class StatParser : IDisposable
     /// </summary>
     public event Action<Models.Profile.LastKnownStats>? ScreenParsed;
 
+    /// <summary>
+    /// Fires after a "You gain N experience." line accrues onto
+    /// <see cref="PlayerStats.Exp"/>, carrying the new running total. Distinct
+    /// from <see cref="ScreenParsed"/> (an authoritative stat/exp re-anchor): this
+    /// is the ONLY Exp change that signals a live combat gain — the only kind that
+    /// can newly cross a Level-Projection threshold mid-play.
+    /// <see cref="LevelUpAnnouncer"/> listens here so it announces a reachable level
+    /// only on a genuine gain, never on a login hydrate or a catch-up poll.
+    /// </summary>
+    public event Action<int>? ExperienceGained;
+
     public StatParser(PlayerStats stats, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(stats);
@@ -293,6 +304,7 @@ public sealed partial class StatParser : IDisposable
     internal void FeedTestLine(string text, bool isPromptLine = false)
     {
         OnLivesRemainingLine(text);
+        OnExperienceGainLine(text);
         if (_windowOpenedAt is null) return;
         if (isPromptLine && _capturedThisArm)
         {
@@ -314,6 +326,8 @@ public sealed partial class StatParser : IDisposable
         // Lives-remaining (miracle save) — always-on, independent of
         // the stat-screen scan window.
         OnLivesRemainingLine(line.Text);
+        // Experience-gain — always-on live accrual onto the Exp total.
+        OnExperienceGainLine(line.Text);
 
         if (_windowOpenedAt is null) return;
 
@@ -462,6 +476,32 @@ public sealed partial class StatParser : IDisposable
             $"Updated Lives → {lives} (post-suicide / miracle-save line).");
     }
 
+    /// <summary>
+    /// Always-on handler for the combat reward line
+    /// <c>"You gain N experience."</c>. Adds the gain onto the running
+    /// <see cref="PlayerStats.Exp"/> total so consumers (the Level
+    /// Projection tab, the auto-trainer's can-level check) stay current
+    /// between manual <c>exp</c> / <c>stat</c> polls — the user no longer
+    /// has to re-poll to refresh their banked experience. Bypasses the
+    /// stat-screen scan gate: it's a server-emitted game event, like the
+    /// miracle-save line. StatParser owns <see cref="PlayerStats.Exp"/>,
+    /// so this accrual lives here rather than in a consumer.
+    /// </summary>
+    private void OnExperienceGainLine(string text)
+    {
+        Match m = ExpGainRx().Match(text);
+        if (!m.Success) return;
+        if (!long.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out long gained)) return;
+        // Exp is an int field; clamp the running total so a huge gain can't
+        // overflow it (high-level MajorMUD exp can pass int range).
+        long total = (long)Stats.Exp + gained;
+        Stats.Exp = total > int.MaxValue ? int.MaxValue : (int)total;
+        HasParsed = true;
+        _log?.Log(LogSeverity.Debug, "StatParser", $"Exp += {gained} → {Stats.Exp} (gain line).");
+        ExperienceGained?.Invoke(Stats.Exp);
+    }
+
     private void TryString(string text, Regex rx, string field, Action<string> set)
     {
         Match m = rx.Match(text);
@@ -596,6 +636,13 @@ public sealed partial class StatParser : IDisposable
     // the stale value from the last manual `stat`.
     [GeneratedRegex(@"^You (?:now have|have) (\d+) (?:lives?|life) (?:remaining|left)\.",
         RegexOptions.CultureInvariant)] private static partial Regex LivesRemainingRx();
+
+    // Always-on experience-gain line — fires outside the stat-screen
+    // window. Mirrors KnownPatterns.UserGainExperience (the MessageRouter
+    // copy drives combat tracking); kept here so the Exp owner can accrue
+    // the total without depending on the router pipeline.
+    [GeneratedRegex(@"^You gain (\d+) experience\.",
+        RegexOptions.CultureInvariant)] private static partial Regex ExpGainRx();
 
     // Chat-line shape — matched at line start. Any of the standard
     // MajorMUD chat verbs after a single-word speaker means the

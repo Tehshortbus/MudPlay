@@ -58,6 +58,15 @@ public static class LookupEnums
     /// <summary>Items.WeaponType → "1H Sharp", "2H Blunt", ...</summary>
     public static string? FormatWeaponType(string? raw) => Map(raw, WeaponTypeNames);
 
+    /// <summary>
+    /// True when an <c>Items.WeaponType</c> code marks a two-handed weapon (the
+    /// "2H Blunt" / "2H Sharp" labels above, codes 1 and 3). Two-handers occupy
+    /// the off-hand slot, so wielding one needs a shield/off-hand removed first —
+    /// the swap logic in <see cref="Game.Spells.ItemCastSequencer"/> and
+    /// <see cref="Game.Combat.CombatManager"/> keys off this.
+    /// </summary>
+    public static bool IsTwoHandedWeaponType(int weaponType) => weaponType is 1 or 3;
+
     private static readonly FrozenDictionary<int, string> ClassWeaponTypeNames = new Dictionary<int, string>
     {
         [0] = "1H Blunt",  [1] = "2H Blunt",   [2] = "1H Sharp",  [3] = "2H Sharp",

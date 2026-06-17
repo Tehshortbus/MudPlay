@@ -17,8 +17,10 @@ public sealed class ItemCastSequencerTests
 {
     private static readonly IReadOnlyList<ClassCastItem> Items = new[]
     {
-        new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0, 0), // unlimited, free
-        new ClassCastItem(2, "Scroll of Light", 60, "light", 0, 3),        // limited
+        new ClassCastItem(1, "Emerald Tipped Crozier", 50, "bless", 0, 0),  // unlimited, free, 1H
+        new ClassCastItem(2, "Scroll of Light", 60, "light", 0, 3),         // limited
+        new ClassCastItem(3, "Shimmering Greatsword", 70, "shield", 8, 0,   // unlimited, two-handed
+            IsTwoHanded: true),
     };
 
     private static InventorySnapshot InvWith(params EquippedItem[] equipped)
@@ -35,7 +37,7 @@ public sealed class ItemCastSequencerTests
         => sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
 
     [Fact]
-    public void Execute_UnlimitedItem_WieldsUsesAndRewieldsWeapon()
+    public void Execute_UnlimitedItem_EquipsUsesAndRestoresWeapon()
     {
         (ItemCastSequencer seq, List<byte[]> sent) =
             NewSeq(InvWith(new EquippedItem("long sword", "Weapon Hand")));
@@ -44,27 +46,80 @@ public sealed class ItemCastSequencerTests
         // Commands use the canonical game-data item name, not the lowercase token.
         Assert.Equal(new[]
         {
-            "wield Emerald Tipped Crozier",
+            "eq Emerald Tipped Crozier",
             "use Emerald Tipped Crozier",
-            "wield long sword",
+            "eq long sword",
         }, Decode(sent));
     }
 
     [Fact]
-    public void Execute_NoWeaponEquipped_SkipsRewield()
+    public void Execute_NoWeaponEquipped_SkipsRestore()
     {
         (ItemCastSequencer seq, List<byte[]> sent) = NewSeq(InventorySnapshot.Empty);
 
         Assert.True(seq.Execute("#emerald tipped crozier"));
         Assert.Equal(new[]
         {
-            "wield Emerald Tipped Crozier",
+            "eq Emerald Tipped Crozier",
             "use Emerald Tipped Crozier",
         }, Decode(sent));
     }
 
     [Fact]
-    public void Execute_AlreadyWieldingCastItem_SkipsRewield()
+    public void Execute_OneHandedItem_LeavesOffHandAlone()
+    {
+        // A 1H cast item slots in alongside the shield — no off-hand juggling.
+        (ItemCastSequencer seq, List<byte[]> sent) = NewSeq(InvWith(
+            new EquippedItem("long sword", "Weapon Hand"),
+            new EquippedItem("medium shield", "Off-Hand")));
+
+        Assert.True(seq.Execute("#emerald tipped crozier"));
+        Assert.Equal(new[]
+        {
+            "eq Emerald Tipped Crozier",
+            "use Emerald Tipped Crozier",
+            "eq long sword",
+        }, Decode(sent));
+    }
+
+    [Fact]
+    public void Execute_TwoHandedItem_RemovesAndRestoresOffHand()
+    {
+        // Two-handed cast item: drop the shield, wield + use the greatsword,
+        // restore the 1H weapon (frees the off-hand), then re-equip the shield.
+        (ItemCastSequencer seq, List<byte[]> sent) = NewSeq(InvWith(
+            new EquippedItem("long sword", "Weapon Hand"),
+            new EquippedItem("medium shield", "Off-Hand")));
+
+        Assert.True(seq.Execute("#shimmering greatsword"));
+        Assert.Equal(new[]
+        {
+            "remove medium shield",
+            "eq Shimmering Greatsword",
+            "use Shimmering Greatsword",
+            "eq long sword",
+            "eq medium shield",
+        }, Decode(sent));
+    }
+
+    [Fact]
+    public void Execute_TwoHandedItem_NoOffHand_SkipsRemove()
+    {
+        // No shield held: a two-hander needs no off-hand juggling.
+        (ItemCastSequencer seq, List<byte[]> sent) =
+            NewSeq(InvWith(new EquippedItem("battle axe", "Weapon Hand")));
+
+        Assert.True(seq.Execute("#shimmering greatsword"));
+        Assert.Equal(new[]
+        {
+            "eq Shimmering Greatsword",
+            "use Shimmering Greatsword",
+            "eq battle axe",
+        }, Decode(sent));
+    }
+
+    [Fact]
+    public void Execute_AlreadyWieldingCastItem_SkipsRestore()
     {
         (ItemCastSequencer seq, List<byte[]> sent) =
             NewSeq(InvWith(new EquippedItem("Emerald Tipped Crozier", "Weapon Hand")));
@@ -72,7 +127,7 @@ public sealed class ItemCastSequencerTests
         Assert.True(seq.Execute("#emerald tipped crozier"));
         Assert.Equal(new[]
         {
-            "wield Emerald Tipped Crozier",
+            "eq Emerald Tipped Crozier",
             "use Emerald Tipped Crozier",
         }, Decode(sent));
     }

@@ -442,6 +442,57 @@ public sealed class SpellBookRowViewModelTests
     }
 
     [Fact]
+    public void TextBlock_FoldsOwnAndChildDurationIntoOneFigure_EqualDurations()
+    {
+        // Mystic "form of the crane": the form spell itself carries Dur 300
+        // (900s) AND casts a TextBlock buff that also carries Dur 300. Both
+        // durations are the same length — surface a single "900 seconds", not
+        // "900 seconds · 900 seconds".
+        SpellFormulaInput form = new()
+        {
+            Number = 838,
+            Dur = 300,
+            Abilities = [new SpellAbility(148, 2911)],
+        };
+        KnownSpell s = Spell("cfrm", "form of the crane", 40, form);
+
+        KnownSpell buff = new(879, "crn", "form of the crane",
+            Magery: 1, MageryLvl: 1, ReqLevel: 40, Targets: 0,
+            new SpellFormulaInput { Number = 879, Dur = 300, Abilities = [new SpellAbility(46, 4)] });
+
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 40, NoChain,
+            resolveTextblockCasts: n => n == 2911 ? new[] { buff } : System.Array.Empty<KnownSpell>());
+
+        Assert.Equal("900 seconds · Strength +4", row.EffectText);
+    }
+
+    [Fact]
+    public void TextBlock_KeepsLongerOfFormAndChildDuration()
+    {
+        // "form of the dragon": the form spell's own Dur is just 1 tick (3s, the
+        // transform animation) while the TextBlock buff lasts Dur 300 (900s).
+        // Show the longer of the two — "900 seconds", never "3 seconds · 900…".
+        SpellFormulaInput form = new()
+        {
+            Number = 839,
+            Dur = 1,
+            Abilities = [new SpellAbility(148, 2910)],
+        };
+        KnownSpell s = Spell("dfrm", "form of the dragon", 50, form);
+
+        KnownSpell buff = new(858, "drgn", "form of the dragon",
+            Magery: 1, MageryLvl: 1, ReqLevel: 50, Targets: 0,
+            new SpellFormulaInput { Number = 858, Dur = 300, Abilities = [new SpellAbility(46, 10)] });
+
+        SpellBookRowViewModel row = new(
+            s, isObtained: true, level: 50, NoChain,
+            resolveTextblockCasts: n => n == 2910 ? new[] { buff } : System.Array.Empty<KnownSpell>());
+
+        Assert.Equal("900 seconds · Strength +10", row.EffectText);
+    }
+
+    [Fact]
     public void NonMagicalSpellFlag_DoesNotDuplicateDamageRange()
     {
         // "way of the dragon" (drgn): Damage (1) + NonMagicalSpell (144) flag,

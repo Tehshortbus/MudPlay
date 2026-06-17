@@ -538,6 +538,14 @@ public static class DefaultPatterns
         // Auto-train uses this to detect the level-up + drive the CP plan.
         yield return new RegexPattern(KnownPatterns.TrainAttainLevel,
             @"^You hand over .+ and you receive training to attain level (?<level>\d+)");
+
+        // Trainer rejections that stop the @train multi-level loop. The first
+        // means we've out-levelled this trainer (more levels may remain, but not
+        // here); the second means we can't afford the next level's fee.
+        yield return new RegexPattern(KnownPatterns.TrainProgressedTooFar,
+            @"^You have progressed too far to use the training provided here\.");
+        yield return new RegexPattern(KnownPatterns.TrainNoMoney,
+            @"^You do not have the money required for your training\.");
     }
 
 }

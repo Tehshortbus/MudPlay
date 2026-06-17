@@ -263,6 +263,21 @@ public static class KnownPatterns
     /// </summary>
     public const string TrainAttainLevel = "train.attain-level";
 
+    /// <summary>
+    /// "You have progressed too far to use the training provided here." — the
+    /// trainer rejecting a <c>train</c> because the character has out-levelled
+    /// this trainer's band. A hard stop for the <c>@train</c> multi-level loop:
+    /// no further levels can be trained at this location.
+    /// </summary>
+    public const string TrainProgressedTooFar = "train.progressed-too-far";
+
+    /// <summary>
+    /// "You do not have the money required for your training." — the trainer
+    /// rejecting a <c>train</c> for lack of coin. Also stops the <c>@train</c>
+    /// loop (no point re-sending until the purse is fixed).
+    /// </summary>
+    public const string TrainNoMoney = "train.no-money";
+
     // ----- Main menu -----------------------------------------------------
     // BBSes customise the banner version + realm name + prompt text, but
     // the menu options themselves are stable across customisations.

@@ -23,10 +23,27 @@ public sealed class AutoTrainerSettings
     public bool AutoTrainStats { get; set; }
 
     /// <summary>
-    /// Shop numbers the user has switched OFF for auto-train. Storing the
-    /// disabled set (rather than the allowed set) keeps the JSON small and
-    /// means newly-discovered trainers default to allowed. <c>null</c> / empty
-    /// = every discovered trainer is allowed.
+    /// When on, broadcast "I can now train to level: N" on
+    /// <see cref="AnnounceChannel"/> each time a live experience gain makes a new
+    /// level trainable — i.e. a Level-Projection row's "Exp to level" reaches 0.
+    /// Banked levels already trainable on login / at the next stat poll are seeded
+    /// silently, so this only fires on transitions that happen during play.
     /// </summary>
-    public List<int>? DisabledTrainers { get; set; }
+    public bool AnnounceLevelUps { get; set; }
+
+    /// <summary>
+    /// Chat channel the level-up announce is sent on. Defaults to
+    /// <see cref="Profile.AnnounceChannel.Gangpath"/> (most useful to a party).
+    /// </summary>
+    public AnnounceChannel AnnounceChannel { get; set; } = AnnounceChannel.Gangpath;
+
+    /// <summary>
+    /// Trainer rows the user has switched OFF for auto-train, keyed by
+    /// <see cref="FujinTerm.Game.GameData.TrainerShop.RowKey"/> (<c>shop/map/room</c>)
+    /// so a multi-room shop's rooms toggle independently. Storing the disabled set
+    /// (rather than the allowed set) keeps the JSON small and means
+    /// newly-discovered trainers default to allowed. <c>null</c> / empty = every
+    /// discovered trainer is allowed.
+    /// </summary>
+    public List<string>? DisabledTrainers { get; set; }
 }

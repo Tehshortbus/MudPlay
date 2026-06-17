@@ -42,7 +42,8 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName = null,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null)
-        => FormatCore(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited: null);
+        => FormatCore(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                      visited: null, suppressDuration: false);
 
     /// <summary>
     /// Format implementation that threads the EndCast cycle-guard set.
@@ -57,7 +58,8 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
-        HashSet<int>? visited)
+        HashSet<int>? visited,
+        bool suppressDuration)
     {
         List<string> parts = new();
 
@@ -76,11 +78,24 @@ public static class SpellEffectFormatter
         long maxHeal = SpellCalculator.MaxHeal(formula, level, resolveChain);
         if (maxHeal > 0) parts.Add($"Heal {Range(minHeal, maxHeal)}");
 
-        // Durations are stored in 3-second spell-round ticks; show seconds.
-        long dur = SpellCalculator.Duration(formula, level);
-        if (dur > 0) parts.Add($"{dur * SpellRoundSeconds} seconds");
+        // Stat affects, plus any TextBlock-cast buff expansion. The expansion
+        // suppresses its children's own durations and reports the longest back
+        // here (childDurTicks) so a Mystic "form" — a spell that casts a
+        // TextBlock buff whose duration mirrors the form spell's — surfaces a
+        // single duration figure instead of printing both.
+        string affects = BuildAffects(
+            formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, out long childDurTicks);
 
-        string affects = BuildAffects(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts);
+        // Durations are stored in 3-second spell-round ticks; show seconds. When
+        // this render is itself a suppressed TextBlock child the parent owns the
+        // duration figure, so emit none. Otherwise show the longer of this
+        // spell's own duration and its TextBlock children's.
+        if (!suppressDuration)
+        {
+            long durTicks = Math.Max(SpellCalculator.Duration(formula, level), childDurTicks);
+            if (durTicks > 0) parts.Add($"{durTicks * SpellRoundSeconds} seconds");
+        }
+
         if (affects.Length > 0) parts.Add(affects);
 
         // EndCast chains are whole follow-up spells, not stat affects — each
@@ -191,8 +206,10 @@ public static class SpellEffectFormatter
         int level,
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
-        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts)
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        out long childDurTicks)
     {
+        childDurTicks = 0;
         (long affMin, long affMax) = SpellCalculator.AffectMagnitude(formula, level);
 
         List<string> parts = new();
@@ -211,7 +228,9 @@ public static class SpellEffectFormatter
             if (a.Code == TextBlockCode)
             {
                 string expanded = ExpandTextblockCasts(
-                    a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts);
+                    a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                    out long tbDurTicks);
+                if (tbDurTicks > childDurTicks) childDurTicks = tbDurTicks;
                 if (expanded.Length > 0)
                 {
                     parts.Add(expanded);
@@ -293,7 +312,8 @@ public static class SpellEffectFormatter
             : $"EndCast {name}";
 
         string effect = resolveChain(chainedNumber) is { } chained
-            ? FormatCore(chained, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited)
+            ? FormatCore(chained, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                         visited, suppressDuration: false)
             : string.Empty;
 
         return effect.Length == 0 || effect == "—" ? prefix : $"{prefix} ({effect})";
@@ -341,7 +361,8 @@ public static class SpellEffectFormatter
                 ? resolved
                 : $"#{n.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             string effect = FormatCore(
-                target, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
+                target, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                visited, suppressDuration: false);
             names.Add(name);
             effects.Add(effect == "—" ? string.Empty : effect);
         }
@@ -388,8 +409,10 @@ public static class SpellEffectFormatter
         int level,
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
-        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts)
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        out long maxChildDurTicks)
     {
+        maxChildDurTicks = 0;
         if (resolveTextblockCasts is null) return string.Empty;
         IReadOnlyList<KnownSpell> casts = resolveTextblockCasts(textblock);
         if (casts.Count == 0) return string.Empty;
@@ -402,7 +425,15 @@ public static class SpellEffectFormatter
         List<string> removes = new();
         foreach (KnownSpell s in casts)
         {
-            string effect = Format(s.Formula, level, resolveChain, resolveSpellName, resolveTextblockCasts: null);
+            // Hoist the longest child duration to the parent and render the child
+            // with its own duration suppressed — the form spell already carries a
+            // (usually equal or shorter) duration, and we want one figure, not two.
+            long childDur = SpellCalculator.Duration(s.Formula, level);
+            if (childDur > maxChildDurTicks) maxChildDurTicks = childDur;
+
+            string effect = FormatCore(
+                s.Formula, level, resolveChain, resolveSpellName,
+                resolveTextblockCasts: null, visited: null, suppressDuration: true);
             if (effect.Length == 0 || effect == "—") continue;
             (IsRemovesOnlyEffect(effect) ? removes : gains).Add(effect);
         }

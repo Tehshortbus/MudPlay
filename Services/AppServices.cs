@@ -642,6 +642,13 @@ public sealed class AppServices
     public Game.TrainerWalkManager TrainerWalk { get; }
 
     /// <summary>
+    /// Broadcasts "I can now train to level: N" on the configured channel when a
+    /// live experience gain makes a new level trainable. Gated by the Settings →
+    /// Auto-Trainer "Announce level-ups" toggle.
+    /// </summary>
+    public Game.LevelUpAnnouncer LevelUp { get; }
+
+    /// <summary>
     /// Loaded character's <see cref="Models.GameData.Macro"/> store.
     /// Surfaced by the Game Data Browser → Macros tab; the Phase 10
     /// MacroManager engine intercepts keystrokes and dispatches from
@@ -1912,7 +1919,8 @@ public sealed class AppServices
             readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log,
             readPartySettings: () =>
-                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
+                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            isTwoHandedWeapon: IsConfiguredWeaponTwoHanded);
 
         // Phase 9 PR 9.B — HealthManager. Master on/off is
         // GeneralSettings.AutoMode.AutoHealRest (shared with the
@@ -2401,6 +2409,10 @@ public sealed class AppServices
             RoomTracker, Bfs, Walker, LoopRunner, AutoLair, AutoTrain, Router, Log);
         // @train remote: trains in place (no walk) via the coordinator.
         TrainRemote = new Game.Remote.TrainHandler(RemoteCommands, TrainerWalk);
+        // PR 10.8 — level-up announcer. Built after StatParser + the ProfileLoaded
+        // Hydrate wiring so its baseline seed sees freshly-hydrated stats; watches
+        // StatParser.ExperienceGained to broadcast newly-trainable levels.
+        LevelUp = new Game.LevelUpAnnouncer(PlayerStats, Stats, GameData, Profile, Log);
 
         AutoDeposit = new Game.Cash.AutoDepositManager(
             Cash,
@@ -2509,6 +2521,27 @@ public sealed class AppServices
         {
             return new T();
         }
+    }
+
+    /// <summary>
+    /// True when the named weapon resolves to a two-handed item in the active
+    /// game-data set (<c>Items.WeaponType</c> 2H). Fed to
+    /// <see cref="Game.Combat.CombatManager"/> so its weapon-swap can free the
+    /// off-hand before wielding a two-hander. An unknown / unmatched name
+    /// resolves to <c>false</c> — the swap then behaves as it always did.
+    /// </summary>
+    private bool IsConfiguredWeaponTwoHanded(string? weaponName)
+    {
+        if (string.IsNullOrWhiteSpace(weaponName)) return false;
+        if (GameData.FindRowByName("Items", weaponName) is not { } row) return false;
+        if (!row.TryGetProperty("WeaponType", out System.Text.Json.JsonElement wt)) return false;
+        int code = wt.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.Number when wt.TryGetInt32(out int n) => n,
+            System.Text.Json.JsonValueKind.String when int.TryParse(wt.GetString(), out int n) => n,
+            _ => 0,
+        };
+        return Game.GameData.LookupEnums.IsTwoHandedWeaponType(code);
     }
 
     /// <summary>

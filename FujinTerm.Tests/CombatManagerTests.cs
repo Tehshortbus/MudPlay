@@ -36,6 +36,8 @@ public sealed class CombatManagerTests
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
         public string? OwnName { get; set; } = "Fujin";
         public bool AutoCombatEnabled { get; set; } = true;
+        // Weapon names the injected 2H predicate should report as two-handed.
+        public HashSet<string> TwoHandedWeapons { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public Harness()
         {
@@ -48,7 +50,8 @@ public sealed class CombatManagerTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => OwnName,
-                log: Log);
+                log: Log,
+                isTwoHandedWeapon: w => w is not null && TwoHandedWeapons.Contains(w));
             Combat.SetWireSender(b => Sent.Add(b));
         }
 
@@ -1058,6 +1061,48 @@ public sealed class CombatManagerTests
         // eq warhammer + swing stone golem
         List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
         Assert.Contains("eq warhammer", lines);
+        Assert.Contains("swing stone golem", lines);
+    }
+
+    [Fact]
+    public void Attack_TwoHandedNormalWeapon_SkipsOffHand()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "greatsword";
+        h.Settings.NormalOffHand = "shield";   // ignored — a two-hander uses both hands
+        h.TwoHandedWeapons.Add("greatsword");
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Equal("eq greatsword", lines[0]);
+        Assert.Equal("a giant rat", lines[1]);
+        Assert.DoesNotContain("eq shield", lines);
+    }
+
+    [Fact]
+    public void WeaponNoEffect_SwapToTwoHandedAlt_RemovesShieldFirst()
+    {
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.Settings.NormalOffHand = "shield";
+        h.Settings.AlternateWeapon = "greatsword";
+        h.Settings.AlternateAttackCommand = "swing";
+        h.TwoHandedWeapons.Add("greatsword");
+        h.AddMonster(1, "stone golem", killable: true);
+
+        h.Feed("Also here: stone golem.");   // eq longsword, eq shield, a stone golem
+        h.Sent.Clear();
+
+        h.Feed("Your weapon has no effect against this monster!");
+
+        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        // Shield comes off before the two-hander goes on; no off-hand re-equip.
+        int removeIdx = lines.IndexOf("remove shield");
+        int equipIdx = lines.IndexOf("eq greatsword");
+        Assert.True(removeIdx >= 0, "expected a 'remove shield' before the two-hander");
+        Assert.True(equipIdx > removeIdx, "shield must be removed before equipping the two-hander");
         Assert.Contains("swing stone golem", lines);
     }
 

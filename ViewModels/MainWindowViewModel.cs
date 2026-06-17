@@ -742,6 +742,9 @@ public partial class MainWindowViewModel : ObservableObject
         // the trainer-walk coordinator sends `train` / `stat` the same way.
         AppServices.Current.AutoTrain.SetWireSender(engineSend);
         AppServices.Current.TrainerWalk.SetWireSender(engineSend);
+        // PR 10.8 — level-up announcer broadcasts "I can now train to level: N" on
+        // the configured channel through the same gate-wrapped pipeline.
+        AppServices.Current.LevelUp.SetWireSender(engineSend);
         // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
         // target pick via the same engine-send pipeline; the gate-
         // wrapped sender prevents the swing command from landing

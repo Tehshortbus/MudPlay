@@ -102,6 +102,10 @@ public sealed partial class CombatManager : IDisposable
     private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<bool> _isEnabled;
     private readonly Func<string?> _readOwnGivenName;
+    // Resolves whether a configured weapon name is two-handed (Items.WeaponType
+    // 2H). Injected so the manager stays game-data-free; null ⇒ never two-handed
+    // (preserves the original always-equip-off-hand behaviour for tests).
+    private readonly Func<string?, bool> _isTwoHandedWeapon;
     private readonly LogService? _log;
 
     private readonly IDisposable _announceSub;
@@ -233,6 +237,12 @@ public sealed partial class CombatManager : IDisposable
     /// will trigger an equip to the configured normal/BS weapon.</summary>
     private string? _lastEquippedWeapon;
 
+    /// <summary>The off-hand name last sent via the equip helper, or
+    /// <c>null</c> when nothing is in the off-hand (or we cleared it to
+    /// wield a two-hander). Tracked so a swap to a two-handed weapon can
+    /// <c>remove</c> the shield first — the game needs both hands free.</summary>
+    private string? _lastEquippedOffHand;
+
     /// <summary>True when we've swapped to the alternate weapon for
     /// the current room (a no-effect line fired against the normal
     /// weapon vs the current target's species). Cleared on
@@ -264,7 +274,8 @@ public sealed partial class CombatManager : IDisposable
         Func<bool> isEnabled,
         Func<string?> readOwnGivenName,
         LogService? log = null,
-        Func<PartySettings>? readPartySettings = null)
+        Func<PartySettings>? readPartySettings = null,
+        Func<string?, bool>? isTwoHandedWeapon = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -282,6 +293,7 @@ public sealed partial class CombatManager : IDisposable
         _isEnabled    = isEnabled;
         _readOwnGivenName = readOwnGivenName;
         _readPartySettings = readPartySettings;
+        _isTwoHandedWeapon = isTwoHandedWeapon ?? (static _ => false);
         _log = log;
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
@@ -771,10 +783,11 @@ public sealed partial class CombatManager : IDisposable
 
     /// <summary>
     /// Send equip commands for the given weapon + off-hand. Idempotent
-    /// vs the shadow state: re-equipping the same weapon no-ops. The
-    /// off-hand is unconditional on every call (matches MudProxy —
-    /// we don't track off-hand state because cursed off-hands are
-    /// rare and the equip is cheap).
+    /// vs the shadow state: re-equipping the same weapon no-ops.
+    /// Two-handed-aware: switching to a two-hander first <c>remove</c>s
+    /// any tracked off-hand (it needs both hands), and a two-hander is
+    /// never paired with an off-hand. A one-handed weapon equips its
+    /// configured off-hand alongside it.
     /// </summary>
     private void EquipWeapon(string? weapon, string? offHand)
     {
@@ -782,11 +795,28 @@ public sealed partial class CombatManager : IDisposable
         if (string.Equals(weapon, _lastEquippedWeapon, StringComparison.OrdinalIgnoreCase))
             return;
 
-        _log?.Info(LogCategory, $"equip weapon={weapon} offhand={offHand ?? "<none>"}");
+        bool newIsTwoHanded = _isTwoHandedWeapon(weapon);
+
+        // Free the off-hand before wielding a two-hander — the game rejects the
+        // equip while a shield occupies the off-hand slot.
+        if (newIsTwoHanded && !string.IsNullOrWhiteSpace(_lastEquippedOffHand))
+        {
+            Send($"remove {_lastEquippedOffHand.Trim()}");
+            _lastEquippedOffHand = null;
+        }
+
+        _log?.Info(LogCategory,
+            $"equip weapon={weapon} offhand={(newIsTwoHanded ? "<two-handed>" : offHand ?? "<none>")}");
         Send($"eq {weapon.Trim()}");
-        if (!string.IsNullOrWhiteSpace(offHand))
-            Send($"eq {offHand.Trim()}");
         _lastEquippedWeapon = weapon;
+
+        // A two-hander occupies both hands — only a one-handed weapon carries an
+        // off-hand.
+        if (!newIsTwoHanded && !string.IsNullOrWhiteSpace(offHand))
+        {
+            Send($"eq {offHand.Trim()}");
+            _lastEquippedOffHand = offHand;
+        }
     }
 
     private void Send(string text)
@@ -854,6 +884,7 @@ public sealed partial class CombatManager : IDisposable
     {
         _log?.Warn(LogCategory, "fists-no-effect — clearing equipped-weapon shadow state");
         _lastEquippedWeapon = null;
+        _lastEquippedOffHand = null;
         _usingAlternateWeapon = false;
 
         // Force a re-equip on the next attack by triggering a fresh

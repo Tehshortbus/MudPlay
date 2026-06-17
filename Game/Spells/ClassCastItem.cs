@@ -14,8 +14,10 @@ namespace FujinTerm.Game.Spells;
 /// <param name="SpellName">Resolved <c>Spells.Name</c> of the cast spell (empty when the spell number doesn't resolve).</param>
 /// <param name="ManaCost">The cast spell's <c>Spells.ManaCost</c> — mana deducted when the item is used; <c>0</c> = free (most charge wands / proc gear).</param>
 /// <param name="UseCount">Charges before the item is consumed; <c>0</c> = unlimited.</param>
+/// <param name="IsTwoHanded">True when the carrier is a two-handed weapon (<c>Items.WeaponType</c> 2H). The cast sequencer must free the off-hand before wielding it to <c>use</c> it.</param>
 public readonly record struct ClassCastItem(
-    int ItemNumber, string ItemName, int SpellNumber, string SpellName, int ManaCost, int UseCount)
+    int ItemNumber, string ItemName, int SpellNumber, string SpellName, int ManaCost, int UseCount,
+    bool IsTwoHanded = false)
 {
     /// <summary>True when the item has unlimited uses (<c>UseCount</c> 0).</summary>
     public bool Unlimited => UseCount == 0;

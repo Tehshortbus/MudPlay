@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Spells;
@@ -291,6 +292,18 @@ public sealed class KnownSpellCatalog
     // each a Classes.Number that may use the item.
     private const int ItemClassRestSlots = 10;
 
+    // A spellbook cast-on-use item must be equippable in one of the player's
+    // equipment slots (MegaMUD's Hold panel). Weapons (ItemType 1) ready into the
+    // Weapon slot; everything else is gated on a real Worn slot. Worn 0 (Nowhere)
+    // and 1 (Everywhere) aren't equip slots, so non-equippable "use" items —
+    // potions, food, containers/chests, scrolls, projectiles, and room Sign items
+    // like the dark plated warchest — are excluded: you drink/eat/open/read those,
+    // you don't ready them to cast a buff. Worn 2..19 spans Head…Face plus
+    // Off-Hand and the generic Worn slot.
+    private const int WeaponItemType = 1;
+    private const int FirstWornSlot = 2;
+    private const int LastWornSlot = 19;
+
     /// <summary>
     /// Every cast-on-use item the class can use — an Items row that both
     /// (a) is usable by <paramref name="classNumber"/> via its
@@ -313,6 +326,7 @@ public sealed class KnownSpellCatalog
         foreach (JsonElement row in items.RootElement.EnumerateArray())
         {
             if (!ItemUsableByClass(row, classNumber)) continue;
+            if (!IsEquippableCastItem(row)) continue;
 
             // First CastsSp (code 43) slot wins — an item casts a single use-spell.
             int spellNumber = 0;
@@ -338,7 +352,8 @@ public sealed class KnownSpellCatalog
                 SpellNumber: spellNumber,
                 SpellName: spellName,
                 ManaCost: manaCost,
-                UseCount: ReadInt(row, "UseCount")));
+                UseCount: ReadInt(row, "UseCount"),
+                IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType"))));
         }
 
         results.Sort(static (a, b) =>
@@ -365,6 +380,20 @@ public sealed class KnownSpellCatalog
             if (c == classNumber) return true;
         }
         return !anyRestriction;
+    }
+
+    /// <summary>
+    /// True when an item can be equipped in one of the player's equipment slots,
+    /// the precondition for using it to cast: a weapon (readied into the Weapon
+    /// slot) or an item worn in a real body / Off-Hand / Worn slot. Excludes
+    /// non-equippable "use" items (potions, food, containers, scrolls,
+    /// projectiles, room Signs) that can't be readied to cast a buff.
+    /// </summary>
+    private static bool IsEquippableCastItem(JsonElement row)
+    {
+        if (ReadInt(row, "ItemType") == WeaponItemType) return true;
+        int worn = ReadInt(row, "Worn");
+        return worn is >= FirstWornSlot and <= LastWornSlot;
     }
 
     /// <summary>One-pass <c>Spells.Number</c> → (<c>Name</c>, <c>ManaCost</c>) map

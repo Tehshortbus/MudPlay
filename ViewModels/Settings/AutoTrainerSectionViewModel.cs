@@ -58,12 +58,19 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     /// <summary>Cascading toggle — apply the CP plan via <c>train stats</c> after each train.</summary>
     [ObservableProperty] private bool _autoTrainStats;
 
-    // View filters (not persisted). Both off = show every discovered trainer;
-    // both on = "usable now" (serves my level + my class / universal).
+    /// <summary>Broadcast "I can now train to level: N" when a live exp gain makes a new level trainable.</summary>
+    [ObservableProperty] private bool _announceLevelUps;
+    /// <summary>Channel the level-up announce is sent on (enabled only with <see cref="AnnounceLevelUps"/>).</summary>
+    [ObservableProperty] private AnnounceChannel _announceChannel;
+
+    /// <summary>Channel choices for the announce dropdown.</summary>
+    public IReadOnlyList<AnnounceChannel> AnnounceChannels { get; } =
+        (AnnounceChannel[])Enum.GetValues(typeof(AnnounceChannel));
+
+    // View filter (not persisted). Off = show every discovered trainer; on =
+    // only trainers whose level range serves the character's current level.
     /// <summary>Show only trainers whose level range serves the character's current level.</summary>
     [ObservableProperty] private bool _onlyUsableLevel;
-    /// <summary>Show only universal trainers or ones restricted to the character's class.</summary>
-    [ObservableProperty] private bool _onlyMyClass;
 
     /// <summary>
     /// Set when the user tries to enable Auto-train stats with no saved CP plan —
@@ -82,6 +89,7 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "Auto-train", "Auto-train stats", "trainer", "train", "guild", "level up",
+        "announce level-ups", "announce channel",
     };
 
     public AutoTrainerSectionViewModel()
@@ -111,15 +119,17 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
 
         // Build from _allRows (every trainer), not the filtered view — a hidden
         // row's allow-state must survive a Save while a filter is active.
-        List<int> disabled = _allRows.Where(t => !t.Allowed)
-            .Select(t => t.ShopNumber)
-            .OrderBy(n => n)
+        List<string> disabled = _allRows.Where(t => !t.Allowed)
+            .Select(t => t.RowKey)
+            .OrderBy(k => k, StringComparer.Ordinal)
             .ToList();
 
         AutoTrainerSettings dto = new()
         {
             AutoTrain = AutoTrain,
             AutoTrainStats = AutoTrain && AutoTrainStats,   // cascade — never store stats-on without train-on
+            AnnounceLevelUps = AnnounceLevelUps,
+            AnnounceChannel = AnnounceChannel,
             DisabledTrainers = disabled.Count == 0 ? null : disabled,
         };
 
@@ -155,57 +165,69 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         AutoTrainerSettings dto = ReadOrDefault();
         AutoTrain = dto.AutoTrain;
         AutoTrainStats = dto.AutoTrain && dto.AutoTrainStats;
+        AnnounceLevelUps = dto.AnnounceLevelUps;
+        AnnounceChannel = dto.AnnounceChannel;
         RebuildTrainers(dto.DisabledTrainers);
     }
 
-    private void RebuildTrainers(IReadOnlyCollection<int>? disabled)
+    private void RebuildTrainers(IReadOnlyCollection<string>? disabled)
     {
         _allRows.Clear();
-        HashSet<int> off = disabled is { Count: > 0 }
-            ? new HashSet<int>(disabled)
-            : new HashSet<int>();
+        HashSet<string> off = disabled is { Count: > 0 }
+            ? new HashSet<string>(disabled, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
 
         foreach (TrainerShop t in TrainerCatalog.Enumerate(_gameData)
-                     .OrderBy(t => t.MinLevel).ThenBy(t => t.MaxLevel).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+                     .OrderBy(t => t.MinLevel).ThenBy(t => t.MaxLevel)
+                     .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(t => t.RoomName, StringComparer.OrdinalIgnoreCase))
         {
             string mapRoom = t.HasRoom
                 ? string.Create(CultureInfo.InvariantCulture, $"{t.Map}/{t.Room}")
                 : "—";
             string range = string.Create(CultureInfo.InvariantCulture, $"{t.MinLevel}–{t.MaxLevel}");
-            _allRows.Add(new AutoTrainerRowViewModel(t, mapRoom, range, allowed: !off.Contains(t.Number), MarkDirty));
+            _allRows.Add(new AutoTrainerRowViewModel(t, mapRoom, range, allowed: !off.Contains(t.RowKey), MarkDirty));
         }
         ApplyFilter();
     }
 
-    // Rebuild the bound (filtered) view from _allRows. Filters are view-only —
-    // they never mark dirty or persist.
+    // Rebuild the bound (filtered) view from _allRows. The filter is view-only —
+    // it never marks dirty or persists. Other classes' guild trainers are always
+    // hidden (a Mystic never needs to see the Warrior guild); the level filter is
+    // the optional user toggle on top of that.
     private void ApplyFilter()
     {
         int level = _stats.Level;
-        int myClass = ResolveClassNumber();
+        int classNumber = ResolveClassNumber();
 
         Trainers.Clear();
         foreach (AutoTrainerRowViewModel row in _allRows)
         {
+            if (classNumber > 0 && !row.ServesClass(classNumber)) continue;
             if (OnlyUsableLevel && !row.ServesLevel(level)) continue;
-            if (OnlyMyClass && row.ClassRest != 0 && row.ClassRest != myClass) continue;
             Trainers.Add(row);
         }
         OnPropertyChanged(nameof(HasTrainers));
     }
 
-    // Resolve the live class name → Classes.Number for the "my class only"
-    // filter. 0 (unresolved) leaves only universal trainers passing that filter.
+    // Resolve the loaded character's class to its game-data Classes.Number, or 0
+    // when unknown (no class parsed yet / class not in the active set) — in which
+    // case the class filter is skipped and every trainer is shown.
     private int ResolveClassNumber()
     {
-        if (string.IsNullOrEmpty(_stats.Class)) return 0;
-        if (_gameData.FindRowByName("Classes", _stats.Class) is not JsonElement row) return 0;
-        return row.TryGetProperty("Number", out JsonElement n) && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v)
-            ? v : 0;
+        string className = _stats.Class;
+        if (string.IsNullOrWhiteSpace(className)) return 0;
+        if (_gameData.FindRowByName("Classes", className) is not { } row) return 0;
+        if (!row.TryGetProperty("Number", out JsonElement numEl)) return 0;
+        return numEl.ValueKind switch
+        {
+            JsonValueKind.Number => numEl.GetInt32(),
+            JsonValueKind.String when int.TryParse(numEl.GetString(), out int n) => n,
+            _ => 0,
+        };
     }
 
     partial void OnOnlyUsableLevelChanged(bool value) => ApplyFilter();
-    partial void OnOnlyMyClassChanged(bool value) => ApplyFilter();
 
     private AutoTrainerSettings ReadOrDefault()
     {
@@ -249,6 +271,9 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         AutoTrainStatsWarning = null;
         MarkDirty();
     }
+
+    partial void OnAnnounceLevelUpsChanged(bool value) => MarkDirty();
+    partial void OnAnnounceChannelChanged(AnnounceChannel value) => MarkDirty();
 
     private void ClearDirty()
     {

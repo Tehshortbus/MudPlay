@@ -213,6 +213,55 @@ public sealed class StatParserTests
         Assert.Equal(expected, stats.Lives);
     }
 
+    // ===== Live experience accrual =====
+
+    [Fact]
+    public void ExperienceGainLine_AccruesOntoExp_WithoutStatGate()
+    {
+        // "You gain N experience." is server-emitted combat reward — it
+        // must accrue live, with no outbound `stat`/`exp` poll, so the
+        // banked-exp total stays current between manual checks.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        // No TestArm — the stat gate is closed.
+        parser.FeedTestLine("You gain 1500 experience.");
+        Assert.Equal(1500, stats.Exp);
+        Assert.True(parser.HasParsed);
+    }
+
+    [Fact]
+    public void ExperienceGainLine_AddsToRunningTotal()
+    {
+        var (p, s) = Setup();
+        p.FeedTestLine("Exp: 0  Level: 2  Exp needed for next level: 100 (200) [50%]");
+        Assert.Equal(0, s.Exp);
+        p.FeedTestLine("You gain 800 experience.");
+        p.FeedTestLine("You gain 200 experience.");
+        Assert.Equal(1000, s.Exp);   // accrued, not overwritten
+    }
+
+    [Fact]
+    public void StatRead_ReanchorsExp_AfterLiveGains()
+    {
+        // A fresh stat/exp poll is authoritative — it overwrites the
+        // accrued total rather than adding to it (re-anchor).
+        var (p, s) = Setup();
+        p.FeedTestLine("You gain 5000 experience.");
+        Assert.Equal(5000, s.Exp);
+        p.FeedTestLine("Exp: 12345  Level: 3  Exp needed for next level: 10 (20) [50%]");
+        Assert.Equal(12345, s.Exp);
+    }
+
+    [Fact]
+    public void ExperienceGainLine_IgnoresUnrelatedAndThirdParty()
+    {
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.FeedTestLine("Fujin gains a level!");
+        parser.FeedTestLine("Bob gains 999 experience.");
+        Assert.Equal(0, stats.Exp);
+    }
+
     // ===== Fix A: close-on-prompt-after-capture =====
 
     [Fact]

@@ -18,31 +18,44 @@
 
     <Grid Margin="22" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasProfile}">
 
-        <!-- Toggles -->
+        <!-- Toggles: master Auto-train then the cascading Auto-train stats on one row. -->
         <StackPanel Grid.Row="0" Spacing="4">
-            <CheckBox Content="Auto-train"
-                      IsChecked="{Binding AutoTrain, Mode=TwoWay}"
-                      ToolTip.Tip="When running a loop / auto-lair and a level-up is available, detour to an allowed trainer and train."/>
-            <CheckBox Content="Auto-train stats" Margin="20,0,0,0"
-                      IsChecked="{Binding AutoTrainStats, Mode=TwoWay}"
-                      IsEnabled="{Binding AutoTrain}"
-                      ToolTip.Tip="After training a level, apply the CP plan's row for the new level via the train-stats screen."/>
-            <TextBlock Margin="20,2,0,0" TextWrapping="Wrap" MaxWidth="540"
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <CheckBox Content="Auto-train"
+                          IsChecked="{Binding AutoTrain, Mode=TwoWay}"
+                          ToolTip.Tip="When running a loop / auto-lair and a level-up is available, detour to an allowed trainer and train."/>
+                <CheckBox Content="Auto-train stats"
+                          IsChecked="{Binding AutoTrainStats, Mode=TwoWay}"
+                          IsEnabled="{Binding AutoTrain}"
+                          ToolTip.Tip="After training a level, apply the CP plan's row for the new level via the train-stats screen."/>
+            </StackPanel>
+            <TextBlock Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="540"
                        IsVisible="{Binding HasAutoTrainStatsWarning}"
                        Text="{Binding AutoTrainStatsWarning}"
                        Foreground="{StaticResource AccentAmberBrush}"/>
+
+            <!-- Announce level-ups: when a live exp gain makes a new level
+                 trainable, broadcast "I can now train to level: N" on the
+                 selected channel. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
+                <CheckBox Content="Announce level-ups over"
+                          VerticalAlignment="Center"
+                          IsChecked="{Binding AnnounceLevelUps, Mode=TwoWay}"
+                          ToolTip.Tip="When a live experience gain makes a new level trainable, broadcast 'I can now train to level: N' on the selected channel."/>
+                <ComboBox MinWidth="120" VerticalAlignment="Center"
+                          ItemsSource="{Binding AnnounceChannels}"
+                          SelectedItem="{Binding AnnounceChannel, Mode=TwoWay}"
+                          IsEnabled="{Binding AnnounceLevelUps}"/>
+            </StackPanel>
         </StackPanel>
 
-        <!-- Header + view filters. Both unchecked = all discovered trainers;
-             both checked = the trainers usable at your current level + class. -->
+        <!-- Header + right-aligned view filter. Unchecked = all discovered
+             trainers; checked = only the trainers usable at your current level. -->
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
             <TextBlock Grid.Column="0" Classes="SectionHeader" Text="DISCOVERED TRAINERS"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                <CheckBox Content="Usable at my level" IsChecked="{Binding OnlyUsableLevel, Mode=TwoWay}"
-                          ToolTip.Tip="Show only trainers whose level range covers your current level."/>
-                <CheckBox Content="My class only" IsChecked="{Binding OnlyMyClass, Mode=TwoWay}"
-                          ToolTip.Tip="Show only universal trainers or ones restricted to your class."/>
-            </StackPanel>
+            <CheckBox Grid.Column="1" Content="Usable at my level" VerticalAlignment="Center"
+                      IsChecked="{Binding OnlyUsableLevel, Mode=TwoWay}"
+                      ToolTip.Tip="Show only trainers whose level range covers your current level."/>
         </Grid>
 
         <!-- Discovered trainers (ShopType 8, MaxLVL != 999), with a per-trainer
@@ -60,10 +73,19 @@
                   GridLinesVisibility="Horizontal"
                   VerticalScrollBarVisibility="Auto">
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn Header="Allow" Width="60"
-                                        Binding="{ReflectionBinding Allowed, Mode=TwoWay}"/>
+                <!-- Single-click toggle: a template column with a plain CheckBox,
+                     not DataGridCheckBoxColumn, so one click flips it (the built-in
+                     column needs a click to enter edit mode first). -->
+                <DataGridTemplateColumn Header="Use?" Width="60">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:AutoTrainerRowViewModel">
+                            <CheckBox HorizontalAlignment="Center"
+                                      IsChecked="{Binding Allowed, Mode=TwoWay}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Trainer" Width="*"
-                                    Binding="{ReflectionBinding Name}" IsReadOnly="True"/>
+                                    Binding="{ReflectionBinding TrainerLabel}" IsReadOnly="True"/>
                 <DataGridTextColumn Header="Map/Room" Width="110"
                                     Binding="{ReflectionBinding MapRoom}" IsReadOnly="True"
                                     FontFamily="{StaticResource FontMono}"/>

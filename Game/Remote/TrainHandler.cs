@@ -49,7 +49,8 @@ public sealed class TrainHandler : IDisposable
             if (_engine.WarnOnDenial) ctx.Reply("busy training");
             return;
         }
-        _coordinator.TrainInPlace();
-        ctx.Reply("ok");
+        // The status report is delivered by the coordinator once the (possibly
+        // multi-level) run settles — capture the reply sink for that deferred call.
+        _coordinator.TrainInPlace(ctx.Reply);
     }
 }

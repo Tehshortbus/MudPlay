@@ -260,7 +260,50 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Empty(vm.CastItems);
     }
 
+    [Fact]
+    public void CastItems_ExcludeNonEquippableUseItems()
+    {
+        // A cast-on-use item must be equippable in an equipment slot. An
+        // equippable wand surfaces; a potion (Drink, worn nowhere) and a room
+        // Sign (left in a room to "use", never carried) are use-but-not-equip
+        // items and must be filtered out.
+        object[] items =
+        [
+            ItemRow(300, "Healing Wand", castSpell: 100, useCount: 0, 12),
+            NonEquippableCastItemRow(301, "Healing Potion", castSpell: 100, itemType: 5, 12), // Drink
+            NonEquippableCastItemRow(302, "Dark Warchest", castSpell: 100, itemType: 3, 12),  // Sign
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        Assert.Equal(new[] { "Healing Wand" }, vm.CastItems.Select(r => r.ItemName));
+    }
+
     // ----- synthetic-row builders (mirror SpellListParserTests) ----------
+
+    // A cast-on-use item the player can't equip — a non-zero ItemType worn
+    // Nowhere (Worn 0). Used to prove the equippable filter drops potions /
+    // food / Signs even though they carry a CastsSp ability.
+    private static Dictionary<string, object> NonEquippableCastItemRow(
+        int number, string name, int castSpell, int itemType, params int[] classRest)
+    {
+        Dictionary<string, object> row = new()
+        {
+            ["Number"] = number,
+            ["Name"] = name,
+            ["UseCount"] = 0,
+            ["ItemType"] = itemType,
+            ["Worn"] = 0, // Nowhere — not equippable
+        };
+        for (int i = 0; i < 10; i++)
+            row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
+        for (int i = 0; i < 20; i++)
+        {
+            row[$"Abil-{i}"] = i == 0 ? 43 : 0;
+            row[$"AbilVal-{i}"] = i == 0 ? castSpell : 0;
+        }
+        return row;
+    }
 
     private static Dictionary<string, object> ItemRow(
         int number, string name, int castSpell, int useCount, params int[] classRest)
@@ -270,6 +313,7 @@ public sealed class SpellBookViewModelTests : IDisposable
             ["Number"] = number,
             ["Name"] = name,
             ["UseCount"] = useCount,
+            ["Worn"] = 16, // equippable (generic "Worn" slot) — cast items must be wearable
         };
         for (int i = 0; i < 10; i++)
             row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
