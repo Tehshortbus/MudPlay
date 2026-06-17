@@ -189,6 +189,26 @@ public sealed class RoomEntryWatcherTests
         Assert.Equal("south", h.Arrivals[0].Direction);
     }
 
+    [Theory]
+    [InlineData("A kobold thief sneaks into the room from the south.", "kobold thief", "south")]
+    [InlineData("A carrion beast creeps in the room from the north.", "carrion beast", "north")]
+    public void KnownMonster_CanonicalRoomForm_WithTheBeforeDirection_Parses(
+        string line, string name, string direction)
+    {
+        // The canonical "into/in the room from" form can also carry a
+        // "the" before the direction ("from the south"), not just the
+        // bare cardinals ("from south"). Both forms reach the gate.
+        using Harness h = new();
+        h.AddMonster(1, name);
+
+        h.Feed(line);
+
+        Assert.Single(h.Arrivals);
+        Assert.Equal(EntityKind.Monster, h.Arrivals[0].Kind);
+        Assert.Equal(name, h.Arrivals[0].Name);
+        Assert.Equal(direction, h.Arrivals[0].Direction);
+    }
+
     [Fact]
     public void KnownPlayer_AddedAsPlayer()
     {
