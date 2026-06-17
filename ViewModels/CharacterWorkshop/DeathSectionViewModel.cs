@@ -12,10 +12,10 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
 /// DEATH section — the Death Recovery surface. Binds to
-/// <see cref="DeathRecoveryManager"/> for the lives count, the
-/// deathpile record grid, the Auto-Recover / Auto-Equip toggles, and
-/// the recovery actions (Walk to Room / Recover Now / Mark Recovered /
-/// Clear).
+/// <see cref="DeathRecoveryManager"/> for the deathpile record grid, the
+/// Auto-Recover / Auto-Equip toggles, and the recovery actions (Walk to
+/// Room / Recover Now / Mark Recovered / Clear). Current lives are shown
+/// on the Character Info tab, not here.
 /// </summary>
 public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
 {
@@ -26,9 +26,6 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
     public override string Id => "death";
     public override string Title => "Death Recovery";
     public override Control View => _view ??= new DeathSectionView { DataContext = this };
-
-    [ObservableProperty] private int _livesRemaining;
-    [ObservableProperty] private int _deathCount;
 
     [ObservableProperty] private IReadOnlyList<DeathRecord> _records = Array.Empty<DeathRecord>();
 
@@ -74,9 +71,6 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
     /// <summary>Re-pull observables + record list from the manager.</summary>
     public void Refresh()
     {
-        LivesRemaining = _recovery.LivesRemaining;
-        DeathCount = _recovery.DeathCount;
-
         DeathRecord? prevSelected = SelectedRecord;
         Records = _recovery.Records.OrderByDescending(r => r.RecordNumber).ToList();
         // Keep the selection pinned to the same record across refresh

@@ -29,20 +29,16 @@
 
     <Grid Margin="22" RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Header: toggles + lives -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,8">
-            <CheckBox Grid.Column="0" Content="Auto-Recover Deathpiles"
+        <!-- Header: recovery toggles (current lives live on the Character Info tab). -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox Content="Auto-Recover Deathpiles"
                       IsChecked="{Binding AutoRecover, Mode=TwoWay}"
                       ToolTip.Tip="On re-entering a room holding your deathpile, grab the recorded pile items (ignoring per-item auto-get policy)."/>
-            <CheckBox Grid.Column="1" Content="Auto-Equip After Recovery"
+            <CheckBox Content="Auto-Equip After Recovery"
                       Margin="16,0,0,0"
                       IsChecked="{Binding AutoEquip, Mode=TwoWay}"
                       ToolTip.Tip="Re-equip items that were worn at death as they are recovered from the deathpile."/>
-            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Classes="FieldLabel" Text="Lives:" VerticalAlignment="Center"/>
-                <TextBlock Classes="FieldValue" Text="{Binding LivesRemaining}" VerticalAlignment="Center"/>
-            </StackPanel>
-        </Grid>
+        </StackPanel>
 
         <!-- Action buttons -->
         <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">

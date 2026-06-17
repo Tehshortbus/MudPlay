@@ -890,13 +890,11 @@ public sealed class AppServices
     public Game.Light.AutoLightManager AutoLight { get; private set; } = null!;
 
     /// <summary>
-    /// Phase 9 PR 9.I — death observation aggregator. Mirrors the
-    /// most recent death record from the loaded profile into live
-    /// observables (LivesRemaining / LastKiller / LastDeathAt /
-    /// DeathCount) so the Workshop DEATH section can bind without
-    /// walking <see cref="Models.Profile.CharacterProfile.DeathHistory"/>.
-    /// Also exposes the <c>@comeback</c> hook for
-    /// <c>RemoteCommandManager</c>.
+    /// Phase 9 PR 9.I — death observation aggregator. Surfaces the loaded
+    /// profile's <see cref="Models.Profile.CharacterProfile.DeathHistory"/>
+    /// as the Workshop DEATH section's deathpile grid, owns the per-character
+    /// Auto-Recover / Auto-Equip toggles, and drives the corpse-recovery
+    /// state machine off room re-entry and pickup confirmations.
     /// </summary>
     public Game.Recovery.DeathRecoveryManager DeathRecovery { get; private set; } = null!;
 

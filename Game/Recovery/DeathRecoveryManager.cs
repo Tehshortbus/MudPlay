@@ -19,22 +19,14 @@ namespace FujinTerm.Game.Recovery;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Owns four observables surfaced to the UI:
+/// Surfaces the loaded profile's <see cref="Records"/> (the deathpile
+/// grid), the persisted <see cref="AutoRecover"/> / <see cref="AutoEquip"/>
+/// toggles, and the recovery actions. The recovery state machine drives
+/// each record's Active → Partial → Recovered transition off observed
+/// room re-entry and <c>You pick up …</c> confirmations. Current lives
+/// are surfaced separately on the Character Info tab (from
+/// <c>PlayerStats.Lives</c>), not here.
 /// </para>
-/// <list type="bullet">
-/// <item><see cref="LivesRemaining"/> — most-recent lives count from
-/// the <c>You now have N lives remaining.</c> line (via
-/// <c>DeathDetector → RoomTracker.NoteDeath</c> which writes
-/// <see cref="DeathRecord.LivesRemaining"/> to the profile). We mirror
-/// the latest record's count so binders don't have to walk the list.</item>
-/// <item><see cref="LastKiller"/> — most-recent killer name from the
-/// <c>You have been slain by &lt;X&gt;.</c> line (via
-/// <see cref="DeathLineWatcher.PlayerDied"/>).</item>
-/// <item><see cref="LastDeathAt"/> — wall-clock time of the most-
-/// recent death event we observed.</item>
-/// <item><see cref="DeathCount"/> — total deaths in the profile's
-/// history.</item>
-/// </list>
 /// <para>
 /// The <c>@comeback</c> remote command is a separate party-pickup
 /// flow (stranded-follower → leader) owned by
@@ -69,22 +61,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
     private readonly HashSet<string> _remaining = new(StringComparer.OrdinalIgnoreCase);
     private int _recoveryTotal;
 
-    [ObservableProperty]
-    [field: Owner(typeof(DeathRecoveryManager))]
-    private int _livesRemaining;
-
-    [ObservableProperty]
-    [field: Owner(typeof(DeathRecoveryManager))]
-    private string? _lastKiller;
-
-    [ObservableProperty]
-    [field: Owner(typeof(DeathRecoveryManager))]
-    private DateTimeOffset? _lastDeathAt;
-
-    [ObservableProperty]
-    [field: Owner(typeof(DeathRecoveryManager))]
-    private int _deathCount;
-
     public DeathRecoveryManager(
         DeathLineWatcher deathWatcher,
         ProfileService profile,
@@ -100,53 +76,19 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         _log = log;
 
         _deathWatcher.PlayerDied += OnPlayerDied;
-        _profile.ProfileLoaded += OnProfileLoaded;
         // Re-entering a room that holds one of our deathpiles drives the
         // Active → Partial → Recovered transitions (and the auto-grab).
         _roomTracker.StateChanged += OnRoomChanged;
-
-        // Seed observables from whatever profile is already loaded
-        // (handles late-construction order — engine wired AFTER
-        // initial profile load).
-        SyncFromProfile();
     }
 
     private void OnPlayerDied(PlayerDiedEvent evt)
     {
-        LastKiller = evt.Killer;
-        LastDeathAt = evt.At;
         _log?.Info(LogCategory, $"player slain by={evt.Killer}");
-        // LivesRemaining + DeathCount update via the
-        // DeathDetector → RoomTracker.NoteDeath → profile.DeathHistory
-        // path. We mirror it after the profile write lands.
-        SyncFromProfile();
+        // The death record is written separately by
+        // DeathDetector → RoomTracker.NoteDeath → profile.DeathHistory.
+        // Nudge the grid so the new record surfaces once that write lands.
+        OnPropertyChanged(nameof(Records));
     }
-
-    private void OnProfileLoaded(CharacterProfile _) => SyncFromProfile();
-
-    private void SyncFromProfile()
-    {
-        CharacterProfile? p = _profile.Current;
-        if (p?.DeathHistory is null || p.DeathHistory.Count == 0)
-        {
-            // No history yet on this profile.
-            DeathCount = 0;
-            return;
-        }
-
-        DeathRecord latest = p.DeathHistory[^1];
-        LivesRemaining = latest.LivesRemaining;
-        DeathCount = p.DeathHistory.Count;
-        if (latest.At != default)
-            LastDeathAt = latest.At;
-    }
-
-    /// <summary>
-    /// Refresh the observables from the loaded profile's death
-    /// history. Public so the Workshop DEATH section can request a
-    /// manual refresh after edits (mark-recovered, etc.).
-    /// </summary>
-    public void Refresh() => SyncFromProfile();
 
     /// <summary>
     /// Wire the walker used by <see cref="WalkToDeathRoom"/> /
@@ -258,7 +200,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(record);
         if (_profile.Current?.DeathHistory is not { } list || !list.Remove(record)) return;
         _profile.Save();
-        SyncFromProfile();
         OnPropertyChanged(nameof(Records));
     }
 
@@ -268,7 +209,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         if (_profile.Current?.DeathHistory is not { } list) return;
         if (list.RemoveAll(r => r.Status == DeathRecoveryStatus.Recovered) == 0) return;
         _profile.Save();
-        SyncFromProfile();
         OnPropertyChanged(nameof(Records));
     }
 
@@ -499,10 +439,12 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         if (_profile.Current is not { } p) return;
         p.DeathHistory ??= new List<DeathRecord>();
         Room? here = _roomTracker.State.CurrentRoom;
+        // Continue the declining-lives series from the most recent record.
+        int prevLives = p.DeathHistory.Count > 0 ? p.DeathHistory[^1].LivesRemaining : 0;
         var record = new DeathRecord(
             DateTimeOffset.UtcNow,
             here is null ? null : new RoomRef(here.Key.Map, here.Key.Room),
-            Math.Max(0, LivesRemaining - 1),
+            Math.Max(0, prevLives - 1),
             "Simulated death (test).")
         {
             RecordNumber = p.DeathHistory.Count + 1,
@@ -518,7 +460,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         }
         p.DeathHistory.Add(record);
         _profile.Save();
-        SyncFromProfile();
         OnPropertyChanged(nameof(Records));
     }
 
@@ -527,7 +468,6 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         _deathWatcher.PlayerDied -= OnPlayerDied;
-        _profile.ProfileLoaded -= OnProfileLoaded;
         _roomTracker.StateChanged -= OnRoomChanged;
         if (_lines is not null) _lines.LineEmitted -= OnLine;
         _lines = null;
