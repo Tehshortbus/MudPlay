@@ -206,6 +206,18 @@ public static class AppPaths
         Path.Combine(GameDataSetDir(setName), "triggers.json");
 
     /// <summary>
+    /// Per-set Quest definitions overlay scoped inside the game-data set's
+    /// folder (sibling to <see cref="TriggersFile"/>). Holds the user-owned
+    /// quest layer — display name, show/hide visibility, and edited step
+    /// markdown, keyed by quest-flag number + step. <see cref="QuestStore"/>
+    /// resolves it over the universal <see cref="DefaultQuestDefsSeedFile"/>
+    /// underlay; the mechanical data (ordered steps + stat bonuses) is crawled
+    /// from the set's <c>TBInfo</c> at runtime, not stored here.
+    /// </summary>
+    public static string QuestsFile(string setName) =>
+        Path.Combine(GameDataSetDir(setName), "quests.json");
+
+    /// <summary>
     /// <summary>
     /// User-writable Messages seed JSON, hosted in the XDG-resolved
     /// <c>Data/Global/</c> folder. Shared across every game-data set —
@@ -239,6 +251,23 @@ public static class AppPaths
         Path.Combine(AppContext.BaseDirectory, "Defaults", "Triggers.seed.json");
 
     /// <summary>
+    /// User-writable Quest definitions seed JSON, hosted in the XDG-resolved
+    /// <c>Data/Global/</c> folder. Universal across every game-data set — keyed
+    /// by quest-flag number + step, which custom realms reuse for the same
+    /// quests, so a curated set of names + step write-ups ports everywhere.
+    /// <see cref="QuestStore"/> falls back to this when the active set's per-set
+    /// <see cref="QuestsFile"/> doesn't name a quest. Bootstrapped from
+    /// <see cref="BundledQuestDefsSeedFile"/> on first app launch if missing;
+    /// never written by the app (user edits go to the per-set overlay).
+    /// </summary>
+    public static string DefaultQuestDefsSeedFile =>
+        Path.Combine(DataRoot, "Global", "QuestDefs.seed.json");
+
+    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    public static string BundledQuestDefsSeedFile { get; } =
+        Path.Combine(AppContext.BaseDirectory, "Defaults", "QuestDefs.seed.json");
+
+    /// <summary>
     /// Bootstrap missing seed files in <c>Data/Global/</c> by copying
     /// from the bundled <c>Defaults/</c> next to the executable. Called
     /// once during app startup. Pre-existing user-edited Global seeds
@@ -251,6 +280,7 @@ public static class AppPaths
         TryCopySeed(BundledMessagesSeedFile,        DefaultMessagesSeedFile);
         TryCopySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
         TryCopySeed(BundledTriggersSeedFile,        DefaultTriggersSeedFile);
+        TryCopySeed(BundledQuestDefsSeedFile,       DefaultQuestDefsSeedFile);
 
         // MonsterOverlay + ItemOverlay seeds are realm-flavored —
         // one file per realm family. The active set picks which to
