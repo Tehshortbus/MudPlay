@@ -64,6 +64,18 @@ public sealed partial class StatParser : IDisposable
     /// <summary>Per-arm counter of distinct field commits — surfaced in the gate-close summary log line.</summary>
     private int _fieldsCapturedThisArm;
 
+    // Idle self-close. The reactive gate-close in OnLine only fires when a *further*
+    // line arrives after capture (a terminating prompt, or any line past the window
+    // expiry). But a stat screen the player is parked in front of — e.g. sitting at a
+    // guild right after `train` — emits no trailing prompt and no further line, so the
+    // gate hangs open and ScreenParsed never fires until the next unrelated inbound line
+    // (observed: 34 s later, long past the auto-train CP-apply's 8 s deadline). A short
+    // settle timer, re-armed off the last captured field, closes the gate on its own so
+    // ScreenParsed lands promptly. Reactive closes still win when a line does arrive.
+    private static readonly TimeSpan SettleAfterCapture = TimeSpan.FromMilliseconds(750);
+    private SynchronizationContext? _home;   // captured at arm — marshals the settle-close back onto the line-pipeline thread
+    private int _settleSession;              // bumped on arm / restart / close so a stale settle timer no-ops
+
     /// <summary>True once any stat-screen line has been parsed this session.</summary>
     public bool HasParsed { get; private set; }
 
@@ -256,6 +268,7 @@ public sealed partial class StatParser : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _settleSession++;   // strand any in-flight settle timer
         if (_lines is not null) _lines.LineEmitted -= OnLine;
     }
 
@@ -285,6 +298,8 @@ public sealed partial class StatParser : IDisposable
         _windowOpenedAt = NowProvider();
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
+        _home = SynchronizationContext.Current;   // (re)capture the pipeline thread for the settle-close
+        _settleSession++;                          // invalidate any prior window's pending settle timer
         _log?.Log(LogSeverity.Info, "StatParser",
             $"Observed outbound `{cmd}` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
     }
@@ -351,8 +366,41 @@ public sealed partial class StatParser : IDisposable
         }
 
         bool hadParsed = HasParsed;
+        int capturedBefore = _fieldsCapturedThisArm;
         ScanLine(line.Text);
         if (HasParsed && !hadParsed) _capturedThisArm = true;
+        // A field committed on this line — (re)arm the idle settle-close from the
+        // latest capture, so a stat screen with no trailing prompt still closes.
+        if (_fieldsCapturedThisArm > capturedBefore) RestartSettleClose();
+    }
+
+    // (Re)start the idle settle-close from the most recent captured field. Only the
+    // latest session survives — earlier timers find a bumped _settleSession and no-op.
+    // No-ops when no SynchronizationContext was captured at arm (unit tests have none;
+    // they drive the close synchronously via SettleNowForTests / the reactive paths).
+    private void RestartSettleClose()
+    {
+        if (_home is null) return;
+        int session = ++_settleSession;
+        _ = SettleCloseAsync(session);
+    }
+
+    private async Task SettleCloseAsync(int session)
+    {
+        try { await Task.Delay(SettleAfterCapture).ConfigureAwait(false); }
+        catch { return; }
+        _home?.Post(_ =>
+        {
+            // Lost the race to a reactive close (prompt / expiry) or a newer window? no-op.
+            if (session == _settleSession && _windowOpenedAt is not null)
+                CloseGate("settled — stat screen idle, no trailing prompt");
+        }, null);
+    }
+
+    /// <summary>Test seam — fire the idle settle-close immediately (no real delay).</summary>
+    internal void SettleNowForTests()
+    {
+        if (_windowOpenedAt is not null) CloseGate("settled (test)");
     }
 
     /// <summary>
@@ -567,6 +615,7 @@ public sealed partial class StatParser : IDisposable
         _windowOpenedAt = null;
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
+        _settleSession++;   // cancel any settle timer still pending for this window
         // Fire ScreenParsed only when something actually changed —
         // there's no value in churning the profile snapshot for an
         // empty window.

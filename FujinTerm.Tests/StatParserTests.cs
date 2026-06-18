@@ -297,6 +297,67 @@ public sealed class StatParserTests
         Assert.Equal(40, s.Charm);
     }
 
+    // ===== Fix C: idle settle-close (stat screen with no trailing prompt) =====
+
+    [Fact]
+    public void IdleStatScreen_NoTrailingPrompt_SettleCloseFiresScreenParsed()
+    {
+        // The auto-train relay depends on ScreenParsed firing after a
+        // `train` → `stat` round-trip. But a stat screen the player is
+        // parked in front of (sitting at a guild right after `train`)
+        // emits no terminating prompt and no further inbound line, so
+        // the reactive gate-close never runs and ScreenParsed never
+        // fired — `train stats` was therefore never sent. The idle
+        // settle-close closes the gate off the last captured field.
+        var (p, s) = Setup();
+        FujinTerm.Models.Profile.LastKnownStats? captured = null;
+        p.ScreenParsed += snap => captured = snap;
+
+        p.FeedTestLine("Class: Mystic        Level: 2        Stealth:            65");
+        Assert.Equal(2, s.Level);
+        Assert.Null(captured);          // no prompt, no further line → gate still open
+
+        p.SettleNowForTests();          // the 750 ms idle timer fires
+
+        Assert.NotNull(captured);
+        Assert.Equal(2, captured!.Level);
+        Assert.Equal("Mystic", captured.Class);
+    }
+
+    [Fact]
+    public void SettleClose_OnEmptyWindow_FiresNothing()
+    {
+        // The settle-close honours the same no-capture guard as every
+        // other close path — a window that matched no fields must not
+        // churn a ScreenParsed snapshot.
+        var (p, _) = Setup();
+        bool fired = false;
+        p.ScreenParsed += _ => fired = true;
+
+        p.SettleNowForTests();          // armed via Setup's TestArm, but nothing captured
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void ReactiveClose_ThenSettle_DoesNotDoubleFire()
+    {
+        // A reactive close (prompt after capture) already fired
+        // ScreenParsed and dropped the window; a stale settle-close
+        // arriving afterwards must find the window closed and no-op,
+        // never emitting a second snapshot.
+        var (p, _) = Setup();
+        int count = 0;
+        p.ScreenParsed += _ => count++;
+
+        p.FeedTestLine("Strength: 60");                  // capture
+        p.FeedTestLine("[HP=22]:", isPromptLine: true);  // reactive close → fires once
+        Assert.Equal(1, count);
+
+        p.SettleNowForTests();                           // window already closed → no-op
+        Assert.Equal(1, count);
+    }
+
     // ===== Fix B: chat-line shape skip =====
 
     [Fact]
