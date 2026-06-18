@@ -79,6 +79,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _joinNagFrequencySec = 10;
     /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
     [ObservableProperty] private int _joinNagMaxTotalSec = 55;
+    /// <summary>Master enable for the <c>@join</c> follow-up nag. Default on.</summary>
+    [ObservableProperty] private bool _sendJoinToInvited = true;
 
     // ----- "If leading, wait only" — disconnect grace window in seconds.
     //       Single field; UI uses one NumericUpDown with Increment=10
@@ -173,6 +175,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             JoinNagInitialDelaySec   = Math.Clamp(JoinNagInitialDelaySec, 1, 60),
             JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
             JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
+            SendJoinToInvited        = SendJoinToInvited,
             IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
 
             MinorPartyHealSpell    = NullIfBlank(MinorPartyHealSpell),
@@ -234,6 +237,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         JoinNagInitialDelaySec     = dto.JoinNagInitialDelaySec;
         JoinNagFrequencySec        = dto.JoinNagFrequencySec;
         JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
+        SendJoinToInvited          = dto.SendJoinToInvited;
         IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
 
         MinorPartyHealSpell    = dto.MinorPartyHealSpell;
@@ -351,6 +355,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         svcs.AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
         svcs.AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
         svcs.AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        svcs.AutoParty.JoinNagEnabled      = dto.SendJoinToInvited;
         svcs.Party.DisconnectGraceWindow   = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec,  0, 3600));
     }
 
@@ -371,6 +376,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnJoinNagInitialDelaySecChanged(int value)     => MarkDirty();
     partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
     partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
+    partial void OnSendJoinToInvitedChanged(bool value)         => MarkDirty();
     partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
     partial void OnMinorPartyHealSpellChanged(string? value)    => MarkDirty();
     partial void OnMinorPartyHealAoeSpellChanged(string? value) => MarkDirty();

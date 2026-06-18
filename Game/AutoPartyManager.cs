@@ -70,6 +70,13 @@ public sealed class AutoPartyManager : IDisposable
     public TimeSpan JoinNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
 
     /// <summary>
+    /// Master switch for the <c>@join</c> nag. When false, invites still go out
+    /// but no <c>@join</c> follow-up is ever sent — and any in-flight nag stops
+    /// firing. Mirrors <see cref="Models.Profile.PartySettings.SendJoinToInvited"/>.
+    /// </summary>
+    public bool JoinNagEnabled { get; set; } = true;
+
+    /// <summary>
     /// Test seam — overrides <see cref="DateTime.UtcNow"/> for the TTL
     /// math so unit tests don't have to <c>Thread.Sleep</c>. Defaults
     /// to <see cref="DateTime.UtcNow"/>.
@@ -498,6 +505,8 @@ public sealed class AutoPartyManager : IDisposable
     /// <summary>Begin (or replace) the @join nag flow for <paramref name="given"/>.</summary>
     private void StartNag(string given, DateTime invitedAt)
     {
+        // Master opt-out — the invite still went out, we just don't chase it.
+        if (!JoinNagEnabled) return;
         _activeNags[given] = new NagState
         {
             Given     = given,
@@ -594,6 +603,8 @@ public sealed class AutoPartyManager : IDisposable
 
     private void SendJoinNag(NagState s, DateTime now)
     {
+        // Covers a mid-session disable of an already-active nag.
+        if (!JoinNagEnabled) return;
         if (!_wire.IsBound) return;
         _wire.Send($"/{s.Given} @join");
         s.LastJoinAt = now;

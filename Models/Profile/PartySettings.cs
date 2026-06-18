@@ -103,6 +103,17 @@ public sealed class PartySettings
     /// </summary>
     public int JoinNagMaxTotalSec { get; set; } = 55;
 
+    /// <summary>
+    /// Master enable for the <c>@join</c> follow-up nag. When true (default),
+    /// after auto- or manually inviting a player the leader sends
+    /// <c>/given @join</c> once <see cref="JoinNagInitialDelaySec"/> elapses,
+    /// then re-nags per <see cref="JoinNagFrequencySec"/> up to
+    /// <see cref="JoinNagMaxTotalSec"/>. Off suppresses every <c>@join</c>
+    /// send — the <c>invite</c> still goes out, but no follow-up. Gates
+    /// <see cref="Game.AutoPartyManager.JoinNagEnabled"/>.
+    /// </summary>
+    public bool SendJoinToInvited { get; set; } = true;
+
     // ----- Party-cast spell pickers (CastingDirector PR 9.D) --------
     // Each Minor / Major slot owns BOTH a single-target spell and an
     // AOE / group spell. CastingDirector picks single vs AOE at cast

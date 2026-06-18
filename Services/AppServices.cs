@@ -2815,6 +2815,7 @@ public sealed class AppServices
         AutoParty.JoinNagInitialDelay = nagInitial;
         AutoParty.JoinNagFrequency    = nagFreq;
         AutoParty.JoinNagMaxTotal     = nagMax;
+        AutoParty.JoinNagEnabled      = dto.SendJoinToInvited;
         PartyPoller.HealthNagInitialDelay = nagInitial;
         PartyPoller.HealthNagFrequency    = nagFreq;
         PartyPoller.HealthNagMaxTotal     = nagMax;
@@ -2834,6 +2835,7 @@ public sealed class AppServices
         AutoParty.JoinNagInitialDelay = nagInitial;
         AutoParty.JoinNagFrequency    = nagFreq;
         AutoParty.JoinNagMaxTotal     = nagMax;
+        AutoParty.JoinNagEnabled      = defaults.SendJoinToInvited;
         PartyPoller.HealthNagInitialDelay = nagInitial;
         PartyPoller.HealthNagFrequency    = nagFreq;
         PartyPoller.HealthNagMaxTotal     = nagMax;

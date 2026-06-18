@@ -236,6 +236,18 @@
                 <CheckBox Content="Re-invite lost party members"
                           IsChecked="{Binding AutoInviteReconnecting, Mode=TwoWay}"
                           ToolTip.Tip="Leader-only — auto-invite a member who returns inside the &quot;If leading, wait only&quot; window after they hung up or dropped connection."/>
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <CheckBox Content="Send @join to invited members after"
+                              IsChecked="{Binding SendJoinToInvited, Mode=TwoWay}"
+                              ToolTip.Tip="After inviting a player, follow up with `/given @join` once the delay elapses, then re-nag until they join or the attempt window expires. Off sends the invite only — no @join follow-up."/>
+                    <NumericUpDown Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
+                                   Minimum="1" Maximum="60" Increment="1"
+                                   FormatString="0" ShowButtonSpinner="True"
+                                   Width="100" MinWidth="100"
+                                   IsEnabled="{Binding SendJoinToInvited}"
+                                   ToolTip.Tip="Whole seconds to wait after inviting before the first @join goes out. Shares the @join/@health nag initial-delay value below. Default 5."/>
+                    <TextBlock Classes="FieldLabel" Text="seconds"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- ============ Capacity + cadence ============ -->
