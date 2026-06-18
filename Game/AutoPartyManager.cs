@@ -278,14 +278,20 @@ public sealed class AutoPartyManager : IDisposable
     /// <summary>
     /// A pending-invite row flipping <see cref="PartyMember.IsInvited"/>
     /// false is the realm-confirmed join (set by
-    /// <c>PartyManager.OnFollowsYou</c>) — release the loop hold for them.
+    /// <c>PartyManager.OnFollowsYou</c>) — stop the @join nag and release
+    /// the loop hold for them.
     /// </summary>
     private void OnMemberPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(PartyMember.IsInvited)) return;
         if (sender is not PartyMember m || m.IsInvited) return;
         string given = ExtractGiven(m.Name);
-        if (!string.IsNullOrEmpty(given)) EndInviteWait(given, reason: "joined the party");
+        if (string.IsNullOrEmpty(given)) return;
+        // Leader-side accept flips the placeholder row's IsInvited true→false
+        // in place (PropertyChanged, not a CollectionChanged.Add), so the
+        // add-based CancelNag never fires for the real join — stop it here too.
+        CancelNag(given, reason: "joined the party");
+        EndInviteWait(given, reason: "joined the party");
     }
 
     private void OnPartyPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

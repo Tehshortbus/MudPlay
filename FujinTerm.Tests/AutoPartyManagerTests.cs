@@ -496,6 +496,46 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
+    public void JoinNag_PlaceholderRowFlipsInvitedFalse_CancelsNag()
+    {
+        // Production leader path: `invite Raijin` adds a placeholder
+        // row with IsInvited=true (a CollectionChanged.Add), then the
+        // real accept flips that SAME row's IsInvited true→false (a
+        // PropertyChanged, NOT a new Add). The add-based CancelNag never
+        // sees the real join, so the IsInvited-flip hook must cancel it.
+        var (engine, router, _, party) = Setup();
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        // PartyManager.OnYouInvited adds the placeholder row, then the
+        // server echo arms the nag (mirrors YouInvited_PendingInvitedRow).
+        PartyMember row = new() { Name = "Raijin", IsInvited = true };
+        party.Members.Add(row);
+        Dispatch(router, "You have invited Raijin to follow you.");
+
+        // First @join fires after the delay — nag is live.
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        Assert.Single(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
+        engine.LastSentForTests.Clear();
+
+        // Raijin accepts — PartyManager.OnFollowsYou flips the existing
+        // row in place. This is a PropertyChanged, not a CollectionChanged.Add.
+        row.IsInvited = false;
+
+        // Subsequent ticks (past cadence + cap windows) produce no @join.
+        engine.NowProvider = () => t0.AddSeconds(15);
+        engine.TickNagsForTests();
+        engine.NowProvider = () => t0.AddSeconds(25);
+        engine.TickNagsForTests();
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
     public void JoinNag_TotalWindowExpired_StopsNagging()
     {
         var (engine, router, players, _) = Setup();
