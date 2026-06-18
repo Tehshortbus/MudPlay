@@ -58,6 +58,9 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     /// <summary>Cascading toggle — apply the CP plan via <c>train stats</c> after each train.</summary>
     [ObservableProperty] private bool _autoTrainStats;
 
+    /// <summary>Trainable levels to always keep banked (0 = train everything).</summary>
+    [ObservableProperty] private int _levelsToKeep;
+
     /// <summary>Broadcast "I can now train to level: N" when a live exp gain makes a new level trainable.</summary>
     [ObservableProperty] private bool _announceLevelUps;
     /// <summary>Channel the level-up announce is sent on (enabled only with <see cref="AnnounceLevelUps"/>).</summary>
@@ -89,7 +92,7 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "Auto-train", "Auto-train stats", "trainer", "train", "guild", "level up",
-        "announce level-ups", "announce channel",
+        "announce level-ups", "announce channel", "levels to keep", "keep banked", "buffer",
     };
 
     public AutoTrainerSectionViewModel()
@@ -128,6 +131,7 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         {
             AutoTrain = AutoTrain,
             AutoTrainStats = AutoTrain && AutoTrainStats,   // cascade — never store stats-on without train-on
+            LevelsToKeep = Math.Max(0, LevelsToKeep),
             AnnounceLevelUps = AnnounceLevelUps,
             AnnounceChannel = AnnounceChannel,
             DisabledTrainers = disabled.Count == 0 ? null : disabled,
@@ -165,6 +169,7 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         AutoTrainerSettings dto = ReadOrDefault();
         AutoTrain = dto.AutoTrain;
         AutoTrainStats = dto.AutoTrain && dto.AutoTrainStats;
+        LevelsToKeep = Math.Max(0, dto.LevelsToKeep);
         AnnounceLevelUps = dto.AnnounceLevelUps;
         AnnounceChannel = dto.AnnounceChannel;
         RebuildTrainers(dto.DisabledTrainers);
@@ -274,6 +279,14 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
 
     partial void OnAnnounceLevelUpsChanged(bool value) => MarkDirty();
     partial void OnAnnounceChannelChanged(AnnounceChannel value) => MarkDirty();
+
+    partial void OnLevelsToKeepChanged(int value)
+    {
+        // The numeric stepper is clamped in the view, but guard here too so a
+        // stray negative never persists as a bogus buffer.
+        if (value < 0) { LevelsToKeep = 0; return; }   // re-enters with 0, marks dirty there
+        MarkDirty();
+    }
 
     private void ClearDirty()
     {

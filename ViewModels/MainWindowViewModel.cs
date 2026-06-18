@@ -496,6 +496,15 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Recovery.TierChanged    += OnRecoveryTierChanged;
         RefreshLocationSlot();
 
+        // PR 10.8 — Train Now's stuck-at-level-N reconcile: when there's no banked
+        // level left to train but the current level still has an affordable, unapplied
+        // CP plan raise, the trainer-walk coordinator asks before spending CP. Wired
+        // here (not in the per-connection wire-binding block) because it's a UI prompt,
+        // not part of the gate-wrapped engine pipeline.
+        AppServices.Current.TrainerWalk.SetCpSpendConfirm(() =>
+            AppServices.Current.Confirm.ConfirmAsync(
+                "Allocate CP", "Spend points IAW CP allocation plan?", "Spend"));
+
         // Seed File → Recent profile slots + Save profile label.
         // Notify both the display labels (Recent0..4 — "name - bbs")
         // and the raw profile names (ProfileName0..4 — used as the

@@ -34,6 +34,17 @@
                        Text="{Binding AutoTrainStatsWarning}"
                        Foreground="{StaticResource AccentAmberBrush}"/>
 
+            <!-- Levels to keep banked: auto-train (and Train Now) stops once this
+                 many trainable levels are still reachable, so a reserve is kept. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Text="Levels to keep banked" VerticalAlignment="Center"/>
+                <NumericUpDown MinWidth="110" VerticalAlignment="Center"
+                               Minimum="0" Maximum="60" Increment="1"
+                               FormatString="0"
+                               Value="{Binding LevelsToKeep, Mode=TwoWay}"
+                               ToolTip.Tip="Always keep this many trainable levels banked. Auto-train and Train Now stop once only this many levels remain reachable. 0 trains every banked level."/>
+            </StackPanel>
+
             <!-- Announce level-ups: when a live exp gain makes a new level
                  trainable, broadcast "I can now train to level: N" on the
                  selected channel. -->

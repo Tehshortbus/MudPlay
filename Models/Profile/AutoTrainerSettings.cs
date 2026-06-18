@@ -23,6 +23,14 @@ public sealed class AutoTrainerSettings
     public bool AutoTrainStats { get; set; }
 
     /// <summary>
+    /// Buffer of trainable-but-untrained levels to always keep banked. Auto-train
+    /// (and the manual Train Now) stops once this many levels are still reachable
+    /// from banked exp, so the character always carries a reserve. <c>0</c> (the
+    /// default) trains every banked level.
+    /// </summary>
+    public int LevelsToKeep { get; set; }
+
+    /// <summary>
     /// When on, broadcast "I can now train to level: N" on
     /// <see cref="AnnounceChannel"/> each time a live experience gain makes a new
     /// level trainable — i.e. a Level-Projection row's "Exp to level" reaches 0.
