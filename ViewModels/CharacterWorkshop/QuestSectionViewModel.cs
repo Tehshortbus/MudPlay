@@ -105,13 +105,20 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                 QuestProgress prog = GetOrCreateProgress(q.Flag, q.Step);
                 _bonusesByCard[(q.Flag, q.Step)] = q.Bonuses;
 
+                // The user's reward override (set in the editor) wins over the crawler's
+                // inferred award — it's how awards the give-chain crawl can't see (e.g.
+                // 5th-tier alignment weapons from per-class random textblocks) get shown.
+                string awardText = !string.IsNullOrWhiteSpace(def.Rewards)
+                    ? def.Rewards!
+                    : QuestTextFormatter.Awards(_gameData, q);
+
                 var steps = new ObservableCollection<QuestStepRowViewModel>();
                 var card = new QuestCardViewModel(
                     q.Flag, q.Step,
                     ResolveTitle(def, q),
                     QuestTextFormatter.Level(q.RequiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
-                    QuestTextFormatter.Awards(_gameData, q),
+                    awardText,
                     prog.Complete,
                     steps,
                     OnCardCompletionChanged);

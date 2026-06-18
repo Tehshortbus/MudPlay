@@ -39,14 +39,25 @@ public sealed class QuestDefinition
     /// </summary>
     public string? Steps { get; set; }
 
+    /// <summary>
+    /// User-edited reward label, or <c>null</c> to fall back to the crawler's
+    /// inferred award (final-step keeper items, or the granted ability itself). Lets
+    /// the user correct awards the raw crawl can't see — e.g. the 5th-tier alignment
+    /// weapons handed out by per-class <c>random</c> textblocks the give-chain crawl
+    /// never reaches.
+    /// </summary>
+    public string? Rewards { get; set; }
+
     public QuestDefinition() { }
 
-    public QuestDefinition(int flag, int step, string name = "", bool visible = true, string? steps = null)
+    public QuestDefinition(int flag, int step, string name = "", bool visible = true,
+                           string? steps = null, string? rewards = null)
     {
         Flag = flag;
         Step = step;
         Name = name;
         Visible = visible;
         Steps = steps;
+        Rewards = rewards;
     }
 }

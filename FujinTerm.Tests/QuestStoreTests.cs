@@ -253,4 +253,30 @@ public sealed class QuestStoreTests : IDisposable
 
         Assert.Null(store.ActiveSet);
     }
+
+    [Fact]
+    public void Save_PersistsRewardOverride_AndSurvivesReload()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // A reward the give-chain crawl can't see (5th-tier alignment weapon) — the
+        // user corrects it in the editor and it must round-trip through the overlay.
+        store.Save([new QuestDefinition(128, 5, rewards: "Darkbone Staff")]);
+
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.Equal("Darkbone Staff", reloaded.Resolve(128, 5).Rewards);
+    }
+
+    [Fact]
+    public void Save_NormalizesBlankRewards_ToNull()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        store.Save([new QuestDefinition(50, 1, "Name", rewards: "   ")]);
+
+        Assert.Null(store.Resolve(50, 1).Rewards);
+    }
 }

@@ -57,7 +57,7 @@
 
             <!-- Detail editor for the selected quest -->
             <Grid Grid.Column="1" IsVisible="{Binding HasSelection}"
-                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
 
                 <!-- Flag / level context -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
@@ -95,9 +95,16 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Step markdown — pre-filled with the crawled steps; edit freely. -->
-                <TextBlock Grid.Row="4" Classes="Label" Text="Steps (markdown — crawled steps pre-filled; edit freely)"/>
+                <!-- Reward — pre-filled with the crawler's inferred award; edit freely
+                     to correct awards the give-chain crawl can't see. -->
+                <TextBlock Grid.Row="4" Classes="Label" Text="Reward (crawled award pre-filled; edit freely)"/>
                 <TextBox Grid.Row="5"
+                         Text="{Binding SelectedQuest.Rewards, Mode=TwoWay}"
+                         PlaceholderText="(no reward)"/>
+
+                <!-- Step markdown — pre-filled with the crawled steps; edit freely. -->
+                <TextBlock Grid.Row="6" Classes="Label" Text="Steps (markdown — crawled steps pre-filled; edit freely)"/>
+                <TextBox Grid.Row="7"
                          Text="{Binding SelectedQuest.Steps, Mode=TwoWay}"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalContentAlignment="Top"

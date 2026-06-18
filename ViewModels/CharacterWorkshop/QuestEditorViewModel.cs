@@ -53,11 +53,13 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
                 q.Flag, q.Step,
                 QuestTextFormatter.FallbackTitle(q),
                 string.Join("\n", QuestTextFormatter.StepLines(gameData, q)),
+                QuestTextFormatter.Awards(gameData, q),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
                 def.Name,
                 def.Visible,
-                def.Steps ?? string.Empty));
+                def.Steps ?? string.Empty,
+                def.Rewards ?? string.Empty));
         }
 
         SelectedQuest = Quests.FirstOrDefault();

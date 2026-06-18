@@ -27,6 +27,9 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     /// <summary>The crawler's drafted steps — pre-fills <see cref="Steps"/> and is its delta baseline.</summary>
     public string AutoSteps { get; }
 
+    /// <summary>The crawler's inferred award label — pre-fills <see cref="Rewards"/> and is its delta baseline.</summary>
+    public string AutoRewards { get; }
+
     /// <summary>Class-resolved permanent bonus summary; empty when the quest grants none.</summary>
     public string BonusText { get; }
     public bool HasBonus => BonusText.Length > 0;
@@ -45,14 +48,18 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
 
     [ObservableProperty] private string _steps;
 
+    [ObservableProperty] private string _rewards;
+
     public QuestEditRowViewModel(int flag, int step, string fallbackLabel,
-                                 string autoSteps, string bonusText, string levelText,
-                                 string name, bool visible, string steps)
+                                 string autoSteps, string autoRewards, string bonusText,
+                                 string levelText, string name, bool visible,
+                                 string steps, string rewards)
     {
         Flag = flag;
         Step = step;
         FallbackLabel = fallbackLabel;
         AutoSteps = autoSteps;
+        AutoRewards = autoRewards;
         BonusText = bonusText;
         LevelText = levelText;
         // Prefill the editable boxes from the crawl baseline so the user starts from the
@@ -60,6 +67,7 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         _name = string.IsNullOrWhiteSpace(name) ? fallbackLabel : name;
         _visible = visible;
         _steps = string.IsNullOrEmpty(steps) ? autoSteps : steps;
+        _rewards = string.IsNullOrEmpty(rewards) ? autoRewards : rewards;
     }
 
     /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when hidden.</summary>
@@ -74,9 +82,10 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
 
     /// <summary>
     /// Materialize the current edits into a persistable definition, diffed against the
-    /// crawl baseline: a name still equal to the fallback, or steps still equal to the
-    /// auto-draft, collapse to empty/null so an untouched prefill isn't frozen into the
-    /// overlay (<see cref="QuestStore.Save"/> then drops the redundant row entirely).
+    /// crawl baseline: a name still equal to the fallback, steps still equal to the
+    /// auto-draft, or rewards still equal to the inferred award, collapse to empty/null
+    /// so an untouched prefill isn't frozen into the overlay
+    /// (<see cref="QuestStore.Save"/> then drops the redundant row entirely).
     /// </summary>
     public QuestDefinition ToDefinition()
     {
@@ -87,6 +96,10 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         if (steps is not null && string.Equals(steps.Trim(), AutoSteps.Trim(), StringComparison.Ordinal))
             steps = null;
 
-        return new QuestDefinition(Flag, Step, name, Visible, steps);
+        string? rewards = string.IsNullOrWhiteSpace(Rewards) ? null : Rewards;
+        if (rewards is not null && string.Equals(rewards.Trim(), AutoRewards.Trim(), StringComparison.Ordinal))
+            rewards = null;
+
+        return new QuestDefinition(Flag, Step, name, Visible, steps, rewards);
     }
 }
