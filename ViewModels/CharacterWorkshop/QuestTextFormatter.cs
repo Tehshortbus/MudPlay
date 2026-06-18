@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using FujinTerm.Game.GameData;
 using FujinTerm.Game.Quests;
 using FujinTerm.Services;
@@ -13,14 +15,28 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// <see cref="QuestStep"/>) into the human-readable labels both surfaces render.
 /// Pure functions over the active <see cref="GameDataCache"/>; no state.
 /// </summary>
-internal static class QuestTextFormatter
+internal static partial class QuestTextFormatter
 {
-    /// <summary>Auto-draft title for a quest when the user hasn't named it: the flag's ability name, plus the band level for a multi-part quest.</summary>
+    /// <summary>
+    /// Auto-draft title for a quest when the user hasn't named it: the flag's ability
+    /// name for a single-part quest; for a multi-part band, the flag's base name (its
+    /// trailing <c>"Quest"</c> dropped) plus the 1-based band number — e.g.
+    /// <c>"Good 1"</c> from the <c>GoodQuest</c> flag's first band.
+    /// </summary>
     public static string FallbackTitle(CrawledQuest q)
     {
         string flagName = AbilityNames.FormatId(q.Flag);
-        return q.Step > 0 ? $"{flagName} (Lv {q.Step})" : flagName;
+        return q.BandOrdinal > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{StripQuestSuffix(flagName)} {q.BandOrdinal}")
+            : flagName;
     }
+
+    // Drop a trailing "Quest" so the alignment band names read "Good 1" not
+    // "GoodQuest 1"; leave a name that is only "Quest" (nothing else) intact.
+    private static string StripQuestSuffix(string name) =>
+        name.Length > 5 && name.EndsWith("Quest", StringComparison.Ordinal)
+            ? name[..^5]
+            : name;
 
     /// <summary>Level-gate label (<c>"Level N"</c>), or empty when ungated.</summary>
     public static string Level(int level) =>
@@ -54,4 +70,52 @@ internal static class QuestTextFormatter
     public static string ItemName(GameDataCache gameData, int id) =>
         gameData.FindNameByNumber("Items", id)
         ?? string.Create(CultureInfo.InvariantCulture, $"#{id}");
+
+    /// <summary>
+    /// The crawler's auto-draft followable steps for a quest, one markdown line per
+    /// give-step in order — each a checkbox line <c>"[] {flag}({order}) {step}"</c> so
+    /// the Quest Status tab renders it as a tickable item and the editor pre-fills it
+    /// verbatim. For a multi-part band only the give-steps inside the band's
+    /// <see cref="CrawledQuest.StepRangeStart"/>..<see cref="CrawledQuest.StepRangeEnd"/>
+    /// span are emitted; a single-part quest (range 0/0) emits every step. Empty when
+    /// the flag drafts no steps.
+    /// </summary>
+    public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q)
+    {
+        var lines = new List<string>();
+        var seenOrders = new HashSet<int>();
+        foreach (QuestStep s in QuestStepGraph.Build(gameData, q.Flag))
+        {
+            if (!seenOrders.Add(s.Order)) continue;
+            if (q.StepRangeEnd > 0 && (s.Order < q.StepRangeStart || s.Order > q.StepRangeEnd)) continue;
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {q.Flag}({s.Order}) {Step(gameData, s)}"));
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// Parse user-or-crawler step markdown into render rows. Each non-blank line is
+    /// one row: a leading <c>[]</c> / <c>[ ]</c> / <c>[x]</c> marker makes it a
+    /// tickable checkbox whose label is the text after the marker; a line with no
+    /// marker is a plain, non-tickable label. Blank lines are skipped.
+    /// </summary>
+    public static IEnumerable<(bool Checkable, string Text)> ParseStepLines(string steps)
+    {
+        if (string.IsNullOrEmpty(steps)) yield break;
+        foreach (string raw in steps.Split('\n'))
+        {
+            string line = raw.Trim();
+            if (line.Length == 0) continue;
+            Match m = CheckboxMarker().Match(line);
+            if (m.Success)
+                yield return (true, line[m.Length..].TrimStart());
+            else
+                yield return (false, line);
+        }
+    }
+
+    // Leading checkbox marker: "[", optional whitespace, optional x/X, optional
+    // whitespace, "]". The text after it is the row label.
+    [GeneratedRegex(@"^\[\s*[xX]?\s*\]")]
+    private static partial Regex CheckboxMarker();
 }

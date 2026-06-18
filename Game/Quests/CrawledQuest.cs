@@ -51,6 +51,21 @@ namespace FujinTerm.Game.Quests;
 /// Race <c>Number</c>s the quest is restricted to, by the same all-granting-chains-guarded
 /// rule as <paramref name="ClassIds"/>; <c>null</c> when open to all races.
 /// </param>
+/// <param name="BandOrdinal">
+/// 1-based position of this band among the flag's bands in ascending level order
+/// (band 1 is the lowest tier). <c>0</c> for a single-part quest. Drives the
+/// <c>"Good 1"</c>-style default band name.
+/// </param>
+/// <param name="StepRangeStart">
+/// Lowest give-step <c>Order</c> that belongs to this band's followable checklist
+/// (inclusive). <c>0</c> for a single-part quest (no band filtering). Band 1 starts
+/// at 1 so it absorbs any pre-first-milestone give-steps.
+/// </param>
+/// <param name="StepRangeEnd">
+/// Highest give-step <c>Order</c> that belongs to this band (inclusive). <c>0</c> for
+/// a single-part quest (no filtering). The last band carries <see cref="int.MaxValue"/>
+/// so it absorbs every overflow give-step past the final milestone — nothing is dropped.
+/// </param>
 public sealed record CrawledQuest(
     int Flag,
     int Step,
@@ -58,4 +73,7 @@ public sealed record CrawledQuest(
     IReadOnlyList<QuestBonus> Bonuses,
     IReadOnlyList<int> AwardItems,
     IReadOnlyList<int>? ClassIds = null,
-    IReadOnlyList<int>? RaceIds = null);
+    IReadOnlyList<int>? RaceIds = null,
+    int BandOrdinal = 0,
+    int StepRangeStart = 0,
+    int StepRangeEnd = 0);

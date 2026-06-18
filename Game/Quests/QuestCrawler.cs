@@ -139,7 +139,12 @@ public static class QuestCrawler
 
     // A multi-part quest: one quest per minlevel band. Each band carries the reward
     // group and keeper items that fall in it, class-resolved; its required level is
-    // the band level itself.
+    // the band level itself. Each band also carries the give-step Order range that
+    // feeds its followable checklist — consistent with ResolveBand's bonus-banding:
+    // band i spans [milestone-step of band i, milestone-step of band i+1 minus 1],
+    // band 1 lowered to 1 (absorbing pre-first steps) and the last band's upper bound
+    // raised to int.MaxValue (absorbing overflow past the final milestone), so no
+    // give-step is ever dropped from every band's checklist.
     private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains, int? classId,
         IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
@@ -167,13 +172,26 @@ public static class QuestCrawler
                 if (!bucket.Contains(item)) bucket.Add(item);
             }
 
-        foreach (int level in bandLevels.OrderBy(l => l))
+        // The give-step each band opens at — the lowest milestone give-step for its level.
+        var levelStartStep = milestones
+            .GroupBy(m => m.Level)
+            .ToDictionary(g => g.Key, g => g.Min(m => m.GiveStep));
+        var orderedLevels = bandLevels.OrderBy(l => l).ToList();
+
+        for (int i = 0; i < orderedLevels.Count; i++)
         {
+            int level = orderedLevels[i];
             IReadOnlyList<QuestBonus> bonuses = bandBonuses.TryGetValue(level, out IReadOnlyList<QuestBonus>? bb)
                 ? bb : Array.Empty<QuestBonus>();
             IReadOnlyList<int> items = bandItems.TryGetValue(level, out List<int>? bi)
                 ? bi.ToArray() : Array.Empty<int>();
-            yield return new CrawledQuest(flag, level, level, bonuses, items, classRestrict, raceRestrict);
+
+            int rangeStart = i == 0 ? 1 : levelStartStep[level];
+            int rangeEnd = i == orderedLevels.Count - 1 ? int.MaxValue : levelStartStep[orderedLevels[i + 1]] - 1;
+
+            yield return new CrawledQuest(
+                flag, level, level, bonuses, items, classRestrict, raceRestrict,
+                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd);
         }
     }
 

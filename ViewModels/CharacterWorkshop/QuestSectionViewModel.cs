@@ -21,9 +21,11 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// class for class-branched bonuses, and lists the visible ones
 /// (<see cref="QuestStore"/> owns names + show/hide). Each card carries the quest's
 /// level gate, class-resolved bonus + award labels, a manual Complete checkbox, and
-/// — for a single-part quest — its followable step checklist
-/// (<see cref="QuestStepGraph"/>). Completion is one-way: ticking the checkbox, or
-/// ticking every step, marks the quest done; both states persist per character in
+/// a followable step checklist parsed from the quest's step markdown — the user's
+/// edited override (<see cref="QuestStore"/>) when present, else the crawler's
+/// auto-draft (<see cref="QuestStepGraph"/>, band-filtered per the crawl). Completion
+/// is one-way: ticking the checkbox, or ticking every step, marks the quest done;
+/// both states persist per character in
 /// <see cref="CharacterProfile.QuestLog"/>. The union of every completed quest's
 /// bonus is published to the shared <see cref="QuestBonusState"/>, which the
 /// Character Info tab folds into its derived combat + a Quest Bonuses readout.
@@ -114,10 +116,9 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     steps,
                     OnCardCompletionChanged);
 
-                // Single-part quests carry a followable step checklist; multi-part
-                // bands are manual-complete only (the crawler owns band membership).
-                if (q.Step == 0)
-                    PopulateSteps(card, q.Flag, prog);
+                // Every quest carries a followable checklist (multi-part bands too,
+                // filtered to the band's give-step range by the crawl + StepLines).
+                PopulateSteps(card, q, def, prog);
 
                 Quests.Add(card);
             }
@@ -129,17 +130,24 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         PublishBonuses();
     }
 
-    // One row per distinct give-step order (CheckedSteps is keyed by order), in
-    // crawl order. A row is pre-ticked when its order is in the saved progress.
-    private void PopulateSteps(QuestCardViewModel card, int flag, QuestProgress prog)
+    // Build the followable checklist from the quest's step markdown: the user-edited
+    // override when present, else the crawler's auto-draft (band-filtered). Each
+    // `[]`-marked line is a tickable step keyed by its 0-based checkbox index (the
+    // CheckedSteps key — stable across edits to the surrounding prose); a plain line
+    // is a context label. A step is pre-ticked when its index is in saved progress.
+    private void PopulateSteps(QuestCardViewModel card, CrawledQuest q, QuestDefinition def, QuestProgress prog)
     {
-        var seenOrders = new HashSet<int>();
-        foreach (QuestStep s in QuestStepGraph.Build(_gameData, flag))
+        string text = !string.IsNullOrWhiteSpace(def.Steps)
+            ? def.Steps!
+            : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q));
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        int checkIndex = 0;
+        foreach ((bool checkable, string display) in QuestTextFormatter.ParseStepLines(text))
         {
-            if (!seenOrders.Add(s.Order)) continue;
-            bool isChecked = prog.CheckedSteps?.Contains(s.Order) == true;
-            card.Steps.Add(new QuestStepRowViewModel(
-                s.Order, QuestTextFormatter.Step(_gameData, s), isChecked, row => OnStepToggled(card, row)));
+            int order = checkable ? checkIndex++ : -1;
+            bool isChecked = checkable && prog.CheckedSteps?.Contains(order) == true;
+            card.Steps.Add(new QuestStepRowViewModel(order, display, isChecked, checkable, row => OnStepToggled(card, row)));
         }
     }
 
@@ -170,17 +178,19 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         PublishBonuses();
     }
 
-    // A step ticked / unticked: capture the new checked-order set, and when every
-    // step is ticked force the card complete (one-way — unticking never auto-clears).
+    // A step ticked / unticked: capture the new checked-index set (checkable rows
+    // only — plain label rows never count), and when every checkable step is ticked
+    // force the card complete (one-way — unticking never auto-clears).
     private void OnStepToggled(QuestCardViewModel card, QuestStepRowViewModel _)
     {
         if (_suppress) return;
         QuestProgress prog = GetOrCreateProgress(card.Flag, card.Step);
 
-        List<int> checkedOrders = card.Steps.Where(s => s.IsChecked).Select(s => s.Order).ToList();
+        List<QuestStepRowViewModel> checkable = card.Steps.Where(s => s.IsCheckable).ToList();
+        List<int> checkedOrders = checkable.Where(s => s.IsChecked).Select(s => s.Order).ToList();
         prog.CheckedSteps = checkedOrders.Count == 0 ? null : checkedOrders;
 
-        if (card.Steps.Count > 0 && card.Steps.All(s => s.IsChecked) && !card.IsComplete)
+        if (checkable.Count > 0 && checkable.All(s => s.IsChecked) && !card.IsComplete)
         {
             _suppress = true;
             try { card.IsComplete = true; }

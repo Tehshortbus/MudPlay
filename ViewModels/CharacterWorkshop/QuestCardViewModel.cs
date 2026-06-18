@@ -9,7 +9,7 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// One quest card in the Quest Status checklist. Collapsed it shows just the title,
 /// level gate, and a manual <see cref="IsComplete"/> checkbox; clicking the header
 /// (<see cref="ToggleExpandCommand"/>) reveals its detail — class-resolved bonus +
-/// award labels and, for a single-part quest, an ordered followable step checklist.
+/// award labels and a followable step checklist parsed from the quest's step markdown.
 /// Completion is one-way: the manual checkbox or ticking every step sets it; the
 /// section owns persistence and folds a complete quest's bonus into Character Info.
 /// Toggling the checkbox raises the supplied callback.
@@ -42,7 +42,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
     /// <summary>True when <see cref="AwardText"/> is non-empty.</summary>
     public bool HasAward { get; }
 
-    /// <summary>Ordered followable steps (single-part quests only); empty otherwise.</summary>
+    /// <summary>Ordered followable step + label rows parsed from the quest's step markdown; empty when it drafts none.</summary>
     public ObservableCollection<QuestStepRowViewModel> Steps { get; }
 
     /// <summary>True when this card has a followable step checklist to show.</summary>

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -53,7 +52,7 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
             Quests.Add(new QuestEditRowViewModel(
                 q.Flag, q.Step,
                 QuestTextFormatter.FallbackTitle(q),
-                BuildAutoSteps(gameData, q.Flag),
+                string.Join("\n", QuestTextFormatter.StepLines(gameData, q)),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
                 def.Name,
@@ -73,20 +72,4 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(false);
-
-    // Pre-fill the editable Steps box with the crawler's ordered followable steps, one
-    // per give-step, each prefixed `flag(order)` so the walk reads as a numbered list
-    // (e.g. "126(1) ask wounded messenger"). Built per flag so multi-part bands inherit
-    // the flag's full step graph too. Empty string when the crawl drafts nothing.
-    private static string BuildAutoSteps(GameDataCache gameData, int flag)
-    {
-        var lines = new List<string>();
-        var seenOrders = new HashSet<int>();
-        foreach (QuestStep s in QuestStepGraph.Build(gameData, flag))
-        {
-            if (!seenOrders.Add(s.Order)) continue;
-            lines.Add($"{flag}({s.Order}) {QuestTextFormatter.Step(gameData, s)}");
-        }
-        return string.Join("\n", lines);
-    }
 }

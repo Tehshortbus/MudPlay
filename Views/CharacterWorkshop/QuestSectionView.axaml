@@ -114,18 +114,28 @@
                                         <TextBlock Classes="FieldValue" Text="{Binding AwardText}" TextWrapping="Wrap"/>
                                     </StackPanel>
 
-                                    <!-- Followable step checklist (single-part quests only).
-                                         Ticking every step flips the quest complete. -->
+                                    <!-- Followable checklist parsed from the quest's step markdown:
+                                         `[]`-marked lines render as tickable checkboxes, plain lines
+                                         as context labels. Ticking every checkbox flips the quest
+                                         complete. -->
                                     <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}"
                                                   Margin="0,4,0,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="vm:QuestStepRowViewModel">
-                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
-                                                          Margin="0,1,0,1" VerticalAlignment="Top">
+                                                <Panel>
+                                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                              IsVisible="{Binding IsCheckable}"
+                                                              Margin="0,1,0,1" VerticalAlignment="Top">
+                                                        <TextBlock Classes="FieldLabel"
+                                                                   Text="{Binding Display}"
+                                                                   TextWrapping="Wrap"/>
+                                                    </CheckBox>
                                                     <TextBlock Classes="FieldLabel"
+                                                               IsVisible="{Binding !IsCheckable}"
                                                                Text="{Binding Display}"
-                                                               TextWrapping="Wrap"/>
-                                                </CheckBox>
+                                                               TextWrapping="Wrap"
+                                                               Margin="0,1,0,1"/>
+                                                </Panel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>

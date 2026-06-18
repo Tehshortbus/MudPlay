@@ -337,4 +337,46 @@ public sealed class QuestCrawlerTests : IDisposable
         Assert.Equal(new[] { 700 }, Find(quests, 140, 10).AwardItems);
         Assert.Equal(new[] { 800 }, Find(quests, 140, 20).AwardItems);
     }
+
+    [Fact]
+    public void Crawl_MultiPartFlag_NumbersBandsAndCarriesGiveStepRanges()
+    {
+        // Flag 126 (Good): milestones 4→L10, 7→L20, 10→L30, 18→L40. Bands number
+        // 1..4 in ascending level order; each band's give-step range spans from its
+        // own milestone step to one below the next band's — band 1 lowered to 1 to
+        // absorb pre-first steps, the last band raised to int.MaxValue to absorb
+        // every overflow step. This mirrors the bonus-banding (nearest-milestone) rule.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 126 4:minlevel 10",
+                "giveability 126 7:minlevel 20",
+                "giveability 126 10:minlevel 30",
+                "giveability 126 18:minlevel 40"),
+            classId: null);
+
+        CrawledQuest b1 = Find(quests, 126, 10);
+        CrawledQuest b2 = Find(quests, 126, 20);
+        CrawledQuest b3 = Find(quests, 126, 30);
+        CrawledQuest b4 = Find(quests, 126, 40);
+
+        Assert.Equal(new[] { 1, 2, 3, 4 }, new[] { b1.BandOrdinal, b2.BandOrdinal, b3.BandOrdinal, b4.BandOrdinal });
+
+        Assert.Equal((1, 6), (b1.StepRangeStart, b1.StepRangeEnd));
+        Assert.Equal((7, 9), (b2.StepRangeStart, b2.StepRangeEnd));
+        Assert.Equal((10, 17), (b3.StepRangeStart, b3.StepRangeEnd));
+        Assert.Equal((18, int.MaxValue), (b4.StepRangeStart, b4.StepRangeEnd));
+    }
+
+    [Fact]
+    public void Crawl_SinglePartQuest_HasNoBandOrdinalOrStepRange()
+    {
+        // A single-part quest carries no band identity: ordinal 0 and an empty (0,0)
+        // step range, so StepLines emits every give-step unfiltered.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 125 2:minlevel 15:addability 2 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(0, q.BandOrdinal);
+        Assert.Equal((0, 0), (q.StepRangeStart, q.StepRangeEnd));
+    }
 }
