@@ -10,13 +10,16 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// PR 10.10a — <see cref="QuestCrawler"/> discovers quests and their stat rewards
-/// from <c>TBInfo</c> chains. These cases reproduce the structures verified
-/// against real data-v1.11p: single-flag quests key to step 0; alignment flags
-/// (126/127/128) carve into <c>minlevel</c> bands with the bonus on the 2nd-band;
-/// reward bonuses come from <c>addability</c> (non-quest-flag targets only) and
-/// resolve to the requested class with a no-class default. Synthetic seeded caches
-/// keep the cases deterministic and CI-portable, matching ClassCapabilitiesTests.
+/// PR 10.10a — <see cref="QuestCrawler"/> discovers quests and their rewards from
+/// <c>TBInfo</c> chains. Discovery is data-driven: every <c>giveability</c> target
+/// is a quest, including skill grants (Smash 32, Meditate 187, Perfect Stealth 186);
+/// the only number-based notion is gone. Cases reproduce shapes verified against
+/// real data-v1.11p: single-part quests key to step 0; a flag whose minlevel gates
+/// climb across different give-steps splits into level bands while per-class variants
+/// of one step do not; <c>addability</c> off the quest-flag set are stat rewards and
+/// resolve to the requested class with a no-class default; <c>giveitem</c> never
+/// taken back is a keeper award. Synthetic seeded caches keep it deterministic and
+/// CI-portable, matching ClassCapabilitiesTests.
 /// </summary>
 public sealed class QuestCrawlerTests : IDisposable
 {
@@ -68,15 +71,16 @@ public sealed class QuestCrawlerTests : IDisposable
 
         CrawledQuest q = Assert.Single(quests);
         Assert.Equal(125, q.Flag);
-        Assert.Equal(0, q.Step);              // single-flag quest keys to step 0
+        Assert.Equal(0, q.Step);              // single-part quest keys to step 0
         Assert.Equal(15, q.RequiredLevel);
         Assert.Equal(new[] { new QuestBonus(2, 1) }, q.Bonuses);
+        Assert.Empty(q.AwardItems);
     }
 
     [Fact]
-    public void Crawl_GateOnlyFlag_EmitsQuestWithoutBonus()
+    public void Crawl_GateOnlyFlag_EmitsQuestWithoutReward()
     {
-        // Flag 133 (Phoenix): all gate steps, no addability reward.
+        // Flag 133 (Phoenix) reduced to gate steps with no reward: still a quest.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
                 "giveability 133 1",
@@ -88,13 +92,32 @@ public sealed class QuestCrawlerTests : IDisposable
         Assert.Equal(0, q.Step);
         Assert.Equal(0, q.RequiredLevel);
         Assert.Empty(q.Bonuses);
+        Assert.Empty(q.AwardItems);
     }
 
     [Fact]
-    public void Crawl_BonusExcludesQuestFlagProgress()
+    public void Crawl_SkillGiveability_IsDiscoveredAsQuest()
     {
-        // addability 50 is quest progress (a quest flag), not a stat reward — only
-        // the addability 4 (max damage) survives into the bonus list.
+        // giveability 32 1 is Smash, granted by an NPC after a turn-in — that makes
+        // it a quest, not something to filter out. The level gate resolves per class.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+                "class 2:minlevel 20:takeitem 1247:giveability 32 1"), classId: 2);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(32, q.Flag);
+        Assert.Equal(0, q.Step);            // per-class minlevels share one step → single-part
+        Assert.Equal(20, q.RequiredLevel);  // class 2's gate
+        Assert.Empty(q.Bonuses);
+        Assert.Empty(q.AwardItems);         // the turn-in token is taken back, not kept
+    }
+
+    [Fact]
+    public void Crawl_AddabilityIntoQuestFlag_IsProgressNotReward()
+    {
+        // addability 50 targets a discovered quest flag → progress marker, filtered;
+        // addability 4 (max damage) is off the flag set → a real stat reward.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo("giveability 50 1:addability 50 1:addability 4 1"), classId: null);
 
@@ -104,18 +127,26 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_SkillGiveability_NotDiscoveredAsQuest()
+    public void Crawl_KeeperItem_SurfacedAsAward_TurnInTokenExcluded()
     {
-        // giveability 32 1 is Smash (a skill), not a quest flag — nothing emitted.
-        Assert.Empty(QuestCrawler.Crawl(
-            CacheWithTbInfo("class 1:giveability 32 1"), classId: 1));
+        // Flag 130: hand over item 499 (turn-in token), keep items 406 and 431 (the
+        // rewards) plus a stat — only the kept items become awards.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "takeitem 499:giveitem 406:giveitem 431:minlevel 15:giveability 130 2:addability 22 3"),
+            classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(130, q.Flag);
+        Assert.Equal(new[] { 406, 431 }, q.AwardItems);
+        Assert.Equal(new[] { new QuestBonus(22, 3) }, q.Bonuses);
     }
 
     [Fact]
-    public void Crawl_LastQuestFlagGiveabilityWins()
+    public void Crawl_LastGiveabilityWins()
     {
-        // A chain that grants two quest flags terminally grants the last one, so
-        // the reward attaches to 130 and 125 is not discovered from this chain.
+        // A chain that grants two flags terminally grants the last one, so the reward
+        // attaches to 130 and 125 is not discovered from this chain.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo("giveability 125 1:giveability 130 2:addability 22 3"), classId: null);
 
@@ -125,11 +156,29 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_AlignmentFlag_SplitsIntoMinlevelBands()
+    public void Crawl_PerClassMinlevelVariants_StayOneQuest()
     {
-        // Flag 126 (Good Alignment): four minlevel milestones → four band quests;
-        // the lone reward group (give-step 8) falls in the L20 band by the nearest
-        // milestone at/before its step (give-step 7 = L20), even with no own minlevel.
+        // Meditate (187): every class takes the same step 1, differing only in the
+        // level gate — one minlevel band, not many, so it stays a single-part quest.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 3:minlevel 27:takeitem 1351:giveability 187 1",
+                "class 5:minlevel 20:takeitem 1351:giveability 187 1",
+                "class 6:minlevel 23:takeitem 1351:giveability 187 1"), classId: 5);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(187, q.Flag);
+        Assert.Equal(0, q.Step);
+        Assert.Equal(20, q.RequiredLevel);
+    }
+
+    [Fact]
+    public void Crawl_MultiPartFlag_SplitsIntoMinlevelBands()
+    {
+        // Flag 126 (Good Alignment): four minlevel milestones climbing across give-
+        // steps → four band quests. The lone reward group (give-step 8) falls in the
+        // L20 band by the nearest milestone at/before its step (give-step 7 = L20),
+        // even though its own chains declare no minlevel.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
                 "giveability 126 4:minlevel 10",
@@ -153,7 +202,7 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_AlignmentReward_ResolvesClassDefaultWhenNoBranch()
+    public void Crawl_MultiPartReward_ResolvesClassDefaultWhenNoBranch()
     {
         // Same 126 structure, but resolve for a class with no specific branch
         // (Warrior=1) and for the no-class request — both get the default bonus.
@@ -176,7 +225,7 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_AlignmentReward_BandFromDeclaredMinlevel_WhenClassChainOmitsIt()
+    public void Crawl_MultiPartReward_BandFromDeclaredMinlevel_WhenClassChainOmitsIt()
     {
         // Flag 128 (Evil) structure: the reward group sits at give-step 4, above the
         // L10 gate (give-step 3) — the nearest-milestone rule alone would mis-band it
@@ -200,20 +249,20 @@ public sealed class QuestCrawlerTests : IDisposable
             Find(quests, 128, 20).Bonuses);
     }
 
-    [Theory]
-    [InlineData(50, true)]
-    [InlineData(156, true)]
-    [InlineData(125, true)]
-    [InlineData(134, true)]
-    [InlineData(191, true)]
-    [InlineData(200, true)]
-    [InlineData(400, true)]
-    [InlineData(32, false)]    // Smash (skill)
-    [InlineData(117, false)]   // backstab min damage (stat)
-    [InlineData(124, false)]
-    [InlineData(135, false)]
-    [InlineData(190, false)]
-    [InlineData(401, false)]
-    public void IsQuestFlag_ClassifiesAbilityIds(int abilityId, bool expected) =>
-        Assert.Equal(expected, QuestCrawler.IsQuestFlag(abilityId));
+    [Fact]
+    public void Crawl_MultiPartKeeperItems_AttachToTheirBand()
+    {
+        // A two-band flag where each band's reward step hands over a keeper item:
+        // band L10 gives item 700, band L20 gives item 800 — each lands in its band.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 140 2:minlevel 10",
+                "giveability 140 8:minlevel 20",
+                "giveability 140 3:minlevel 10:giveitem 700",
+                "giveability 140 9:minlevel 20:giveitem 800"),
+            classId: null);
+
+        Assert.Equal(new[] { 700 }, Find(quests, 140, 10).AwardItems);
+        Assert.Equal(new[] { 800 }, Find(quests, 140, 20).AwardItems);
+    }
 }
