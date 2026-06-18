@@ -124,6 +124,26 @@ public sealed class PartyPollerTests
     }
 
     [Fact]
+    public void HealthNagDisabled_NewMember_SendsNoHealthRequest()
+    {
+        // "send @health nags to party members" off — a freshly joined
+        // member is never telepathed @health and no nag is armed.
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        poller.HealthNagEnabled = false;
+
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        Assert.Empty(wire);
+
+        // Past the initial delay + a frequency window — still nothing,
+        // because no nag was armed in the first place.
+        advance(TimeSpan.FromSeconds(6));
+        poller.TickHealthNagsForTests();
+        advance(TimeSpan.FromSeconds(11));
+        poller.TickHealthNagsForTests();
+        Assert.Empty(wire);
+    }
+
+    [Fact]
     public void FollowsYouLine_TriggersHealthRoundTrip_EndToEnd()
     {
         // Regression for the live bug: after Fujin manually invited

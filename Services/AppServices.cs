@@ -2830,6 +2830,7 @@ public sealed class AppServices
         PartyPoller.HealthNagInitialDelay = nagInitial;
         PartyPoller.HealthNagFrequency    = nagFreq;
         PartyPoller.HealthNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagEnabled      = dto.SendHealthToMembers;
     }
 
     private void ResetPartyToDefaults()
@@ -2851,6 +2852,7 @@ public sealed class AppServices
         PartyPoller.HealthNagInitialDelay = nagInitial;
         PartyPoller.HealthNagFrequency    = nagFreq;
         PartyPoller.HealthNagMaxTotal     = nagMax;
+        PartyPoller.HealthNagEnabled      = defaults.SendHealthToMembers;
     }
 
     /// <summary>

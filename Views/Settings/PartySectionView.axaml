@@ -237,17 +237,22 @@
                           IsChecked="{Binding AutoInviteReconnecting, Mode=TwoWay}"
                           ToolTip.Tip="Leader-only — auto-invite a member who returns inside the &quot;If leading, wait only&quot; window after they hung up or dropped connection."/>
                 <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                    <CheckBox Content="Send @join to invited members after"
+                    <CheckBox Content="send @join nags to invited members"
                               IsChecked="{Binding SendJoinToInvited, Mode=TwoWay}"
-                              ToolTip.Tip="After inviting a player, follow up with `/given @join` once the delay elapses, then re-nag until they join or the attempt window expires. Off sends the invite only — no @join follow-up."/>
+                              ToolTip.Tip="On (default): after inviting a player, follow up with `/given @join` once the initial delay elapses, then re-nag per the resend cadence until they join or the attempt window expires. Off: send the invite only — no @join follow-up."/>
+                    <TextBlock Classes="FieldLabel" Text="— first nag after"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
                     <NumericUpDown Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
                                    Minimum="1" Maximum="60" Increment="1"
                                    FormatString="0" ShowButtonSpinner="True"
                                    Width="100" MinWidth="100"
-                                   IsEnabled="{Binding SendJoinToInvited}"
-                                   ToolTip.Tip="Whole seconds to wait after inviting before the first @join goes out. Shares the @join/@health nag initial-delay value below. Default 5."/>
+                                   IsEnabled="{Binding NagInitialDelayEditable}"
+                                   ToolTip.Tip="Whole seconds to wait before the first nag fires — the shared initial delay for both @join (after inviting) and @health (after a member joins). Resend cadence + attempt cap live under '@join/@health nag settings' below. Default 5."/>
                     <TextBlock Classes="FieldLabel" Text="seconds"/>
                 </StackPanel>
+                <CheckBox Content="send @health nags to party members"
+                          IsChecked="{Binding SendHealthToMembers, Mode=TwoWay}"
+                          ToolTip.Tip="On (default): when a member joins, telepath `/given @health` to capture their HP/MP baseline, retried per the shared nag cadence until real values arrive. Off: never send @health to party members."/>
             </StackPanel>
 
             <!-- ============ Capacity + cadence ============ -->
@@ -286,23 +291,19 @@
             <!-- Shared cadence for two nag flows: (1) AutoPartyManager's
                  `@join` follow-up after the initial `invite`, and
                  (2) PartyPoller's `/given @health` retry when a newly
-                 joined member's HP/MP comes back as percent-only. -->
+                 joined member's HP/MP comes back as percent-only. The
+                 shared initial delay lives up in Options next to the
+                 @join toggle; the resend cadence + attempt cap live here. -->
             <TextBlock Classes="SectionHeader" Text="@join/@health nag settings"/>
-            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2,0,0">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Initial delay (s)"/>
+            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Resend frequency (s)"/>
                 <NumericUpDown Grid.Row="0" Grid.Column="1"
-                               Value="{Binding JoinNagInitialDelaySec, Mode=TwoWay}"
-                               Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
-                               ToolTip.Tip="Wait this many seconds before sending the first nag — for `@join` (after auto-inviting) or for `/given @health` (after a member joins with percent-only par data). Default 5."/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Resend frequency (s)"/>
-                <NumericUpDown Grid.Row="1" Grid.Column="1"
                                Value="{Binding JoinNagFrequencySec, Mode=TwoWay}"
                                Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
                                ToolTip.Tip="How often a nag re-fires after the first send. `@join` stops on join / non-{Ok} reply / cap; `@health` stops once absolute HP/MP values arrive. Default 10."/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Max attempt window (s)"/>
-                <NumericUpDown Grid.Row="2" Grid.Column="1"
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max attempt window (s)"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
                                Value="{Binding JoinNagMaxTotalSec, Mode=TwoWay}"
                                Minimum="5" Maximum="600" Width="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Hard cap on the nag window measured from the first attempt. Past this, give up. Default 55."/>

@@ -114,6 +114,16 @@ public sealed class PartySettings
     /// </summary>
     public bool SendJoinToInvited { get; set; } = true;
 
+    /// <summary>
+    /// Master enable for the on-join <c>@health</c> round-trip + retry nag.
+    /// When true (default — historical always-on behaviour), a freshly
+    /// joined member is telepathed <c>/given @health</c> to capture their
+    /// HP/MP baseline, retried per the shared nag cadence. Off suppresses
+    /// every <c>@health</c> send. Gates
+    /// <see cref="Game.PartyPoller.HealthNagEnabled"/>.
+    /// </summary>
+    public bool SendHealthToMembers { get; set; } = true;
+
     // ----- Party-cast spell pickers (CastingDirector PR 9.D) --------
     // Each Minor / Major slot owns BOTH a single-target spell and an
     // AOE / group spell. CastingDirector picks single vs AOE at cast

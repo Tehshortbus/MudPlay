@@ -80,7 +80,18 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
     [ObservableProperty] private int _joinNagMaxTotalSec = 55;
     /// <summary>Master enable for the <c>@join</c> follow-up nag. Default on.</summary>
-    [ObservableProperty] private bool _sendJoinToInvited = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NagInitialDelayEditable))]
+    private bool _sendJoinToInvited = true;
+    /// <summary>Master enable for the on-join <c>@health</c> round-trip nag. Default on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NagInitialDelayEditable))]
+    private bool _sendHealthToMembers = true;
+
+    /// <summary>The shared initial-delay spinner (in Options, next to the
+    /// <c>@join</c> toggle) edits the value both nag flows use, so it's
+    /// editable whenever either nag is enabled.</summary>
+    public bool NagInitialDelayEditable => SendJoinToInvited || SendHealthToMembers;
 
     // ----- "If leading, wait only" — disconnect grace window in seconds.
     //       Single field; UI uses one NumericUpDown with Increment=10
@@ -176,6 +187,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             JoinNagFrequencySec      = Math.Clamp(JoinNagFrequencySec,    1, 60),
             JoinNagMaxTotalSec       = Math.Clamp(JoinNagMaxTotalSec,     5, 600),
             SendJoinToInvited        = SendJoinToInvited,
+            SendHealthToMembers      = SendHealthToMembers,
             IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
 
             MinorPartyHealSpell    = NullIfBlank(MinorPartyHealSpell),
@@ -238,6 +250,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         JoinNagFrequencySec        = dto.JoinNagFrequencySec;
         JoinNagMaxTotalSec         = dto.JoinNagMaxTotalSec;
         SendJoinToInvited          = dto.SendJoinToInvited;
+        SendHealthToMembers        = dto.SendHealthToMembers;
         IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
 
         MinorPartyHealSpell    = dto.MinorPartyHealSpell;
@@ -352,10 +365,21 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         svcs.Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
         svcs.Party.LocalRankPreference = dto.Rank;
         svcs.PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
-        svcs.AutoParty.JoinNagInitialDelay = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
-        svcs.AutoParty.JoinNagFrequency    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
-        svcs.AutoParty.JoinNagMaxTotal     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        // Shared nag cadence feeds both the @join loop (AutoPartyManager)
+        // and the on-join @health retry (PartyPoller). Mirror the canonical
+        // push in AppServices.ApplyPartyFromActiveProfile so a Settings
+        // Save takes effect live without waiting for a profile reload.
+        TimeSpan nagInitial = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagInitialDelaySec, 1, 60));
+        TimeSpan nagFreq    = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagFrequencySec,    1, 60));
+        TimeSpan nagMax     = TimeSpan.FromSeconds(Math.Clamp(dto.JoinNagMaxTotalSec,     5, 600));
+        svcs.AutoParty.JoinNagInitialDelay = nagInitial;
+        svcs.AutoParty.JoinNagFrequency    = nagFreq;
+        svcs.AutoParty.JoinNagMaxTotal     = nagMax;
         svcs.AutoParty.JoinNagEnabled      = dto.SendJoinToInvited;
+        svcs.PartyPoller.HealthNagInitialDelay = nagInitial;
+        svcs.PartyPoller.HealthNagFrequency    = nagFreq;
+        svcs.PartyPoller.HealthNagMaxTotal     = nagMax;
+        svcs.PartyPoller.HealthNagEnabled      = dto.SendHealthToMembers;
         svcs.Party.DisconnectGraceWindow   = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec,  0, 3600));
     }
 
@@ -377,6 +401,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnJoinNagFrequencySecChanged(int value)        => MarkDirty();
     partial void OnJoinNagMaxTotalSecChanged(int value)         => MarkDirty();
     partial void OnSendJoinToInvitedChanged(bool value)         => MarkDirty();
+    partial void OnSendHealthToMembersChanged(bool value)       => MarkDirty();
     partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
     partial void OnMinorPartyHealSpellChanged(string? value)    => MarkDirty();
     partial void OnMinorPartyHealAoeSpellChanged(string? value) => MarkDirty();

@@ -101,6 +101,27 @@ public sealed class PartySectionViewModelTests
     }
 
     [Fact]
+    public void NagToggles_DefaultOn()
+    {
+        // Both nag master-switches default ON so existing behaviour
+        // (always send @join follow-ups and on-join @health round-trips)
+        // is preserved for profiles with no explicit Party delta.
+        PartySettings dto = new();
+        Assert.True(dto.SendJoinToInvited);
+        Assert.True(dto.SendHealthToMembers);
+    }
+
+    [Fact]
+    public void SendHealthToMembers_RoundTripsThroughJson()
+    {
+        PartySettings src = new() { SendHealthToMembers = false };
+        string json = JsonSerializer.Serialize(src);
+        PartySettings? back = JsonSerializer.Deserialize<PartySettings>(json);
+        Assert.NotNull(back);
+        Assert.False(back!.SendHealthToMembers);
+    }
+
+    [Fact]
     public void BlessSlots_DefaultToTenEmpties()
     {
         PartySettings dto = new();

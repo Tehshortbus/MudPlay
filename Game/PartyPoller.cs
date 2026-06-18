@@ -76,6 +76,16 @@ public sealed partial class PartyPoller : IDisposable
     /// <summary>Hard cap on the total nag window measured from the initial send.</summary>
     public TimeSpan HealthNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
 
+    /// <summary>
+    /// Master enable for the on-join <c>@health</c> round-trip + retry nag.
+    /// When false, a newly joined member is never telepathed
+    /// <c>/given @health</c> and no nag is armed — read at fire time, so
+    /// toggling it off prevents new round-trips (matching
+    /// <see cref="AutoPartyManager.JoinNagEnabled"/>'s start-time gate).
+    /// Mirrors <see cref="Models.Profile.PartySettings.SendHealthToMembers"/>.
+    /// </summary>
+    public bool HealthNagEnabled { get; set; } = true;
+
     /// <summary>Test seam — overrides <see cref="DateTime.UtcNow"/> for the nag tick clock.</summary>
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
@@ -240,6 +250,9 @@ public sealed partial class PartyPoller : IDisposable
 
     private void TryFireOnJoinHealth(PartyMember m)
     {
+        // Master gate — when the user turns off "send @health nags to party
+        // members", skip both the initial round-trip and the retry nag.
+        if (!HealthNagEnabled) return;
         if (_wireSender is null) return;
         // Skip self — our own HP/MA flows in through PromptParser on
         // every statline. Skip missing names. Skip pending invitees
