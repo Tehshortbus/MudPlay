@@ -47,10 +47,15 @@ internal static partial class QuestTextFormatter
         bonuses.Count == 0 ? string.Empty
             : AbilityNames.SummarizeAbilities(bonuses.Select(b => (b.AbilityId, b.Value)));
 
-    /// <summary>Comma-joined keeper-item award names, or empty when none.</summary>
-    public static string Awards(GameDataCache gameData, IReadOnlyList<int> awardItems) =>
-        awardItems.Count == 0 ? string.Empty
-            : string.Join(", ", awardItems.Select(id => ItemName(gameData, id)));
+    /// <summary>
+    /// The quest's reward label: comma-joined keeper-item award names, or — when the
+    /// quest awards no item or stat but the ability it grants <em>is</em> the prize
+    /// (Smash, Meditate, SeeHidden) — the flag's ability name. Empty when neither.
+    /// </summary>
+    public static string Awards(GameDataCache gameData, CrawledQuest q) =>
+        q.AwardItems.Count > 0
+            ? string.Join(", ", q.AwardItems.Select(id => ItemName(gameData, id)))
+            : q.AwardsAbility ? AbilityNames.FormatId(q.Flag) : string.Empty;
 
     /// <summary>One followable step rendered as <c>command · @ location · turn in … · need … · receive …</c>.</summary>
     public static string Step(GameDataCache gameData, QuestStep s)

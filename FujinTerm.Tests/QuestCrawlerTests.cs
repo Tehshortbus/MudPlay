@@ -412,6 +412,119 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
+    public void Crawl_SinglePartAward_IsFinalStepKeeperOnly_MidChainItemsAreQuestUse()
+    {
+        // Phoenix (133) shape: the chain hands a note (step 2), paper (step 3), rod
+        // (step 7) and key (step 8) used along the way, then the phoenix feather at the
+        // final step 9. Only the last keeper is the prize; the mid-chain items are
+        // consumed, not awarded — so the award is the feather alone.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 133 2:giveitem 989",
+                "giveability 133 3:giveitem 991",
+                "giveability 133 7:giveitem 996",
+                "giveability 133 8:giveitem 987",
+                "giveability 133 9:giveitem 1000"),
+            classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(new[] { 1000 }, q.AwardItems);
+        Assert.False(q.AwardsAbility);
+    }
+
+    [Fact]
+    public void Crawl_SinglePartNoKeeperNoBonus_AwardsTheAbilityItself()
+    {
+        // Smash (32): the turn-in token is taken back and the quest grants no stat — the
+        // reward *is* the Smash skill it teaches, so AwardsAbility flags the flag itself.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+                "class 2:minlevel 20:takeitem 1247:giveability 32 1"), classId: 2);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Empty(q.AwardItems);
+        Assert.Empty(q.Bonuses);
+        Assert.True(q.AwardsAbility);
+    }
+
+    [Fact]
+    public void Crawl_SinglePartWithKeeper_DoesNotAwardAbility()
+    {
+        // A quest that hands a kept item is rewarded by that item, not the ability — the
+        // ability-award signal stays off whenever a keeper (or a stat bonus) is present.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 134 12:giveitem 1180"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(new[] { 1180 }, q.AwardItems);
+        Assert.False(q.AwardsAbility);
+    }
+
+    [Fact]
+    public void Crawl_BoundaryStepReward_BandsToTheCompletedTier_NotTheOpeningOne()
+    {
+        // A keeper handed at a tier's own gate step marks that tier *unlocking*, so it
+        // caps the tier just completed. Milestones 5→L10, 10→L20: the ring at give-step
+        // 10 (where L20 opens) is the reward for finishing tier 1, banding to L10 — the
+        // strictly-less rule, the fix for alignment rings landing a tier too high.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 200 5:minlevel 10",
+                "giveability 200 10:minlevel 20",
+                "giveability 200 10:giveitem 900"),
+            classId: null);
+
+        Assert.Equal(new[] { 900 }, Find(quests, 200, 10).AwardItems);
+        Assert.Empty(Find(quests, 200, 20).AwardItems);
+    }
+
+    [Fact]
+    public void Crawl_MultiPartBand_PrunesMidTierQuestUseItem_KeepsFinalStepAward()
+    {
+        // Evil (128) tier shape: within one band a cloth pouch (step 6) is used mid-tier
+        // and the chest (step 12) is the tier's prize. Milestones 4→L10, 14→L20 put both
+        // keepers in the L10 band (strictly-less of 14), but only the final-step keeper
+        // survives — the pouch is dropped as quest-use, the chest is the award.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 128 4:minlevel 10",
+                "giveability 128 14:minlevel 20",
+                "giveability 128 6:giveitem 960",
+                "giveability 128 12:giveitem 958"),
+            classId: null);
+
+        Assert.Equal(new[] { 958 }, Find(quests, 128, 10).AwardItems);
+        Assert.Empty(Find(quests, 128, 20).AwardItems);
+    }
+
+    [Fact]
+    public void Crawl_MultiPartBand_ClassResolvesFinalStepAward_DropsOtherClassVariants()
+    {
+        // Alignment tabard shape: at the band's final step every class is handed its own
+        // cloak (1310=class 2 … 1314=class 6) alongside a generic tabard (1309). With
+        // milestones 4→L10, 8→L20 the step-19 tabards all land in the L20 band. Crawled
+        // for class 6, only that class's item survives — the generic and other classes'
+        // variants drop, mirroring how a stat bonus resolves to one class.
+        string[] tbinfo =
+        {
+            "giveability 126 4:minlevel 10",
+            "giveability 126 8:minlevel 20",
+            "giveability 126 19:giveitem 1309",
+            "class 2:giveability 126 19:giveitem 1310",
+            "class 6:giveability 126 19:giveitem 1314",
+        };
+
+        Assert.Equal(
+            new[] { 1314 },
+            Find(QuestCrawler.Crawl(CacheWithTbInfo(tbinfo), classId: 6), 126, 20).AwardItems);
+        // No class request → the generic tabard is the default award.
+        Assert.Equal(
+            new[] { 1309 },
+            Find(QuestCrawler.Crawl(CacheWithTbInfo(tbinfo), classId: null), 126, 20).AwardItems);
+    }
+
+    [Fact]
     public void Crawl_NonMonotonicGates_StaySinglePart()
     {
         // Flag 50 (MageBaneQuest) shape: its minlevel gates are step1@L15, step0@L35,

@@ -35,6 +35,16 @@ namespace FujinTerm.Game.Quests;
 /// <c>class N</c> with a no-class default, resolved here to the requested class
 /// (matching MudProxy's <c>GetBonusesForClass</c>).
 /// </para>
+/// <para>
+/// A quest's prize comes at the very end of its chain: the keeper items it awards are
+/// those handed at the <em>final</em> give-step (per tier for a multi-part band), so
+/// earlier <c>giveitem</c>s — the quartz rod, the cloth pouch — are quest-use items the
+/// player consumes mid-chain, not rewards, and are dropped. A reward handed at a tier's
+/// own gate step caps the tier just <em>completed</em> (strictly-less banding), which is
+/// what lands the alignment ladder's ring/stats/chest/tabard/weapon on tiers 1–5 in
+/// order. A single-part quest that grants neither keeper nor stat bonus awards the
+/// ability itself — the skill it teaches is the prize (Smash, Meditate, SeeHidden).
+/// </para>
 /// </summary>
 public static class QuestCrawler
 {
@@ -191,14 +201,20 @@ public static class QuestCrawler
 
     // A single-part quest: one identity at step 0. Its level gate resolves to the
     // requested class; its stat bonus (if any) is the lowest-step reward group,
-    // class-resolved; its keeper items are every giveitem the flag never takes back.
+    // class-resolved; its award is the keeper(s) handed at the final give-step,
+    // class-resolved (earlier giveitems are quest-use items, not the prize). A quest
+    // that grants neither a keeper nor a stat bonus awards the ability itself — the
+    // skill it teaches is the reward (Smash, Meditate, Perfect Stealth, SeeHidden).
     private static CrawledQuest CrawlSinglePart(int flag, List<ParsedChain> chains, int? classId,
         IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
         int requiredLevel = ResolveLevel(chains, classId);
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
-        IReadOnlyList<int> awardItems = KeeperItems(chains).Distinct().ToArray();
-        return new CrawledQuest(flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict);
+        IReadOnlyList<int> awardItems = AwardItemsFrom(KeeperCandidates(chains), classId);
+        bool awardsAbility = awardItems.Count == 0 && bonuses.Count == 0;
+        return new CrawledQuest(
+            flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict,
+            AwardsAbility: awardsAbility);
     }
 
     // A multi-part quest: one quest per ladder tier. Each band carries the reward group
@@ -223,14 +239,15 @@ public static class QuestCrawler
             if (band > 0) bandBonuses[band] = ResolveClass(group, classId);
         }
 
-        var bandItems = new Dictionary<int, List<int>>();
+        var bandKeepers = new Dictionary<int, List<(int Item, int Step, IReadOnlyList<int> ClassIds)>>();
         foreach (ParsedChain chain in chains)
             foreach (int item in chain.GiveItems.Where(i => !TakenAnywhere(chains, i)))
             {
                 int band = ResolveBand(new[] { chain }, bandLevels, ladder);
                 if (band == 0) continue;
-                List<int> bucket = bandItems.TryGetValue(band, out List<int>? b) ? b : (bandItems[band] = new List<int>());
-                if (!bucket.Contains(item)) bucket.Add(item);
+                List<(int, int, IReadOnlyList<int>)> bucket = bandKeepers.TryGetValue(band, out List<(int, int, IReadOnlyList<int>)>? b)
+                    ? b : (bandKeepers[band] = new List<(int, int, IReadOnlyList<int>)>());
+                bucket.Add((item, chain.GiveStep, chain.ClassIds));
             }
 
         for (int i = 0; i < ladder.Count; i++)
@@ -238,8 +255,8 @@ public static class QuestCrawler
             int level = ladder[i].Level;
             IReadOnlyList<QuestBonus> bonuses = bandBonuses.TryGetValue(level, out IReadOnlyList<QuestBonus>? bb)
                 ? bb : Array.Empty<QuestBonus>();
-            IReadOnlyList<int> items = bandItems.TryGetValue(level, out List<int>? bi)
-                ? bi.ToArray() : Array.Empty<int>();
+            IReadOnlyList<int> items = bandKeepers.TryGetValue(level, out List<(int, int, IReadOnlyList<int>)>? bk)
+                ? AwardItemsFrom(bk, classId) : Array.Empty<int>();
 
             int rangeStart = i == 0 ? 1 : ladder[i].Step;
             int rangeEnd = i == ladder.Count - 1 ? int.MaxValue : ladder[i + 1].Step - 1;
@@ -284,7 +301,11 @@ public static class QuestCrawler
 
     // The band a give-step group belongs to: the largest band level its own chains
     // declare (per-class variants sometimes omit minlevel and lean on a sibling),
-    // else the level of the nearest milestone at or before the group's give-step.
+    // else the level of the nearest milestone *strictly before* the group's give-step —
+    // the tier the player has just completed. A reward handed at a tier's own gate step
+    // marks that tier unlocking, so it belongs to the prior (completed) tier, not the one
+    // opening at that step; strictly-less banding is what attributes each alignment award
+    // (ring → tier 1, stats → tier 2, chest → tier 3, …) to the tier it actually caps.
     private static int ResolveBand(
         IReadOnlyList<ParsedChain> group, HashSet<int> bandLevels, IReadOnlyList<(int Step, int Level)> milestones)
     {
@@ -298,7 +319,7 @@ public static class QuestCrawler
         int step = group[0].GiveStep;
         int bestStep = -1, bestLevel = 0;
         foreach ((int Step, int Level) m in milestones)
-            if (m.Step <= step && m.Step > bestStep)
+            if (m.Step < step && m.Step > bestStep)
             {
                 bestStep = m.Step;
                 bestLevel = m.Level;
@@ -319,10 +340,39 @@ public static class QuestCrawler
         return fallback?.Bonuses ?? (IReadOnlyList<QuestBonus>)Array.Empty<QuestBonus>();
     }
 
-    // Keeper items: every giveitem the flag hands out and never takes back. A
-    // giveitem later takeitem'd under the same flag is a turn-in token, not a reward.
-    private static IEnumerable<int> KeeperItems(List<ParsedChain> chains) =>
-        chains.SelectMany(c => c.GiveItems).Where(i => !TakenAnywhere(chains, i));
+    // Keeper candidates: every giveitem the flag hands out and never takes back, tagged
+    // with the give-step it arrives at and its chain's class guard. A giveitem later
+    // takeitem'd under the same flag is a turn-in token, not a reward, and is excluded.
+    private static IReadOnlyList<(int Item, int Step, IReadOnlyList<int> ClassIds)> KeeperCandidates(List<ParsedChain> chains) =>
+        chains.SelectMany(c => c.GiveItems
+            .Where(i => !TakenAnywhere(chains, i))
+            .Select(i => (i, c.GiveStep, (IReadOnlyList<int>)c.ClassIds))).ToList();
+
+    // The award items from a pool of keeper candidates: the keepers handed at the
+    // highest give-step — a quest's prize comes at the very end of its chain, so any
+    // keeper handed earlier is a quest-use item the player consumes, not a reward — then
+    // class-resolved like a stat bonus: the requested class's own items when any final-
+    // step keeper is guarded to it, else the no-class defaults (and, failing both, the
+    // whole final-step set so an award is never silently dropped). Distinct, first-seen.
+    private static IReadOnlyList<int> AwardItemsFrom(
+        IReadOnlyList<(int Item, int Step, IReadOnlyList<int> ClassIds)> keepers, int? classId)
+    {
+        if (keepers.Count == 0) return Array.Empty<int>();
+
+        int finalStep = keepers.Max(k => k.Step);
+        List<(int Item, int Step, IReadOnlyList<int> ClassIds)> final = keepers.Where(k => k.Step == finalStep).ToList();
+
+        List<(int Item, int Step, IReadOnlyList<int> ClassIds)> pool =
+            classId is int cid && final.Any(k => k.ClassIds.Contains(cid))
+                ? final.Where(k => k.ClassIds.Contains(cid)).ToList()
+                : final.Where(k => k.ClassIds.Count == 0).ToList();
+        if (pool.Count == 0) pool = final;
+
+        var result = new List<int>();
+        foreach ((int item, _, _) in pool)
+            if (!result.Contains(item)) result.Add(item);
+        return result;
+    }
 
     private static bool TakenAnywhere(List<ParsedChain> chains, int item) =>
         chains.Any(c => c.TakeItems.Contains(item));

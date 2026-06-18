@@ -35,10 +35,15 @@ namespace FujinTerm.Game.Quests;
 /// the no-class default). Empty when the quest grants no stat reward.
 /// </param>
 /// <param name="AwardItems">
-/// Keeper item ids the quest hands the player and never takes back — the equippable
-/// or usable rewards that signal a part is complete (a chest, a weapon). Distinct
-/// from turn-in tokens, which are <c>giveitem</c>'d then <c>takeitem</c>'d under the
-/// same flag and so are excluded. Empty when the quest awards no keeper item.
+/// Keeper item ids the quest hands the player as the final reward — the equippable or
+/// usable prize that signals the quest (or this band) is complete (a ring, a chest, a
+/// tabard, a weapon). Only the keepers handed at the chain's <em>last</em> give-step
+/// qualify: a quest's awards come at the very end, so earlier giveitems are quest-use
+/// items the player consumes along the way, not rewards. Turn-in tokens
+/// (<c>giveitem</c>'d then <c>takeitem</c>'d under the same flag) are excluded too.
+/// Class-resolved like <paramref name="Bonuses"/>: the requested class's own item when
+/// any final-step keeper is guarded to it, else the no-class default. Empty when the
+/// quest awards no keeper item.
 /// </param>
 /// <param name="ClassIds">
 /// Class <c>Number</c>s the quest is restricted to — non-null only when <em>every</em>
@@ -67,6 +72,13 @@ namespace FujinTerm.Game.Quests;
 /// a single-part quest (no filtering). The last band carries <see cref="int.MaxValue"/>
 /// so it absorbs every overflow give-step past the final milestone — nothing is dropped.
 /// </param>
+/// <param name="AwardsAbility">
+/// <c>true</c> when the quest's reward <em>is</em> the granted ability itself — a
+/// single-part quest that hands no keeper item and no stat bonus (Smash, Meditate,
+/// Perfect Stealth, SeeHidden). The presentation layer renders the flag's ability name
+/// (<see cref="Flag"/>) as the award. Always <c>false</c> for a multi-part band, whose
+/// flag is a shared progress marker across tiers rather than a per-tier prize.
+/// </param>
 public sealed record CrawledQuest(
     int Flag,
     int Step,
@@ -77,4 +89,5 @@ public sealed record CrawledQuest(
     IReadOnlyList<int>? RaceIds = null,
     int BandOrdinal = 0,
     int StepRangeStart = 0,
-    int StepRangeEnd = 0);
+    int StepRangeEnd = 0,
+    bool AwardsAbility = false);

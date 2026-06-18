@@ -111,7 +111,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     ResolveTitle(def, q),
                     QuestTextFormatter.Level(q.RequiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
-                    QuestTextFormatter.Awards(_gameData, q.AwardItems),
+                    QuestTextFormatter.Awards(_gameData, q),
                     prog.Complete,
                     steps,
                     OnCardCompletionChanged);
