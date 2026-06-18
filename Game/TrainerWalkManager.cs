@@ -140,6 +140,7 @@ public sealed class TrainerWalkManager : IDisposable
         _stats.PropertyChanged += OnStatsPropertyChanged;
         _statParser.ScreenParsed += OnStatScreenParsed;
         _autoTrain.StateChanged += OnAutoTrainStateChanged;
+        _autoTrain.PlanCommitted += OnCpPlanCommitted;
     }
 
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
@@ -493,12 +494,29 @@ public sealed class TrainerWalkManager : IDisposable
         FinishWithReport();
     }
 
+    // The CP keystroke replay has committed (raises + SAVE on the wire). Clear the
+    // fulfilled plan rows now instead of letting the grid linger until the menu-exit
+    // prompt round-trip (or AutoTrainManager's exit-grace fallback) releases the run.
+    // The run itself still finishes on the idle transition in OnAutoTrainStateChanged.
+    private void OnCpPlanCommitted()
+    {
+        if (_phase != Phase.ApplyingCp || _cpApplied) return;
+        _cpApplied = true;
+        RemoveFulfilledPlanRows(_cpTargetLevel);
+    }
+
     private void OnAutoTrainStateChanged()
     {
         if (_phase == Phase.ApplyingCp && !_autoTrain.IsBusy)
         {
-            _cpApplied = true;
-            RemoveFulfilledPlanRows(_cpTargetLevel);   // CP committed → consume those rows
+            // Normally OnCpPlanCommitted already cleared the rows the instant the
+            // keystrokes committed; this covers the path where that signal never
+            // fired (e.g. replay aborted before completing) but the run still idled.
+            if (!_cpApplied)
+            {
+                _cpApplied = true;
+                RemoveFulfilledPlanRows(_cpTargetLevel);
+            }
             FinishWithReport();
             return;
         }
@@ -705,5 +723,6 @@ public sealed class TrainerWalkManager : IDisposable
         _stats.PropertyChanged -= OnStatsPropertyChanged;
         _statParser.ScreenParsed -= OnStatScreenParsed;
         _autoTrain.StateChanged -= OnAutoTrainStateChanged;
+        _autoTrain.PlanCommitted -= OnCpPlanCommitted;
     }
 }

@@ -56,6 +56,16 @@ public sealed class AutoTrainManager : IDisposable
     /// <summary>Raised when <see cref="CanTrainNow"/> / <see cref="IsBusy"/> may have changed.</summary>
     public event Action? StateChanged;
 
+    /// <summary>
+    /// Raised once the CP keystroke replay has finished sending — the plan's
+    /// raises and the SAVE that commits them are on the wire. Fires before the
+    /// menu-exit prompt arrives and before the <see cref="ExitGrace"/> latch
+    /// releases, so subscribers that only need "the CP is committed" (e.g.
+    /// clearing fulfilled plan rows) can react immediately instead of waiting
+    /// for the server round-trip.
+    /// </summary>
+    public event Action? PlanCommitted;
+
     public AutoTrainManager(PlayerStats stats, GameDataCache gameData, InventoryManager inventory,
                             ProfileService profile, TrainerMenuTracker trainer, LogService? log = null)
     {
@@ -133,6 +143,9 @@ public sealed class AutoTrainManager : IDisposable
             await Task.Delay(KeystrokeDelayMs);
         }
         _log?.Info("AutoTrain", "Applied plan; saved + exited trainer.");
+        // CP raises + SAVE are on the wire — let "plan committed" subscribers
+        // (the plan-grid cleanup) react now, ahead of the menu-exit round-trip.
+        PlanCommitted?.Invoke();
 
         // Safety: if the exit prompt never fires, release the latch after a grace.
         await Task.Delay(ExitGrace);
