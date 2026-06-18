@@ -14,9 +14,11 @@ namespace FujinTerm.Tests;
 /// <c>TBInfo</c> chains. Discovery is data-driven: every <c>giveability</c> target
 /// is a quest, including skill grants (Smash 32, Meditate 187, Perfect Stealth 186);
 /// the only number-based notion is gone. Cases reproduce shapes verified against
-/// real data-v1.11p: single-part quests key to step 0; a flag whose minlevel gates
-/// climb across different give-steps splits into level bands while per-class variants
-/// of one step do not; <c>addability</c> off the quest-flag set are stat rewards and
+/// real data-v1.11p: single-part quests key to step 0; a flag whose give/test/check
+/// minlevel gates form a strict per-level staircase splits into level tiers (the
+/// test/check gates surface tiers the give gates alone miss) while per-class variants
+/// of one step and non-monotonic gate sets stay single-part; <c>addability</c> off
+/// the quest-flag set are stat rewards and
 /// resolve to the requested class with a no-class default; <c>giveitem</c> never
 /// taken back is a keeper award. Synthetic seeded caches keep it deterministic and
 /// CI-portable, matching ClassCapabilitiesTests.
@@ -175,10 +177,11 @@ public sealed class QuestCrawlerTests : IDisposable
     [Fact]
     public void Crawl_MultiPartFlag_SplitsIntoMinlevelBands()
     {
-        // Flag 126 (Good Alignment): four minlevel milestones climbing across give-
-        // steps → four band quests. The lone reward group (give-step 8) falls in the
-        // L20 band by the nearest milestone at/before its step (give-step 7 = L20),
-        // even though its own chains declare no minlevel.
+        // Flag 126 (Good Alignment) reduced to four giveability minlevel gates climbing
+        // across give-steps → four tier quests. The lone reward group (give-step 8)
+        // falls in the L20 band by the nearest milestone at/before its step (give-step
+        // 7 = L20), even though its own chains declare no minlevel. (The real set has a
+        // fifth tier surfaced only by the test/check gates; see the ladder-refines test.)
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
                 "giveability 126 4:minlevel 10",
@@ -378,5 +381,54 @@ public sealed class QuestCrawlerTests : IDisposable
         CrawledQuest q = Assert.Single(quests);
         Assert.Equal(0, q.BandOrdinal);
         Assert.Equal((0, 0), (q.StepRangeStart, q.StepRangeEnd));
+    }
+
+    [Fact]
+    public void Crawl_TestabilityGates_AddTierTheGiveGatesMiss()
+    {
+        // Real alignment shape: the giveability minlevel gates stop at L40 (four tiers),
+        // but a fifth tier (L50) is gate-kept only by a test/check progress chain with
+        // no giveability of its own. The ladder is built from give+test+check gates
+        // together, so the L50 tier appears — and its give-step range opens at the
+        // test-gate step (19), with the prior tier's upper bound shifted down to 18.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 126 4:minlevel 10",
+                "giveability 126 7:minlevel 20",
+                "giveability 126 10:minlevel 30",
+                "giveability 126 18:minlevel 40",
+                "testability 126 19:checkability 126 19:minlevel 50"),
+            classId: null);
+
+        Assert.Equal(
+            new[] { 10, 20, 30, 40, 50 },
+            quests.Where(q => q.Flag == 126).Select(q => q.Step).OrderBy(s => s));
+
+        CrawledQuest tier4 = Find(quests, 126, 40);
+        CrawledQuest tier5 = Find(quests, 126, 50);
+        Assert.Equal(5, tier5.BandOrdinal);
+        Assert.Equal((18, 18), (tier4.StepRangeStart, tier4.StepRangeEnd));
+        Assert.Equal((19, int.MaxValue), (tier5.StepRangeStart, tier5.StepRangeEnd));
+    }
+
+    [Fact]
+    public void Crawl_NonMonotonicGates_StaySinglePart()
+    {
+        // Flag 50 (MageBaneQuest) shape: its minlevel gates are step1@L15, step0@L35,
+        // step4@L50 — ordered by level the steps go 1 → 0 → 4, which is not a strictly
+        // climbing staircase. That is a coincidental level/step mix, not a tier ladder,
+        // so the quest stays single-part (one quest at step 0) rather than splitting.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 50 1:minlevel 15",
+                "checkability 50 0:minlevel 35",
+                "checkability 50 4:minlevel 50"),
+            classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(50, q.Flag);
+        Assert.Equal(0, q.Step);
+        Assert.Equal(0, q.BandOrdinal);
+        Assert.Equal(15, q.RequiredLevel);
     }
 }

@@ -23,12 +23,17 @@ namespace FujinTerm.Game.Quests;
 /// A <c>giveability</c> target is the quest's identity; an <c>addability</c> target
 /// is a stat <em>reward</em> only when it is <em>not</em> itself a discovered quest
 /// flag (a quest-flag <c>addability</c> is a progress marker). A quest is
-/// <em>multi-part</em> — re-run once per level tier — when its <c>minlevel</c> gates
-/// climb across <em>different</em> give-steps (the alignment flags are the canonical
-/// case); per-class <c>minlevel</c> variants of the <em>same</em> give-step (Smash,
-/// Meditate, Perfect Stealth) stay one quest. Rewards branch by <c>class N</c> with
-/// a no-class default, resolved here to the requested class (matching MudProxy's
-/// <c>GetBonusesForClass</c>).
+/// <em>multi-part</em> — re-run once per level tier — when its progress gates form a
+/// strict per-level staircase: across the <c>giveability</c> / <c>testability</c> /
+/// <c>checkability</c> segments that carry a <c>minlevel</c>, the lowest gate step
+/// climbs every time the level does (the five-tier alignment flags are the canonical
+/// case, and only the combined give+test+check gates reveal all five tiers — the
+/// giveability gates alone undercount them). Per-class <c>minlevel</c> variants of the
+/// <em>same</em> step (Smash, Meditate, Perfect Stealth) share one step so they never
+/// form a staircase and stay one quest; a non-monotonic gate set (a coincidental
+/// level/step mix, e.g. MageBaneQuest) is likewise left single-part. Rewards branch by
+/// <c>class N</c> with a no-class default, resolved here to the requested class
+/// (matching MudProxy's <c>GetBonusesForClass</c>).
 /// </para>
 /// </summary>
 public static class QuestCrawler
@@ -70,13 +75,17 @@ public static class QuestCrawler
             if (parsed is not null) chains.Add(parsed);
         }
 
+        // Pass 3: the tier ladder per multi-part flag, read from its give+test+check
+        // minlevel gates (see DiscoverTierLadders). A flag absent here is single-part.
+        IReadOnlyDictionary<int, IReadOnlyList<(int Step, int Level)>> ladders = DiscoverTierLadders(rawChains);
+
         var quests = new List<CrawledQuest>();
         foreach (IGrouping<int, ParsedChain> flagGroup in chains.GroupBy(c => c.Flag).OrderBy(g => g.Key))
         {
             List<ParsedChain> flagChains = flagGroup.ToList();
             (IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict) = ResolveRestrictions(flagChains);
-            if (IsMultiPart(flagChains))
-                quests.AddRange(CrawlMultiPart(flagGroup.Key, flagChains, classId, classRestrict, raceRestrict));
+            if (ladders.TryGetValue(flagGroup.Key, out IReadOnlyList<(int Step, int Level)>? ladder))
+                quests.AddRange(CrawlMultiPart(flagGroup.Key, flagChains, ladder, classId, classRestrict, raceRestrict));
             else
                 quests.Add(CrawlSinglePart(flagGroup.Key, flagChains, classId, classRestrict, raceRestrict));
         }
@@ -114,15 +123,70 @@ public static class QuestCrawler
         return flags;
     }
 
-    // A quest is multi-part when its minlevel gates climb across different give-steps
-    // (re-run once per tier). Per-class minlevel variants of one give-step are not:
-    // they share a single step, so the band count collapses to one.
-    private static bool IsMultiPart(List<ParsedChain> chains)
+    // The tier ladder of every multi-part flag, read from its progress gates. A flag's
+    // gates are the (step, minlevel) pairs of every giveability/testability/checkability
+    // segment that carries a minlevel — the give-step grants and the test/check progress
+    // checks alike, because the alignment tiers gate-keep with all three and the give
+    // gates alone reveal only some of the tiers. The chain's minlevel applies to every
+    // ability segment in it. BuildLadder then decides whether those gates form a tiered
+    // staircase; a flag with no valid ladder is single-part and absent from the result.
+    private static IReadOnlyDictionary<int, IReadOnlyList<(int Step, int Level)>> DiscoverTierLadders(
+        IEnumerable<string> rawChains)
     {
-        var gated = chains.Where(c => c.MinLevel is int ml && ml > 0).ToList();
-        int distinctLevels = gated.Select(c => c.MinLevel!.Value).Distinct().Count();
-        int distinctSteps = gated.Select(c => c.GiveStep).Distinct().Count();
-        return distinctLevels >= 2 && distinctSteps >= 2;
+        var gates = new Dictionary<int, List<(int Step, int Level)>>();
+        foreach (string raw in rawChains)
+        {
+            int? minLevel = null;
+            var hits = new List<(int Flag, int Step)>();
+            foreach (string segment in raw.Split(':'))
+            {
+                string[] p = segment.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (p.Length == 0) continue;
+                switch (p[0].ToLowerInvariant())
+                {
+                    case "minlevel" when p.Length >= 2 && int.TryParse(p[1], out int ml):
+                        minLevel = ml; // last wins, matching ParseChain
+                        break;
+                    case "giveability" or "testability" or "checkability"
+                        when p.Length >= 3 && int.TryParse(p[1], out int gf) && int.TryParse(p[2], out int gs):
+                        hits.Add((gf, gs));
+                        break;
+                }
+            }
+            if (minLevel is not int level || level <= 0) continue;
+            foreach ((int flag, int step) in hits)
+                (gates.TryGetValue(flag, out List<(int, int)>? g) ? g : gates[flag] = new()).Add((step, level));
+        }
+
+        var ladders = new Dictionary<int, IReadOnlyList<(int Step, int Level)>>();
+        foreach ((int flag, List<(int Step, int Level)> g) in gates)
+            if (BuildLadder(g) is { } ladder) ladders[flag] = ladder;
+        return ladders;
+    }
+
+    // Reduce a flag's gates to its tier ladder, or null when they don't form one. Keep
+    // the lowest gate step seen at each level, order by level, and require a strict
+    // ascending staircase: >= 2 levels whose steps strictly increase as the levels
+    // climb. Per-class variants of one step collapse to a single (step, level) and
+    // never climb; a non-monotonic mix (MageBaneQuest: step1@L15, step0@L35, step4@L50)
+    // is a coincidence, not a ladder, so it stays single-part.
+    private static IReadOnlyList<(int Step, int Level)>? BuildLadder(IReadOnlyList<(int Step, int Level)> gates)
+    {
+        var minStepByLevel = new Dictionary<int, int>();
+        foreach ((int step, int level) in gates)
+            minStepByLevel[level] = minStepByLevel.TryGetValue(level, out int s) ? Math.Min(s, step) : step;
+
+        if (minStepByLevel.Count < 2) return null;
+
+        var ladder = minStepByLevel
+            .OrderBy(kv => kv.Key)
+            .Select(kv => (Step: kv.Value, Level: kv.Key))
+            .ToArray();
+
+        for (int i = 1; i < ladder.Length; i++)
+            if (ladder[i].Step <= ladder[i - 1].Step) return null;
+
+        return ladder;
     }
 
     // A single-part quest: one identity at step 0. Its level gate resolves to the
@@ -137,28 +201,25 @@ public static class QuestCrawler
         return new CrawledQuest(flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict);
     }
 
-    // A multi-part quest: one quest per minlevel band. Each band carries the reward
-    // group and keeper items that fall in it, class-resolved; its required level is
-    // the band level itself. Each band also carries the give-step Order range that
-    // feeds its followable checklist — consistent with ResolveBand's bonus-banding:
-    // band i spans [milestone-step of band i, milestone-step of band i+1 minus 1],
-    // band 1 lowered to 1 (absorbing pre-first steps) and the last band's upper bound
-    // raised to int.MaxValue (absorbing overflow past the final milestone), so no
+    // A multi-part quest: one quest per ladder tier. Each band carries the reward group
+    // and keeper items that fall in it, class-resolved; its required level is the band
+    // (ladder) level itself. The ladder — one (step, level) per tier, ascending with
+    // strictly-climbing steps — doubles as the bonus-banding milestones and the give-
+    // step range source: band i spans [ladder step of band i, ladder step of band i+1
+    // minus 1], band 1 lowered to 1 (absorbing pre-first steps) and the last band's
+    // upper bound raised to int.MaxValue (absorbing overflow past the final tier), so no
     // give-step is ever dropped from every band's checklist.
-    private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains, int? classId,
+    private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains,
+        IReadOnlyList<(int Step, int Level)> ladder, int? classId,
         IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
-        var milestones = chains
-            .Where(c => c.MinLevel is int ml && ml > 0)
-            .Select(c => (c.GiveStep, Level: c.MinLevel!.Value))
-            .ToList();
-        var bandLevels = milestones.Select(m => m.Level).ToHashSet();
+        var bandLevels = ladder.Select(m => m.Level).ToHashSet();
 
         var bandBonuses = new Dictionary<int, IReadOnlyList<QuestBonus>>();
         foreach (IGrouping<int, ParsedChain> rewardGroup in chains.Where(c => c.Bonuses.Count > 0).GroupBy(c => c.GiveStep))
         {
             List<ParsedChain> group = rewardGroup.ToList();
-            int band = ResolveBand(group, bandLevels, milestones);
+            int band = ResolveBand(group, bandLevels, ladder);
             if (band > 0) bandBonuses[band] = ResolveClass(group, classId);
         }
 
@@ -166,28 +227,22 @@ public static class QuestCrawler
         foreach (ParsedChain chain in chains)
             foreach (int item in chain.GiveItems.Where(i => !TakenAnywhere(chains, i)))
             {
-                int band = ResolveBand(new[] { chain }, bandLevels, milestones);
+                int band = ResolveBand(new[] { chain }, bandLevels, ladder);
                 if (band == 0) continue;
                 List<int> bucket = bandItems.TryGetValue(band, out List<int>? b) ? b : (bandItems[band] = new List<int>());
                 if (!bucket.Contains(item)) bucket.Add(item);
             }
 
-        // The give-step each band opens at — the lowest milestone give-step for its level.
-        var levelStartStep = milestones
-            .GroupBy(m => m.Level)
-            .ToDictionary(g => g.Key, g => g.Min(m => m.GiveStep));
-        var orderedLevels = bandLevels.OrderBy(l => l).ToList();
-
-        for (int i = 0; i < orderedLevels.Count; i++)
+        for (int i = 0; i < ladder.Count; i++)
         {
-            int level = orderedLevels[i];
+            int level = ladder[i].Level;
             IReadOnlyList<QuestBonus> bonuses = bandBonuses.TryGetValue(level, out IReadOnlyList<QuestBonus>? bb)
                 ? bb : Array.Empty<QuestBonus>();
             IReadOnlyList<int> items = bandItems.TryGetValue(level, out List<int>? bi)
                 ? bi.ToArray() : Array.Empty<int>();
 
-            int rangeStart = i == 0 ? 1 : levelStartStep[level];
-            int rangeEnd = i == orderedLevels.Count - 1 ? int.MaxValue : levelStartStep[orderedLevels[i + 1]] - 1;
+            int rangeStart = i == 0 ? 1 : ladder[i].Step;
+            int rangeEnd = i == ladder.Count - 1 ? int.MaxValue : ladder[i + 1].Step - 1;
 
             yield return new CrawledQuest(
                 flag, level, level, bonuses, items, classRestrict, raceRestrict,
@@ -231,7 +286,7 @@ public static class QuestCrawler
     // declare (per-class variants sometimes omit minlevel and lean on a sibling),
     // else the level of the nearest milestone at or before the group's give-step.
     private static int ResolveBand(
-        IReadOnlyList<ParsedChain> group, HashSet<int> bandLevels, List<(int Step, int Level)> milestones)
+        IReadOnlyList<ParsedChain> group, HashSet<int> bandLevels, IReadOnlyList<(int Step, int Level)> milestones)
     {
         int declared = group
             .Where(c => c.MinLevel is int ml && bandLevels.Contains(ml))

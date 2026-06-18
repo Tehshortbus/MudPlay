@@ -14,10 +14,11 @@ namespace FujinTerm.Game.Quests;
 ///   level variants of the <em>same</em> give-step (e.g. Smash, Meditate) stay one
 ///   quest — they differ only in who can take it and when.</item>
 ///   <item><see cref="Step"/> <c>= band level</c> for a multi-part quest: a flag
-///   whose <c>minlevel</c> gates climb across <em>different</em> give-steps is
-///   re-run once per level tier (the alignment flags are the canonical case, but
-///   any realm flag with this shape splits the same way). The band level is
-///   portable across realms where the internal give-step numbering is not.</item>
+///   whose give/test/check <c>minlevel</c> progress gates form a strict per-level
+///   staircase is re-run once per level tier (the five-tier alignment flags are the
+///   canonical case, but any realm flag with this shape splits the same way). The
+///   band level is portable across realms where the internal give-step numbering is
+///   not.</item>
 /// </list>
 /// </summary>
 /// <param name="Flag">Quest-flag ability id — the <c>giveability &lt;flag&gt;</c> target.</param>
