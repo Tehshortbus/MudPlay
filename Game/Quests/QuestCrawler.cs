@@ -74,12 +74,28 @@ public static class QuestCrawler
         foreach (IGrouping<int, ParsedChain> flagGroup in chains.GroupBy(c => c.Flag).OrderBy(g => g.Key))
         {
             List<ParsedChain> flagChains = flagGroup.ToList();
+            (IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict) = ResolveRestrictions(flagChains);
             if (IsMultiPart(flagChains))
-                quests.AddRange(CrawlMultiPart(flagGroup.Key, flagChains, classId));
+                quests.AddRange(CrawlMultiPart(flagGroup.Key, flagChains, classId, classRestrict, raceRestrict));
             else
-                quests.Add(CrawlSinglePart(flagGroup.Key, flagChains, classId));
+                quests.Add(CrawlSinglePart(flagGroup.Key, flagChains, classId, classRestrict, raceRestrict));
         }
         return quests;
+    }
+
+    // A flag is class-restricted only when *every* giveability chain that grants it
+    // carries a `class N` guard — then the allowed set is the union of those ids. If any
+    // granting chain is unguarded the quest is open to all classes (null). Same rule for
+    // `race`. Conservative: it never hides a quest some unguarded chain leaves open to all.
+    private static (IReadOnlyList<int>?, IReadOnlyList<int>?) ResolveRestrictions(List<ParsedChain> chains)
+    {
+        IReadOnlyList<int>? classes = chains.Any(c => c.ClassIds.Count == 0)
+            ? null
+            : chains.SelectMany(c => c.ClassIds).Distinct().OrderBy(x => x).ToArray();
+        IReadOnlyList<int>? races = chains.Any(c => c.RaceIds.Count == 0)
+            ? null
+            : chains.SelectMany(c => c.RaceIds).Distinct().OrderBy(x => x).ToArray();
+        return (classes, races);
     }
 
     // Every distinct giveability target across the data — the discovered quest-flag
@@ -112,18 +128,20 @@ public static class QuestCrawler
     // A single-part quest: one identity at step 0. Its level gate resolves to the
     // requested class; its stat bonus (if any) is the lowest-step reward group,
     // class-resolved; its keeper items are every giveitem the flag never takes back.
-    private static CrawledQuest CrawlSinglePart(int flag, List<ParsedChain> chains, int? classId)
+    private static CrawledQuest CrawlSinglePart(int flag, List<ParsedChain> chains, int? classId,
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
         int requiredLevel = ResolveLevel(chains, classId);
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
         IReadOnlyList<int> awardItems = KeeperItems(chains).Distinct().ToArray();
-        return new CrawledQuest(flag, 0, requiredLevel, bonuses, awardItems);
+        return new CrawledQuest(flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict);
     }
 
     // A multi-part quest: one quest per minlevel band. Each band carries the reward
     // group and keeper items that fall in it, class-resolved; its required level is
     // the band level itself.
-    private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains, int? classId)
+    private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains, int? classId,
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
         var milestones = chains
             .Where(c => c.MinLevel is int ml && ml > 0)
@@ -155,7 +173,7 @@ public static class QuestCrawler
                 ? bb : Array.Empty<QuestBonus>();
             IReadOnlyList<int> items = bandItems.TryGetValue(level, out List<int>? bi)
                 ? bi.ToArray() : Array.Empty<int>();
-            yield return new CrawledQuest(flag, level, level, bonuses, items);
+            yield return new CrawledQuest(flag, level, level, bonuses, items, classRestrict, raceRestrict);
         }
     }
 
@@ -245,6 +263,7 @@ public static class QuestCrawler
         int giveStep = 0;
         int? minLevel = null;
         var classIds = new List<int>();
+        var raceIds = new List<int>();
         var bonuses = new List<QuestBonus>();
         var giveItems = new List<int>();
         var takeItems = new List<int>();
@@ -269,6 +288,9 @@ public static class QuestCrawler
                 case "class" when p.Length >= 2 && int.TryParse(p[1], out int cid):
                     classIds.Add(cid);
                     break;
+                case "race" when p.Length >= 2 && int.TryParse(p[1], out int rid):
+                    raceIds.Add(rid);
+                    break;
                 case "minlevel" when p.Length >= 2 && int.TryParse(p[1], out int ml):
                     minLevel = ml; // last wins: the per-class gate follows any earlier intro gate
                     break;
@@ -282,7 +304,7 @@ public static class QuestCrawler
         }
 
         if (flag is null) return null;
-        return new ParsedChain(flag.Value, giveStep, minLevel, classIds, bonuses, giveItems, takeItems);
+        return new ParsedChain(flag.Value, giveStep, minLevel, classIds, raceIds, bonuses, giveItems, takeItems);
     }
 
     // Scratch record for one parsed chain; never escapes the crawl.
@@ -291,6 +313,7 @@ public static class QuestCrawler
         int GiveStep,
         int? MinLevel,
         List<int> ClassIds,
+        List<int> RaceIds,
         List<QuestBonus> Bonuses,
         List<int> GiveItems,
         List<int> TakeItems);

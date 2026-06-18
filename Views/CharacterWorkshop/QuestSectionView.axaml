@@ -25,6 +25,17 @@
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="12"/>
         </Style>
+        <!-- Flat, transparent header so the title row reads as a clickable disclosure. -->
+        <Style Selector="Button.QuestHeader">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+        <Style Selector="Button.QuestHeader /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid Margin="22" RowDefinitions="Auto,*">
@@ -57,53 +68,68 @@
                         <Border Classes="Box">
                             <StackPanel Spacing="4">
 
-                                <!-- Header: title + level gate, with the manual Complete toggle. -->
+                                <!-- Compact header: click the title row to expand its detail;
+                                     the manual Complete toggle stays separate on the right. -->
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Title}"
-                                                   Foreground="{StaticResource ChromeFgBrush}"
-                                                   FontSize="{StaticResource FontSizeMd}"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBlock Classes="FieldLabel"
-                                                   VerticalAlignment="Center"
-                                                   Text="{Binding RequiredLevelText}"/>
-                                    </StackPanel>
+                                    <Button Grid.Column="0" Classes="QuestHeader"
+                                            Command="{Binding ToggleExpandCommand}"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ExpandGlyph}"
+                                                       IsVisible="{Binding CanExpand}"
+                                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                                       FontSize="{StaticResource FontSizeMd}"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="{StaticResource ChromeFgBrush}"
+                                                       FontSize="{StaticResource FontSizeMd}"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Classes="FieldLabel"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding RequiredLevelText}"/>
+                                        </StackPanel>
+                                    </Button>
                                     <CheckBox Grid.Column="1" Content="Complete"
                                               IsChecked="{Binding IsComplete, Mode=TwoWay}"
                                               Foreground="{StaticResource ChromeFgBrush}"/>
                                 </Grid>
 
-                                <!-- Class-resolved permanent stat bonus. -->
-                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasBonus}">
-                                    <TextBlock Classes="FieldLabel" Text="Bonus:"/>
-                                    <TextBlock Text="{Binding BonusText}" TextWrapping="Wrap"
-                                               Foreground="{StaticResource AccentAmberBrush}"
-                                               FontFamily="{StaticResource FontMono}"
-                                               FontWeight="SemiBold"
-                                               FontSize="{StaticResource FontSizeMd}"/>
-                                </StackPanel>
+                                <!-- Detail pane: revealed only when the card is expanded. -->
+                                <StackPanel Spacing="4" IsVisible="{Binding IsExpanded}">
 
-                                <!-- Keeper-item award(s). -->
-                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasAward}">
-                                    <TextBlock Classes="FieldLabel" Text="Award:"/>
-                                    <TextBlock Classes="FieldValue" Text="{Binding AwardText}" TextWrapping="Wrap"/>
-                                </StackPanel>
+                                    <!-- Class-resolved permanent stat bonus. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasBonus}">
+                                        <TextBlock Classes="FieldLabel" Text="Bonus:"/>
+                                        <TextBlock Text="{Binding BonusText}" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource AccentAmberBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="{StaticResource FontSizeMd}"/>
+                                    </StackPanel>
 
-                                <!-- Followable step checklist (single-part quests only).
-                                     Ticking every step flips the quest complete. -->
-                                <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}"
-                                              Margin="0,4,0,0">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="vm:QuestStepRowViewModel">
-                                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
-                                                      Margin="0,1,0,1" VerticalAlignment="Top">
-                                                <TextBlock Classes="FieldLabel"
-                                                           Text="{Binding Display}"
-                                                           TextWrapping="Wrap"/>
-                                            </CheckBox>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    <!-- Keeper-item award(s). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasAward}">
+                                        <TextBlock Classes="FieldLabel" Text="Award:"/>
+                                        <TextBlock Classes="FieldValue" Text="{Binding AwardText}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+
+                                    <!-- Followable step checklist (single-part quests only).
+                                         Ticking every step flips the quest complete. -->
+                                    <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}"
+                                                  Margin="0,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:QuestStepRowViewModel">
+                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                          Margin="0,1,0,1" VerticalAlignment="Top">
+                                                    <TextBlock Classes="FieldLabel"
+                                                               Text="{Binding Display}"
+                                                               TextWrapping="Wrap"/>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

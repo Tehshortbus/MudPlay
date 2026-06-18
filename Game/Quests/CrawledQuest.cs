@@ -39,9 +39,23 @@ namespace FujinTerm.Game.Quests;
 /// from turn-in tokens, which are <c>giveitem</c>'d then <c>takeitem</c>'d under the
 /// same flag and so are excluded. Empty when the quest awards no keeper item.
 /// </param>
+/// <param name="ClassIds">
+/// Class <c>Number</c>s the quest is restricted to — non-null only when <em>every</em>
+/// <c>giveability</c> chain that grants the flag carries a <c>class N</c> guard (the
+/// allowed set is their union). <c>null</c> when any granting chain is unguarded, i.e.
+/// the quest is open to all classes. Conservative by design: a quest some chain leaves
+/// open to everyone is never reported as restricted. Drives class-based filtering of
+/// the Quest Status list.
+/// </param>
+/// <param name="RaceIds">
+/// Race <c>Number</c>s the quest is restricted to, by the same all-granting-chains-guarded
+/// rule as <paramref name="ClassIds"/>; <c>null</c> when open to all races.
+/// </param>
 public sealed record CrawledQuest(
     int Flag,
     int Step,
     int RequiredLevel,
     IReadOnlyList<QuestBonus> Bonuses,
-    IReadOnlyList<int> AwardItems);
+    IReadOnlyList<int> AwardItems,
+    IReadOnlyList<int>? ClassIds = null,
+    IReadOnlyList<int>? RaceIds = null);

@@ -1,3 +1,4 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.Profile;
 
@@ -6,9 +7,10 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// <summary>
 /// One editable quest in the <see cref="QuestEditorViewModel"/> master list. Holds
 /// the user-owned overlay fields — <see cref="Name"/>, <see cref="Visible"/>,
-/// <see cref="Steps"/> — as live two-way state, alongside read-only crawl context
-/// (<see cref="AutoSteps"/> / <see cref="BonusText"/> / <see cref="LevelText"/>) so
-/// the user can see the auto-drafted baseline while writing amplifying markdown.
+/// <see cref="Steps"/> — as live two-way state, both pre-filled from the crawl
+/// baseline (<see cref="FallbackLabel"/> / <see cref="AutoSteps"/>) so the boxes show
+/// the auto-draft the moment the editor opens. <see cref="ToDefinition"/> diffs back
+/// against that baseline so an untouched prefill is never frozen into the overlay.
 /// Identity is the (<see cref="Flag"/>, <see cref="Step"/>) pair.
 /// </summary>
 public sealed partial class QuestEditRowViewModel : ObservableObject
@@ -19,12 +21,11 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     /// <summary>Band level for a multi-part quest; <c>0</c> for a single-part one.</summary>
     public int Step { get; }
 
-    /// <summary>Auto-draft title shown in the list when <see cref="Name"/> is blank.</summary>
+    /// <summary>Auto-draft title — pre-fills <see cref="Name"/> and is the delta baseline for it.</summary>
     public string FallbackLabel { get; }
 
-    /// <summary>The crawler's drafted steps, joined for read-only reference.</summary>
+    /// <summary>The crawler's drafted steps — pre-fills <see cref="Steps"/> and is its delta baseline.</summary>
     public string AutoSteps { get; }
-    public bool HasAutoSteps => AutoSteps.Length > 0;
 
     /// <summary>Class-resolved permanent bonus summary; empty when the quest grants none.</summary>
     public string BonusText { get; }
@@ -54,12 +55,14 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         AutoSteps = autoSteps;
         BonusText = bonusText;
         LevelText = levelText;
-        _name = name;
+        // Prefill the editable boxes from the crawl baseline so the user starts from the
+        // auto-draft rather than a blank field; a saved overlay value (if any) wins.
+        _name = string.IsNullOrWhiteSpace(name) ? fallbackLabel : name;
         _visible = visible;
-        _steps = steps;
+        _steps = string.IsNullOrEmpty(steps) ? autoSteps : steps;
     }
 
-    /// <summary>Left-list label: the user's name (or the auto-draft fallback), suffixed when hidden.</summary>
+    /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when hidden.</summary>
     public string ListLabel
     {
         get
@@ -69,10 +72,21 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Materialize the current edits into a persistable definition (empty steps → null).</summary>
-    public QuestDefinition ToDefinition() =>
-        new(Flag, Step,
-            (Name ?? string.Empty).Trim(),
-            Visible,
-            string.IsNullOrWhiteSpace(Steps) ? null : Steps);
+    /// <summary>
+    /// Materialize the current edits into a persistable definition, diffed against the
+    /// crawl baseline: a name still equal to the fallback, or steps still equal to the
+    /// auto-draft, collapse to empty/null so an untouched prefill isn't frozen into the
+    /// overlay (<see cref="QuestStore.Save"/> then drops the redundant row entirely).
+    /// </summary>
+    public QuestDefinition ToDefinition()
+    {
+        string name = (Name ?? string.Empty).Trim();
+        if (string.Equals(name, FallbackLabel, StringComparison.Ordinal)) name = string.Empty;
+
+        string? steps = string.IsNullOrWhiteSpace(Steps) ? null : Steps;
+        if (steps is not null && string.Equals(steps.Trim(), AutoSteps.Trim(), StringComparison.Ordinal))
+            steps = null;
+
+        return new QuestDefinition(Flag, Step, name, Visible, steps);
+    }
 }

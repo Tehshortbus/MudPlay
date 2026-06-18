@@ -57,7 +57,7 @@
 
             <!-- Detail editor for the selected quest -->
             <Grid Grid.Column="1" IsVisible="{Binding HasSelection}"
-                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
 
                 <!-- Flag / level context -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
@@ -95,8 +95,8 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Step markdown -->
-                <TextBlock Grid.Row="4" Classes="Label" Text="Steps (markdown — amplifying notes over the auto-draft below)"/>
+                <!-- Step markdown — pre-filled with the crawled steps; edit freely. -->
+                <TextBlock Grid.Row="4" Classes="Label" Text="Steps (markdown — crawled steps pre-filled; edit freely)"/>
                 <TextBox Grid.Row="5"
                          Text="{Binding SelectedQuest.Steps, Mode=TwoWay}"
                          AcceptsReturn="True" TextWrapping="Wrap"
@@ -104,19 +104,6 @@
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          FontFamily="{StaticResource FontMono}"
                          MinHeight="120"/>
-
-                <!-- Auto-drafted reference steps -->
-                <StackPanel Grid.Row="6" IsVisible="{Binding SelectedQuest.HasAutoSteps}" Margin="0,8,0,0">
-                    <TextBlock Classes="Label" Text="Auto-drafted steps (from game data)"/>
-                    <Border Classes="Pane" MaxHeight="120">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8">
-                            <TextBlock Text="{Binding SelectedQuest.AutoSteps}"
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontFamily="{StaticResource FontMono}" FontSize="11"/>
-                        </ScrollViewer>
-                    </Border>
-                </StackPanel>
             </Grid>
         </Grid>
 

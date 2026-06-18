@@ -1,16 +1,18 @@
 using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// One quest card in the Quest Status checklist: a class-resolved quest (or one
-/// band of a multi-part quest) with its level gate, bonus + award labels, a manual
-/// <see cref="IsComplete"/> checkbox, and — for a single-part quest — an ordered
-/// followable step checklist. Completion is one-way: the manual checkbox or ticking
-/// every step sets it; the section owns persistence and folds a complete quest's
-/// bonus into Character Info. Toggling the checkbox raises the supplied callback.
+/// One quest card in the Quest Status checklist. Collapsed it shows just the title,
+/// level gate, and a manual <see cref="IsComplete"/> checkbox; clicking the header
+/// (<see cref="ToggleExpandCommand"/>) reveals its detail — class-resolved bonus +
+/// award labels and, for a single-part quest, an ordered followable step checklist.
+/// Completion is one-way: the manual checkbox or ticking every step sets it; the
+/// section owns persistence and folds a complete quest's bonus into Character Info.
+/// Toggling the checkbox raises the supplied callback.
 /// </summary>
 public sealed partial class QuestCardViewModel : ObservableObject
 {
@@ -46,8 +48,19 @@ public sealed partial class QuestCardViewModel : ObservableObject
     /// <summary>True when this card has a followable step checklist to show.</summary>
     public bool HasSteps => Steps.Count > 0;
 
+    /// <summary>True when the card has any detail (bonus / award / steps) worth expanding to.</summary>
+    public bool CanExpand => HasBonus || HasAward || HasSteps;
+
     /// <summary>Whether the quest counts as done for this character — applies its bonus.</summary>
     [ObservableProperty] private bool _isComplete;
+
+    /// <summary>Whether the detail pane (bonus / award / steps) is revealed below the header.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExpandGlyph))]
+    private bool _isExpanded;
+
+    /// <summary>Disclosure chevron reflecting <see cref="IsExpanded"/>.</summary>
+    public string ExpandGlyph => IsExpanded ? "▾" : "▸";
 
     public QuestCardViewModel(
         int flag,
@@ -81,4 +94,11 @@ public sealed partial class QuestCardViewModel : ObservableObject
     }
 
     partial void OnIsCompleteChanged(bool value) => _onCompletionChanged(this);
+
+    // Header click: reveal / collapse the detail pane (no-op when there's nothing to show).
+    [RelayCommand]
+    private void ToggleExpand()
+    {
+        if (CanExpand) IsExpanded = !IsExpanded;
+    }
 }

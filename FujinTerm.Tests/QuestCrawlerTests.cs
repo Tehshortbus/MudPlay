@@ -250,6 +250,78 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
+    public void Crawl_EveryGiveabilityChainClassGuarded_RestrictsToUnionOfClasses()
+    {
+        // Smash (32): both granting chains carry a `class N` guard → the quest is
+        // class-restricted to the union {1,2}; race is unguarded → open to all races.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+                "class 2:minlevel 20:takeitem 1247:giveability 32 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(new[] { 1, 2 }, q.ClassIds);
+        Assert.Null(q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_AnyUnguardedGiveabilityChain_LeavesQuestOpenToAllClasses()
+    {
+        // One granting chain is class-guarded, another is not → conservative rule keeps
+        // the quest open to everyone (ClassIds null), since some path needs no class.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:giveability 60 1",
+                "giveability 60 2:addability 4 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Null(q.ClassIds);
+        Assert.Null(q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_EveryGiveabilityChainRaceGuarded_RestrictsToUnionOfRaces()
+    {
+        // A race-locked quest: every granting chain carries a `race N` guard → restricted
+        // to the union {13}; class is unguarded → open to all classes.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "race 13:minlevel 5:giveability 57 1",
+                "race 13:minlevel 5:giveability 57 2"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Null(q.ClassIds);
+        Assert.Equal(new[] { 13 }, q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_UnrestrictedQuest_HasNullClassAndRaceSets()
+    {
+        // A plain single-part quest with no class/race guard anywhere → open to all.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 125 2:minlevel 15:addability 2 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Null(q.ClassIds);
+        Assert.Null(q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_MultiPartFlag_PropagatesRestrictionToEveryBand()
+    {
+        // A class-guarded multi-part flag: each band inherits the same {3,6} restriction.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 3:giveability 150 4:minlevel 10",
+                "class 6:giveability 150 7:minlevel 20",
+                "class 3:giveability 150 10:minlevel 30",
+                "class 6:giveability 150 18:minlevel 40"), classId: null);
+
+        Assert.Equal(new[] { 10, 20, 30, 40 }, quests.Select(q => q.Step).OrderBy(s => s));
+        Assert.All(quests, q => Assert.Equal(new[] { 3, 6 }, q.ClassIds));
+    }
+
+    [Fact]
     public void Crawl_MultiPartKeeperItems_AttachToTheirBand()
     {
         // A two-band flag where each band's reward step hands over a keeper item:
