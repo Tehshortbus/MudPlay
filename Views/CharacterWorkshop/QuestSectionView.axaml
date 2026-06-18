@@ -27,16 +27,23 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Margin="22">
+    <Grid Margin="22" RowDefinitions="Auto,*">
+
+        <!-- Header strip: launch the modeless name / show-hide / step editor. -->
+        <Button Grid.Row="0" Content="Edit Quests…"
+                Command="{Binding EditQuestsCommand}"
+                HorizontalAlignment="Right" Margin="0,0,0,10"/>
 
         <!-- Empty-state: no visible quest resolved from the active set / character. -->
-        <TextBlock IsVisible="{Binding !HasQuests}"
+        <TextBlock Grid.Row="1"
+                   IsVisible="{Binding !HasQuests}"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
                    Foreground="{StaticResource ChromeFgMutedBrush}"
-                   Text="Load a character and game-data set to list its quests. Mark a quest complete (or tick every step of a followable quest) to fold its permanent bonus into Character Info."/>
+                   Text="Load a character and game-data set to list its quests. Mark a quest complete (or tick every step of a followable quest) to fold its permanent bonus into Character Info. Use “Edit Quests…” to name, hide, or annotate them."/>
 
-        <ScrollViewer IsVisible="{Binding HasQuests}"
+        <ScrollViewer Grid.Row="1"
+                      IsVisible="{Binding HasQuests}"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Quests}">

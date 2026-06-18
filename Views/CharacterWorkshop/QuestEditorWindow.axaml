@@ -1,0 +1,130 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
+        x:Class="FujinTerm.Views.CharacterWorkshop.QuestEditorWindow"
+        x:DataType="vm:QuestEditorViewModel"
+        Title="Quest Editor"
+        Width="720" Height="560"
+        MinWidth="600" MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,6,0,2"/>
+        </Style>
+        <Style Selector="Border.Pane">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="*,Auto" Margin="16">
+
+        <!-- Empty state: the active set crawls no quests. -->
+        <TextBlock Grid.Row="0"
+                   IsVisible="{Binding !HasQuests}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Text="No quests crawl from the active game-data set. Load a set whose TBInfo grants quest flags to name and annotate its quests here."/>
+
+        <!-- Master / detail. -->
+        <Grid Grid.Row="0" ColumnDefinitions="240,*" ColumnSpacing="12"
+              IsVisible="{Binding HasQuests}">
+
+            <!-- Master list -->
+            <Border Grid.Column="0" Classes="Pane">
+                <ListBox ItemsSource="{Binding Quests}"
+                         SelectedItem="{Binding SelectedQuest, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:QuestEditRowViewModel">
+                            <TextBlock Text="{Binding ListLabel}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       Margin="0,2"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Detail editor for the selected quest -->
+            <Grid Grid.Column="1" IsVisible="{Binding HasSelection}"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+
+                <!-- Flag / level context -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="{Binding SelectedQuest.FallbackLabel}"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontFamily="{StaticResource FontMono}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SelectedQuest.LevelText}"
+                               IsVisible="{Binding SelectedQuest.HasLevel}"
+                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Name -->
+                <TextBlock Grid.Row="1" Classes="Label" Text="Display name"/>
+                <TextBox Grid.Row="2"
+                         Text="{Binding SelectedQuest.Name, Mode=TwoWay}"
+                         PlaceholderText="(unnamed — shows the flag id)"/>
+
+                <!-- Visibility + class-resolved bonus -->
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+                    <CheckBox Grid.Column="0"
+                              IsChecked="{Binding SelectedQuest.Visible, Mode=TwoWay}"
+                              Content="Show in quest journal"
+                              Foreground="{StaticResource ChromeFgBrush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                IsVisible="{Binding SelectedQuest.HasBonus}">
+                        <TextBlock Text="Bonus:" Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SelectedQuest.BonusText}"
+                                   Foreground="{StaticResource AccentAmberBrush}"
+                                   FontFamily="{StaticResource FontMono}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Step markdown -->
+                <TextBlock Grid.Row="4" Classes="Label" Text="Steps (markdown — amplifying notes over the auto-draft below)"/>
+                <TextBox Grid.Row="5"
+                         Text="{Binding SelectedQuest.Steps, Mode=TwoWay}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalContentAlignment="Top"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         FontFamily="{StaticResource FontMono}"
+                         MinHeight="120"/>
+
+                <!-- Auto-drafted reference steps -->
+                <StackPanel Grid.Row="6" IsVisible="{Binding SelectedQuest.HasAutoSteps}" Margin="0,8,0,0">
+                    <TextBlock Classes="Label" Text="Auto-drafted steps (from game data)"/>
+                    <Border Classes="Pane" MaxHeight="120">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8">
+                            <TextBlock Text="{Binding SelectedQuest.AutoSteps}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontFamily="{StaticResource FontMono}" FontSize="11"/>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- Save / Cancel -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+            <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="80"/>
+            <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="80" IsDefault="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

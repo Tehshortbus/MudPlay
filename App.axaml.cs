@@ -125,6 +125,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.BlacklistEditorDialogViewModel,
                 FujinTerm.Views.BlacklistEditorDialog>();
 
+            // Phase 10 PR 10.11a — Quest editor (Character Workshop → Quest
+            // Status → "Edit Quests…"). Names / show-hides / annotates quest
+            // steps; writes the active set's {set}/quests.json overlay.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.CharacterWorkshop.QuestEditorViewModel,
+                FujinTerm.Views.CharacterWorkshop.QuestEditorWindow>();
+
             // Right-click → "Center on…" — two-int (map / room) input
             // that returns a RoomKey for the Navigation window to
             // rebuild its layout around.

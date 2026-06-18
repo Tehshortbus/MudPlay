@@ -66,6 +66,62 @@ public sealed class QuestStore
         return new QuestDefinition(flag, step);
     }
 
+    /// <summary>
+    /// Persist the user's edited definitions to the active set's overlay
+    /// (<c>{set}/quests.json</c>) and refresh the in-memory layer so later
+    /// <see cref="Resolve"/> calls see the edits immediately. The overlay stays a
+    /// delta: a definition that matches what <see cref="Resolve"/> would return
+    /// with no overlay (the seed entry, or a blank auto-draft) is dropped rather
+    /// than frozen into the file, so a later seed update still flows through for
+    /// untouched quests. No-op when no set is active.
+    /// </summary>
+    public void Save(IEnumerable<QuestDefinition> defs)
+    {
+        ArgumentNullException.ThrowIfNull(defs);
+        if (ActiveSet is null) return;
+
+        _overlay.Clear();
+        foreach (QuestDefinition raw in defs)
+        {
+            QuestDefinition def = Normalize(raw);
+            if (SameContent(def, Baseline(def.Flag, def.Step))) continue; // delta-only
+            _overlay[(def.Flag, def.Step)] = def;
+        }
+
+        List<QuestDefinition> list = _overlay.Values
+            .OrderBy(d => d.Flag).ThenBy(d => d.Step)
+            .ToList();
+        try
+        {
+            JsonStore.Save(AppPaths.QuestsFile(ActiveSet), list);
+        }
+        catch (Exception ex)
+        {
+            // A failed write (permissions, disk) shouldn't crash the editor — the
+            // in-memory overlay still reflects the edits for this session.
+            _log?.Warn("Quests", $"Failed to save overlay for '{ActiveSet}': {ex.Message}");
+        }
+    }
+
+    // The no-overlay resolution for a quest: the seed entry if one exists, else a
+    // blank auto-draft. Save compares each edited def against this to decide whether
+    // the def is a genuine user delta worth writing.
+    private QuestDefinition Baseline(int flag, int step) =>
+        _seed.TryGetValue((flag, step), out QuestDefinition? seeded)
+            ? Normalize(seeded)
+            : new QuestDefinition(flag, step);
+
+    private static QuestDefinition Normalize(QuestDefinition d) =>
+        new(d.Flag, d.Step,
+            (d.Name ?? string.Empty).Trim(),
+            d.Visible,
+            string.IsNullOrWhiteSpace(d.Steps) ? null : d.Steps);
+
+    private static bool SameContent(QuestDefinition a, QuestDefinition b) =>
+        string.Equals(a.Name, b.Name, StringComparison.Ordinal)
+        && a.Visible == b.Visible
+        && string.Equals(a.Steps, b.Steps, StringComparison.Ordinal);
+
     private void LoadInto(Dictionary<(int Flag, int Step), QuestDefinition> target, string path, string label)
     {
         target.Clear();

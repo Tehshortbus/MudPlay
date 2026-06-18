@@ -166,4 +166,91 @@ public sealed class QuestStoreTests : IDisposable
 
         Assert.False(store.Resolve(50, 1).Visible);
     }
+
+    // ----- Save (PR 10.11a editor persistence) ----------------------------
+
+    [Fact]
+    public void Save_PersistsUserDelta_AndSurvivesReload()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        store.Save([new QuestDefinition(50, 1, "User Name", steps: "user steps")]);
+
+        // A fresh store reading the written overlay sees the edit.
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        QuestDefinition q = reloaded.Resolve(50, 1);
+        Assert.Equal("User Name", q.Name);
+        Assert.Equal("user steps", q.Steps);
+    }
+
+    [Fact]
+    public void Save_DropsBlankDraft_KeepingOverlayDelta()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // A pure default (no name, visible, no steps) is redundant — not frozen in.
+        store.Save([new QuestDefinition(126, 4)]);
+
+        Assert.False(File.Exists(AppPaths.QuestsFile(_scratchSet)) &&
+                     JsonStore.Load<List<QuestDefinition>>(AppPaths.QuestsFile(_scratchSet))!.Count > 0);
+        Assert.Equal(string.Empty, store.Resolve(126, 4).Name);
+    }
+
+    [Fact]
+    public void Save_DropsDefMatchingSeed_SoLaterSeedChangesFlowThrough()
+    {
+        WriteSeed(new QuestDefinition(50, 1, "Seed Name", steps: "seed steps"));
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // Re-save the seed value unchanged: must not freeze it into the overlay.
+        store.Save([store.Resolve(50, 1)]);
+
+        // A store pointed at a *changed* seed (same set) now resolves the new seed,
+        // proving the overlay didn't shadow it.
+        WriteSeed(new QuestDefinition(50, 1, "Updated Seed", steps: "new steps"));
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.Equal("Updated Seed", reloaded.Resolve(50, 1).Name);
+    }
+
+    [Fact]
+    public void Save_HidingSeededQuest_IsWritten()
+    {
+        WriteSeed(new QuestDefinition(50, 1, "Seed Name", visible: true));
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        store.Save([new QuestDefinition(50, 1, "Seed Name", visible: false)]);
+
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.False(reloaded.Resolve(50, 1).Visible);
+    }
+
+    [Fact]
+    public void Save_NormalizesNameAndBlankSteps()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        store.Save([new QuestDefinition(50, 1, "  Trimmed  ", steps: "   ")]);
+
+        QuestDefinition q = store.Resolve(50, 1);
+        Assert.Equal("Trimmed", q.Name);
+        Assert.Null(q.Steps);
+    }
+
+    [Fact]
+    public void Save_NoActiveSet_IsNoOp()
+    {
+        QuestStore store = new(seedPath: _seedPath);   // never OnActiveSetChanged
+
+        store.Save([new QuestDefinition(50, 1, "User Name")]);   // must not throw
+
+        Assert.Null(store.ActiveSet);
+    }
 }

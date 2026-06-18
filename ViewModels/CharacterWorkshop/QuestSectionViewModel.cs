@@ -6,8 +6,8 @@ using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
-using FujinTerm.Game.GameData;
 using FujinTerm.Game.Quests;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -104,9 +104,9 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                 var card = new QuestCardViewModel(
                     q.Flag, q.Step,
                     ResolveTitle(def, q),
-                    FormatLevel(q.RequiredLevel),
-                    FormatBonuses(q.Bonuses),
-                    FormatAwards(q.AwardItems),
+                    QuestTextFormatter.Level(q.RequiredLevel),
+                    QuestTextFormatter.Bonuses(q.Bonuses),
+                    QuestTextFormatter.Awards(_gameData, q.AwardItems),
                     prog.Complete,
                     steps,
                     OnCardCompletionChanged);
@@ -136,8 +136,22 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             if (!seenOrders.Add(s.Order)) continue;
             bool isChecked = prog.CheckedSteps?.Contains(s.Order) == true;
             card.Steps.Add(new QuestStepRowViewModel(
-                s.Order, FormatStep(s), isChecked, row => OnStepToggled(card, row)));
+                s.Order, QuestTextFormatter.Step(_gameData, s), isChecked, row => OnStepToggled(card, row)));
         }
+    }
+
+    // ----- editor ---------------------------------------------------------
+
+    // Open the modeless Quest editor (name / show-hide / step markdown). The async
+    // command auto-disables while open, so a second click can't stack a window. On
+    // Save the overlay changed under us — re-crawl so renames / visibility apply.
+    [RelayCommand]
+    private async Task EditQuests()
+    {
+        var editor = new QuestEditorViewModel(_gameData, _quests, ResolveClassId());
+        bool? saved = await AppServices.Current.Dialogs
+            .OpenWindowAsync<QuestEditorViewModel, bool>(editor);
+        if (saved == true) Rebuild();
     }
 
     // ----- toggle handlers ------------------------------------------------
@@ -234,39 +248,8 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         return num > 0 ? num : null;
     }
 
-    private static string ResolveTitle(QuestDefinition def, CrawledQuest q)
-    {
-        if (!string.IsNullOrWhiteSpace(def.Name)) return def.Name;
-        string flagName = AbilityNames.FormatId(q.Flag);
-        return q.Step > 0 ? $"{flagName} (Lv {q.Step})" : flagName;
-    }
-
-    private static string FormatLevel(int level) =>
-        level > 0 ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Level {level}") : string.Empty;
-
-    private static string FormatBonuses(IReadOnlyList<QuestBonus> bonuses) =>
-        bonuses.Count == 0 ? string.Empty
-            : AbilityNames.SummarizeAbilities(bonuses.Select(b => (b.AbilityId, b.Value)));
-
-    private string FormatAwards(IReadOnlyList<int> awardItems) =>
-        awardItems.Count == 0 ? string.Empty : string.Join(", ", awardItems.Select(ItemName));
-
-    private string FormatStep(QuestStep s)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(s.Command)) parts.Add(s.Command!);
-        if (!string.IsNullOrWhiteSpace(s.Location)) parts.Add($"@ {s.Location}");
-        if (s.TurnInItems.Count > 0) parts.Add("turn in " + string.Join(", ", s.TurnInItems.Select(ItemName)));
-        if (s.RequiredItems.Count > 0) parts.Add("need " + string.Join(", ", s.RequiredItems.Select(ItemName)));
-        if (s.GrantedItems.Count > 0) parts.Add("receive " + string.Join(", ", s.GrantedItems.Select(ItemName)));
-        return parts.Count > 0
-            ? string.Join("  ·  ", parts)
-            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Step {s.Order}");
-    }
-
-    private string ItemName(int id) =>
-        _gameData.FindNameByNumber("Items", id)
-        ?? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"#{id}");
+    private static string ResolveTitle(QuestDefinition def, CrawledQuest q) =>
+        !string.IsNullOrWhiteSpace(def.Name) ? def.Name : QuestTextFormatter.FallbackTitle(q);
 
     private static int GetInt(JsonElement? row, string property)
     {
