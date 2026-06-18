@@ -657,6 +657,14 @@ public sealed class AppServices
     public MacroStore Macros { get; }
 
     /// <summary>
+    /// Per-set quest name / visibility / edited-step overlay store. Backs the
+    /// Character Workshop → Quest Status tab (the mechanical step + bonus data is
+    /// crawled from <see cref="GameData"/>'s <c>TBInfo</c> at runtime). Reloads its
+    /// overlay on <see cref="GameDataCache.ActiveSetChanged"/>.
+    /// </summary>
+    public QuestStore Quests { get; }
+
+    /// <summary>
     /// Runtime keystroke → macro → wire-send bridge. Constructed up-
     /// front; <see cref="MacroDispatcher.SetSender"/> gets bound from
     /// <see cref="MainWindowViewModel"/> after the telnet client is
@@ -1690,6 +1698,14 @@ public sealed class AppServices
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // Quest name / visibility overlay — sibling to the per-set triggers file,
+        // reloaded on every set switch. The mechanical step + bonus data the Quest
+        // Status tab shows is crawled from TBInfo at runtime, not stored here.
+        Quests = new QuestStore(Log);
+        GameData.ActiveSetChanged += Quests.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            Quests.OnActiveSetChanged(GameData.ActiveSet);
 
         // ItemNameStore — int→name index for the active Items.json so
         // the keyed-door FSM can resolve KeyItemId → in-game name and

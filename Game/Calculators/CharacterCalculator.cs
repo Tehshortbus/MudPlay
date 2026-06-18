@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Game.Quests;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Calculators;
@@ -311,6 +312,31 @@ public static class CharacterCalculator
                 totals.MaxSingleAbil22 = abilVal;
 
             MapAbilityToStat(breakdown, totals, sourceName, abilId, abilVal);
+        }
+    }
+
+    /// <summary>
+    /// Fold completed-quest stat rewards into an existing <paramref name="breakdown"/>.
+    /// Each <see cref="QuestBonus"/>'s ability id maps onto the same summary fields
+    /// equipment + race/class bonuses use, so a quest's permanent reward (e.g.
+    /// <c>addability 4</c> max-damage, <c>addability 34</c> dodge) feeds the derived
+    /// combat exactly as the game applies it. <paramref name="sourceName"/> labels the
+    /// per-stat contribution (e.g. the quest name) for the Character Info breakdown.
+    /// </summary>
+    public static void ApplyQuestBonuses(
+        EquipmentStatBreakdown breakdown, IEnumerable<QuestBonus> bonuses, string sourceName)
+    {
+        ArgumentNullException.ThrowIfNull(breakdown);
+        ArgumentNullException.ThrowIfNull(bonuses);
+        EquipmentStatSummary totals = breakdown.Totals;
+        foreach (QuestBonus bonus in bonuses)
+        {
+            if (bonus.AbilityId <= 0 || bonus.Value == 0) continue;
+
+            if (bonus.AbilityId is 22 or 105 or 106 && bonus.Value > totals.MaxSingleAbil22)
+                totals.MaxSingleAbil22 = bonus.Value;
+
+            MapAbilityToStat(breakdown, totals, sourceName, bonus.AbilityId, bonus.Value);
         }
     }
 

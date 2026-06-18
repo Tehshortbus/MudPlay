@@ -12,9 +12,9 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Shell view-model for the Character Workshop window. Mirrors MudProxy's
 /// <c>CharacterStatusDialog</c> shape: a flat tab strip across the six
 /// Phase-10 tabs — Character Info / Death Recovery / Level Projection /
-/// CP Allocation / Quest Status / Equipment Manager. The first four are wired;
-/// Quest Status and Equipment Manager remain stub placeholders until their tab
-/// ships in later Phase-10 PRs.
+/// CP Allocation / Quest Status / Equipment Manager. All but Equipment Manager
+/// are wired; it remains a stub placeholder until its tab ships in a later
+/// Phase-10 PR.
 /// </summary>
 public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisposable
 {
@@ -41,6 +41,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         PlayerDatabase players,
         AlignmentTracker alignment,
         TrainerWalkManager trainerWalk,
+        QuestStore quests,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -51,12 +52,17 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(alignment);
         ArgumentNullException.ThrowIfNull(trainerWalk);
+        ArgumentNullException.ThrowIfNull(quests);
         _profile = profile;
         _gameData = gameData;
 
-        // Tab order matches the Phase-10 plan's nav order. Character Info and
-        // Death Recovery are wired; the rest are stubs until their PR lands.
-        Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players, alignment));
+        // The Quest Status tab (writer) publishes completed-quest bonuses into this
+        // shared state; the Character Info tab (reader) folds them into derived combat.
+        var questBonuses = new QuestBonusState();
+
+        // Tab order matches the Phase-10 plan's nav order. Equipment Manager is the
+        // last remaining stub until its PR lands.
+        Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players, alignment, questBonuses));
 
         Sections.Add(new DeathSectionViewModel(recovery, profile));
 
@@ -67,12 +73,8 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
 
         Sections.Add(new CpAllocationSectionViewModel(playerStats, gameData, inventory, profile, planState, trainerWalk));
 
-        Sections.Add(new StubWorkshopSectionViewModel(
-            "queststatus", "Quest Status",
-            "Phase 10 — PR 10.10–10.11",
-            "Known-quest checklist with base required level, plus per-quest step-flagging " +
-            "that walks completion in order. Completing a quest applies its bonuses to " +
-            "Character Info. Wires when the Quest Status tab ships."));
+        Sections.Add(new QuestSectionViewModel(playerStats, gameData, profile, quests, questBonuses));
+
         Sections.Add(new StubWorkshopSectionViewModel(
             "equipment", "Equipment Manager",
             "Phase 10 — PR 10.12–10.15",

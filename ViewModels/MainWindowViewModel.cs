@@ -2764,7 +2764,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         var workshopVm = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
             svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players,
-            svc.Alignment, svc.TrainerWalk, sectionId);
+            svc.Alignment, svc.TrainerWalk, svc.Quests, sectionId);
         Views.CharacterWorkshop.CharacterWorkshopWindow window = new() { DataContext = workshopVm };
         // The Workshop VM + its sections are rebuilt on every open, so dispose
         // them on close to detach their long-lived service-event subscriptions.

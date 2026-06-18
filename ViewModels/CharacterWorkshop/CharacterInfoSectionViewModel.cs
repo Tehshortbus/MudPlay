@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Avalonia.Controls;
@@ -10,7 +11,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
+using FujinTerm.Game.GameData;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Game.Quests;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Views.CharacterWorkshop;
@@ -27,11 +30,16 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// non-zero stat with a per-item hover breakdown.</item>
 /// <item>Box C — Derived combat accuracy (Attack / Bash / Smash / Backstab)
 /// from <see cref="CombatCalculator"/>. The aggregate it consumes additionally
-/// folds in innate race + class ability bonuses; Smash shows only for
-/// smash-capable classes, Backstab only when the character has stealth.</item>
+/// folds in innate race + class ability bonuses <em>and</em> the permanent rewards
+/// of completed quests (published by the Quest Status tab via
+/// <see cref="QuestBonusState"/>); Smash shows only for smash-capable classes,
+/// Backstab only when the character has stealth.</item>
+/// <item>Quest Bonuses — a flat readout of every completed quest's permanent stat
+/// reward, aggregated by ability. Empty when no completed quest grants a bonus.</item>
 /// </list>
-/// Recomputes whenever the live <see cref="PlayerStats"/> snapshot changes or
-/// inventory updates; the Reset / Refresh buttons force a re-pull.
+/// Recomputes whenever the live <see cref="PlayerStats"/> snapshot changes,
+/// inventory updates, or the completed-quest set changes; the Reset / Refresh
+/// buttons force a re-pull.
 /// </summary>
 public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewModel
 {
@@ -40,6 +48,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private readonly InventoryManager _inventory;
     private readonly PlayerDatabase _playerDb;
     private readonly AlignmentTracker _alignmentTracker;
+    private readonly QuestBonusState _questBonuses;
     private Control? _view;
 
     public override string Id => "characterinfo";
@@ -81,6 +90,12 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     public ObservableCollection<EquipBonusRow> BonusRows { get; } = new();
     /// <summary>False when no worn item contributes a bonus — drives the empty-state hint.</summary>
     [ObservableProperty] private bool _hasBonuses;
+
+    // ----- Quest Bonuses: completed-quest permanent rewards --------------
+    /// <summary>One row per ability granted by a completed quest, summed across quests.</summary>
+    public ObservableCollection<EquipBonusRow> QuestBonusRows { get; } = new();
+    /// <summary>False when no completed quest grants a bonus — drives the empty-state hint.</summary>
+    [ObservableProperty] private bool _hasQuestBonuses;
 
     // ----- Box C: derived combat -----------------------------------------
     [ObservableProperty] private string _attackAccuracy = "—";
@@ -166,23 +181,26 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private int _mProtGood;
     private int _mDamageResist;
 
-    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker)
+    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(playerDb);
         ArgumentNullException.ThrowIfNull(alignmentTracker);
+        ArgumentNullException.ThrowIfNull(questBonuses);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _playerDb = playerDb;
         _alignmentTracker = alignmentTracker;
+        _questBonuses = questBonuses;
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _playerDb.Players.CollectionChanged += OnPlayersChanged;
         _alignmentTracker.StaleChanged += OnAlignmentStaleChanged;
+        _questBonuses.Changed += OnQuestBonusesChanged;
         EnsureMonsterNames();
         Refresh();
     }
@@ -258,7 +276,33 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         if (raceRow is JsonElement r) CharacterCalculator.ApplyAbilityBonuses(combined, r, _stats.Race);
         if (classRow is JsonElement c) CharacterCalculator.ApplyAbilityBonuses(combined, c, _stats.Class);
 
+        // Completed quests grant permanent stat rewards the same accuracy/damage
+        // formulas account for — fold them into the combined aggregate (never Box B,
+        // which is equipment-only) and surface them in their own readout.
+        CharacterCalculator.ApplyQuestBonuses(combined, _questBonuses.Bonuses, "Quests");
+        RebuildQuestBonusRows();
+
         ComputeDerivedCombat(combined.Totals, classRow, raceRow);
+    }
+
+    // Aggregate the published completed-quest bonuses by ability id (quests stack,
+    // so a stat granted by two quests sums) into the Quest Bonuses box rows.
+    private void RebuildQuestBonusRows()
+    {
+        QuestBonusRows.Clear();
+        var byAbil = new Dictionary<int, int>();
+        foreach (QuestBonus b in _questBonuses.Bonuses)
+        {
+            if (b.AbilityId <= 0 || b.Value == 0) continue;
+            byAbil[b.AbilityId] = byAbil.TryGetValue(b.AbilityId, out int v) ? v + b.Value : b.Value;
+        }
+        foreach (KeyValuePair<int, int> kv in byAbil.OrderBy(p => p.Key))
+        {
+            if (kv.Value == 0) continue;
+            string display = kv.Value.ToString("+0;-0", CultureInfo.InvariantCulture);
+            QuestBonusRows.Add(new EquipBonusRow(AbilityNames.FormatId(kv.Key), display, null));
+        }
+        HasQuestBonuses = QuestBonusRows.Count > 0;
     }
 
     private void ComputeDerivedCombat(EquipmentStatSummary t, JsonElement? classRow, JsonElement? raceRow)
@@ -703,11 +747,20 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     // alignment word itself refreshes on the PlayerDatabase update.
     private void OnAlignmentStaleChanged() => AlignmentStale = _alignmentTracker.IsStale;
 
+    // The Quest Status tab republished the completed-quest bonus set — refold it
+    // into derived combat and the matchup (which both consume the combined aggregate).
+    private void OnQuestBonusesChanged()
+    {
+        RefreshDerived();
+        RefreshMatchup();
+    }
+
     public override void Dispose()
     {
         _stats.PropertyChanged -= OnStatsChanged;
         _inventory.Changed -= OnInventoryChanged;
         _playerDb.Players.CollectionChanged -= OnPlayersChanged;
         _alignmentTracker.StaleChanged -= OnAlignmentStaleChanged;
+        _questBonuses.Changed -= OnQuestBonusesChanged;
     }
 }

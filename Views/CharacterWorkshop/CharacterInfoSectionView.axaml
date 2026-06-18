@@ -166,6 +166,36 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Quest Bonuses: completed-quest permanent rewards. Shown only
+                         when at least one completed quest grants a bonus, so it stays
+                         out of the way for characters with no quest rewards yet. -->
+                    <Border Classes="Box" IsVisible="{Binding HasQuestBonuses}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Quest Bonuses"
+                                       Foreground="{StaticResource ChromeFgBrush}"
+                                       FontSize="{StaticResource FontSizeMd}"
+                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <ItemsControl ItemsSource="{Binding QuestBonusRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:EquipBonusRow">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Classes="FieldLabel"
+                                                       Text="{Binding Stat}" Margin="0,0,12,2"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Value}"
+                                                       Foreground="{StaticResource AccentAmberBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="{StaticResource FontSizeMd}"
+                                                       Margin="0,0,0,2"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Box C: Derived Combat -->
                     <Border Classes="Box">
                         <StackPanel Spacing="2">

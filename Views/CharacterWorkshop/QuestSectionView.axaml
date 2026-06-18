@@ -1,0 +1,107 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="620"
+             x:Class="FujinTerm.Views.CharacterWorkshop.QuestSectionView"
+             x:DataType="vm:QuestSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+        </Style>
+        <Style Selector="Border.Box">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22">
+
+        <!-- Empty-state: no visible quest resolved from the active set / character. -->
+        <TextBlock IsVisible="{Binding !HasQuests}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Text="Load a character and game-data set to list its quests. Mark a quest complete (or tick every step of a followable quest) to fold its permanent bonus into Character Info."/>
+
+        <ScrollViewer IsVisible="{Binding HasQuests}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Quests}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="10"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:QuestCardViewModel">
+                        <Border Classes="Box">
+                            <StackPanel Spacing="4">
+
+                                <!-- Header: title + level gate, with the manual Complete toggle. -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   FontSize="{StaticResource FontSizeMd}"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Classes="FieldLabel"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding RequiredLevelText}"/>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" Content="Complete"
+                                              IsChecked="{Binding IsComplete, Mode=TwoWay}"
+                                              Foreground="{StaticResource ChromeFgBrush}"/>
+                                </Grid>
+
+                                <!-- Class-resolved permanent stat bonus. -->
+                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasBonus}">
+                                    <TextBlock Classes="FieldLabel" Text="Bonus:"/>
+                                    <TextBlock Text="{Binding BonusText}" TextWrapping="Wrap"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{StaticResource FontSizeMd}"/>
+                                </StackPanel>
+
+                                <!-- Keeper-item award(s). -->
+                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasAward}">
+                                    <TextBlock Classes="FieldLabel" Text="Award:"/>
+                                    <TextBlock Classes="FieldValue" Text="{Binding AwardText}" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <!-- Followable step checklist (single-part quests only).
+                                     Ticking every step flips the quest complete. -->
+                                <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}"
+                                              Margin="0,4,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:QuestStepRowViewModel">
+                                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                      Margin="0,1,0,1" VerticalAlignment="Top">
+                                                <TextBlock Classes="FieldLabel"
+                                                           Text="{Binding Display}"
+                                                           TextWrapping="Wrap"/>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

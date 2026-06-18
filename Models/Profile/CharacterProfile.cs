@@ -260,4 +260,13 @@ public sealed class CharacterProfile
     /// Phase-10 PRs. <c>null</c> / empty means no plan saved.
     /// </summary>
     public List<CpPlanEntry>? CharacterPlan { get; set; }
+
+    /// <summary>
+    /// Per-character quest completion state (Workshop Quest Status tab), keyed by
+    /// the crawler's (flag, step) quest identity. Records which quests / alignment
+    /// bands the character has finished and, for single-part quests, which steps
+    /// are ticked. Drives the bonus fold into Character Info. <c>null</c> / empty
+    /// means nothing completed yet.
+    /// </summary>
+    public List<QuestProgress>? QuestLog { get; set; }
 }
