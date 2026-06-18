@@ -1,3 +1,4 @@
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -106,6 +107,51 @@ public sealed class AutoPartyManager : IDisposable
     /// <summary>Window after an uninvite during which the player won't be auto-invited again. Default 1 h.</summary>
     public TimeSpan UninviteSuppression { get; set; } = TimeSpan.FromHours(1);
 
+    // ----- Invite-as-wait-signal (Settings → Party "If leading, wait only") --
+    /// <summary>
+    /// How long, after auto-inviting a seen player while a loop is running,
+    /// we hold the loop (via <see cref="MovementCoordinator.PartyInviteGate"/>)
+    /// waiting for them to join before giving up — at which point we
+    /// <c>uninvite</c> them and let the loop resume. Mirrors the Party-tab
+    /// "If leading, wait only (s)" value
+    /// (<see cref="Models.Profile.PartySettings.IfLeadingWaitTotalSec"/>).
+    /// <c>0</c> disables the wait-signal entirely (invite + nag still run,
+    /// but the loop never pauses and we never auto-uninvite).
+    /// </summary>
+    public TimeSpan InviteWaitWindow { get; set; } = TimeSpan.FromSeconds(90);
+
+    private MovementCoordinator? _coordinator;
+    private Func<bool>? _isLooping;
+
+    /// <summary>Per-given-name invite-wait deadlines — present while we're
+    /// holding the loop for an auto-invited player to join. Maps to the
+    /// moment the invite went out; the wait expires at
+    /// <c>invitedAt + InviteWaitWindow</c>.</summary>
+    private readonly Dictionary<string, DateTime> _inviteWaits =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Members whose <see cref="PartyMember.IsInvited"/> we're
+    /// watching so a pending invite flipping accepted releases the loop hold.</summary>
+    private readonly HashSet<PartyMember> _watchedMembers = new();
+
+    /// <summary>Identifier surfaced in <see cref="MovementCoordinator.History"/>
+    /// when we flip the PartyInvite gate.</summary>
+    private const string InviteGateAsserter = "AutoPartyManager";
+
+    /// <summary>
+    /// Late-bind the movement gate used by the invite-as-wait-signal
+    /// behaviour. AppServices constructs <see cref="AutoPartyManager"/>
+    /// before the <see cref="MovementCoordinator"/> / loop engine exist,
+    /// so they're injected here once available. <paramref name="isLooping"/>
+    /// reports whether a loop circuit is currently active — the wait only
+    /// engages while looping.
+    /// </summary>
+    public void SetMovementGate(MovementCoordinator coordinator, Func<bool> isLooping)
+    {
+        _coordinator = coordinator;
+        _isLooping   = isLooping;
+    }
+
     /// <summary>Per-target nag-escalation state — live for the duration of the @join sequence.</summary>
     private readonly Dictionary<string, NagState> _activeNags =
         new(StringComparer.OrdinalIgnoreCase);
@@ -175,6 +221,7 @@ public sealed class AutoPartyManager : IDisposable
         // them could be re-invited the next "Also here:").
         _party.Members.CollectionChanged += OnPartyMembersChanged;
         _party.PropertyChanged           += OnPartyPropertyChanged;
+        foreach (PartyMember m in _party.Members) Watch(m);
     }
 
     private void OnPartyMembersChanged(object? sender,
@@ -185,8 +232,12 @@ public sealed class AutoPartyManager : IDisposable
             foreach (object? item in e.OldItems)
             {
                 if (item is not PartyMember m) continue;
+                Unwatch(m);
                 string given = ExtractGiven(m.Name);
-                if (!string.IsNullOrEmpty(given)) _recentlyInvited.Remove(given);
+                if (string.IsNullOrEmpty(given)) continue;
+                _recentlyInvited.Remove(given);
+                // Row gone (uninvited / left) — release any loop hold for them.
+                EndInviteWait(given, reason: "left the roster");
             }
         }
         // Any name that's now in the roster — the @join nag for them
@@ -196,10 +247,45 @@ public sealed class AutoPartyManager : IDisposable
             foreach (object? item in e.NewItems)
             {
                 if (item is not PartyMember m) continue;
+                Watch(m);
                 string given = ExtractGiven(m.Name);
-                if (!string.IsNullOrEmpty(given)) CancelNag(given, reason: "joined the party");
+                if (string.IsNullOrEmpty(given)) continue;
+                CancelNag(given, reason: "joined the party");
+                // A row added already non-invited is a real join (par
+                // discovered them); the invited-placeholder add keeps
+                // waiting until its IsInvited flips false (OnMemberPropertyChanged).
+                if (!m.IsInvited) EndInviteWait(given, reason: "joined the party");
             }
         }
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+        {
+            foreach (PartyMember m in _watchedMembers) m.PropertyChanged -= OnMemberPropertyChanged;
+            _watchedMembers.Clear();
+            foreach (PartyMember m in _party.Members) Watch(m);
+        }
+    }
+
+    private void Watch(PartyMember m)
+    {
+        if (_watchedMembers.Add(m)) m.PropertyChanged += OnMemberPropertyChanged;
+    }
+
+    private void Unwatch(PartyMember m)
+    {
+        if (_watchedMembers.Remove(m)) m.PropertyChanged -= OnMemberPropertyChanged;
+    }
+
+    /// <summary>
+    /// A pending-invite row flipping <see cref="PartyMember.IsInvited"/>
+    /// false is the realm-confirmed join (set by
+    /// <c>PartyManager.OnFollowsYou</c>) — release the loop hold for them.
+    /// </summary>
+    private void OnMemberPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(PartyMember.IsInvited)) return;
+        if (sender is not PartyMember m || m.IsInvited) return;
+        string given = ExtractGiven(m.Name);
+        if (!string.IsNullOrEmpty(given)) EndInviteWait(given, reason: "joined the party");
     }
 
     private void OnPartyPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -209,6 +295,8 @@ public sealed class AutoPartyManager : IDisposable
         if (e.PropertyName == nameof(PartyState.IsInParty) && !_party.IsInParty)
         {
             _recentlyInvited.Clear();
+            // Nobody left to wait for — release any loop hold.
+            ClearAllInviteWaits("party dissolved");
         }
         // If we just became a follower, abort every active nag — only
         // solo or leader configurations should be inviting people.
@@ -217,6 +305,7 @@ public sealed class AutoPartyManager : IDisposable
             && _party.IsInParty && !_party.SelfIsLeader)
         {
             CancelAllNags("became a follower");
+            ClearAllInviteWaits("became a follower");
         }
     }
 
@@ -286,7 +375,11 @@ public sealed class AutoPartyManager : IDisposable
         _youInvitedSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
+        foreach (PartyMember m in _watchedMembers) m.PropertyChanged -= OnMemberPropertyChanged;
+        _watchedMembers.Clear();
         if (_trainerMenu is not null) _trainerMenu.MenuExited -= OnTrainerMenuExited;
+        // Release any held gate so a disposed manager doesn't strand the loop.
+        ClearAllInviteWaits("manager disposed");
         StopNagTimer();
     }
 
@@ -409,6 +502,10 @@ public sealed class AutoPartyManager : IDisposable
         // after JoinNagInitialDelay, then re-sends every JoinNagFrequency
         // until they join, telepath back, or JoinNagMaxTotal expires.
         StartNag(given, now);
+
+        // Invite-as-wait-signal — if a loop is running, hold it while we
+        // wait for this player to form up. Expiry uninvites + resumes.
+        BeginInviteWait(given, now);
     }
 
     /// <summary>
@@ -564,8 +661,10 @@ public sealed class AutoPartyManager : IDisposable
 
     private void TickNags()
     {
-        if (_activeNags.Count == 0) { StopNagTimer(); return; }
+        if (_activeNags.Count == 0 && _inviteWaits.Count == 0) { StopNagTimer(); return; }
         DateTime now = NowProvider();
+
+        ExpireInviteWaits(now);
 
         // Snapshot keys — cancel paths mutate _activeNags.
         foreach (string given in _activeNags.Keys.ToArray())
@@ -611,6 +710,85 @@ public sealed class AutoPartyManager : IDisposable
         s.JoinSends++;
         _log?.Log(LogSeverity.Info, "AutoParty",
             $"Sent @join nag #{s.JoinSends} to {s.Given}.");
+    }
+
+    // ----- Invite-as-wait-signal ---------------------------------------
+
+    /// <summary>
+    /// Engage the loop hold for an auto-invited player. Only fires while a
+    /// loop is running and the wait window is non-zero — otherwise the
+    /// invite + nag run unchanged and the circuit keeps moving.
+    /// </summary>
+    private void BeginInviteWait(string given, DateTime invitedAt)
+    {
+        if (_coordinator is null) return;
+        if (InviteWaitWindow <= TimeSpan.Zero) return;
+        if (_isLooping?.Invoke() != true) return;
+
+        _inviteWaits[given] = invitedAt;
+        RefreshInviteGate();
+        EnsureNagTimerRunning();
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Holding loop for {given} to join (up to {InviteWaitWindow.TotalSeconds:0}s).");
+    }
+
+    /// <summary>
+    /// Drop the invite-wait for <paramref name="given"/> (they joined, were
+    /// uninvited, or the party dissolved) and re-evaluate the gate.
+    /// </summary>
+    private void EndInviteWait(string given, string reason)
+    {
+        if (!_inviteWaits.Remove(given)) return;
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Released loop hold for {given} — {reason}.");
+        RefreshInviteGate();
+        if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
+    }
+
+    /// <summary>
+    /// Uninvite anyone whose wait window has elapsed. The server's
+    /// "removed from your followers" echo then suppresses re-invite and
+    /// cancels their nag via <see cref="OnFollowerRemoved"/>; here we just
+    /// drop the wait so the gate can release and the loop resume.
+    /// </summary>
+    private void ExpireInviteWaits(DateTime now)
+    {
+        if (_inviteWaits.Count == 0) return;
+        foreach (string given in _inviteWaits.Keys.ToArray())
+        {
+            if (!_inviteWaits.TryGetValue(given, out DateTime invitedAt)) continue;
+            if (now - invitedAt < InviteWaitWindow) continue;
+            if (_wire.IsBound) _wire.Send($"uninvite {given}");
+            _log?.Log(LogSeverity.Info, "AutoParty",
+                $"{given} didn't join within {InviteWaitWindow.TotalSeconds:0}s — uninviting, resuming loop.");
+            EndInviteWait(given, reason: "wait window expired");
+        }
+    }
+
+    /// <summary>Assert the PartyInvite gate while any wait is pending, clear it otherwise.</summary>
+    private void RefreshInviteGate()
+    {
+        if (_coordinator is null) return;
+        if (_inviteWaits.Count > 0)
+        {
+            _coordinator.AssertGate(MovementCoordinator.PartyInviteGate, InviteGateAsserter,
+                $"awaiting join: {string.Join(", ", _inviteWaits.Keys)}");
+        }
+        else
+        {
+            _coordinator.ClearGate(MovementCoordinator.PartyInviteGate, InviteGateAsserter,
+                "all invited members resolved");
+        }
+    }
+
+    /// <summary>Drop every pending invite-wait and release the gate.</summary>
+    private void ClearAllInviteWaits(string reason)
+    {
+        if (_inviteWaits.Count == 0) return;
+        _inviteWaits.Clear();
+        _log?.Log(LogSeverity.Info, "AutoParty", $"Released all loop holds — {reason}.");
+        RefreshInviteGate();
+        if (_activeNags.Count == 0) StopNagTimer();
     }
 
     // ----- Parsing helpers ---------------------------------------------

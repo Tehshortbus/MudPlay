@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -578,6 +579,133 @@ public sealed class AutoPartyManagerTests
             b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
         Assert.Contains(engine.LastSentForTests,
             b => Encoding.Latin1.GetString(b) == "invite Helper\r");
+    }
+
+    // ===== Invite-as-wait-signal (loop hold) =====
+
+    [Fact]
+    public void InviteWait_WhileLooping_AssertsPartyInviteGate()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => true);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+    }
+
+    [Fact]
+    public void InviteWait_NotLooping_DoesNotHoldLoop()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        // Invite still goes out, but no loop hold when we're not looping.
+        Assert.Single(engine.LastSentForTests);
+        Assert.False(coord.IsPaused);
+    }
+
+    [Fact]
+    public void InviteWait_ZeroWindow_DisablesHold()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.Zero;
+        engine.SetMovementGate(coord, isLooping: () => true);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        Assert.False(coord.IsPaused);
+    }
+
+    [Fact]
+    public void InviteWait_TimeoutWithoutJoin_UninvitesAndResumes()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => true);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+        Assert.True(coord.IsPaused);
+
+        // Before the window elapses — still holding, no uninvite.
+        engine.NowProvider = () => t0.AddSeconds(80);
+        engine.TickNagsForTests();
+        Assert.True(coord.IsPaused);
+        Assert.DoesNotContain(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
+
+        // Past the window — uninvite the no-show and release the gate.
+        engine.NowProvider = () => t0.AddSeconds(91);
+        engine.TickNagsForTests();
+        Assert.Contains(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
+        Assert.False(coord.IsPaused);
+    }
+
+    [Fact]
+    public void InviteWait_TargetJoins_ReleasesGateWithoutUninvite()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => true);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+        Assert.True(coord.IsPaused);
+
+        // Production leader path: invite adds a placeholder row (still
+        // holding), then acceptance flips IsInvited false on the same row.
+        PartyMember row = new() { Name = "Raijin", IsInvited = true };
+        party.Members.Add(row);
+        Assert.True(coord.IsPaused);
+        row.IsInvited = false;
+
+        Assert.False(coord.IsPaused);
+
+        // Even past the window, no uninvite — they joined.
+        engine.NowProvider = () => t0.AddSeconds(120);
+        engine.TickNagsForTests();
+        Assert.DoesNotContain(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
+    }
+
+    [Fact]
+    public void InviteWait_PartyDissolves_ReleasesGate()
+    {
+        var (engine, router, players, party) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => true);
+
+        Dispatch(router, "Also here: Raijin.");
+        Assert.True(coord.IsPaused);
+
+        // Whole-party wipe releases any pending loop hold.
+        party.IsInParty = true;
+        party.IsInParty = false;
+
+        Assert.False(coord.IsPaused);
     }
 
     // ===== Uninvite suppression =====

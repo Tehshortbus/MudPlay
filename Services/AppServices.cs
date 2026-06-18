@@ -2351,6 +2351,14 @@ public sealed class AppServices
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
 
+        // Invite-as-wait-signal — AutoPartyManager holds the loop (via the
+        // PartyInvite gate) while waiting for an auto-invited player to join,
+        // and uninvites + resumes if they miss the wait window. Wired here
+        // because both the coordinator and loop engine now exist (AutoParty
+        // is constructed earlier, before the movement layer).
+        AutoParty.SetMovementGate(MovementCoordinator,
+            () => LoopRunner.State != Game.Map.LoopState.Idle);
+
         // Deterministic Auto-Lair scheduler — picks the next marked
         // lair to enter based on respawn timers + travel cost, parks
         // at a wait-room one hop short, then steps in on the tick.
@@ -2803,6 +2811,9 @@ public sealed class AppServices
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(Math.Clamp(dto.ParPollFrequencySec, 1, 60)));
         Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        // Same "If leading, wait only" window also caps the invite-as-wait-signal
+        // loop hold before we uninvite a no-show.
+        AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
         // Shared nag cadence — same Settings.Party knobs feed both the
@@ -2827,6 +2838,7 @@ public sealed class AppServices
         PartyPoller.SetParCadence(TimeSpan.FromSeconds(defaults.ParPollFrequencySec));
         Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
         TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);

@@ -73,6 +73,13 @@ public sealed class MovementCoordinator
     /// before the group moves on.</summary>
     public const string PartyVitalsGate = "PartyVitals";
 
+    /// <summary>Asserted by <c>AutoPartyManager</c> while a loop is running
+    /// and we're waiting for an auto-invited player to join. Holds the
+    /// circuit so the group forms up before moving on; clears when they
+    /// join or the Party-tab "If leading, wait only" window elapses (at
+    /// which point we <c>uninvite</c> them and resume).</summary>
+    public const string PartyInviteGate = "PartyInvite";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;
