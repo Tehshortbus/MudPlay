@@ -59,16 +59,26 @@
             <Grid Grid.Column="1" IsVisible="{Binding HasSelection}"
                   RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
 
-                <!-- Flag / level context -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
-                    <TextBlock Text="{Binding SelectedQuest.FallbackLabel}"
-                               Foreground="{StaticResource ChromeFgSecBrush}"
-                               FontFamily="{StaticResource FontMono}"
-                               VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding SelectedQuest.LevelText}"
-                               IsVisible="{Binding SelectedQuest.HasLevel}"
-                               Foreground="{StaticResource ChromeFgMutedBrush}"
-                               VerticalAlignment="Center"/>
+                <!-- Flag / level context + crawled class/race restriction -->
+                <StackPanel Grid.Row="0" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{Binding SelectedQuest.FallbackLabel}"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SelectedQuest.LevelText}"
+                                   IsVisible="{Binding SelectedQuest.HasLevel}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding SelectedQuest.HasRequirements}">
+                        <TextBlock Text="Requires:" Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontSize="11" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SelectedQuest.RequirementsText}" TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontSize="11" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Name -->

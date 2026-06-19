@@ -98,6 +98,15 @@
                                 <!-- Detail pane: revealed only when the card is expanded. -->
                                 <StackPanel Spacing="4" IsVisible="{Binding IsExpanded}">
 
+                                    <!-- Class / race restriction the crawl found (informational —
+                                         not a hard eligibility gate; quests are no longer hidden). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasRequirements}">
+                                        <TextBlock Classes="FieldLabel" Text="Requires:"/>
+                                        <TextBlock Text="{Binding RequirementsText}" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                   FontSize="{StaticResource FontSizeMd}"/>
+                                    </StackPanel>
+
                                     <!-- Class-resolved permanent stat bonus. -->
                                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasBonus}">
                                         <TextBlock Classes="FieldLabel" Text="Bonus:"/>

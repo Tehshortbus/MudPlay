@@ -57,6 +57,27 @@ internal static partial class QuestTextFormatter
             ? string.Join(", ", q.AwardItems.Select(id => ItemName(gameData, id)))
             : q.AwardsAbility ? AbilityNames.FormatId(q.Flag) : string.Empty;
 
+    /// <summary>
+    /// The class / race the crawl found this quest restricted to, as
+    /// <c>"Classes: Warrior, Cleric  ·  Races: Gaunt One"</c>; empty when the quest is
+    /// open to all (no restriction surfaced). Informational — the crawl reads guards off
+    /// the grant chains and can't see gating that lives upstream in the textblock flow, so
+    /// this is "what the crawl grabbed", not a hard eligibility verdict.
+    /// </summary>
+    public static string Requirements(GameDataCache gameData, CrawledQuest q)
+    {
+        var parts = new List<string>();
+        if (q.ClassIds is { Count: > 0 } cls)
+            parts.Add("Classes: " + string.Join(", ", cls.Select(id => RestrictionName(gameData, "Classes", id))));
+        if (q.RaceIds is { Count: > 0 } rcs)
+            parts.Add("Races: " + string.Join(", ", rcs.Select(id => RestrictionName(gameData, "Races", id))));
+        return string.Join("  ·  ", parts);
+    }
+
+    private static string RestrictionName(GameDataCache gameData, string table, int number) =>
+        gameData.FindNameByNumber(table, number)
+        ?? string.Create(CultureInfo.InvariantCulture, $"#{number}");
+
     /// <summary>One followable step rendered as <c>command · @ location · turn in … · need … · receive …</c>.</summary>
     public static string Step(GameDataCache gameData, QuestStep s)
     {

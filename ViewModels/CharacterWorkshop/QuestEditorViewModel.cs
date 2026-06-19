@@ -56,6 +56,7 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
                 QuestTextFormatter.Awards(gameData, q),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
+                QuestTextFormatter.Requirements(gameData, q),
                 def.Name,
                 def.Visible,
                 def.Steps ?? string.Empty,

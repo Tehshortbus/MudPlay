@@ -102,20 +102,38 @@ public static class QuestCrawler
         return quests;
     }
 
-    // A flag is class-restricted only when *every* giveability chain that grants it
+    // A flag is class-restricted only when *every real* giveability chain that grants it
     // carries a `class N` guard — then the allowed set is the union of those ids. If any
-    // granting chain is unguarded the quest is open to all classes (null). Same rule for
-    // `race`. Conservative: it never hides a quest some unguarded chain leaves open to all.
+    // real granting chain is unguarded the quest is open to all classes (null). Same rule
+    // for `race`. Conservative: it never hides a quest some unguarded chain leaves open.
+    //
+    // "Real" excludes a bare re-grant node — `failability <flag>:giveability <flag> N` with
+    // no quest content. Such a node carries no class guard because its gating lives upstream
+    // in the textblock flow the crawl can't reach, so counting it as an "open to all" grant
+    // wrongly unrestricts a class-locked quest: Smash's lone continuation node did exactly
+    // that, making it visible to every class. Only chains that do real quest work — an
+    // explicit guard, an item exchange, a level gate, or a stat reward — vote on openness.
     private static (IReadOnlyList<int>?, IReadOnlyList<int>?) ResolveRestrictions(List<ParsedChain> chains)
     {
-        IReadOnlyList<int>? classes = chains.Any(c => c.ClassIds.Count == 0)
+        List<ParsedChain> real = chains.Where(IsRealGrant).ToList();
+        if (real.Count == 0) real = chains; // all bare: nothing better to judge from
+
+        IReadOnlyList<int>? classes = real.Any(c => c.ClassIds.Count == 0)
             ? null
-            : chains.SelectMany(c => c.ClassIds).Distinct().OrderBy(x => x).ToArray();
-        IReadOnlyList<int>? races = chains.Any(c => c.RaceIds.Count == 0)
+            : real.SelectMany(c => c.ClassIds).Distinct().OrderBy(x => x).ToArray();
+        IReadOnlyList<int>? races = real.Any(c => c.RaceIds.Count == 0)
             ? null
-            : chains.SelectMany(c => c.RaceIds).Distinct().OrderBy(x => x).ToArray();
+            : real.SelectMany(c => c.RaceIds).Distinct().OrderBy(x => x).ToArray();
         return (classes, races);
     }
+
+    // A granting chain does real quest work — i.e. is an entry/progress step rather than a
+    // bare re-grant continuation — when it carries a class/race guard, an item exchange, a
+    // level gate, or a stat reward. (A `failability <flag>:giveability <flag> N` node has
+    // none of these.)
+    private static bool IsRealGrant(ParsedChain c) =>
+        c.ClassIds.Count > 0 || c.RaceIds.Count > 0 || c.GiveItems.Count > 0
+        || c.TakeItems.Count > 0 || (c.MinLevel is int ml && ml > 0) || c.Bonuses.Count > 0;
 
     // Every distinct giveability target across the data — the discovered quest-flag
     // set, used to tell stat rewards (addability off-set) from progress (on-set).

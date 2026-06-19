@@ -38,6 +38,10 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     public string LevelText { get; }
     public bool HasLevel => LevelText.Length > 0;
 
+    /// <summary>Class / race restriction the crawl found; empty when the quest is open to all.</summary>
+    public string RequirementsText { get; }
+    public bool HasRequirements => RequirementsText.Length > 0;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ListLabel))]
     private string _name;
@@ -52,8 +56,8 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
 
     public QuestEditRowViewModel(int flag, int step, string fallbackLabel,
                                  string autoSteps, string autoRewards, string bonusText,
-                                 string levelText, string name, bool visible,
-                                 string steps, string rewards)
+                                 string levelText, string requirementsText, string name,
+                                 bool visible, string steps, string rewards)
     {
         Flag = flag;
         Step = step;
@@ -62,6 +66,7 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         AutoRewards = autoRewards;
         BonusText = bonusText;
         LevelText = levelText;
+        RequirementsText = requirementsText;
         // Prefill the editable boxes from the crawl baseline so the user starts from the
         // auto-draft rather than a blank field; a saved overlay value (if any) wins.
         _name = string.IsNullOrWhiteSpace(name) ? fallbackLabel : name;

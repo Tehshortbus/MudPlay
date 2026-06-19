@@ -268,10 +268,11 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_AnyUnguardedGiveabilityChain_LeavesQuestOpenToAllClasses()
+    public void Crawl_AnyUnguardedRealGiveabilityChain_LeavesQuestOpenToAllClasses()
     {
-        // One granting chain is class-guarded, another is not → conservative rule keeps
-        // the quest open to everyone (ClassIds null), since some path needs no class.
+        // One granting chain is class-guarded, another is unguarded but does real quest
+        // work (a stat reward) → conservative rule keeps the quest open to everyone
+        // (ClassIds null), since some genuine path needs no class.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
                 "class 1:giveability 60 1",
@@ -279,6 +280,25 @@ public sealed class QuestCrawlerTests : IDisposable
 
         CrawledQuest q = Assert.Single(quests);
         Assert.Null(q.ClassIds);
+        Assert.Null(q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_DegenerateContinuationChain_DoesNotUnrestrictAClassLockedQuest()
+    {
+        // Smash's real shape: every entry grant is class-guarded, plus a bare
+        // `failability 32:giveability 32 1` re-grant node with no quest content — its class
+        // gate lives upstream in the textblock flow the crawl can't see. That bare node must
+        // NOT count as an "open to all" path (the bug that made Smash visible to every
+        // class); the quest stays restricted to the union {1,2} of its real grants.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+                "class 2:minlevel 20:takeitem 1247:giveability 32 1",
+                "failability 32:giveability 32 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(new[] { 1, 2 }, q.ClassIds);
         Assert.Null(q.RaceIds);
     }
 
