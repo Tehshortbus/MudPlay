@@ -145,4 +145,38 @@ public sealed class QuestStepGraphTests : IDisposable
         QuestStep step = Assert.Single(QuestStepGraph.Build(cache, 130));
         Assert.Equal(2, step.Order);
     }
+
+    [Fact]
+    public void Build_ByAbilityValue_OrdersStepsByClimbedValue_AndFoldsValueZeroGate()
+    {
+        // MageBane (flag 50) value-ladder: the default give-step path can't see the
+        // addability-advanced tiers, but byAbilityValue walks them. The grant sits at
+        // value 1, each `addability 50 1` climbs one tier (its Order is the value it
+        // lands on), and the `checkability 50 0` witchhunter-only gate folds to value 1
+        // rather than ordering at 0.
+        GameDataCache cache = CacheWith(
+            ("ask sword:giveability 50 1:giveitem 100", "Room 1/1"),
+            ("show key:checkability 50 0:giveitem 200", "Room 1/2"),
+            ("turn key:checkability 50 1:addability 50 1:giveitem 300", "Room 2/2"),
+            ("open door:checkability 50 2:addability 50 1:giveitem 400", "Room 3/3"),
+            ("slay draka:checkability 50 3:addability 50 1:giveitem 500", "Room 4/4"));
+
+        int[] orders = QuestStepGraph.Build(cache, 50, byAbilityValue: true).Select(s => s.Order).ToArray();
+        Assert.Equal(new[] { 1, 1, 2, 3, 4 }, orders);
+    }
+
+    [Fact]
+    public void Build_ByAbilityValue_KeepsDistinctStepsSharingOneValue()
+    {
+        // Two distinct chains both gate on value 1 (different commands/rooms) — on the
+        // value axis they share Order 1 but are not the same step, so both survive (the
+        // give-step dedup only folds a step echoed verbatim from many rooms).
+        GameDataCache cache = CacheWith(
+            ("ask sword:giveability 50 1:giveitem 100", "Room 1/1"),
+            ("read note:checkability 50 1:giveitem 200", "Room 1/2"));
+
+        QuestStep[] steps = QuestStepGraph.Build(cache, 50, byAbilityValue: true).ToArray();
+        Assert.Equal(2, steps.Length);
+        Assert.All(steps, s => Assert.Equal(1, s.Order));
+    }
 }

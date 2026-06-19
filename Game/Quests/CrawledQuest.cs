@@ -79,6 +79,14 @@ namespace FujinTerm.Game.Quests;
 /// (<see cref="Flag"/>) as the award. Always <c>false</c> for a multi-part band, whose
 /// flag is a shared progress marker across tiers rather than a per-tier prize.
 /// </param>
+/// <param name="ProgressByValue">
+/// <c>true</c> when this band tiers by the flag's <em>ability value</em> (1, 2, 3, …)
+/// rather than by climbing give-step order — the shape of a quest advanced by relative
+/// <c>addability &lt;flag&gt;</c> increments (MageBane). <see cref="Step"/> and
+/// <see cref="StepRangeStart"/>/<see cref="StepRangeEnd"/> are that ability value, so the
+/// followable-step draft walks the same axis (<c>QuestStepGraph.Build(…, byAbilityValue: true)</c>).
+/// <c>false</c> for single-part and give-step-laddered quests.
+/// </param>
 public sealed record CrawledQuest(
     int Flag,
     int Step,
@@ -90,4 +98,5 @@ public sealed record CrawledQuest(
     int BandOrdinal = 0,
     int StepRangeStart = 0,
     int StepRangeEnd = 0,
-    bool AwardsAbility = false);
+    bool AwardsAbility = false,
+    bool ProgressByValue = false);

@@ -27,8 +27,17 @@ public static class QuestStepGraph
     /// Build the ordered step draft for <paramref name="flag"/> in the active set.
     /// Empty when no set is active, <c>TBInfo</c> is missing, or the flag has no
     /// chains. Steps are de-duplicated and ordered by give-step, then location.
+    /// <para>
+    /// <paramref name="byAbilityValue"/> selects the progress axis. Default (<c>false</c>):
+    /// a chain is a step only when its terminal <c>giveability</c> advances the flag, and
+    /// the give-step orders it (single-part and give-step-laddered quests). <c>true</c>:
+    /// a chain is a step when it advances <em>or</em> gates the flag via any
+    /// give/add/check/test directive, ordered by the ability value it lands on — the shape
+    /// of an <c>addability</c>-advanced quest (MageBane) whose later tiers carry no
+    /// giveability of their own.
+    /// </para>
     /// </summary>
-    public static IReadOnlyList<QuestStep> Build(GameDataCache cache, int flag)
+    public static IReadOnlyList<QuestStep> Build(GameDataCache cache, int flag, bool byAbilityValue = false)
     {
         ArgumentNullException.ThrowIfNull(cache);
 
@@ -49,7 +58,7 @@ public static class QuestStepGraph
 
             foreach (string raw in action.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                QuestStep? step = BuildStep(raw, flag, location);
+                QuestStep? step = byAbilityValue ? BuildValueStep(raw, flag, location) : BuildStep(raw, flag, location);
                 if (step is null) continue;
                 if (seen.Add(CanonicalKey(step))) steps.Add(step);
             }
@@ -103,6 +112,49 @@ public static class QuestStepGraph
         if (terminalFlag != flag) return null;
 
         return new QuestStep(terminalStep, ReadCommand(segments), location, requiredItems, turnInItems, grantedItems);
+    }
+
+    // Value-axis variant: a chain is a step when it touches `flag` via any give/add/
+    // check/test ability directive, ordered by the ability value it lands on
+    // (QuestCrawler.AbilityValueOf — shared so the draft and the crawl band agree). A
+    // "have the flag at all" gate (value 0) folds into band 1, matching the crawler.
+    private static QuestStep? BuildValueStep(string raw, int flag, string? location)
+    {
+        string[] segments = raw.Split(':');
+        if (segments.Length == 0) return null;
+
+        bool touches = false;
+        var requiredItems = new List<int>();
+        var turnInItems = new List<int>();
+        var grantedItems = new List<int>();
+
+        foreach (string segment in segments)
+        {
+            string[] p = segment.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length == 0) continue;
+
+            switch (p[0].ToLowerInvariant())
+            {
+                case "giveability" or "addability" or "checkability" or "testability"
+                    when p.Length >= 3 && int.TryParse(p[1], out int af) && af == flag:
+                    touches = true;
+                    break;
+                case "checkitem" when p.Length >= 2 && int.TryParse(p[1], out int ci):
+                    if (!requiredItems.Contains(ci)) requiredItems.Add(ci);
+                    break;
+                case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
+                    if (!turnInItems.Contains(ti)) turnInItems.Add(ti);
+                    break;
+                case "giveitem" when p.Length >= 2 && int.TryParse(p[1], out int gi):
+                    if (!grantedItems.Contains(gi)) grantedItems.Add(gi);
+                    break;
+            }
+        }
+
+        if (!touches) return null;
+
+        int value = QuestCrawler.AbilityValueOf(raw, flag);
+        return new QuestStep(value <= 0 ? 1 : value, ReadCommand(segments), location, requiredItems, turnInItems, grantedItems);
     }
 
     // The first segment is a player command only when it doesn't lead with a known

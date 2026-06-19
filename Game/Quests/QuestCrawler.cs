@@ -30,10 +30,20 @@ namespace FujinTerm.Game.Quests;
 /// case, and only the combined give+test+check gates reveal all five tiers — the
 /// giveability gates alone undercount them). Per-class <c>minlevel</c> variants of the
 /// <em>same</em> step (Smash, Meditate, Perfect Stealth) share one step so they never
-/// form a staircase and stay one quest; a non-monotonic gate set (a coincidental
-/// level/step mix, e.g. MageBaneQuest) is likewise left single-part. Rewards branch by
+/// form a staircase and stay one quest. Rewards branch by
 /// <c>class N</c> with a no-class default, resolved here to the requested class
 /// (matching MudProxy's <c>GetBonusesForClass</c>).
+/// </para>
+/// <para>
+/// A flag is multi-part on a second axis when it climbs by <em>ability value</em>
+/// rather than give-step order: granted once at value 1 and advanced through 2, 3, 4…
+/// by relative <c>addability &lt;flag&gt;</c> increments (MageBane is the canonical
+/// case). The give-step staircase can't see this — the lone giveability sits at value
+/// 1 and the later tiers carry no giveability of their own — so such a flag is detected
+/// by its addability-into-the-granted-set advance and banded once per ability value
+/// instead (see <c>DiscoverValueLadders</c> / <c>CrawlValueLadder</c>). A
+/// <c>checkability &lt;flag&gt; 0</c> "have the flag at all" gate (a class-only turn-in
+/// proxy) folds into the entry band rather than forming a tier of its own.
 /// </para>
 /// <para>
 /// A quest's prize comes at the very end of its chain: the keeper items it awards are
@@ -89,15 +99,24 @@ public static class QuestCrawler
         // minlevel gates (see DiscoverTierLadders). A flag absent here is single-part.
         IReadOnlyDictionary<int, IReadOnlyList<(int Step, int Level)>> ladders = DiscoverTierLadders(rawChains);
 
+        // Pass 4: flags whose value climbs past 1 via `addability <flag>` increments —
+        // a tier ladder keyed by the *ability value* rather than the give-step order, the
+        // shape the give-step staircase can't see (its lone giveability sits at value 1
+        // and the rest advance by relative addability). See DiscoverValueLadders.
+        IReadOnlyDictionary<int, int> valueLadders = DiscoverValueLadders(rawChains, grantedFlags);
+
         var quests = new List<CrawledQuest>();
         foreach (IGrouping<int, ParsedChain> flagGroup in chains.GroupBy(c => c.Flag).OrderBy(g => g.Key))
         {
+            int flag = flagGroup.Key;
             List<ParsedChain> flagChains = flagGroup.ToList();
             (IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict) = ResolveRestrictions(flagChains);
-            if (ladders.TryGetValue(flagGroup.Key, out IReadOnlyList<(int Step, int Level)>? ladder))
-                quests.AddRange(CrawlMultiPart(flagGroup.Key, flagChains, ladder, classId, classRestrict, raceRestrict));
+            if (valueLadders.TryGetValue(flag, out int maxValue))
+                quests.AddRange(CrawlValueLadder(flag, rawChains, maxValue, grantedFlags, classId, classRestrict, raceRestrict));
+            else if (ladders.TryGetValue(flag, out IReadOnlyList<(int Step, int Level)>? ladder))
+                quests.AddRange(CrawlMultiPart(flag, flagChains, ladder, classId, classRestrict, raceRestrict));
             else
-                quests.Add(CrawlSinglePart(flagGroup.Key, flagChains, classId, classRestrict, raceRestrict));
+                quests.Add(CrawlSinglePart(flag, flagChains, classId, classRestrict, raceRestrict));
         }
         return quests;
     }
@@ -196,8 +215,9 @@ public static class QuestCrawler
     // the lowest gate step seen at each level, order by level, and require a strict
     // ascending staircase: >= 2 levels whose steps strictly increase as the levels
     // climb. Per-class variants of one step collapse to a single (step, level) and
-    // never climb; a non-monotonic mix (MageBaneQuest: step1@L15, step0@L35, step4@L50)
-    // is a coincidence, not a ladder, so it stays single-part.
+    // never climb; a non-monotonic give-step mix (MageBane: step1@L15, step0@L35,
+    // step4@L50) is not a give-step ladder — that flag is instead an ability-value
+    // ladder, caught by DiscoverValueLadders.
     private static IReadOnlyList<(int Step, int Level)>? BuildLadder(IReadOnlyList<(int Step, int Level)> gates)
     {
         var minStepByLevel = new Dictionary<int, int>();
@@ -215,6 +235,166 @@ public static class QuestCrawler
             if (ladder[i].Step <= ladder[i - 1].Step) return null;
 
         return ladder;
+    }
+
+    // Flags whose progress is an *ability-value* ladder, mapped to the top value they
+    // reach. A quest of this shape grants its flag once (`giveability <flag> 1`) and then
+    // climbs by relative `addability <flag> 1` increments — so the give-step staircase
+    // sees only the value-1 grant and collapses the whole quest to one starter card,
+    // losing every later tier. MageBane (flag 50) is the canonical case: value 1→2→3→4
+    // across four NPCs/maps. The discriminator is the `addability` advance into the
+    // granted-flag set — no give-step quest (alignment et al.) uses it, so they stay on
+    // the give-step path untouched. A flag qualifies only when it reaches value >= 2.
+    private static IReadOnlyDictionary<int, int> DiscoverValueLadders(
+        IReadOnlyCollection<string> rawChains, HashSet<int> grantedFlags)
+    {
+        var advanced = new HashSet<int>();
+        foreach (string raw in rawChains)
+            foreach (string segment in raw.Split(':'))
+            {
+                string[] p = segment.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (p.Length >= 3 && p[0].Equals("addability", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(p[1], out int f) && grantedFlags.Contains(f))
+                    advanced.Add(f);
+            }
+
+        // The top value is the highest AbilityValueOf any chain resolves to — not the
+        // raw check/give segment values, which stop one short: the final tier gates on
+        // value N (`checkability <flag> N`) then climbs to N+1 by `addability`, so the
+        // climbed result is what bounds the ladder. AbilityValueOf is 0 for chains that
+        // don't touch the flag, so summing over all chains is safe.
+        var maxValue = new Dictionary<int, int>();
+        foreach (int flag in advanced)
+            foreach (string raw in rawChains)
+            {
+                int v = AbilityValueOf(raw, flag);
+                if (v > maxValue.GetValueOrDefault(flag)) maxValue[flag] = v;
+            }
+
+        return advanced
+            .Where(f => maxValue.GetValueOrDefault(f) >= 2)
+            .ToDictionary(f => f, f => maxValue[f]);
+    }
+
+    // The ability value a chain pertains to for a value-laddered flag: the absolute value
+    // a `giveability <flag> V` sets, else the value a relative `addability <flag> k` climbs
+    // to from the `checkability`/`testability <flag> N` it gates on (N + k), else — for a
+    // content/turn-in step that only gates on a value without advancing it — that gate
+    // value N itself. Returns 0 for a "have the flag at all" gate (`checkability <flag> 0`,
+    // the witchunter-only turn-in MageBane uses at its level-35 step); the caller folds
+    // that into the entry band. Shared with <see cref="QuestStepGraph"/> so the crawl's
+    // banding and the followable-step draft agree on which tier a chain belongs to.
+    internal static int AbilityValueOf(string rawChain, int flag)
+    {
+        int? giveValue = null;
+        int requiredValue = 0;
+        int addIncrement = 0;
+        foreach (string segment in rawChain.Split(':'))
+        {
+            string[] p = segment.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < 3 || !int.TryParse(p[1], out int f) || f != flag || !int.TryParse(p[2], out int v))
+                continue;
+            switch (p[0].ToLowerInvariant())
+            {
+                case "giveability": giveValue = v; break; // absolute set, last wins
+                case "addability": addIncrement += v; break; // relative climb
+                case "checkability" or "testability": requiredValue = Math.Max(requiredValue, v); break;
+            }
+        }
+        return giveValue ?? (addIncrement > 0 ? requiredValue + addIncrement : requiredValue);
+    }
+
+    // A value-laddered quest: one band per ability value 1..maxValue. Unlike the give-step
+    // ladder (which reads tiers off climbing give-step orders), a band here collects every
+    // chain whose ability value lands on it — the grant at value 1, each `addability`
+    // advance, and the content/turn-in steps that gate on a value without advancing it.
+    // Per band: the level is the lowest `minlevel` an advancing chain declares (0 when
+    // area-gated rather than level-gated), the keeper items it hands are its award draft,
+    // and stat bonuses class-resolve as elsewhere. ProgressByValue flags the band so the
+    // step draft (QuestStepGraph) walks the same ability-value axis.
+    private static IEnumerable<CrawledQuest> CrawlValueLadder(int flag, IReadOnlyList<string> rawChains,
+        int maxValue, HashSet<int> grantedFlags, int? classId,
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
+    {
+        var banded = new List<(int Band, ParsedChain Chain)>();
+        var takenAnywhere = new HashSet<int>();
+        foreach (string raw in rawChains)
+        {
+            ParsedChain? parsed = ParseValueChain(raw, flag, grantedFlags);
+            if (parsed is null) continue;
+            foreach (int t in parsed.TakeItems) takenAnywhere.Add(t);
+            int value = AbilityValueOf(raw, flag);
+            int band = Math.Clamp(value <= 0 ? 1 : value, 1, maxValue);
+            banded.Add((band, parsed));
+        }
+
+        for (int band = 1; band <= maxValue; band++)
+        {
+            List<ParsedChain> group = banded.Where(b => b.Band == band).Select(b => b.Chain).ToList();
+            int level = group.Where(c => c.MinLevel is int ml && ml > 0)
+                .Select(c => c.MinLevel!.Value).DefaultIfEmpty(0).Min();
+            IReadOnlyList<QuestBonus> bonuses = ResolveClass(
+                group.Where(c => c.Bonuses.Count > 0).ToList(), classId);
+            IReadOnlyList<int> awards = AwardItemsFrom(
+                group.SelectMany(c => c.GiveItems
+                    .Where(i => !takenAnywhere.Contains(i))
+                    .Select(i => (i, 0, (IReadOnlyList<int>)c.ClassIds))).ToList(), classId);
+
+            yield return new CrawledQuest(
+                flag, band, level, bonuses, awards, classRestrict, raceRestrict,
+                BandOrdinal: band, StepRangeStart: band, StepRangeEnd: band, ProgressByValue: true);
+        }
+    }
+
+    // Parse a chain for the value-ladder pass: any chain that touches `flag` via a
+    // give/add/check/test ability directive (an advance or a value gate), keeping the
+    // level gate, class/race guards, stat bonuses (addability off the granted-flag set),
+    // and items. Returns null when the chain doesn't touch the flag. Distinct from
+    // ParseChain, which keys only off the terminal giveability and so never sees the
+    // addability-advanced tiers.
+    private static ParsedChain? ParseValueChain(string raw, int flag, HashSet<int> grantedFlags)
+    {
+        bool touches = false;
+        int? minLevel = null;
+        var classIds = new List<int>();
+        var raceIds = new List<int>();
+        var bonuses = new List<QuestBonus>();
+        var giveItems = new List<int>();
+        var takeItems = new List<int>();
+
+        foreach (string segment in raw.Split(':'))
+        {
+            string[] p = segment.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length == 0) continue;
+            switch (p[0].ToLowerInvariant())
+            {
+                case "giveability" or "addability" or "checkability" or "testability"
+                    when p.Length >= 3 && int.TryParse(p[1], out int af) && int.TryParse(p[2], out int av):
+                    if (af == flag) touches = true;
+                    else if (p[0].Equals("addability", StringComparison.OrdinalIgnoreCase) && !grantedFlags.Contains(af))
+                        bonuses.Add(new QuestBonus(af, av));
+                    break;
+                case "class" when p.Length >= 2 && int.TryParse(p[1], out int cid):
+                    classIds.Add(cid);
+                    break;
+                case "race" when p.Length >= 2 && int.TryParse(p[1], out int rid):
+                    raceIds.Add(rid);
+                    break;
+                case "minlevel" when p.Length >= 2 && int.TryParse(p[1], out int ml):
+                    minLevel = ml;
+                    break;
+                case "giveitem" when p.Length >= 2 && int.TryParse(p[1], out int gi):
+                    giveItems.Add(gi);
+                    break;
+                case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
+                    takeItems.Add(ti);
+                    break;
+            }
+        }
+
+        return touches
+            ? new ParsedChain(flag, 0, minLevel, classIds, raceIds, bonuses, giveItems, takeItems)
+            : null;
     }
 
     // A single-part quest: one identity at step 0. Its level gate resolves to the

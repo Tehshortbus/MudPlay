@@ -545,23 +545,79 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_NonMonotonicGates_StaySinglePart()
+    public void Crawl_NonMonotonicGivestepGates_WithoutAddabilityAdvance_StaySinglePart()
     {
-        // Flag 50 (MageBaneQuest) shape: its minlevel gates are step1@L15, step0@L35,
-        // step4@L50 — ordered by level the steps go 1 → 0 → 4, which is not a strictly
-        // climbing staircase. That is a coincidental level/step mix, not a tier ladder,
-        // so the quest stays single-part (one quest at step 0) rather than splitting.
+        // A flag whose give-step minlevel gates are step1@L15, step0@L35, step4@L50 —
+        // ordered by level the steps go 1 → 0 → 4, not a strictly climbing staircase, so
+        // it forms no give-step ladder. With no `addability <flag>` advance either it is
+        // not a value ladder, so it stays single-part (one quest at step 0). (Real
+        // MageBane *does* carry an addability advance and is a value ladder — see the
+        // ability-value-ladder test below.)
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
-                "giveability 50 1:minlevel 15",
-                "checkability 50 0:minlevel 35",
-                "checkability 50 4:minlevel 50"),
+                "giveability 70 1:minlevel 15",
+                "checkability 70 0:minlevel 35",
+                "checkability 70 4:minlevel 50"),
             classId: null);
 
         CrawledQuest q = Assert.Single(quests);
-        Assert.Equal(50, q.Flag);
+        Assert.Equal(70, q.Flag);
         Assert.Equal(0, q.Step);
         Assert.Equal(0, q.BandOrdinal);
         Assert.Equal(15, q.RequiredLevel);
+    }
+
+    [Fact]
+    public void Crawl_AbilityValueLadder_SplitsIntoBandsByAbilityValue()
+    {
+        // MageBane (flag 50, Witchhunter=class 2) shape: granted once at value 1 (the
+        // dwarven witchhunter sword, L15), then climbed to 2, 3, 4 by relative
+        // `addability 50 1` increments gated on the current value. The give-step
+        // staircase can't see this (the lone giveability sits at value 1, the rest carry
+        // no giveability of their own), so it bands once per ability value instead. The
+        // `checkability 50 0:minlevel 35` witchhunter-only turn-in proxy (value 0) folds
+        // into the entry band rather than forming a tier. Each band's level is the lowest
+        // minlevel an advancing chain declares — 0 when area-gated rather than level-gated.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 2:minlevel 15:giveability 50 1:giveitem 100",        // value 1 grant + sword
+                "class 2:checkability 50 0:minlevel 35:giveitem 200",       // value-0 gate folds to band 1
+                "class 2:checkability 50 1:addability 50 1:giveitem 300",   // value 1 → 2
+                "class 2:checkability 50 2:addability 50 1:giveitem 400",   // value 2 → 3
+                "class 2:checkability 50 3:addability 50 1:minlevel 50:giveitem 500"), // value 3 → 4
+            classId: 2);
+
+        CrawledQuest[] bands = quests.Where(q => q.Flag == 50).OrderBy(q => q.Step).ToArray();
+        Assert.Equal(new[] { 1, 2, 3, 4 }, bands.Select(b => b.Step));
+        Assert.All(bands, b => Assert.True(b.ProgressByValue));
+        Assert.Equal(new[] { 1, 2, 3, 4 }, bands.Select(b => b.BandOrdinal));
+
+        // Band 1 is level-gated at 15 (the value-0 L35 turn-in folds in but doesn't raise
+        // the entry level); bands 2 and 3 are area-gated (level 0); band 4 finishes at L50.
+        Assert.Equal(new[] { 15, 0, 0, 50 }, bands.Select(b => b.RequiredLevel));
+
+        // Step and step-range track the ability value, so the followable-step draft walks
+        // the same axis (StepRangeStart == StepRangeEnd == the value).
+        Assert.All(bands, b => Assert.Equal((b.Step, b.Step), (b.StepRangeStart, b.StepRangeEnd)));
+
+        // Every granting chain is class-2 guarded → the whole ladder restricts to {2}.
+        Assert.All(bands, b => Assert.Equal(new[] { 2 }, b.ClassIds));
+    }
+
+    [Fact]
+    public void Crawl_DirectGiveabilityValueTwo_WithoutAddability_StaysSinglePart()
+    {
+        // A flag set directly to value 2 by `giveability <flag> 2` with no `addability`
+        // advance is *not* a value ladder — the value-ladder discriminator is the
+        // addability climb into the granted-flag set, so a plain high-value direct grant
+        // (e.g. flag 130's `giveability 130 2`) stays a single-part quest.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 130 2:minlevel 15:giveitem 406"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(130, q.Flag);
+        Assert.Equal(0, q.Step);
+        Assert.False(q.ProgressByValue);
+        Assert.Equal(new[] { 406 }, q.AwardItems);
     }
 }

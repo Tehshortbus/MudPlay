@@ -110,9 +110,12 @@ internal static partial class QuestTextFormatter
     {
         var lines = new List<string>();
         var seenOrders = new HashSet<int>();
-        foreach (QuestStep s in QuestStepGraph.Build(gameData, q.Flag))
+        foreach (QuestStep s in QuestStepGraph.Build(gameData, q.Flag, q.ProgressByValue))
         {
-            if (!seenOrders.Add(s.Order)) continue;
+            // Value-laddered bands legitimately carry several distinct steps that all
+            // land on the same ability value, so the give-step-order dedup (which folds
+            // one give-step echoed from many rooms) only applies on the give-step axis.
+            if (!q.ProgressByValue && !seenOrders.Add(s.Order)) continue;
             if (q.StepRangeEnd > 0 && (s.Order < q.StepRangeStart || s.Order > q.StepRangeEnd)) continue;
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {q.Flag}({s.Order}) {Step(gameData, s)}"));
         }
