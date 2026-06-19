@@ -48,10 +48,19 @@ public sealed class QuestDefinition
     /// </summary>
     public string? Rewards { get; set; }
 
+    /// <summary>
+    /// User-set required-level gate, or <c>null</c> to fall back to the crawler's
+    /// inferred <c>minlevel</c>. Lets the user supply a gate the raw crawl misses (the
+    /// DaoLord sunstone-wristband quest's level-20 requirement, say, when its gate
+    /// lives in a chain the give-step scan never reaches) — or force <c>0</c> to mark a
+    /// quest ungated when the crawl over-reads one.
+    /// </summary>
+    public int? RequiredLevel { get; set; }
+
     public QuestDefinition() { }
 
     public QuestDefinition(int flag, int step, string name = "", bool visible = true,
-                           string? steps = null, string? rewards = null)
+                           string? steps = null, string? rewards = null, int? requiredLevel = null)
     {
         Flag = flag;
         Step = step;
@@ -59,5 +68,6 @@ public sealed class QuestDefinition
         Visible = visible;
         Steps = steps;
         Rewards = rewards;
+        RequiredLevel = requiredLevel;
     }
 }

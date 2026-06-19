@@ -279,4 +279,38 @@ public sealed class QuestStoreTests : IDisposable
 
         Assert.Null(store.Resolve(50, 1).Rewards);
     }
+
+    [Fact]
+    public void Save_PersistsRequiredLevelOverride_AndSurvivesReload()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // A level gate the give-chain crawl misses (the DaoLord sunstone-wristband
+        // quest's level-20 requirement) — the user supplies it in the editor and it must
+        // round-trip through the overlay.
+        store.Save([new QuestDefinition(50, 1, requiredLevel: 20)]);
+
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.Equal(20, reloaded.Resolve(50, 1).RequiredLevel);
+    }
+
+    [Fact]
+    public void Save_RequiredLevelMatchingSeed_IsDroppedSoLaterSeedChangesFlowThrough()
+    {
+        // A seed already carrying the gate is the baseline: re-saving the same level is
+        // not a user delta, so the overlay doesn't freeze it and a later seed change still
+        // flows through (the delta-only contract, mirrored from name/steps/rewards).
+        WriteSeed(new QuestDefinition(50, 1, "Seed Name", requiredLevel: 20));
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        store.Save([store.Resolve(50, 1)]);   // re-save the seed value unchanged
+
+        WriteSeed(new QuestDefinition(50, 1, "Seed Name", requiredLevel: 25));
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.Equal(25, reloaded.Resolve(50, 1).RequiredLevel);
+    }
 }

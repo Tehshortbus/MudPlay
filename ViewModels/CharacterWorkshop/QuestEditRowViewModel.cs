@@ -38,6 +38,9 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     public string LevelText { get; }
     public bool HasLevel => LevelText.Length > 0;
 
+    /// <summary>The crawler's inferred level gate — pre-fills <see cref="RequiredLevelInput"/> and is its delta baseline (0 when ungated / not found).</summary>
+    public int AutoRequiredLevel { get; }
+
     /// <summary>Class / race restriction the crawl found; empty when the quest is open to all.</summary>
     public string RequirementsText { get; }
     public bool HasRequirements => RequirementsText.Length > 0;
@@ -54,10 +57,18 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
 
     [ObservableProperty] private string _rewards;
 
+    /// <summary>
+    /// Live required-level override bound to the editor's spinner. <c>null</c> means
+    /// "no override" (the box is empty) and falls back to the crawled gate; any value
+    /// (including <c>0</c> to force ungated) persists as a user override.
+    /// </summary>
+    [ObservableProperty] private int? _requiredLevelInput;
+
     public QuestEditRowViewModel(int flag, int step, string fallbackLabel,
                                  string autoSteps, string autoRewards, string bonusText,
-                                 string levelText, string requirementsText, string name,
-                                 bool visible, string steps, string rewards)
+                                 string levelText, int autoRequiredLevel, string requirementsText,
+                                 string name, bool visible, string steps, string rewards,
+                                 int? requiredLevel)
     {
         Flag = flag;
         Step = step;
@@ -66,6 +77,7 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         AutoRewards = autoRewards;
         BonusText = bonusText;
         LevelText = levelText;
+        AutoRequiredLevel = autoRequiredLevel;
         RequirementsText = requirementsText;
         // Prefill the editable boxes from the crawl baseline so the user starts from the
         // auto-draft rather than a blank field; a saved overlay value (if any) wins.
@@ -73,6 +85,9 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         _visible = visible;
         _steps = string.IsNullOrEmpty(steps) ? autoSteps : steps;
         _rewards = string.IsNullOrEmpty(rewards) ? autoRewards : rewards;
+        // Show the crawled level when there's one to correct, blank when the crawl found
+        // none — so an empty box always reads as "no override".
+        _requiredLevelInput = requiredLevel ?? (autoRequiredLevel > 0 ? autoRequiredLevel : null);
     }
 
     /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when hidden.</summary>
@@ -105,6 +120,12 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         if (rewards is not null && string.Equals(rewards.Trim(), AutoRewards.Trim(), StringComparison.Ordinal))
             rewards = null;
 
-        return new QuestDefinition(Flag, Step, name, Visible, steps, rewards);
+        // An empty box (no override) or one still showing the crawled level isn't a user
+        // delta, so it collapses to null rather than freezing into the overlay; a value
+        // that differs (incl. 0 to force "ungated") persists as an override.
+        int? requiredLevel = RequiredLevelInput;
+        if (requiredLevel is null || requiredLevel == AutoRequiredLevel) requiredLevel = null;
+
+        return new QuestDefinition(Flag, Step, name, Visible, steps, rewards, requiredLevel);
     }
 }

@@ -116,13 +116,15 @@ public sealed class QuestStore
             (d.Name ?? string.Empty).Trim(),
             d.Visible,
             string.IsNullOrWhiteSpace(d.Steps) ? null : d.Steps,
-            string.IsNullOrWhiteSpace(d.Rewards) ? null : d.Rewards);
+            string.IsNullOrWhiteSpace(d.Rewards) ? null : d.Rewards,
+            d.RequiredLevel);
 
     private static bool SameContent(QuestDefinition a, QuestDefinition b) =>
         string.Equals(a.Name, b.Name, StringComparison.Ordinal)
         && a.Visible == b.Visible
         && string.Equals(a.Steps, b.Steps, StringComparison.Ordinal)
-        && string.Equals(a.Rewards, b.Rewards, StringComparison.Ordinal);
+        && string.Equals(a.Rewards, b.Rewards, StringComparison.Ordinal)
+        && a.RequiredLevel == b.RequiredLevel;
 
     private void LoadInto(Dictionary<(int Flag, int Step), QuestDefinition> target, string path, string label)
     {

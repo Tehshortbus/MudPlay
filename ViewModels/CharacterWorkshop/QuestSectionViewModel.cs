@@ -110,11 +110,15 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     ? def.Rewards!
                     : QuestTextFormatter.Awards(_gameData, q);
 
+                // Same override-wins rule for the level gate: a user-set requirement
+                // (the editor's spinner) covers gates the crawl misses, else the crawl.
+                int requiredLevel = def.RequiredLevel ?? q.RequiredLevel;
+
                 var steps = new ObservableCollection<QuestStepRowViewModel>();
                 var card = new QuestCardViewModel(
                     q.Flag, q.Step,
                     ResolveTitle(def, q),
-                    QuestTextFormatter.Level(q.RequiredLevel),
+                    QuestTextFormatter.Level(requiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
                     awardText,
                     QuestTextFormatter.Requirements(_gameData, q),
