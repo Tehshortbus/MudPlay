@@ -568,37 +568,49 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
-    public void Crawl_AbilityValueLadder_SplitsIntoBandsByAbilityValue()
+    public void Crawl_AbilityValueLadder_BandsByDistinctLevelGatesNotPerValue()
     {
         // MageBane (flag 50, Witchhunter=class 2) shape: granted once at value 1 (the
         // dwarven witchhunter sword, L15), then climbed to 2, 3, 4 by relative
-        // `addability 50 1` increments gated on the current value. The give-step
-        // staircase can't see this (the lone giveability sits at value 1, the rest carry
-        // no giveability of their own), so it bands once per ability value instead. The
+        // `addability 50 1` increments gated on the current value, finishing at L50. The
+        // give-step staircase can't see this (the lone giveability sits at value 1, the
+        // rest carry no giveability of their own), so it bands on the value axis — but by
+        // the distinct *level gates* that axis carries, not one card per value. Only value 1
+        // (L15) and value 4 (L50) carry a real minlevel, so the ladder is two tiers: the
+        // ungated intermediate values 2–3 fold up into the L50 finish. The
         // `checkability 50 0:minlevel 35` witchhunter-only turn-in proxy (value 0) folds
-        // into the entry band rather than forming a tier. Each band's level is the lowest
-        // minlevel an advancing chain declares — 0 when area-gated rather than level-gated.
+        // into the entry band rather than forming a tier of its own.
         IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
             CacheWithTbInfo(
-                "class 2:minlevel 15:giveability 50 1:giveitem 100",        // value 1 grant + sword
-                "class 2:checkability 50 0:minlevel 35:giveitem 200",       // value-0 gate folds to band 1
-                "class 2:checkability 50 1:addability 50 1:giveitem 300",   // value 1 → 2
-                "class 2:checkability 50 2:addability 50 1:giveitem 400",   // value 2 → 3
-                "class 2:checkability 50 3:addability 50 1:minlevel 50:giveitem 500"), // value 3 → 4
+                "class 2:minlevel 15:giveability 50 1:giveitem 100",        // value 1 grant + sword, L15
+                "class 2:checkability 50 0:minlevel 35:giveitem 200",       // value-0 turn-in folds to entry band
+                "class 2:checkability 50 1:addability 50 1:giveitem 300",   // value 1 → 2 (ungated)
+                "class 2:checkability 50 2:addability 50 1:giveitem 400",   // value 2 → 3 (ungated)
+                "class 2:checkability 50 3:addability 50 1:minlevel 50:giveitem 500"), // value 3 → 4, L50
             classId: 2);
 
         CrawledQuest[] bands = quests.Where(q => q.Flag == 50).OrderBy(q => q.Step).ToArray();
-        Assert.Equal(new[] { 1, 2, 3, 4 }, bands.Select(b => b.Step));
+
+        // Two tiers, not four: the entry sword tier (Step = boundary value 1) and the finish
+        // tier (Step = boundary value 4). Values 2–3 carry no level gate so they fold up.
+        Assert.Equal(new[] { 1, 4 }, bands.Select(b => b.Step));
         Assert.All(bands, b => Assert.True(b.ProgressByValue));
-        Assert.Equal(new[] { 1, 2, 3, 4 }, bands.Select(b => b.BandOrdinal));
+        Assert.Equal(new[] { 1, 2 }, bands.Select(b => b.BandOrdinal));
 
-        // Band 1 is level-gated at 15 (the value-0 L35 turn-in folds in but doesn't raise
-        // the entry level); bands 2 and 3 are area-gated (level 0); band 4 finishes at L50.
-        Assert.Equal(new[] { 15, 0, 0, 50 }, bands.Select(b => b.RequiredLevel));
+        // Entry tier is level-gated at 15 (the value-0 L35 turn-in folds in but doesn't
+        // raise the entry level); the finish tier completes at L50.
+        Assert.Equal(new[] { 15, 50 }, bands.Select(b => b.RequiredLevel));
 
-        // Step and step-range track the ability value, so the followable-step draft walks
-        // the same axis (StepRangeStart == StepRangeEnd == the value).
-        Assert.All(bands, b => Assert.Equal((b.Step, b.Step), (b.StepRangeStart, b.StepRangeEnd)));
+        // The award is each tier's top-value keeper: the sword (value-1 grant) caps the
+        // entry tier; the value-4 finish keeper caps the last. Lower-value turn-in tokens
+        // (the value-0 item 200, the intermediate 300/400) are dropped.
+        Assert.Equal(new[] { 100 }, bands[0].AwardItems);
+        Assert.Equal(new[] { 500 }, bands[1].AwardItems);
+
+        // Step-range covers each tier's value span so the followable-step draft walks the
+        // same axis: the entry tier is just value 1; the finish tier sweeps value 2 up.
+        Assert.Equal((1, 1), (bands[0].StepRangeStart, bands[0].StepRangeEnd));
+        Assert.Equal((2, int.MaxValue), (bands[1].StepRangeStart, bands[1].StepRangeEnd));
 
         // Every granting chain is class-2 guarded → the whole ladder restricts to {2}.
         Assert.All(bands, b => Assert.Equal(new[] { 2 }, b.ClassIds));

@@ -40,10 +40,13 @@ namespace FujinTerm.Game.Quests;
 /// by relative <c>addability &lt;flag&gt;</c> increments (MageBane is the canonical
 /// case). The give-step staircase can't see this — the lone giveability sits at value
 /// 1 and the later tiers carry no giveability of their own — so such a flag is detected
-/// by its addability-into-the-granted-set advance and banded once per ability value
-/// instead (see <c>DiscoverValueLadders</c> / <c>CrawlValueLadder</c>). A
-/// <c>checkability &lt;flag&gt; 0</c> "have the flag at all" gate (a class-only turn-in
-/// proxy) folds into the entry band rather than forming a tier of its own.
+/// by its addability-into-the-granted-set advance (see <c>DiscoverValueLadders</c> /
+/// <c>CrawlValueLadder</c>). It is then banded by the distinct <c>minlevel</c> gates its
+/// value axis carries (one tier per level the climb pauses to turn in at, not one per
+/// value), so MageBane lands two tiers: the value-1 sword at level 15 and the value-4
+/// finish at level 50, folding the ungated intermediate values up into the next gated
+/// tier. A <c>checkability &lt;flag&gt; 0</c> "have the flag at all" gate (a class-only
+/// turn-in proxy) folds into the entry band rather than forming a tier of its own.
 /// </para>
 /// <para>
 /// A quest's prize comes at the very end of its chain: the keeper items it awards are
@@ -304,46 +307,77 @@ public static class QuestCrawler
         return giveValue ?? (addIncrement > 0 ? requiredValue + addIncrement : requiredValue);
     }
 
-    // A value-laddered quest: one band per ability value 1..maxValue. Unlike the give-step
-    // ladder (which reads tiers off climbing give-step orders), a band here collects every
-    // chain whose ability value lands on it — the grant at value 1, each `addability`
-    // advance, and the content/turn-in steps that gate on a value without advancing it.
-    // Per band: the level is the lowest `minlevel` an advancing chain declares (0 when
-    // area-gated rather than level-gated), the keeper items it hands are its award draft,
+    // A value-laddered quest, banded by the distinct level gates its value axis carries:
+    // one tier per `minlevel` the climb pauses to turn in at, not one card per ability
+    // value. MageBane grants at value 1 (minlevel 15, the sword) and finishes at value 4
+    // (minlevel 50) — two tiers, the ungated intermediate values 2–3 folding up into the
+    // level-50 band. A band collects every chain whose ability value ceilings to its
+    // boundary (the grant, each `addability` advance, the content/turn-in steps that gate
+    // on a value without advancing it, and the value-0 "have the flag" proxy in the entry
+    // band). Per band: the level is the lowest `minlevel` its chains declare (0 when
+    // area-gated rather than level-gated), the keepers it hands — tagged with their ability
+    // value as the give-step so each band awards its top-value keeper — are its award draft,
     // and stat bonuses class-resolve as elsewhere. ProgressByValue flags the band so the
     // step draft (QuestStepGraph) walks the same ability-value axis.
     private static IEnumerable<CrawledQuest> CrawlValueLadder(int flag, IReadOnlyList<string> rawChains,
         int maxValue, HashSet<int> grantedFlags, int? classId,
         IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
-        var banded = new List<(int Band, ParsedChain Chain)>();
+        var parsed = new List<(int Value, ParsedChain Chain)>();
         var takenAnywhere = new HashSet<int>();
         foreach (string raw in rawChains)
         {
-            ParsedChain? parsed = ParseValueChain(raw, flag, grantedFlags);
-            if (parsed is null) continue;
-            foreach (int t in parsed.TakeItems) takenAnywhere.Add(t);
-            int value = AbilityValueOf(raw, flag);
-            int band = Math.Clamp(value <= 0 ? 1 : value, 1, maxValue);
-            banded.Add((band, parsed));
+            ParsedChain? chain = ParseValueChain(raw, flag, grantedFlags);
+            if (chain is null) continue;
+            foreach (int t in chain.TakeItems) takenAnywhere.Add(t);
+            parsed.Add((AbilityValueOf(raw, flag), chain));
         }
 
-        for (int band = 1; band <= maxValue; band++)
+        // Tier boundaries: the distinct ability values that carry a real level gate — the
+        // points the climb pauses to turn in. Absent any, the whole ladder is one tier
+        // topping out at maxValue.
+        int[] boundaries = parsed
+            .Where(p => p.Value >= 1 && p.Chain.MinLevel is int ml && ml > 0)
+            .Select(p => p.Value).Distinct().OrderBy(v => v).ToArray();
+        if (boundaries.Length == 0) boundaries = new[] { Math.Max(maxValue, 1) };
+
+        for (int i = 0; i < boundaries.Length; i++)
         {
-            List<ParsedChain> group = banded.Where(b => b.Band == band).Select(b => b.Chain).ToList();
+            int upper = boundaries[i];
+            List<(int Value, ParsedChain Chain)> members = parsed
+                .Where(p => BandUpperFor(p.Value, boundaries) == upper).ToList();
+            List<ParsedChain> group = members.Select(m => m.Chain).ToList();
+
             int level = group.Where(c => c.MinLevel is int ml && ml > 0)
                 .Select(c => c.MinLevel!.Value).DefaultIfEmpty(0).Min();
             IReadOnlyList<QuestBonus> bonuses = ResolveClass(
                 group.Where(c => c.Bonuses.Count > 0).ToList(), classId);
+            // Tag each keeper with its ability value as the give-step so AwardItemsFrom hands
+            // the band its top-value keeper (the sword in the entry tier, the final reward in
+            // the last), dropping the lower-value turn-in tokens.
             IReadOnlyList<int> awards = AwardItemsFrom(
-                group.SelectMany(c => c.GiveItems
-                    .Where(i => !takenAnywhere.Contains(i))
-                    .Select(i => (i, 0, (IReadOnlyList<int>)c.ClassIds))).ToList(), classId);
+                members.SelectMany(m => m.Chain.GiveItems
+                    .Where(it => !takenAnywhere.Contains(it))
+                    .Select(it => (it, m.Value, (IReadOnlyList<int>)m.Chain.ClassIds))).ToList(), classId);
+
+            int rangeStart = i == 0 ? 1 : boundaries[i - 1] + 1;
+            int rangeEnd = i == boundaries.Length - 1 ? int.MaxValue : upper;
 
             yield return new CrawledQuest(
-                flag, band, level, bonuses, awards, classRestrict, raceRestrict,
-                BandOrdinal: band, StepRangeStart: band, StepRangeEnd: band, ProgressByValue: true);
+                flag, upper, level, bonuses, awards, classRestrict, raceRestrict,
+                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd, ProgressByValue: true);
         }
+    }
+
+    // The tier boundary (upper value) a given ability value folds into: the first boundary
+    // at or above it, or the top boundary when the value climbs past the last gate. The
+    // value-0 "have the flag" proxy folds into the entry band like any sub-boundary value.
+    private static int BandUpperFor(int value, int[] boundaries)
+    {
+        int v = value <= 0 ? 0 : value;
+        foreach (int b in boundaries)
+            if (v <= b) return b;
+        return boundaries[^1];
     }
 
     // Parse a chain for the value-ladder pass: any chain that touches `flag` via a
