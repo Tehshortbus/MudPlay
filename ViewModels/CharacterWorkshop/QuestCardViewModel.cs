@@ -39,6 +39,14 @@ public sealed partial class QuestCardViewModel : ObservableObject
     /// <summary>Class / race restriction the crawl found; empty when the quest is open to all.</summary>
     public string RequirementsText { get; }
 
+    /// <summary>
+    /// True when the character's known class or race is excluded from this quest's crawled
+    /// restriction set — a hard "can't take it" the header surfaces as a "Cannot complete"
+    /// badge. False when the quest is open to the character, or their class/race is unknown
+    /// (we only flag a provable exclusion).
+    /// </summary>
+    public bool Ineligible { get; }
+
     /// <summary>True when <see cref="BonusText"/> is non-empty.</summary>
     public bool HasBonus { get; }
 
@@ -76,6 +84,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         string bonusText,
         string awardText,
         string requirementsText,
+        bool ineligible,
         bool isComplete,
         ObservableCollection<QuestStepRowViewModel> steps,
         Action<QuestCardViewModel> onCompletionChanged)
@@ -95,6 +104,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         BonusText = bonusText;
         AwardText = awardText;
         RequirementsText = requirementsText;
+        Ineligible = ineligible;
         HasBonus = bonusText.Length > 0;
         HasAward = awardText.Length > 0;
         HasRequirements = requirementsText.Length > 0;

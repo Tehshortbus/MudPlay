@@ -95,6 +95,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             LoadProgressFromProfile();
 
             int? classId = ResolveClassId();
+            int? raceId = ResolveRaceId();
             foreach (CrawledQuest q in QuestCrawler.Crawl(_gameData, classId))
             {
                 QuestDefinition def = _quests.Resolve(q.Flag, q.Step);
@@ -125,6 +126,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     QuestTextFormatter.Bonuses(q.Bonuses),
                     awardText,
                     QuestTextFormatter.Requirements(_gameData, q),
+                    IsIneligible(q, classId, raceId),
                     prog.Complete,
                     steps,
                     OnCardCompletionChanged);
@@ -193,6 +195,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             string.Empty,
             def.Rewards ?? string.Empty,
             string.Empty,
+            ineligible: false,
             prog.Complete,
             steps,
             OnCardCompletionChanged);
@@ -334,6 +337,24 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         return num > 0 ? num : null;
     }
 
+    private int? ResolveRaceId()
+    {
+        if (string.IsNullOrEmpty(_stats.Race)) return null;
+        int num = GetInt(_gameData.FindRowByName("Races", _stats.Race), "Number");
+        return num > 0 ? num : null;
+    }
+
+    // True when the character's known class or race is excluded from this quest's crawled
+    // restriction set — a provable "can't take it" (a Warrior viewing Meditate, a Human
+    // viewing the Gaunt-One SeeHidden quest). An unknown class/race never excludes: the
+    // restriction sets are conservative, so we only flag what the crawl proves shut.
+    private static bool IsIneligible(CrawledQuest q, int? classId, int? raceId)
+    {
+        if (q.ClassIds is { Count: > 0 } cls && classId is int c && !cls.Contains(c)) return true;
+        if (q.RaceIds is { Count: > 0 } rcs && raceId is int r && !rcs.Contains(r)) return true;
+        return false;
+    }
+
     private static string ResolveTitle(QuestDefinition def, CrawledQuest q) =>
         !string.IsNullOrWhiteSpace(def.Name) ? def.Name : QuestTextFormatter.FallbackTitle(q);
 
@@ -346,11 +367,12 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
 
     // ----- events ---------------------------------------------------------
 
-    // Class drives the bonus / award resolution baked into each card; it only changes on a
-    // `stat` re-parse (or character swap) — rebuild on that, not on every HP/level tick.
+    // Class drives the bonus / award resolution baked into each card, and class + race
+    // drive the "Cannot complete" eligibility badge; all change only on a `stat` re-parse
+    // (or character swap) — rebuild on those, not on every HP/level tick.
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(PlayerStats.Class)) Rebuild();
+        if (e.PropertyName is nameof(PlayerStats.Class) or nameof(PlayerStats.Race)) Rebuild();
     }
 
     private void OnProfileLoaded(CharacterProfile _) => Rebuild();

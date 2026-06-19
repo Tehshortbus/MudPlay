@@ -107,6 +107,16 @@
                                             <TextBlock Classes="FieldLabel"
                                                        VerticalAlignment="Center"
                                                        Text="{Binding RequiredLevelText}"/>
+                                            <!-- Hard eligibility flag: the character's class/race
+                                                 is excluded from this quest (hover shows what it
+                                                 requires). Open quests / unknown class/race omit it. -->
+                                            <TextBlock Text="Cannot complete"
+                                                       IsVisible="{Binding Ineligible}"
+                                                       Foreground="{StaticResource AccentRedBrush}"
+                                                       FontSize="{StaticResource FontSizeMd}"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"
+                                                       ToolTip.Tip="{Binding RequirementsText}"/>
                                         </StackPanel>
                                     </Button>
                                     <CheckBox Grid.Column="1" Content="Complete"
