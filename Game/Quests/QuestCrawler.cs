@@ -440,7 +440,7 @@ public static class QuestCrawler
     private static CrawledQuest CrawlSinglePart(int flag, List<ParsedChain> chains, int? classId,
         IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
     {
-        int requiredLevel = ResolveLevel(chains, classId);
+        int requiredLevel = ResolveLevel(chains, classId, classRestrict);
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
         IReadOnlyList<int> awardItems = AwardItemsFrom(KeeperCandidates(chains), classId);
         bool awardsAbility = awardItems.Count == 0 && bonuses.Count == 0;
@@ -500,9 +500,15 @@ public static class QuestCrawler
     }
 
     // The lowest level the quest can be taken at, resolved to the class: the class's
-    // own minlevel branch when it has one, else the no-class branch, else the lowest
-    // gate any branch declares; 0 when the quest imposes no level gate.
-    private static int ResolveLevel(List<ParsedChain> chains, int? classId)
+    // own minlevel branch when it has one, else the no-class branch. When neither
+    // resolves and the quest is class-restricted, the only gates left belong to *other*
+    // classes — their minimum is meaningless to a viewer who can't take the quest (a
+    // Warrior viewing Meditate, a Cleric-and-up skill quest) or who hasn't picked a
+    // class at all (the classless default profile). Report no gate (0) rather than that
+    // misleading number; the card's "Requires: Classes …" line already says who it's
+    // for. An unrestricted quest that still carries only per-class gates falls back to
+    // the global minimum as a best estimate. 0 also means the quest imposes no gate.
+    private static int ResolveLevel(List<ParsedChain> chains, int? classId, IReadOnlyList<int>? classRestrict)
     {
         if (classId is int cid)
         {
@@ -515,6 +521,8 @@ public static class QuestCrawler
             .Where(c => c.ClassIds.Count == 0 && c.MinLevel is int ml && ml > 0)
             .Select(c => c.MinLevel!.Value).ToList();
         if (defaultGates.Count > 0) return defaultGates.Min();
+
+        if (classRestrict is not null) return 0;
 
         return chains.Where(c => c.MinLevel is int ml && ml > 0)
             .Select(c => c.MinLevel!.Value).DefaultIfEmpty(0).Min();

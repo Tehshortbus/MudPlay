@@ -116,6 +116,32 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
+    public void Crawl_PerClassSkillQuest_ResolvesViewingClassGate_NotGlobalMinimum()
+    {
+        // Meditate (flag 187): a class-restricted skill quest gated per class — an
+        // intro `minlevel 20` shared by every branch, then a per-class `minlevel`
+        // (last-wins) that is the real requirement. Only Paladin(3)/Cleric(4)/Priest(5)
+        // can learn it here. The viewing class must see *its own* gate; a class outside
+        // the list — or no class at all — must see no gate, never the global minimum of
+        // the other classes' gates (which would surface a misleading "Level 20" on a
+        // Warrior who can't meditate).
+        string[] chains =
+        {
+            "check class:class 3:minlevel 20 2614:takeitem 1351:addexp 5000:minlevel 27:failability 187:giveability 187 1",
+            "check class:class 4:minlevel 20 2614:takeitem 1351:addexp 5000:minlevel 23:failability 187:giveability 187 1",
+            "check class:class 5:minlevel 20 2614:takeitem 1351:addexp 5000:minlevel 20:failability 187:giveability 187 1",
+        };
+
+        Assert.Equal(27, Find(QuestCrawler.Crawl(CacheWithTbInfo(chains), classId: 3), 187, 0).RequiredLevel);
+        Assert.Equal(20, Find(QuestCrawler.Crawl(CacheWithTbInfo(chains), classId: 5), 187, 0).RequiredLevel);
+
+        // Warrior(1) is excluded → no applicable gate (not the others' min of 20).
+        Assert.Equal(0, Find(QuestCrawler.Crawl(CacheWithTbInfo(chains), classId: 1), 187, 0).RequiredLevel);
+        // Classless default profile → no gate either.
+        Assert.Equal(0, Find(QuestCrawler.Crawl(CacheWithTbInfo(chains), classId: null), 187, 0).RequiredLevel);
+    }
+
+    [Fact]
     public void Crawl_AddabilityIntoQuestFlag_IsProgressNotReward()
     {
         // addability 50 targets a discovered quest flag → progress marker, filtered;
