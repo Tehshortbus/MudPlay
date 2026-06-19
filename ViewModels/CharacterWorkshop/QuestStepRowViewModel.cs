@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
@@ -19,8 +20,8 @@ public sealed partial class QuestStepRowViewModel : ObservableObject
     /// <summary>Checkbox order this row maps to — the persisted progress key; <c>-1</c> for a non-checkable label row.</summary>
     public int Order { get; }
 
-    /// <summary>Human-readable step text (command / location / items, or a plain label), pre-formatted.</summary>
-    public string Display { get; }
+    /// <summary>The step's display text split into render runs — plain prose plus any clickable map/room walk-to links.</summary>
+    public IReadOnlyList<QuestStepSegmentViewModel> Segments { get; }
 
     /// <summary>True when this row is a tickable step; false when it's a plain context label.</summary>
     public bool IsCheckable { get; }
@@ -28,13 +29,13 @@ public sealed partial class QuestStepRowViewModel : ObservableObject
     /// <summary>Whether the user has ticked this step. Drives one-way completion.</summary>
     [ObservableProperty] private bool _isChecked;
 
-    public QuestStepRowViewModel(int order, string display, bool isChecked, bool isCheckable,
+    public QuestStepRowViewModel(int order, IReadOnlyList<QuestStepSegmentViewModel> segments, bool isChecked, bool isCheckable,
                                  Action<QuestStepRowViewModel> onToggled)
     {
-        ArgumentNullException.ThrowIfNull(display);
+        ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(onToggled);
         Order = order;
-        Display = display;
+        Segments = segments;
         IsCheckable = isCheckable;
         _isChecked = isChecked;
         _onToggled = onToggled;

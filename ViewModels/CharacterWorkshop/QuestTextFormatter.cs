@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Map;
 using FujinTerm.Game.Quests;
 using FujinTerm.Services;
 
@@ -147,4 +148,40 @@ internal static partial class QuestTextFormatter
     // whitespace, "]". The text after it is the row label.
     [GeneratedRegex(@"^\[\s*[xX]?\s*\]")]
     private static partial Regex CheckboxMarker();
+
+    /// <summary>
+    /// Split a step label into render segments, isolating any <c>(map/room)</c>
+    /// coordinate token (e.g. <c>(5/297)</c>) into its own segment carrying the
+    /// parsed <see cref="RoomKey"/> so the view can render it as a clickable
+    /// walk-to link; the surrounding prose stays as plain segments (null room). A
+    /// coordinate whose numbers don't fit a positive <see cref="int"/> is left
+    /// folded into the prose. Returns a single plain segment when the label holds
+    /// no coordinate, and an empty list for empty input.
+    /// </summary>
+    public static IReadOnlyList<(string Text, RoomKey? Room)> SplitRoomLinks(string text)
+    {
+        var segments = new List<(string Text, RoomKey? Room)>();
+        if (string.IsNullOrEmpty(text)) return segments;
+
+        int pos = 0;
+        foreach (Match m in RoomLink().Matches(text))
+        {
+            // Non-positive or over-range coordinate: not a real room — leave the
+            // token in the prose run rather than offering a dead link.
+            if (!int.TryParse(m.Groups[1].Value, out int map)
+                || !int.TryParse(m.Groups[2].Value, out int room)
+                || map <= 0 || room <= 0)
+                continue;
+
+            if (m.Index > pos) segments.Add((text[pos..m.Index], null));
+            segments.Add((m.Value, new RoomKey(map, room)));
+            pos = m.Index + m.Length;
+        }
+        if (pos < text.Length) segments.Add((text[pos..], null));
+        return segments;
+    }
+
+    // Map/room coordinate token: "(", digits, "/", digits, ")" — the link target.
+    [GeneratedRegex(@"\((\d+)/(\d+)\)")]
+    private static partial Regex RoomLink();
 }

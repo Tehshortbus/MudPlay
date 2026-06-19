@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
+using FujinTerm.Game.Map;
 using FujinTerm.Game.Quests;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -152,8 +153,31 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         {
             int order = checkable ? checkIndex++ : -1;
             bool isChecked = checkable && prog.CheckedSteps?.Contains(order) == true;
-            card.Steps.Add(new QuestStepRowViewModel(order, display, isChecked, checkable, row => OnStepToggled(card, row)));
+            card.Steps.Add(new QuestStepRowViewModel(order, BuildSegments(display), isChecked, checkable, row => OnStepToggled(card, row)));
         }
+    }
+
+    // Split a step label into render runs, wrapping each `(map/room)` coordinate in
+    // a command that walks there. A plain run carries no command; only the
+    // coordinate run is clickable.
+    private static IReadOnlyList<QuestStepSegmentViewModel> BuildSegments(string display)
+    {
+        var segments = new List<QuestStepSegmentViewModel>();
+        foreach ((string segText, RoomKey? room) in QuestTextFormatter.SplitRoomLinks(display))
+            segments.Add(room is { } key
+                ? new QuestStepSegmentViewModel(segText, new RelayCommand(() => WalkTo(key)))
+                : new QuestStepSegmentViewModel(segText));
+        return segments;
+    }
+
+    // Walk to a quest step's map/room. Stop whatever movement engine is running
+    // first (mirrors the Navigation window's walk-to hand-off), then dispatch to
+    // the walker; a destination outside the active graph surfaces via the walker's
+    // own WalkEvent.Failed path, so no pre-check is needed here.
+    private static void WalkTo(RoomKey room)
+    {
+        AppServices.Current.MovementControl.Stop();
+        AppServices.Current.Walker.WalkTo(room);
     }
 
     // ----- editor ---------------------------------------------------------
