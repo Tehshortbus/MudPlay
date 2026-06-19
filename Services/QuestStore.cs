@@ -18,6 +18,14 @@ namespace FujinTerm.Services;
 /// <c>triggers.json</c>) and reloads on <see cref="OnActiveSetChanged"/>. The
 /// mechanical data — ordered steps + stat bonuses — is crawled from the set's
 /// <c>TBInfo</c> elsewhere; this store owns only the user/seed text layer.
+/// <para>
+/// The overlay also holds two user-driven extras: <b>manual quests</b> the crawler
+/// never finds (identity in the reserved <see cref="QuestDefinition.ManualFlagBase"/>
+/// flag range, persisted verbatim since they have no crawl baseline — see
+/// <see cref="ManualQuests"/>), and a <see cref="QuestDefinition.Blocked"/> flag that
+/// suppresses a spuriously-crawled quest from the journal in sets where it shouldn't
+/// appear.
+/// </para>
 /// </summary>
 public sealed class QuestStore
 {
@@ -84,7 +92,14 @@ public sealed class QuestStore
         foreach (QuestDefinition raw in defs)
         {
             QuestDefinition def = Normalize(raw);
-            if (SameContent(def, Baseline(def.Flag, def.Step))) continue; // delta-only
+            if (QuestDefinition.IsManual(def.Flag))
+            {
+                // A manual quest has no crawl/seed baseline to regenerate it, so it persists
+                // verbatim rather than as a delta — except a wholly-blank "Add Quest" row the
+                // user never filled in, which is dropped so it doesn't clutter the overlay.
+                if (IsEmptyManual(def)) continue;
+            }
+            else if (SameContent(def, Baseline(def.Flag, def.Step))) continue; // delta-only
             _overlay[(def.Flag, def.Step)] = def;
         }
 
@@ -103,6 +118,22 @@ public sealed class QuestStore
         }
     }
 
+    /// <summary>
+    /// Every user-added (manual) quest the store knows for the active set, resolved
+    /// (overlay over seed) and ordered by flag. These carry no crawl backing, so the
+    /// Quest Status tab and editor materialize them straight from the definition.
+    /// </summary>
+    public IReadOnlyList<QuestDefinition> ManualQuests()
+    {
+        var keys = new HashSet<(int Flag, int Step)>();
+        foreach ((int Flag, int Step) k in _seed.Keys) if (QuestDefinition.IsManual(k.Flag)) keys.Add(k);
+        foreach ((int Flag, int Step) k in _overlay.Keys) if (QuestDefinition.IsManual(k.Flag)) keys.Add(k);
+        return keys
+            .OrderBy(k => k.Flag).ThenBy(k => k.Step)
+            .Select(k => Resolve(k.Flag, k.Step))
+            .ToList();
+    }
+
     // The no-overlay resolution for a quest: the seed entry if one exists, else a
     // blank auto-draft. Save compares each edited def against this to decide whether
     // the def is a genuine user delta worth writing.
@@ -117,14 +148,21 @@ public sealed class QuestStore
             d.Visible,
             string.IsNullOrWhiteSpace(d.Steps) ? null : d.Steps,
             string.IsNullOrWhiteSpace(d.Rewards) ? null : d.Rewards,
-            d.RequiredLevel);
+            d.RequiredLevel,
+            d.Blocked);
+
+    // A manual row the user added but left wholly blank — nothing worth persisting.
+    private static bool IsEmptyManual(QuestDefinition d) =>
+        string.IsNullOrWhiteSpace(d.Name) && d.Steps is null && d.Rewards is null
+        && d.RequiredLevel is null && !d.Blocked;
 
     private static bool SameContent(QuestDefinition a, QuestDefinition b) =>
         string.Equals(a.Name, b.Name, StringComparison.Ordinal)
         && a.Visible == b.Visible
         && string.Equals(a.Steps, b.Steps, StringComparison.Ordinal)
         && string.Equals(a.Rewards, b.Rewards, StringComparison.Ordinal)
-        && a.RequiredLevel == b.RequiredLevel;
+        && a.RequiredLevel == b.RequiredLevel
+        && a.Blocked == b.Blocked;
 
     private void LoadInto(Dictionary<(int Flag, int Step), QuestDefinition> target, string path, string label)
     {

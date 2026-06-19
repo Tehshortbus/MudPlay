@@ -33,7 +33,7 @@
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
                    Foreground="{StaticResource ChromeFgMutedBrush}"
-                   Text="No quests crawl from the active game-data set. Load a set whose TBInfo grants quest flags to name and annotate its quests here."/>
+                   Text="No quests crawl from the active game-data set. Load a set whose TBInfo grants quest flags to name and annotate them — or use &quot;+ Add Quest&quot; below to add one by hand."/>
 
         <!-- Master / detail. -->
         <Grid Grid.Row="0" ColumnDefinitions="240,*" ColumnSpacing="12"
@@ -139,11 +139,28 @@
             </Grid>
         </Grid>
 
-        <!-- Save / Cancel -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
-            <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="80"/>
-            <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="80" IsDefault="True"/>
-        </StackPanel>
+        <!-- Add / contextual Block-or-Delete + Save / Cancel -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,12,0,0">
+            <Button Grid.Column="0" Content="+ Add Quest" Command="{Binding AddQuestCommand}"
+                    MinWidth="110"
+                    ToolTip.Tip="Add a custom quest the game-data crawl doesn't find."/>
+
+            <!-- Contextual on the selected quest: block a crawled one, delete a manual one. -->
+            <CheckBox Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center"
+                      Content="Block (hide as a false positive)"
+                      IsChecked="{Binding SelectedQuest.Blocked, Mode=TwoWay}"
+                      IsVisible="{Binding SelectedQuest.IsCrawled, FallbackValue=False}"
+                      Foreground="{StaticResource ChromeFgMutedBrush}"
+                      ToolTip.Tip="Suppress this crawled quest from the journal — for a flag a set surfaces spuriously. The row stays here so you can un-block it."/>
+            <Button Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center"
+                    Content="Delete quest" Command="{Binding DeleteSelectedCommand}"
+                    IsVisible="{Binding SelectedQuest.IsManual, FallbackValue=False}"
+                    ToolTip.Tip="Remove this custom quest."/>
+
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="80"/>
+                <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="80" IsDefault="True"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

@@ -13,8 +13,12 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Modeless editor for the active set's quest overlay (<c>{set}/quests.json</c>):
 /// per quest the user sets a display name, show/hide visibility, and amplifying
 /// step markdown over the crawler's auto-draft. Every crawled quest is listed —
-/// hidden ones included, so they can be un-hidden. <b>Save</b> writes the overlay
-/// as a delta (untouched seed/default rows aren't frozen in) via
+/// hidden ones included, so they can be un-hidden. The user can also <b>Add</b> a
+/// custom quest the crawl never finds (a self-contained manual row in the reserved
+/// <see cref="QuestDefinition.ManualFlagBase"/> range — <b>Delete</b> removes it) and
+/// <b>Block</b> a crawled quest a set surfaces spuriously (a journal-suppressing flag
+/// that keeps the row here so it can be un-blocked). <b>Save</b> writes the overlay
+/// as a delta (untouched seed/default rows aren't frozen in, manual rows verbatim) via
 /// <see cref="QuestStore.Save"/>; <b>Cancel</b> / title-bar X discard. Standard
 /// edit-window contract (CLAUDE.md): Save commits, X / Cancel discards.
 /// </summary>
@@ -46,6 +50,8 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
         ArgumentNullException.ThrowIfNull(quests);
         _quests = quests;
 
+        Quests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQuests));
+
         foreach (CrawledQuest q in QuestCrawler.Crawl(gameData, classId))
         {
             QuestDefinition def = quests.Resolve(q.Flag, q.Step);
@@ -62,11 +68,58 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
                 def.Visible,
                 def.Steps ?? string.Empty,
                 def.Rewards ?? string.Empty,
-                def.RequiredLevel));
+                def.RequiredLevel)
+            { Blocked = def.Blocked });
         }
+
+        // User-added quests the crawl never produces, listed after the crawled ones.
+        foreach (QuestDefinition def in quests.ManualQuests())
+            Quests.Add(BuildManualRow(def));
 
         SelectedQuest = Quests.FirstOrDefault();
     }
+
+    // Add a blank custom quest at the next free manual flag and select it for editing.
+    [RelayCommand]
+    private void AddQuest()
+    {
+        int flag = QuestDefinition.ManualFlagBase;
+        foreach (QuestEditRowViewModel row in Quests)
+            if (row.IsManual && row.Flag >= flag) flag = row.Flag + 1;
+
+        QuestEditRowViewModel added = BuildManualRow(new QuestDefinition(flag, 0));
+        Quests.Add(added);
+        SelectedQuest = added;
+    }
+
+    // Delete the selected manual quest (crawled quests are blocked, not deleted). Keeps a
+    // neighbouring row selected so the detail pane doesn't blank out mid-edit.
+    [RelayCommand]
+    private void DeleteSelected()
+    {
+        if (SelectedQuest is not { IsManual: true } row) return;
+        int index = Quests.IndexOf(row);
+        Quests.Remove(row);
+        SelectedQuest = Quests.Count == 0 ? null : Quests[Math.Min(index, Quests.Count - 1)];
+    }
+
+    // A master-list row for a manual quest: every crawl-baseline field is empty, so the
+    // editable boxes pre-fill straight from the definition and persist verbatim.
+    private static QuestEditRowViewModel BuildManualRow(QuestDefinition def) =>
+        new(def.Flag, def.Step,
+            fallbackLabel: "(custom quest)",
+            autoSteps: string.Empty,
+            autoRewards: string.Empty,
+            bonusText: string.Empty,
+            levelText: QuestTextFormatter.Level(def.RequiredLevel ?? 0),
+            autoRequiredLevel: 0,
+            requirementsText: string.Empty,
+            name: def.Name,
+            visible: def.Visible,
+            steps: def.Steps ?? string.Empty,
+            rewards: def.Rewards ?? string.Empty,
+            requiredLevel: def.RequiredLevel)
+        { Blocked = def.Blocked };
 
     [RelayCommand]
     private void Save()

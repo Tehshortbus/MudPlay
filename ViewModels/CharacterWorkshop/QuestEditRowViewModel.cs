@@ -21,6 +21,12 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     /// <summary>Band level for a multi-part quest; <c>0</c> for a single-part one.</summary>
     public int Step { get; }
 
+    /// <summary>True when this is a user-added quest (no crawl backing) — fields persist verbatim and the row can be deleted.</summary>
+    public bool IsManual => QuestDefinition.IsManual(Flag);
+
+    /// <summary>True for a crawled quest — eligible for blocking rather than deletion.</summary>
+    public bool IsCrawled => !IsManual;
+
     /// <summary>Auto-draft title — pre-fills <see cref="Name"/> and is the delta baseline for it.</summary>
     public string FallbackLabel { get; }
 
@@ -52,6 +58,15 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ListLabel))]
     private bool _visible;
+
+    /// <summary>
+    /// Live block flag bound to the editor's "Block" toggle (crawled quests only). When
+    /// set the quest is suppressed from the journal entirely as a false positive; the row
+    /// stays in the editor so it can be un-blocked.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ListLabel))]
+    private bool _blocked;
 
     [ObservableProperty] private string _steps;
 
@@ -90,12 +105,13 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         _requiredLevelInput = requiredLevel ?? (autoRequiredLevel > 0 ? autoRequiredLevel : null);
     }
 
-    /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when hidden.</summary>
+    /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when blocked / hidden.</summary>
     public string ListLabel
     {
         get
         {
             string baseName = string.IsNullOrWhiteSpace(Name) ? FallbackLabel : Name;
+            if (Blocked) return $"{baseName}  (blocked)";
             return Visible ? baseName : $"{baseName}  (hidden)";
         }
     }
@@ -109,6 +125,15 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     /// </summary>
     public QuestDefinition ToDefinition()
     {
+        // A manual quest has no crawl baseline to diff against — it's self-contained, so its
+        // fields persist verbatim (QuestStore keeps the row unless it's wholly blank).
+        if (IsManual)
+            return new QuestDefinition(
+                Flag, Step, (Name ?? string.Empty).Trim(), Visible,
+                string.IsNullOrWhiteSpace(Steps) ? null : Steps,
+                string.IsNullOrWhiteSpace(Rewards) ? null : Rewards,
+                RequiredLevelInput);
+
         string name = (Name ?? string.Empty).Trim();
         if (string.Equals(name, FallbackLabel, StringComparison.Ordinal)) name = string.Empty;
 
@@ -126,6 +151,6 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         int? requiredLevel = RequiredLevelInput;
         if (requiredLevel is null || requiredLevel == AutoRequiredLevel) requiredLevel = null;
 
-        return new QuestDefinition(Flag, Step, name, Visible, steps, rewards, requiredLevel);
+        return new QuestDefinition(Flag, Step, name, Visible, steps, rewards, requiredLevel, Blocked);
     }
 }

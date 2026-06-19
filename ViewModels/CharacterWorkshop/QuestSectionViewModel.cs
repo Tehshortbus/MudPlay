@@ -98,7 +98,10 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             foreach (CrawledQuest q in QuestCrawler.Crawl(_gameData, classId))
             {
                 QuestDefinition def = _quests.Resolve(q.Flag, q.Step);
-                if (!def.Visible) continue;
+                // Blocked = a false positive the user flagged out of the journal; hidden =
+                // a per-taste hide. Either keeps the card out of the list (both un-doable
+                // in the editor, which lists every quest regardless).
+                if (def.Blocked || !def.Visible) continue;
 
                 QuestProgress prog = GetOrCreateProgress(q.Flag, q.Step);
                 _bonusesByCard[(q.Flag, q.Step)] = q.Bonuses;
@@ -133,6 +136,10 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                 Quests.Add(card);
             }
 
+            // User-added quests the crawl never produces — self-contained from the overlay.
+            foreach (QuestDefinition def in _quests.ManualQuests())
+                AddManualCard(def);
+
             HasQuests = Quests.Count > 0;
         }
         finally { _suppress = false; }
@@ -150,6 +157,13 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         string text = !string.IsNullOrWhiteSpace(def.Steps)
             ? def.Steps!
             : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q));
+        AddStepRows(card, text, prog);
+    }
+
+    // Materialize a quest's step markdown into tickable/label rows on the card. Shared by
+    // crawled quests (auto-draft or edited override) and manual quests (override only).
+    private void AddStepRows(QuestCardViewModel card, string text, QuestProgress prog)
+    {
         if (string.IsNullOrWhiteSpace(text)) return;
 
         int checkIndex = 0;
@@ -159,6 +173,32 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             bool isChecked = checkable && prog.CheckedSteps?.Contains(order) == true;
             card.Steps.Add(new QuestStepRowViewModel(order, BuildSegments(display), isChecked, checkable, row => OnStepToggled(card, row)));
         }
+    }
+
+    // Add a card for a user-added quest. It has no crawl backing, so every field comes
+    // from the definition: no class-resolved bonus, no crawled requirements, the user's
+    // reward label as the award, and the user's step markdown as the checklist.
+    private void AddManualCard(QuestDefinition def)
+    {
+        if (def.Blocked || !def.Visible) return;
+
+        QuestProgress prog = GetOrCreateProgress(def.Flag, def.Step);
+        _bonusesByCard[(def.Flag, def.Step)] = Array.Empty<QuestBonus>();
+
+        var steps = new ObservableCollection<QuestStepRowViewModel>();
+        var card = new QuestCardViewModel(
+            def.Flag, def.Step,
+            string.IsNullOrWhiteSpace(def.Name) ? "(unnamed quest)" : def.Name,
+            QuestTextFormatter.Level(def.RequiredLevel ?? 0),
+            string.Empty,
+            def.Rewards ?? string.Empty,
+            string.Empty,
+            prog.Complete,
+            steps,
+            OnCardCompletionChanged);
+
+        AddStepRows(card, def.Steps ?? string.Empty, prog);
+        Quests.Add(card);
     }
 
     // Split a step label into render runs, wrapping each `(map/room)` coordinate in

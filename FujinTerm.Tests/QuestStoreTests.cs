@@ -313,4 +313,73 @@ public sealed class QuestStoreTests : IDisposable
         reloaded.OnActiveSetChanged(_scratchSet);
         Assert.Equal(25, reloaded.Resolve(50, 1).RequiredLevel);
     }
+
+    // ----- manual quests + blocking (add / remove a quest) -----------------
+
+    [Fact]
+    public void Save_ManualQuest_PersistsVerbatim_AndIsListedByManualQuests()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // A user-added quest the crawl never produces — no seed/crawl baseline, so it must
+        // persist verbatim (not be delta-dropped) and be enumerable for the journal/editor.
+        int flag = QuestDefinition.ManualFlagBase;
+        store.Save([new QuestDefinition(flag, 0, "Hand-Made Quest",
+            steps: "[] do the thing", rewards: "a cookie", requiredLevel: 12)]);
+
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+
+        QuestDefinition q = Assert.Single(reloaded.ManualQuests());
+        Assert.Equal(flag, q.Flag);
+        Assert.Equal("Hand-Made Quest", q.Name);
+        Assert.Equal("[] do the thing", q.Steps);
+        Assert.Equal("a cookie", q.Rewards);
+        Assert.Equal(12, q.RequiredLevel);
+    }
+
+    [Fact]
+    public void Save_WhollyBlankManualQuest_IsDropped()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // An "Add Quest" row the user never filled in carries nothing worth keeping.
+        store.Save([new QuestDefinition(QuestDefinition.ManualFlagBase, 0)]);
+
+        Assert.Empty(store.ManualQuests());
+    }
+
+    [Fact]
+    public void Save_BlockedCrawledQuest_PersistsAndUnblockingDrops()
+    {
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        // Blocking a (default-baseline) crawled quest is a real delta — it must be written.
+        store.Save([new QuestDefinition(32, 0, blocked: true)]);
+
+        QuestStore reloaded = new(seedPath: _seedPath);
+        reloaded.OnActiveSetChanged(_scratchSet);
+        Assert.True(reloaded.Resolve(32, 0).Blocked);
+
+        // Un-blocking returns the quest to its baseline, so the row drops back out.
+        reloaded.Save([new QuestDefinition(32, 0, blocked: false)]);
+        QuestStore again = new(seedPath: _seedPath);
+        again.OnActiveSetChanged(_scratchSet);
+        Assert.False(again.Resolve(32, 0).Blocked);
+    }
+
+    [Fact]
+    public void ManualQuests_ExcludesCrawledFlags()
+    {
+        // A normal (sub-ManualFlagBase) flag in the overlay is a crawled-quest delta, not a
+        // manual quest — ManualQuests must not return it.
+        WriteOverlay(new QuestDefinition(50, 1, "Crawled Override"));
+        QuestStore store = new(seedPath: _seedPath);
+        store.OnActiveSetChanged(_scratchSet);
+
+        Assert.Empty(store.ManualQuests());
+    }
 }

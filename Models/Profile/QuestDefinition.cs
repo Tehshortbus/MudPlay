@@ -17,6 +17,17 @@ namespace FujinTerm.Models.Profile;
 /// </remarks>
 public sealed class QuestDefinition
 {
+    /// <summary>
+    /// Flag base for user-added quests the crawler never produces. Real quest flags are
+    /// small TBInfo ability ids (low hundreds); reserving the ≥ <see cref="ManualFlagBase"/>
+    /// range keeps a manual quest's identity from ever colliding with a crawled one and
+    /// marks it self-contained — it has no crawl/seed baseline, so it persists verbatim.
+    /// </summary>
+    public const int ManualFlagBase = 1_000_000;
+
+    /// <summary>True when <paramref name="flag"/> is a user-added (manual) quest, not a crawled one.</summary>
+    public static bool IsManual(int flag) => flag >= ManualFlagBase;
+
     /// <summary>Quest-flag ability id — the <c>giveability &lt;flag&gt; &lt;step&gt;</c> target.</summary>
     public int Flag { get; set; }
 
@@ -57,10 +68,20 @@ public sealed class QuestDefinition
     /// </summary>
     public int? RequiredLevel { get; set; }
 
+    /// <summary>
+    /// True to suppress this quest from the journal entirely — a "block" for a crawled
+    /// quest a particular game-data set surfaces spuriously. Distinct from
+    /// <see cref="Visible"/> (a per-taste hide the user toggles freely): a block flags the
+    /// row as not-a-real-quest. It stays in the editor so it can be un-blocked. Has no
+    /// meaning on a manual quest (delete it instead). Defaults to false.
+    /// </summary>
+    public bool Blocked { get; set; }
+
     public QuestDefinition() { }
 
     public QuestDefinition(int flag, int step, string name = "", bool visible = true,
-                           string? steps = null, string? rewards = null, int? requiredLevel = null)
+                           string? steps = null, string? rewards = null, int? requiredLevel = null,
+                           bool blocked = false)
     {
         Flag = flag;
         Step = step;
@@ -69,5 +90,6 @@ public sealed class QuestDefinition
         Steps = steps;
         Rewards = rewards;
         RequiredLevel = requiredLevel;
+        Blocked = blocked;
     }
 }
