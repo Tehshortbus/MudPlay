@@ -1,0 +1,160 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:model="using:FujinTerm.Models.Profile"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="620"
+             x:Class="FujinTerm.Views.CharacterWorkshop.EquipmentSectionView"
+             x:DataType="vm:EquipmentSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.ColHead">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.Field">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Border.Box">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22" RowDefinitions="Auto,Auto,*">
+
+        <!-- Set selector + per-set actions. Name / Keyword commit on focus-out
+             (UpdateSourceTrigger=LostFocus) so each disk write is one edit, not
+             one keystroke. Snapshot Current seeds the controlled slots from the
+             live worn loadout; Apply Set hands the set to the equip engine. -->
+        <WrapPanel Grid.Row="0" Margin="0,0,0,6" VerticalAlignment="Center">
+            <ComboBox MinWidth="170" Margin="0,0,6,6"
+                      ItemsSource="{Binding Sets}"
+                      SelectedItem="{Binding SelectedSet, Mode=TwoWay}"
+                      PlaceholderText="No sets">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate DataType="model:EquipmentSet">
+                        <TextBlock Text="{Binding Name}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Content="New" Margin="0,0,6,6" Command="{Binding NewSetCommand}"/>
+            <Button Content="Delete" Margin="0,0,18,6" Command="{Binding DeleteSetCommand}"/>
+
+            <TextBlock Classes="Field" Text="Name" Margin="0,0,6,6"/>
+            <TextBox Width="140" Margin="0,0,12,6" IsEnabled="{Binding HasSet}"
+                     Text="{Binding SetName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+            <TextBlock Classes="Field" Text="Keyword" Margin="0,0,6,6"/>
+            <TextBox Width="120" Margin="0,0,18,6" IsEnabled="{Binding HasSet}"
+                     PlaceholderText="@equip-…"
+                     Text="{Binding SetKeyword, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                     ToolTip.Tip="Short suffix a party member appends to @equip- to apply this set."/>
+
+            <Button Content="Snapshot Current" Margin="0,0,6,6" Command="{Binding SnapshotCurrentCommand}"
+                    ToolTip.Tip="Fill the controlled slots from the items you're wearing right now."/>
+            <Button Content="Apply Set" Margin="0,0,0,6" Command="{Binding ApplySetCommand}"
+                    ToolTip.Tip="Wear this set's controlled items; unchecked slots are left untouched."/>
+        </WrapPanel>
+
+        <!-- Apply result (own line so it doesn't reflow the action row). -->
+        <TextBlock Grid.Row="1" Text="{Binding ApplyStatus}" Margin="0,0,0,8"
+                   IsVisible="{Binding HasApplyStatus}"
+                   Foreground="{StaticResource AccentAmberBrush}"/>
+
+        <!-- Slot grid (left) + set totals (right). -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" IsVisible="{Binding HasSet}">
+
+            <Border Grid.Column="0"
+                    Background="{StaticResource ChromeBgSunkenBrush}"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1" CornerRadius="4">
+                <Grid RowDefinitions="Auto,*">
+                    <!-- Header. The leading column is the per-slot "this set controls
+                         this slot" checkbox; an unchecked slot is left untouched on apply. -->
+                    <Grid Grid.Row="0" ColumnDefinitions="34,128,210,*" Margin="10,8,10,4">
+                        <TextBlock Grid.Column="0" Classes="ColHead" Text="On"
+                                   ToolTip.Tip="When checked, this set governs the slot. Unchecked slots are left untouched on apply."/>
+                        <TextBlock Grid.Column="1" Classes="ColHead" Text="Slot"/>
+                        <TextBlock Grid.Column="2" Classes="ColHead" Text="Item"/>
+                        <TextBlock Grid.Column="3" Classes="ColHead" Text="Stat Preview"/>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Rows}" Margin="10,0,10,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:EquipmentSlotRowViewModel">
+                                    <Grid ColumnDefinitions="34,128,210,*" Margin="0,1">
+                                        <CheckBox Grid.Column="0" VerticalAlignment="Center"
+                                                  IsChecked="{Binding Controlled, Mode=TwoWay}"
+                                                  ToolTip.Tip="This set controls this slot. Unchecked = untouched on apply."/>
+                                        <TextBlock Grid.Column="1" Classes="Field" Text="{Binding Label}"/>
+                                        <AutoCompleteBox Grid.Column="2" Margin="0,0,8,0"
+                                                         ItemsSource="{Binding AvailableItems}"
+                                                         FilterMode="ContainsOrdinal"
+                                                         MinimumPrefixLength="1"
+                                                         PlaceholderText="—"
+                                                         Text="{Binding ItemName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                        <TextBlock Grid.Column="3" VerticalAlignment="Center"
+                                                   Text="{Binding StatPreview}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Set totals — the controlled physical slots' summed bonuses. -->
+            <Border Grid.Column="1" Classes="Box" Width="210" Margin="14,0,0,0"
+                    VerticalAlignment="Top">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Set Totals"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                    <TextBlock Classes="Field"
+                               Text="No controlled slot contributes a bonus."
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding !HasTotals}"/>
+
+                    <ItemsControl ItemsSource="{Binding TotalRows}" IsVisible="{Binding HasTotals}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:EquipBonusRow">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Field"
+                                               Text="{Binding Stat}" Margin="0,0,12,2"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}"
+                                               Foreground="{StaticResource AccentRedBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{StaticResource FontSizeMd}"
+                                               Margin="0,0,0,2"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Empty state — no set selected (or none exists yet). -->
+        <TextBlock Grid.Row="2"
+                   IsVisible="{Binding !HasSet}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="400" TextAlignment="Center"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Text="Use New to create a gear set, then check the slots it should control and pick an item for each."/>
+    </Grid>
+</UserControl>

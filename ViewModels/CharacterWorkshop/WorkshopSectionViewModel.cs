@@ -7,8 +7,7 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Base for one tab in the <see cref="CharacterWorkshopViewModel"/>'s flat
 /// tab strip. The Workshop mirrors MudProxy's Character Status dialog —
 /// Character Info / Death Recovery / Level Projection / CP Allocation /
-/// Quest Status / Equipment Manager. Death Recovery is wired to
-/// DeathRecoveryManager; the rest are stubs until their Phase-10 PR ships.
+/// Quest Status / Equipment Manager.
 /// </summary>
 public abstract class WorkshopSectionViewModel : ObservableObject, IDisposable
 {

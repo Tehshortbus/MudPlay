@@ -12,9 +12,7 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Shell view-model for the Character Workshop window. Mirrors MudProxy's
 /// <c>CharacterStatusDialog</c> shape: a flat tab strip across the six
 /// Phase-10 tabs — Character Info / Death Recovery / Level Projection /
-/// CP Allocation / Quest Status / Equipment Manager. All but Equipment Manager
-/// are wired; it remains a stub placeholder until its tab ships in a later
-/// Phase-10 PR.
+/// CP Allocation / Quest Status / Equipment Manager.
 /// </summary>
 public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisposable
 {
@@ -42,6 +40,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         AlignmentTracker alignment,
         TrainerWalkManager trainerWalk,
         QuestStore quests,
+        EquipmentManager equipment,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -53,6 +52,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(alignment);
         ArgumentNullException.ThrowIfNull(trainerWalk);
         ArgumentNullException.ThrowIfNull(quests);
+        ArgumentNullException.ThrowIfNull(equipment);
         _profile = profile;
         _gameData = gameData;
 
@@ -60,8 +60,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         // shared state; the Character Info tab (reader) folds them into derived combat.
         var questBonuses = new QuestBonusState();
 
-        // Tab order matches the Phase-10 plan's nav order. Equipment Manager is the
-        // last remaining stub until its PR lands.
+        // Tab order matches the Phase-10 plan's nav order.
         Sections.Add(new CharacterInfoSectionViewModel(playerStats, gameData, inventory, players, alignment, questBonuses));
 
         Sections.Add(new DeathSectionViewModel(recovery, profile));
@@ -75,12 +74,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
 
         Sections.Add(new QuestSectionViewModel(playerStats, gameData, profile, quests, questBonuses));
 
-        Sections.Add(new StubWorkshopSectionViewModel(
-            "equipment", "Equipment Manager",
-            "Phase 10 — PR 10.12–10.15",
-            "State-based gear-swapping engine: 21-slot grid, saved sets with the fixed " +
-            "6-condition trigger list, and the item finder. Snapshot Current pulls from the " +
-            "live inventory. Wires when the Equipment Manager tab ships."));
+        Sections.Add(new EquipmentSectionViewModel(profile, inventory, gameData, equipment));
 
         SelectedSection = initialSectionId is not null
             ? Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase))
