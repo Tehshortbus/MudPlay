@@ -4,7 +4,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,13 +20,10 @@ using FujinTerm.Views.CharacterWorkshop;
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// CHARACTER INFO section — the live stat sheet. Three boxes:
+/// CHARACTER INFO section — the live stat sheet:
 /// <list type="bullet">
 /// <item>Box A — Base Stats from the last <c>stat</c> snapshot
 /// (<see cref="PlayerStats"/>). Mana relabels to Kai for Mystic classes.</item>
-/// <item>Box B — Equipment Bonuses: the worn-gear-only aggregate from
-/// <see cref="CharacterCalculator.AggregateEquipmentStats"/>, one row per
-/// non-zero stat with a per-item hover breakdown.</item>
 /// <item>Box C — Derived combat accuracy (Attack / Bash / Smash / Backstab)
 /// from <see cref="CombatCalculator"/>. The aggregate it consumes additionally
 /// folds in innate race + class ability bonuses <em>and</em> the permanent rewards
@@ -85,11 +81,6 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private int _martialArts;
     [ObservableProperty] private int _magicRes;
     [ObservableProperty] private int _spellcasting;
-
-    // ----- Box B: equipment bonuses --------------------------------------
-    public ObservableCollection<EquipBonusRow> BonusRows { get; } = new();
-    /// <summary>False when no worn item contributes a bonus — drives the empty-state hint.</summary>
-    [ObservableProperty] private bool _hasBonuses;
 
     // ----- Quest Bonuses: completed-quest permanent rewards --------------
     /// <summary>One row per ability granted by a completed quest, summed across quests.</summary>
@@ -261,11 +252,6 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private void RefreshDerived()
     {
         IReadOnlyList<EquippedItem> worn = _inventory.Snapshot.EquippedItems;
-
-        // Box B is equipment-ONLY — its title says "Equipment Bonuses", so
-        // racial / class innate bonuses must not leak into it.
-        EquipmentStatBreakdown equip = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
-        RebuildBonusRows(equip);
 
         // Box C consumes a COMBINED aggregate: worn gear plus the character's
         // innate race + class ability bonuses, which the in-game accuracy
@@ -471,97 +457,6 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         MeleeDamageResult d = CombatCalculator.CalcMeleeDamage(
             type, realm, str, t.WeaponMin, t.WeaponMax, t.PlusMaxDamage);
         return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
-    }
-
-    private void RebuildBonusRows(EquipmentStatBreakdown b)
-    {
-        BonusRows.Clear();
-        EquipmentStatSummary t = b.Totals;
-
-        AddDoubleRow(b, "Armour Class", t.PlusAC);
-        AddDoubleRow(b, "Damage Resist", t.PlusDR);
-        AddIntRow(b, "Strength", t.PlusStrength);
-        AddIntRow(b, "Intellect", t.PlusIntellect);
-        AddIntRow(b, "Willpower", t.PlusWillpower);
-        AddIntRow(b, "Agility", t.PlusAgility);
-        AddIntRow(b, "Health", t.PlusHealth);
-        AddIntRow(b, "Charm", t.PlusCharm);
-        AddIntRow(b, "Max HP", t.PlusMaxHp);
-        AddIntRow(b, "Max Mana", t.PlusMaxMana);
-        AddIntRow(b, "HP Regen", t.HpRegenPercent);
-        AddIntRow(b, "Mana Regen", t.MpRegenPercent);
-        AddIntRow(b, "Crits", t.PlusCrits);
-        AddAccuracyRow(b, t);
-        AddIntRow(b, "Max Damage", t.PlusMaxDamage);
-        AddIntRow(b, "Spell Damage", t.SpellDamageBonus);
-        AddIntRow(b, "Hit Magic", t.PlusHitMagic);
-        AddIntRow(b, "Dodge", t.PlusDodge);
-        AddIntRow(b, "Magic Resist", t.PlusMagicResist);
-        AddIntRow(b, "BS Accuracy", t.PlusBSAccuracy);
-        AddIntRow(b, "BS Min Dmg", t.PlusBSMin);
-        AddIntRow(b, "BS Max Dmg", t.PlusBSMax);
-        AddIntRow(b, "Stealth", t.PlusStealth);
-        AddIntRow(b, "Perception", t.PlusPerception);
-        AddIntRow(b, "Spellcasting", t.PlusSpellcasting);
-        AddIntRow(b, "Encumbrance", t.PlusEncumbrance);
-        AddIntRow(b, "Traps", t.PlusTraps);
-        AddIntRow(b, "Picklocks", t.PlusPicklocks);
-        AddIntRow(b, "Illuminate", t.PlusIlluminate);
-        AddIntRow(b, "Quickness", t.PlusQuickness);
-        AddIntRow(b, "Cold Resist", t.PlusColdResist);
-        AddIntRow(b, "Fire Resist", t.PlusFireResist);
-        AddIntRow(b, "Stone Resist", t.PlusStoneResist);
-        AddIntRow(b, "Lightning Resist", t.PlusLightningResist);
-        AddIntRow(b, "Water Resist", t.PlusWaterResist);
-        AddIntRow(b, "Prot Evil", t.PlusProtEvil);
-        AddIntRow(b, "Prot Good", t.PlusProtGood);
-        AddIntRow(b, "Punch Dmg", t.PlusPunchDmg);
-        AddIntRow(b, "Punch Accy", t.PlusPunchAccy);
-        AddIntRow(b, "Kick Dmg", t.PlusKickDmg);
-        AddIntRow(b, "Kick Accy", t.PlusKickAccy);
-        AddIntRow(b, "JumpKick Dmg", t.PlusJumpKickDmg);
-        AddIntRow(b, "JumpKick Accy", t.PlusJumpKickAccy);
-
-        HasBonuses = BonusRows.Count > 0;
-    }
-
-    private void AddIntRow(EquipmentStatBreakdown b, string statKey, int value)
-    {
-        if (value == 0) return;
-        string display = value.ToString("+0;-0", CultureInfo.InvariantCulture);
-        BonusRows.Add(new EquipBonusRow(statKey, display, BuildTooltip(b, statKey)));
-    }
-
-    private void AddDoubleRow(EquipmentStatBreakdown b, string statKey, double value)
-    {
-        if (value == 0) return;
-        string display = value.ToString("+0.#;-0.#", CultureInfo.InvariantCulture);
-        BonusRows.Add(new EquipBonusRow(statKey, display, BuildTooltip(b, statKey)));
-    }
-
-    // Accuracy total combines worn-item Accy fields with the abil-22 sum — the
-    // same number Box C feeds the accuracy formula. Tooltip lists item sources.
-    private void AddAccuracyRow(EquipmentStatBreakdown b, EquipmentStatSummary t)
-    {
-        int total = t.TotalWornAccy + t.PlusAccuracy;
-        if (total == 0) return;
-        string display = total.ToString("+0;-0", CultureInfo.InvariantCulture);
-        BonusRows.Add(new EquipBonusRow("Accuracy", display, BuildTooltip(b, "Accuracy")));
-    }
-
-    private static string? BuildTooltip(EquipmentStatBreakdown b, string statKey)
-    {
-        if (!b.PerStatSources.TryGetValue(statKey, out var sources) || sources.Count == 0)
-            return null;
-
-        var sb = new StringBuilder();
-        foreach (StatContribution s in sources)
-        {
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append(s.ItemName).Append("  ").Append(s.DisplayValue);
-            if (!string.IsNullOrEmpty(s.Tag)) sb.Append(' ').Append(s.Tag);
-        }
-        return sb.ToString();
     }
 
     // ----- Box A: alignment standing --------------------------------------

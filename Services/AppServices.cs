@@ -929,9 +929,18 @@ public sealed class AppServices
     /// (<see cref="Inventory"/>'s snapshot) and paces <c>wear</c> commands;
     /// virtual slots write <see cref="Models.Profile.CombatSettings"/> instead.
     /// Driven by the <c>@equip-&lt;set&gt;</c> remote command
-    /// (<see cref="EquipRemote"/>); trigger evaluation lands in a later PR.
+    /// (<see cref="EquipRemote"/>) and the auto-equip triggers
+    /// (<see cref="AutoEquip"/>).
     /// </summary>
     public Game.Inventory.EquipmentManager Equipment { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 10 PR 10.14 — auto-equip trigger coordinator. Subscribes to
+    /// <see cref="Game.PlayerState"/>'s position / combat signals and, when the
+    /// matching trigger-purposed <see cref="Models.Profile.EquipmentSet"/> is
+    /// enabled, hands its id to <see cref="Equipment"/> for the moment.
+    /// </summary>
+    public Game.Inventory.AutoEquipCoordinator AutoEquip { get; private set; } = null!;
 
     /// <summary>
     /// Phase 9 PR 9.E — per-currency cash pickup engine. Dispatches
@@ -2336,6 +2345,20 @@ public sealed class AppServices
         // arriving). Non-blocking; the settled-state guard in
         // StealthManager prevents a double-send when both paths fire.
         Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+
+        // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
+        // Equipment blob as the apply engine and the HealthManager's recovery gates
+        // (to tell an HP rest from a mana rest), and subscribes to PlayerState
+        // (position / combat) for the pre-rest and default trigger moments.
+        // App-lifetime subscriber to app-lifetime singletons, so it isn't
+        // disposed/re-created on profile swap.
+        AutoEquip = new Game.Inventory.AutoEquipCoordinator(
+            PlayerState,
+            readEquipment: () => Profile.Current?.Equipment ?? new Models.Profile.EquipmentSettings(),
+            hpGateAsserted: () => Health.HpGateAsserted,
+            maGateAsserted: () => Health.MaGateAsserted,
+            applyBySetId: Equipment.ApplyBySetId,
+            log: Log);
 
         // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
         // BBS-change signals so the catalogue reloads on profile load

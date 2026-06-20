@@ -25,10 +25,11 @@ namespace FujinTerm.Game.Inventory;
 /// is reflected without re-subscription.
 /// </para>
 /// <para>
-/// This PR ships the apply core + the <c>@equip-&lt;set&gt;</c> entry point.
-/// Per-slot item filtering / "find best" (the Workshop's slot grid + find-items views)
-/// and auto-equip trigger evaluation land in later Phase-10 PRs that consume
-/// this engine.
+/// This engine ships the apply core plus the two entry points that drive it:
+/// <see cref="ApplyByKeyword"/> (the <c>@equip-&lt;set&gt;</c> remote command) and
+/// <see cref="ApplyBySetId"/> (the auto-equip trigger coordinator). Per-slot item
+/// filtering / "find best" (the Workshop's find-items view) lands in a later
+/// Phase-10 PR that consumes this engine.
 /// </para>
 /// </remarks>
 public sealed class EquipmentManager
@@ -91,6 +92,23 @@ public sealed class EquipmentManager
         return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
+    /// <summary>
+    /// Resolve a gear set by its stable <see cref="EquipmentSet.Id"/> and apply it.
+    /// Auto-equip triggers reference their target set by Id (it survives renames),
+    /// so this is the trigger coordinator's entry point. Declines while an apply is
+    /// already in flight; reports <see cref="EquipResult.NotFound"/> for an empty or
+    /// unresolved id (e.g. a trigger pointing at a since-deleted set).
+    /// </summary>
+    public EquipResult ApplyBySetId(string setId)
+    {
+        if (string.IsNullOrWhiteSpace(setId)) return EquipResult.NotFound;
+        if (_isEquipping) return EquipResult.Busy;
+        EquipmentSet? set = _readEquipment().Sets
+            .FirstOrDefault(s => string.Equals(s.Id, setId, StringComparison.Ordinal));
+        if (set is null) return EquipResult.NotFound;
+        return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
+    }
+
     private EquipmentSet? FindSet(string keyword)
     {
         EquipmentSettings cfg = _readEquipment();
@@ -134,19 +152,19 @@ public sealed class EquipmentManager
     // ----- pure apply logic (unit-tested directly) ------------------------
 
     /// <summary>
-    /// The ordered <c>wear</c> commands for a set's controlled, physical slots
-    /// whose item isn't already worn. Virtual slots are excluded (handled by
-    /// <see cref="ApplyVirtualSlots"/>); empty item names are skipped; an
-    /// already-worn item is skipped so re-applying a set issues no redundant
-    /// wears. The game auto-removes whatever occupies a slot when the new item is
-    /// worn, so no explicit <c>remove</c> is needed for a full-loadout swap.
+    /// The ordered <c>wear</c> commands for a set's physical slots whose item
+    /// isn't already worn. Virtual slots are excluded (handled by
+    /// <see cref="ApplyVirtualSlots"/>); <c>{no change}</c> (empty item) slots are
+    /// skipped; an already-worn item is skipped so re-applying a set issues no
+    /// redundant wears. The game auto-removes whatever occupies a slot when the new
+    /// item is worn, so no explicit <c>remove</c> is needed for a full-loadout swap.
     /// </summary>
     internal static List<string> BuildWearCommands(EquipmentSet set, ISet<string> wornNames)
     {
         var cmds = new List<string>();
         foreach (EquipmentSlotEntry e in set.Slots)
         {
-            if (!e.Controlled || IsVirtual(e.Slot)) continue;
+            if (IsVirtual(e.Slot)) continue;
             string? name = e.ItemName?.Trim();
             if (string.IsNullOrEmpty(name)) continue;
             if (wornNames.Contains(name)) continue;
@@ -156,7 +174,7 @@ public sealed class EquipmentManager
     }
 
     /// <summary>
-    /// Fold a set's controlled virtual-slot items into <paramref name="combat"/>
+    /// Fold a set's virtual-slot items into <paramref name="combat"/>
     /// (Alternate Weapon → <see cref="CombatSettings.AlternateWeapon"/>, Alternate
     /// Off-Hand → <see cref="CombatSettings.AlternateOffHand"/>) and report whether
     /// anything changed. An empty virtual item leaves the field untouched, per the
@@ -167,7 +185,7 @@ public sealed class EquipmentManager
         bool changed = false;
         foreach (EquipmentSlotEntry e in set.Slots)
         {
-            if (!e.Controlled || !IsVirtual(e.Slot)) continue;
+            if (!IsVirtual(e.Slot)) continue;
             string? name = e.ItemName?.Trim();
             if (string.IsNullOrEmpty(name)) continue;
             switch (e.Slot)

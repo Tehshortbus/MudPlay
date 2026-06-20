@@ -6,12 +6,11 @@ using FujinTerm.Models.Profile;
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// One row in the Equipment Manager's slot grid: a slot's
-/// <see cref="Controlled"/> checkbox, its wanted <see cref="ItemName"/>, the
-/// game-data suggestion list for the slot's item field, and a computed one-line
-/// <see cref="StatPreview"/> the section writes back. Editing the checkbox or
-/// item name invokes the supplied callback so the section re-persists the set
-/// and refreshes the totals.
+/// One row in the Equipment Manager's slot grid: a slot's wanted
+/// <see cref="ItemName"/> (empty = <c>{no change}</c>, the slot is skipped on
+/// apply) and the live-filtered <see cref="AvailableItems"/> suggestion list for
+/// the slot. Editing the item name invokes the supplied callback so the section
+/// re-persists the set and refreshes the equipment-bonuses panel.
 /// </summary>
 public sealed partial class EquipmentSlotRowViewModel : ObservableObject
 {
@@ -27,17 +26,13 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
     /// <summary>True for the two virtual (Alt Weapon / Off-Hand) rows — no wire wear on apply.</summary>
     public bool IsVirtual { get; }
 
-    /// <summary>Game-data item names that can occupy this slot — the field's suggestions.</summary>
-    public IReadOnlyList<string> AvailableItems { get; }
+    /// <summary>Game-data item names that can occupy this slot — the field's
+    /// suggestions, filtered by the character's level / class / alignment. Updated
+    /// live when those change.</summary>
+    [ObservableProperty] private IReadOnlyList<string> _availableItems;
 
-    /// <summary>Does the owning set govern this slot? Unchecked = untouched on apply.</summary>
-    [ObservableProperty] private bool _controlled;
-
-    /// <summary>Item the set wants here; null / empty = no item.</summary>
+    /// <summary>Item the set wants here; null / empty = <c>{no change}</c>.</summary>
     [ObservableProperty] private string? _itemName;
-
-    /// <summary>Compact stat readout for the current item (section-computed).</summary>
-    [ObservableProperty] private string _statPreview = string.Empty;
 
     public EquipmentSlotRowViewModel(
         EquipmentSlot slot, string label, bool isVirtual,
@@ -48,29 +43,29 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
         Slot = slot;
         Label = label;
         IsVirtual = isVirtual;
-        AvailableItems = availableItems;
+        _availableItems = availableItems;
         _onEdited = onEdited;
     }
 
-    /// <summary>Seed the row from a set entry without firing the edit callback.</summary>
-    public void Load(bool controlled, string? itemName)
+    /// <summary>Seed the row's item without firing the edit callback.</summary>
+    public void Load(string? itemName)
     {
         _suppress = true;
-        try
-        {
-            Controlled = controlled;
-            ItemName = itemName;
-        }
+        try { ItemName = itemName; }
         finally { _suppress = false; }
     }
 
-    /// <summary>Snapshot this row as a persistable set entry.</summary>
-    public EquipmentSlotEntry ToEntry() => new(Slot, Controlled, string.IsNullOrWhiteSpace(ItemName) ? null : ItemName.Trim());
-
-    partial void OnControlledChanged(bool value)
+    /// <summary>Replace the suggestion list (a level/class/alignment re-filter).</summary>
+    public void SetAvailableItems(IReadOnlyList<string> items)
     {
-        if (!_suppress) _onEdited(this);
+        ArgumentNullException.ThrowIfNull(items);
+        AvailableItems = items;
     }
+
+    /// <summary>Snapshot this row as a persistable set entry, or null when
+    /// <c>{no change}</c> (no item) — the section persists only item-bearing slots.</summary>
+    public EquipmentSlotEntry? ToEntry() =>
+        string.IsNullOrWhiteSpace(ItemName) ? null : new EquipmentSlotEntry(Slot, ItemName!.Trim());
 
     partial void OnItemNameChanged(string? value)
     {

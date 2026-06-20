@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.CharacterWorkshop;
@@ -15,30 +19,45 @@ using FujinTerm.Views.CharacterWorkshop;
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
 /// <summary>
-/// EQUIPMENT MANAGER section — the gear-set editor. A set selector (with New /
-/// Delete and inline Name / Keyword fields) drives the 21-row slot grid: each
-/// row is <c>[☐ controls] [slot label] [item ⌄] [stat preview]</c>. The left
-/// checkbox marks "this set governs this slot" — an unchecked slot is left
-/// untouched on apply, so a partial set can't accidentally strip gear. "Snapshot
-/// Current" seeds the grid from the live worn loadout
-/// (<see cref="InventoryManager"/>); "Apply Set" hands off to
-/// <see cref="EquipmentManager"/>. A right-side totals panel sums the controlled
-/// physical slots' bonuses. Every edit auto-persists to
-/// <see cref="CharacterProfile.Equipment"/> — there is no Save button.
+/// EQUIPMENT MANAGER section — one unified view. The left list holds the four
+/// fixed trigger-purposed gear sets (Default / Backstab / Pre-rest HP / Pre-rest
+/// Mana); Enable / Disable arm the selected set for automation. Selecting a set
+/// shows its slot grid on the right: one row per equippable slot (plus the two
+/// virtual Alt Weapon / Alt Off-Hand rows), each a search box whose suggestions
+/// are the game-data items that fit the slot <i>and</i> that the live character
+/// (level / class / alignment) can wear. A slot left blank is <c>{no change}</c> —
+/// skipped on apply. Every edit auto-persists to
+/// <see cref="CharacterProfile.Equipment"/>; there is no Save button.
 /// </summary>
 /// <remarks>
-/// This PR (10.13) ships the slot grid + minimal set management. The fixed
-/// six-condition auto-equip trigger table and the richer item finder land in
-/// later Phase-10 PRs that build on this same section.
+/// The set list is fixed, not user-managed: <see cref="EnsureSets"/> seeds /
+/// normalizes exactly one set per <see cref="EquipTriggerType"/> on load. The
+/// per-row suggestion lists re-filter live as the character's level / class /
+/// alignment change (via <see cref="PlayerStats"/> and
+/// <see cref="PlayerDatabase.ObservationRecorded"/>). Apply Now hands the set to
+/// <see cref="EquipmentManager.ApplyBySetId"/>; the auto-fire side (resting /
+/// combat moments) lives in <see cref="AutoEquipCoordinator"/>.
 /// </remarks>
 public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
 {
+    // The fixed set roster, in left-list display order: trigger → seeded name +
+    // @equip- keyword. EnsureSets reconciles the persisted blob to this.
+    private static readonly (EquipTriggerType Trigger, string Name, string Keyword)[] Roster =
+    {
+        (EquipTriggerType.Default, "Default", "default"),
+        (EquipTriggerType.Backstab, "Backstab", "backstab"),
+        (EquipTriggerType.PreRestHp, "Pre-rest HP", "prerest-hp"),
+        (EquipTriggerType.PreRestMana, "Pre-rest Mana", "prerest-mana"),
+    };
+
     private readonly ProfileService _profile;
     private readonly InventoryManager _inventory;
     private readonly GameDataCache _gameData;
     private readonly EquipmentManager _equipment;
+    private readonly PlayerStats _stats;
+    private readonly PlayerDatabase _players;
     private Control? _view;
-    // Gates the edit callbacks while rows / fields are seeded programmatically,
+    // Gates the edit callbacks while rows / selection are seeded programmatically,
     // so a profile load or set switch doesn't re-persist what it just read.
     private bool _suppress;
 
@@ -46,140 +65,109 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     public override string Title => "Equipment Manager";
     public override Control View => _view ??= new EquipmentSectionView { DataContext = this };
 
-    /// <summary>Saved gear sets for the loaded character, in user order.</summary>
-    public ObservableCollection<EquipmentSet> Sets { get; } = new();
+    /// <summary>The four fixed trigger-purposed sets, in roster order.</summary>
+    public ObservableCollection<EquipmentSetRowViewModel> SetRows { get; } = new();
 
-    /// <summary>The 21 slot rows, in <see cref="EquipmentSlotMap.DisplayOrder"/>.</summary>
+    /// <summary>The slot rows, in <see cref="EquipmentSlotMap.DisplayOrder"/>.</summary>
     public ObservableCollection<EquipmentSlotRowViewModel> Rows { get; } = new();
 
-    /// <summary>Aggregate bonuses of the selected set's controlled physical slots.</summary>
-    public ObservableCollection<EquipBonusRow> TotalRows { get; } = new();
+    /// <summary>Aggregate bonuses of the selected set's physical-slot items, one
+    /// row per non-zero stat with a per-item hover breakdown.</summary>
+    public ObservableCollection<EquipBonusRow> BonusRows { get; } = new();
 
-    /// <summary>The set being edited; null when none exists for the character.</summary>
+    /// <summary>The set being edited; null when no character is loaded.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSet))]
-    [NotifyCanExecuteChangedFor(nameof(DeleteSetCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EnableCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DisableCommand))]
     [NotifyCanExecuteChangedFor(nameof(SnapshotCurrentCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ApplySetCommand))]
-    private EquipmentSet? _selectedSet;
+    [NotifyCanExecuteChangedFor(nameof(ApplyNowCommand))]
+    private EquipmentSetRowViewModel? _selectedSetRow;
 
-    /// <summary>Editable name of the selected set (committed on focus-out).</summary>
-    [ObservableProperty] private string _setName = string.Empty;
-
-    /// <summary>Editable <c>@equip-</c> keyword of the selected set (committed on focus-out).</summary>
-    [ObservableProperty] private string _setKeyword = string.Empty;
-
-    /// <summary>Transient one-line result of the last Apply Set press.</summary>
+    /// <summary>Transient one-line result of the last Apply Now press.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasApplyStatus))]
     private string _applyStatus = string.Empty;
 
-    /// <summary>False with no character loaded — gates New Set and the empty state.</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(NewSetCommand))]
-    private bool _hasProfile;
+    /// <summary>False with no character loaded — gates the set list and the empty state.</summary>
+    [ObservableProperty] private bool _hasProfile;
 
-    /// <summary>True when the totals panel has at least one non-zero bonus row.</summary>
-    [ObservableProperty] private bool _hasTotals;
+    /// <summary>True when the bonuses panel has at least one non-zero stat row.</summary>
+    [ObservableProperty] private bool _hasBonuses;
 
-    /// <summary>True when a set is selected — gates the grid and the per-set actions.</summary>
-    public bool HasSet => SelectedSet is not null;
+    /// <summary>True when a set is selected — gates the slot grid and per-set actions.</summary>
+    public bool HasSet => SelectedSetRow is not null;
 
-    /// <summary>True while an Apply Set status line is showing.</summary>
+    /// <summary>True while an Apply Now status line is showing.</summary>
     public bool HasApplyStatus => !string.IsNullOrEmpty(ApplyStatus);
+
+    private EquipmentSet? SelectedSet => SelectedSetRow?.Set;
 
     public EquipmentSectionViewModel(
         ProfileService profile, InventoryManager inventory,
-        GameDataCache gameData, EquipmentManager equipment)
+        GameDataCache gameData, EquipmentManager equipment,
+        PlayerStats stats, PlayerDatabase players)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(equipment);
+        ArgumentNullException.ThrowIfNull(stats);
+        ArgumentNullException.ThrowIfNull(players);
         _profile = profile;
         _inventory = inventory;
         _gameData = gameData;
         _equipment = equipment;
+        _stats = stats;
+        _players = players;
 
         BuildRows();
         ReloadFromProfile();
 
         _profile.ProfileLoaded += OnProfileLoaded;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
+        _stats.PropertyChanged += OnStatsChanged;
+        _players.ObservationRecorded += OnObservationRecorded;
     }
 
-    // ----- set management -------------------------------------------------
+    // ----- enable / disable / apply ---------------------------------------
 
-    /// <summary>Create a fresh, fully-uncontrolled set and select it for editing.</summary>
-    [RelayCommand(CanExecute = nameof(HasProfile))]
-    private void NewSet()
+    /// <summary>Arm the selected set so automation may equip it at its trigger.</summary>
+    [RelayCommand(CanExecute = nameof(CanEnable))]
+    private void Enable() => SetEnabled(true);
+
+    /// <summary>Disarm the selected set — automation leaves it alone.</summary>
+    [RelayCommand(CanExecute = nameof(CanDisable))]
+    private void Disable() => SetEnabled(false);
+
+    private bool CanEnable => SelectedSetRow is { Enabled: false };
+    private bool CanDisable => SelectedSetRow is { Enabled: true };
+
+    private void SetEnabled(bool enabled)
     {
-        if (_profile.Current is not { } p) return;
-        EquipmentSettings cfg = p.Equipment ??= new EquipmentSettings();
-        var set = new EquipmentSet { Name = DefaultSetName(), Slots = FreshSlots() };
-        cfg.Sets.Add(set);
+        if (SelectedSetRow is not { } row) return;
+        row.Enabled = enabled;
+        row.Set.Enabled = enabled;
         _profile.Save();
-
-        _suppress = true;
-        try { Sets.Add(set); SelectedSet = set; }
-        finally { _suppress = false; }
-        LoadSelectedSet();
+        EnableCommand.NotifyCanExecuteChanged();
+        DisableCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>Delete the selected set and fall back to the first remaining one.</summary>
+    /// <summary>Hand the selected set to the engine to walk the character into it.</summary>
     [RelayCommand(CanExecute = nameof(HasSet))]
-    private void DeleteSet()
+    private void ApplyNow()
     {
-        if (SelectedSet is not { } set || _profile.Current?.Equipment is not { } cfg) return;
-        cfg.Sets.Remove(set);
-        _profile.Save();
-
-        _suppress = true;
-        try { Sets.Remove(set); SelectedSet = Sets.FirstOrDefault(); }
-        finally { _suppress = false; }
-        LoadSelectedSet();
-    }
-
-    partial void OnSelectedSetChanged(EquipmentSet? value)
-    {
-        if (_suppress) return;
-        LoadSelectedSet();
-    }
-
-    partial void OnSetNameChanged(string value)
-    {
-        if (_suppress || SelectedSet is null) return;
-        SelectedSet.Name = value.Trim();
-        _profile.Save();
-        RefreshSetDisplay(SelectedSet);
-    }
-
-    partial void OnSetKeywordChanged(string value)
-    {
-        if (_suppress || SelectedSet is null) return;
-        SelectedSet.Keyword = value.Trim();
-        _profile.Save();
-    }
-
-    // EquipmentSet isn't observable, so renaming it won't redraw the selector's
-    // item text. Replace the item in place (same reference) to force the redraw,
-    // restoring the selection the replace clears.
-    private void RefreshSetDisplay(EquipmentSet set)
-    {
-        int idx = Sets.IndexOf(set);
-        if (idx < 0) return;
-        _suppress = true;
-        try
+        if (SelectedSet is not { } set) return;
+        ApplyStatus = _equipment.ApplyBySetId(set.Id) switch
         {
-            Sets[idx] = set;
-            SelectedSet = set;
-        }
-        finally { _suppress = false; }
+            EquipResult.Applied => "Applying gear set…",
+            EquipResult.NoChange => "Already wearing this set.",
+            EquipResult.Busy => "An apply is already in progress.",
+            _ => "Set could not be resolved.",
+        };
     }
 
-    // ----- snapshot / apply ----------------------------------------------
-
-    /// <summary>Seed the controlled physical slots from the live worn loadout.</summary>
+    /// <summary>Seed the physical slots from the live worn loadout.</summary>
     [RelayCommand(CanExecute = nameof(HasSet))]
     private void SnapshotCurrent()
     {
@@ -198,32 +186,21 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             foreach (EquipmentSlotRowViewModel row in Rows)
             {
                 if (row.IsVirtual) continue;   // snapshot captures worn gear only
-                if (assigned.TryGetValue(row.Slot, out string? name))
-                    row.Load(true, name);
-                else
-                    row.Load(false, null);
+                row.Load(assigned.TryGetValue(row.Slot, out string? name) ? name : null);
             }
         }
         finally { _suppress = false; }
 
         PersistRowsToSet();
-        RefreshPreviewsAndTotals();
+        RebuildBonusRows();
         ApplyStatus = string.Empty;
     }
 
-    /// <summary>Hand the selected set to the engine to walk the character into it.</summary>
-    [RelayCommand(CanExecute = nameof(HasSet))]
-    private void ApplySet()
+    partial void OnSelectedSetRowChanged(EquipmentSetRowViewModel? value)
     {
-        if (SelectedSet is not { } set) return;
-        string key = !string.IsNullOrWhiteSpace(set.Keyword) ? set.Keyword : set.Name;
-        ApplyStatus = _equipment.ApplyByKeyword(key) switch
-        {
-            EquipResult.Applied => "Applying gear set…",
-            EquipResult.NoChange => "Already wearing this set.",
-            EquipResult.Busy => "An apply is already in progress.",
-            _ => "Set could not be resolved.",
-        };
+        if (_suppress) return;
+        LoadSelectedSetIntoRows();
+        ApplyStatus = string.Empty;
     }
 
     // FromWornString resolves ambiguous "Finger" / "Wrist" to slot 1; fall through
@@ -242,29 +219,31 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     {
         if (_suppress) return;
         PersistRowsToSet();
-        UpdatePreview(row);
-        RebuildTotals();
+        RebuildBonusRows();
         ApplyStatus = string.Empty;
     }
 
+    // Sets persist only their item-bearing slots — a {no change} (blank) row drops
+    // out, so the stored list stays sparse.
     private void PersistRowsToSet()
     {
-        if (SelectedSet is null) return;
-        SelectedSet.Slots = Rows.Select(r => r.ToEntry()).ToList();
+        if (SelectedSet is not { } set) return;
+        set.Slots = Rows.Select(r => r.ToEntry()).OfType<EquipmentSlotEntry>().ToList();
         _profile.Save();
     }
 
     // ----- load / rebuild -------------------------------------------------
 
-    // Materialize the 21 row VMs once per game-data set — AvailableItems is fixed
-    // at construction, so a set swap (different item table) rebuilds them.
+    // Materialize the slot row VMs once per game-data set. Suggestions are filled
+    // separately by RefreshAvailableItems (which depends on live player stats), so
+    // a set swap (different item table) rebuilds the rows then re-filters.
     private void BuildRows()
     {
         Rows.Clear();
         foreach (EquipmentSlot slot in EquipmentSlotMap.DisplayOrder)
             Rows.Add(new EquipmentSlotRowViewModel(
                 slot, EquipmentSlotMap.Label(slot), EquipmentSlotMap.IsVirtual(slot),
-                EquipmentSlotMap.GetItemsForSlot(_gameData, slot), OnRowEdited));
+                Array.Empty<string>(), OnRowEdited));
     }
 
     private void ReloadFromProfile()
@@ -273,103 +252,160 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _suppress = true;
         try
         {
-            Sets.Clear();
-            if (_profile.Current?.Equipment?.Sets is { } sets)
-                foreach (EquipmentSet s in sets) Sets.Add(s);
-            SelectedSet = Sets.FirstOrDefault();
+            SetRows.Clear();
+            if (_profile.Current is { } p)
+            {
+                EquipmentSettings cfg = p.Equipment ??= new EquipmentSettings();
+                if (EnsureSets(cfg)) _profile.Save();
+                foreach (EquipmentSet s in cfg.Sets)
+                    SetRows.Add(new EquipmentSetRowViewModel(s));
+            }
+            SelectedSetRow = SetRows.FirstOrDefault();
         }
         finally { _suppress = false; }
-        LoadSelectedSet();
+
+        LoadSelectedSetIntoRows();
+        RefreshAvailableItems();
     }
 
-    private void LoadSelectedSet()
+    // Reconcile the persisted set blob to exactly the four roster entries, one per
+    // trigger, in roster order — seeding any missing, normalizing names, seeding a
+    // blank keyword, and dropping legacy / duplicate sets. Returns whether anything
+    // changed so the caller can persist.
+    private static bool EnsureSets(EquipmentSettings cfg)
     {
-        _suppress = true;
-        try
+        var ordered = new List<EquipmentSet>(Roster.Length);
+        bool changed = false;
+        foreach ((EquipTriggerType trigger, string name, string keyword) in Roster)
         {
-            SetName = SelectedSet?.Name ?? string.Empty;
-            SetKeyword = SelectedSet?.Keyword ?? string.Empty;
-            ApplyStatus = string.Empty;
+            EquipmentSet? set = cfg.Sets.FirstOrDefault(s => s.Trigger == trigger);
+            if (set is null)
+            {
+                set = new EquipmentSet { Trigger = trigger };
+                changed = true;
+            }
+            if (!string.Equals(set.Name, name, StringComparison.Ordinal)) { set.Name = name; changed = true; }
+            if (string.IsNullOrWhiteSpace(set.Keyword)) { set.Keyword = keyword; changed = true; }
+            ordered.Add(set);
         }
-        finally { _suppress = false; }
-        LoadSelectedSetIntoRows();
+        // Any set not picked up above (legacy free-form set, a duplicate trigger) is
+        // discarded — a count mismatch is the signal it happened.
+        if (cfg.Sets.Count != ordered.Count) changed = true;
+        cfg.Sets = ordered;
+        return changed;
     }
 
     private void LoadSelectedSetIntoRows()
     {
         var bySlot = new Dictionary<EquipmentSlot, EquipmentSlotEntry>();
-        if (SelectedSet is not null)
-            foreach (EquipmentSlotEntry e in SelectedSet.Slots)
+        if (SelectedSet is { } set)
+            foreach (EquipmentSlotEntry e in set.Slots)
                 bySlot.TryAdd(e.Slot, e);
 
         _suppress = true;
         try
         {
             foreach (EquipmentSlotRowViewModel row in Rows)
-            {
-                if (bySlot.TryGetValue(row.Slot, out EquipmentSlotEntry? e))
-                    row.Load(e.Controlled, e.ItemName);
-                else
-                    row.Load(false, null);
-            }
+                row.Load(bySlot.TryGetValue(row.Slot, out EquipmentSlotEntry? e) ? e.ItemName : null);
         }
         finally { _suppress = false; }
 
-        RefreshPreviewsAndTotals();
+        RebuildBonusRows();
     }
 
-    private void RefreshPreviewsAndTotals()
+    // Re-derive every row's suggestion list from the live character's level /
+    // class / alignment. A non-positive level / class or an unknown alignment word
+    // disables that dimension (ItemEquipFilter degrades gracefully), so an un-stat'd
+    // character still sees the slot's full item list rather than an empty one.
+    private void RefreshAvailableItems()
     {
-        foreach (EquipmentSlotRowViewModel row in Rows) UpdatePreview(row);
-        RebuildTotals();
+        int level = _stats.Level;
+        ClassEquipProfile cls = ItemEquipFilter.ResolveClassProfile(_gameData, _stats.Class);
+        AlignmentBucket? bucket = ItemEquipFilter.BucketForWord(LocalAlignmentWord());
+        foreach (EquipmentSlotRowViewModel row in Rows)
+            row.SetAvailableItems(
+                EquipmentSlotMap.GetItemsForSlot(_gameData, row.Slot, level, cls, bucket));
     }
 
-    // ----- stat preview + totals ------------------------------------------
-
-    private void UpdatePreview(EquipmentSlotRowViewModel row)
+    // Our own character appears in our own `who`, so PlayerDatabase already carries
+    // our alignment word; match it by given name.
+    private string? LocalAlignmentWord()
     {
-        string? name = string.IsNullOrWhiteSpace(row.ItemName) ? null : row.ItemName!.Trim();
-        if (name is null)
-        {
-            row.StatPreview = string.Empty;
-            return;
-        }
-
-        bool weapon = row.Slot is EquipmentSlot.Weapon or EquipmentSlot.AlternateWeapon;
-        EquipmentStatSummary t = CharacterCalculator
-            .AggregateEquipmentStats(new[] { new EquippedItem(name, SlotTag(row.Slot)) }, _gameData)
-            .Totals;
-
-        var parts = new List<string>();
-        if (weapon && t.WeaponMax > 0)
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{t.WeaponMin}-{t.WeaponMax} dmg"));
-        foreach ((string label, string value) in SummaryLines(t))
-            parts.Add($"{label} {value}");
-
-        row.StatPreview = parts.Count > 0 ? string.Join(", ", parts) : "—";
+        if (string.IsNullOrEmpty(_stats.Name)) return null;
+        (string given, _) = PlayerRecord.SplitName(_stats.Name);
+        foreach (PlayerRecord r in _players.Players)
+            if (string.Equals(r.GivenName, given, StringComparison.OrdinalIgnoreCase))
+                return r.Alignment;
+        return null;
     }
 
-    private void RebuildTotals()
+    // ----- equipment bonuses ----------------------------------------------
+
+    // Aggregate the selected set's physical-slot items the same way Character Info
+    // aggregates worn gear, so the panel previews exactly what this set grants once
+    // worn. Virtual (Alt) slots are swap-time alternates, never worn alongside the
+    // primaries, so they're excluded.
+    private void RebuildBonusRows()
     {
+        BonusRows.Clear();
+
         var worn = new List<EquippedItem>();
         foreach (EquipmentSlotRowViewModel row in Rows)
         {
-            // Virtual slots are swap-time alternates, never worn alongside the
-            // primaries — excluding them keeps the totals a real loadout.
-            if (!row.Controlled || row.IsVirtual) continue;
+            if (row.IsVirtual) continue;
             string? name = string.IsNullOrWhiteSpace(row.ItemName) ? null : row.ItemName!.Trim();
             if (name is null) continue;
             worn.Add(new EquippedItem(name, SlotTag(row.Slot)));
         }
 
-        TotalRows.Clear();
-        if (worn.Count > 0)
-        {
-            EquipmentStatSummary t = CharacterCalculator.AggregateEquipmentStats(worn, _gameData).Totals;
-            foreach ((string label, string value) in SummaryLines(t))
-                TotalRows.Add(new EquipBonusRow(label, value, null));
-        }
-        HasTotals = TotalRows.Count > 0;
+        EquipmentStatBreakdown b = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
+        EquipmentStatSummary t = b.Totals;
+
+        AddDoubleRow(b, "Armour Class", t.PlusAC);
+        AddDoubleRow(b, "Damage Resist", t.PlusDR);
+        AddIntRow(b, "Strength", t.PlusStrength);
+        AddIntRow(b, "Intellect", t.PlusIntellect);
+        AddIntRow(b, "Willpower", t.PlusWillpower);
+        AddIntRow(b, "Agility", t.PlusAgility);
+        AddIntRow(b, "Health", t.PlusHealth);
+        AddIntRow(b, "Charm", t.PlusCharm);
+        AddIntRow(b, "Max HP", t.PlusMaxHp);
+        AddIntRow(b, "Max Mana", t.PlusMaxMana);
+        AddIntRow(b, "HP Regen", t.HpRegenPercent);
+        AddIntRow(b, "Mana Regen", t.MpRegenPercent);
+        AddIntRow(b, "Crits", t.PlusCrits);
+        AddAccuracyRow(b, t);
+        AddIntRow(b, "Max Damage", t.PlusMaxDamage);
+        AddIntRow(b, "Spell Damage", t.SpellDamageBonus);
+        AddIntRow(b, "Hit Magic", t.PlusHitMagic);
+        AddIntRow(b, "Dodge", t.PlusDodge);
+        AddIntRow(b, "Magic Resist", t.PlusMagicResist);
+        AddIntRow(b, "BS Accuracy", t.PlusBSAccuracy);
+        AddIntRow(b, "BS Min Dmg", t.PlusBSMin);
+        AddIntRow(b, "BS Max Dmg", t.PlusBSMax);
+        AddIntRow(b, "Stealth", t.PlusStealth);
+        AddIntRow(b, "Perception", t.PlusPerception);
+        AddIntRow(b, "Spellcasting", t.PlusSpellcasting);
+        AddIntRow(b, "Encumbrance", t.PlusEncumbrance);
+        AddIntRow(b, "Traps", t.PlusTraps);
+        AddIntRow(b, "Picklocks", t.PlusPicklocks);
+        AddIntRow(b, "Illuminate", t.PlusIlluminate);
+        AddIntRow(b, "Quickness", t.PlusQuickness);
+        AddIntRow(b, "Cold Resist", t.PlusColdResist);
+        AddIntRow(b, "Fire Resist", t.PlusFireResist);
+        AddIntRow(b, "Stone Resist", t.PlusStoneResist);
+        AddIntRow(b, "Lightning Resist", t.PlusLightningResist);
+        AddIntRow(b, "Water Resist", t.PlusWaterResist);
+        AddIntRow(b, "Prot Evil", t.PlusProtEvil);
+        AddIntRow(b, "Prot Good", t.PlusProtGood);
+        AddIntRow(b, "Punch Dmg", t.PlusPunchDmg);
+        AddIntRow(b, "Punch Accy", t.PlusPunchAccy);
+        AddIntRow(b, "Kick Dmg", t.PlusKickDmg);
+        AddIntRow(b, "Kick Accy", t.PlusKickAccy);
+        AddIntRow(b, "JumpKick Dmg", t.PlusJumpKickDmg);
+        AddIntRow(b, "JumpKick Accy", t.PlusJumpKickAccy);
+
+        HasBonuses = BonusRows.Count > 0;
     }
 
     // The slot's worn-string tag drives which fields AggregateEquipmentStats fills
@@ -382,71 +418,79 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _ => "Worn",
     };
 
-    // The curated stat lines shown in both the per-row preview and the totals
-    // panel — only the non-zero ones, in a fixed reading order.
-    private static IEnumerable<(string Label, string Value)> SummaryLines(EquipmentStatSummary t)
+    private void AddIntRow(EquipmentStatBreakdown b, string statKey, int value)
     {
-        var lines = new List<(string, string)>();
-        AddDouble(lines, "AC", t.PlusAC);
-        AddDouble(lines, "DR", t.PlusDR);
-        AddInt(lines, "STR", t.PlusStrength);
-        AddInt(lines, "INT", t.PlusIntellect);
-        AddInt(lines, "WIL", t.PlusWillpower);
-        AddInt(lines, "AGL", t.PlusAgility);
-        AddInt(lines, "HEA", t.PlusHealth);
-        AddInt(lines, "CHM", t.PlusCharm);
-        AddInt(lines, "Max HP", t.PlusMaxHp);
-        AddInt(lines, "Max Mana", t.PlusMaxMana);
-        AddInt(lines, "Accuracy", t.TotalWornAccy + t.PlusAccuracy);
-        AddInt(lines, "Crits", t.PlusCrits);
-        AddInt(lines, "Max Dmg", t.PlusMaxDamage);
-        AddInt(lines, "Dodge", t.PlusDodge);
-        AddInt(lines, "Magic Resist", t.PlusMagicResist);
-        return lines;
+        if (value == 0) return;
+        string display = value.ToString("+0;-0", CultureInfo.InvariantCulture);
+        BonusRows.Add(new EquipBonusRow(statKey, display, BuildTooltip(b, statKey)));
     }
 
-    private static void AddInt(List<(string, string)> lines, string label, int value)
+    private void AddDoubleRow(EquipmentStatBreakdown b, string statKey, double value)
     {
-        if (value != 0)
-            lines.Add((label, value.ToString("+0;-0", CultureInfo.InvariantCulture)));
+        if (value == 0) return;
+        string display = value.ToString("+0.#;-0.#", CultureInfo.InvariantCulture);
+        BonusRows.Add(new EquipBonusRow(statKey, display, BuildTooltip(b, statKey)));
     }
 
-    private static void AddDouble(List<(string, string)> lines, string label, double value)
+    // Accuracy total combines worn-item Accy fields with the abil-22 sum — the same
+    // number Character Info feeds the accuracy formula. Tooltip lists item sources.
+    private void AddAccuracyRow(EquipmentStatBreakdown b, EquipmentStatSummary t)
     {
-        if (value != 0)
-            lines.Add((label, value.ToString("+0.#;-0.#", CultureInfo.InvariantCulture)));
+        int total = t.TotalWornAccy + t.PlusAccuracy;
+        if (total == 0) return;
+        string display = total.ToString("+0;-0", CultureInfo.InvariantCulture);
+        BonusRows.Add(new EquipBonusRow("Accuracy", display, BuildTooltip(b, "Accuracy")));
     }
 
-    // ----- helpers --------------------------------------------------------
-
-    private static List<EquipmentSlotEntry> FreshSlots() =>
-        EquipmentSlotMap.DisplayOrder
-            .Select(s => new EquipmentSlotEntry(s, false, null))
-            .ToList();
-
-    private string DefaultSetName()
+    private static string? BuildTooltip(EquipmentStatBreakdown b, string statKey)
     {
-        const string baseName = "New Set";
-        var taken = new HashSet<string>(Sets.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
-        if (!taken.Contains(baseName)) return baseName;
-        for (int i = 2; ; i++)
+        if (!b.PerStatSources.TryGetValue(statKey, out var sources) || sources.Count == 0)
+            return null;
+
+        var sb = new StringBuilder();
+        foreach (StatContribution s in sources)
         {
-            string candidate = string.Create(CultureInfo.InvariantCulture, $"{baseName} {i}");
-            if (!taken.Contains(candidate)) return candidate;
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(s.ItemName).Append("  ").Append(s.DisplayValue);
+            if (!string.IsNullOrEmpty(s.Tag)) sb.Append(' ').Append(s.Tag);
         }
+        return sb.ToString();
     }
+
+    // ----- service signals ------------------------------------------------
 
     private void OnProfileLoaded(CharacterProfile _) => ReloadFromProfile();
 
     private void OnActiveSetChanged(string? _)
     {
-        BuildRows();                // new item table → refresh suggestions + previews
+        BuildRows();                // new item table → rebuild rows
         LoadSelectedSetIntoRows();
+        RefreshAvailableItems();
+    }
+
+    private void OnStatsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Level / class / name (name drives the alignment lookup) re-filter the
+        // per-slot suggestion lists.
+        if (e.PropertyName is nameof(PlayerStats.Level)
+            or nameof(PlayerStats.Class)
+            or nameof(PlayerStats.Name))
+            RefreshAvailableItems();
+    }
+
+    private void OnObservationRecorded(string givenName)
+    {
+        if (string.IsNullOrEmpty(_stats.Name)) return;
+        (string self, _) = PlayerRecord.SplitName(_stats.Name);
+        if (string.Equals(self, givenName, StringComparison.OrdinalIgnoreCase))
+            RefreshAvailableItems();   // our own who line updated our alignment
     }
 
     public override void Dispose()
     {
         _profile.ProfileLoaded -= OnProfileLoaded;
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
+        _stats.PropertyChanged -= OnStatsChanged;
+        _players.ObservationRecorded -= OnObservationRecorded;
     }
 }

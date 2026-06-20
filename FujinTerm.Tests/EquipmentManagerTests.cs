@@ -20,8 +20,8 @@ public sealed class EquipmentManagerTests
 {
     // ----- builders -------------------------------------------------------
 
-    private static EquipmentSlotEntry Entry(EquipmentSlot slot, string? item, bool controlled = true)
-        => new(slot, controlled, item);
+    private static EquipmentSlotEntry Entry(EquipmentSlot slot, string? item)
+        => new(slot, item);
 
     private static EquipmentSet Set(string keyword, string name, params EquipmentSlotEntry[] slots)
         => new() { Keyword = keyword, Name = name, Slots = slots.ToList() };
@@ -58,18 +58,6 @@ public sealed class EquipmentManagerTests
         List<string> cmds = EquipmentManager.BuildWearCommands(set, Worn());
 
         Assert.Equal(new[] { "wear iron helm", "wear plate mail" }, cmds);
-    }
-
-    [Fact]
-    public void BuildWearCommands_SkipsUncontrolledSlots()
-    {
-        EquipmentSet set = Set("armor", "Armor",
-            Entry(EquipmentSlot.Head, "helm"),
-            Entry(EquipmentSlot.Torso, "mail", controlled: false));
-
-        List<string> cmds = EquipmentManager.BuildWearCommands(set, Worn());
-
-        Assert.Equal(new[] { "wear helm" }, cmds);
     }
 
     [Fact]
@@ -161,19 +149,6 @@ public sealed class EquipmentManagerTests
 
         Assert.False(changed);
         Assert.Equal("existing", combat.AlternateWeapon);
-    }
-
-    [Fact]
-    public void ApplyVirtualSlots_IgnoresUncontrolledVirtualSlot()
-    {
-        EquipmentSet set = Set("alt", "Alt",
-            Entry(EquipmentSlot.AlternateWeapon, "bow", controlled: false));
-        CombatSettings combat = new();
-
-        bool changed = EquipmentManager.ApplyVirtualSlots(set, combat);
-
-        Assert.False(changed);
-        Assert.Null(combat.AlternateWeapon);
     }
 
     [Fact]
@@ -269,5 +244,76 @@ public sealed class EquipmentManagerTests
         EquipmentManager mgr = Manager(settings, SnapshotWithWorn("helm"), new CombatSettings());
 
         Assert.Equal(EquipResult.NoChange, mgr.ApplyByKeyword("armor"));
+    }
+
+    // ===== ApplyBySetId resolution (trigger coordinator entry point) =====
+
+    private static EquipmentSet SetWithId(string id, string name, params EquipmentSlotEntry[] slots)
+        => new() { Id = id, Name = name, Slots = slots.ToList() };
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ApplyBySetId_BlankId_NotFound(string id)
+    {
+        EquipmentManager mgr = Manager(new EquipmentSettings(),
+            InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NotFound, mgr.ApplyBySetId(id));
+    }
+
+    [Fact]
+    public void ApplyBySetId_UnknownId_NotFound()
+    {
+        EquipmentSettings settings = new()
+        {
+            Sets = { SetWithId("set-1", "Fighting", Entry(EquipmentSlot.AlternateWeapon, "bow")) },
+        };
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NotFound, mgr.ApplyBySetId("set-missing"));
+    }
+
+    [Fact]
+    public void ApplyBySetId_KnownId_VirtualOnly_AppliedAndPersistsCombat()
+    {
+        EquipmentSettings settings = new()
+        {
+            Sets = { SetWithId("set-7", "Alternate", Entry(EquipmentSlot.AlternateWeapon, "bow")) },
+        };
+        CombatSettings combat = new();
+        CombatSettings? written = null;
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, combat,
+            onWrite: c => written = c);
+
+        Assert.Equal(EquipResult.Applied, mgr.ApplyBySetId("set-7"));
+        Assert.NotNull(written);
+        Assert.Equal("bow", written!.AlternateWeapon);
+    }
+
+    [Fact]
+    public void ApplyBySetId_IdMatchIsCaseSensitive_GuidContract()
+    {
+        // SetId is a GUID string compared ordinally — a case-flipped id must miss.
+        EquipmentSettings settings = new()
+        {
+            Sets = { SetWithId("ABC", "Alternate", Entry(EquipmentSlot.AlternateWeapon, "bow")) },
+        };
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NotFound, mgr.ApplyBySetId("abc"));
+    }
+
+    [Fact]
+    public void ApplyBySetId_VirtualSlotAlreadyInEffect_NoChange()
+    {
+        EquipmentSettings settings = new()
+        {
+            Sets = { SetWithId("set-7", "Alternate", Entry(EquipmentSlot.AlternateWeapon, "bow")) },
+        };
+        CombatSettings combat = new() { AlternateWeapon = "bow" };
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, combat);
+
+        Assert.Equal(EquipResult.NoChange, mgr.ApplyBySetId("set-7"));
     }
 }

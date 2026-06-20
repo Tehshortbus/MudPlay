@@ -129,42 +129,8 @@
                     </Grid>
                 </Border>
 
-                <!-- ===== Right column: Box B + Box C ===== -->
+                <!-- ===== Right column: combat + matchup readouts ===== -->
                 <StackPanel Grid.Column="1" Spacing="14" HorizontalAlignment="Left">
-
-                    <!-- Box B: Equipment Bonuses -->
-                    <Border Classes="Box">
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="Equipment Bonuses"
-                                       Foreground="{StaticResource ChromeFgBrush}"
-                                       FontSize="{StaticResource FontSizeMd}"
-                                       FontWeight="SemiBold" Margin="0,0,0,6"/>
-
-                            <TextBlock Classes="FieldLabel"
-                                       Text="No worn item contributes a bonus."
-                                       IsVisible="{Binding !HasBonuses}"/>
-
-                            <ItemsControl ItemsSource="{Binding BonusRows}"
-                                          IsVisible="{Binding HasBonuses}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="vm:EquipBonusRow">
-                                        <Grid ColumnDefinitions="*,Auto"
-                                              ToolTip.Tip="{Binding Tooltip}">
-                                            <TextBlock Grid.Column="0" Classes="FieldLabel"
-                                                       Text="{Binding Stat}" Margin="0,0,12,2"/>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding Value}"
-                                                       Foreground="{StaticResource AccentRedBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontWeight="SemiBold"
-                                                       FontSize="{StaticResource FontSizeMd}"
-                                                       Margin="0,0,0,2"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Border>
 
                     <!-- Quest Bonuses: completed-quest permanent rewards. Shown only
                          when at least one completed quest grants a bonus, so it stays
@@ -316,7 +282,7 @@
                     ToolTip.Tip="Re-pull the live stat snapshot, re-aggregate worn gear, and recompute combat accuracy."/>
             <Button Grid.Column="2" Content="Refresh"
                     Command="{Binding RefreshCommand}"
-                    ToolTip.Tip="Re-read the current inventory and recompute equipment bonuses + combat accuracy."/>
+                    ToolTip.Tip="Re-read the current inventory and recompute combat accuracy."/>
         </Grid>
     </Grid>
 </UserControl>

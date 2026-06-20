@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game.Calculators;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
@@ -130,12 +131,20 @@ public static class EquipmentSlotMap
         !string.IsNullOrEmpty(slot) && FromWorn.TryGetValue(slot, out EquipmentSlot s) ? s : null;
 
     /// <summary>
-    /// The game-data item names that can occupy <paramref name="slot"/>, sorted
-    /// and de-duplicated — the suggestion list for the slot's item field. Weapon
-    /// slots list every <c>ItemType == 1</c> item; physical slots list items whose
-    /// <c>Worn</c> code matches. Returns empty when no <c>Items</c> table is loaded.
+    /// The game-data item names that can occupy <paramref name="slot"/> <i>and</i>
+    /// that a character of <paramref name="level"/> / <paramref name="classProfile"/>
+    /// / <paramref name="alignment"/> can equip — sorted, de-duplicated; the
+    /// suggestion list for the slot's item field. Weapon slots list every
+    /// <c>ItemType == 1</c> item; physical slots list items whose <c>Worn</c> code
+    /// matches. Each candidate then passes through <see cref="ItemEquipFilter"/>, so
+    /// a Mystic-barred longsword or an evil-only blade never reaches the wrong
+    /// character. A non-positive level, an <see cref="ClassEquipProfile.Unknown"/>
+    /// class, or a null alignment bucket disables that dimension's filter. Returns
+    /// empty when no <c>Items</c> table is loaded.
     /// </summary>
-    public static IReadOnlyList<string> GetItemsForSlot(GameDataCache cache, EquipmentSlot slot)
+    public static IReadOnlyList<string> GetItemsForSlot(
+        GameDataCache cache, EquipmentSlot slot,
+        int level, ClassEquipProfile classProfile, AlignmentBucket? alignment)
     {
         ArgumentNullException.ThrowIfNull(cache);
         JsonDocument? doc = cache.GetRawTable("Items");
@@ -153,7 +162,8 @@ public static class EquipmentSlotMap
             bool match = weapon
                 ? GetInt(row, "ItemType") == WeaponItemType
                 : codes.Contains(GetInt(row, "Worn"));
-            if (match) names.Add(name);
+            if (match && ItemEquipFilter.CanEquip(row, level, classProfile, alignment))
+                names.Add(name);
         }
         return names.ToList();
     }
