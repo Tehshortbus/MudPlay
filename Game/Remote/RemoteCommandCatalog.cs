@@ -30,8 +30,9 @@ namespace FujinTerm.Game.Remote;
 ///   <item><b>QueryInventory</b> — items / cash / encumbrance / have-checks.</item>
 ///   <item><b>RequestInvite</b> — party invite / join / leave signals.</item>
 ///   <item><b>MovePlayer</b> — goto / loop / lair / stop / rego.</item>
-///   <item><b>ExecuteCommands</b> — @do passthrough + bulk inventory actions
-///         (@get-all / @drop-all / @equip-all / @deposit-all).</item>
+///   <item><b>ExecuteCommands</b> — @do passthrough, bulk inventory actions
+///         (@get-all / @drop-all / @deposit-all), and gear-set apply
+///         (@equip-&lt;set&gt;).</item>
 ///   <item><b>HangupDisconnect</b> — @hangup / @relog.</item>
 ///   <item><b>AlterSettings</b> — auto-* toggles, @settings. Note:
 ///         <c>@reset</c> also sits in this category in the catalog,
@@ -112,9 +113,12 @@ public static class RemoteCommandCatalog
             ["@invite"]       = PlayerRemoteControls.RequestInvite,
             ["@join"]         = PlayerRemoteControls.RequestInvite,
             ["@forget"]       = PlayerRemoteControls.RequestInvite,
+            // Bulk inventory verbs — operate on *all* applicable items
+            // (@get-all: everything on the ground we can pick up; @drop-all:
+            // everything in the pack we can drop; @deposit-all: bank it all).
+            // Distinct from @equip-<set>, which is a per-slot loadout swap.
             ["@get-all"]      = PlayerRemoteControls.ExecuteCommands,
             ["@drop-all"]     = PlayerRemoteControls.ExecuteCommands,
-            ["@equip-all"]    = PlayerRemoteControls.ExecuteCommands,
             ["@deposit-all"]  = PlayerRemoteControls.ExecuteCommands,
             ["@do"]           = PlayerRemoteControls.ExecuteCommands,
             // @kill <target> asks a party member to attack a named target
@@ -132,6 +136,14 @@ public static class RemoteCommandCatalog
             // spend the CP plan — assuming we're already at a trainer (no walk).
             // "Do something on my behalf", so ExecuteCommands like @do / @kill.
             ["@train"]        = PlayerRemoteControls.ExecuteCommands,
+            // @equip-<setname> asks us to wear one of our saved gear sets
+            // (Workshop Equipment tab) — the text after "@equip-" is the set
+            // keyword, dispatched via RemoteCommandManager.RegisterPrefixHandler.
+            // This bare "@equip" key is what the @help listing + Players-tab
+            // tooltip surface; the wire form always carries a suffix. "Do
+            // something on my behalf", so ExecuteCommands like @do / @train.
+            // Handler lives in EquipHandler.cs.
+            ["@equip"]        = PlayerRemoteControls.ExecuteCommands,
 
             // ===== Movement / Loops =====
             // @looponce / @roam from the upstream MegaMUD catalog don't

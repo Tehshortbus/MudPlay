@@ -67,6 +67,14 @@ public sealed class RemoteCommandManager : IDisposable
     /// <summary>cmd-name (lower-case) → (requiredFlag, handler).</summary>
     private readonly ConcurrentDictionary<string, Registration> _handlers
         = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// prefix → (requiredFlag, handler) for suffix-form commands like
+    /// <c>@equip-&lt;setname&gt;</c>, where the text after the registered
+    /// prefix is the command's single argument. Consulted only after an exact
+    /// <see cref="_handlers"/> miss, so an exact registration always wins.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, Registration> _prefixHandlers
+        = new(StringComparer.OrdinalIgnoreCase);
     private Action<byte[]>? _wireSender;
     /// <summary>Test seam — last bytes the engine asked to write to the wire. Inspected by tests when no real sender is bound.</summary>
     internal List<byte[]> LastSentForTests { get; } = new();
@@ -208,6 +216,36 @@ public sealed class RemoteCommandManager : IDisposable
         return _handlers.TryRemove(command, out _);
     }
 
+    /// <summary>
+    /// Register a handler for a family of suffix-form commands sharing one
+    /// <paramref name="prefix"/> — e.g. prefix <c>@equip-</c> matches
+    /// <c>@equip-fighting</c>, <c>@equip-tank</c>, …. The text after the
+    /// prefix is folded in as the command's leading argument
+    /// (<see cref="RemoteCommandContext.Args"/>[0]), so the handler reads the
+    /// dynamic part the same way an ordinary arg-bearing command does. A
+    /// prefix is consulted only when no exact <see cref="RegisterHandler"/>
+    /// entry matches, and only when the inbound command carries a non-empty
+    /// remainder after the prefix.
+    /// </summary>
+    /// <param name="prefix">Verbatim including the leading <c>@</c> and the trailing separator (e.g. <c>"@equip-"</c>). Matched case-insensitively.</param>
+    /// <param name="requiredCategory">The <see cref="PlayerRemoteControls"/> flag the sender must hold.</param>
+    /// <param name="handler">Invoked with a <see cref="RemoteCommandContext"/> whose <c>Args[0]</c> is the suffix.</param>
+    public void RegisterPrefixHandler(string prefix, PlayerRemoteControls requiredCategory, Action<RemoteCommandContext> handler)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (!prefix.StartsWith('@'))
+            throw new ArgumentException("Remote-command prefix must start with '@'.", nameof(prefix));
+        _prefixHandlers[prefix] = new Registration(requiredCategory, handler);
+    }
+
+    /// <summary>Drop a previously-registered prefix handler. Idempotent — returns false when nothing was registered.</summary>
+    public bool UnregisterPrefixHandler(string prefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
+        return _prefixHandlers.TryRemove(prefix, out _);
+    }
+
     /// <summary>Total handlers currently registered. Useful for tests and the LogService startup line.</summary>
     public int HandlerCount => _handlers.Count;
 
@@ -325,12 +363,21 @@ public sealed class RemoteCommandManager : IDisposable
 
         if (!_handlers.TryGetValue(command, out Registration registration))
         {
-            // Unknown @-command — no handler registered. Surface back to
-            // sender per Settings.Talk → Warn on invalid remote command.
-            _log?.Log(LogSeverity.Debug, "RemoteCmd",
-                $"Unknown command {command} from {entry.Speaker}.");
-            SendDenialReply(channel.Value, entry.Speaker);
-            return;
+            // No exact handler — try the suffix-form prefix handlers
+            // (@equip-<set>). A match folds the suffix in as the leading arg.
+            if (TryMatchPrefixHandler(command, out registration, out string suffix))
+            {
+                args = Prepend(suffix, args);
+            }
+            else
+            {
+                // Unknown @-command — no handler registered. Surface back to
+                // sender per Settings.Talk → Warn on invalid remote command.
+                _log?.Log(LogSeverity.Debug, "RemoteCmd",
+                    $"Unknown command {command} from {entry.Speaker}.");
+                SendDenialReply(channel.Value, entry.Speaker);
+                return;
+            }
         }
 
         // Authorisation: party-whitelist OR per-player flag.
@@ -512,6 +559,37 @@ public sealed class RemoteCommandManager : IDisposable
         foreach (string a in args)
             if (a.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
+    }
+
+    /// <summary>
+    /// Find a registered prefix handler whose prefix is a strict prefix of
+    /// <paramref name="command"/> (non-empty remainder required). On a match,
+    /// <paramref name="suffix"/> is the trailing text — the dynamic argument.
+    /// </summary>
+    private bool TryMatchPrefixHandler(string command, out Registration registration, out string suffix)
+    {
+        foreach (KeyValuePair<string, Registration> kvp in _prefixHandlers)
+        {
+            if (command.Length > kvp.Key.Length
+                && command.StartsWith(kvp.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                registration = kvp.Value;
+                suffix = command[kvp.Key.Length..];
+                return true;
+            }
+        }
+        registration = default;
+        suffix = string.Empty;
+        return false;
+    }
+
+    private static string[] Prepend(string head, string[] tail)
+    {
+        if (tail.Length == 0) return new[] { head };
+        string[] result = new string[tail.Length + 1];
+        result[0] = head;
+        Array.Copy(tail, 0, result, 1, tail.Length);
+        return result;
     }
 
     private bool IsAuthorised(string sender, PlayerRemoteControls requiredCategory, string command)

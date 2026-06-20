@@ -78,15 +78,18 @@ public sealed class HelpHandlerTests
     [Fact]
     public void Help_ExcludesPartyWhitelistCommands()
     {
-        // Even with every flag granted, None-category party commands
-        // (@wait / @ok / @kill / @share / @comeback) are never listed.
+        // Even with every flag granted, None-category party-whitelist
+        // commands (@wait / @ok / @share / @comeback) are never listed —
+        // they're gated by party membership, not a per-player flag. (@kill
+        // is NOT in this family: it's an ExecuteCommands action request, so
+        // it DOES appear for a granted sender — see the catalog.)
         var (router, _, players, engine) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.All);
 
         Telepath(router, "Bob", "@help");
 
         string joined = string.Join(" ", Replies(engine));
-        foreach (string party in new[] { "@wait", "@ok", "@kill", "@share", "@comeback" })
+        foreach (string party in new[] { "@wait", "@ok", "@share", "@comeback" })
             Assert.DoesNotContain(party, joined.Split(' ', ',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
     }
 

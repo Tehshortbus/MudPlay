@@ -769,6 +769,9 @@ public partial class MainWindowViewModel : ObservableObject
         // PR 10.18 — item-cast buff sequencer's wield/use/wield commands ride
         // the same gate-wrapped pipeline as the other engines.
         AppServices.Current.ItemCast.SetWireSender(engineSend);
+        // Phase 10 — EquipmentManager's paced `wear` commands ride the same
+        // gate-wrapped pipeline (@equip-<set> set-apply).
+        AppServices.Current.Equipment.SetWireSender(engineSend);
         // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
         // ride the gate-wrapped pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);

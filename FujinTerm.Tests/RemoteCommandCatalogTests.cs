@@ -38,11 +38,11 @@ public sealed class RemoteCommandCatalogTests
     [Theory]
     [InlineData("@get-all")]
     [InlineData("@drop-all")]
-    [InlineData("@equip-all")]
     [InlineData("@deposit-all")]
     [InlineData("@do")]
     [InlineData("@trap")]
     [InlineData("@train")]
+    [InlineData("@equip")]   // gear-set apply (wire form is @equip-<set>)
     public void ExecuteCommands_BulkActionsAndDo(string cmd)
         => Assert.Equal(PlayerRemoteControls.ExecuteCommands, Lookup(cmd));
 
@@ -76,6 +76,10 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@blind")]
     [InlineData("@diseased")]
     [InlineData("@held")]
+    // @equip-all was a misfit: equipping is per-slot (you can't wear "all"
+    // items), and the @equip- namespace now belongs to gear-set apply
+    // (@equip-<set>). Dropped in favour of the prefix-routed @equip.
+    [InlineData("@equip-all")]
     public void RemovedFromCatalog(string cmd)
         => Assert.False(RemoteCommandCatalog.TryGetCategory(cmd, out _));
 

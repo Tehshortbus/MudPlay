@@ -102,6 +102,156 @@ public sealed class RemoteCommandManagerTests
         Assert.False(engine.UnregisterHandler("@health"));
     }
 
+    // ===== Prefix-form handlers (@equip-<set>) =====
+    // RegisterPrefixHandler routes a family of suffix-form commands sharing
+    // one prefix; the text after the prefix is folded in as Args[0]. Prefix
+    // handlers are consulted only after an exact-handler miss, and only when
+    // the inbound command carries a non-empty remainder after the prefix.
+
+    [Fact]
+    public void RegisterPrefixHandler_RequiresAtPrefix()
+    {
+        var (engine, _, _) = Setup();
+        Assert.Throws<ArgumentException>(() =>
+            engine.RegisterPrefixHandler("equip-", PlayerRemoteControls.ExecuteCommands, _ => { }));
+    }
+
+    [Fact]
+    public void PrefixHandler_FoldsSuffixIntoLeadingArg()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+
+        IReadOnlyList<string>? captured = null;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            ctx => captured = ctx.Args);
+
+        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+
+        Assert.Equal(new[] { "fighting" }, captured);
+    }
+
+    [Fact]
+    public void PrefixHandler_SuffixPrependedAheadOfRemainingArgs()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+
+        IReadOnlyList<string>? captured = null;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            ctx => captured = ctx.Args);
+
+        engine.DispatchForTests(Telepath("Friend", "@equip-tank now please"));
+
+        Assert.Equal(new[] { "tank", "now", "please" }, captured);
+    }
+
+    [Fact]
+    public void PrefixHandler_NotMatchedWithoutRemainder()
+    {
+        // "@equip-" exactly (no suffix) needs a strict prefix to match, so
+        // it falls through to the unknown-command denial path.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+        engine.FailureMessage = "denied";
+
+        bool fired = false;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Friend", "@equip-"));
+
+        Assert.False(fired);
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Friend {denied}\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void PrefixHandler_ExactHandlerWins()
+    {
+        // An exact registration for the full command beats a prefix whose
+        // suffix would otherwise match — exact lookup runs first.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+
+        string? hit = null;
+        engine.RegisterHandler("@equip-foo", PlayerRemoteControls.ExecuteCommands,
+            _ => hit = "exact");
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => hit = "prefix");
+
+        engine.DispatchForTests(Telepath("Friend", "@equip-foo"));
+
+        Assert.Equal("exact", hit);
+    }
+
+    [Fact]
+    public void PrefixHandler_FiresWhenSenderHasFlag()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+
+        bool fired = false;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void PrefixHandler_DeniedWhenSenderLacksFlag()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Stranger", PlayerRemoteControls.QueryVersion); // not ExecuteCommands
+
+        bool fired = false;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Stranger", "@equip-fighting"));
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void PrefixHandler_RerollSuffixHardBlockedSilently()
+    {
+        // Hard-blocks scan the raw command token and run BEFORE handler
+        // lookup, so a degenerate "@equip-reroll" trips the reroll
+        // hard-block and never reaches the prefix handler — silently.
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
+
+        bool fired = false;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Trusted", "@equip-reroll"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void UnregisterPrefixHandler_RemovesIt()
+    {
+        var (engine, _, players) = Setup();
+        SeedPlayer(players, "Friend", PlayerRemoteControls.ExecuteCommands);
+
+        int fired = 0;
+        engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
+            _ => fired++);
+
+        Assert.True(engine.UnregisterPrefixHandler("@equip-"));
+        Assert.False(engine.UnregisterPrefixHandler("@equip-"));
+
+        engine.WarnOnDenial = false; // suppress the now-unknown-command reply
+        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+        Assert.Equal(0, fired);
+    }
+
     // ===== Permission gating =====
 
     [Fact]

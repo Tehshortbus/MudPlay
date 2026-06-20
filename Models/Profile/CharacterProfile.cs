@@ -269,4 +269,12 @@ public sealed class CharacterProfile
     /// means nothing completed yet.
     /// </summary>
     public List<QuestProgress>? QuestLog { get; set; }
+
+    /// <summary>
+    /// Per-character equipment-manager state (Workshop Equipment tab) — saved
+    /// gear sets and the auto-equip triggers between them. Drives
+    /// <c>@equip-&lt;set&gt;</c> and (in later Phase-10 PRs) the per-slot editor
+    /// and trigger evaluation. <c>null</c> means nothing configured yet.
+    /// </summary>
+    public EquipmentSettings? Equipment { get; set; }
 }

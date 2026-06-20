@@ -389,6 +389,14 @@ public sealed class AppServices
     public Game.Remote.TrainHandler TrainRemote { get; }
 
     /// <summary>
+    /// <c>@equip-&lt;set&gt;</c> handler — a permitted party member asks us to
+    /// wear one of our saved gear sets. The set keyword is the suffix after
+    /// <c>@equip-</c>; routed via <see cref="RemoteCommands"/>'s prefix handler
+    /// into <see cref="Equipment"/>.
+    /// </summary>
+    public Game.Remote.EquipHandler EquipRemote { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for <c>@suicide</c>.
     /// Authorised callers (Elevated-Commands permission, lives above
     /// the suicide threshold) trigger the suicide round-trip; on
@@ -914,6 +922,16 @@ public sealed class AppServices
     /// <see cref="Cash"/>'s encumbrance gate the live carry weight.
     /// </summary>
     public Game.Inventory.InventoryManager Inventory { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 10 — gear-set apply engine (Workshop Equipment tab). Diffs a saved
+    /// <see cref="Models.Profile.EquipmentSet"/> against the live worn loadout
+    /// (<see cref="Inventory"/>'s snapshot) and paces <c>wear</c> commands;
+    /// virtual slots write <see cref="Models.Profile.CombatSettings"/> instead.
+    /// Driven by the <c>@equip-&lt;set&gt;</c> remote command
+    /// (<see cref="EquipRemote"/>); trigger evaluation lands in a later PR.
+    /// </summary>
+    public Game.Inventory.EquipmentManager Equipment { get; private set; } = null!;
 
     /// <summary>
     /// Phase 9 PR 9.E — per-currency cash pickup engine. Dispatches
@@ -2195,6 +2213,26 @@ public sealed class AppServices
         // exit gating, already wired to char-mode). Wire-sender bound in
         // MainWindowViewModel.
         AutoTrain = new Game.AutoTrainManager(PlayerStats, GameData, Inventory, Profile, TrainerMenu, Log);
+
+        // Phase 10 — EquipmentManager + the @equip-<set> handler. The engine
+        // reads saved gear sets off the char profile, diffs against Inventory's
+        // worn loadout, and paces `wear` commands; virtual slots (Alternate
+        // Weapon / Off-Hand) persist into the char-tier Combat section so the
+        // combat weapon-swap matrix re-reads them. Wire-sender bound in
+        // MainWindowViewModel.
+        Equipment = new Game.Inventory.EquipmentManager(
+            readEquipment: () => Profile.Current?.Equipment ?? new Models.Profile.EquipmentSettings(),
+            getSnapshot: () => Inventory.Snapshot,
+            readCombat: () => ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            writeCombat: combat =>
+            {
+                if (Profile.Current is not { } p) return;
+                p.Settings ??= new();
+                p.Settings["Combat"] = System.Text.Json.JsonSerializer.SerializeToElement(combat);
+                Profile.Save();
+            },
+            log: Log);
+        EquipRemote = new Game.Remote.EquipHandler(RemoteCommands, Equipment);
 
         // Phase 9 PR 9.E — CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
