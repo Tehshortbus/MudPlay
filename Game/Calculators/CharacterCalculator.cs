@@ -219,76 +219,104 @@ public static class CharacterCalculator
         ArgumentNullException.ThrowIfNull(cache);
 
         var result = new EquipmentStatBreakdown();
-        EquipmentStatSummary totals = result.Totals;
-
         foreach (EquippedItem item in equippedItems)
         {
             JsonElement? row = cache.FindRowByName("Items", item.Name);
-            if (row is not JsonElement itemData) continue;
-
-            // Base AC/DR are stored ×10 in game data — divide for the real value.
-            double baseAC = GetInt(itemData, "ArmourClass") / 10.0;
-            double baseDR = GetInt(itemData, "DamageResist") / 10.0;
-            if (baseAC != 0 || baseDR != 0)
-            {
-                totals.PlusAC += baseAC;
-                totals.PlusDR += baseDR;
-                AddContribution(result, "Armour Class", item.Name,
-                    string.Create(CultureInfo.InvariantCulture, $"{baseAC:0.#}/{baseDR:0.#}"));
-            }
-
-            // Per-item Accy folds into the worn-accuracy total for every item;
-            // the weapon / off-hand pieces also surface their own accuracy.
-            int itemAccy = GetInt(itemData, "Accy");
-            totals.TotalWornAccy += itemAccy;
-            if (itemAccy != 0)
-                AddContribution(result, "Accuracy", item.Name,
-                    itemAccy.ToString("+0;-0", CultureInfo.InvariantCulture));
-
-            bool isWeaponHand = item.Slot == "Weapon Hand";
-            if (isWeaponHand)
-            {
-                totals.WeaponHandAccy = itemAccy;
-                totals.WeaponStrReq = GetInt(itemData, "StrReq");
-                totals.WeaponMin = GetInt(itemData, "Min");
-                totals.WeaponMax = GetInt(itemData, "Max");
-                totals.WeaponType = GetInt(itemData, "WeaponType");
-                totals.WeaponSpeed = GetInt(itemData, "Speed");
-            }
-            else if (item.Slot == "Off-Hand")
-            {
-                totals.OffHandAccy = itemAccy;
-            }
-
-            for (int i = 0; i < MaxItemAbilSlots; i++)
-            {
-                int abilId = GetInt(itemData, $"Abil-{i}");
-                int abilVal = GetInt(itemData, $"AbilVal-{i}");
-                if (abilId <= 0 || abilVal == 0) continue;
-
-                if (abilId is 22 or 105 or 106 && abilVal > totals.MaxSingleAbil22)
-                    totals.MaxSingleAbil22 = abilVal;
-
-                // Hit Magic (28/142): every item adds to the running total, but
-                // only a Weapon-Hand piece contributes to weapon hit-magic and
-                // shows up in the breakdown — handled before MapAbilityToStat.
-                if (abilId is 28 or 142)
-                {
-                    totals.PlusHitMagic += abilVal;
-                    if (isWeaponHand)
-                    {
-                        totals.WeaponHitMagic += abilVal;
-                        AddContribution(result, "Hit Magic", item.Name,
-                            abilVal.ToString("+0;-0", CultureInfo.InvariantCulture));
-                    }
-                    continue;
-                }
-
-                MapAbilityToStat(result, totals, item.Name, abilId, abilVal);
-            }
+            if (row is JsonElement itemData)
+                FoldItemRow(result, itemData, item.Name, item.Slot);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Fold one already-resolved <c>Items</c> row into a fresh
+    /// <see cref="EquipmentStatBreakdown"/> — the per-item half of
+    /// <see cref="AggregateEquipmentStats"/>, exposed for callers that already hold
+    /// the JSON row. The Item Finder enumerates the whole <c>Items</c> table, so a
+    /// name round-trip through <see cref="GameDataCache.FindRowByName"/> per item
+    /// would be wasteful. <paramref name="slotTag"/> mirrors
+    /// <see cref="EquippedItem.Slot"/>: <c>"Weapon Hand"</c> surfaces the weapon-base
+    /// fields (Min / Max / StrReq / Type / Speed), <c>"Off-Hand"</c> the off-hand
+    /// accuracy, any other tag folds as generic worn gear.
+    /// </summary>
+    public static EquipmentStatBreakdown AggregateItemRow(
+        JsonElement itemRow, string itemName, string slotTag)
+    {
+        ArgumentNullException.ThrowIfNull(itemName);
+        ArgumentNullException.ThrowIfNull(slotTag);
+
+        var result = new EquipmentStatBreakdown();
+        if (itemRow.ValueKind == JsonValueKind.Object)
+            FoldItemRow(result, itemRow, itemName, slotTag);
+        return result;
+    }
+
+    private static void FoldItemRow(
+        EquipmentStatBreakdown result, JsonElement itemData, string itemName, string slotTag)
+    {
+        EquipmentStatSummary totals = result.Totals;
+
+        // Base AC/DR are stored ×10 in game data — divide for the real value.
+        double baseAC = GetInt(itemData, "ArmourClass") / 10.0;
+        double baseDR = GetInt(itemData, "DamageResist") / 10.0;
+        if (baseAC != 0 || baseDR != 0)
+        {
+            totals.PlusAC += baseAC;
+            totals.PlusDR += baseDR;
+            AddContribution(result, "Armour Class", itemName,
+                string.Create(CultureInfo.InvariantCulture, $"{baseAC:0.#}/{baseDR:0.#}"));
+        }
+
+        // Per-item Accy folds into the worn-accuracy total for every item;
+        // the weapon / off-hand pieces also surface their own accuracy.
+        int itemAccy = GetInt(itemData, "Accy");
+        totals.TotalWornAccy += itemAccy;
+        if (itemAccy != 0)
+            AddContribution(result, "Accuracy", itemName,
+                itemAccy.ToString("+0;-0", CultureInfo.InvariantCulture));
+
+        bool isWeaponHand = slotTag == "Weapon Hand";
+        if (isWeaponHand)
+        {
+            totals.WeaponHandAccy = itemAccy;
+            totals.WeaponStrReq = GetInt(itemData, "StrReq");
+            totals.WeaponMin = GetInt(itemData, "Min");
+            totals.WeaponMax = GetInt(itemData, "Max");
+            totals.WeaponType = GetInt(itemData, "WeaponType");
+            totals.WeaponSpeed = GetInt(itemData, "Speed");
+        }
+        else if (slotTag == "Off-Hand")
+        {
+            totals.OffHandAccy = itemAccy;
+        }
+
+        for (int i = 0; i < MaxItemAbilSlots; i++)
+        {
+            int abilId = GetInt(itemData, $"Abil-{i}");
+            int abilVal = GetInt(itemData, $"AbilVal-{i}");
+            if (abilId <= 0 || abilVal == 0) continue;
+
+            if (abilId is 22 or 105 or 106 && abilVal > totals.MaxSingleAbil22)
+                totals.MaxSingleAbil22 = abilVal;
+
+            // Hit Magic (28/142): every item adds to the running total, but
+            // only a Weapon-Hand piece contributes to weapon hit-magic and
+            // shows up in the breakdown — handled before MapAbilityToStat.
+            if (abilId is 28 or 142)
+            {
+                totals.PlusHitMagic += abilVal;
+                if (isWeaponHand)
+                {
+                    totals.WeaponHitMagic += abilVal;
+                    AddContribution(result, "Hit Magic", itemName,
+                        abilVal.ToString("+0;-0", CultureInfo.InvariantCulture));
+                }
+                continue;
+            }
+
+            MapAbilityToStat(result, totals, itemName, abilId, abilVal);
+        }
     }
 
     /// <summary>

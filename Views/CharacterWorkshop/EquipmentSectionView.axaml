@@ -90,6 +90,8 @@
                         ToolTip.Tip="Fill the slots from the items you're wearing right now."/>
                 <Button Content="Equip Now" Command="{Binding ApplyNowCommand}"
                         ToolTip.Tip="Wear this set now; blank ({no change}) slots are left untouched."/>
+                <Button Content="Item Finder" Command="{Binding OpenItemFinderCommand}"
+                        ToolTip.Tip="Browse every equippable item in the game data, filtered by class, level, alignment, and stats."/>
             </StackPanel>
 
             <!-- Apply result (own line so it doesn't reflow the action row). -->

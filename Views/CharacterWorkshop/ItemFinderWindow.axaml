@@ -1,0 +1,242 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1180" d:DesignHeight="720"
+        x:Class="FujinTerm.Views.CharacterWorkshop.ItemFinderWindow"
+        x:DataType="vm:ItemFinderViewModel"
+        Title="Item Finder"
+        Width="1180" Height="720"
+        MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.Group">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Border.Group">
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        <Style Selector="NumericUpDown.filter">
+            <Setter Property="Width" Value="112"/>
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100000"/>
+            <Setter Property="Increment" Value="1"/>
+            <Setter Property="FormatString" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="12">
+        <Grid ColumnDefinitions="280,*" ColumnSpacing="12">
+
+            <!-- ===== Left: grouped, selectively-applied filters ===== -->
+            <Grid Grid.Column="0" RowDefinitions="*,Auto">
+
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="0">
+
+                        <!-- Character: class / level / alignment, deferred to the
+                             same usable-by-char gate the slot suggestions use. -->
+                        <Border Classes="Group">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="Group" Text="Character"/>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Class"/>
+                                    <ComboBox ItemsSource="{Binding ClassOptions}"
+                                              SelectedItem="{Binding SelectedClass, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Alignment"/>
+                                    <ComboBox ItemsSource="{Binding AlignmentOptions}"
+                                              SelectedItem="{Binding SelectedAlignment, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter"
+                                                   Maximum="200"
+                                                   Value="{Binding UsableLevel, Mode=TwoWay}"
+                                                   ToolTip.Tip="Show only items a character of this level can wear (0 = any)."/>
+                                    <TextBlock Classes="FieldLabel" Text="Usable at level"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Slot &amp; type. -->
+                        <Border Classes="Group">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="Group" Text="Slot &amp; type"/>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Slot"/>
+                                    <ComboBox ItemsSource="{Binding SlotOptions}"
+                                              SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Weapon type"/>
+                                    <ComboBox ItemsSource="{Binding WeaponTypeOptions}"
+                                              SelectedItem="{Binding SelectedWeaponType, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Armour type"/>
+                                    <ComboBox ItemsSource="{Binding ArmourTypeOptions}"
+                                              SelectedItem="{Binding SelectedArmourType, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <CheckBox Content="Backstab-capable only"
+                                          IsChecked="{Binding BackstabOnly, Mode=TwoWay}"
+                                          Foreground="{StaticResource ChromeFgSecBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Minimum bonuses (≥). 0 disables the row. -->
+                        <Border Classes="Group">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="Group" Text="Minimum bonuses (≥)"/>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinHp, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Max HP"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinHpRegen, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="HP regen %"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinMana, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Max mana"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinManaRegen, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Mana regen %"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinMinDmg, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Min damage"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinMaxDmg, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Max damage"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinAccuracy, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Accuracy"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinCrits, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Crits"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinHitMagic, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Hit magic level"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinBsAccuracy, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="BS accuracy"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinBsMin, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="BS min damage"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinBsMax, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="BS max damage"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinAc, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Armour class"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinDr, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Damage resist"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Maximum requirements (≤). 0 disables the row. -->
+                        <Border Classes="Group">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="Group" Text="Maximum requirements (≤)"/>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter"
+                                                   Maximum="200" Value="{Binding MaxStrReq, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Strength req"/>
+                                </DockPanel>
+                                <DockPanel>
+                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter"
+                                                   Maximum="200" Value="{Binding MaxLevelReq, Mode=TwoWay}"/>
+                                    <TextBlock Classes="FieldLabel" Text="Level req"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                    <Button Content="Reset filters" Command="{Binding ResetCommand}" MinWidth="100"/>
+                    <Button Content="Close" Command="{Binding CloseCommand}" MinWidth="80"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- ===== Right: the combined item list ===== -->
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
+
+                <TextBlock Grid.Row="0" Text="{Binding CountText}"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           VerticalAlignment="Center"/>
+
+                <!-- ReflectionBinding: the non-generic DataGridCollectionView hides the
+                     row item's type from the compiled-binding pass, so columns fall back
+                     to reflection (matching the Game Data / Spell Coverage grids). -->
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding RowsView}"
+                          IsReadOnly="True"
+                          AutoGenerateColumns="False"
+                          CanUserSortColumns="True"
+                          CanUserResizeColumns="True"
+                          CanUserReorderColumns="False"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Slot"       Binding="{ReflectionBinding SlotLabel}"      SortMemberPath="SlotOrder"  Width="100"/>
+                        <DataGridTextColumn Header="Name"       Binding="{ReflectionBinding Name}"           SortMemberPath="Name"       Width="200"/>
+                        <DataGridTextColumn Header="Type"       Binding="{ReflectionBinding TypeLabel}"      SortMemberPath="TypeLabel"  Width="96"/>
+                        <DataGridTextColumn Header="Lvl"        Binding="{ReflectionBinding LevelReqText}"   SortMemberPath="LevelReq"   Width="58"/>
+                        <DataGridTextColumn Header="Str"        Binding="{ReflectionBinding StrReqText}"     SortMemberPath="StrReq"     Width="58"/>
+                        <DataGridTextColumn Header="Dmg"        Binding="{ReflectionBinding DamageText}"     SortMemberPath="MaxDmg"     Width="78"/>
+                        <DataGridTextColumn Header="Accy"       Binding="{ReflectionBinding AccuracyText}"   SortMemberPath="Accuracy"   Width="66"/>
+                        <DataGridTextColumn Header="Crit"       Binding="{ReflectionBinding CritsText}"      SortMemberPath="Crits"      Width="62"/>
+                        <DataGridTextColumn Header="Hit Magic"  Binding="{ReflectionBinding HitMagicText}"   SortMemberPath="HitMagic"   Width="92"/>
+                        <DataGridTextColumn Header="BS Acc"     Binding="{ReflectionBinding BsAccuracyText}" SortMemberPath="BsAccuracy" Width="78"/>
+                        <DataGridTextColumn Header="BS Min-Max" Binding="{ReflectionBinding BsDamageText}"   SortMemberPath="BsMax"      Width="106"/>
+                        <DataGridTextColumn Header="AC"         Binding="{ReflectionBinding AcText}"         SortMemberPath="Ac"         Width="56"/>
+                        <DataGridTextColumn Header="DR"         Binding="{ReflectionBinding DrText}"         SortMemberPath="Dr"         Width="56"/>
+                        <DataGridTextColumn Header="HP"         Binding="{ReflectionBinding HpText}"         SortMemberPath="Hp"         Width="62"/>
+                        <DataGridTextColumn Header="HP Regen"   Binding="{ReflectionBinding HpRegenText}"    SortMemberPath="HpRegen"    Width="92"/>
+                        <DataGridTextColumn Header="Mana"       Binding="{ReflectionBinding ManaText}"       SortMemberPath="Mana"       Width="66"/>
+                        <DataGridTextColumn Header="MP Regen"   Binding="{ReflectionBinding ManaRegenText}"  SortMemberPath="ManaRegen"  Width="92"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -165,6 +166,20 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             EquipResult.Busy => "An apply is already in progress.",
             _ => "Set could not be resolved.",
         };
+    }
+
+    /// <summary>
+    /// Open the read-only Item Finder — the full equippable-item catalog with grouped
+    /// class / level / alignment / stat filters. A browse aid for picking slot items;
+    /// it doesn't write the set. Concurrent opens are blocked by the async command, so
+    /// the button can't stack multiple finder windows.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenItemFinder()
+    {
+        var finder = new ItemFinderViewModel(_gameData);
+        await AppServices.Current.Dialogs
+            .OpenWindowAsync<ItemFinderViewModel, bool>(finder);
     }
 
     /// <summary>Seed the physical slots from the live worn loadout.</summary>

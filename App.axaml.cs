@@ -132,6 +132,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.CharacterWorkshop.QuestEditorViewModel,
                 FujinTerm.Views.CharacterWorkshop.QuestEditorWindow>();
 
+            // Phase 10 — Item Finder (Character Workshop → Equipment Manager →
+            // "Item Finder"). Read-only catalog of every equippable item in the
+            // active set, grouped filters by class / level / alignment / stats.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.CharacterWorkshop.ItemFinderViewModel,
+                FujinTerm.Views.CharacterWorkshop.ItemFinderWindow>();
+
             // Right-click → "Center on…" — two-int (map / room) input
             // that returns a RoomKey for the Navigation window to
             // rebuild its layout around.

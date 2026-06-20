@@ -162,6 +162,27 @@ public static class EquipmentSlotMap
     }
 
     /// <summary>
+    /// The primary <see cref="EquipmentSlot"/> an <c>Items</c> row occupies — a weapon
+    /// (<c>ItemType == 1</c>) resolves to <see cref="EquipmentSlot.Weapon"/>, every
+    /// other equippable row maps from its <c>Worn</c> code. Returns <c>null</c> for an
+    /// item the realm can't wear (<c>Worn 0</c> / a non-equip <c>ItemType</c>). The
+    /// paired Finger / Wrist codes resolve to slot 1 — the Item Finder groups by slot
+    /// family, not physical position — and the off-hand code resolves to
+    /// <see cref="EquipmentSlot.OffHand"/> over its Alt twin (both share code 12).
+    /// </summary>
+    public static EquipmentSlot? SlotForItem(JsonElement row)
+    {
+        if (GetInt(row, "ItemType") == WeaponItemType) return EquipmentSlot.Weapon;
+        int worn = GetInt(row, "Worn");
+        // DisplayOrder is the enum order, so the slot-1 / primary variant always wins
+        // the tie for the doubled Finger / Wrist / Off-Hand codes.
+        foreach (EquipmentSlot slot in DisplayOrder)
+            if (WornCodes.TryGetValue(slot, out int[]? codes) && codes.Contains(worn))
+                return slot;
+        return null;
+    }
+
+    /// <summary>
     /// True when the loaded <c>Items</c> table holds at least one named item that can
     /// occupy <paramref name="slot"/> — a weapon (<c>ItemType == 1</c>) for the weapon
     /// slots, or a matching <c>Worn</c> code for a physical slot. Independent of any
