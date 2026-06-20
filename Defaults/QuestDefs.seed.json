@@ -1,0 +1,362 @@
+[
+  {
+    "Flag": 32,
+    "Step": 0,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[] (1/2305) \u0027ask aldreth test\u0027\n[] (7/1363) Obtain 50 Orc-Heads\n[] (1/2305) \u0027ask aldreth heads\u0027\n[] (1/2305) \u0027ask aldreth return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 50,
+    "Step": 1,
+    "Name": "Witchunter Quest(Magebane)",
+    "Visible": true,
+    "Steps": "[] (2/2566) \u0027ask huge dwarven witchunter sword\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 50,
+    "Step": 4,
+    "Name": "Witchunter Quest(Draka\u0027s Blade)",
+    "Visible": true,
+    "Steps": "-MUST COMPLETE MAGEBANE PORTION FIRST-\n[] (2/2566) \u0027ask huge dwarven witchunter witchunter\u0027\n[] (15/1101) \u0027ask inquisitor fulgore messenger\u0027\n[] (15/1112) \u0027touch ruby\u0027 (drops you into flame pit randomly)\n[] (15/1127) kill demoness irikani (severed head of irikani)\n[] (15/1101) \u0027ask inquisitor fulgore return\u0027\n[] (2/2566) \u0027ask huge dwarven witchunter draka\u0027\n[] (2/2566) \u0027ask huge dwarven witchunter visit\u0027\n[] (17/2586) kill enigma lord (severed head of enigma lord)\n[] (17/359) \u0027ask spirit of draka return\u0027",
+    "Rewards": "Draka\u0027s Blade",
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 57,
+    "Step": 0,
+    "Name": "Gaunt One See Hidden",
+    "Visible": true,
+    "Steps": "[] (7/1362) \u0027ask master business\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 125,
+    "Step": 0,
+    "Name": "Ice Sorceress",
+    "Visible": true,
+    "Steps": "[] (10/245) kill ice sorceress (if alive)\n[] (10/245) \u0060sit throne\u0060",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 126,
+    "Step": 10,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](1/527) \u0027ask wounded mission\u0027\n[](1/546) \u0027ask guild messenger\u0027\n[](1/527) \u0027ask wounded accept\u0027\n[](1/3333) \u0027ask annora messenger\u0027\n[](2/2518) \u0027ask markus letter\u0027\n[](1/3333) \u0027ask annora return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 126,
+    "Step": 20,
+    "Name": "",
+    "Visible": true,
+    "Steps": "-----This is your last chance to change alignment quests-----\n-----Room (1/163) to pledge, requires sysop assist-----\n[](1/3333) \u0027ask annora missions\u0027\n[](3/668) obtain severed head of goru-nezar\n[](1/3333) \u0027ask annora head\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 126,
+    "Step": 30,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](6/1387) \u0027ask king business\u0027\n[](6/1382) \u0027ask loremaster demons\u0027\n[](6/76) kill metallic monstrosity (gleaming shard, need 1 per good align character, can obtain anytime)\n[](6/1357) (Gleaming Shard required) \u0027ask martok forge\u0027\n[](6/577) (Gleaming Dagger required) \u0027ask gnome enchantress enchant\u0027\n[](6/994) (Enchanted Dagger required) kill spectral knight\n[](6/3108) (Spirit dagger of goijar required) kill Gulgulthra\n[](6/1387) \u0027ask king return\u0027\n[](1/3333) \u0027ask annora success\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 126,
+    "Step": 40,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](16/2160) kill dark phoenix\n[](1/3333) \u0027ask annora foe\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 126,
+    "Step": 50,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](17/2418) \u0027ask pastor annora\u0027\n[](17/1746) \u0027ask justice pastor\u0027\n-----This next step is -VERY- dangerous, you will need lots of healing, roomers and coordination-----\n[](17/2243) kill Ozrinom the Vampire Lord\n[](17/2243) heal up/rest up, respawn timer is 4 minutes from kills.\n[](17/2243) \u0027tip coffin\u0027 and kill death mist of ozrinom (Easiest way to get out is to have entire party hangup and log back in)\n[](17/2418) \u0027ask pastor gem\u0027\n[](17/1790) \u0027ask old gift\u0027\n[](17/2019) kill rotting beholder, grab eye and tongue then pull lever\n[](17/2020) \u0027ask old prophecy\u0027 and \u0027ask old portal\u0027\n[](17/1753) \u0027place eye in socket\u0027 and \u0027place tongue in hole\u0027 when ready (portal lasts 15 minutes)\n-----if your whole party can stealth, you can sneak right into CMD\u0027s room, otherwise take it slow, use roomers, wraith knights are mean.-----\n[](17/1772) kill Colossal midnight dragon\n[](17/1772) Once rested up(don\u0027t bother buffing they get removed) kill ancient tapestry (ancient tapestry will last between 40 and 60 minutes before it will turn into shredded tapestry on its own)\n[](17/1772) Once Shredded tapestry is spawned, entire party sends \u0027go tapestry\u0027 to enter dark mage\u0027s room. (Shredded tapestry lasts between 8m20s and 16m40s)\n[](17/1773) kill dark mage\n[](17/1773) (optional) Once rested up (don\u0027t bother buffing they get removed) entire party sends \u0027enter portal\u0027 (If you don\u0027t want to attempt Zanthus just relog)\n[](17/785) (optional) kill zanthus the lich (NOTE: You only get one chance to kill him, if you don\u0027t on your first dark mage kill, you can\u0027t fight him again.)\n[](1/3333) \u0027ask annora knowledge\u0027 or \u0027ask annora reconcile\u0027",
+    "Rewards": "5th Quest Weapon",
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 127,
+    "Step": 10,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](1/315) \u0027ask hooded quest\u0027\n[](1/2327) \u0027ask jorah gaal\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey code word\u0027\n[](2/2518) \u0027ask markus festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey box\u0027\n[](1/3333) \u0027ask annora festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 127,
+    "Step": 20,
+    "Name": "",
+    "Visible": true,
+    "Steps": "-----This is your last chance to change alignment quests-----\n-----Room (1/163) to pledge, requires sysop assist-----\n[](3/641) obtain eye of the beholder\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey eye\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 127,
+    "Step": 30,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](6/3109) \u0027pray\u0027\n-----all stones you need to collect destroy on death-----\n[](6/1566) kill kai master (storm spirit)\n[](6/2338) kill gemstone juggernaut (heartstone)\n[](6/644) \u0027ask inventor helmet\u0027\n[](6/1209) (WARNING) \u0027ask spirit ice tear\u0027 (Any character not wearing a gnomish fish helm will die within 5 rounds)\n[](6/1243) kill efreeti (eternal fire)\n-----once you have obtained all 4 stones-----\n[](6/3109) \u0027summon avatar\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey reward\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 127,
+    "Step": 40,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](16/2160) kill dark phoenix\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey destroyed\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 127,
+    "Step": 50,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](17/776) \u0027ask ancient gypsy woman grey lord\u0027\n[](/) kill mayor of arlysia/arachnigoth (pile of spectral webbing)\n[](17/776) \u0027ask ancient gypsy woman webbing\u0027\n[](17/728)/(17/2823)/(17/2830)/(17/2833) kill hanging tree (ancient blackwood heart)\n[](17/776) \u0027ask ancient gypsy woman heart\u0027\n[](17/1790) \u0027ask old gift\u0027\n[](17/2019) kill rotting beholder, grab eye and tongue then pull lever\n[](17/2020) \u0027ask old prophecy\u0027 and \u0027ask old portal\u0027\n[](17/1753) \u0027place eye in socket\u0027 and \u0027place tongue in hole\u0027 when ready (portal lasts 15 minutes)\n-----if your whole party can stealth, you can sneak right into CMD\u0027s room, otherwise take it slow, use roomers, wraith knights are mean.-----\n[](17/1772) kill Colossal midnight dragon\n[](17/1772) Once rested up(don\u0027t bother buffing they get removed) kill ancient tapestry (ancient tapestry will last between 40 and 60 minutes before it will turn into shredded tapestry on its own)\n[](17/1772) Once Shredded tapestry is spawned, entire party sends \u0027go tapestry\u0027 to enter dark mage\u0027s room. (Shredded tapestry lasts between 8m20s and 16m40s)\n[](17/1773) kill dark mage\n[](17/1773) (optional) Once rested up (don\u0027t bother buffing they get removed) entire party sends \u0027enter portal\u0027 (If you don\u0027t want to attempt Zanthus just relog)\n[](17/785) (optional) kill zanthus the lich (NOTE: You only get one chance to kill him, if you don\u0027t on your first dark mage kill, you can\u0027t fight him again.)\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey knowledge\u0027 or \u0027ask grey reconcile\u0027",
+    "Rewards": "5th Quest Weapon",
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 128,
+    "Step": 10,
+    "Name": "",
+    "Visible": true,
+    "Steps": "---Evil Quest is a little different from neutral or good where its obvious what alignment you have to be.\n---as you progress through the evil alignment quest chain, you have to progressively be more evil. anytime\n---an alignment is noted, that alignment is now the minimum required you must maintain to perform steps.\n----------------------------------------------------------------------------------------------------------------------\n\n[](1/392) (SEEDY) \u0027ask nasty-looking man gold\u0027 (requires 1 plat)\n[](2/2577) \u0027ask balthazar accept\u0027\n[](2/2518) kill commander markus (severed head of markus and locked wooden box)\n[](2/2577) \u0027ask balthazar reward\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 128,
+    "Step": 20,
+    "Name": "",
+    "Visible": true,
+    "Steps": "-----This is your last chance to change alignment quests-----\n-----Room (1/163) to pledge, requires sysop assist-----\n-----------------------------------------------------------------------------------------------------------------------------------------------------------\n---To get into the woodelf village, you must either be Saint through neutral or outlaw through fiend. Seedy is hard blocked from entering---\n-----------------------------------------------------------------------------------------------------------------------------------------------------------\n[](3/348) Outlaw through Fiend Backdoor\n[](3/468) Saint through Neutral Frontdoor\n[](3/497) collect 10 elf-heads\n[](3/543) collect head of the woodelf lord\n[](2/2577) \u0027ask balthazar return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 128,
+    "Step": 30,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](6/834) (OUTLAW) kill kobold king\n[](6/834) or (6/1337) obtain iron crown (need 1 per character)\n[](1/723) \u0027ask shifty crown\u0027\n[](6/1102) \u0027harvest mushrooms\u0027\n[](6/539) kill giant two-headed troll (black retchweed)\n[](6/2649) \u0027ask duergar lord ingredients\u0027\n[](6/1889) kill huge obsidian golem (talisman)\n[](6/2649) \u0027ask duergar lord transport\u0027 (This will teleport your entire party)\n[](6/1398) kill Champion Gudruk and \u0027push button\u0027 to open door\n[](6/1397) \u0027poison pot\u0027\n[](6/2649) \u0027ask duergar lord return\u0027\n[](2/2577) \u0027ask balthazar alliance\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 128,
+    "Step": 40,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](16/2160) kill dark phoenix\n[](2/2577) \u0027ask balthazar news\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 128,
+    "Step": 50,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](17/2586) \u0027ask enigma lord balthazar\u0027\n[](17/2418) (WARNING) \u0027desecrate altar\u0027 (Pastor Lander protects the altar. The altar room will smite you if outlaw through fiend and Lander is not present)\n[](17/2586) \u0027ask enigma lord deed\u0027\n[](17/979) obtain red parchment (Dreadlord of Blood is a very hard boss, you need roomers and healers)\n[](17/2586) (CRIMINAL) \u0027ask enigma lord bring\u0027\n[](17/776) obtain long golden chain (Ancient Gypsy Woman is a very nasty boss, close the door before you fight her)\n[](17/2586) (WARNING) \u0027ask enigma lord retrieve\u0027 (This will turn Enigma Lord hostile and you have to kill him)\n[](17/1790) \u0027ask old gift\u0027\n----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n--before you proceed, its best to setup your alignment so you can finish the quest. To properly get the next flags for evil, you must be varying degrees of villain. How evil you must\n--be varies depending on quest step and bounces between 120 ep, 150 ep or 210 ep. It\u0027s best to set yourself between 210 and 299(fiend is 300\u002B). you can check if you\u0027re evil enough\n--with your Sysop\u0027s help or by trying to equip the following items: laen longsword, soulblighter, sword of ozrinom, death shroud, shadowy ankh, hellblade. all of these items require \n--210 or more ep to be able to use which puts you at the minimum EP required to complete the quest chain. \n----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n[](17/2019) kill rotting beholder, grab eye and tongue then pull lever\n[](17/2020) \u0027ask old prophecy\u0027 and \u0027ask old portal\u0027\n[](17/1753) \u0027place eye in socket\u0027 and \u0027place tongue in hole\u0027 when ready (portal lasts 15 minutes)\n-----if your whole party can stealth, you can sneak right into CMD\u0027s room, otherwise take it slow, use roomers, wraith knights are mean.-----\n[](17/1772) kill Colossal midnight dragon\n[](17/1772) Once rested up(don\u0027t bother buffing they get removed) kill ancient tapestry (ancient tapestry will last between 40 and 60 minutes before it will turn into shredded tapestry on its own)\n[](17/1772) Once Shredded tapestry is spawned, entire party sends \u0027go tapestry\u0027 to enter dark mage\u0027s room. (Shredded tapestry lasts between 8m20s and 16m40s)\n[](17/1773) (VILLAIN 120) kill dark mage\n[](17/1773) (VILLAIN 150) (optional) Once rested up (don\u0027t bother buffing they get removed) entire party sends \u0027enter portal\u0027 (If you don\u0027t want to attempt Zanthus just relog)\n[](17/785) (optional) kill zanthus the lich (NOTE: You only get one chance to kill him, if you don\u0027t on your first dark mage kill, you can\u0027t fight him again.)\n[](2/2577) (VILLAIN 210) \u0027ask balthazar knowledge\u0027 or \u0027ask balthazar reconcile\u0027",
+    "Rewards": "5th Quest Weapon",
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 129,
+    "Step": 0,
+    "Name": "High Druid",
+    "Visible": true,
+    "Steps": "[] (1/3306) or (7/21) obtain darkwood ring{s} (1 per character or can use 2 rings to bring entire groups in)\n[] (7/141) \u0060go arch\u0060 and kill high druid (if alive)\n[] (7/142) \u0060touch gem\u0060\n",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 130,
+    "Step": 0,
+    "Name": "Blood Champ",
+    "Visible": true,
+    "Steps": "[] (7/1227) kill dark bishop (cross key)\n[] (7/1258) kill dark wizard (runed key)\n[] (7/1283) kill master assassin (skull key)\n[] (7/1281) (must have all 3 keys) \u0027put keys in slot\u0027 (dark temple key)\n[] (7/1272) \u0027use dark temple key e\u0027\n[] (7/1285) kill Champion of Blood/Greater Hellion\n[] (1/525)  \u0027ask bishop return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 131,
+    "Step": 0,
+    "Name": "Adult Red Dragon",
+    "Visible": true,
+    "Steps": "[] (7/1358) kill adult red dragon (if alive)\n[] (7/1358) \u0060touch ruby\u0060",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 132,
+    "Step": 0,
+    "Name": "Apparatus",
+    "Visible": true,
+    "Steps": "-----if not using NPP(8/992) lvl req 40-----\n[] (8/798) kill slaver leader (ask dying keep) obtain amber talisman(1 per entry to delf city)\n[] (8/459) \u0060ask gnome commander orb\u0060\n[] (8/530) kill captain of the guard (opal brooch)\n[] (8/486) \u0060ask sleazy brooch\u0060\n-----if using NPP (8/992) lvl req 40 or completed steps above-----\n[] (8/558) kill dark-elf archmage (dark blue orb)\n[] (8/486) \u0060ask sleazy orb\u0060\n[] (optional) Gnomish Fish helm prevents moat damage \n[] (8/689) kill wererat emissary (greasy leather bracelet)\n[] (8/951) \u0060solve puzzle\u0060\n[] (8/955) \u0060destroy apparatus\u0060",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 133,
+    "Step": 0,
+    "Name": "Phoenix Feather",
+    "Visible": true,
+    "Steps": "[](9/1259) \u0060ask old man phoenix\u0060\n[](2/2561) purchase skeleton key (3 plat or 201 picklocks)\n[](9/930) kill dread mystic\n[](9/223) kill smuggler boss\n[](6/126) \u0060ask orfeo morukai\u0060\n[](6/644) \u0060ask inventor fork\u0060 (can be done anytime after smuggler boss) (free)\n[](6/645) \u0060ask alchemist potion\u0060 (can be done anytime after smuggler boss) (1 plat per)\n[](9/1425) \u0060ask morukai orfeo\u0060\n[](9/717) kill queen ant (unfertilized eggs)\n[](9/870) kill leo the quick (double-terminated quartz)\n[](9/146) kill white jelly (acid glands)\n[](9/500) \u0060cut roots\u0060 (cave roots)\n[](9/1425) \u0060ask morukai components\u0060\n-----wait 10 minutes or go die in arena (11/42)-----\n[](3/1) \u0060use potion\u0060\n[](9/1431) kill necromancer (golden egg)\n[](9/1425) \u0060ask morukai information\u0060\n[](9/1427) \u0060hurl egg\u0060",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 134,
+    "Step": 0,
+    "Name": "Sunstone Wristband",
+    "Visible": true,
+    "Steps": "[](12/59) \u0027ask nekojin elder traders\u0027\n[](12/2088) obtain saracen heads (1 per character)\n[](12/1173) \u0027ask guard sergeant head\u0027\n[](12/1191) \u0027ask trader favor\u0027\n[](1/332) \u0027ask meia box\u0027\n[](6/1332) obtain dwarven ale (10 gold, 1 per character)\n-----You only need the pickaxe and to kill hideous abom if you cant find a red ore/red iron weapons laying around. Red Iron weapons are also optional if you have powerful caster friends-----\n[](6/1335) (optional) obtain pickaxe (8 gold)\n[](12/1171) (optional) kill hideous abomination and \u0027mine ore\u0027\n[](12/1191) \u0027ask trader return\u0027\n[](12/1192) \u0027ask seer accept\u0027\n[](12/2248) \u0027peruse blue book\u0027 and \u0027peruse red book\u0027\n[](12/1192) \u0027ask seer return\u0027\n[](12/1182) \u0027ask withered ale\u0027\n[](12/2250) kill pharaoh rastep (grey portal lasts 5 minutes, must type \u0027go portal\u0027 all characters must send command exactly as written.)\n[](go portal) kill dao lord\n[](6/126) \u0027ask orfeo dao\u0027",
+    "Rewards": null,
+    "RequiredLevel": 20,
+    "Blocked": false
+  },
+  {
+    "Flag": 152,
+    "Step": 0,
+    "Name": "End Game Trainer Part 1",
+    "Visible": true,
+    "Steps": "Episode 1, The Beginning\nAdvice: Bring a rope and grapple and have your training fees as well.\n\n1. Go to Room 12,2368 \u003CAncient Fortress, Jail Cell\u003E\n2. Travel N, E, and E (12,2374)\n***Warning: Proceed slowly due to various NPC mini-bosses that can spawn***\n3. You want to kill the Angelic Hunter and loot the Ancient Key from this area. Each room has a chance to spawn the Angelic Hunter along with some other monsters.\n4. From 12,2374, travel S, S, S (Bash/Pick, Fight Nahr), E (Regroup), NE, NE, N, W (use Ancient Key).\n5. Go to Episode 2, The Hedge Maze.",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 186,
+    "Step": 0,
+    "Name": "Perfect Stealth",
+    "Visible": true,
+    "Steps": "[](15/416) kill master assassin\n[](15/416) \u0027ask dying secret\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 187,
+    "Step": 0,
+    "Name": "",
+    "Visible": true,
+    "Steps": "[](7/1008) \u0027ask dhelvanen agree\u0027\n[](7/1530) Collect 50 black diamonds\n[](7/1008) \u0027ask dhelvanen reward\u0027\n[](7/1008) \u0027ask dhelvanen return\u0027",
+    "Rewards": null,
+    "RequiredLevel": null,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000000,
+    "Step": 0,
+    "Name": "End Game Trainer Part 2",
+    "Visible": true,
+    "Steps": "Episode 2, The Hedge Maze\nAdvice: You will want someone who can disarm traps here or expect to take 350\u002B trap damage each room. Move slowly and heal up if nobody can disarm traps.\n\nYou are in Room 17,2868 \u003CHedge Maze\u003E\n1. From 17,2868, Travel N (Disarm Trap), N (Disarm Trap), N (Disarm Trap), SE (Disarm Trap), SE (Disarm Trap), W (Disarm Trap)\n2. Fight the beautiful woman who will transform into Lorzina (Drops Staff of Power \u0026 Sash of the Ancient Wizard).\n3. Kill Lorzina, collect the tree branch, and go E (Disarm Trap), NW (Disarm Trap), NW (Disarm Trap), S (Disarm Trap), S (Disarm Trap), S (Disarm Trap)\n4. From 17,2868, Travel S (Disarm Trap), S (Disarm Trap), S, NE (Disarm Trap), NE (Disarm Trap)\n5. Fight the handsome man (Drops Nexus Blade), collect the tree branch, and go SW (Disarm Trap), SW (Disarm Trap), N, N (Disarm Trap), N (Disarm Trap). \n6. From 17,2868, Travel SW, W (Disarm Trap), W (Disarm Trap), W, N (Disarm Trap), N (Disarm Trap), E (Disarm Trap), E (Disarm Trap), N (Disarm Trap), E (Disarm Trap)\n7. The withered tree in this room will take both tree branches and summon Azrandimon.\n8. Kill Azrandimon to get the stone rook key.\n9. Go W (Disarm Trap), S (Disarm Trap), W (Disarm Trap), W (Disarm Trap), S (Disarm Trap), S (Disarm Trap), E, E (Disarm Trap), E (Disarm Trap)\n10. Open the door to the south with the stone rook key to fight the Majestic Dragon (Drops Dragon Plate).\n11. Make sure you have no confusion, then go portal, teleporting to room 17,2980.\n12. Go to Episode 3, Heaven and Hell.",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000001,
+    "Step": 0,
+    "Name": "End Game Trainer Part 3",
+    "Visible": true,
+    "Steps": "Episode 3, Heaven and Hell\nAdvice: You won\u2019t be teleported until you collect the Golden Rod and Black Spiked Ball from the Golden Phoenix and Demon Lord. Recommend making a loop for rooms 17,2970, 17,2973, 17,2974, and 17,2976 to make the slimey spiked key farming a bit more tolerable.\n\nYou are in Room 17,2980 \u003CAncient Fortress\u003E\n1. From 17,2980,  Travel W and enter the portal to enter the Heaven Portion - Golden Phoenix.\nWelcome to the Floating Island (17,2901)\n2. Say the command \u201Csay king of spades\u201D to see a flash of light.\n3. Travel W, W, W, and \u201Csay nightfall\u201D to see a flash of light.\n4. Travel S, S, S, and \u201Csay h\u201D to see a flash of light.\n5. Travel N, N, N, N, N, N, W, S, S, W\n6. Travel W and kill the Golden Phoenix (Drops Starhammer)\n7. Grab the Golden Rod, and you will eventually teleport back to 17,2980. The items in the room are quickly swept away. If so, when you are ported: Head back to (17,2901) and go D, SE and you will find your items. Go NW, U, E to reach the next part.\n8. From 17,2980, Travel E and enter the portal to enter the Hell Portion - Demon Lord (Note: This area has some farming in it). \nWelcome to the Burning Valley (17,2944)\n9. Travel S, E, Move Boulder, S, E, S, Move Boulder, E, N, Move Boulder, N, N, Move Boulder, N, N, Move Boulder, N, W, S, SW (17,2976).\n10. Since you need a slimey spiked key to open the door to the W, you will need to kill a lot of spiked juggernauts in rooms, 17,2970, 17,2973, 17,2974, and 17,2976. You need 20 black spikes to make this key.\n11. Once you have 20 black spikes, \u201Cask Demon Imp spikes\u201D in order to get the slimey spiked key.\n12. Use the key to the W and kill the Demon Lord (Drops Dread Harvest \u0026 Obsidian Greatsword). \n13. Grab the Black Spiked Ball, and you will be teleported back to 17,2980.\n14. Talk with the Demon Imp and say \u201Cask Demon Imp return\u201D, and he will take the Golden Rod and Black Spiked Ball.\n    - Pro Tip: If you\u0027re not interesting in moving forward with the other bosses, you can \u0022ask Demon Imp back\u0022 and you will be teleported to Room 12,2368 \u003CAncient Fortress, Jail Cell\u003E\n15. You will then be teleported to 17,3090 to fight the Great Hydra and 2 massive hydra heads (buffs are stripped, so be prepared).\n16. Once they are dead, go portal will bring you to 17,2982 \u003CGrand Hallway\u003E and strip all your buffs again.\n17. Go to Episode 4 for the trial areas or go to Episode 5 to continue with Hard Trainer or go to Episode 6 to immediately train if you are Rune(152) flagged.",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000002,
+    "Step": 0,
+    "Name": "End Game Trainer Part 4 (Fighter Hall)",
+    "Visible": true,
+    "Steps": "Episode 4, The Fighter Hall\nAdvice: This area is for Witchhunter, Warrior, Paladin, Cleric, Mystic, and Ranger classes. If you are doing this solo, you may want to bring potions just in case.\n\nTo begin, from Room 17, 2982 \u003CGrand Hallway\u003E, Travel S, S, S\n\nYou are now in Room 17, 3057 \u003CMarble Room, White Square\u003E\n1. From 17, 3057, Travel S, S, E\n2. Kill the White Guardsman (17, 3067) and collect the White Pawn item\n3. From 17, 3067, Travel N (white pawn will be taken), N, E\n4. Kill the Black Knight (17, 3070) and collect the Black Knight item\n5. From 17, 3070, Travel E (black knight will be taken), S, S\n6. Kill the White Bishop (17, 3073) and collect the White Bishop item\n7. From 17, 3073, Travel S (white bishop will be taken), S, W\n8. Kill the Black Rook (17, 3076) and collect the Black Rook item\n9. From 17, 3076, Travel N (black rook will be taken), W, W\n10. Kill the White Queen (17, 3065) and collect the White Queen item.\n11. From 17, 3065, Travel W (white queen will be taken), N, N\n12. Kill the Black King (17, 3061) and collect the Black King item.\n13. From 17, 3061, Travel N (black king will be taken and take you to 17, 3189).\n14. From 17, 3189, Travel S, S\n15. Kill the White Guardsman (17, 3173)\n16. From 17, 3173, Travel S\n17. Kill the White King (17, 3164) and collect the Crown Key.\n18. From 17, 3164, Travel N, N, N and use the Crown Key to open the door to the North and travel N.\n19. From 17, 3197, Travel W, N, N\n20. Kill the Black Guardsman (17, 3212)\n21. From 17, 3212, Travel N\n22. Kill the Black King (17, 3220) and enter the Nexus Portal\n23. You are now in 17, 3028\n24. Find Nahr in this this linear S-shaped area. Nahr can spawn in 17, 3029, 17, 3035, or 17, 3033.\n25. Kill Nahr (Kai Battle-Staff) to collect the Helmet Key\n26. Take the Helmet Key to room 17, 2939 and go N.\n27. You may now train at the Adventurer\u2019s Guild, Universal Trainer. This trainer will train you from Level 76-85.",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000003,
+    "Step": 0,
+    "Name": "End Game Trainer Part 4 (Caster Hall)",
+    "Visible": true,
+    "Steps": "Episode 4, The Caster Hall\nAdvice: This area is for Priest, Mage, Druids, and Warlocks classes. Make a macro for \u0027summon shard\u0027 to make your life a lot easier and to avoid taking unnecessary damage and \u0027gather ore\u0027 to make collecting the Nexus Ore a lot less painful.\n\nTo begin, from Room 17, 2982 \u003CGrand Hallway\u003E, Travel SW, SW, SW\n\nYou are now in Room 17, 3141 \u003CAmber Fortress\u003E\n1. From 17, 3141, Travel E, S, S, W, S, E, S\n2. Kill the Inquisitor and collect the Sapphire key\n3. From 17, 3148, Travel N, W, W, S, W, N, N\n4. Kill the Inquisitor and collect the Iron Key\n5. From 17, 3154, Travel S, W\n6. Kill the Inquisitor and collect the Stone Key\n7. From 17, 3156, Travel N, N\n8. Kill the Inquisitor and collect the Ruby Key\n9. From 17, 3159, Travel N, E, E, S\n10. Kill the Inquisitor and collect the Amber Key\n11. Use the Stone Key to open the door East of you\n12. Travel E and type Summon Shard\n- Warning: Room Damage. You want an item called Quartz Shard from here.\n13. Once obtained, Travel W, N, W, W, S\n14. Use the Sapphire Key to open the door East of you \n15. Travel E and type Summon Shard\n- Warning: Room Damage. You want an item called Sapphire Shard from here.\n16. Once obtained, Travel W, W, S\n17. Use the Amber Key to open the door South of you\n18. Travel S and type Summon Shard\n- Warning: Room Damage. You want an item called Amber Shard from here.\n19. Once obtained, Travel N, E, S, E, N, E, E, S\n20. Use the Ruby Key to open the door West of you\n21. Travel W and type Summon Shard\n- Warning: Room Damage. You want an item called Crimson Shard from here.\n22. Once obtained, Travel E, N, W, W, S, W, N, N\n23. Use the Iron Key to open the door East of you \n24. Travel E and type Ask Prisoner Return. This should provide you with a Multicoloured Staff and teleport you to 17, 3231.\n25. From 17, 3231, Travel any direction you want (N, E, S, W) and type Gather Ore until you have 10 Nexus Ore\n26. Once you have 10 Nexus Ore, Travel back to 17, 3231 and Equip and \u0022use\u0022 the Multicoloured Staff. This will create a Nexus Portal for you to enter.\n- Warning: Rest/Med up before entering\n27. Entering the portal will teleport you to 17, 3236 and summon Nahr for you to fight.\n28. Kill Nahr (Ivory Sceptre) to summon another nexus portal. Enter this portal.\n29. You may now train at the Adventurer\u2019s Guild, Universal Trainer. This trainer will train you from Level 76-85.",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000004,
+    "Step": 0,
+    "Name": "End Game Trainer Part 4 (Stealth Hall)",
+    "Visible": true,
+    "Steps": "Episode 4, The Stealth Hall\nAdvice: This area is for Thief, Ninja, Missionary, Bard, and Gypsy classes. It may be helpful to make a macro for \u0027steal from figure\u0027. Most doors in this area will need to be picked.\n\nTo begin, from Room 17, 2982 \u003CGrand Hallway\u003E, Travel SE, SE, SE\n\nYou are now in Room 17, 3036 \u003CShadowy Passage\u003E\n1. At 17, 3036, type \u0027steal from figure\u0027 or kill cloaked figure until you get a pearl.\n2. Kill it to spawn another cloaked figure, kill it as well and collect the moonstone.\n3. Travel E.\n4. Type \u0027steal from figure\u0027 or kill cloaked figure until you get a diamond.\n5. Travel W, N and then type \u0027put diamond in hole\u0027\n6. Travel S, E, N and then type \u0027put pearl in hole\u0027\n7. Travel S, E and type \u0027steal from figure\u0027 or kill cloaked figure until you get a marble.\n8. Travel N and type \u0027put moonstone in hole\u0027\n9. Travel E, S and type \u0027put marble in hole\u0027\n10. Travel N, N, and you are now in 17, 3044 \u003CDark Passage\u003E\n11. Travel W (Disarm Trap), N (Disarm Trap), N (Disarm Trap), W, S (Disarm Trap), SW (Disarm Trap)\n12. You are now in 17, 3055 \u003CGlowing Chamber\u003E. Type \u0027grab crystal\u0027\n- Warning: Damage\n13. Travel E (Disarm Trap), N, N (Disarm Trap), E, E (Disarm Trap), S (Disarm Trap), S (Disarm Trap)\n14. You are now in 17, 3045 \u003CGlowing Chamber\u003E. Type \u0027grab crystal\u0027\n- Warning: Damage\n15. Travel N (Disarm Trap), N (Disarm Trap), W, and you are now in 17, 3048 \u003CDimly Lit Room\u003E\n16. Talk with the old thief eventually saying \u0027ask thief return\u0027 to port you to 17, 3019 \u003CDank Alleyway\u003E\n17. From 17, 3019 \u003CDank Alleyway\u003E, Travel N, E, S, S and fight Nahr (Sadamune) to get the skull key for the door.\n18. You may now train at the Adventurer\u2019s Guild, Universal Trainer. This trainer will train you from Level 76-85.\n\nExtra Information\n- Shards poof when you teleport. Keys poof at cleanup. Most keys are 3x use. The ancient key weighs a ton, so ditch it when you\u0027re done with it.\n- The Easy Trainer can be found under Trainers -\u003E Easy Trainer Demon Imp. Make sure to bring about 80 runic. This area is completely optional.\n- If you visit the Easy Trainer: Stop MegaMud a couple rooms from the end (then walk by hand) so you don\u0027t accidentally walk in to the Scorching Desert.\n- If you end up scripting the bosses on auto, please leave the non \u0027loot\u0027 on the ground (tree branch, golden orb, black spiked ball, opal-studded key)",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000005,
+    "Step": 0,
+    "Name": "End Game Trainer Part 5",
+    "Visible": true,
+    "Steps": "Episode 5, The Final Showdown\nAdvice: This guide is mainly for doing the Hard Trainer. This section will be very limited in information. You will need a diverse group of Magic (to kill red sphere) and Melee (to kill blue sphere) for this area. Having a roomer for this area is heavily recommended. Most bosses are do not follow, including the sphere Nahr. Thus, walk out of the room if HP get too low. Note some mobs do hold.\n\nYou are in Room 17,2982 \u003CGrand Hallway\u003E\n1. To the SW (Magic), S (Fighter), and SE (Stealth) are class specific areas. These will be skipped for this write-up. Please read below for Episode 4.\n2. You must be level 76 to proceed N(17,3005) down the grand hallway. If you have just attainted level 75, continue scripting until 76, where you will want to complete the Episode 4 trainer to reach 76. You may also accomplish this by going to the Easy Trainer as well.\n3. From 17,2982, Travel N(17,3005), N(17,3006), S(17,3010), N(17,3013), N(17,3014), S(17,3015), S(17,3080), S(17,3083), N(17,3084), N(17,3086). To the next N is Nahr and 4 colored spheres.\n4. Kill Nahr and the 4 colored spheres. Type \u201Csit throne\u201D.\n5. Sitting on the throne will take you to 12,2378, strip all of your buffs, and then summon Nahr to fight again. Once Nahr is killed, another Nahr will spawn. \n6. Once both Nahrs are killed, you will be teleported to the Platform of Stars (12,2381).\n7. You may now train with the Spacelord, and the Hard Trainer is completed. \n\nCongrats, you are now \u0022Runed\u0022 and can quickly return to the universal trainer which trains to 85, or skip the long difficult pathing and get right to fighting Nahr to gain entry to the Spacelord to train 86\u002B.",
+    "Rewards": "Rune",
+    "RequiredLevel": 65,
+    "Blocked": false
+  },
+  {
+    "Flag": 1000006,
+    "Step": 0,
+    "Name": "End Game Trainer Part 6",
+    "Visible": true,
+    "Steps": "Episode 6, Smooth Sailing (Quick Training)\nNote: So, you beat the final Nahr and you have been flagged with Rune(152). Do you still need to kill the other bosses or the class specific bosses to train? No, not until you reach level 85. If you have not killed the final Nahr bosses and gotten to Spacelord, then this section does not apply to you.\n\nStart from the entrance of the Ancient Fort, Jail Cell (12,2368)\n   - Pro Tip: You may also start at 17,2982 \u003CGrand Hallway\u003E, then simply walk E\n1. From 12, 2368, Travel N (Bash/Pick), E, N (Bash/Pick), go portal, E\n2. You may now train at the Adventurer\u2019s Guild, Universal Trainer. This trainer will train you from Level 76-85.\n3. When you reach level 86\u002B, you will need to train at the Spacelord (12,2381)",
+    "Rewards": null,
+    "RequiredLevel": 65,
+    "Blocked": false
+  }
+]
