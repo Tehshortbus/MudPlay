@@ -240,10 +240,18 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     private void BuildRows()
     {
         Rows.Clear();
+        // Once the realm's item table is loaded, drop any slot it has no gear for
+        // (e.g. an Eyes / Face slot the data leaves empty) so the grid lists only
+        // fillable slots. Before any data loads, show every slot rather than an empty
+        // grid — a later ActiveSetChanged rebuilds once the table arrives.
+        bool dataLoaded = _gameData.GetRawTable("Items") is not null;
         foreach (EquipmentSlot slot in EquipmentSlotMap.DisplayOrder)
+        {
+            if (dataLoaded && !EquipmentSlotMap.SlotHasItems(_gameData, slot)) continue;
             Rows.Add(new EquipmentSlotRowViewModel(
                 slot, EquipmentSlotMap.Label(slot), EquipmentSlotMap.IsVirtual(slot),
                 Array.Empty<string>(), OnRowEdited));
+        }
     }
 
     private void ReloadFromProfile()

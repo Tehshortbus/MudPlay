@@ -148,24 +148,48 @@ public static class EquipmentSlotMap
     {
         ArgumentNullException.ThrowIfNull(cache);
         JsonDocument? doc = cache.GetRawTable("Items");
-        if (doc is null) return Array.Empty<string>();
-
-        bool weapon = slot is EquipmentSlot.Weapon or EquipmentSlot.AlternateWeapon;
-        int[] codes = WornCodes.TryGetValue(slot, out int[]? c) ? c : Array.Empty<int>();
-        if (!weapon && codes.Length == 0) return Array.Empty<string>();
+        if (doc is null || SlotMatcher(slot) is not { } matches) return Array.Empty<string>();
 
         var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement row in doc.RootElement.EnumerateArray())
         {
             string? name = GetString(row, "Name");
             if (string.IsNullOrEmpty(name)) continue;
-            bool match = weapon
-                ? GetInt(row, "ItemType") == WeaponItemType
-                : codes.Contains(GetInt(row, "Worn"));
-            if (match && ItemEquipFilter.CanEquip(row, level, classProfile, alignment))
+            if (matches(row) && ItemEquipFilter.CanEquip(row, level, classProfile, alignment))
                 names.Add(name);
         }
         return names.ToList();
+    }
+
+    /// <summary>
+    /// True when the loaded <c>Items</c> table holds at least one named item that can
+    /// occupy <paramref name="slot"/> — a weapon (<c>ItemType == 1</c>) for the weapon
+    /// slots, or a matching <c>Worn</c> code for a physical slot. Independent of any
+    /// character filter: it answers "does this game-data set have gear for the slot at
+    /// all", so the Equipment Manager can drop a slot the realm never fills (e.g. an
+    /// Eyes / Face slot with no items). False when no <c>Items</c> table is loaded.
+    /// </summary>
+    public static bool SlotHasItems(GameDataCache cache, EquipmentSlot slot)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        JsonDocument? doc = cache.GetRawTable("Items");
+        if (doc is null || SlotMatcher(slot) is not { } matches) return false;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            if (!string.IsNullOrEmpty(GetString(row, "Name")) && matches(row))
+                return true;
+        return false;
+    }
+
+    // The item-membership test for a slot: weapon slots match ItemType == 1, physical
+    // slots match one of their Worn codes. Null when the slot has no membership rule.
+    private static Func<JsonElement, bool>? SlotMatcher(EquipmentSlot slot)
+    {
+        if (slot is EquipmentSlot.Weapon or EquipmentSlot.AlternateWeapon)
+            return row => GetInt(row, "ItemType") == WeaponItemType;
+        return WornCodes.TryGetValue(slot, out int[]? codes)
+            ? row => codes.Contains(GetInt(row, "Worn"))
+            : null;
     }
 
     private static int GetInt(JsonElement row, string property)
