@@ -17,9 +17,8 @@
             <Button Content="Add level" Margin="0,0,6,6" Command="{Binding AddLevelCommand}"/>
             <Button Content="Remove row" Margin="0,0,6,6" Command="{Binding RemoveRowCommand}"
                     ToolTip.Tip="Remove the selected row — only the top or bottom row of the plan."/>
-            <Button Content="Reset" Margin="0,0,18,6" Command="{Binding ResetCommand}"/>
-            <Button Content="Save plan" Margin="0,0,6,6" Command="{Binding SaveCommand}"
-                    ToolTip.Tip="Persist this CP plan to the character profile."/>
+            <Button Content="Reset" Margin="0,0,18,6" Command="{Binding ResetCommand}"
+                    ToolTip.Tip="Clear the plan. Changes save automatically as you edit."/>
             <Button Content="Train now" Margin="0,0,12,6" Command="{Binding TrainNowCommand}"
                     IsVisible="{Binding HasCharacter}"
                     ToolTip.Tip="Walk to the nearest allowed, level-appropriate trainer and train, applying the plan."/>

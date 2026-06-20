@@ -124,6 +124,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         RemoveError = null;
         Rows.Add(NewRow(level, seed));
         RecalcGrid();
+        Persist();
     }
 
     /// <summary>
@@ -150,9 +151,10 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         _lastEditedStat = null;
         Rows.RemoveAt(idx);
         RecalcGrid();
+        Persist();
     }
 
-    /// <summary>Clear the plan back to the baseline (does not persist until Save).</summary>
+    /// <summary>Clear the plan and persist the now-empty plan to the profile.</summary>
     [RelayCommand(CanExecute = nameof(HasRows))]
     private void Reset()
     {
@@ -160,14 +162,17 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         RemoveError = null;
         Rows.Clear();
         RecalcGrid();
+        Persist();
     }
 
     // Clearing / changing the selection dismisses a stale remove error.
     partial void OnSelectedRowChanged(CpPlanRowViewModel? value) => RemoveError = null;
 
-    /// <summary>Persist the current plan to the loaded profile.</summary>
-    [RelayCommand]
-    private void Save()
+    // Persist the current (clamped) plan to the loaded profile. Called after every
+    // structural edit (add / remove / reset) and cell edit, so the plan saves itself
+    // without a dedicated button; an empty grid clears the stored plan. No-op when no
+    // character profile is loaded.
+    private void Persist()
     {
         if (_profile.Current is not { } p) return;
         p.CharacterPlan = Rows.Count == 0 ? null : Rows.Select(r => r.ToEntry()).ToList();
@@ -258,6 +263,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         if (_suppress) return;
         _lastEditedStat = stat;
         RecalcGrid();
+        Persist();
     }
 
     private CpPlanRowViewModel NewRow(int level, CpPlanEntry seed)
