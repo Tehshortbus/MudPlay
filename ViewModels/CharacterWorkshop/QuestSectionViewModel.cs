@@ -56,7 +56,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
     public override string Title => "Quest Status";
     public override Control View => _view ??= new QuestSectionView { DataContext = this };
 
-    /// <summary>Visible, class-resolved quest cards in crawl order (flag, then band level).</summary>
+    /// <summary>Visible, class-resolved quest cards: incomplete first, completed at the bottom; within each group ordered by required level (low→high), then quest name.</summary>
     public ObservableCollection<QuestCardViewModel> Quests { get; } = new();
 
     /// <summary>False when no visible quest resolves (no set / no character) — drives the empty-state hint.</summary>
@@ -122,6 +122,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                 var card = new QuestCardViewModel(
                     q.Flag, q.Step,
                     ResolveTitle(def, q),
+                    requiredLevel,
                     QuestTextFormatter.Level(requiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
                     awardText,
@@ -140,13 +141,33 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
 
             // User-added quests the crawl never produces — self-contained from the overlay.
             foreach (QuestDefinition def in _quests.ManualQuests())
-                AddManualCard(def);
+                if (BuildManualCard(def) is { } card)
+                    Quests.Add(card);
 
+            SortQuests();
             HasQuests = Quests.Count > 0;
         }
         finally { _suppress = false; }
 
         PublishBonuses();
+    }
+
+    // Order the Quest Status list: incomplete quests first, completed sink to the
+    // bottom; within each group, required level low→high, ties broken alphabetically
+    // by the user-facing quest name (case-insensitive). Re-runs live on a completion
+    // toggle so a card slides to its group as it's checked, not only on rebuild.
+    private void SortQuests()
+    {
+        List<QuestCardViewModel> sorted = Quests
+            .OrderBy(c => c.IsComplete)
+            .ThenBy(c => c.RequiredLevel)
+            .ThenBy(c => c.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            int current = Quests.IndexOf(sorted[i]);
+            if (current != i) Quests.Move(current, i);
+        }
     }
 
     // Build the followable checklist from the quest's step markdown: the user-edited
@@ -177,12 +198,13 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         }
     }
 
-    // Add a card for a user-added quest. It has no crawl backing, so every field comes
-    // from the definition: no class-resolved bonus, no crawled requirements, the user's
-    // reward label as the award, and the user's step markdown as the checklist.
-    private void AddManualCard(QuestDefinition def)
+    // Build a card for a user-added quest (null when it's blocked / hidden). It has no
+    // crawl backing, so every field comes from the definition: no class-resolved bonus,
+    // no crawled requirements, the user's reward label as the award, and the user's step
+    // markdown as the checklist.
+    private QuestCardViewModel? BuildManualCard(QuestDefinition def)
     {
-        if (def.Blocked || !def.Visible) return;
+        if (def.Blocked || !def.Visible) return null;
 
         QuestProgress prog = GetOrCreateProgress(def.Flag, def.Step);
         _bonusesByCard[(def.Flag, def.Step)] = Array.Empty<QuestBonus>();
@@ -191,6 +213,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         var card = new QuestCardViewModel(
             def.Flag, def.Step,
             string.IsNullOrWhiteSpace(def.Name) ? "(unnamed quest)" : def.Name,
+            def.RequiredLevel ?? 0,
             QuestTextFormatter.Level(def.RequiredLevel ?? 0),
             string.Empty,
             def.Rewards ?? string.Empty,
@@ -201,7 +224,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             OnCardCompletionChanged);
 
         AddStepRows(card, def.Steps ?? string.Empty, prog);
-        Quests.Add(card);
+        return card;
     }
 
     // Split a step label into render runs, wrapping each `(map/room)` coordinate in
@@ -250,6 +273,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         if (_suppress) return;
         QuestProgress prog = GetOrCreateProgress(card.Flag, card.Step);
         prog.Complete = card.IsComplete;
+        SortQuests();
         Persist();
         PublishBonuses();
     }
@@ -272,6 +296,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             try { card.IsComplete = true; }
             finally { _suppress = false; }
             prog.Complete = true;
+            SortQuests();
         }
 
         Persist();

@@ -30,6 +30,9 @@ public sealed partial class QuestCardViewModel : ObservableObject
     /// <summary>"Level 15" style gate, or empty when the quest imposes no level gate.</summary>
     public string RequiredLevelText { get; }
 
+    /// <summary>Numeric required level used to order the card in the list; <c>0</c> when ungated.</summary>
+    public int RequiredLevel { get; }
+
     /// <summary>Class-resolved permanent stat bonus summary; empty when the quest grants none.</summary>
     public string BonusText { get; }
 
@@ -80,6 +83,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         int flag,
         int step,
         string title,
+        int requiredLevel,
         string requiredLevelText,
         string bonusText,
         string awardText,
@@ -100,6 +104,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         Flag = flag;
         Step = step;
         Title = title;
+        RequiredLevel = requiredLevel;
         RequiredLevelText = requiredLevelText;
         BonusText = bonusText;
         AwardText = awardText;
