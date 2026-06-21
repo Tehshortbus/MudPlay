@@ -4,7 +4,7 @@ namespace FujinTerm.Models.Profile;
 /// A trigger-purposed loadout — the per-slot items a character wants worn when
 /// this set's <see cref="Trigger"/> moment fires. The Equipment Manager keeps one
 /// set per <see cref="EquipTriggerType"/> (Default / Backstab / Pre-rest HP /
-/// Pre-rest Mana); a set can be applied automatically when armed
+/// Pre-rest Mana); a set can be applied automatically when enabled
 /// (<see cref="Enabled"/>) or remotely via <c>@equip-&lt;keyword&gt;</c>.
 /// </summary>
 public sealed class EquipmentSet

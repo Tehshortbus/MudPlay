@@ -304,7 +304,10 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             EquipmentSet? set = cfg.Sets.FirstOrDefault(s => s.Trigger == trigger);
             if (set is null)
             {
-                set = new EquipmentSet { Trigger = trigger };
+                // The Default set is enabled out of the box (it's the baseline
+                // loadout + the backstab fallback source); the others stay
+                // disabled until the user opts in.
+                set = new EquipmentSet { Trigger = trigger, Enabled = trigger == EquipTriggerType.Default };
                 changed = true;
             }
             if (!string.Equals(set.Name, name, StringComparison.Ordinal)) { set.Name = name; changed = true; }

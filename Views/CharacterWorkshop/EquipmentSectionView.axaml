@@ -30,7 +30,7 @@
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="12"/>
         </Style>
-        <!-- Armed set rows get an amber badge; disabled rows stay muted. -->
+        <!-- Enabled set rows get an amber badge; disabled rows stay muted. -->
         <Style Selector="TextBlock.badge.on">
             <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
         </Style>
@@ -47,9 +47,9 @@
             <!-- Enable / Disable act on the selected set. -->
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
                 <Button Content="Enable" Command="{Binding EnableCommand}"
-                        ToolTip.Tip="Arm the selected set so automation may equip it at its trigger."/>
+                        ToolTip.Tip="Enable the selected set so automation may equip it at its trigger."/>
                 <Button Content="Disable" Command="{Binding DisableCommand}"
-                        ToolTip.Tip="Disarm the selected set — automation leaves it alone."/>
+                        ToolTip.Tip="Disable the selected set — automation leaves it alone."/>
             </StackPanel>
 
             <Border Grid.Row="1"
