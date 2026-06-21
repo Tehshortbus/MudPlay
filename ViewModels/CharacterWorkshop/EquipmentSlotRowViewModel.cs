@@ -36,9 +36,10 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
 
     /// <summary>
     /// Whether this row applies to the currently-selected set (drives its
-    /// visibility). The section hides the virtual Alt rows for the Backstab set —
-    /// a backstab fires only on the opening round, so it has no weapon-swap
-    /// alternate. Defaults true; recomputed on each set switch.
+    /// visibility). The section hides the virtual Alt rows for every set except
+    /// Default — the alternate-weapon swap only happens during normal weapon
+    /// combat (backstab fires on the opening round; pre-rest sets trigger out of
+    /// combat). Defaults true; recomputed on each set switch.
     /// </summary>
     [ObservableProperty] private bool _applies = true;
 

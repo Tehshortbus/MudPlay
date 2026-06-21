@@ -328,9 +328,11 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             foreach (EquipmentSlotEntry e in set.Slots)
                 bySlot.TryAdd(e.Slot, e);
 
-        // A backstab fires only on the opening round of a room, so a backstab
-        // loadout has no alternate-weapon swap — hide the virtual Alt rows for it.
-        bool hideAlternates = SelectedSet?.Trigger == EquipTriggerType.Backstab;
+        // The alternate-weapon swap only happens during normal weapon combat, so
+        // only the Default set uses the virtual Alt rows. Every other set hides
+        // them: backstab fires only on the opening round, and the pre-rest sets
+        // trigger out of combat.
+        bool hideAlternates = SelectedSet?.Trigger != EquipTriggerType.Default;
 
         _suppress = true;
         try
