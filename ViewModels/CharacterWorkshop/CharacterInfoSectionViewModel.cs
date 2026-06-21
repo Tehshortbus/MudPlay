@@ -368,11 +368,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             BackstabDamage = string.Empty;
         }
 
-        // Martial-arts attacks — Mystic special attacks. Gated on the Stock
-        // realm (only the Stock MA damage formula is modelled) and a positive
-        // Martial Arts skill, matching how MME surfaces punch/kick/jumpkick.
+        // Martial-arts attacks — Mystic special attacks. Shown for any realm
+        // with a positive Martial Arts skill; the damage formula branches Stock
+        // vs GreaterMUD inside CalcMartialArtsDamage.
         int maSkill = _stats.MartialArts;
-        bool showMa = realm == RealmType.Stock && maSkill > 0;
+        bool showMa = maSkill > 0;
         ShowMartialArts = showMa;
         if (showMa && level > 0 && nCombatLevel > 0)
         {
@@ -386,9 +386,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
                 str, agi, intel, chm, maWornAccy, effectiveAbil22,
                 encumCur, encumMax, weaponStrReq: 0);
 
+            // GreaterMUD applies a per-attack accuracy penalty (kick -10,
+            // jumpkick -15); Stock has none.
+            int kickAccyPenalty = realm == RealmType.ParaMud ? 10 : 0;
+            int jumpKickAccyPenalty = realm == RealmType.ParaMud ? 15 : 0;
+
             PunchAccuracy = (maBaseAccy + t.PlusPunchAccy).ToString(CultureInfo.InvariantCulture);
-            KickAccuracy = (maBaseAccy + t.PlusKickAccy).ToString(CultureInfo.InvariantCulture);
-            JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy).ToString(CultureInfo.InvariantCulture);
+            KickAccuracy = (maBaseAccy + t.PlusKickAccy - kickAccyPenalty).ToString(CultureInfo.InvariantCulture);
+            JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy - jumpKickAccyPenalty).ToString(CultureInfo.InvariantCulture);
 
             PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
             KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
