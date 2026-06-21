@@ -328,11 +328,18 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             foreach (EquipmentSlotEntry e in set.Slots)
                 bySlot.TryAdd(e.Slot, e);
 
+        // A backstab fires only on the opening round of a room, so a backstab
+        // loadout has no alternate-weapon swap — hide the virtual Alt rows for it.
+        bool hideAlternates = SelectedSet?.Trigger == EquipTriggerType.Backstab;
+
         _suppress = true;
         try
         {
             foreach (EquipmentSlotRowViewModel row in Rows)
+            {
+                row.Applies = !(hideAlternates && row.IsVirtual);
                 row.Load(bySlot.TryGetValue(row.Slot, out EquipmentSlotEntry? e) ? e.ItemName : null);
+            }
         }
         finally { _suppress = false; }
 

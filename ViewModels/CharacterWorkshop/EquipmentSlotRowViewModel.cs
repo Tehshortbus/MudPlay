@@ -34,6 +34,14 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
     /// <summary>Item the set wants here; null / empty = <c>{no change}</c>.</summary>
     [ObservableProperty] private string? _itemName;
 
+    /// <summary>
+    /// Whether this row applies to the currently-selected set (drives its
+    /// visibility). The section hides the virtual Alt rows for the Backstab set —
+    /// a backstab fires only on the opening round, so it has no weapon-swap
+    /// alternate. Defaults true; recomputed on each set switch.
+    /// </summary>
+    [ObservableProperty] private bool _applies = true;
+
     public EquipmentSlotRowViewModel(
         EquipmentSlot slot, string label, bool isVirtual,
         IReadOnlyList<string> availableItems, Action<EquipmentSlotRowViewModel> onEdited)

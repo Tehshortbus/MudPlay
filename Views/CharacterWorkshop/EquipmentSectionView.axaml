@@ -117,7 +117,8 @@
                             <ItemsControl ItemsSource="{Binding Rows}" Margin="10,0,10,8">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="vm:EquipmentSlotRowViewModel">
-                                        <Grid ColumnDefinitions="128,*" Margin="0,1">
+                                        <Grid ColumnDefinitions="128,*" Margin="0,1"
+                                              IsVisible="{Binding Applies}">
                                             <TextBlock Grid.Column="0" Classes="Field" Text="{Binding Label}"/>
                                             <!-- Blank = {no change}: the slot is skipped on apply. -->
                                             <AutoCompleteBox Grid.Column="1"
