@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
@@ -117,26 +116,46 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                 string.Equals(l.Table, "Spells", StringComparison.OrdinalIgnoreCase)
                 && l.Number == spellNumber));
 
-        if (match is null)
+        // Always open the tabbed dialog: the Message tab edits the player-cast
+        // message (if any), and the Game Data tab shows the spell's imported
+        // fields. A message only exists for spells the player casts — spells
+        // cast by rooms / items / textblocks have none, so for those we open a
+        // new record pre-linked to the spell (Message tab ready to author) while
+        // the Game Data tab still surfaces what the spell does.
+        IReadOnlyList<GameDataInfoRow> info = BuildSpellInfoRows(spellNumber);
+
+        MessageRecord record;
+        bool isNew;
+        if (match is not null)
         {
-            // No user-defined message — but a message only exists for spells the
-            // player casts. Plenty of spells are cast by rooms / items / textblocks
-            // and carry no message, so fall back to the spell's own data
-            // (abilities, casted-by sources) rather than a dead-end popup.
-            string detail = BuildSpellDetail(spellNumber);
-            string body = detail.Length > 0
-                ? $"No user-defined message links this spell (it isn't player-cast). Spell data:\n\n{detail}"
-                : $"No Messages link \"{spellName}\" (Spell #{spellNumber}), and the spell carries no extra data.";
-            _dialogs.ShowInfo($"{spellName} (Spell #{spellNumber})", body);
-            return;
+            record = match;
+            isNew = false;
+        }
+        else
+        {
+            record = new MessageRecord(
+                Id:              string.Empty,
+                Name:            spellName,
+                Action:          MessageAction.Ignore,
+                Flags:           MessageFlags.None,
+                RawFlagsHex:     0,
+                Response:        string.Empty,
+                CasterMessage:   string.Empty,
+                TargetMessage:   string.Empty,
+                WitnessMessage:  string.Empty,
+                AppliedMessage:  string.Empty,
+                AppliedEndsWith: string.Empty,
+                Links:           new[] { new GameDataLink("Spells", spellNumber) });
+            isNew = true;
         }
 
         MessageEditDialogViewModel vm = new(
-            match,
+            record,
             currentTier:     SettingsTier.Defaults,
             existingRecords: _messages.Messages,
-            isNew:           false,
-            cache:           _cache);
+            isNew:           isNew,
+            cache:           _cache,
+            gameDataInfo:    info);
         MessageEditResult? result = await _dialogs
             .OpenWindowAsync<MessageEditDialogViewModel, MessageEditResult>(vm);
         if (result is null) return;
@@ -161,29 +180,29 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     }
 
     /// <summary>
-    /// Render the spell's own imported data — the part not already shown in the
-    /// grid: the formatted Magery / attack-type / targets, every non-zero
-    /// ability slot (resolved to its name via <see cref="AbilityNames"/>), the
-    /// cast sources (<c>Casted By</c>, summarised when long), and where it's
-    /// learned from. Used as the fallback view for spells with no player-cast
-    /// message. Empty string when the active set has no Spells table or no row.
+    /// The spell's own imported data for the dialog's Game Data tab — the part
+    /// not already shown in the grid: formatted Magery / attack-type / targets,
+    /// every non-zero ability slot (resolved to its name via
+    /// <see cref="AbilityNames"/>), where it's learned from, and the cast
+    /// sources (<c>Casted By</c>, summarised when long). Empty when the active
+    /// set has no Spells table or no matching row.
     /// </summary>
-    private string BuildSpellDetail(int spellNumber)
+    private IReadOnlyList<GameDataInfoRow> BuildSpellInfoRows(int spellNumber)
     {
+        var rows = new List<GameDataInfoRow>();
+
         JsonDocument? doc = _cache.GetRawTable("Spells");
-        if (doc is null) return string.Empty;
+        if (doc is null) return rows;
 
         JsonElement? found = null;
         foreach (JsonElement r in doc.RootElement.EnumerateArray())
             if (ReadInt(r, "Number") == spellNumber) { found = r; break; }
-        if (found is not { } el) return string.Empty;
-
-        var sb = new StringBuilder();
+        if (found is not { } el) return rows;
 
         void AddFormatted(string label, string field, Func<string?, string?> fmt)
         {
             string? formatted = fmt(ReadRaw(el, field));
-            if (!string.IsNullOrWhiteSpace(formatted)) sb.AppendLine($"{label}: {formatted}");
+            if (!string.IsNullOrWhiteSpace(formatted)) rows.Add(new GameDataInfoRow(label, formatted));
         }
 
         AddFormatted("Magery", "Magery", LookupEnums.FormatMagery);
@@ -197,16 +216,16 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             if (code == 0) continue;
             int val = ReadInt(el, $"AbilVal-{i}");
             string name = AbilityNames.GetName(code) ?? $"Ability {code}";
-            sb.AppendLine($"{name}: {val}");
+            rows.Add(new GameDataInfoRow(name, val.ToString(CultureInfo.InvariantCulture)));
         }
 
         if (ReadString(el, "Learned From") is { } learned)
-            sb.AppendLine($"Learned From: {learned}");
+            rows.Add(new GameDataInfoRow("Learned From", learned));
 
         if (ReadString(el, "Casted By") is { } castedBy)
-            sb.AppendLine($"Casted By: {SummarizeList(castedBy)}");
+            rows.Add(new GameDataInfoRow("Casted By", SummarizeList(castedBy)));
 
-        return sb.ToString().TrimEnd();
+        return rows;
     }
 
     // Comma-joined source lists ("Casted By") can run to dozens of rooms; show
