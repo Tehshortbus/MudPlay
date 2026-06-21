@@ -26,7 +26,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Combat";
 
     private readonly ProfileService _profile;
-    private readonly ItemNameStore _items;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -39,20 +38,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
 
-    /// <summary>Weapon-name suggestions (<c>ItemType == 1</c>) for the
-    /// weapon typeahead boxes — sourced from the active game-data set's
-    /// <c>Items.json</c>. Refreshes when the active set changes.</summary>
-    public IReadOnlyList<string> WeaponSuggestions => _items.WeaponNames;
-
-    /// <summary>Off-hand-name suggestions (<c>Worn == 12</c>) for the
-    /// off-hand typeahead boxes — shields, tomes, instruments. Refreshes
-    /// when the active set changes.</summary>
-    public IReadOnlyList<string> OffHandSuggestions => _items.OffHandNames;
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "Combat", "Weapon", "Normal weapon", "Alternate weapon",
-        "BS weapon", "BS weapon off-hand", "Off-hand",
+        "Combat",
         "Combat priority", "Priority order", "Backstab priority",
         "Debuffing priority", "Spells priority", "Physical priority",
         "Normal weapon attack command", "Alternate weapon attack command",
@@ -99,13 +87,11 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public PriorityRankingViewModel Priority { get; }
 
     // ----- Weapon slots --------------------------------------------
-
-    [ObservableProperty] private string? _normalWeapon;
-    [ObservableProperty] private string? _normalOffHand;
-    [ObservableProperty] private string? _alternateWeapon;
-    [ObservableProperty] private string? _alternateOffHand;
-    [ObservableProperty] private string? _backstabWeapon;
-    [ObservableProperty] private string? _backstabOffHand;
+    // The weapon-swap matrix (normal / alternate / backstab + off-hands) is
+    // configured in the Workshop's Equipment Manager gear sets, not here:
+    // AppServices overlays those onto CombatSettings on each combat read
+    // (Game.Inventory.EquipmentWeaponSync). This tab keeps only the attack
+    // verbs + backstab flow options below.
 
     // ----- Backstab options -----------------------------------------
 
@@ -242,27 +228,18 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _showCombatRoundTotals;
 
     public CombatSectionViewModel()
-        : this(AppServices.Current.Profile, AppServices.Current.ItemNames) { }
+        : this(AppServices.Current.Profile) { }
 
-    public CombatSectionViewModel(ProfileService profile, ItemNameStore items)
+    public CombatSectionViewModel(ProfileService profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        ArgumentNullException.ThrowIfNull(items);
         _profile = profile;
-        _items = items;
         Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
-        _items.StoreReloaded += OnItemStoreReloaded;
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
-    }
-
-    private void OnItemStoreReloaded()
-    {
-        OnPropertyChanged(nameof(WeaponSuggestions));
-        OnPropertyChanged(nameof(OffHandSuggestions));
     }
 
     public override void Apply()
@@ -279,12 +256,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             PrioritySpells    = Priority.RankOf("Spells"),
             PriorityPhysical  = Priority.RankOf("Physical"),
 
-            NormalWeapon       = NullIfBlank(NormalWeapon),
-            NormalOffHand      = NullIfBlank(NormalOffHand),
-            AlternateWeapon    = NullIfBlank(AlternateWeapon),
-            AlternateOffHand   = NullIfBlank(AlternateOffHand),
-            BackstabWeapon     = NullIfBlank(BackstabWeapon),
-            BackstabOffHand    = NullIfBlank(BackstabOffHand),
+            // Weapon fields (NormalWeapon / AlternateWeapon / BackstabWeapon +
+            // off-hands) are owned by the Equipment Manager gear sets and
+            // overlaid at combat-read time, so this tab no longer writes them.
 
             DoBackstab                   = DoBackstab,
             SkipBackstabIfMultiAttack    = SkipBackstabIfMultiAttack,
@@ -404,13 +378,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             _           => 99,
         });
 
-        NormalWeapon       = dto.NormalWeapon;
-        NormalOffHand      = dto.NormalOffHand;
-        AlternateWeapon    = dto.AlternateWeapon;
-        AlternateOffHand   = dto.AlternateOffHand;
-        BackstabWeapon     = dto.BackstabWeapon;
-        BackstabOffHand    = dto.BackstabOffHand;
-
         DoBackstab                  = dto.DoBackstab;
         SkipBackstabIfMultiAttack   = dto.SkipBackstabIfMultiAttack;
         RunIfBackstabFails          = dto.RunIfBackstabFails;
@@ -497,14 +464,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // Master + attack command
     partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
     partial void OnAlternateAttackCommandChanged(string value)   => MarkDirty();
-
-    // Weapon slots
-    partial void OnNormalWeaponChanged(string? value)            => MarkDirty();
-    partial void OnNormalOffHandChanged(string? value)           => MarkDirty();
-    partial void OnAlternateWeaponChanged(string? value)         => MarkDirty();
-    partial void OnAlternateOffHandChanged(string? value)        => MarkDirty();
-    partial void OnBackstabWeaponChanged(string? value)          => MarkDirty();
-    partial void OnBackstabOffHandChanged(string? value)         => MarkDirty();
 
     // BS options
     partial void OnDoBackstabChanged(bool value)                    => MarkDirty();

@@ -1954,8 +1954,19 @@ public sealed class AppServices
                 n.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 MonsterOverlaySeed.GetOverlay(n)),
             party: PartyState,
+            // The six weapon fields are derived from the Equipment Manager's gear
+            // sets (the Combat tab no longer edits weapons): normal + alternate
+            // from the Default set, backstab from the Backstab set when enabled
+            // else the Default set. Overlaid on each read so combat tracks the
+            // current gear sets + the live backstab-set Enabled state.
             readSettings: () =>
-                ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat"),
+            {
+                Models.Profile.CombatSettings combat =
+                    ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat");
+                Game.Inventory.EquipmentWeaponSync.ApplyWeapons(
+                    combat, Profile.Current?.Equipment ?? new Models.Profile.EquipmentSettings());
+                return combat;
+            },
             isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log,
