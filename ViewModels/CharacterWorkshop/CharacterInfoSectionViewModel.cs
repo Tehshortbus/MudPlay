@@ -388,9 +388,9 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             KickAccuracy = (maBaseAccy + t.PlusKickAccy).ToString(CultureInfo.InvariantCulture);
             JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy).ToString(CultureInfo.InvariantCulture);
 
-            PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
-            KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
-            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
+            PunchDamage = MARange(MudAttackType.Punch, level, maSkill, t.PlusMaxDamage, t.PlusPunchDmg);
+            KickDamage = MARange(MudAttackType.Kick, level, maSkill, t.PlusMaxDamage, t.PlusKickDmg);
+            JumpKickDamage = MARange(MudAttackType.Jumpkick, level, maSkill, t.PlusMaxDamage, t.PlusJumpKickDmg);
         }
         else
         {
@@ -401,11 +401,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         CapturePlayerMatchupInputs(t, realm, level, nCombatLevel, str, agi, intel, chm, encumCur, encumMax);
     }
 
-    private static string MARange(MudAttackType type, RealmType realm, int level, int maSkill, int str,
+    private static string MARange(MudAttackType type, int level, int maSkill,
                                   int plusMaxDamage, int maPlusDamage)
     {
         MeleeDamageResult d = CombatCalculator.CalcMartialArtsDamage(
-            type, realm, level, maSkill, str, plusMaxDamage, maPlusDamage);
+            type, level, maSkill, plusMaxDamage, maPlusDamage);
         return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
     }
 
