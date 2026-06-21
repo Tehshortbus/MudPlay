@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
@@ -117,9 +119,15 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
 
         if (match is null)
         {
-            _dialogs.ShowInfo(
-                "No associated Messages Found",
-                $"No Messages link \"{spellName}\" (Spell #{spellNumber}).");
+            // No user-defined message — but a message only exists for spells the
+            // player casts. Plenty of spells are cast by rooms / items / textblocks
+            // and carry no message, so fall back to the spell's own data
+            // (abilities, casted-by sources) rather than a dead-end popup.
+            string detail = BuildSpellDetail(spellNumber);
+            string body = detail.Length > 0
+                ? $"No user-defined message links this spell (it isn't player-cast). Spell data:\n\n{detail}"
+                : $"No Messages link \"{spellName}\" (Spell #{spellNumber}), and the spell carries no extra data.";
+            _dialogs.ShowInfo($"{spellName} (Spell #{spellNumber})", body);
             return;
         }
 
@@ -150,5 +158,94 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         if (idx >= 0) _messages.Messages[idx] = result.Updated;
         else          _messages.Messages.Add(result.Updated);
         _messages.Save();
+    }
+
+    /// <summary>
+    /// Render the spell's own imported data — the part not already shown in the
+    /// grid: the formatted Magery / attack-type / targets, every non-zero
+    /// ability slot (resolved to its name via <see cref="AbilityNames"/>), the
+    /// cast sources (<c>Casted By</c>, summarised when long), and where it's
+    /// learned from. Used as the fallback view for spells with no player-cast
+    /// message. Empty string when the active set has no Spells table or no row.
+    /// </summary>
+    private string BuildSpellDetail(int spellNumber)
+    {
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return string.Empty;
+
+        JsonElement? found = null;
+        foreach (JsonElement r in doc.RootElement.EnumerateArray())
+            if (ReadInt(r, "Number") == spellNumber) { found = r; break; }
+        if (found is not { } el) return string.Empty;
+
+        var sb = new StringBuilder();
+
+        void AddFormatted(string label, string field, Func<string?, string?> fmt)
+        {
+            string? formatted = fmt(ReadRaw(el, field));
+            if (!string.IsNullOrWhiteSpace(formatted)) sb.AppendLine($"{label}: {formatted}");
+        }
+
+        AddFormatted("Magery", "Magery", LookupEnums.FormatMagery);
+        AddFormatted("Attack Type", "AttType", LookupEnums.FormatSpellAttackType);
+        AddFormatted("Targets", "Targets", LookupEnums.FormatSpellTargets);
+
+        // Ability slots — Abil-0..9 with a non-zero code, resolved to a name.
+        for (int i = 0; i < 10; i++)
+        {
+            int code = ReadInt(el, $"Abil-{i}");
+            if (code == 0) continue;
+            int val = ReadInt(el, $"AbilVal-{i}");
+            string name = AbilityNames.GetName(code) ?? $"Ability {code}";
+            sb.AppendLine($"{name}: {val}");
+        }
+
+        if (ReadString(el, "Learned From") is { } learned)
+            sb.AppendLine($"Learned From: {learned}");
+
+        if (ReadString(el, "Casted By") is { } castedBy)
+            sb.AppendLine($"Casted By: {SummarizeList(castedBy)}");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    // Comma-joined source lists ("Casted By") can run to dozens of rooms; show
+    // the count + the first several so a non-scrolling info dialog stays readable.
+    private static string SummarizeList(string raw)
+    {
+        string[] parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length <= 8) return string.Join(", ", parts);
+        return $"{parts.Length} sources — {string.Join(", ", parts.Take(8))}, …";
+    }
+
+    private static int ReadInt(JsonElement row, string property)
+        => row.TryGetProperty(property, out JsonElement e)
+           && e.ValueKind == JsonValueKind.Number
+           && e.TryGetInt32(out int n) ? n : 0;
+
+    // Raw string for a numeric/text field (for the LookupEnums formatters, which
+    // take the stored value as text).
+    private static string? ReadRaw(JsonElement row, string property)
+    {
+        if (!row.TryGetProperty(property, out JsonElement e)) return null;
+        return e.ValueKind switch
+        {
+            JsonValueKind.Number => e.GetRawText(),
+            JsonValueKind.String => e.GetString(),
+            _ => null,
+        };
+    }
+
+    // NUL-aware text read — the MDB importer writes a literal "\0" for empty Jet
+    // text columns, so a plain GetString can hand back NUL/whitespace.
+    private static string? ReadString(JsonElement row, string property)
+    {
+        if (!row.TryGetProperty(property, out JsonElement e) || e.ValueKind != JsonValueKind.String)
+            return null;
+        string? raw = e.GetString();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        foreach (char c in raw)
+            if (c != '\0' && !char.IsWhiteSpace(c)) return raw.Trim();
+        return null;
     }
 }
