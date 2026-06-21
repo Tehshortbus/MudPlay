@@ -199,6 +199,7 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             if (ReadInt(r, "Number") == spellNumber) { found = r; break; }
         if (found is not { } el) return rows;
 
+        bool teleportRendered = false;
         foreach (JsonProperty prop in el.EnumerateObject())
         {
             string field = prop.Name;
@@ -213,6 +214,27 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                     continue;
                 string slot = field["Abil-".Length..];
                 int val = ReadInt(el, $"AbilVal-{slot}");
+
+                // TeleportRoom (140) + TeleportMap (141) collapse into one
+                // destination row: "map/room (room name)".
+                if (code is 140 or 141)
+                {
+                    if (!teleportRendered)
+                    {
+                        rows.Add(new GameDataInfoRow("Teleport Destination", TeleportDestination(el)));
+                        teleportRendered = true;
+                    }
+                    continue;
+                }
+
+                // NegateAbility (124) — its value is the negated spell.
+                if (code == 124)
+                {
+                    string? sp = _cache.FindNameByNumber("Spells", val);
+                    rows.Add(new GameDataInfoRow("Negate", sp ?? val.ToString(CultureInfo.InvariantCulture)));
+                    continue;
+                }
+
                 string abilName = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string valueText = val.ToString(CultureInfo.InvariantCulture);
                 if (ResolveAbilityReference(code, val) is { } refName)
@@ -226,6 +248,39 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         }
 
         return rows;
+    }
+
+    // "map/room (room name)" for a teleport spell — the destination map comes
+    // from TeleportMap (141), the room from TeleportRoom (140), and the name is
+    // resolved against the Rooms table by map + room.
+    private string TeleportDestination(JsonElement el)
+    {
+        int map = FindAbilVal(el, 141);
+        int room = FindAbilVal(el, 140);
+        string dest = $"{map}/{room}";
+        if (ResolveRoomName(map, room) is { } name) dest += $" ({name})";
+        return dest;
+    }
+
+    private static int FindAbilVal(JsonElement el, int code)
+    {
+        for (int i = 0; i < 10; i++)
+            if (ReadInt(el, $"Abil-{i}") == code) return ReadInt(el, $"AbilVal-{i}");
+        return 0;
+    }
+
+    // Resolve a (map, room) pair to the room's Name in the Rooms table.
+    private string? ResolveRoomName(int map, int room)
+    {
+        if (map <= 0 || room <= 0) return null;
+        JsonDocument? doc = _cache.GetRawTable("Rooms");
+        if (doc is null) return null;
+        foreach (JsonElement r in doc.RootElement.EnumerateArray())
+            if (ReadInt(r, "Map Number") == map && ReadInt(r, "Room Number") == room)
+                return r.TryGetProperty("Name", out JsonElement e) && e.ValueKind == JsonValueKind.String
+                    ? CleanString(e.GetString())
+                    : null;
+        return null;
     }
 
     // Render one scalar (non-ability) field: enum columns via the shared
