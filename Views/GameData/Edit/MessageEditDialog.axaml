@@ -29,7 +29,7 @@
         <Grid RowDefinitions="*,Auto" RowSpacing="10">
 
           <TabControl Grid.Row="0">
-            <TabItem Header="Message">
+            <TabItem Header="User Definitions">
               <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10" Margin="0,8,0,0">
 
             <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair / Response) ===== -->

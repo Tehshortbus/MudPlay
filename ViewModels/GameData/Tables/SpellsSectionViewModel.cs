@@ -180,12 +180,12 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     }
 
     /// <summary>
-    /// The spell's own imported data for the dialog's Game Data tab — the part
-    /// not already shown in the grid: formatted Magery / attack-type / targets,
-    /// every non-zero ability slot (resolved to its name via
-    /// <see cref="AbilityNames"/>), where it's learned from, and the cast
-    /// sources (<c>Casted By</c>, summarised when long). Empty when the active
-    /// set has no Spells table or no matching row.
+    /// The spell's full imported data for the dialog's Game Data tab — every
+    /// field on the spell's row: enum columns (Magery / attack-type / targets)
+    /// formatted, each non-zero ability slot resolved to its name, and any
+    /// numeric reference (CastsSp / Summon / EquipItem / …) translated to the
+    /// real Spell / Monster / Item name. Empty when the active set has no Spells
+    /// table or no matching row.
     /// </summary>
     private IReadOnlyList<GameDataInfoRow> BuildSpellInfoRows(int spellNumber)
     {
@@ -199,33 +199,80 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             if (ReadInt(r, "Number") == spellNumber) { found = r; break; }
         if (found is not { } el) return rows;
 
-        void AddFormatted(string label, string field, Func<string?, string?> fmt)
+        foreach (JsonProperty prop in el.EnumerateObject())
         {
-            string? formatted = fmt(ReadRaw(el, field));
-            if (!string.IsNullOrWhiteSpace(formatted)) rows.Add(new GameDataInfoRow(label, formatted));
+            string field = prop.Name;
+
+            // Ability pairs (Abil-N + AbilVal-N) collapse to one row; skip the
+            // value half — it's rendered alongside its code.
+            if (field.StartsWith("AbilVal-", StringComparison.Ordinal)) continue;
+            if (field.StartsWith("Abil-", StringComparison.Ordinal))
+            {
+                if (prop.Value.ValueKind != JsonValueKind.Number
+                    || !prop.Value.TryGetInt32(out int code) || code == 0)
+                    continue;
+                string slot = field["Abil-".Length..];
+                int val = ReadInt(el, $"AbilVal-{slot}");
+                string abilName = AbilityNames.GetName(code) ?? $"Ability {code}";
+                string valueText = val.ToString(CultureInfo.InvariantCulture);
+                if (ResolveAbilityReference(code, val) is { } refName)
+                    valueText += $" ({refName})";
+                rows.Add(new GameDataInfoRow(abilName, valueText));
+                continue;
+            }
+
+            if (RenderField(field, prop.Value) is { } rendered)
+                rows.Add(new GameDataInfoRow(field, rendered));
         }
-
-        AddFormatted("Magery", "Magery", LookupEnums.FormatMagery);
-        AddFormatted("Attack Type", "AttType", LookupEnums.FormatSpellAttackType);
-        AddFormatted("Targets", "Targets", LookupEnums.FormatSpellTargets);
-
-        // Ability slots — Abil-0..9 with a non-zero code, resolved to a name.
-        for (int i = 0; i < 10; i++)
-        {
-            int code = ReadInt(el, $"Abil-{i}");
-            if (code == 0) continue;
-            int val = ReadInt(el, $"AbilVal-{i}");
-            string name = AbilityNames.GetName(code) ?? $"Ability {code}";
-            rows.Add(new GameDataInfoRow(name, val.ToString(CultureInfo.InvariantCulture)));
-        }
-
-        if (ReadString(el, "Learned From") is { } learned)
-            rows.Add(new GameDataInfoRow("Learned From", learned));
-
-        if (ReadString(el, "Casted By") is { } castedBy)
-            rows.Add(new GameDataInfoRow("Casted By", SummarizeList(castedBy)));
 
         return rows;
+    }
+
+    // Render one scalar (non-ability) field: enum columns via the shared
+    // formatters, the "Casted By" source list summarised, blank / NUL text
+    // dropped. Returns null to omit the field.
+    private string? RenderField(string field, JsonElement value)
+    {
+        if (ColumnFormatters.TryGetValue(field, out var fmt))
+        {
+            string? raw = value.ValueKind switch
+            {
+                JsonValueKind.Number => value.GetRawText(),
+                JsonValueKind.String => value.GetString(),
+                _ => null,
+            };
+            string? formatted = fmt(raw);
+            return string.IsNullOrWhiteSpace(formatted) ? null : formatted;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number) return value.GetRawText();
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            if (CleanString(value.GetString()) is not { } s) return null;
+            return string.Equals(field, "Casted By", StringComparison.OrdinalIgnoreCase)
+                ? SummarizeList(s)
+                : s;
+        }
+        return null;
+    }
+
+    // Reference-bearing ability codes → the table their AbilVal points at,
+    // resolved to that row's name. Null when the code isn't a reference, the
+    // value is non-positive, or the number has no matching row.
+    private string? ResolveAbilityReference(int code, int val)
+    {
+        if (val <= 0) return null;
+        string? table = code switch
+        {
+            // Learn / Casts / Removes / EndCast / KillSpell / GiveTempSpell.
+            42 or 43 or 122 or 151 or 153 or 160 => "Spells",
+            // Summon / MonsGuards.
+            12 or 146 => "Monsters",
+            // ClearItem / UnEquipItem / EquipItem / NoAttackIfItemNum.
+            143 or 167 or 168 or 185 => "Items",
+            _ => null,
+        };
+        return table is null ? null : _cache.FindNameByNumber(table, val);
     }
 
     // Comma-joined source lists ("Casted By") can run to dozens of rooms; show
@@ -242,26 +289,10 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
            && e.ValueKind == JsonValueKind.Number
            && e.TryGetInt32(out int n) ? n : 0;
 
-    // Raw string for a numeric/text field (for the LookupEnums formatters, which
-    // take the stored value as text).
-    private static string? ReadRaw(JsonElement row, string property)
+    // NUL-aware trim — the MDB importer writes a literal "\0" for empty Jet text
+    // columns, so a plain GetString can hand back NUL / whitespace.
+    private static string? CleanString(string? raw)
     {
-        if (!row.TryGetProperty(property, out JsonElement e)) return null;
-        return e.ValueKind switch
-        {
-            JsonValueKind.Number => e.GetRawText(),
-            JsonValueKind.String => e.GetString(),
-            _ => null,
-        };
-    }
-
-    // NUL-aware text read — the MDB importer writes a literal "\0" for empty Jet
-    // text columns, so a plain GetString can hand back NUL/whitespace.
-    private static string? ReadString(JsonElement row, string property)
-    {
-        if (!row.TryGetProperty(property, out JsonElement e) || e.ValueKind != JsonValueKind.String)
-            return null;
-        string? raw = e.GetString();
         if (string.IsNullOrWhiteSpace(raw)) return null;
         foreach (char c in raw)
             if (c != '\0' && !char.IsWhiteSpace(c)) return raw.Trim();
