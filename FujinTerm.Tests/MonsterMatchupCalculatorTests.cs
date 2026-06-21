@@ -46,6 +46,39 @@ public sealed class MonsterMatchupCalculatorTests
     }
 
     [Fact]
+    public void CritChance_RaisesDps_ButLeavesPerHitDisplayUnchanged()
+    {
+        PlayerMatchupProfile noCrit = Player(accuracy: 200, avgDmg: 20, swings: 2.0, dr: 0);
+        PlayerMatchupProfile withCrit = noCrit with { CritChancePercent = 50, AvgCritDamage = 60 };
+        MonsterMatchupProfile m = Monster(ac: 50, dr: 0, hp: 1000);
+
+        MonsterMatchupResult rNo = MonsterMatchupCalculator.Compute(noCrit, m);
+        MonsterMatchupResult rCrit = MonsterMatchupCalculator.Compute(withCrit, m);
+
+        // The per-hit display stays the non-crit average; only DPS folds in crits.
+        Assert.Equal(rNo.PlayerDamagePerHit, rCrit.PlayerDamagePerHit);
+        // Effective per-swing = 0.5*20 + 0.5*60 = 40 (vs 20) → exactly double the DPS.
+        Assert.Equal(rNo.PlayerDps * 2.0, rCrit.PlayerDps, 5);
+    }
+
+    [Fact]
+    public void CritDamage_SubtractsMonsterDr_LikeNormalHits()
+    {
+        // Normal 20 - DR 10 = 10; crit 60 - DR 10 = 50; at 50% crit the effective
+        // per-swing is 0.5*10 + 0.5*50 = 30.
+        PlayerMatchupProfile p = Player(accuracy: 9999, avgDmg: 20, swings: 1.0, dr: 0)
+            with { CritChancePercent = 50, AvgCritDamage = 60 };
+        MonsterMatchupProfile m = Monster(ac: 1, dr: 10, hp: 1000);
+
+        MonsterMatchupResult r = MonsterMatchupCalculator.Compute(p, m);
+
+        double hit = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 9999, defenderAC: 1, defenderDodge: 0,
+            realmType: RealmType.ParaMud).OverallHitPercent / 100.0;
+        Assert.Equal(hit * 30.0 * 1.0, r.PlayerDps, 5);
+    }
+
+    [Fact]
     public void PlayerDamage_FloorsAtZero_WhenDrExceedsAverage()
     {
         MonsterMatchupResult r = MonsterMatchupCalculator.Compute(

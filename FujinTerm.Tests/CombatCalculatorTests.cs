@@ -419,6 +419,19 @@ public sealed class CombatCalculatorTests
         Assert.Equal(baseline.MaxDamage + 15, strong.MaxDamage);
     }
 
+    // ----- Critical hit chance (gear/quest crit + Quick-and-Deadly) --------
+
+    [Theory]
+    [InlineData(20, 15, RealmType.Stock, 35)]     // below 40 → straight sum
+    [InlineData(20, 15, RealmType.ParaMud, 35)]
+    [InlineData(50, 20, RealmType.Stock, 50)]     // 70 → 40 + (30)/3 = 50
+    [InlineData(80, 20, RealmType.ParaMud, 65)]   // ParaMUD hard cap 65
+    [InlineData(300, 0, RealmType.Stock, 99)]     // 40 + 260/3 = 126 → Stock cap 99
+    [InlineData(-5, 0, RealmType.Stock, 0)]       // floored at 0
+    public void CalcCritChance_AppliesRealmDiminishingReturns(
+        int rating, int qnd, RealmType realm, int expected)
+        => Assert.Equal(expected, CombatCalculator.CalcCritChance(rating, qnd, realm));
+
     // ----- Swings ----------------------------------------------------------
 
     [Fact]

@@ -171,6 +171,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private int _mProtEvil;
     private int _mProtGood;
     private int _mDamageResist;
+    private int _mCritChance;
+    private int _mAvgCritDamage;
 
     public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
     {
@@ -434,6 +436,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             encumCur, encumMax, realmType: realm);
         _mSwingsPerRound = swings.RawSwings;
 
+        // Critical hits fold into DPS: gear/quest crit (abil 58) + the
+        // Quick-and-Deadly bonus (only when STR meets the weapon's requirement,
+        // matching CalculateAttack), then diminishing returns. A crit averages
+        // 3× the normal-attack max damage.
+        int qnd = (t.WeaponStrReq <= 0 || str >= t.WeaponStrReq) ? swings.QnDCritBonus : 0;
+        _mCritChance = _mHasWeapon ? CombatCalculator.CalcCritChance(t.PlusCrits, qnd, realm) : 0;
+        _mAvgCritDamage = _mHasWeapon ? dmg.MaxDamage * 3 : 0;
+
         _mArmourClass = _stats.ArmourClass;
         _mDodge = CombatCalculator.CalcDodge(level, agi, chm, t.PlusDodge, encumCur, encumMax);
         _mProtEvil = t.PlusProtEvil;
@@ -590,7 +600,9 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             Dodge: _mDodge,
             ProtEvil: _mProtEvil,
             ProtGood: _mProtGood,
-            DamageResist: _mDamageResist);
+            DamageResist: _mDamageResist,
+            CritChancePercent: _mCritChance,
+            AvgCritDamage: _mAvgCritDamage);
 
         MonsterMatchupResult r = MonsterMatchupCalculator.Compute(player, monster);
 

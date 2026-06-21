@@ -721,4 +721,29 @@ public static class CombatCalculator
             return bonus;
         }
     }
+
+    /// <summary>
+    /// Critical-hit chance: the gear / quest crit rating (ability 58, already
+    /// aggregated) plus the Quick &amp; Deadly bonus, then MMUD's
+    /// diminishing-returns handling above 40 — ParaMUD (GreaterMUD) hard-caps at
+    /// 65; Stock compresses the overflow to <c>40 + (over-40)/3</c>, capped at 99.
+    /// Mirrors <c>CalculateAttack</c>'s nCritChance path. Floored at 0.
+    /// </summary>
+    public static int CalcCritChance(int critRating, int quickAndDeadlyBonus, RealmType realmType)
+    {
+        int crit = critRating + quickAndDeadlyBonus;
+        if (crit > 40)
+        {
+            if (realmType == RealmType.ParaMud)
+            {
+                if (crit > 65) crit = 65;
+            }
+            else
+            {
+                crit = 40 + ((crit - 40) / 3);
+                if (crit > 99) crit = 99;
+            }
+        }
+        return crit < 0 ? 0 : crit;
+    }
 }
