@@ -107,10 +107,12 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Minimum bonuses (≥). 0 disables the row. -->
+                        <!-- Filter by stats. 0 disables a row; bonus rows keep items at
+                             or above the value, the requirement gates keep items at or
+                             below it (a higher gate is less restrictive). -->
                         <Border Classes="Group">
                             <StackPanel Spacing="4">
-                                <TextBlock Classes="Group" Text="Minimum bonuses (≥)"/>
+                                <TextBlock Classes="Group" Text="Filter by stats"/>
                                 <DockPanel>
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinHp, Mode=TwoWay}"/>
                                     <TextBlock Classes="FieldLabel" Text="Max HP"/>
@@ -143,10 +145,19 @@
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinCrits, Mode=TwoWay}"/>
                                     <TextBlock Classes="FieldLabel" Text="Crits"/>
                                 </DockPanel>
-                                <DockPanel>
-                                    <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinHitMagic, Mode=TwoWay}"/>
-                                    <TextBlock Classes="FieldLabel" Text="Hit magic level"/>
-                                </DockPanel>
+                                <!-- Hit magic gates to a level range: the left ticker is the
+                                     floor (≥), the right the ceiling (≤); 0 disables each. -->
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Hit magic level (min / max)"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <NumericUpDown Classes="filter" Width="104"
+                                                       Value="{Binding MinHitMagic, Mode=TwoWay}"
+                                                       ToolTip.Tip="Lowest hit-magic level to show (0 = off)."/>
+                                        <NumericUpDown Classes="filter" Width="104"
+                                                       Value="{Binding MaxHitMagic, Mode=TwoWay}"
+                                                       ToolTip.Tip="Highest hit-magic level to show (0 = off)."/>
+                                    </StackPanel>
+                                </StackPanel>
                                 <DockPanel>
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinBsAccuracy, Mode=TwoWay}"/>
                                     <TextBlock Classes="FieldLabel" Text="BS accuracy"/>
@@ -167,21 +178,16 @@
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter" Value="{Binding MinDr, Mode=TwoWay}"/>
                                     <TextBlock Classes="FieldLabel" Text="Damage resist"/>
                                 </DockPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Maximum requirements (≤). 0 disables the row. -->
-                        <Border Classes="Group">
-                            <StackPanel Spacing="4">
-                                <TextBlock Classes="Group" Text="Maximum requirements (≤)"/>
                                 <DockPanel>
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter"
-                                                   Maximum="200" Value="{Binding MaxStrReq, Mode=TwoWay}"/>
+                                                   Maximum="200" Value="{Binding MaxStrReq, Mode=TwoWay}"
+                                                   ToolTip.Tip="Show items whose required strength is this or lower (0 = off)."/>
                                     <TextBlock Classes="FieldLabel" Text="Strength req"/>
                                 </DockPanel>
                                 <DockPanel>
                                     <NumericUpDown DockPanel.Dock="Right" Classes="filter"
-                                                   Maximum="200" Value="{Binding MaxLevelReq, Mode=TwoWay}"/>
+                                                   Maximum="200" Value="{Binding MaxLevelReq, Mode=TwoWay}"
+                                                   ToolTip.Tip="Show items whose required level is this or lower (0 = off)."/>
                                     <TextBlock Classes="FieldLabel" Text="Level req"/>
                                 </DockPanel>
                             </StackPanel>

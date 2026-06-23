@@ -22,10 +22,11 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// and narrows it with selectively-applied filters grouped for ease of use: a
 /// <b>Character</b> group (class / usable-at level / alignment, which defer to
 /// <see cref="ItemEquipFilter.CanEquip"/>), a <b>Slot &amp; type</b> group (slot,
-/// weapon type, armour type, backstab-capable), a <b>Minimum bonuses</b> group
-/// (HP / mana / regens / damage / accuracy / crits / hit-magic / backstab / AC / DR),
-/// and a <b>Maximum requirements</b> group (strength / level gate). Read-only — the
-/// finder informs slot choices; it doesn't write the set.
+/// weapon type, armour type, backstab-capable), and a <b>Filter by stats</b> group —
+/// bonus thresholds (HP / mana / regens / damage / accuracy / crits / backstab / AC / DR)
+/// kept at-or-above the ticker, a hit-magic-level min/max range, and the strength /
+/// level requirement gates kept at-or-below the ticker. Read-only — the finder informs
+/// slot choices; it doesn't write the set.
 /// </summary>
 public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewModel<bool>
 {
@@ -81,7 +82,10 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     [ObservableProperty] private string? _selectedArmourType = AnyType;
     [ObservableProperty] private bool _backstabOnly;
 
-    // ----- Minimum bonuses group (0 = off; keep items with stat ≥ value) -----
+    // ----- Filter by stats (0 = off on every row) -----
+    // Bonus thresholds keep items whose stat is ≥ the value; the hit-magic ceiling and
+    // the requirement gates keep items whose value is ≤ the ticker (so a higher gate is
+    // less restrictive — "usable at this strength / level or below").
     [ObservableProperty] private int _minHp;
     [ObservableProperty] private int _minHpRegen;
     [ObservableProperty] private int _minMana;
@@ -90,16 +94,15 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     [ObservableProperty] private int _minMaxDmg;
     [ObservableProperty] private int _minAccuracy;
     [ObservableProperty] private int _minCrits;
-    [ObservableProperty] private int _minHitMagic;
+    [ObservableProperty] private int _minHitMagic;   // hit-magic floor (≥)
+    [ObservableProperty] private int _maxHitMagic;   // hit-magic ceiling (≤)
     [ObservableProperty] private int _minBsAccuracy;
     [ObservableProperty] private int _minBsMin;
     [ObservableProperty] private int _minBsMax;
     [ObservableProperty] private int _minAc;
     [ObservableProperty] private int _minDr;
-
-    // ----- Maximum requirements group (0 = off; keep items with gate ≤ value) -----
-    [ObservableProperty] private int _maxStrReq;
-    [ObservableProperty] private int _maxLevelReq;
+    [ObservableProperty] private int _maxStrReq;     // required-strength gate (≤)
+    [ObservableProperty] private int _maxLevelReq;   // required-level gate (≤)
 
     public ItemFinderViewModel(GameDataCache gameData)
     {
@@ -203,6 +206,7 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         if (MinAccuracy > 0 && e.Accuracy < MinAccuracy) return false;
         if (MinCrits > 0 && e.Crits < MinCrits) return false;
         if (MinHitMagic > 0 && e.HitMagic < MinHitMagic) return false;
+        if (MaxHitMagic > 0 && e.HitMagic > MaxHitMagic) return false;
         if (MinBsAccuracy > 0 && e.BsAccuracy < MinBsAccuracy) return false;
         if (MinBsMin > 0 && e.BsMin < MinBsMin) return false;
         if (MinBsMax > 0 && e.BsMax < MinBsMax) return false;
@@ -228,7 +232,8 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         SelectedArmourType = AnyType;
         BackstabOnly = false;
         MinHp = MinHpRegen = MinMana = MinManaRegen = 0;
-        MinMinDmg = MinMaxDmg = MinAccuracy = MinCrits = MinHitMagic = 0;
+        MinMinDmg = MinMaxDmg = MinAccuracy = MinCrits = 0;
+        MinHitMagic = MaxHitMagic = 0;
         MinBsAccuracy = MinBsMin = MinBsMax = MinAc = MinDr = 0;
         MaxStrReq = MaxLevelReq = 0;
         _filterSuspended = false;
