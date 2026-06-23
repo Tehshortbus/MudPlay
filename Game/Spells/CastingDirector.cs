@@ -588,6 +588,7 @@ public sealed class CastingDirector : IDisposable
     private string? PickMajorSelfHeal(SpellsSettings spells, HealthSettings health)
     {
         if (_state.MaxHp <= 0) return null;
+        if (!ManaClearsHealFloor(health)) return null;
         int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
         if (hpPct > health.MajorHealCombatTrigger) return null;
         // Fall back to minor when the user hasn't configured a major
@@ -601,6 +602,7 @@ public sealed class CastingDirector : IDisposable
     {
         if (_state.MaxHp <= 0) return null;
         if (string.IsNullOrWhiteSpace(spells.MinorHealSpell)) return null;
+        if (!ManaClearsHealFloor(health)) return null;
 
         int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
         // Use the in-combat trigger while engaged, the rest-time
@@ -616,6 +618,28 @@ public sealed class CastingDirector : IDisposable
         if (!_state.InCombat && _state.Position != PlayerPosition.Resting) return null;
 
         return spells.MinorHealSpell;
+    }
+
+    /// <summary>
+    /// Mana-floor gate for self heals: only cast a heal when the caster pool
+    /// sits at or above <see cref="HealthSettings.HealIfAboveMaCombat"/>
+    /// (in combat) or <see cref="HealthSettings.HealIfAboveMaResting"/>
+    /// (resting / idle), so a low pool regenerates instead of being drained
+    /// on heal spells. A floor of 0 disables the gate. The value is read per
+    /// <see cref="HealthSettings.MaThresholdMode"/> (percentage of MaxMa, or
+    /// absolute MA); an unknown pool (MaxMa 0, percentage mode) never blocks a
+    /// heal so the safety path isn't suppressed by missing prompt data.
+    /// </summary>
+    private bool ManaClearsHealFloor(HealthSettings health)
+    {
+        int floor = _state.InCombat
+            ? health.HealIfAboveMaCombat
+            : health.HealIfAboveMaResting;
+        if (floor <= 0) return true;
+        if (health.MaThresholdMode == ThresholdMode.Absolute)
+            return _state.Ma >= floor;
+        if (_state.MaxMa <= 0) return true;
+        return (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa) >= floor;
     }
 
     // ----- Curing -----------------------------------------------------

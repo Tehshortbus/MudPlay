@@ -45,6 +45,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         "Health", "HP", "Mana", "Kai",
         "Rest max", "Rest if below", "Heal rest", "Heal combat", "Heal during rest",
         "Minor heal combat", "Major heal combat",
+        "Heal if above", "Heal if above resting", "Heal if above combat", "Mana floor",
         "Run if below", "Hang up if below", "Bless if above",
         "Use meditate ability", "Meditate before resting",
         "Pre-rest", "Post-rest", "Pre-meditate", "Post-meditate",
@@ -71,6 +72,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private int _restMaxMa        = 95;
     [ObservableProperty] private int _restIfBelowMa    = 30;
+    [ObservableProperty] private int _healIfAboveMaResting = 50;
+    [ObservableProperty] private int _healIfAboveMaCombat;
     [ObservableProperty] private int _runIfBelowMa     = 10;
     [ObservableProperty] private int _blessIfAboveMa   = 70;
 
@@ -135,6 +138,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
             OnPropertyChanged(nameof(LiveMaxMa));
             OnPropertyChanged(nameof(RestMaxMaConverted));
             OnPropertyChanged(nameof(RestIfBelowMaConverted));
+            OnPropertyChanged(nameof(HealIfAboveMaRestingConverted));
+            OnPropertyChanged(nameof(HealIfAboveMaCombatConverted));
             OnPropertyChanged(nameof(RunIfBelowMaConverted));
             OnPropertyChanged(nameof(BlessIfAboveMaConverted));
         }
@@ -171,6 +176,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     // ----- MA conversion strings -----
     public string RestMaxMaConverted              => FormatConversion(RestMaxMa,              LiveMaxMa, MaModePercentage);
     public string RestIfBelowMaConverted          => FormatConversion(RestIfBelowMa,          LiveMaxMa, MaModePercentage);
+    public string HealIfAboveMaRestingConverted   => FormatConversion(HealIfAboveMaResting,   LiveMaxMa, MaModePercentage);
+    public string HealIfAboveMaCombatConverted    => FormatConversion(HealIfAboveMaCombat,    LiveMaxMa, MaModePercentage);
     public string RunIfBelowMaConverted           => FormatConversion(RunIfBelowMa,           LiveMaxMa, MaModePercentage);
     public string BlessIfAboveMaConverted         => FormatConversion(BlessIfAboveMa,         LiveMaxMa, MaModePercentage);
 
@@ -192,6 +199,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
             MaThresholdMode        = MaModeAbsolute ? ThresholdMode.Absolute : ThresholdMode.Percentage,
             RestMaxMa              = Clamp(RestMaxMa),
             RestIfBelowMa          = Clamp(RestIfBelowMa),
+            HealIfAboveMaResting   = Clamp(HealIfAboveMaResting),
+            HealIfAboveMaCombat    = Clamp(HealIfAboveMaCombat),
             RunIfBelowMa           = Clamp(RunIfBelowMa),
             BlessIfAboveMa         = Clamp(BlessIfAboveMa),
 
@@ -256,6 +265,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         MaModeAbsolute   = dto.MaThresholdMode == ThresholdMode.Absolute;
         RestMaxMa        = dto.RestMaxMa;
         RestIfBelowMa    = dto.RestIfBelowMa;
+        HealIfAboveMaResting = dto.HealIfAboveMaResting;
+        HealIfAboveMaCombat  = dto.HealIfAboveMaCombat;
         RunIfBelowMa     = dto.RunIfBelowMa;
         BlessIfAboveMa   = dto.BlessIfAboveMa;
 
@@ -333,10 +344,12 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         RefreshAllMaConverted();
         MarkDirty();
     }
-    partial void OnRestMaxMaChanged(int value)                { OnPropertyChanged(nameof(RestMaxMaConverted));      MarkDirty(); }
-    partial void OnRestIfBelowMaChanged(int value)            { OnPropertyChanged(nameof(RestIfBelowMaConverted));  MarkDirty(); }
-    partial void OnRunIfBelowMaChanged(int value)             { OnPropertyChanged(nameof(RunIfBelowMaConverted));   MarkDirty(); }
-    partial void OnBlessIfAboveMaChanged(int value)           { OnPropertyChanged(nameof(BlessIfAboveMaConverted)); MarkDirty(); }
+    partial void OnRestMaxMaChanged(int value)                { OnPropertyChanged(nameof(RestMaxMaConverted));            MarkDirty(); }
+    partial void OnRestIfBelowMaChanged(int value)            { OnPropertyChanged(nameof(RestIfBelowMaConverted));        MarkDirty(); }
+    partial void OnHealIfAboveMaRestingChanged(int value)     { OnPropertyChanged(nameof(HealIfAboveMaRestingConverted)); MarkDirty(); }
+    partial void OnHealIfAboveMaCombatChanged(int value)      { OnPropertyChanged(nameof(HealIfAboveMaCombatConverted));  MarkDirty(); }
+    partial void OnRunIfBelowMaChanged(int value)             { OnPropertyChanged(nameof(RunIfBelowMaConverted));         MarkDirty(); }
+    partial void OnBlessIfAboveMaChanged(int value)           { OnPropertyChanged(nameof(BlessIfAboveMaConverted));       MarkDirty(); }
 
     private void RefreshAllHpConverted()
     {
@@ -353,6 +366,8 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     {
         OnPropertyChanged(nameof(RestMaxMaConverted));
         OnPropertyChanged(nameof(RestIfBelowMaConverted));
+        OnPropertyChanged(nameof(HealIfAboveMaRestingConverted));
+        OnPropertyChanged(nameof(HealIfAboveMaCombatConverted));
         OnPropertyChanged(nameof(RunIfBelowMaConverted));
         OnPropertyChanged(nameof(BlessIfAboveMaConverted));
     }
