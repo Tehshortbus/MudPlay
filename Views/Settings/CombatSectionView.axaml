@@ -86,55 +86,12 @@
 
                 <!-- ============ Weapon Combat ============ -->
                 <TextBlock Classes="SectionHeader" Text="Weapon combat"/>
-                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Normal weapon"/>
-                    <AutoCompleteBox Grid.Row="0" Grid.Column="1"
-                                     Text="{Binding NormalWeapon, Mode=TwoWay}"
-                                     ItemsSource="{Binding WeaponSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Primary weapon — main-hand. Type freely; the dropdown suggests weapons from the active game-data set."/>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Normal off-hand"/>
-                    <AutoCompleteBox Grid.Row="1" Grid.Column="1"
-                                     Text="{Binding NormalOffHand, Mode=TwoWay}"
-                                     ItemsSource="{Binding OffHandSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Off-hand pairing for the normal weapon. Suggests off-hand items (shields, tomes, instruments) from game data."/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Alternate weapon"/>
-                    <AutoCompleteBox Grid.Row="2" Grid.Column="1"
-                                     Text="{Binding AlternateWeapon, Mode=TwoWay}"
-                                     ItemsSource="{Binding WeaponSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Swap target — equipped when CombatManager decides to switch."/>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Alternate off-hand"/>
-                    <AutoCompleteBox Grid.Row="3" Grid.Column="1"
-                                     Text="{Binding AlternateOffHand, Mode=TwoWay}"
-                                     ItemsSource="{Binding OffHandSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Off-hand pairing for the alternate weapon."/>
-
-                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="BS weapon"/>
-                    <AutoCompleteBox Grid.Row="4" Grid.Column="1"
-                                     Text="{Binding BackstabWeapon, Mode=TwoWay}"
-                                     ItemsSource="{Binding WeaponSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter weapons…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Equipped for the BS attempt round."/>
-
-                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="BS weapon off-hand"/>
-                    <AutoCompleteBox Grid.Row="5" Grid.Column="1"
-                                     Text="{Binding BackstabOffHand, Mode=TwoWay}"
-                                     ItemsSource="{Binding OffHandSuggestions}"
-                                     FilterMode="Contains" PlaceholderText="Type to filter off-hand items…"
-                                     Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Off-hand worn alongside the BS weapon (often a shield, but any off-hand works)."/>
-                </Grid>
+                <TextBlock Text="Combat weapons are configured in the Character Workshop → Equipment Manager gear sets. Normal &amp; alternate weapons (and off-hands) come from the Default set; backstab gear comes from the Backstab set when it's enabled, otherwise the Default set."
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,4"/>
 
                 <!-- ============ Targeting ============ -->
                 <TextBlock Classes="SectionHeader" Text="Targeting"/>

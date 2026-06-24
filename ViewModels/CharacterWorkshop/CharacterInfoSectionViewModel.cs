@@ -171,6 +171,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private int _mProtEvil;
     private int _mProtGood;
     private int _mDamageResist;
+    private int _mCritChance;
+    private int _mAvgCritDamage;
 
     public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
     {
@@ -366,11 +368,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             BackstabDamage = string.Empty;
         }
 
-        // Martial-arts attacks — Mystic special attacks. Gated on the Stock
-        // realm (only the Stock MA damage formula is modelled) and a positive
-        // Martial Arts skill, matching how MME surfaces punch/kick/jumpkick.
+        // Martial-arts attacks — Mystic special attacks. Shown for any realm
+        // with a positive Martial Arts skill; the damage formula branches Stock
+        // vs GreaterMUD inside CalcMartialArtsDamage.
         int maSkill = _stats.MartialArts;
-        bool showMa = realm == RealmType.Stock && maSkill > 0;
+        bool showMa = maSkill > 0;
         ShowMartialArts = showMa;
         if (showMa && level > 0 && nCombatLevel > 0)
         {
@@ -384,9 +386,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
                 str, agi, intel, chm, maWornAccy, effectiveAbil22,
                 encumCur, encumMax, weaponStrReq: 0);
 
+            // GreaterMUD applies a per-attack accuracy penalty (kick -10,
+            // jumpkick -15); Stock has none.
+            int kickAccyPenalty = realm == RealmType.ParaMud ? 10 : 0;
+            int jumpKickAccyPenalty = realm == RealmType.ParaMud ? 15 : 0;
+
             PunchAccuracy = (maBaseAccy + t.PlusPunchAccy).ToString(CultureInfo.InvariantCulture);
-            KickAccuracy = (maBaseAccy + t.PlusKickAccy).ToString(CultureInfo.InvariantCulture);
-            JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy).ToString(CultureInfo.InvariantCulture);
+            KickAccuracy = (maBaseAccy + t.PlusKickAccy - kickAccyPenalty).ToString(CultureInfo.InvariantCulture);
+            JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy - jumpKickAccyPenalty).ToString(CultureInfo.InvariantCulture);
 
             PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
             KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
@@ -433,6 +440,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             nCombatLevel, level, t.WeaponSpeed, agi, str, t.WeaponStrReq,
             encumCur, encumMax, realmType: realm);
         _mSwingsPerRound = swings.RawSwings;
+
+        // Critical hits fold into DPS: gear/quest crit (abil 58) + the
+        // Quick-and-Deadly bonus (only when STR meets the weapon's requirement,
+        // matching CalculateAttack), then diminishing returns. A crit averages
+        // 3× the normal-attack max damage.
+        int qnd = (t.WeaponStrReq <= 0 || str >= t.WeaponStrReq) ? swings.QnDCritBonus : 0;
+        _mCritChance = _mHasWeapon ? CombatCalculator.CalcCritChance(t.PlusCrits, qnd, realm) : 0;
+        _mAvgCritDamage = _mHasWeapon ? dmg.MaxDamage * 3 : 0;
 
         _mArmourClass = _stats.ArmourClass;
         _mDodge = CombatCalculator.CalcDodge(level, agi, chm, t.PlusDodge, encumCur, encumMax);
@@ -590,7 +605,9 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             Dodge: _mDodge,
             ProtEvil: _mProtEvil,
             ProtGood: _mProtGood,
-            DamageResist: _mDamageResist);
+            DamageResist: _mDamageResist,
+            CritChancePercent: _mCritChance,
+            AvgCritDamage: _mAvgCritDamage);
 
         MonsterMatchupResult r = MonsterMatchupCalculator.Compute(player, monster);
 

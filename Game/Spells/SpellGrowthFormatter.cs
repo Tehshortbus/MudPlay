@@ -1,0 +1,138 @@
+using System.Globalization;
+using FujinTerm.Game.GameData;
+
+namespace FujinTerm.Game.Spells;
+
+/// <summary>
+/// Human-readable, level-scaled summary of a spell's magnitude and per-level
+/// growth — the Game Data Browser's spell-detail equivalent of MMUD Explorer's
+/// spell-browser "LVL Cap" / "LVL Increases" block. Turns the raw per-level
+/// scaling columns (<c>MinInc</c> / <c>MinIncLVLs</c> / <c>MaxInc</c> / … ) into
+/// a single readable formula ("Max: 24+(2*lvl)") plus the at-cap range
+/// ("18 to 68"), so the player reads what a spell does at its ceiling and how it
+/// gets there rather than a wall of bare scaling numbers.
+/// </summary>
+/// <remarks>
+/// The magnitude range is the spell's <b>per-cast intrinsic</b> value
+/// (<see cref="SpellCalculator.AffectMagnitude"/>), <i>not</i> the per-round
+/// figure from <see cref="SpellCalculator.MinDamage"/> /
+/// <see cref="SpellCalculator.MaxDamage"/>: those fold in the 1000/EnergyCost
+/// multi-fire multiplier, which would inflate a "what one cast does" display for
+/// low-energy spells. (For the common 1000-energy spell the two coincide.) All
+/// scaling math routes through <see cref="SpellCalculator"/> so the numbers match
+/// the Spell Book and CastingDirector everywhere.
+/// </remarks>
+public static class SpellGrowthFormatter
+{
+    // Damage-bearing ability codes whose stored Min/MaxBase form the spell's
+    // damage range — Damage (1), DrainLife (8), Damage(-MR) (17) — plus Heal
+    // (18). Mirrors SpellEffectFormatter's damage/heal split; kept local so the
+    // formatter is self-contained.
+    private static readonly int[] _damageCodes = { 1, 8, 17 };
+    private const int HealCode = 18;
+    private const int NonMagicalSpellCode = 144;
+
+    // Seconds per spell-duration tick — matches SpellEffectFormatter's
+    // SPELL_ROUND_SECS. Durations are stored in 3-second ticks; the display
+    // shows seconds. Duplicated as a bare constant (not worth a shared holder
+    // for one domain number) so this formatter needs no cross-class coupling.
+    private const int SpellRoundSeconds = 3;
+
+    /// <summary>
+    /// The level the at-cap figures are evaluated at: the spell's cap when it
+    /// has one, otherwise its obtain level (floored to 1 so an unleveled spell
+    /// still yields its base value rather than scaling to 0).
+    /// </summary>
+    public static int DisplayLevel(in SpellFormulaInput spell)
+        => spell.Cap > 0 ? spell.Cap : Math.Max(spell.ReqLevel, 1);
+
+    /// <summary>
+    /// The spell's magnitude range at <see cref="DisplayLevel"/> — "18 to 68",
+    /// or a single value when min == max. <c>null</c> when the spell has no
+    /// stored magnitude (a pure flag / teleport / summon spell).
+    /// </summary>
+    public static string? MagnitudeRange(in SpellFormulaInput spell)
+    {
+        (long min, long max) = SpellCalculator.AffectMagnitude(spell, DisplayLevel(spell));
+        if (min == 0 && max == 0) return null;
+        return min == max
+            ? min.ToString(CultureInfo.InvariantCulture)
+            : $"{min.ToString(CultureInfo.InvariantCulture)} to {max.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    /// <summary>
+    /// Label for the magnitude range — the spell's primary damage / heal
+    /// ability name ("Damage(-MR)", "Heal", "DrainLife"), with a
+    /// NonMagicalSpell (144) slot rewriting "Damage(-MR)" back to "Damage" the
+    /// way MME's post-pass does. Falls back to "Magnitude" for a stat-affect
+    /// spell whose range isn't a damage/heal figure.
+    /// </summary>
+    public static string MagnitudeLabel(in SpellFormulaInput spell)
+    {
+        int code = 0;
+        bool nonMagical = false;
+        foreach (SpellAbility a in spell.Abilities)
+        {
+            if (code == 0 && (a.Code == HealCode || Array.IndexOf(_damageCodes, a.Code) >= 0))
+                code = a.Code;
+            if (a.Code == NonMagicalSpellCode) nonMagical = true;
+        }
+        if (code == 0) return "Magnitude";
+
+        string name = AbilityNames.GetName(code) ?? "Magnitude";
+        if (nonMagical && name == "Damage(-MR)") name = "Damage";
+        return name;
+    }
+
+    /// <summary>
+    /// At-cap effect duration in seconds (<see cref="DisplayLevel"/> level), or
+    /// <c>0</c> when the spell has no duration. Stored ticks are 3 seconds each.
+    /// </summary>
+    public static long DurationSeconds(in SpellFormulaInput spell)
+        => SpellCalculator.Duration(spell, DisplayLevel(spell)) * SpellRoundSeconds;
+
+    /// <summary>
+    /// The per-level growth formula: one clause per scaling component
+    /// ("Min: …", "Max: 24+(2*lvl)", "Dur: …"), joined with ", ". A component
+    /// scales only when it has both a non-zero increment and a non-zero
+    /// per-level denominator — matching <see cref="SpellCalculator"/>'s
+    /// <c>incLvls == 0</c> no-scaling rule, so a spell whose IncLVLs is 0 (flat)
+    /// contributes no clause. <c>null</c> when nothing scales.
+    /// </summary>
+    public static string? GrowthFormula(in SpellFormulaInput spell)
+    {
+        List<string> parts = new();
+        if (Clause("Min", spell.MinBase, spell.MinInc, spell.MinIncLVLs) is { } min) parts.Add(min);
+        if (Clause("Max", spell.MaxBase, spell.MaxInc, spell.MaxIncLVLs) is { } max) parts.Add(max);
+        if (Clause("Dur", spell.Dur, spell.DurInc, spell.DurIncLVLs) is { } dur) parts.Add(dur);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    // One "Label: base±(term)" clause, or null when the component is flat.
+    private static string? Clause(string label, int baseVal, int inc, int incLvls)
+    {
+        if (inc == 0 || incLvls <= 0) return null;
+        string sign = inc < 0 ? "-" : "+";
+        return $"{label}: {baseVal.ToString(CultureInfo.InvariantCulture)}{sign}({Term(inc, incLvls)})";
+    }
+
+    // The per-level term "2*lvl" / "lvl" / "lvl/2" / "3*lvl/2" for the slope
+    // inc/incLvls, reduced to lowest terms (mathematically identical Fix() math,
+    // just fewer digits). The leading sign is supplied by the caller, so the
+    // magnitude here is always unsigned.
+    private static string Term(int inc, int incLvls)
+    {
+        int magnitude = Math.Abs(inc);
+        int g = Gcd(magnitude, incLvls);
+        int n = magnitude / g;
+        int d = incLvls / g;
+        string lvl = d == 1 ? "lvl" : $"lvl/{d.ToString(CultureInfo.InvariantCulture)}";
+        return n == 1 ? lvl : $"{n.ToString(CultureInfo.InvariantCulture)}*{lvl}";
+    }
+
+    private static int Gcd(int a, int b)
+    {
+        while (b != 0) (a, b) = (b, a % b);
+        return a == 0 ? 1 : a;
+    }
+}

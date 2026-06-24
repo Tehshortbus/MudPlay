@@ -134,6 +134,17 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     private readonly GameDataCache? _cache;
 
+    /// <summary>
+    /// Optional read-only "Game Data" tab content — the source row's imported
+    /// fields (label / value), shown alongside the editable message when the
+    /// dialog is opened for a game-data row (e.g. a spell). Empty for the plain
+    /// Messages-tab edit, which hides the tab.
+    /// </summary>
+    public IReadOnlyList<GameDataInfoRow> GameDataInfo { get; }
+
+    /// <summary>True when the Game Data tab has content to show.</summary>
+    public bool HasGameData => GameDataInfo.Count > 0;
+
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
     /// <summary>
@@ -199,7 +210,8 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         SettingsTier currentTier,
         IReadOnlyCollection<MessageRecord> existingRecords,
         bool isNew,
-        GameDataCache? cache = null)
+        GameDataCache? cache = null,
+        IReadOnlyList<GameDataInfoRow>? gameDataInfo = null)
     {
         ArgumentNullException.ThrowIfNull(original);
         ArgumentNullException.ThrowIfNull(existingRecords);
@@ -207,6 +219,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         _existingRecords = existingRecords;
         _isNew           = isNew;
         _cache           = cache;
+        GameDataInfo     = gameDataInfo ?? Array.Empty<GameDataInfoRow>();
 
         if (original.Links is { Count: > 0 } links)
         {
@@ -329,6 +342,10 @@ public sealed record MessageEditResult(
 
 /// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
 public sealed record TierOption(SettingsTier Value, string Label);
+
+/// <summary>One row on the dialog's read-only Game Data tab — a field label and
+/// its rendered value from the source game-data row.</summary>
+public sealed record GameDataInfoRow(string Label, string Value);
 
 /// <summary>
 /// One row in <see cref="MessageEditDialogViewModel.LinkRows"/> —

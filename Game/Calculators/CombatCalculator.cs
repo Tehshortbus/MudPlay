@@ -382,22 +382,28 @@ public static class CombatCalculator
 
     /// <summary>
     /// Per-hit damage range for a Mystic martial-arts attack (Punch / Kick /
-    /// Jumpkick), modelling MMUD's <c>CalculateAttack</c> Stock
-    /// (<c>bGreaterMUD = False</c>) branch — the only branch recovered. Requires
-    /// a positive <paramref name="martialArtsSkill"/>; returns a zero range
-    /// otherwise (the engine takes no attack without the skill). The base range
-    /// scales with the martial-arts skill and the level capped at 20:
-    /// <c>min = skill*nTemp/8 + 2</c>; <c>punch max = skill*(nTemp+3)/4 + 6</c>,
-    /// <c>kick max = skill*nTemp/6 + 7</c>, <c>jumpkick max = skill*nTemp/6 + 8</c>.
-    /// Strength then folds in exactly as <see cref="CalcMeleeDamage"/> does
-    /// (max gets <c>(STR-50)/10</c>, min gets <c>(STR-100)/10</c> doubled in
-    /// Stock, floored at 0). After the range is clamped, the item martial-arts
-    /// damage bonus (<paramref name="maPlusDamage"/>, Abil 92/93/94) is added to
-    /// both bounds, then the Stock pre-roll multiplier (kick ×1.33, jumpkick
-    /// ×1.66, truncated via <c>Fix</c>). <paramref name="plusMaxDamage"/> is the
-    /// item +max-damage ability sum (Abil 4); strength is added internally, so
-    /// callers pass the item-only value.
+    /// Jumpkick), modelling MMUD Explorer's <c>CalculateAttack</c> for the realm
+    /// selected by <paramref name="realmType"/>. Requires a positive
+    /// <paramref name="martialArtsSkill"/>; returns a zero range otherwise.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Stock</b> scales the skill by the level (capped at 20):
+    /// <c>min = skill*nTemp/8 + 2</c>; <c>punch max = skill*(nTemp+3)/4 + 6</c>,
+    /// <c>kick max = skill*nTemp/6 + 7</c>, <c>jumpkick max = skill*nTemp/6 + 8</c>
+    /// (all <c>Fix()</c> truncated).</para>
+    /// <para><b>GreaterMUD / ParaMUD</b> uses a level-driven band with the skill
+    /// added flat — <c>min = round(lvl/8+2) + skill</c> below 20 (else
+    /// <c>round(lvl/6)</c> floored 5); per-type max <c>round((lvl+3)/4+6)</c> /
+    /// <c>round(lvl/5+7)</c> / <c>round(lvl/6+7)</c> below 20 (else
+    /// <c>round(lvl/4)</c> floored 12/10/10) + skill — rounding half-to-even.</para>
+    /// <para>Strength then folds in exactly as <see cref="CalcMeleeDamage"/> does
+    /// (max gets <c>(STR-50)/10</c>, min gets <c>(STR-100)/10</c> doubled in Stock,
+    /// floored at 0; ParaMUD has no negative-strength penalty). After the range is
+    /// clamped, the item martial-arts damage bonus (<paramref name="maPlusDamage"/>,
+    /// Abil 92/93/94) is added to both bounds, then the kick ×1.33 / jumpkick ×1.66
+    /// multiplier (truncated). <paramref name="plusMaxDamage"/> is the item
+    /// +max-damage sum (Abil 4); strength is added internally.</para>
+    /// </remarks>
     public static MeleeDamageResult CalcMartialArtsDamage(MudAttackType attackType, RealmType realmType,
                                                           int level, int martialArtsSkill, int strength,
                                                           int plusMaxDamage, int maPlusDamage)
@@ -405,16 +411,33 @@ public static class CombatCalculator
         if (martialArtsSkill <= 0)
             return new MeleeDamageResult(0, 0);
 
-        int nTemp = Math.Min(level, 20);
-
-        int min = (martialArtsSkill * nTemp) / 8 + 2;
-        int max = attackType switch
+        int min, max;
+        if (realmType == RealmType.ParaMud)
         {
-            MudAttackType.Punch => (martialArtsSkill * (nTemp + 3)) / 4 + 6,
-            MudAttackType.Kick => (martialArtsSkill * nTemp) / 6 + 7,
-            MudAttackType.Jumpkick => (martialArtsSkill * nTemp) / 6 + 8,
-            _ => 0,
-        };
+            // GreaterMUD: a level-driven band with the skill added flat (not the
+            // Stock skill×level scaling).
+            min = GmudMaBand(level, level / 8.0 + 2, level / 6.0, floor: 5) + martialArtsSkill;
+            max = attackType switch
+            {
+                MudAttackType.Punch => GmudMaBand(level, (level + 3) / 4.0 + 6, level / 4.0, floor: 12),
+                MudAttackType.Kick => GmudMaBand(level, level / 5.0 + 7, level / 4.0, floor: 10),
+                MudAttackType.Jumpkick => GmudMaBand(level, level / 6.0 + 7, level / 4.0, floor: 10),
+                _ => 0,
+            } + martialArtsSkill;
+        }
+        else
+        {
+            // Stock: skill scales by level (capped at 20), per the Fix() formula.
+            int nTemp = Math.Min(level, 20);
+            min = (martialArtsSkill * nTemp) / 8 + 2;
+            max = attackType switch
+            {
+                MudAttackType.Punch => (martialArtsSkill * (nTemp + 3)) / 4 + 6,
+                MudAttackType.Kick => (martialArtsSkill * nTemp) / 6 + 7,
+                MudAttackType.Jumpkick => (martialArtsSkill * nTemp) / 6 + 8,
+                _ => 0,
+            };
+        }
 
         int strMaxBonus = (strength - 50) / 10;
         if (realmType == RealmType.ParaMud && strMaxBonus < 0)
@@ -449,6 +472,22 @@ public static class CombatCalculator
         }
 
         return new MeleeDamageResult(min, max);
+    }
+
+    /// <summary>
+    /// One GreaterMUD martial-arts level band: under level 20 the
+    /// <paramref name="subTwenty"/> term is used; at 20+ the
+    /// <paramref name="twentyPlus"/> term is used and floored at
+    /// <paramref name="floor"/>. Both round half-to-even, mirroring MME's VB6
+    /// <c>Double</c>→<c>Long</c> assignment in <c>CalculateAttack</c> (which uses
+    /// <c>/</c>, not the <c>Fix()</c> the Stock branch uses).
+    /// </summary>
+    private static int GmudMaBand(int level, double subTwenty, double twentyPlus, int floor)
+    {
+        if (level < 20)
+            return (int)Math.Round(subTwenty, MidpointRounding.ToEven);
+        int t = (int)Math.Round(twentyPlus, MidpointRounding.ToEven);
+        return t < floor ? floor : t;
     }
 
     /// <summary>
@@ -720,5 +759,30 @@ public static class CombatCalculator
             if (encumPercent >= 33) bonus /= 2;
             return bonus;
         }
+    }
+
+    /// <summary>
+    /// Critical-hit chance: the gear / quest crit rating (ability 58, already
+    /// aggregated) plus the Quick &amp; Deadly bonus, then MMUD's
+    /// diminishing-returns handling above 40 — ParaMUD (GreaterMUD) hard-caps at
+    /// 65; Stock compresses the overflow to <c>40 + (over-40)/3</c>, capped at 99.
+    /// Mirrors <c>CalculateAttack</c>'s nCritChance path. Floored at 0.
+    /// </summary>
+    public static int CalcCritChance(int critRating, int quickAndDeadlyBonus, RealmType realmType)
+    {
+        int crit = critRating + quickAndDeadlyBonus;
+        if (crit > 40)
+        {
+            if (realmType == RealmType.ParaMud)
+            {
+                if (crit > 65) crit = 65;
+            }
+            else
+            {
+                crit = 40 + ((crit - 40) / 3);
+                if (crit > 99) crit = 99;
+            }
+        }
+        return crit < 0 ? 0 : crit;
     }
 }

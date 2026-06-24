@@ -381,6 +381,110 @@ public sealed class CastingDirectorTests
         Assert.Single(h.CastsSent);
     }
 
+    // ----- heal mana-floor gate (HealIfAboveMa*) --------------------
+
+    [Fact]
+    public void HealManaFloor_Resting_BelowFloor_SuppressesHeal()
+    {
+        // Resting heal would fire (HP 70 < HealRestTrigger 80) but MA sits
+        // at 30% — below the 50% rest floor — so the heal is held to let the
+        // pool regenerate.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.HealRestTrigger = 80;
+        h.Health.HealIfAboveMaResting = 50;
+
+        h.SetPrompt(hp: 70, maxHp: 100, ma: 30, maxMa: 100,
+            inCombat: false, position: PlayerPosition.Resting);
+        h.Director.OnCombatTick();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void HealManaFloor_Resting_AboveFloor_CastsHeal()
+    {
+        // Same setup with MA at 80% — clears the 50% floor → heal fires.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.HealRestTrigger = 80;
+        h.Health.HealIfAboveMaResting = 50;
+
+        h.SetPrompt(hp: 70, maxHp: 100, ma: 80, maxMa: 100,
+            inCombat: false, position: PlayerPosition.Resting);
+        h.Director.OnCombatTick();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void HealManaFloor_Combat_ZeroFloor_IgnoresRestFloor()
+    {
+        // In combat with the default combat floor (0) — the rest floor (50)
+        // does NOT apply, so a low MA pool (10%) still heals.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.HealIfAboveMaResting = 50;
+        h.Health.HealIfAboveMaCombat = 0;
+
+        h.SetPrompt(hp: 65, maxHp: 100, ma: 10, maxMa: 100, inCombat: true);
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void HealManaFloor_Combat_BelowFloor_SuppressesHeal()
+    {
+        // A non-zero combat floor (60%) gates combat heals too — MA 30% is
+        // below it, so the routine combat heal is held.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.HealIfAboveMaCombat = 60;
+
+        h.SetPrompt(hp: 65, maxHp: 100, ma: 30, maxMa: 100, inCombat: true);
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void HealManaFloor_AbsoluteMode_ComparesRawMa()
+    {
+        // Absolute MA mode: the floor is a raw MA value, not a percent.
+        // MA 30 < floor 40 → suppressed.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.HealRestTrigger = 80;
+        h.Health.MaThresholdMode = ThresholdMode.Absolute;
+        h.Health.HealIfAboveMaResting = 40;
+
+        h.SetPrompt(hp: 70, maxHp: 100, ma: 30, maxMa: 100,
+            inCombat: false, position: PlayerPosition.Resting);
+        h.Director.OnCombatTick();
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void HealManaFloor_UnknownPool_DoesNotBlock()
+    {
+        // Percentage mode but MaxMa is 0 (no prompt MA data / no pool) — the
+        // gate can't evaluate a percent, so it never blocks the safety path.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.HealRestTrigger = 80;
+        h.Health.HealIfAboveMaResting = 50;
+
+        h.SetPrompt(hp: 70, maxHp: 100, ma: 0, maxMa: 0,
+            inCombat: false, position: PlayerPosition.Resting);
+        h.Director.OnCombatTick();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
     // ----- Tier 2 cures (game-data Messages driven) -----------------
 
     private sealed class CureHarness : IDisposable

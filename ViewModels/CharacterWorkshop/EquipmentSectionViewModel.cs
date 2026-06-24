@@ -304,7 +304,10 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             EquipmentSet? set = cfg.Sets.FirstOrDefault(s => s.Trigger == trigger);
             if (set is null)
             {
-                set = new EquipmentSet { Trigger = trigger };
+                // The Default set is enabled out of the box (it's the baseline
+                // loadout + the backstab fallback source); the others stay
+                // disabled until the user opts in.
+                set = new EquipmentSet { Trigger = trigger, Enabled = trigger == EquipTriggerType.Default };
                 changed = true;
             }
             if (!string.Equals(set.Name, name, StringComparison.Ordinal)) { set.Name = name; changed = true; }
@@ -325,11 +328,20 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             foreach (EquipmentSlotEntry e in set.Slots)
                 bySlot.TryAdd(e.Slot, e);
 
+        // The alternate-weapon swap only happens during normal weapon combat, so
+        // only the Default set uses the virtual Alt rows. Every other set hides
+        // them: backstab fires only on the opening round, and the pre-rest sets
+        // trigger out of combat.
+        bool hideAlternates = SelectedSet?.Trigger != EquipTriggerType.Default;
+
         _suppress = true;
         try
         {
             foreach (EquipmentSlotRowViewModel row in Rows)
+            {
+                row.Applies = !(hideAlternates && row.IsVirtual);
                 row.Load(bySlot.TryGetValue(row.Slot, out EquipmentSlotEntry? e) ? e.ItemName : null);
+            }
         }
         finally { _suppress = false; }
 

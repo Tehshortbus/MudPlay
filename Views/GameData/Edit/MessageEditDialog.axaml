@@ -26,7 +26,11 @@
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+
+          <TabControl Grid.Row="0">
+            <TabItem Header="User Definitions">
+              <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10" Margin="0,8,0,0">
 
             <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair / Response) ===== -->
             <Grid Grid.Row="0"
@@ -213,8 +217,33 @@
                 </StackPanel>
             </Grid>
 
+              </Grid>
+            </TabItem>
+
+            <!-- ===== Game Data (read-only source-row fields) ===== -->
+            <TabItem Header="Game Data" IsVisible="{Binding HasGameData}">
+              <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding GameDataInfo}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GameDataInfoRow">
+                      <Grid ColumnDefinitions="160,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Label}"
+                                   Classes="FieldLabel" TextWrapping="Wrap"
+                                   VerticalAlignment="Top"/>
+                        <SelectableTextBlock Grid.Column="1" Text="{Binding Value}"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontFamily="{StaticResource FontMono}" FontSize="11"
+                                   TextWrapping="Wrap"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </TabItem>
+          </TabControl>
+
             <!-- ===== Buttons ===== -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                 <Button Content="Save"   Command="{Binding SaveCommand}"
                         IsEnabled="{Binding CanSave}"
                         IsDefault="True"  MinWidth="80"/>

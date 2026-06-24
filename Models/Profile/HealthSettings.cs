@@ -82,6 +82,19 @@ public sealed class HealthSettings
     /// CastingDirector trigger. Default 70 (%).</summary>
     public int BlessIfAboveMa { get; set; } = 70;
 
+    /// <summary>Mana-floor for heal spells while resting / idle (out of
+    /// combat): CastingDirector only casts a heal when the caster pool sits
+    /// at or above this value (per <see cref="MaThresholdMode"/>), so a low
+    /// pool regenerates instead of being drained on heals. 0 disables the
+    /// gate. Default 50 (%).</summary>
+    public int HealIfAboveMaResting { get; set; } = 50;
+
+    /// <summary>Mana-floor for heal spells while in combat — same meaning as
+    /// <see cref="HealIfAboveMaResting"/> but applied during combat, where
+    /// survival usually outweighs mana conservation. 0 disables the gate
+    /// (always heal). Default 0.</summary>
+    public int HealIfAboveMaCombat { get; set; }
+
     // ----- Meditation -----------------------------------------------
 
     /// <summary>Use the class-specific <c>meditate</c> command on classes that

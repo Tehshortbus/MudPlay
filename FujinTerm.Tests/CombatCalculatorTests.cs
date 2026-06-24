@@ -419,6 +419,72 @@ public sealed class CombatCalculatorTests
         Assert.Equal(baseline.MaxDamage + 15, strong.MaxDamage);
     }
 
+    [Fact]
+    public void CalcMartialArtsDamage_GreaterMud_UsesLevelBandPlusFlatSkill()
+    {
+        // ParaMUD/GreaterMUD: level-driven band + skill added flat (no skill×level).
+        // L30 (>=20): min = round(30/6=5) floored 5 = 5; punch max = max(round(30/4=7.5→8),12)=12.
+        // skill 30, STR 50 (no strength bonus): min 35, max 42. Punch has no multiplier.
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(35, r.MinDamage);
+        Assert.Equal(42, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_GreaterMud_KickAppliesMultiplier()
+    {
+        // L30 kick: min 35; max = max(round(30/4=8),10)=10 → +skill30 = 40.
+        // Kick ×1.33 truncated: min Fix(35*1.33)=46, max Fix(40*1.33)=53.
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Kick, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(46, r.MinDamage);
+        Assert.Equal(53, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_GreaterMud_SubTwentyBand()
+    {
+        // L10 (<20): min = round(10/8+2 = 3.25) = 3; punch max = round((13)/4+6 = 9.25) = 9.
+        // skill 20: min 23, max 29.
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.ParaMud, level: 10, martialArtsSkill: 20,
+            strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(23, r.MinDamage);
+        Assert.Equal(29, r.MaxDamage);
+    }
+
+    [Fact]
+    public void CalcMartialArtsDamage_GreaterMud_FoldsPositiveStrengthOnly()
+    {
+        // GreaterMUD: max gets (STR-50)/10 (>0 only); min gets (STR-100)/10 (NOT
+        // doubled), floored 0. STR 150: max +10, min +5. L30 punch base 35/42.
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            MudAttackType.Punch, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            strength: 150, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(40, r.MinDamage);  // 35 + 5
+        Assert.Equal(52, r.MaxDamage);  // 42 + 10
+    }
+
+    // ----- Critical hit chance (gear/quest crit + Quick-and-Deadly) --------
+
+    [Theory]
+    [InlineData(20, 15, RealmType.Stock, 35)]     // below 40 → straight sum
+    [InlineData(20, 15, RealmType.ParaMud, 35)]
+    [InlineData(50, 20, RealmType.Stock, 50)]     // 70 → 40 + (30)/3 = 50
+    [InlineData(80, 20, RealmType.ParaMud, 65)]   // ParaMUD hard cap 65
+    [InlineData(300, 0, RealmType.Stock, 99)]     // 40 + 260/3 = 126 → Stock cap 99
+    [InlineData(-5, 0, RealmType.Stock, 0)]       // floored at 0
+    public void CalcCritChance_AppliesRealmDiminishingReturns(
+        int rating, int qnd, RealmType realm, int expected)
+        => Assert.Equal(expected, CombatCalculator.CalcCritChance(rating, qnd, realm));
+
     // ----- Swings ----------------------------------------------------------
 
     [Fact]

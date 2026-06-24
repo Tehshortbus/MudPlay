@@ -147,7 +147,7 @@
                                          ToolTip.Tip="Thresholds below are read as absolute MA / KAI."/>
                         </StackPanel>
 
-                        <Grid ColumnDefinitions="160,130,100" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="160,130,100" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Rest max"/>
                             <NumericUpDown Grid.Row="0" Grid.Column="1"
                                            Value="{Binding RestMaxMa, Mode=TwoWay}"
@@ -166,21 +166,39 @@
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        Text="{Binding RestIfBelowMaConverted}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Heal if above (rest/idle)"/>
                             <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                           Value="{Binding HealIfAboveMaResting, Mode=TwoWay}"
+                                           Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
+                                           ToolTip.Tip="Only cast heal spells while resting / idle when MA / KAI is at or above this — below it, heals are skipped so the pool regenerates. 0 = always heal. CastingDirector (PR 9.D)."/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Text="{Binding HealIfAboveMaRestingConverted}"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Heal if above (combat)"/>
+                            <NumericUpDown Grid.Row="3" Grid.Column="1"
+                                           Value="{Binding HealIfAboveMaCombat, Mode=TwoWay}"
+                                           Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
+                                           ToolTip.Tip="Same mana-floor for heal spells but applied in combat. 0 = always heal (survival over conservation). CastingDirector (PR 9.D)."/>
+                            <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldLabel"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Text="{Binding HealIfAboveMaCombatConverted}"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Run if below"/>
+                            <NumericUpDown Grid.Row="4" Grid.Column="1"
                                            Value="{Binding RunIfBelowMa, Mode=TwoWay}"
                                            Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
                                            ToolTip.Tip="Flee when caster runs out of MA / KAI to cast."/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Classes="FieldLabel"
+                            <TextBlock Grid.Row="4" Grid.Column="2" Classes="FieldLabel"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        Text="{Binding RunIfBelowMaConverted}"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Bless if above"/>
-                            <NumericUpDown Grid.Row="3" Grid.Column="1"
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Bless if above"/>
+                            <NumericUpDown Grid.Row="5" Grid.Column="1"
                                            Value="{Binding BlessIfAboveMa, Mode=TwoWay}"
                                            Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
                                            ToolTip.Tip="Re-cast party / self buffs when MA recovers past this point. CastingDirector (PR 9.D)."/>
-                            <TextBlock Grid.Row="3" Grid.Column="2" Classes="FieldLabel"
+                            <TextBlock Grid.Row="5" Grid.Column="2" Classes="FieldLabel"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        Text="{Binding BlessIfAboveMaConverted}"/>
                         </Grid>

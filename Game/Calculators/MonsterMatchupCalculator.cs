@@ -33,8 +33,16 @@ public static class MonsterMatchupCalculator
 
         int playerDmgPerHit = System.Math.Max(0, player.AvgWeaponDamage - monster.DamageResist);
 
+        // Fold critical hits into the per-swing average the same way MMUD's
+        // round-damage does: a crit averages 3× the normal max (its own DR is
+        // subtracted), blended by the crit chance. The displayed dmg/hit stays
+        // the non-crit value (matching MME's "avg hit"); only DPS reflects crits.
+        int critPerHit = System.Math.Max(0, player.AvgCritDamage - monster.DamageResist);
+        double critPct = System.Math.Clamp(player.CritChancePercent, 0, 100) / 100.0;
+        double effectivePerHit = ((1.0 - critPct) * playerDmgPerHit) + (critPct * critPerHit);
+
         double dps = player.HasWeapon
-            ? playerHit.OverallHitPercent / 100.0 * playerDmgPerHit * player.SwingsPerRound
+            ? playerHit.OverallHitPercent / 100.0 * effectivePerHit * player.SwingsPerRound
             : 0;
         // RoundsToKill is 0 when the player can't out-damage a kill (no weapon
         // or zero effective DPS) — the UI renders that as "—".
@@ -84,6 +92,8 @@ public static class MonsterMatchupCalculator
 /// <param name="ProtEvil">Prot-evil ward, applied only when the monster is evil.</param>
 /// <param name="ProtGood">Prot-good ward, applied only when the monster is good.</param>
 /// <param name="DamageResist">Player DR, subtracted from each monster hit.</param>
+/// <param name="CritChancePercent">Normal-attack critical-hit chance (0–100), gear/quest crit + Quick-and-Deadly. Folds into DPS, not the per-hit display.</param>
+/// <param name="AvgCritDamage">Average critical-hit damage before the monster's DR (MMUD: 3× the normal max).</param>
 public readonly record struct PlayerMatchupProfile(
     RealmType Realm,
     int NormalAccuracy,
@@ -94,7 +104,9 @@ public readonly record struct PlayerMatchupProfile(
     int Dodge,
     int ProtEvil,
     int ProtGood,
-    int DamageResist);
+    int DamageResist,
+    int CritChancePercent = 0,
+    int AvgCritDamage = 0);
 
 /// <summary>
 /// Monster-side inputs to <see cref="MonsterMatchupCalculator.Compute"/> —

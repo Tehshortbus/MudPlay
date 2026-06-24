@@ -9,7 +9,7 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// trigger-purposed <see cref="EquipmentSet"/> (Default / Backstab / Pre-rest HP /
 /// Pre-rest Mana). Exposes the set's <see cref="Name"/> and an observable
 /// <see cref="Enabled"/> mirror so the Enable / Disable buttons redraw the row's
-/// armed state live (the backing <see cref="EquipmentSet"/> isn't observable).
+/// enabled state live (the backing <see cref="EquipmentSet"/> isn't observable).
 /// The section owns the toggle: it writes both this mirror and <see cref="Set"/>
 /// then persists, so the row stays a passive view of the model.
 /// </summary>
@@ -27,8 +27,8 @@ public sealed partial class EquipmentSetRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private bool _enabled;
 
-    /// <summary>Compact armed-state badge shown next to the name.</summary>
-    public string StatusText => Enabled ? "armed" : "disabled";
+    /// <summary>Compact enabled-state badge shown next to the name.</summary>
+    public string StatusText => Enabled ? "enabled" : "disabled";
 
     public EquipmentSetRowViewModel(EquipmentSet set)
     {
