@@ -56,12 +56,23 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private TimeAnalysisStats _time;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TimeOnlineText))]
     private SessionActivityStats _activity;
 
-    /// <summary>Kills/hour series feeding the sparkline; reassigned each refresh.</summary>
+    /// <summary>Kills/hour series feeding the kills sparkline; reassigned each refresh.</summary>
     [ObservableProperty]
     private IReadOnlyList<double> _killsPerHour = Array.Empty<double>();
+
+    /// <summary>Experience/hour series feeding the exp sparkline; reassigned each refresh.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<double> _experiencePerHour = Array.Empty<double>();
+
+    /// <summary>Footer-graph visibility toggles — the kills/hour and exp/hour
+    /// sparklines can each be shown or hidden independently.</summary>
+    [ObservableProperty]
+    private bool _showKillsGraph = true;
+
+    [ObservableProperty]
+    private bool _showExpGraph = true;
 
     public SessionStatsViewModel(
         CombatSessionTracker combat,
@@ -100,11 +111,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string DiseasedText  => Fmt(Time.Diseased);
     public string ConfusedText  => Fmt(Time.Confused);
     public string HeldText      => Fmt(Time.Held);
-
-    /// <summary>Session online time, sourced from the activity tracker so the
-    /// "Session Statistics" section stays self-consistent with the kills/hour and
-    /// exp/hour rates derived from the same clock.</summary>
-    public string TimeOnlineText => Fmt(Activity.TimeOnline);
 
     // ----- Player Statistics (damage ranges) ---------------------------
 
@@ -153,6 +159,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         Time = _timeTracker.Snapshot();
         Activity = _activityTracker.Snapshot();
         KillsPerHour = _activityTracker.KillsPerHourSeries(SparklineBuckets);
+        ExperiencePerHour = _activityTracker.ExperiencePerHourSeries(SparklineBuckets);
     }
 
     private static string Fmt(TimeSpan t) =>

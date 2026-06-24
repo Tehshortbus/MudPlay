@@ -119,6 +119,40 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
+    public void ExperiencePerHourSeries_WeightsBucketsByAmount()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        // 60-min session, 6 buckets ⇒ 10 min each. Gains land in bucket 1 and 4.
+        c.Advance(15); t.NoteExperience(1000);  // t=15 ⇒ bucket 1 (10–20)
+        c.Advance(30); t.NoteExperience(3000);  // t=45 ⇒ bucket 4 (40–50)
+        c.Advance(15);                          // t=60, snapshot edge
+
+        IReadOnlyList<double> series = t.ExperiencePerHourSeries(6);
+        Assert.Equal(6, series.Count);
+        // Each bucket is 10 min = 1/6 h, so the amount scales ×6 to a per-hour rate.
+        Assert.Equal(0d, series[0], 3);
+        Assert.Equal(6000d, series[1], 3);   // 1000 exp / (1/6 h)
+        Assert.Equal(0d, series[2], 3);
+        Assert.Equal(0d, series[3], 3);
+        Assert.Equal(18000d, series[4], 3);  // 3000 exp / (1/6 h)
+        Assert.Equal(0d, series[5], 3);
+    }
+
+    [Fact]
+    public void ExperiencePerHourSeries_PrunesBeyondWindow_ButTotalKeepsTheGain()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        t.NoteExperience(5000); // t=0
+        c.Advance(70);          // 70 min later — outside the 60-min window
+
+        // Total still counts the old gain...
+        Assert.Equal(5000L, t.Snapshot().ExperienceEarned);
+        // ...but it's aged out of the rolling sparkline window.
+        IReadOnlyList<double> series = t.ExperiencePerHourSeries(6);
+        Assert.All(series, v => Assert.Equal(0d, v, 6));
+    }
+
+    [Fact]
     public void KillsPerHourSeries_EmptyBeforeAnyTimeElapses()
     {
         (SessionActivityTracker t, _) = Make();

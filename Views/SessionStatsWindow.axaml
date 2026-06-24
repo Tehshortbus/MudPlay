@@ -58,26 +58,58 @@
 
     <DockPanel LastChildFill="True">
 
-        <!-- ============ Kills/hour sparkline (footer) ============ -->
+        <!-- ============ Rate sparklines (footer) ============ -->
         <Border DockPanel.Dock="Bottom"
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,1,0,0"
                 Padding="10,6">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Kills/hour"
-                           Foreground="{StaticResource ChromeFgSecBrush}"
-                           FontSize="11"/>
-                <Border Background="{StaticResource ChromeBgSunkenBrush}"
-                        BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                        BorderThickness="1"
-                        CornerRadius="3"
-                        Padding="4"
-                        Height="44">
-                    <controls:SparklineControl Samples="{Binding KillsPerHour}"
-                                               Stroke="{StaticResource AccentGreenBrush}"
-                                               StrokeThickness="1.5"/>
-                </Border>
+            <StackPanel Spacing="6">
+
+                <!-- Kills/hour: toggle + session duration + chart. -->
+                <StackPanel Spacing="3">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <CheckBox Grid.Column="0" Content="Kills/hour"
+                                  IsChecked="{Binding ShowKillsGraph}"
+                                  Foreground="{StaticResource ChromeFgSecBrush}"
+                                  FontSize="11" Padding="4,0,0,0" MinHeight="0"/>
+                        <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                    </Grid>
+                    <Border Background="{StaticResource ChromeBgSunkenBrush}"
+                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="3"
+                            Padding="4"
+                            Height="40"
+                            IsVisible="{Binding ShowKillsGraph}">
+                        <controls:SparklineControl Samples="{Binding KillsPerHour}"
+                                                   Stroke="{StaticResource AccentGreenBrush}"
+                                                   StrokeThickness="1.5"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Exp/hour: toggle + session duration + chart. -->
+                <StackPanel Spacing="3">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <CheckBox Grid.Column="0" Content="Exp/hour"
+                                  IsChecked="{Binding ShowExpGraph}"
+                                  Foreground="{StaticResource ChromeFgSecBrush}"
+                                  FontSize="11" Padding="4,0,0,0" MinHeight="0"/>
+                        <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                    </Grid>
+                    <Border Background="{StaticResource ChromeBgSunkenBrush}"
+                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="3"
+                            Padding="4"
+                            Height="40"
+                            IsVisible="{Binding ShowExpGraph}">
+                        <controls:SparklineControl Samples="{Binding ExperiencePerHour}"
+                                                   Stroke="{StaticResource AccentCyanBrush}"
+                                                   StrokeThickness="1.5"/>
+                    </Border>
+                </StackPanel>
+
             </StackPanel>
         </Border>
 
@@ -227,10 +259,6 @@
                                    FontSize="12"/>
                     </Expander.Header>
                     <StackPanel Spacing="2" Margin="4,2">
-                        <Grid ColumnDefinitions="120,*">
-                            <TextBlock Grid.Column="0" Classes="lbl" Text="Time online"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding TimeOnlineText}"/>
-                        </Grid>
                         <Grid ColumnDefinitions="120,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Monsters killed"/>
                             <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.MonstersKilled}"/>

@@ -3,9 +3,10 @@ namespace FujinTerm.Game.Combat;
 /// <summary>
 /// Phase 11 — counts the session's monster kills and experience earned for the
 /// Session Stats panel's "Session Statistics" section, and keeps a short rolling
-/// history of kill timestamps so the panel can draw a kills/hour sparkline.
-/// Produces a <see cref="SessionActivityStats"/> snapshot plus a bucketed
-/// kills/hour series via <see cref="KillsPerHourSeries"/>.
+/// history of kill / experience events so the panel can draw kills/hour and
+/// exp/hour sparklines. Produces a <see cref="SessionActivityStats"/> snapshot
+/// plus bucketed series via <see cref="KillsPerHourSeries"/> and
+/// <see cref="ExperiencePerHourSeries"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,17 +20,18 @@ namespace FujinTerm.Game.Combat;
 /// fire there), so the counters are lock-free.
 /// </para>
 /// <para>
-/// The headline <see cref="SessionActivityStats.MonstersKilled"/> total is a
-/// plain running count that never decays. The kill-timestamp history is separate
-/// and pruned to <see cref="KillRateWindow"/> on every write, since it only feeds
-/// the rolling sparkline — old kills leave the chart but stay in the total.
+/// The headline <see cref="SessionActivityStats.MonstersKilled"/> /
+/// <see cref="SessionActivityStats.ExperienceEarned"/> totals are plain running
+/// counts that never decay. The kill / exp timestamp histories are separate and
+/// pruned to <see cref="RateWindow"/> on every write, since they only feed the
+/// rolling sparklines — old events leave the charts but stay in the totals.
 /// </para>
 /// </remarks>
 public sealed class SessionActivityTracker
 {
-    /// <summary>How far back the kills/hour sparkline looks. Kill timestamps
-    /// older than this are pruned from the rolling history.</summary>
-    public static readonly TimeSpan KillRateWindow = TimeSpan.FromMinutes(60);
+    /// <summary>How far back the kills/hour and exp/hour sparklines look. Event
+    /// timestamps older than this are pruned from the rolling histories.</summary>
+    public static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(60);
 
     private readonly Func<DateTimeOffset> _clock;
 
@@ -41,6 +43,11 @@ public sealed class SessionActivityTracker
     // sparkline; the running total above is independent so the headline figure
     // never decays as old kills age out.
     private readonly List<DateTimeOffset> _recentKills = new();
+
+    // Experience gains (timestamp + amount) within the rolling window, oldest
+    // first. Same role as _recentKills but weighted by the exp amount, so the
+    // exp/hour sparkline reflects how much was earned, not just how often.
+    private readonly List<(DateTimeOffset At, long Amount)> _recentExp = new();
 
     /// <summary>Raised after any input updates the counters, so the Session Stats
     /// VM can refresh. Fires on the dispatch thread.</summary>
@@ -67,7 +74,10 @@ public sealed class SessionActivityTracker
     public void NoteExperience(int amount)
     {
         if (amount <= 0) return;
+        DateTimeOffset now = _clock();
         _experienceEarned += amount;
+        _recentExp.Add((now, amount));
+        PruneTo(now);
         Changed?.Invoke();
     }
 
@@ -80,14 +90,31 @@ public sealed class SessionActivityTracker
     /// <summary>
     /// Kills/hour split into <paramref name="buckets"/> equal time slices across
     /// the rolling window — oldest slice first, ready to feed
-    /// <c>SparklineControl</c>. The window spans the last
-    /// <see cref="KillRateWindow"/>, clamped to the session start so a young
-    /// session fills the chart rather than trailing a long empty lead-in. Each
-    /// slice's value is its kill count converted to a per-hour rate; since the
-    /// slices are equal-width that scaling is uniform and doesn't change the
-    /// rendered shape, but keeps the series true to its "kills/hour" name.
+    /// <c>SparklineControl</c>. The window spans the last <see cref="RateWindow"/>,
+    /// clamped to the session start so a young session fills the chart rather than
+    /// trailing a long empty lead-in. Each slice's value is its kill count
+    /// converted to a per-hour rate; since the slices are equal-width that scaling
+    /// is uniform and doesn't change the rendered shape, but keeps the series true
+    /// to its "kills/hour" name.
     /// </summary>
-    public IReadOnlyList<double> KillsPerHourSeries(int buckets)
+    public IReadOnlyList<double> KillsPerHourSeries(int buckets) =>
+        BucketedPerHour(buckets, _recentKills, static t => t, static _ => 1.0);
+
+    /// <summary>
+    /// Experience/hour split into <paramref name="buckets"/> equal time slices,
+    /// shaped exactly like <see cref="KillsPerHourSeries"/> but weighted by the
+    /// experience amount of each gain rather than a flat count — so the curve
+    /// tracks how much was earned over time, not merely how often.
+    /// </summary>
+    public IReadOnlyList<double> ExperiencePerHourSeries(int buckets) =>
+        BucketedPerHour(buckets, _recentExp, static e => e.At, static e => e.Amount);
+
+    // Shared bucketer for the rolling per-hour series: bins each event's
+    // weight into equal time slices across the window and scales every bin to a
+    // per-hour rate. Generic over the event shape so kills (flat weight 1) and
+    // experience (weight = amount) reuse the identical windowing / pruning math.
+    private IReadOnlyList<double> BucketedPerHour<T>(
+        int buckets, List<T> events, Func<T, DateTimeOffset> at, Func<T, double> weight)
     {
         if (buckets < 1) return Array.Empty<double>();
 
@@ -95,7 +122,7 @@ public sealed class SessionActivityTracker
         PruneTo(now);
 
         DateTimeOffset windowStart = _sessionStart;
-        DateTimeOffset rollingStart = now - KillRateWindow;
+        DateTimeOffset rollingStart = now - RateWindow;
         if (rollingStart > windowStart) windowStart = rollingStart;
 
         double spanHours = (now - windowStart).TotalHours;
@@ -103,13 +130,14 @@ public sealed class SessionActivityTracker
 
         double bucketHours = spanHours / buckets;
         double[] series = new double[buckets];
-        foreach (DateTimeOffset t in _recentKills)
+        foreach (T e in events)
         {
+            DateTimeOffset t = at(e);
             if (t < windowStart) continue;
             int idx = (int)((t - windowStart).TotalHours / bucketHours);
-            if (idx >= buckets) idx = buckets - 1; // a kill landing exactly at 'now'
+            if (idx >= buckets) idx = buckets - 1; // an event landing exactly at 'now'
             if (idx < 0) idx = 0;
-            series[idx] += 1;
+            series[idx] += weight(e);
         }
         for (int i = 0; i < buckets; i++) series[i] /= bucketHours;
         return series;
@@ -123,14 +151,19 @@ public sealed class SessionActivityTracker
         _monstersKilled = 0;
         _experienceEarned = 0;
         _recentKills.Clear();
+        _recentExp.Clear();
         Changed?.Invoke();
     }
 
     private void PruneTo(DateTimeOffset now)
     {
-        DateTimeOffset cutoff = now - KillRateWindow;
-        int drop = 0;
-        while (drop < _recentKills.Count && _recentKills[drop] < cutoff) drop++;
-        if (drop > 0) _recentKills.RemoveRange(0, drop);
+        DateTimeOffset cutoff = now - RateWindow;
+        int dropKills = 0;
+        while (dropKills < _recentKills.Count && _recentKills[dropKills] < cutoff) dropKills++;
+        if (dropKills > 0) _recentKills.RemoveRange(0, dropKills);
+
+        int dropExp = 0;
+        while (dropExp < _recentExp.Count && _recentExp[dropExp].At < cutoff) dropExp++;
+        if (dropExp > 0) _recentExp.RemoveRange(0, dropExp);
     }
 }
