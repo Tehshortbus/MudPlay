@@ -786,6 +786,14 @@ public sealed class AppServices
     public Game.Combat.TimeAnalysisTracker TimeAnalysis { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 11 — counts the session's monster kills and experience earned and
+    /// keeps a rolling kill-timestamp history for the Session Stats panel's
+    /// kills/hour sparkline. Fed by <see cref="MonsterDeath"/> and the
+    /// experience-gain line; reset on the session boundary.
+    /// </summary>
+    public Game.Combat.SessionActivityTracker SessionActivity { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.0d — observes the "You have been slain by..."
     /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
     /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
@@ -2280,6 +2288,20 @@ public sealed class AppServices
                 TimeAnalysis.NoteRoomChanged();
         };
         Profile.ProfileLoaded += _ => TimeAnalysis.Reset();
+
+        // Phase 11 — SessionActivityTracker. Counts kills + experience and keeps
+        // the rolling kill history for the kills/hour sparkline. Like the other
+        // Phase 11 trackers it owns no subscriptions: a kill arrives from
+        // MonsterDeath (specific or fallback alike — both mean one mob down) and
+        // experience from the gain line. Reset on the same session boundary.
+        SessionActivity = new Game.Combat.SessionActivityTracker();
+        MonsterDeath.MonsterDied += _ => SessionActivity.NoteKill();
+        Router.Subscribe(Services.Patterns.KnownPatterns.UserGainExperience, m =>
+        {
+            if (m.Groups.Count > 0 && int.TryParse(m.Groups[0], out int exp))
+                SessionActivity.NoteExperience(exp);
+        });
+        Profile.ProfileLoaded += _ => SessionActivity.Reset();
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
